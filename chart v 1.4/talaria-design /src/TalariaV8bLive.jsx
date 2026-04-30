@@ -2627,7 +2627,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429t-modal-pointer-unify";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429u-tlbar-pointer";
   }, []);
 
   useEffect(() => {
@@ -7917,7 +7917,12 @@ const TalariaV8bLive = () => {
             <div
               onMouseEnter={e=>{setHov(id);if(tip)showTip(tip,e.currentTarget,"bottom");}}
               onMouseLeave={()=>{setHov(null);hideTip();}}
-              onClick={onClick}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                if (typeof onClick === "function") onClick(e);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
               style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",flexShrink:0,
                 background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",transition:"background 0.12s"}}>
               {children(isH, isAct, isDel&&isH?c.rd:isAct?c.acL:isH?c.tx:c.ts)}
@@ -7972,7 +7977,7 @@ const TalariaV8bLive = () => {
                   ].map(([lbl,action])=>{
                     const isH=hov===`txtTpl-${lbl}`, isAct=lbl==="Save as"&&txtSaveAsMode;
                     return (
-                      <div key={lbl} onClick={action}
+                      <div key={lbl} {...modalPointerActivate(() => action())}
                         onMouseEnter={()=>setHov(`txtTpl-${lbl}`)} onMouseLeave={()=>setHov(null)}
                         style={{display:"flex",alignItems:"center",padding:"6px 12px",cursor:"default",position:"relative",
                                 background:isAct?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
@@ -7992,7 +7997,7 @@ const TalariaV8bLive = () => {
                         }}
                         placeholder="Template name…"
                         style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box"}}/>
-                      <div onClick={()=>{if(txtNewTplName.trim()){setTxtTemplates(ts=>[...ts,{name:txtNewTplName.trim(),style:{...txtStyle}}]);setTxtSaveAsMode(false);setTxtNewTplName("");}}}
+                      <div {...modalPointerActivate(() => { if(txtNewTplName.trim()){setTxtTemplates(ts=>[...ts,{name:txtNewTplName.trim(),style:{...txtStyle}}]);setTxtSaveAsMode(false);setTxtNewTplName("");} })}
                         onMouseEnter={()=>setHov("txt-tpl-ok")} onMouseLeave={()=>setHov(null)}
                         style={{padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,position:"relative",
                                 background:hov==="txt-tpl-ok"?c.hv:"transparent",transition:"background 0.12s"}}>
@@ -8006,9 +8011,9 @@ const TalariaV8bLive = () => {
                       <div key={idx} onMouseEnter={()=>setHov(`txtTpl-${idx}`)} onMouseLeave={()=>setHov(null)}
                         style={{display:"flex",alignItems:"center",padding:"4px 8px 4px 12px",cursor:"default",position:"relative",
                                 background:hov===`txtTpl-${idx}`?c.hv2:"transparent",transition:"background 0.1s"}}>
-                        <span onClick={()=>{setTxtStyle(tpl.style);setTxtBarDrop(null);}}
+                        <span {...modalPointerActivate(() => { setTxtStyle(tpl.style); setTxtBarDrop(null); })}
                           style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:12,color:hov===`txtTpl-${idx}`?c.tx:c.ts,fontWeight:500}}>{tpl.name}</span>
-                        <div onClick={e=>{e.stopPropagation();setTxtTemplates(ts=>ts.filter((_,i)=>i!==idx));}}
+                        <div {...modalPointerActivate(() => setTxtTemplates(ts=>ts.filter((_,i)=>i!==idx)))}
                           onMouseEnter={()=>setHov(`txtTpl-del-${idx}`)} onMouseLeave={()=>setHov(`txtTpl-${idx}`)}>
                           <I n="x" s={11} cl={hov===`txtTpl-del-${idx}`?c.rd:c.tm}/>
                         </div>
@@ -8047,7 +8052,9 @@ const TalariaV8bLive = () => {
           {/* font size dropdown — hidden for flag, emoji, note, priceNote */}
           {!["flag","emoji","note","priceNote","image"].includes(txtSubTool.icon) && <div style={{position:"relative",flexShrink:0}}>
             <div onMouseEnter={()=>setHov("txt-bar-sz")} onMouseLeave={()=>setHov(null)}
-              onClick={e=>{e.stopPropagation();setTxtBarSizeOpen(v=>!v);setTxtSizeOpen(false);}}
+              onPointerDown={(e)=>{e.stopPropagation();setTxtBarSizeOpen(v=>!v);setTxtSizeOpen(false);}}
+              onMouseDown={(e)=>e.stopPropagation()}
+              onClick={(e)=>e.stopPropagation()}
               style={{height:32,padding:"0 7px",display:"flex",alignItems:"center",gap:3,position:"relative",cursor:"default",
                       background:txtBarSizeOpen?"rgba(74,106,255,0.08)":hov==="txt-bar-sz"?c.hv:"transparent",transition:"background 0.12s"}}>
               <span style={{fontSize:12,color:txtBarSizeOpen?c.acL:c.ts,minWidth:16,textAlign:"center"}}>{txtStyle.fontSize}</span>
@@ -8066,7 +8073,7 @@ const TalariaV8bLive = () => {
                 {txtSizes.map(sz=>{
                   const isA=txtStyle.fontSize===sz; const isH=hov===`txtsz-bar-${sz}`;
                   return (
-                    <div key={sz} onClick={()=>{setTxtStyle(s=>({...s,fontSize:sz}));setTxtBarSizeOpen(false);}}
+                    <div key={sz} {...modalPointerActivate(() => { setTxtStyle(s=>({...s,fontSize:sz})); setTxtBarSizeOpen(false); })}
                       onMouseEnter={()=>setHov(`txtsz-bar-${sz}`)} onMouseLeave={()=>setHov(null)}
                       style={{padding:"5px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                               background:isA?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
@@ -10085,10 +10092,12 @@ const TalariaV8bLive = () => {
             <div
               onMouseEnter={e=>{setHov(id);if(tip)showTip(tip,e.currentTarget,"bottom");}}
               onMouseLeave={()=>{setHov(null);hideTip();}}
-              onClick={(e) => {
-                if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+              onPointerDown={(e) => {
+                e.stopPropagation();
                 if (typeof onClick === "function") onClick(e);
               }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
               style={{width:w||32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
                       cursor:"default",position:"relative",flexShrink:0,userSelect:"none",
                       background: isAct ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent",
@@ -10170,7 +10179,7 @@ const TalariaV8bLive = () => {
                     }]].map(([lbl, action])=>{
                     const isH=hov===`tbdrop-${lbl}`, isAct=lbl==="Save as"&&tlSaveAsMode;
                     return (
-                      <div key={lbl} onClick={action}
+                      <div key={lbl} {...modalPointerActivate(() => action())}
                         onMouseEnter={()=>setHov(`tbdrop-${lbl}`)} onMouseLeave={()=>setHov(null)}
                         style={{ display:"flex", alignItems:"center", padding:"6px 12px", cursor:"default", position:"relative",
                                  background:isAct?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
@@ -10193,7 +10202,7 @@ const TalariaV8bLive = () => {
                         }}
                         placeholder="Template name…"
                         style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box"}}/>
-                      <div onClick={()=>{ if (!tlNewTplName.trim()) return; const d = getSelectedDrawingForTemplate(); if (!d) { window.chart?.drawingManager?.toolbar?.showNotification?.("Select a drawing first"); return; } if (v9SaveDrawingTemplateToStorage(tlNewTplName, d)) { setTlSaveAsMode(false); setTlNewTplName(""); } }}
+                      <div {...modalPointerActivate(() => { if (!tlNewTplName.trim()) return; const d = getSelectedDrawingForTemplate(); if (!d) { window.chart?.drawingManager?.toolbar?.showNotification?.("Select a drawing first"); return; } if (v9SaveDrawingTemplateToStorage(tlNewTplName, d)) { setTlSaveAsMode(false); setTlNewTplName(""); } })}
                         onMouseEnter={()=>setHov("tpl-save-ok")} onMouseLeave={()=>setHov(null)}
                         style={{padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,position:"relative",
                                 background:hov==="tpl-save-ok"?c.hv:"transparent",transition:"background 0.12s"}}>
@@ -10211,22 +10220,22 @@ const TalariaV8bLive = () => {
                       onMouseEnter={()=>setHov(`tbtpl-${idx}`)} onMouseLeave={()=>setHov(null)}
                       style={{ display:"flex", alignItems:"center", padding:"4px 8px 4px 12px", cursor:"default", position:"relative",
                                background:hov===`tbtpl-${idx}`?c.hv2:"transparent", transition:"background 0.1s" }}>
-                      <span onClick={()=>{
+                      <span {...modalPointerActivate(() => {
                         const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
                         const tb = ch?.drawingManager?.toolbar;
                         const d = getSelectedDrawingForTemplate();
                         if (!tb || !d || !tpl.id) return;
                         tb.applyTemplate(d, tpl.id);
                         closeTlBarDrop();
-                      }}
+                      })}
                         style={{flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontSize:12, color:hov===`tbtpl-${idx}`?c.tx:c.ts, fontWeight:500}}>{tpl.name}</span>
-                      <div onClick={e=>{ e.stopPropagation();
+                      <div {...modalPointerActivate(() => {
                         const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
                         const tb = ch?.drawingManager?.toolbar;
                         const d = getSelectedDrawingForTemplate();
                         const toolType = (d && d.type) || resolveLegacyTool();
                         if (tb && toolType && tpl.id) tb.deleteTemplate(toolType, tpl.id);
-                      }}
+                      })}
                         onMouseEnter={()=>setHov(`tbtpl-del-${idx}`)} onMouseLeave={()=>setHov(`tbtpl-${idx}`)}
                         style={{ padding:"2px 4px", cursor:"default" }}>
                         <I n="x" s={11} cl={hov===`tbtpl-del-${idx}`?c.rd:c.tm}/>
@@ -10519,7 +10528,7 @@ const TalariaV8bLive = () => {
                 return (
                   <div key={pbKey}
                     onMouseEnter={()=>setHov(`pb-${i}`)} onMouseLeave={()=>setHov(null)}
-                    onClick={()=>{ setTool(t.parentId||t.id); if(t.parentId) setGroupSelected(p=>({...p,[t.parentId]:t})); }}
+                    {...modalPointerActivate(() => { setTool(t.parentId||t.id); if(t.parentId) setGroupSelected(p=>({...p,[t.parentId]:t})); })}
                     style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
                       background:isAct?"rgba(74,106,255,0.10)":isH?c.hv:"transparent",
                       transition:"background 0.12s"}}>
