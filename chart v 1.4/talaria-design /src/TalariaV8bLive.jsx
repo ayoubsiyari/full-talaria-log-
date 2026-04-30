@@ -2623,7 +2623,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429d-no-style-tip";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429e-rail-first-click";
   }, []);
 
   useEffect(() => {
@@ -2651,6 +2651,7 @@ const TalariaV8bLive = () => {
       // mousedown—extra renders before click and “needs many taps” symptoms on crowded stacks.
       if (
         el.closest("[data-sdrop]") ||
+        el.closest("[data-v9-rail]") ||
         el.closest("#drawing-toolbar") ||
         el.closest(".drawing-toolbar") ||
         el.closest(".tlr-cp")
@@ -4995,8 +4996,12 @@ const TalariaV8bLive = () => {
       <div key={t.id} style={{ position: "relative", width: "100%", display: "flex", flexDirection: "row", alignItems: "stretch", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
         {/* Icon button — selects the tool (split from chevron so arrow opens menu only) */}
         <button
+          type="button"
           ref={ref}
-          onPointerDown={t.action ? () => setBtnPressed(t.id) : undefined}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            if (t.action) setBtnPressed(t.id);
+          }}
           onPointerUp={t.action ? () => setBtnPressed(null) : undefined}
           onMouseEnter={() => setHov(t.id)}
           onMouseLeave={() => { setHov(null); setBtnPressed(null); }}
@@ -5063,6 +5068,7 @@ const TalariaV8bLive = () => {
         {t.dd ? (
           <button
             type="button"
+            onPointerDown={(e) => e.stopPropagation()}
             onMouseEnter={() => setHov(t.id + "-arr")}
             onMouseLeave={() => setHov(null)}
             onClick={(e) => {
@@ -5085,7 +5091,7 @@ const TalariaV8bLive = () => {
         ) : (
           <div style={{ width: 10, height: 32, flexShrink: 0, pointerEvents: "none" }} aria-hidden />
         )}
-        {h && !ddOpen && !t.dd && <div style={{ position: "absolute", left: "calc(100% + 10px)", top: "50%", transform: "translateY(-50%)", background: c.el, border: `1px solid ${c.brH}`, padding: "4px 10px", fontSize: 12, fontWeight: 600, fontFamily: F, color: c.tx, whiteSpace: "nowrap", zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.6)", borderLeft: `2px solid ${act ? accentCol : c.brH}` }}>{t.label}</div>}
+        {h && !ddOpen && !t.dd && <div style={{ position: "absolute", left: "calc(100% + 10px)", top: "50%", transform: "translateY(-50%)", background: c.el, border: `1px solid ${c.brH}`, padding: "4px 10px", fontSize: 12, fontWeight: 600, fontFamily: F, color: c.tx, whiteSpace: "nowrap", zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.6)", borderLeft: `2px solid ${act ? accentCol : c.brH}`, pointerEvents: "none" }}>{t.label}</div>}
       </div>
     );
   };
@@ -12536,7 +12542,7 @@ const TalariaV8bLive = () => {
         ))}
       </div>
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        <div onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, overflowY: "auto", overflowX: "hidden" }}>
+        <div data-v9-rail="1" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, overflowY: "auto", overflowX: "hidden" }}>
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%" }}>
               {gi === toolGroups.length - 1 && <div style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>}
