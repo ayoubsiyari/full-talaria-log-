@@ -2467,7 +2467,16 @@ const TalariaV8bLive = () => {
     setTimeout(() => { setTlBarDrop(null); setTlSaveAsMode(false); setTlNewTplName(""); setClosing(s => { const n = new Set(s); n.delete("tlbardrop"); return n; }); }, 130);
   };
   const closeTlSett = () => {
-    setClosing(s => new Set([...s, "tlsett"]));
+    setCpDragging(null);
+    setCpDragRect(null);
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
+    setClosing(s => {
+      const n = new Set(s);
+      n.delete("cp");
+      n.add("tlsett");
+      return n;
+    });
     setTlSettTplDrop(false); setTlSaveAsMode(false); setTlNewTplName(""); setTlStyleDrop(null);
     setTimeout(() => { setTlSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("tlsett"); return n; }); }, 105);
   };
