@@ -2623,7 +2623,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429f-chrome-buttons";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429g-outside-handler";
   }, []);
 
   useEffect(() => {
@@ -2643,28 +2643,38 @@ const TalariaV8bLive = () => {
   }, []);
 
   useEffect(() => {
+    const eventTargetEl = (e) => {
+      const t = e && e.target;
+      if (!t) return null;
+      if (t.nodeType === 1 && typeof t.closest === "function") return t;
+      const p = t.parentElement;
+      return p && typeof p.closest === "function" ? p : null;
+    };
+    const isOutsideUiChrome = (el) =>
+      !!el &&
+      !el.closest("[data-sdrop]") &&
+      !el.closest("[data-v9-chrome]") &&
+      !el.closest("[data-tlbar]") &&
+      !el.closest("#drawing-toolbar") &&
+      !el.closest(".drawing-toolbar") &&
+      !el.closest(".tlr-cp");
+
     const handler = (e) => {
-      const el = e.target;
-      if (!el || typeof el.closest !== "function") return;
+      const el = eventTargetEl(e);
+      if (!el) return;
       // IMPORTANT: return BEFORE any setState. Previously setColorPicker / tlBar ran first; presses
       // inside [data-sdrop] (tool dropdown, settings, etc.) still triggered those updates on
       // mousedown—extra renders before click and “needs many taps” symptoms on crowded stacks.
-      if (
-        el.closest("[data-sdrop]") ||
-        el.closest("[data-v9-chrome]") ||
-        el.closest("#drawing-toolbar") ||
-        el.closest(".drawing-toolbar") ||
-        el.closest(".tlr-cp")
-      ) {
-        return;
-      }
+      // [data-tlbar]: floating / portaled toolbars had data-tlbar but not always data-sdrop on every
+      // inner node—mousedown still cleared color picker on first press.
+      if (!isOutsideUiChrome(el)) return;
+
       setColorPicker(null);
-      if (!el.closest("[data-tlbar]")) {
-        setTlBarDrop(null);
-        setTlSaveAsMode(false);
-        setTlNewTplName("");
-        setVwapBarDrop(null);
-      }
+      setTlBarDrop(null);
+      setTlSaveAsMode(false);
+      setTlNewTplName("");
+      setVwapBarDrop(null);
+
       const onChartSurface =
         el.closest("#chart-container") ||
         el.closest("#panels-container");
@@ -2674,7 +2684,12 @@ const TalariaV8bLive = () => {
       setTlSettTplDrop(false);
       setTlSettOpen(false);
     };
-    const scrollHandler = () => { setSettDrop(null); setColorPicker(null); };
+    const scrollHandler = (ev) => {
+      const el = eventTargetEl(ev);
+      if (!el || !isOutsideUiChrome(el)) return;
+      setSettDrop(null);
+      setColorPicker(null);
+    };
     document.addEventListener('mousedown', handler);
     document.addEventListener('wheel', scrollHandler, { passive: true });
     return () => {
@@ -16150,6 +16165,7 @@ const TalariaV8bLive = () => {
       })()}
       {cpDragging && typeof document !== "undefined" && createPortal(
         <div
+          data-sdrop="1"
           onMouseMove={(e)=>{
             if(!cpDragRect) return;
             if(cpDragging==='sv'){
@@ -16340,6 +16356,7 @@ const TalariaV8bLive = () => {
       , document.body)}
       {dragging && (
         <div
+          data-sdrop="1"
           onMouseMove={(e) => {
             const dx = e.clientX - dragging.startX;
             const dy = e.clientY - dragging.startY;
