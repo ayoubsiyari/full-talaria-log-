@@ -2627,7 +2627,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429u-tlbar-pointer";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429v-endpoints-align";
   }, []);
 
   useEffect(() => {
@@ -5878,7 +5878,7 @@ const TalariaV8bLive = () => {
                   </div>
                 </>);
                 return (<>
-                  {showLine && <div style={{ display:"grid", gridTemplateColumns:`1fr auto auto auto ${(showEp||isBrushTool||(isPatternTool&&!isElliottTool))?"auto":""}`, columnGap:12, rowGap:0, alignItems:"center", marginRight:(isBrushTool&&!showEp)?65:0 }}>
+                  {showLine && <div style={{ display:"grid", gridTemplateColumns:`1fr auto auto auto ${(showEp||isBrushTool||(isPatternTool&&!isElliottTool))?"auto":""}`, columnGap:12, rowGap:0, alignItems:"start", marginRight:(isBrushTool&&!showEp)?65:0 }}>
                     {/* Column headers */}
                     <div/><div/>
                     <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
@@ -5887,9 +5887,15 @@ const TalariaV8bLive = () => {
                     <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
                       <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span>
                     </div>
-                    {(showEp||isBrushTool||(isPatternTool&&!isElliottTool)) && <div/>}
+                    {(showEp||isBrushTool||(isPatternTool&&!isElliottTool)) && (
+                      showEp ? (
+                        <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
+                          <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>ENDPOINTS</span>
+                        </div>
+                      ) : <div/>
+                    )}
                     {/* ── Line row ── */}
-                    <span style={{ fontSize:12, color:c.ts, padding:"8px 0", alignSelf:"center" }}>{["triangle","rect","arcShape","ellipse","circle"].includes(tlSubTool.icon)?"Borders":"Line"}</span>
+                    <span style={{ fontSize:12, color:c.ts, padding:"8px 0" }}>{["triangle","rect","arcShape","ellipse","circle"].includes(tlSubTool.icon)?"Borders":"Line"}</span>
                     <div style={{ padding:"8px 0" }}>{colorSwatch("tlLineColor", tlStyle.lineColor)}</div>
                     {/* Style */}
                     {showStyle ? <div style={{ padding:"8px 0", position:"relative" }}>
@@ -5969,9 +5975,7 @@ const TalariaV8bLive = () => {
                     </div>}
                     {/* Endpoints / 5th-col filler for pattern tools */}
                     {(isPatternTool&&!isElliottTool) && <div/>}
-                    {(showEp||isBrushTool) && (showEp ? <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"center", padding:"8px 0" }}>
-                      <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>ENDPOINTS</span>
-                      <div style={{ display:"flex", gap:3 }}>
+                    {(showEp||isBrushTool) && (showEp ? <div style={{ display:"flex", gap:3, alignItems:"center", justifyContent:"center", padding:"8px 0" }}>
                         {[["ep1",false],["ep2",true]].map(([k,rightAlign])=>{
                           const dk=`ep-${k}`; const val=tlStyle[k]||"normal"; const isOpen=tlStyleDrop===dk;
                           const epPrev = (open) => val==="arrow"
@@ -6008,7 +6012,6 @@ const TalariaV8bLive = () => {
                             </div>
                           );
                         })}
-                      </div>
                     </div> : <div/>)}
                     {/* ── LABEL row (pure pattern tools only) ── */}
                     {(isPatternTool&&!isElliottTool) && <>
