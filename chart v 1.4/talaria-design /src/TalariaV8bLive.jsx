@@ -2623,7 +2623,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429l-tlbar-effective-group";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429m-tlbar-select-no-arm";
   }, []);
 
   useEffect(() => {
@@ -4740,9 +4740,10 @@ const TalariaV8bLive = () => {
         try {
           setTlBarSelected(true);
           setTlBarSelectedType(drawing && drawing.type);
-          // Align V9 `tool` + `groupSelected` with the selected drawing so the floating
-          // bar shows the correct sub-tool icon (tlSubTool). Styles already sync via patch;
-          // without this, the rail stays on e.g. Trend Line until settings opens (setTool).
+          // Update `groupSelected` for the drawing’s group so line style defaults stay per tool.
+          // Do NOT call setTool here: the V9 tool bridge would dm.setTool(legacy) and re-arm
+          // the draw tool — the next click would start a new shape instead of selecting/handles.
+          // Floating bar icon/label use tlBarSelectedType + effectiveTlGroup (see above).
           if (drawing && drawing.type && !editingDrawingRef.current) {
             const g = drawingTypeToPanelGroup(drawing.type);
             if (g) {
@@ -4759,7 +4760,6 @@ const TalariaV8bLive = () => {
                 }
               } catch (_) {}
               suppressForwardBridge.current = true;
-              setTool(g);
               setGroupSelected(prev => ({ ...prev, [g]: { icon, label } }));
             }
           }
