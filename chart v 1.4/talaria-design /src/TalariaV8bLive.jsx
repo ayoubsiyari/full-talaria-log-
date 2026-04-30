@@ -400,6 +400,55 @@ const V9_LEGACY_DASH_STRING_TO_LINE_TYPE = (() => {
   return map;
 })();
 
+/** V9 line type → chart.js `stroke-dasharray` for parallel-channel level lines. */
+const V9_LINE_TYPE_TO_LEGACY_DASH = { solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4', bold: '' };
+
+/** `drawing.levels` (parallel-channel) ↔ Settings panel `tlStyle.chLines`. */
+function v9ParallelLevelsToChLines(levels) {
+  if (!Array.isArray(levels) || !levels.length) return undefined;
+  return levels.map((lv) => {
+    const raw = (lv.lineType != null && lv.lineType !== '') ? String(lv.lineType).replace(/\s+/g, '') : '';
+    let lineType = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[raw];
+    if (lineType == null) {
+      if (raw === '0' || raw === 'none') lineType = 'solid';
+      else lineType = raw ? 'dashed' : 'solid';
+    }
+    const w = lv.lineWidth != null ? String(parseInt(lv.lineWidth, 10) || 2) : '2';
+    const numVal = typeof lv.value === 'number' ? lv.value : parseFloat(lv.value);
+    const valueStr = Number.isFinite(numVal)
+      ? (Number.isInteger(numVal) ? String(numVal) : numVal.toFixed(4).replace(/\.?0+$/, '') || '0')
+      : String(lv.value ?? '0');
+    return {
+      on: lv.enabled !== false,
+      value: valueStr,
+      color: lv.color || '#2962FF',
+      type: lineType,
+      width: w,
+    };
+  });
+}
+
+function v9ChLinesToParallelLevels(chLines) {
+  if (!Array.isArray(chLines)) return [];
+  return chLines.map((ln, idx) => {
+    const t = parseFloat(ln.value);
+    const value = Number.isFinite(t) ? t : 0;
+    const baseW = parseInt(ln.width, 10) || 2;
+    const isBold = ln.type === 'bold';
+    const dashStr = isBold ? '' : (V9_LINE_TYPE_TO_LEGACY_DASH[ln.type] !== undefined
+      ? V9_LINE_TYPE_TO_LEGACY_DASH[ln.type]
+      : '');
+    const uiOn = !!(ln.on || (chLines.length === 5 && idx === 2));
+    return {
+      value,
+      color: ln.color || '#2962FF',
+      enabled: uiOn,
+      lineType: dashStr,
+      lineWidth: isBold ? Math.max(baseW, 3) : baseW,
+    };
+  });
+}
+
 /** Full chart.js drawing → V9 `tlStyle` patch (toolbar selection + settings read-back). */
 function v9TlStylePatchFromDrawing(d) {
   if (!d) return null;
@@ -461,6 +510,12 @@ function v9TlStylePatchFromDrawing(d) {
           const md = String(s.middleLineDash).replace(/\s+/g, "");
           const mt = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[md] ?? (md ? "dashed" : "solid");
           return { midLineType: mt };
+        })()
+      : {}),
+    ...(d.type === "parallel-channel" && Array.isArray(d.levels) && d.levels.length
+      ? (() => {
+          const ch = v9ParallelLevelsToChLines(d.levels);
+          return ch ? { chLines: ch } : {};
         })()
       : {}),
     ...v9CoordPatchFromDrawing(d),
@@ -1894,7 +1949,7 @@ const TalariaV8bLive = () => {
     chLines: [
       { on: true, value: "1.00", color: "#2962FF", type: "solid", width: "2" },
       { on: true, value: "0.75", color: "#2962FF", type: "dashed", width: "1" },
-      { on: false, value: "0.50", color: "#8C8C8C", type: "dashed", width: "1" },
+      { on: true, value: "0.50", color: "#8C8C8C", type: "dashed", width: "1" },
       { on: true, value: "0.25", color: "#2962FF", type: "dashed", width: "1" },
       { on: true, value: "0.00", color: "#2962FF", type: "solid", width: "2" },
     ],
@@ -5085,6 +5140,11 @@ const TalariaV8bLive = () => {
             : prev.midLineType,
           ...v9CoordPatchFromDrawing(drawing),
           ...v9VisibilityPatchFromDrawing(drawing),
+          ...(() => {
+            if (drawing.type !== "parallel-channel" || !Array.isArray(drawing.levels) || !drawing.levels.length) return {};
+            const p = v9TlStylePatchFromDrawing(drawing);
+            return p && p.chLines ? { chLines: p.chLines } : {};
+          })(),
         }));
 
         // Position panel near dblclick (clientX/Y are post-zoom; tlSettPos
@@ -5440,6 +5500,9 @@ const TalariaV8bLive = () => {
         }
         try { v9ApplyPointsFromTlStyle(d, tlStyle); } catch (_) {}
         try { v9ApplyVisibilityFromTlStyle(d, tlStyle); } catch (_) {}
+        if (d.type === "parallel-channel" && Array.isArray(tlStyle.chLines)) {
+          d.levels = v9ChLinesToParallelLevels(tlStyle.chLines);
+        }
         // Prefer onUpdate (history + render + persist + saveDrawings).
         if (tb && typeof tb.onUpdate === 'function') {
           try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
@@ -5467,6 +5530,7 @@ const TalariaV8bLive = () => {
     tlStyle.pt5Price, tlStyle.pt5Bar, tlStyle.pt6Price, tlStyle.pt6Bar,
     tlStyle.pt7Price, tlStyle.pt7Bar,
     tlStyle.visMinutes, tlStyle.visHours, tlStyle.visDays, tlStyle.visWeeks, tlStyle.visMonths,
+    tlStyle.chLines,
     tool, groupSelected,
   ]);
 
