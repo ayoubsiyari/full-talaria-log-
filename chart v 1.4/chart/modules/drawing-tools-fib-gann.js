@@ -738,6 +738,10 @@ class TrendFibTimeTool extends BaseDrawing {
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.showZones === undefined) this.style.showZones = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
+        if (this.style.trendLineEnabled === undefined) this.style.trendLineEnabled = true;
+        if (!this.style.trendLineColor) this.style.trendLineColor = this.style.stroke;
+        if (this.style.trendLineDasharray === undefined) this.style.trendLineDasharray = '6,6';
+        if (this.style.trendLineWidth === undefined) this.style.trendLineWidth = this.style.strokeWidth || 1;
         this.levels = style.levels || [
             { value: 0, enabled: true, color: '#787b86' },
             { value: 0.382, enabled: true, color: '#ff9800' },
@@ -768,6 +772,13 @@ class TrendFibTimeTool extends BaseDrawing {
         const getXFromIndex = (idx) => scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(idx) : scales.xScale(idx);
         const getY = (p) => scales.yScale(p.y);
         const anchorStrokeWidth = Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor);
+        const trendEnabled = this.style.trendLineEnabled !== false;
+        const trendColor = this.style.trendLineColor || this.style.stroke || '#787b86';
+        const trendDash = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '6,6';
+        const trendBaseW = (this.style.trendLineWidth != null && !isNaN(parseInt(this.style.trendLineWidth, 10)))
+            ? parseInt(this.style.trendLineWidth, 10)
+            : (parseInt(this.style.strokeWidth, 10) || 1);
+        const scaledTrendW = Math.max(0.5, trendBaseW * scaleFactor);
 
         // 1-point preview: dot only
         if (this.points.length === 1) {
@@ -789,16 +800,18 @@ class TrendFibTimeTool extends BaseDrawing {
         const x2 = getXFromIndex(xIndex2);
         const y2 = getY(p2);
 
-        // Always draw base interval anchor line (P1 → P2)
-        this.group.append('line')
-            .attr('x1', x1).attr('y1', y1)
-            .attr('x2', x2).attr('y2', y2)
-            .attr('stroke', '#787b86')
-            .attr('stroke-width', anchorStrokeWidth)
-            .attr('stroke-dasharray', '6,6')
-            .attr('opacity', 0.7)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+        // Base interval anchor line (P1 → P2) — uses trend line style (V9 / toolbar)
+        if (trendEnabled) {
+            this.group.append('line')
+                .attr('x1', x1).attr('y1', y1)
+                .attr('x2', x2).attr('y2', y2)
+                .attr('stroke', trendColor)
+                .attr('stroke-width', scaledTrendW)
+                .attr('stroke-dasharray', trendDash)
+                .attr('opacity', 0.7)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
 
         // 2-point preview: show base interval line + endpoint dots, await 3rd click
         if (this.points.length === 2) {
@@ -818,16 +831,18 @@ class TrendFibTimeTool extends BaseDrawing {
             const x3 = getXFromIndex(xIndex3);
             const y3 = getY(p3);
 
-            // Second leg: P2 → P3
-            this.group.append('line')
-                .attr('x1', x2).attr('y1', y2)
-                .attr('x2', x3).attr('y2', y3)
-                .attr('stroke', '#787b86')
-                .attr('stroke-width', anchorStrokeWidth)
-                .attr('stroke-dasharray', '6,6')
-                .attr('opacity', 0.7)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+            // Second leg: P2 → P3 (same trend styling)
+            if (trendEnabled) {
+                this.group.append('line')
+                    .attr('x1', x2).attr('y1', y2)
+                    .attr('x2', x3).attr('y2', y3)
+                    .attr('stroke', trendColor)
+                    .attr('stroke-width', scaledTrendW)
+                    .attr('stroke-dasharray', trendDash)
+                    .attr('opacity', 0.7)
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'move');
+            }
 
             const showZones = !!this.style.showZones;
             const bgOpacity = (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity)))

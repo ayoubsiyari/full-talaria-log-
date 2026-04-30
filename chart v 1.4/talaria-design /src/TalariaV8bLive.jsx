@@ -722,6 +722,51 @@ function v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthFallback) {
   }
 }
 
+function v9IsTrendFibTimeType(t) {
+  return t === "trend-fib-time";
+}
+
+/** Trend-Based Fib Time: vertical time levels + zones + styled anchor legs (`trendLine*` + `levelsLine*`). */
+function v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthFallback) {
+  if (!d || !d.style || !v9IsTrendFibTimeType(d.type)) return;
+  const fibDashStr =
+    tlStyle.fibLineType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
+        : "");
+  const trendDashStr =
+    tlStyle.fibTimeTrendType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibTimeTrendType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibTimeTrendType]
+        : "");
+  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
+  const trendW =
+    parseInt(String(tlStyle.fibTimeTrendWidth), 10) ||
+    (typeof widthFallback === "number" ? widthFallback : 1) ||
+    1;
+
+  d.levels = v9TlFibSpeedFanLevelsToChart(
+    tlStyle.fibLevels,
+    tlStyle.fibLineType,
+    tlStyle.fibLineWidth,
+  );
+  const st = d.style;
+  st.stroke = tlStyle.lineColor;
+  st.trendLineEnabled = tlStyle.fibTrendLine !== false;
+  st.trendLineColor = tlStyle.lineColor;
+  st.trendLineWidth = trendW;
+  st.trendLineDasharray = trendDashStr;
+  st.levelsLineWidth = levelsW;
+  st.levelsLineDasharray = fibDashStr;
+  st.showZones = tlStyle.fibBackground !== false;
+  st.backgroundOpacity =
+    tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
+      ? +tlStyle.fibBgOpacity
+      : 0.12;
+}
+
 function v9ApplyClassicFibFromTlStyle(d, tlStyle, trendWidthFallback) {
   if (!d || !d.style || !v9IsClassicFibRetracementType(d.type)) return;
   const fibDashStr =
@@ -768,23 +813,30 @@ function v9TlStylePatchFromDrawing(d) {
     (typeof s.fontWeight === "number" && s.fontWeight >= 600);
   const isClassicFib = v9IsClassicFibRetracementType(d.type);
   const isFibFan = v9IsFibSpeedFanType(d.type);
+  const isTrendFibTime = v9IsTrendFibTimeType(d.type);
   const stroke =
     d.type === "pitchfork"
       ? (s.medianColor || s.stroke || s.color || s.lineColor)
-      : isClassicFib
+      : isClassicFib || isTrendFibTime
         ? (s.trendLineColor || s.stroke || s.color || s.lineColor)
         : (s.stroke || s.color || s.lineColor);
   const widthRaw = isClassicFib
     ? (s.trendLineWidth ?? s.strokeWidth ?? s.lineWidth)
     : isFibFan
       ? (s.strokeWidth ?? s.levelsLineWidth ?? s.lineWidth)
-      : (s.strokeWidth ?? s.lineWidth);
-  const widthStr = widthRaw != null ? String(parseInt(widthRaw, 10) || (isClassicFib ? 1 : 2)) : undefined;
+      : isTrendFibTime
+        ? (s.trendLineWidth ?? s.strokeWidth ?? s.lineWidth)
+        : (s.strokeWidth ?? s.lineWidth);
+  const widthStr = widthRaw != null
+    ? String(parseInt(widthRaw, 10) || (isClassicFib || isTrendFibTime ? 1 : 2))
+    : undefined;
   const dashRaw = isClassicFib
     ? String(s.trendLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
     : isFibFan
       ? String(s.levelsLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
-      : String(s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "");
+      : isTrendFibTime
+        ? String(s.trendLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
+        : String(s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "");
   const lineType = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[dashRaw] ?? (dashRaw ? "dashed" : "solid");
   return {
     ...(stroke ? { lineColor: stroke } : {}),
@@ -936,6 +988,30 @@ function v9TlStylePatchFromDrawing(d) {
             fibLevelsOn: s.levelsEnabled !== false,
             fibLevelsMode: v9FibLevelsModeChartToUi(s.levelsLabelMode),
             fibExtendLines: !!s.extendLines,
+          };
+        })()
+      : {}),
+    ...(d.type === "trend-fib-time"
+      ? (() => {
+          const fl = v9FibSpeedFanLevelsChartToTl(d.levels);
+          const fibDashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const fibLineType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
+          const trendDashRaw = String(s.trendLineDasharray ?? "").replace(/\s+/g, "");
+          const fibTimeTrendType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[trendDashRaw] ?? (!trendDashRaw ? "solid" : "dashed");
+          return {
+            ...(fl ? { fibLevels: fl } : {}),
+            fibTrendLine: s.trendLineEnabled !== false,
+            fibTimeTrendType,
+            fibTimeTrendWidth: String(parseInt(s.trendLineWidth, 10) || 1),
+            fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            fibLineType,
+            fibBackground: s.showZones !== false,
+            fibBgOpacity:
+              s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+                ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+                : 0.12,
           };
         })()
       : {}),
@@ -5614,6 +5690,19 @@ const TalariaV8bLive = () => {
               if (p.lineWidth) out.lineWidth = p.lineWidth;
               if (p.lineType) out.lineType = p.lineType;
             }
+            if (drawing.type === "trend-fib-time") {
+              if (p.fibLevels) out.fibLevels = p.fibLevels;
+              if (p.fibTrendLine !== undefined) out.fibTrendLine = p.fibTrendLine;
+              if (p.fibTimeTrendType) out.fibTimeTrendType = p.fibTimeTrendType;
+              if (p.fibTimeTrendWidth) out.fibTimeTrendWidth = p.fibTimeTrendWidth;
+              if (p.fibLineWidth) out.fibLineWidth = p.fibLineWidth;
+              if (p.fibLineType) out.fibLineType = p.fibLineType;
+              if (p.fibBackground !== undefined) out.fibBackground = p.fibBackground;
+              if (p.fibBgOpacity !== undefined) out.fibBgOpacity = p.fibBgOpacity;
+              if (p.lineColor) out.lineColor = p.lineColor;
+              if (p.lineWidth) out.lineWidth = p.lineWidth;
+              if (p.lineType) out.lineType = p.lineType;
+            }
             return out;
           })(),
         }));
@@ -5965,6 +6054,8 @@ const TalariaV8bLive = () => {
           v9ApplyClassicFibFromTlStyle(d, tlStyle, widthNum);
         } else if (v9IsFibSpeedFanType(d.type)) {
           v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthNum);
+        } else if (v9IsTrendFibTimeType(d.type)) {
+          v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthNum);
         } else if (isFib) {
           d.style.trendLineColor = tlStyle.lineColor;
           d.style.trendLineWidth = widthNum;
@@ -6057,6 +6148,8 @@ const TalariaV8bLive = () => {
     tlStyle.fibGridColor,
     tlStyle.fibGridType,
     tlStyle.fibGridWidth,
+    tlStyle.fibTimeTrendType,
+    tlStyle.fibTimeTrendWidth,
     tool, groupSelected,
   ]);
 
