@@ -426,7 +426,11 @@ const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange
         </div>
       </div>
       <div style={{padding:"5px 10px",borderTop:`1px solid ${c.br}`,display:"flex",justifyContent:"flex-end"}}>
-        <div onClick={onClose} style={{fontSize:10,color:c.acL,cursor:"default",fontWeight:800,fontFamily:F,padding:"2px 6px",letterSpacing:"0.05em"}}>DONE</div>
+        <div
+          onPointerDown={(e)=>{ e.stopPropagation(); onClose(e); }}
+          onMouseDown={(e)=>e.stopPropagation()}
+          onClick={(e)=>e.stopPropagation()}
+          style={{fontSize:10,color:c.acL,cursor:"default",fontWeight:800,fontFamily:F,padding:"2px 6px",letterSpacing:"0.05em"}}>DONE</div>
       </div>
     </div>
   );
@@ -2623,7 +2627,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429s-sett-btn-pointerdown";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429t-modal-pointer-unify";
   }, []);
 
   useEffect(() => {
@@ -4096,6 +4100,16 @@ const TalariaV8bLive = () => {
     );
   };
 
+  /** Primary action for floating UI (modals, portaled panels): run on pointerdown so it still fires if synthetic click is lost after stopPropagation on the press path. */
+  const modalPointerActivate = (fn) => ({
+    onPointerDown: (e) => {
+      e.stopPropagation();
+      fn(e);
+    },
+    onMouseDown: (e) => e.stopPropagation(),
+    onClick: (e) => e.stopPropagation(),
+  });
+
   const Sel = ({ children, w }) => (
     <select style={{ background: c.well, border: `1px solid ${c.br}`, color: c.tx, padding: "3px 6px", fontSize: 11, fontFamily: F, outline: "none", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.2)", width: w }}>{children}</select>
   );
@@ -5546,7 +5560,7 @@ const TalariaV8bLive = () => {
               )}
             </div>
             {/* close button */}
-            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={closeTlSett}
+            <div {...modalPointerActivate(closeTlSett)}
               onMouseEnter={()=>setHov("tlx")} onMouseLeave={()=>setHov(null)}
               style={{ width:30, height:30, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", position:"relative",
                        background:hov==="tlx"?"rgba(255,80,80,0.07)":"transparent", transition:"background 0.12s" }}>
@@ -5566,9 +5580,12 @@ const TalariaV8bLive = () => {
                 {tlTabs.map(([id,lbl])=>{
                   const isAct=tlSettTab===id;
                   return (
-                    <button type="button" key={id} onClick={e=>{e.stopPropagation();setTlSettTab(id);setTlStyleDrop(null);}}
+                    <button type="button" key={id}
+                      onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`tlTab-${id}`);setTlSettTab(id);setTlStyleDrop(null);}}
+                      onMouseDown={(e)=>e.stopPropagation()}
+                      onClick={(e)=>e.stopPropagation()}
                       onMouseEnter={()=>setHov(`tlTab-${id}`)} onMouseLeave={()=>{ setHov(null); setBtnPressed(null); }}
-                      onPointerDown={()=>setBtnPressed(`tlTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
+                      onPointerUp={()=>setBtnPressed(null)}
                       style={{ flex:1, padding:"10px 4px", border:"none", fontFamily:F, cursor:"default",
                                color:isAct?c.acL:hov===`tlTab-${id}`?c.tx:c.ts, fontSize:12, fontWeight:isAct?700:500,
                                display:"flex", alignItems:"center", justifyContent:"center",
@@ -6139,7 +6156,7 @@ const TalariaV8bLive = () => {
                                              color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                                   <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                                     {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                      <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.01).toFixed(2))).toFixed(2)}:l)}));}}
+                                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.01).toFixed(2))).toFixed(2)}:l)})))}
                                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                         style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                                  display:"flex", alignItems:"center", justifyContent:"center",
@@ -6398,7 +6415,7 @@ const TalariaV8bLive = () => {
                                            color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                                 <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                                   {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                    <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
+                                    <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
                                       onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                       style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                                display:"flex", alignItems:"center", justifyContent:"center",
@@ -6874,7 +6891,7 @@ const TalariaV8bLive = () => {
                                      color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                           <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                             {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                              <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibTzLevels: s.fibTzLevels.map((l,j)=>j===idx?{...l,value:String(Math.max(1,+l.value+delta))}:l)}));}}
+                              <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, fibTzLevels: s.fibTzLevels.map((l,j)=>j===idx?{...l,value:String(Math.max(1,+l.value+delta))}:l)})))}
                                 onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                 style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                          display:"flex", alignItems:"center", justifyContent:"center",
@@ -6979,7 +6996,7 @@ const TalariaV8bLive = () => {
                                        color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                             <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                               {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [stateKey]: s[stateKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
+                                <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, [stateKey]: s[stateKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
                                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                   style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                            display:"flex", alignItems:"center", justifyContent:"center",
@@ -7267,7 +7284,7 @@ const TalariaV8bLive = () => {
                                      color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                           <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                             {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                              <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibLevels: s.fibLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
+                              <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, fibLevels: s.fibLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
                                 onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                 style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                          display:"flex", alignItems:"center", justifyContent:"center",
@@ -7352,7 +7369,7 @@ const TalariaV8bLive = () => {
                                  color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                       <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                         {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                          <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [levelKey]: s[levelKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
+                          <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, [levelKey]: s[levelKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
                             onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                             style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                      display:"flex", alignItems:"center", justifyContent:"center",
@@ -7531,7 +7548,7 @@ const TalariaV8bLive = () => {
                                  color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                       <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                         {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                          <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s,[key]:{...s[key],value:(Math.max(0,+(+(s[key]?.value??"2.00")+delta*0.01).toFixed(2))).toFixed(2)}}));}}
+                          <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s,[key]:{...s[key],value:(Math.max(0,+(+(s[key]?.value??"2.00")+delta*0.01).toFixed(2))).toFixed(2)}})))}
                             onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                             style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                      display:"flex", alignItems:"center", justifyContent:"center",
@@ -7715,7 +7732,7 @@ const TalariaV8bLive = () => {
                              outline:"none", boxSizing:"border-box", fontVariantNumeric:"tabular-nums" }}/>
                   <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                     {[[+1,"▲"],[- 1,"▼"]].map(([delta,chr],i)=>(
-                      <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                         style={{ flex:1, width:18, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                  display:"flex", alignItems:"center", justifyContent:"center",
@@ -8204,7 +8221,7 @@ const TalariaV8bLive = () => {
               {hov==="txt-tmpl-hdr"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
             </div>
             {/* close button — identical to TL settings */}
-            <div onMouseDown={e=>e.stopPropagation()} onClick={closeTxtSett}
+            <div {...modalPointerActivate(closeTxtSett)}
               onMouseEnter={()=>setHov("txtx")} onMouseLeave={()=>setHov(null)}
               style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
                       background:hov==="txtx"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s"}}>
@@ -8217,9 +8234,12 @@ const TalariaV8bLive = () => {
             {txtTabs.map(([id,lbl])=>{
               const isAct=txtSettTab===id;
               return (
-                <button type="button" key={id} onClick={e=>{e.stopPropagation();setTxtSettTab(id);setTxtSizeOpen(false);}}
+                <button type="button" key={id}
+                  onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`txtTab-${id}`);setTxtSettTab(id);setTxtSizeOpen(false);}}
+                  onMouseDown={(e)=>e.stopPropagation()}
+                  onClick={(e)=>e.stopPropagation()}
                   onMouseEnter={()=>setHov(`txtTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
-                  onPointerDown={()=>setBtnPressed(`txtTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
+                  onPointerUp={()=>setBtnPressed(null)}
                   style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                           color:isAct?c.acL:hov===`txtTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -8587,7 +8607,7 @@ const TalariaV8bLive = () => {
                             outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                   <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                     {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                      <button type="button" key={i} onClick={e=>{e.stopPropagation();setTxtStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                      <button type="button" key={i} {...modalPointerActivate(() => setTxtStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                         style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                 display:"flex",alignItems:"center",justifyContent:"center",
@@ -8976,7 +8996,7 @@ const TalariaV8bLive = () => {
                       outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
             <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
               {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                <button type="button" key={i} onClick={e=>{e.stopPropagation();if(!disabled)setVwapStyle(s=>({...s,[valKey]:Math.max(0.1,+(+s[valKey]+delta)).toFixed(1)}));}}
+                <button type="button" key={i} {...modalPointerActivate(() => { if(!disabled)setVwapStyle(s=>({...s,[valKey]:Math.max(0.1,+(+s[valKey]+delta)).toFixed(1)})); })}
                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                   style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -9012,7 +9032,7 @@ const TalariaV8bLive = () => {
               <I n="vwap" s={17} cl={c.acL}/>
               <span style={{fontSize:14,fontWeight:700,color:c.tx,marginLeft:8}}>Anchored VWAP</span>
               <div style={{flex:1,cursor:"move"}}/>
-              <div onClick={closeVwapSett} onPointerDown={e=>e.stopPropagation()}
+              <div {...modalPointerActivate(closeVwapSett)}
                 onMouseEnter={()=>setHov("vwap-x")} onMouseLeave={()=>setHov(null)}
                 style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",
                         background:hov==="vwap-x"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",position:"relative"}}>
@@ -9025,9 +9045,12 @@ const TalariaV8bLive = () => {
               {tabs.map(([id,lbl])=>{
                 const isAct=vwapSettTab===id;
                 return(
-                  <button type="button" key={id} onClick={e=>{e.stopPropagation();setVwapSettTab(id);setVwapStyleDrop(null);}}
+                  <button type="button" key={id}
+                    onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`vwapTab-${id}`);setVwapSettTab(id);setVwapStyleDrop(null);}}
+                    onMouseDown={(e)=>e.stopPropagation()}
+                    onClick={(e)=>e.stopPropagation()}
                     onMouseEnter={()=>setHov(`vwapTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
-                    onPointerDown={()=>setBtnPressed(`vwapTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
+                    onPointerUp={()=>setBtnPressed(null)}
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                             color:isAct?c.acL:hov===`vwapTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                             display:"flex",alignItems:"center",justifyContent:"center",
@@ -9167,7 +9190,7 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} onClick={e=>{e.stopPropagation();setVwapStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                        <button type="button" key={i} {...modalPointerActivate(() => setVwapStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -9353,7 +9376,7 @@ const TalariaV8bLive = () => {
                       outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
             <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
               {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                <button type="button" key={i} onClick={e=>{e.stopPropagation();setVpStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))}));}}
+                <button type="button" key={i} {...modalPointerActivate(() => setVpStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))})))}
                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                   style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -9389,7 +9412,7 @@ const TalariaV8bLive = () => {
               <I n="volProfile" s={17} cl={c.acL}/>
               <span style={{fontSize:14,fontWeight:700,color:c.tx,marginLeft:8}}>Fixed Range Volume Profile</span>
               <div style={{flex:1,cursor:"move"}}/>
-              <div onClick={closeVpSett} onPointerDown={e=>e.stopPropagation()}
+              <div {...modalPointerActivate(closeVpSett)}
                 onMouseEnter={()=>setHov("vp-x")} onMouseLeave={()=>setHov(null)}
                 style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",
                         background:hov==="vp-x"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",position:"relative"}}>
@@ -9402,9 +9425,12 @@ const TalariaV8bLive = () => {
               {tabs.map(([id,lbl])=>{
                 const isAct=vpSettTab===id;
                 return(
-                  <button type="button" key={id} onClick={e=>{e.stopPropagation();setVpSettTab(id);setVpStyleDrop(null);}}
+                  <button type="button" key={id}
+                    onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`vpTab-${id}`);setVpSettTab(id);setVpStyleDrop(null);}}
+                    onMouseDown={(e)=>e.stopPropagation()}
+                    onClick={(e)=>e.stopPropagation()}
                     onMouseEnter={()=>setHov(`vpTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
-                    onPointerDown={()=>setBtnPressed(`vpTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
+                    onPointerUp={()=>setBtnPressed(null)}
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                             color:isAct?c.acL:hov===`vpTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                             display:"flex",alignItems:"center",justifyContent:"center",
@@ -9545,7 +9571,7 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} onClick={e=>{e.stopPropagation();setVpStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                        <button type="button" key={i} {...modalPointerActivate(() => setVpStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -9735,7 +9761,7 @@ const TalariaV8bLive = () => {
                       outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
             <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
               {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                <button type="button" key={i} onClick={e=>{e.stopPropagation();setAvStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))}));}}
+                <button type="button" key={i} {...modalPointerActivate(() => setAvStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))})))}
                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                   style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -9771,7 +9797,7 @@ const TalariaV8bLive = () => {
               <I n="anchoredVol" s={17} cl={c.acL}/>
               <span style={{fontSize:14,fontWeight:700,color:c.tx,marginLeft:8}}>Anchored Volume Profile</span>
               <div style={{flex:1,cursor:"move"}}/>
-              <div onClick={closeAvSett} onPointerDown={e=>e.stopPropagation()}
+              <div {...modalPointerActivate(closeAvSett)}
                 onMouseEnter={()=>setHov("av-x")} onMouseLeave={()=>setHov(null)}
                 style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",
                         background:hov==="av-x"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",position:"relative"}}>
@@ -9784,9 +9810,12 @@ const TalariaV8bLive = () => {
               {tabs.map(([id,lbl])=>{
                 const isAct=avSettTab===id;
                 return(
-                  <button type="button" key={id} onClick={e=>{e.stopPropagation();setAvSettTab(id);setAvStyleDrop(null);}}
+                  <button type="button" key={id}
+                    onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`avTab-${id}`);setAvSettTab(id);setAvStyleDrop(null);}}
+                    onMouseDown={(e)=>e.stopPropagation()}
+                    onClick={(e)=>e.stopPropagation()}
                     onMouseEnter={()=>setHov(`avTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
-                    onPointerDown={()=>setBtnPressed(`avTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
+                    onPointerUp={()=>setBtnPressed(null)}
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                             color:isAct?c.acL:hov===`avTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                             display:"flex",alignItems:"center",justifyContent:"center",
@@ -9919,7 +9948,7 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} onClick={e=>{e.stopPropagation();setAvStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                        <button type="button" key={i} {...modalPointerActivate(() => setAvStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -11188,7 +11217,7 @@ const TalariaV8bLive = () => {
                 </div>
               )}
             </div>
-            <div onMouseDown={(e)=>e.stopPropagation()} onClick={closeInd} onMouseEnter={()=>setSwHov("xInd")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xInd"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xInd"?c.rd:c.ts}/></div>
+            <div {...modalPointerActivate(closeInd)} onMouseEnter={()=>setSwHov("xInd")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xInd"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xInd"?c.rd:c.ts}/></div>
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",flexShrink:0}}>
@@ -11206,7 +11235,7 @@ const TalariaV8bLive = () => {
               const accent=tabAccent(id);
               const cnt=tabCount(id);
               return (
-                <button type="button" key={id} onClick={()=>setIndCat(id)}
+                <button type="button" key={id} {...modalPointerActivate(() => setIndCat(id))}
                   onMouseEnter={()=>setSwHov(`indTab-${id}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{flex:1,padding:"8px 2px",border:"none",fontFamily:F,cursor:"default",
                     color: isAct ? accent : (id==="active" ? c.gn : id==="pinned" ? c.gold : swHov===`indTab-${id}` ? c.tx : c.ts),
@@ -11295,8 +11324,8 @@ const TalariaV8bLive = () => {
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:4,flexShrink:0}}>
-            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();closeInd();}} onMouseEnter={()=>setSwHov("indCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="indCancel"?c.tx:c.ts,background:swHov==="indCancel"?c.hv:"transparent",transition:"background 0.12s,color 0.12s"}}>Cancel</div>
-            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();closeInd();}} onMouseEnter={()=>setSwHov("indOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="indOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,WebkitFontSmoothing:"antialiased",boxShadow:swHov==="indOk"?`0 2px 12px rgba(38,67,247,0.45)`:`0 2px 6px rgba(38,67,247,0.22)`,transition:"background 0.12s,box-shadow 0.12s"}}>Apply</div>
+            <div {...modalPointerActivate(closeInd)} onMouseEnter={()=>setSwHov("indCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="indCancel"?c.tx:c.ts,background:swHov==="indCancel"?c.hv:"transparent",transition:"background 0.12s,color 0.12s"}}>Cancel</div>
+            <div {...modalPointerActivate(closeInd)} onMouseEnter={()=>setSwHov("indOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="indOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,WebkitFontSmoothing:"antialiased",boxShadow:swHov==="indOk"?`0 2px 12px rgba(38,67,247,0.45)`:`0 2px 6px rgba(38,67,247,0.22)`,transition:"background 0.12s,box-shadow 0.12s"}}>Apply</div>
           </div>
         </div>
         );
@@ -11382,7 +11411,7 @@ const TalariaV8bLive = () => {
                 </div>
               )}
             </div>
-            <div onMouseDown={(e)=>e.stopPropagation()} onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("xSettings")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xSettings"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xSettings"?c.rd:c.ts}/></div>
+            <div {...modalPointerActivate(() => animClose(setSettingsOpen, "settings"))} onMouseEnter={()=>setSwHov("xSettings")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xSettings"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xSettings"?c.rd:c.ts}/></div>
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div className="tlr-scroll" style={{flex:1,overflowY:"auto",padding:"16px 18px"}}>
@@ -11602,8 +11631,8 @@ const TalariaV8bLive = () => {
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:6,flexShrink:0}}>
-            <button type="button" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();animClose(setSettingsOpen,"settings");}} onMouseEnter={()=>setSwHov("settCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="settCancel"?c.tx:c.ts,background:swHov==="settCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="settCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button type="button" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();animClose(setSettingsOpen,"settings");}} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="settOk"?`linear-gradient(135deg,${c.acL},${c.ac})`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="settOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button type="button" {...modalPointerActivate(() => animClose(setSettingsOpen, "settings"))} onMouseEnter={()=>setSwHov("settCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="settCancel"?c.tx:c.ts,background:swHov==="settCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="settCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
+            <button type="button" {...modalPointerActivate(() => animClose(setSettingsOpen, "settings"))} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="settOk"?`linear-gradient(135deg,${c.acL},${c.ac})`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="settOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
       )}
@@ -11618,7 +11647,7 @@ const TalariaV8bLive = () => {
           {/* Header */}
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"profile",startX:e.clientX,startY:e.clientY,ox:profilePos.x,oy:profilePos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="user" s={17} cl={c.acL}/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8,color:c.tx}}>Profile</span>
-            <div onMouseDown={(e)=>e.stopPropagation()} onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("xProfile")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xProfile"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xProfile"?c.rd:c.ts}/></div>
+            <div {...modalPointerActivate(() => animClose(setProfileOpen, "profile"))} onMouseEnter={()=>setSwHov("xProfile")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xProfile"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xProfile"?c.rd:c.ts}/></div>
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           {/* Tab bar with sliding indicator */}
@@ -11626,7 +11655,7 @@ const TalariaV8bLive = () => {
             {profTabs.map(([id,label])=>{
               const isA = profileTab===id;
               return (
-                <button type="button" key={id} onClick={()=>setProfileTab(id)}
+                <button type="button" key={id} {...modalPointerActivate(() => setProfileTab(id))}
                   onMouseEnter={()=>setSwHov(`profTab-${id}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{flex:1,padding:"8px 0",border:"none",fontFamily:F,cursor:"default",
                     color:isA?c.acL:swHov===`profTab-${id}`?c.tx:c.ts,
@@ -11841,8 +11870,8 @@ const TalariaV8bLive = () => {
                 transition:"background 0.12s,border-color 0.12s,transform 0.08s"}}>
               Log Out
             </button>}
-            <button type="button" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();animClose(setProfileOpen,"profile");}} onMouseEnter={()=>setSwHov("profCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="profCancel"?c.tx:c.ts,background:swHov==="profCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="profCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button type="button" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();animClose(setProfileOpen,"profile");}} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button type="button" {...modalPointerActivate(() => animClose(setProfileOpen, "profile"))} onMouseEnter={()=>setSwHov("profCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="profCancel"?c.tx:c.ts,background:swHov==="profCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="profCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
+            <button type="button" {...modalPointerActivate(() => animClose(setProfileOpen, "profile"))} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
         );
@@ -11856,7 +11885,7 @@ const TalariaV8bLive = () => {
           {/* Header */}
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"faq",startX:e.clientX,startY:e.clientY,ox:faqPos.x,oy:faqPos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="help" s={17} cl="#F0A030"/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8,color:c.tx}}>Help & Support</span>
-            <div onMouseDown={(e)=>e.stopPropagation()} onClick={()=>animClose(setFaqOpen,"faq")} onMouseEnter={()=>setSwHov("xFaq")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xFaq"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xFaq"?c.rd:c.ts}/></div>
+            <div {...modalPointerActivate(() => animClose(setFaqOpen, "faq"))} onMouseEnter={()=>setSwHov("xFaq")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xFaq"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xFaq"?c.rd:c.ts}/></div>
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           {/* Sliding tab bar */}
@@ -11864,7 +11893,7 @@ const TalariaV8bLive = () => {
             {faqTabs.map(([id,label])=>{
               const isA=faqCat===id;
               return (
-              <button type="button" key={id} onClick={()=>{setFaqCat(id);setFaqExpand(null);}}
+              <button type="button" key={id} {...modalPointerActivate(() => { setFaqCat(id); setFaqExpand(null); })}
                 onMouseEnter={()=>setSwHov(`faqTab-${id}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{flex:1,padding:"8px 0",border:"none",fontFamily:F,cursor:"default",
                   color:isA?c.acL:swHov===`faqTab-${id}`?c.tx:c.ts,
@@ -12073,7 +12102,7 @@ const TalariaV8bLive = () => {
           {/* Footer */}
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",gap:4,flexShrink:0}}>
-            <button type="button" onClick={()=>animClose(setFaqOpen,"faq")} onMouseEnter={()=>setSwHov("faqClose")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="faqClose"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="faqClose"?`0 0 10px ${c.acG}`:"none"}}>Close</button>
+            <button type="button" {...modalPointerActivate(() => animClose(setFaqOpen, "faq"))} onMouseEnter={()=>setSwHov("faqClose")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="faqClose"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="faqClose"?`0 0 10px ${c.acG}`:"none"}}>Close</button>
           </div>
         </div>
         );
@@ -12086,7 +12115,7 @@ const TalariaV8bLive = () => {
             <I n="screenshot" s={17} cl={c.acL}/>
             <span style={{fontSize:14,fontWeight:700,marginLeft:8,color:c.tx}}>Screenshot</span>
             <span style={{fontSize:13,color:c.tm,fontVariantNumeric:"tabular-nums",marginLeft:8,flex:1}}>{canvasDims.w} × {canvasDims.h} px</span>
-            <div onMouseDown={(e)=>e.stopPropagation()} onClick={()=>animClose(setScreenshotOpen,"screenshot")}
+            <div {...modalPointerActivate(() => animClose(setScreenshotOpen, "screenshot"))}
               onMouseEnter={()=>setSwHov("xScreenshot")} onMouseLeave={()=>setSwHov(null)}
               style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xScreenshot"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}>
               <I n="x" s={18} cl={swHov==="xScreenshot"?c.rd:c.ts}/>
@@ -12241,9 +12270,12 @@ const TalariaV8bLive = () => {
             ].map(({label,hk,act,primary})=>{
               const isH=swHov===hk, isDn=swHov===hk+"_dn";
               return (
-                <button type="button" key={hk} onClick={act}
+                <button type="button" key={hk}
+                  onPointerDown={(e)=>{e.stopPropagation();act();}}
+                  onMouseDown={(e)=>{e.stopPropagation();setSwHov(hk+"_dn");}}
+                  onMouseUp={()=>setSwHov(hk)}
+                  onClick={(e)=>e.stopPropagation()}
                   onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
-                  onMouseDown={()=>setSwHov(hk+"_dn")} onMouseUp={()=>setSwHov(hk)}
                   style={{height:28,padding:"0 18px",display:"flex",alignItems:"center",justifyContent:"center",
                     boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:primary?700:600,
                     color:primary?"#fff":isH?c.tx:c.ts,
