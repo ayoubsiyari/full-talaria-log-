@@ -2623,7 +2623,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429m-tlbar-select-no-arm";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429n-select-cursor-bridge";
   }, []);
 
   useEffect(() => {
@@ -4740,10 +4740,10 @@ const TalariaV8bLive = () => {
         try {
           setTlBarSelected(true);
           setTlBarSelectedType(drawing && drawing.type);
-          // Update `groupSelected` for the drawing’s group so line style defaults stay per tool.
-          // Do NOT call setTool here: the V9 tool bridge would dm.setTool(legacy) and re-arm
-          // the draw tool — the next click would start a new shape instead of selecting/handles.
-          // Floating bar icon/label use tlBarSelectedType + effectiveTlGroup (see above).
+          // Sync `groupSelected` for template/style defaults + update rail to Cursor. If we only
+          // updated groupSelected while `tool` stayed e.g. "pattern", resolveLegacyTool() would still
+          // return elliott-impulse and the tool bridge would dm.setTool — clicks would start a new
+          // draw. Crosshair makes resolveLegacyTool() null so the chart stays in selection/handles mode.
           if (drawing && drawing.type && !editingDrawingRef.current) {
             const g = drawingTypeToPanelGroup(drawing.type);
             if (g) {
@@ -4761,6 +4761,9 @@ const TalariaV8bLive = () => {
               } catch (_) {}
               suppressForwardBridge.current = true;
               setGroupSelected(prev => ({ ...prev, [g]: { icon, label } }));
+              setTool("crosshair");
+              setDropdown(null);
+              setBtnPressed(null);
             }
           }
           const patch = v9TlStylePatchFromDrawing(drawing);
