@@ -5014,7 +5014,12 @@ const TalariaV8bLive = () => {
   // useLayoutEffect: apply drawing.style in the same frame as tlStyle (legacy TV panel mutates
   // synchronously on checkbox; late useEffect let the chart eat checkbox clicks and felt "unsynced").
   useLayoutEffect(() => {
-    const dm = window.chart && window.chart.drawingManager;
+    // Must match getActiveChart() so panel charts / focus are not written to the wrong drawingManager.
+    const ch =
+      typeof window !== "undefined" && typeof window.getActiveChart === "function"
+        ? window.getActiveChart()
+        : window.chart;
+    const dm = ch && ch.drawingManager;
     if (!dm) return;
     const legacyTool = resolveLegacyTool();
     if (!styleBridgeReady.current) { styleBridgeReady.current = true; return; }
@@ -5099,9 +5104,13 @@ const TalariaV8bLive = () => {
     try {
       const tb = dm.toolbar;
       const liveDrawing = (d) => {
-        if (!d || !d.id || !Array.isArray(dm.drawings)) return d;
-        const found = dm.drawings.find((x) => x && x.id === d.id);
-        return found || d;
+        if (!d || !Array.isArray(dm.drawings)) return d;
+        if (d.id != null) {
+          const found = dm.drawings.find((x) => x && x.id === d.id);
+          if (found) return found;
+        }
+        const byRef = dm.drawings.find((x) => x === d);
+        return byRef || d;
       };
       const selectionList = (() => {
         const arr = [];
@@ -5124,6 +5133,14 @@ const TalariaV8bLive = () => {
         if (dm.selectedDrawing) {
           const sd = liveDrawing(dm.selectedDrawing);
           if (sd && !arr.includes(sd)) arr.push(sd);
+        }
+        // Fallback: any drawing still marked selected (sometimes refs diverge from selectedDrawing).
+        if (Array.isArray(dm.drawings)) {
+          dm.drawings.forEach((d) => {
+            if (!d || !d.selected) return;
+            const ld = liveDrawing(d);
+            if (ld && !arr.includes(ld)) arr.push(ld);
+          });
         }
         return arr;
       })();
@@ -5160,7 +5177,7 @@ const TalariaV8bLive = () => {
         }
       });
       // Force a chart re-render so the change is visible even when no selection.
-      window.chart && window.chart.scheduleRender && window.chart.scheduleRender();
+      ch && ch.scheduleRender && ch.scheduleRender();
     } catch (err) { console.warn('[V9 style bridge] failed:', err); }
   }, [
     tlStyle.lineColor, tlStyle.lineWidth, tlStyle.lineType, tlStyle.bgColor,

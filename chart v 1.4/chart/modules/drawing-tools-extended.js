@@ -839,6 +839,31 @@ class RotatedRectangleTool extends BaseDrawing {
             .style('cursor', 'move');
 
         this.corners = corners;
+
+        // Middle line: parallel to the first edge, through the center (matches axis-aligned RectangleTool).
+        if (this.style.showMiddleLine) {
+            const scaleFactor = this.getZoomScaleFactor(scales);
+            const midLineColor = this.style.middleLineColor || '#2962FF';
+            const midLineWidth = Math.max(0.5, (this.style.middleLineWidth || 1) * scaleFactor);
+            const midLineDash = this.style.middleLineDash || '';
+            const c = this.corners;
+            const mx1 = (c[3].x + c[0].x) / 2;
+            const my1 = (c[3].y + c[0].y) / 2;
+            const mx2 = (c[1].x + c[2].x) / 2;
+            const my2 = (c[1].y + c[2].y) / 2;
+            this.group.append('line')
+                .attr('class', 'middle-line')
+                .attr('x1', mx1)
+                .attr('y1', my1)
+                .attr('x2', mx2)
+                .attr('y2', my2)
+                .attr('stroke', midLineColor)
+                .attr('stroke-width', midLineWidth)
+                .attr('stroke-dasharray', midLineDash)
+                .attr('opacity', this.style.opacity)
+                .style('pointer-events', 'none');
+        }
+
         this.createHandles(this.group, scales);
         return this.group;
     }
