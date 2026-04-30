@@ -2623,7 +2623,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429r-sett-footer-click";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429s-sett-btn-pointerdown";
   }, []);
 
   useEffect(() => {
@@ -4045,16 +4045,21 @@ const TalariaV8bLive = () => {
   };
 
   // Button component
-  const B = ({ children, onClick, primary, small, hk, sx = {} }) => {
+  // `fireOnPointerDown`: modal footers (Cancel/OK) — runs the action on pointerdown so it still
+  // fires if chart/document eats the synthetic click; suppress duplicate click when true.
+  const B = ({ children, onClick, primary, small, hk, sx = {}, fireOnPointerDown }) => {
     const isH = hk ? swHov === hk : false;
     const isP = hk ? swHov === hk + "_dn" : false;
     return (
       <button type="button"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          if (fireOnPointerDown && typeof onClick === "function") onClick(e);
+        }}
         onClick={(e) => {
           e.stopPropagation();
-          if (typeof onClick === "function") onClick(e);
+          if (!fireOnPointerDown && typeof onClick === "function") onClick(e);
         }}
-        onPointerDown={(e) => e.stopPropagation()}
         onMouseEnter={hk ? () => setSwHov(hk) : undefined}
         onMouseLeave={hk ? () => setSwHov(null) : undefined}
         onMouseDown={(e) => {
@@ -7881,8 +7886,8 @@ const TalariaV8bLive = () => {
           {/* footer */}
           <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
             style={{ borderTop:`1px solid ${c.brH}`, display:"flex", alignItems:"center", justifyContent:"flex-end", padding:"10px 14px 14px", gap:8 }}>
-            <B hk="tl-cancel" onClick={closeTlSett}>Cancel</B>
-            <B primary hk="tl-ok" onClick={closeTlSett}>OK</B>
+            <B hk="tl-cancel" fireOnPointerDown onClick={closeTlSett}>Cancel</B>
+            <B primary hk="tl-ok" fireOnPointerDown onClick={closeTlSett}>OK</B>
           </div>
         </div>
       , document.body)}
@@ -8712,8 +8717,8 @@ const TalariaV8bLive = () => {
           {/* footer */}
           <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
             style={{borderTop:`1px solid ${c.brH}`,display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"10px 14px 14px",gap:8}}>
-            <B hk="txt-cancel" onClick={closeTxtSett}>Cancel</B>
-            <B primary hk="txt-ok" onClick={closeTxtSett}>OK</B>
+            <B hk="txt-cancel" fireOnPointerDown onClick={closeTxtSett}>Cancel</B>
+            <B primary hk="txt-ok" fireOnPointerDown onClick={closeTxtSett}>OK</B>
           </div>
         </div>
         );
@@ -9278,8 +9283,8 @@ const TalariaV8bLive = () => {
             {/* footer */}
             <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
               style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
-              <B hk="vwap-cancel" onClick={closeVwapSett}>Cancel</B>
-              <B primary hk="vwap-ok" onClick={closeVwapSett}>OK</B>
+              <B hk="vwap-cancel" fireOnPointerDown onClick={closeVwapSett}>Cancel</B>
+              <B primary hk="vwap-ok" fireOnPointerDown onClick={closeVwapSett}>OK</B>
             </div>
           </div>
         );
@@ -9660,8 +9665,8 @@ const TalariaV8bLive = () => {
             {/* footer */}
             <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
               style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
-              <B hk="vp-cancel" onClick={closeVpSett}>Cancel</B>
-              <B primary hk="vp-ok" onClick={closeVpSett}>OK</B>
+              <B hk="vp-cancel" fireOnPointerDown onClick={closeVpSett}>Cancel</B>
+              <B primary hk="vp-ok" fireOnPointerDown onClick={closeVpSett}>OK</B>
             </div>
           </div>
         );
@@ -10032,8 +10037,8 @@ const TalariaV8bLive = () => {
             {/* footer */}
             <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
               style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
-              <B hk="av-cancel" onClick={closeAvSett}>Cancel</B>
-              <B primary hk="av-ok" onClick={closeAvSett}>OK</B>
+              <B hk="av-cancel" fireOnPointerDown onClick={closeAvSett}>Cancel</B>
+              <B primary hk="av-ok" fireOnPointerDown onClick={closeAvSett}>OK</B>
             </div>
           </div>
         );
@@ -16855,8 +16860,8 @@ const TalariaV8bLive = () => {
             </div>
             {/* Footer */}
             <div style={{padding:"7px 12px",borderTop:`1px solid ${c.br}`,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0,background:"rgba(255,255,255,0.01)"}}>
-              <B hk="tc-cancel" onClick={()=>setTradeCard(null)}>Cancel</B>
-              <B primary hk="tc-save" onClick={saveCard}>Save</B>
+              <B hk="tc-cancel" fireOnPointerDown onClick={()=>setTradeCard(null)}>Cancel</B>
+              <B primary hk="tc-save" fireOnPointerDown onClick={saveCard}>Save</B>
             </div>
             <input ref={tcFileRef} type="file" accept="image/*" style={{display:"none"}}
               onChange={e=>{const f=e.target.files[0];if(!f)return;const reader=new FileReader();reader.onload=ev=>setTradeScreenshots(prev=>{const n={...prev};const cur={...(n[r.id]||{})};cur[tcSsSlot]=[...(cur[tcSsSlot]||[]),ev.target.result];n[r.id]=cur;return n;});reader.readAsDataURL(f);e.target.value="";}}/>
