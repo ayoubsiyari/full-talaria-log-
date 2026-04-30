@@ -2623,7 +2623,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429g-outside-handler";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429h-rail-dd-split";
   }, []);
 
   useEffect(() => {
@@ -5058,9 +5058,9 @@ const TalariaV8bLive = () => {
               return;
             }
             if (t.dd) {
+              // Main icon: activate tool only. Chevron is the only control that opens/toggles the menu.
               if (!["eye", "magnet", "trash"].includes(t.id)) setTool(t.id);
-              if (dropdown === t.id) closeDropdown();
-              else openDd(e.currentTarget.parentElement);
+              if (dropdown) closeDropdown();
             }
             else { setTool(t.id); setDropdown(null); }
           }}
