@@ -95,6 +95,40 @@ function v9RailSubtoolOrFallback(groupId, sel, fallback) {
   return fallback;
 }
 
+/** Single source for left-rail `<I n={…} />` so Lines vs Shapes never share an icon from stale state. */
+function v9LeftRailIconForButton(t, groupSelected) {
+  if (!t || !t.id) return t && t.icon;
+  const firstDdIcon = t.dd && t.dd.find((x) => !x.h)?.icon;
+  const sel = groupSelected && groupSelected[t.id];
+  const candidate =
+    (t.dd &&
+      (sel?.icon ||
+        (t.id === "brush"
+          ? firstDdIcon || "vwap"
+          : t.icon || firstDdIcon))) ||
+    t.icon;
+  const allowed = V9_RAIL_ICONS_BY_GROUP[t.id];
+  if (!allowed) return candidate;
+  if (candidate && allowed.has(candidate)) return candidate;
+  return t.icon || firstDdIcon || allowed.values().next().value;
+}
+
+/** Drop rail entries whose icon belongs to another group (prevents mirrored selection UI). */
+function v9SanitizeGroupSelected(prev) {
+  if (!prev || typeof prev !== "object") return prev;
+  let next = null;
+  for (const gid of Object.keys(prev)) {
+    const allowed = V9_RAIL_ICONS_BY_GROUP[gid];
+    if (!allowed) continue;
+    const sel = prev[gid];
+    if (sel && sel.icon && !allowed.has(sel.icon)) {
+      if (!next) next = { ...prev };
+      delete next[gid];
+    }
+  }
+  return next || prev;
+}
+
 function v9ChartInfoSettingsFromTlStyle(tlStyle) {
   const show = !!tlStyle?.showInfo;
   const types = Array.isArray(tlStyle?.showInfoTypes) ? tlStyle.showInfoTypes : [];
@@ -4197,6 +4231,8 @@ const TalariaV8bLive = () => {
     if (n === "trashDraw") return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><line x1="3" y1="7" x2="21" y2="7" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><path d="M9 7V5h6v2" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M4.5 7l1 15h13l1-15" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><line x1="8.5" y1="20" x2="15.5" y2="11" stroke={cl} strokeWidth="1.3" strokeLinecap="round" strokeOpacity="0.7"/><circle cx="8.5" cy="20" r="1.1" fill={cl} fillOpacity="0.7"/></svg>;
     if (n === "trashInd")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><line x1="3" y1="7" x2="21" y2="7" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><path d="M9 7V5h6v2" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M4.5 7l1 15h13l1-15" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><polyline points="7.5,19.5 10,15.5 13,17.5 16.5,12.5" stroke={cl} strokeWidth="1.3" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.7"/></svg>;
     if (n === "measure")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><g transform="rotate(45 12 12)"><rect x="2" y="9" width="20" height="6" rx="1" stroke={cl} strokeWidth="1.4"/><line x1="12" y1="9" x2="12" y2="13.5" stroke={cl} strokeWidth="1.2" strokeLinecap="round"/><line x1="7" y1="9" x2="7" y2="12.5" stroke={cl} strokeWidth="1.1" strokeLinecap="round"/><line x1="17" y1="9" x2="17" y2="12.5" stroke={cl} strokeWidth="1.1" strokeLinecap="round"/><line x1="4.5" y1="9" x2="4.5" y2="12" stroke={cl} strokeWidth="1" strokeLinecap="round"/><line x1="9.5" y1="9" x2="9.5" y2="12" stroke={cl} strokeWidth="1" strokeLinecap="round"/><line x1="14.5" y1="9" x2="14.5" y2="12" stroke={cl} strokeWidth="1" strokeLinecap="round"/><line x1="19.5" y1="9" x2="19.5" y2="12" stroke={cl} strokeWidth="1" strokeLinecap="round"/></g></svg>;
+    // Stroke-only frame (Material P.rect fill can look like a diagonal smear at 17px next to line tools).
+    if (n === "rect") return <svg width={s} height={s} viewBox="0 0 17 17" fill="none" style={{ display: "block" }}><rect x="2.5" y="2.5" width="12" height="12" rx="1" stroke={cl} strokeWidth="1.5"/></svg>;
     const P = {
       trendline:  "m136-240-56-56 296-298 160 160 208-206H640v-80h240v240h-80v-104L536-320 376-480 136-240Z",
       rect:       "M80-160v-640h800v640H80Zm80-80h640v-480H160v480Zm0 0v-480 480Z",
@@ -4521,6 +4557,7 @@ const TalariaV8bLive = () => {
     Object.entries(V9_ICON_TO_LEGACY).forEach(([v9, legacy]) => {
       if (legacy && !m[legacy]) m[legacy] = v9;
     });
+    if (!m["rotated-rectangle"]) m["rotated-rectangle"] = "rect";
     return m;
   }, []);
 
@@ -5022,7 +5059,7 @@ const TalariaV8bLive = () => {
     // panel's exit animation (closing.has('tlsett')) finishes first.
     Promise.resolve().then(() => {
       if (editing.prevTool !== undefined) setTool(editing.prevTool);
-      if (editing.prevGroupSelected !== undefined) setGroupSelected(editing.prevGroupSelected);
+      if (editing.prevGroupSelected !== undefined) setGroupSelected(v9SanitizeGroupSelected(editing.prevGroupSelected));
     });
   }, [tlSettOpen]);
 
@@ -5077,7 +5114,7 @@ const TalariaV8bLive = () => {
                 }
               } catch (_) {}
               suppressForwardBridge.current = true;
-              setGroupSelected(prev => ({ ...prev, [g]: { icon, label } }));
+              setGroupSelected(prev => v9SanitizeGroupSelected({ ...prev, [g]: { icon, label } }));
               setTool("crosshair");
               setDropdown(null);
               setBtnPressed(null);
@@ -5401,19 +5438,7 @@ const TalariaV8bLive = () => {
 
   // Render a tool button
   const renderTB = (t, ref) => {
-    // Prefer explicit group icon (e.g. Shapes → rect) before first dropdown row so
-    // the rail matches defaults like Rectangle, not the first list item (Triangle).
-    // Volume Tools (`brush`): group icon is "bars" but default sub-tool is Anchored VWAP.
-    const firstDdIcon = t.dd && t.dd.find(x => !x.h)?.icon;
-    const activeIcon = (t.dd && (
-      groupSelected[t.id]?.icon
-      || (t.id === "brush" ? (firstDdIcon || "vwap") : t.icon || firstDdIcon)
-    )) || t.icon;
-    const railAllowed = V9_RAIL_ICONS_BY_GROUP[t.id];
-    const railIcon =
-      railAllowed && activeIcon && !railAllowed.has(activeIcon)
-        ? (t.icon || firstDdIcon || railAllowed.values().next().value)
-        : activeIcon;
+    const railIcon = v9LeftRailIconForButton(t, groupSelected);
     const ddOpen = dropdown === t.id;
     const act = t.id === "pinbar" ? pinnedBarOpen : tool === t.id;
     const h = hov === t.id;
@@ -10801,7 +10826,7 @@ const TalariaV8bLive = () => {
                 return (
                   <div key={pbKey}
                     onMouseEnter={()=>setHov(`pb-${i}`)} onMouseLeave={()=>setHov(null)}
-                    {...modalPointerActivate(() => { setTool(t.parentId||t.id); if(t.parentId) setGroupSelected(p=>({...p,[t.parentId]:t})); })}
+                    {...modalPointerActivate(() => { setTool(t.parentId||t.id); if(t.parentId) setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [t.parentId]: t })); })}
                     style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
                       background:isAct?"rgba(74,106,255,0.10)":isH?c.hv:"transparent",
                       transition:"background 0.12s"}}>
@@ -10883,7 +10908,7 @@ const TalariaV8bLive = () => {
                         closeDropdown();
                         return;
                       }
-                      setTool(activeKey); setGroupSelected(p => ({...p, [activeKey]: item})); closeDropdown();
+                      setTool(activeKey); setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [activeKey]: item })); closeDropdown();
                       if (item.icon === "emoji") {
                         const r = e.currentTarget.getBoundingClientRect();
                         setEmojiPanelPos({ x: (r.right + 8) / Z, y: r.top / Z });
