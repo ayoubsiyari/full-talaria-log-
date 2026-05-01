@@ -1,0 +1,88 @@
+.DS_Store
+
+# Windsurf IDE
+.windsurf/
+ruflo/
+
+# VS Code IDE
+.vscode/
+.cursor/skills/ui-ux-pro-max/
+# Temporary / scratch files
+.tmp_drawing_tools_ui_accent_hits.txt
+color.text
+tmp_chunks.txt
+tmp_func.txt
+tmp_func2.txt
+extract_apply.ps1
+extract_checkbox.ps1
+extract_func.ps1
+extract_func2.ps1
+extract_func3.ps1
+extract_panel_cb.ps1
+
+# Planning & documentation (local reference only)
+DESIGN_SYSTEM.md
+IMPROVEMENTS.md
+LOCALSTORAGE_AUDIT.md
+PROJECT_STRUCTURE.md
+STRUCTURE_FROM_SCRATCH.md
+TALARIA_PROJECT_DOCUMENTATION.md
+WORKFLOW_ANALYSIS.md
+merge.md
+plan.md
+
+# Tool output directories
+swark-output/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+secrets/
+
+# Node / Next.js
+node_modules/
+homepage/node_modules/
+.next/
+homepage/.next/
+out/
+homepage/out/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.envrc
+
+# Docker
+*.pid
+
+# Accidental nested clone
+mentorship/
+
+
+# Sensitive credentials
+mentroship-6d6e6ed5d4eb.json
+chart\ v\ 1.4/mentroship-6d6e6ed5d4eb.json
+
+# Large data files
+download/eurusd-m1-bid-2022-03-19-2025-03-20.csv
+eurusd_data.csv
+download/
+
+# Large runtime directories
+chart\ v\ 1.4/chart/uploads/
+chart\ v\ 1.4/chart/homepage/
+chart\ v\ 1.4/chart/db/
+chart\ v\ 1.4/chart/venv/
+chart\ v\ 1.4/chart/__pycache__/
+
+# Chart legacy minified build (generated in Docker by `npm run build:chart-client`)
+chart\ v\ 1.4/chart/dist/

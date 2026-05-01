@@ -1,0 +1,56 @@
+/* Strategy Lab — design tokens from spec */
+:root[data-strategy-lab='true'],
+.strategies-lab-root {
+  --sl-bg: #06060b;
+  --sl-sidebar: #0c0c14;
+  --sl-card: #141420;
+  --sl-input: #1a1a26;
+  --sl-border: #222234;
+  --sl-accent: #2643f7;
+  --sl-accent-light: #4a6aff;
+  --sl-green: #22c55e;
+  --sl-red: #ef4444;
+  --sl-purple: #a855f7;
+  --sl-orange: #f97316;
+  --sl-cyan: #06b6d4;
+  --sl-text: #eaeaf2;
+  --sl-text-sec: #9494ad;
+  --sl-text-muted: #5c5c78;
+  --sl-text-faint: #3a3a50;
+  font-family: 'Outfit', system-ui, sans-serif;
+}
+
+.strategies-lab-root .font-mono-label {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Printable strategy spec (Review step) */
+@media print {
+  .strategies-lab-root nav,
+  .strategies-lab-root .fixed.bottom-0,
+  .strategies-lab-root [data-strategy-lab-hide-print='true'],
+  .strategies-lab-root .strategy-lab-no-print {
+    display: none !important;
+  }
+
+  .strategies-lab-root {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .strategy-spec-sheet,
+  .strategy-spec-sheet * {
+    box-shadow: none !important;
+  }
+
+  .strategy-spec-sheet {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+
+  .strategy-spec-sheet .spec-card {
+    border: 1px solid #ccc !important;
+    background: #fff !important;
+    break-inside: avoid;
+  }
+}

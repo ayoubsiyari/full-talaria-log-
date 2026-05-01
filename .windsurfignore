@@ -1,0 +1,35 @@
+# Node modules - largest contributor to file count
+node_modules/
+**/node_modules/
+
+# Python virtual environments
+venv/
+.venv/
+env/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+.nuxt/
+
+# Large binary / data files
+*.bin
+*.sqlite
+*.db
+uploads/
+*.csv
+*.parquet
+
+# Logs
+*.log
+logs/
+
+# Docker / CI artifacts
+.docker/
+.git/objects/

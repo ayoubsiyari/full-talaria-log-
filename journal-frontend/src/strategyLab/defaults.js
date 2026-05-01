@@ -1,0 +1,66 @@
+import { normalizeInstrumentList, normalizeMarketCategories } from './instruments';
+
+export const SL_COLORS = {
+  orderFlow: { color: '#06b6d4', bg: 'rgba(6,182,212,0.12)', bd: '#06b6d4' },
+  priceAction: { color: '#f97316', bg: 'rgba(249,115,22,0.12)', bd: '#f97316' },
+  context: { color: '#2643F7', bg: 'rgba(38,67,247,0.12)', bd: '#2643F7' },
+};
+
+export const PRE_VAR_COLORS = {
+  market: { color: '#06b6d4', bg: 'rgba(6,182,212,0.12)', bd: '#06b6d4' },
+  timing: { color: '#f97316', bg: 'rgba(249,115,22,0.12)', bd: '#f97316' },
+  setup: { color: '#22c55e', bg: 'rgba(34,197,94,0.12)', bd: '#22c55e' },
+};
+
+export const POST_VAR_COLORS = {
+  execution: { color: '#a855f7', bg: 'rgba(168,85,247,0.12)', bd: '#a855f7' },
+  psychology: { color: '#a855f7', bg: 'rgba(168,85,247,0.1)', bd: '#7c3aed' },
+};
+
+export function emptyDraft() {
+  return {
+    name: '',
+    description: '',
+    cover_image: '',
+    instruments: [],
+    market_categories: [],
+    style: '',
+    direction: 'both',
+    timeframe: '',
+    conditions: [],
+    variables: [],
+  };
+}
+
+export function definitionFromDraft(d) {
+  const instruments = normalizeInstrumentList(d.instruments, d.instrument);
+  const market_categories = normalizeMarketCategories(d.market_categories);
+  return {
+    instruments,
+    market_categories,
+    /** First symbol for older clients / quick display */
+    instrument: instruments[0] || '',
+    style: d.style || '',
+    direction: d.direction || 'both',
+    timeframe: d.timeframe || '',
+    conditions: d.conditions || [],
+    variables: d.variables || [],
+    cover_image: typeof d.cover_image === 'string' ? d.cover_image : '',
+  };
+}
+
+export function draftFromApi(strategy) {
+  const def = strategy.strategy_definition || {};
+  return {
+    name: strategy.name || '',
+    description: strategy.description || '',
+    cover_image: typeof def.cover_image === 'string' ? def.cover_image : '',
+    instruments: normalizeInstrumentList(def.instruments, def.instrument),
+    market_categories: normalizeMarketCategories(def.market_categories),
+    style: def.style || '',
+    direction: def.direction || 'both',
+    timeframe: def.timeframe || '',
+    conditions: Array.isArray(def.conditions) ? def.conditions : [],
+    variables: Array.isArray(def.variables) ? def.variables : [],
+  };
+}

@@ -1,0 +1,668 @@
+/**
+ * Drawing Tools - Image Module
+ * Provides a single-point drawing that renders uploaded images.
+ * Supports resizing via corner handles and scales with chart zoom.
+ */
+
+/** Default on-screen size (px) used to seed data-unit sizing — matches placeholder box, larger than legacy 100×100. */
+const IMAGE_TOOL_DEFAULT_WIDTH = 200;
+const IMAGE_TOOL_DEFAULT_HEIGHT = 150;
+
+class ImageTool extends BaseDrawing {
+    constructor(points = [], options = {}) {
+        const resolved = ImageTool.resolveOptions(options);
+        super('image', points, resolved);
+        this.requiredPoints = 1;
+        this.ensureDefaults();
+        this._dragStartSize = null;
+        this._dragStartCenter = null;
+    }
+
+    static resolveOptions(options = {}) {
+        const imageUrl = options.imageUrl || '';
+        const width = options.width || IMAGE_TOOL_DEFAULT_WIDTH;
+        const height = options.height || IMAGE_TOOL_DEFAULT_HEIGHT;
+        const opacity = options.opacity != null ? options.opacity : 1;
+        const widthInDataUnits = options.widthInDataUnits || null;
+        const heightInDataUnits = options.heightInDataUnits || null;
+        const maintainAspectRatio = options.maintainAspectRatio === true;
+        const originalAspectRatio = options.originalAspectRatio || null;
+
+        return {
+            stroke: 'none',
+            strokeWidth: 0,
+            fill: 'none',
+            opacity,
+            imageUrl,
+            width,
+            height,
+            widthInDataUnits,
+            heightInDataUnits,
+            maintainAspectRatio,
+            originalAspectRatio
+        };
+    }
+
+    ensureDefaults() {
+        if (!this.style.imageUrl) this.style.imageUrl = '';
+        if (!this.style.width) this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
+        if (!this.style.height) this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
+        if (typeof this.style.opacity !== 'number') this.style.opacity = 1;
+        if (typeof this.style.maintainAspectRatio !== 'boolean') {
+            this.style.maintainAspectRatio = true;
+        }
+        if (!this.style.originalAspectRatio) this.style.originalAspectRatio = null;
+    }
+
+    render(container, scales) {
+        if (this.group) {
+            this.group.remove();
+        }
+
+        if (this.points.length < 1) {
+            return;
+        }
+
+        const point = this.points[0];
+        const isPlaceholder = !this.style.imageUrl;
+
+        let x, y;
+        let width = this.style.width || IMAGE_TOOL_DEFAULT_WIDTH;
+        let height = this.style.height || IMAGE_TOOL_DEFAULT_HEIGHT;
+
+        if (isPlaceholder) {
+            // Position from anchor — placed at click position
+            x = scales.chart && typeof scales.chart.dataIndexToPixel === 'function'
+                ? scales.chart.dataIndexToPixel(point.x)
+                : scales.xScale(point.x);
+            y = scales.yScale(point.y);
+            // Fixed pixel size — does not scale with zoom
+            width = IMAGE_TOOL_DEFAULT_WIDTH;
+            height = IMAGE_TOOL_DEFAULT_HEIGHT;
+            // Do NOT set widthInDataUnits — image render will initialise it after upload
+        } else {
+            x = scales.chart && typeof scales.chart.dataIndexToPixel === 'function'
+                ? scales.chart.dataIndexToPixel(point.x)
+                : scales.xScale(point.x);
+            y = scales.yScale(point.y);
+
+            // Initialize size in data units on first render
+            if (!this.style.widthInDataUnits && scales.xScale && scales.yScale) {
+                const xDataAtOffset = scales.chart && scales.chart.pixelToDataIndex ?
+                    scales.chart.pixelToDataIndex(x + width) : scales.xScale.invert(x + width);
+                const yDataAtOffset = scales.yScale.invert(y + height);
+                this.style.widthInDataUnits = Math.abs(point.x - xDataAtOffset);
+                this.style.heightInDataUnits = Math.abs(point.y - yDataAtOffset);
+            }
+
+            // Calculate size from data units (scales with chart zoom)
+            if (this.style.widthInDataUnits && this.style.heightInDataUnits && scales.xScale && scales.yScale) {
+                const x2 = point.x + this.style.widthInDataUnits;
+                const y2 = point.y - this.style.heightInDataUnits;
+                const x2Pixel = scales.chart && scales.chart.dataIndexToPixel ?
+                    scales.chart.dataIndexToPixel(x2) : scales.xScale(x2);
+                const y2Pixel = scales.yScale(y2);
+                width = Math.max(10, Math.min(1500, Math.abs(x2Pixel - x)));
+                height = Math.max(10, Math.min(1500, Math.abs(y2Pixel - y)));
+            }
+        }
+
+        this._screenX = x;
+        this._screenY = y;
+        this._scales = scales;
+
+        this.group = container.append('g')
+            .attr('class', 'drawing image-tool')
+            .attr('data-id', this.id)
+            .attr('transform', `translate(${x}, ${y})`)
+            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+
+        // Calculate actual rendered image dimensions when aspect ratio is maintained
+        let borderWidth = width;
+        let borderHeight = height;
+        
+        // Detect aspect ratio from image if not already stored
+        if (this.style.imageUrl && !this.style.originalAspectRatio && !this._detectingAspectRatio) {
+            this._detectingAspectRatio = true;
+            const img = new Image();
+            img.onload = () => {
+                this.style.originalAspectRatio = img.width / img.height;
+                this.style.maintainAspectRatio = true;
+                this._detectingAspectRatio = false;
+                if (this.chart && typeof this.chart.scheduleRender === 'function') {
+                    this.chart.scheduleRender();
+                }
+            };
+            img.src = this.style.imageUrl;
+        }
+        
+        if (this.style.maintainAspectRatio && this.style.originalAspectRatio && this.style.imageUrl) {
+            const aspectRatio = this.style.originalAspectRatio;
+            const containerAspect = width / height;
+            
+            if (aspectRatio > containerAspect) {
+                // Image is wider - height will be constrained
+                borderHeight = width / aspectRatio;
+            } else {
+                // Image is taller - width will be constrained
+                borderWidth = height * aspectRatio;
+            }
+        }
+
+        // Add selection box (positioned relative to group's transform)
+        this.group.append('rect')
+            .attr('class', 'image-selection-box')
+            .attr('x', -borderWidth / 2)
+            .attr('y', -borderHeight / 2)
+            .attr('width', borderWidth)
+            .attr('height', borderHeight)
+            .attr('fill', 'none')
+            .attr('stroke', '#2962ff')
+            .attr('stroke-width', 2)
+            .attr('stroke-dasharray', '4,2')
+            .style('pointer-events', 'none')
+            .style('opacity', this.selected ? 1 : 0);
+
+        // Add image (positioned relative to group's transform)
+        if (this.style.imageUrl) {
+            this.group.append('image')
+                .attr('class', 'image-content')
+                .attr('x', -width / 2)
+                .attr('y', -height / 2)
+                .attr('width', width)
+                .attr('height', height)
+                .attr('href', this.style.imageUrl)
+                .attr('preserveAspectRatio', this.style.maintainAspectRatio ? 'xMidYMid meet' : 'none')
+                .style('opacity', this.style.opacity != null ? this.style.opacity : 1)
+                .style('pointer-events', 'all')
+                .style('cursor', 'move');
+        } else {
+            // Placeholder when no image is set
+            const placeholderRect = this.group.append('rect')
+                .attr('class', 'image-placeholder')
+                .attr('x', -width / 2)
+                .attr('y', -height / 2)
+                .attr('width', width)
+                .attr('height', height)
+                .attr('fill', 'rgba(120, 123, 134, 0.05)')
+                .attr('stroke', '#787b86')
+                .attr('stroke-width', 1)
+                .attr('stroke-dasharray', '4,4')
+                .style('pointer-events', 'all')
+                .style('cursor', 'pointer');
+
+            // Double-click on placeholder opens settings
+            const self = this;
+            placeholderRect.node().addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const manager = self.chart && self.chart.drawingManager;
+                if (manager && typeof manager.editDrawing === 'function') {
+                    if (typeof manager.selectDrawing === 'function') manager.selectDrawing(self);
+                    manager.editDrawing(self, e.pageX, e.pageY);
+                }
+            });
+
+            // Upload button — adaptive to box dimensions
+            const btnW = Math.max(90, Math.min(width * 0.6, 150));
+            const btnH = Math.max(26, Math.min(height * 0.22, 38));
+            const btnFontSize = Math.max(10, Math.min(13, btnW * 0.09));
+            const iconSize = Math.max(10, Math.min(15, btnFontSize + 2));
+
+            const fo = this.group.append('foreignObject')
+                .attr('x', -btnW / 2)
+                .attr('y', -btnH / 2)
+                .attr('width', btnW)
+                .attr('height', btnH)
+                .style('pointer-events', 'all')
+                .style('overflow', 'visible');
+
+            const btnDiv = fo.append('xhtml:div')
+                .style('width', `${btnW}px`)
+                .style('height', `${btnH}px`)
+                .style('display', 'flex')
+                .style('align-items', 'center')
+                .style('justify-content', 'center')
+                .style('gap', '5px')
+                .style('background', 'rgba(41,98,255,0.15)')
+                .style('border', '1px solid rgba(41,98,255,0.5)')
+                .style('border-radius', '4px')
+                .style('color', '#6b8fff')
+                .style('font-size', `${btnFontSize}px`)
+                .style('font-family', 'Roboto, sans-serif')
+                .style('cursor', 'pointer')
+                .style('user-select', 'none')
+                .style('box-sizing', 'border-box')
+                .html(`<svg width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>Upload Image</span>`);
+
+            const btnNode = btnDiv.node();
+            // Use mousedown to trigger upload — the SVG manager intercepts mousedown
+            // and calls preventDefault which kills the subsequent click event.
+            // Stopping propagation here prevents the manager from ever seeing it.
+            let btnDownTime = 0;
+            btnNode.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                btnDownTime = Date.now();
+            }, true);
+            btnNode.addEventListener('mouseup', (e) => {
+                e.stopPropagation();
+                const elapsed = Date.now() - btnDownTime;
+                if (elapsed < 300 && !self._uploadDialogOpen) {
+                    self.triggerImageUpload();
+                }
+            }, true);
+            btnNode.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const manager = self.chart && self.chart.drawingManager;
+                if (manager && typeof manager.editDrawing === 'function') {
+                    if (typeof manager.selectDrawing === 'function') manager.selectDrawing(self);
+                    manager.editDrawing(self, e.pageX, e.pageY);
+                }
+            });
+            btnNode.addEventListener('mouseenter', function() {
+                this.style.background = 'rgba(41,98,255,0.3)';
+                this.style.borderColor = 'rgba(41,98,255,0.8)';
+                this.style.color = '#fff';
+            });
+            btnNode.addEventListener('mouseleave', function() {
+                this.style.background = 'rgba(41,98,255,0.15)';
+                this.style.borderColor = 'rgba(41,98,255,0.5)';
+                this.style.color = '#6b8fff';
+            });
+        }
+
+        this._currentWidth = width;
+        this._currentHeight = height;
+        this._borderWidth = borderWidth;
+        this._borderHeight = borderHeight;
+
+        if (!isPlaceholder) {
+            this.createBoxHandles(this.group, scales);
+        }
+
+        return this.group;
+    }
+
+    createBoxHandles(group, scales) {
+        const handleRadius = 3;
+        const handleFill = 'transparent';
+        const handleStroke = '#2962FF';
+        const handleStrokeWidth = 2;
+        
+        group.selectAll('.resize-handle').remove();
+        group.selectAll('.resize-handle-group').remove();
+        
+        if (this.points.length < 1) return;
+        
+        // Use border dimensions if available (for aspect ratio images), otherwise use full dimensions
+        const width = this._borderWidth || this._currentWidth || this.style.width;
+        const height = this._borderHeight || this._currentHeight || this.style.height;
+        
+        // Positions relative to group's transform (0,0)
+        const minX = -width / 2;
+        const maxX = width / 2;
+        const minY = -height / 2;
+        const maxY = height / 2;
+        const midX = 0;
+        const midY = 0;
+        
+        const handlePositions = [
+            // Corner handles
+            { x: minX, y: minY, cursor: 'nwse-resize', role: 'corner-tl' },
+            { x: maxX, y: minY, cursor: 'nesw-resize', role: 'corner-tr' },
+            { x: maxX, y: maxY, cursor: 'nwse-resize', role: 'corner-br' },
+            { x: minX, y: maxY, cursor: 'nesw-resize', role: 'corner-bl' },
+            // Edge handles
+            { x: midX, y: minY, cursor: 'ns-resize', role: 'edge-top' },
+            { x: maxX, y: midY, cursor: 'ew-resize', role: 'edge-right' },
+            { x: midX, y: maxY, cursor: 'ns-resize', role: 'edge-bottom' },
+            { x: minX, y: midY, cursor: 'ew-resize', role: 'edge-left' }
+        ];
+        
+        this.handles = [];
+        
+        handlePositions.forEach((pos, index) => {
+            const handleGroup = group.append('g')
+                .attr('class', 'resize-handle-group')
+                .attr('data-handle-role', pos.role)
+                .attr('data-point-index', index);
+            
+            const handle = handleGroup.append('circle')
+                .attr('class', 'resize-handle')
+                .attr('cx', pos.x)
+                .attr('cy', pos.y)
+                .attr('r', handleRadius)
+                .attr('fill', handleFill)
+                .attr('stroke', handleStroke)
+                .attr('stroke-width', handleStrokeWidth)
+                .style('cursor', pos.cursor)
+                .style('pointer-events', 'all')
+                .style('opacity', this.selected ? 1 : 0)
+                .attr('data-handle-role', pos.role)
+                .attr('data-point-index', index);
+            
+            handle.on('mouseenter', function() {
+                d3.select(this)
+                    .transition()
+                    .duration(150)
+                    .attr('r', handleRadius + 1)
+                    .attr('stroke-width', handleStrokeWidth + 0.5);
+            })
+            .on('mouseleave', function() {
+                d3.select(this)
+                    .transition()
+                    .duration(150)
+                    .attr('r', handleRadius)
+                    .attr('stroke-width', handleStrokeWidth);
+            });
+            
+            this.handles.push(handleGroup);
+        });
+    }
+
+    beginHandleDrag(handleRole, context = {}) {
+        this._dragStartWidthInDataUnits = this.style.widthInDataUnits || 0;
+        this._dragStartHeightInDataUnits = this.style.heightInDataUnits || 0;
+        this._dragStartCenter = { x: this._screenX, y: this._screenY };
+        this._dragStartCenterPx = { x: this._screenX || 0, y: this._screenY || 0 };
+        this._dragStartWidthPx = this._currentWidth || this.style.width || IMAGE_TOOL_DEFAULT_WIDTH;
+        this._dragStartHeightPx = this._currentHeight || this.style.height || IMAGE_TOOL_DEFAULT_HEIGHT;
+        this._dragStartPoint = this.points && this.points[0] ? { x: this.points[0].x, y: this.points[0].y } : null;
+        const screenX = context.screen?.x || 0;
+        const screenY = context.screen?.y || 0;
+        this._dragStartPos = { x: screenX, y: screenY };
+    }
+
+    handleCustomHandleDrag(handleRole, context = {}) {
+        if (!handleRole || this._dragStartWidthInDataUnits == null) {
+            return false;
+        }
+        
+        const startX = this._dragStartPos?.x || 0;
+        const startY = this._dragStartPos?.y || 0;
+        const currentX = context.screen?.x || 0;
+        const currentY = context.screen?.y || 0;
+        
+        const dx = currentX - startX;
+        const dy = currentY - startY;
+
+        if (this._scales && this._scales.xScale && this._scales.yScale && this.points && this.points.length > 0) {
+            const chart = this._scales.chart;
+            const point = this.points[0];
+
+            const startWidthPx = this._dragStartWidthPx || IMAGE_TOOL_DEFAULT_WIDTH;
+            const startHeightPx = this._dragStartHeightPx || IMAGE_TOOL_DEFAULT_HEIGHT;
+            let newWidthPx = startWidthPx;
+            let newHeightPx = startHeightPx;
+
+            switch (handleRole) {
+                case 'corner-br':
+                    newWidthPx = startWidthPx + (dx * 2);
+                    newHeightPx = startHeightPx + (dy * 2);
+                    break;
+                case 'corner-tl':
+                    newWidthPx = startWidthPx - (dx * 2);
+                    newHeightPx = startHeightPx - (dy * 2);
+                    break;
+                case 'corner-tr':
+                    newWidthPx = startWidthPx + (dx * 2);
+                    newHeightPx = startHeightPx - (dy * 2);
+                    break;
+                case 'corner-bl':
+                    newWidthPx = startWidthPx - (dx * 2);
+                    newHeightPx = startHeightPx + (dy * 2);
+                    break;
+                case 'edge-top':
+                    newHeightPx = startHeightPx - (dy * 2);
+                    break;
+                case 'edge-bottom':
+                    newHeightPx = startHeightPx + (dy * 2);
+                    break;
+                case 'edge-left':
+                    newWidthPx = startWidthPx - (dx * 2);
+                    break;
+                case 'edge-right':
+                    newWidthPx = startWidthPx + (dx * 2);
+                    break;
+                default:
+                    return false;
+            }
+
+            newWidthPx = Math.max(10, Math.min(1500, newWidthPx));
+            newHeightPx = Math.max(10, Math.min(1500, newHeightPx));
+
+            // Maintain aspect ratio if enabled (only when we have a known ratio)
+            if (this.style.maintainAspectRatio && this.style.originalAspectRatio) {
+                const aspectRatio = this.style.originalAspectRatio;
+                if (Math.abs(newWidthPx - startWidthPx) > Math.abs(newHeightPx - startHeightPx)) {
+                    newHeightPx = newWidthPx / aspectRatio;
+                } else {
+                    newWidthPx = newHeightPx * aspectRatio;
+                }
+                newWidthPx = Math.max(10, Math.min(1500, newWidthPx));
+                newHeightPx = Math.max(10, Math.min(1500, newHeightPx));
+            }
+
+            // Convert pixel size to data units using the chart helpers
+            const startCenterPx = this._dragStartCenterPx || { x: this._screenX || 0, y: this._screenY || 0 };
+            const newCenterPx = { x: startCenterPx.x, y: startCenterPx.y };
+            const centerXData = point.x;
+            const centerYData = point.y;
+
+            const xAtOffset = chart && typeof chart.pixelToDataIndex === 'function'
+                ? chart.pixelToDataIndex(newCenterPx.x + newWidthPx)
+                : (typeof this._scales.xScale.invert === 'function' ? this._scales.xScale.invert(newCenterPx.x + newWidthPx) : (centerXData + 1));
+            this.style.widthInDataUnits = Math.max(0.0001, Math.abs(xAtOffset - centerXData));
+
+            const yAtOffset = this._scales.yScale.invert(newCenterPx.y + newHeightPx);
+            this.style.heightInDataUnits = Math.max(0.0001, Math.abs(centerYData - yAtOffset));
+        }
+        
+        this.meta.updatedAt = Date.now();
+        return true;
+    }
+
+    endHandleDrag(handleRole, context = {}) {
+        this._dragStartWidthInDataUnits = null;
+        this._dragStartHeightInDataUnits = null;
+        this._dragStartCenter = null;
+        this._dragStartCenterPx = null;
+        this._dragStartWidthPx = null;
+        this._dragStartHeightPx = null;
+        this._dragStartPoint = null;
+        this._dragStartPos = null;
+    }
+
+    isPointInside(x, y, scales) {
+        if (!this.points || this.points.length < 1) return false;
+
+        const point = this.points[0];
+        const cx = scales.chart && scales.chart.dataIndexToPixel ? 
+            scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
+        const cy = scales.yScale(point.y);
+        
+        let width = this.style.width || IMAGE_TOOL_DEFAULT_WIDTH;
+        let height = this.style.height || IMAGE_TOOL_DEFAULT_HEIGHT;
+        
+        if (this.style.widthInDataUnits && this.style.heightInDataUnits && scales.xScale && scales.yScale) {
+            const x1Pixel = cx;
+            const y1Pixel = cy;
+            const x2 = point.x + this.style.widthInDataUnits;
+            const y2 = point.y - this.style.heightInDataUnits;
+            const x2Pixel = scales.chart && scales.chart.dataIndexToPixel ? 
+                scales.chart.dataIndexToPixel(x2) : scales.xScale(x2);
+            const y2Pixel = scales.yScale(y2);
+            width = Math.abs(x2Pixel - x1Pixel);
+            height = Math.abs(y2Pixel - y1Pixel);
+            width = Math.max(10, Math.min(1000, width));
+            height = Math.max(10, Math.min(1000, height));
+        }
+
+        // Use the same effective bounds as the rendered selection box.
+        // When preserveAspectRatio is enabled, the actual visible image is smaller than its container.
+        // We store those bounds on render as _borderWidth/_borderHeight.
+        if (this.style.maintainAspectRatio && this.style.originalAspectRatio && this.style.imageUrl) {
+            if (this._borderWidth && this._borderHeight) {
+                width = this._borderWidth;
+                height = this._borderHeight;
+            } else {
+                const aspectRatio = this.style.originalAspectRatio;
+                const containerAspect = width / height;
+                if (aspectRatio > containerAspect) {
+                    height = width / aspectRatio;
+                } else {
+                    width = height * aspectRatio;
+                }
+            }
+        }
+        
+        const minX = cx - width / 2;
+        const maxX = cx + width / 2;
+        const minY = cy - height / 2;
+        const maxY = cy + height / 2;
+        
+        return x >= minX && x <= maxX && y >= minY && y <= maxY;
+    }
+
+    triggerImageUpload() {
+        if (this._uploadDialogOpen) {
+            return;
+        }
+
+        this._uploadDialogOpen = true;
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.style.display = 'none';
+        document.body.appendChild(input);
+
+        let cleanedUp = false;
+        const cleanup = () => {
+            if (cleanedUp) {
+                return;
+            }
+            cleanedUp = true;
+            if (input.parentNode) {
+                input.parentNode.removeChild(input);
+            }
+            this._uploadDialogOpen = false;
+        };
+
+        // Some browsers do not reliably fire oncancel for file inputs.
+        // Reset dialog lock when window regains focus and no file was selected.
+        window.addEventListener('focus', () => {
+            setTimeout(() => {
+                if (!this._uploadDialogOpen) {
+                    return;
+                }
+                const hasSelectedFile = !!(input.files && input.files.length > 0);
+                if (!hasSelectedFile) {
+                    cleanup();
+                }
+            }, 350);
+        }, { once: true });
+        
+        input.onchange = (e) => {
+            const file = e.target && e.target.files ? e.target.files[0] : null;
+            if (!file) {
+                cleanup();
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const imageDataUrl = event && event.target ? event.target.result : '';
+                if (!imageDataUrl) {
+                    cleanup();
+                    return;
+                }
+
+                const img = new Image();
+                img.onload = () => {
+                    try {
+                        if (img.width > 0 && img.height > 0) {
+                            this.style.originalAspectRatio = img.width / img.height;
+                            this.style.maintainAspectRatio = true;
+                        } else {
+                            this.style.originalAspectRatio = null;
+                        }
+
+                        this.style.imageUrl = imageDataUrl;
+                        this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
+                        this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
+                        this.style.widthInDataUnits = null;
+                        this.style.heightInDataUnits = null;
+                        this.meta.updatedAt = Date.now();
+
+                        if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
+                            try {
+                                this.chart.drawingManager.saveDrawings();
+                            } catch (error) {
+                                console.warn('Image upload saved to canvas but failed to persist drawings:', error?.message || error);
+                            }
+                        }
+                        if (this.chart && typeof this.chart.scheduleRender === 'function') {
+                            this.chart.scheduleRender();
+                        }
+                    } finally {
+                        cleanup();
+                    }
+                };
+
+                img.onerror = () => {
+                    try {
+                        this.style.originalAspectRatio = null;
+                        this.style.imageUrl = imageDataUrl;
+                        this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
+                        this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
+                        this.style.widthInDataUnits = null;
+                        this.style.heightInDataUnits = null;
+                        this.meta.updatedAt = Date.now();
+
+                        if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
+                            try {
+                                this.chart.drawingManager.saveDrawings();
+                            } catch (error) {
+                                console.warn('Image upload fallback saved to canvas but failed to persist drawings:', error?.message || error);
+                            }
+                        }
+                        if (this.chart && typeof this.chart.scheduleRender === 'function') {
+                            this.chart.scheduleRender();
+                        }
+                    } finally {
+                        cleanup();
+                    }
+                };
+
+                img.src = imageDataUrl;
+            };
+
+            reader.onerror = () => {
+                cleanup();
+            };
+
+            reader.readAsDataURL(file);
+        };
+        
+        input.oncancel = () => {
+            cleanup();
+        };
+        
+        input.click();
+    }
+
+    static fromJSON(data, chart) {
+        const tool = new ImageTool(data.points, data.style || {});
+        tool.id = data.id;
+        tool.visible = data.visible;
+        tool.meta = data.meta;
+        tool.chart = chart;
+        return tool;
+    }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = ImageTool;
+}

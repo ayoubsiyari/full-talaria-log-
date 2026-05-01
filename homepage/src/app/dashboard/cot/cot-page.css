@@ -1,0 +1,720 @@
+/* Typography matches dashboard shell: Zain via --font-zain */
+.cot-page {
+  box-sizing: border-box;
+  font-family: var(--font-zain), system-ui, sans-serif;
+  color: #e8e4dc;
+}
+.cot-page *,
+.cot-page *::before,
+.cot-page *::after {
+  box-sizing: border-box;
+}
+
+.cot-page-bg {
+  background: #0a0c0f;
+  min-height: calc(100vh - 80px);
+}
+
+/* PAGE HEADER */
+.cot-page-header {
+  padding: 28px 32px 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.cot-page-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: #e8e4dc;
+  letter-spacing: -0.02em;
+}
+.cot-page-title span {
+  color: #c8f060;
+}
+.cot-page-sub {
+  font-size: 11px;
+  color: #a3a0ae;
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
+.cot-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cot-update-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #111318;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: #b0acb8;
+}
+.cot-update-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #c8f060;
+}
+/* Blue accent — toolbar actions only (Export, Refresh, Retry) */
+.cot-btn-sm {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #60a5fa;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.12s;
+}
+.cot-btn-sm:hover {
+  color: #93c5fd;
+  border-color: rgba(96, 165, 250, 0.55);
+  background: rgba(59, 130, 246, 0.18);
+}
+
+.cot-main {
+  padding: 24px 32px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Single horizontal gutter from dashboard shell when main is full-width */
+.db-main-wrap--full .cot-page-header {
+  padding-left: 0;
+  padding-right: 0;
+}
+.db-main-wrap--full .cot-main {
+  padding-left: 0;
+  padding-right: 0;
+}
+.db-main-wrap--full .cot-loading {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.cot-asset-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.cot-asset-tab {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 20px;
+  padding: 6px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #b8b4c0;
+  cursor: pointer;
+  transition: all 0.12s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cot-asset-tab:hover {
+  color: #d1ced6;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.cot-asset-tab.cot-active {
+  background: #c8f060;
+  border-color: #c8f060;
+  color: #0a0c0f;
+  font-weight: 700;
+}
+.cot-asset-tab .cot-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+}
+
+.cot-sentiment-strip {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  overflow: hidden;
+}
+@media (max-width: 1100px) {
+  .cot-sentiment-strip {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .cot-sentiment-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.cot-sent-card {
+  background: #111318;
+  padding: 16px 18px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.cot-sent-card:hover {
+  background: #161920;
+}
+.cot-sent-card.cot-selected {
+  background: #13191a;
+  border-bottom: 2px solid #c8f060;
+}
+.cot-sent-sym {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #b0acb8;
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.cot-sent-val {
+  font-size: 20px;
+  font-weight: 700;
+  color: #e8e4dc;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.cot-sent-val.cot-bull {
+  color: #c8f060;
+}
+.cot-sent-val.cot-bear {
+  color: #ff6060;
+}
+.cot-sent-bar-wrap {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.cot-sent-bar {
+  height: 100%;
+  border-radius: 2px;
+  background: #c8f060;
+}
+.cot-sent-bar.cot-bear {
+  background: #ff6060;
+}
+.cot-sent-chg {
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 5px;
+}
+.cot-sent-chg.cot-up {
+  color: #c8f060;
+}
+.cot-sent-chg.cot-dn {
+  color: #ff6060;
+}
+.cot-sent-chg.cot-flat {
+  color: #8f8c98;
+}
+
+.cot-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.cot-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 1200px) {
+  .cot-grid-3 {
+    grid-template-columns: 1fr;
+  }
+  .cot-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cot-panel {
+  background: #0e1016;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.cot-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cot-panel-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #b4b0bc;
+}
+.cot-panel-sub {
+  font-size: 9px;
+  color: #9ca3af;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+.cot-panel-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.06em;
+}
+.cot-panel-badge.cot-bull {
+  background: rgba(200, 240, 96, 0.1);
+  color: #c8f060;
+  border: 1px solid rgba(200, 240, 96, 0.2);
+}
+.cot-panel-badge.cot-bear {
+  background: rgba(255, 96, 96, 0.08);
+  color: #ff6060;
+  border: 1px solid rgba(255, 96, 96, 0.15);
+}
+.cot-panel-badge.cot-neutral {
+  background: rgba(155, 151, 160, 0.1);
+  color: #d8d4de;
+  border: 1px solid rgba(200, 196, 210, 0.2);
+}
+.cot-panel-body {
+  padding: 20px;
+}
+
+.cot-bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 20px;
+}
+.cot-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cot-bar-label {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: #b0acb8;
+  width: 72px;
+  flex-shrink: 0;
+  text-align: right;
+}
+.cot-bar-track {
+  flex: 1;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+.cot-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  position: absolute;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+}
+.cot-bar-fill.cot-pos {
+  background: rgba(200, 240, 96, 0.15);
+  left: 50%;
+  border-radius: 0 4px 4px 0;
+}
+.cot-bar-fill.cot-neg {
+  background: rgba(255, 96, 96, 0.12);
+  right: 50%;
+  border-radius: 4px 0 0 4px;
+}
+.cot-bar-center {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.cot-bar-num {
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.cot-bar-num.cot-pos {
+  color: #c8f060;
+}
+.cot-bar-num.cot-neg {
+  color: #ff6060;
+}
+
+.cot-stacked-section {
+  padding: 16px 20px;
+}
+.cot-stacked-label {
+  font-size: 10px;
+  color: #b0acb8;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 8px;
+}
+.cot-stacked-bar {
+  height: 28px;
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  margin-bottom: 12px;
+}
+.cot-stacked-long {
+  background: #c8f060;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cot-stacked-short {
+  background: #ff6060;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cot-stacked-bar-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #0a0c0f;
+}
+.cot-stacked-legend {
+  display: flex;
+  gap: 16px;
+}
+.cot-leg-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #b0acb8;
+  font-variant-numeric: tabular-nums;
+}
+.cot-leg-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.cot-line-chart-wrap {
+  padding: 12px 20px 16px;
+}
+.cot-sparkline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 8px;
+}
+.cot-spark-name {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: #b0acb8;
+  width: 88px;
+  flex-shrink: 0;
+}
+.cot-spark-svg {
+  flex: 1;
+  height: 28px;
+  min-width: 0;
+}
+.cot-spark-val {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  width: 72px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.cot-heatmap {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cot-hm-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.cot-hm-label {
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  color: #a8a5b0;
+  width: 56px;
+  flex-shrink: 0;
+}
+.cot-hm-cells {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.cot-hm-cell {
+  width: 28px;
+  height: 24px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.cot-hm-head {
+  display: flex;
+  gap: 4px;
+  margin-left: 62px;
+  flex-wrap: wrap;
+}
+.cot-hm-head-cell {
+  width: 28px;
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+  color: #a8a5b0;
+  text-align: center;
+}
+
+.cot-data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cot-data-table th {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #b4b0bc;
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.cot-data-table td {
+  font-size: 11px;
+  padding: 11px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  font-variant-numeric: tabular-nums;
+  color: #c4c0cc;
+}
+.cot-data-table tr:last-child td {
+  border-bottom: none;
+}
+.cot-data-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+.cot-td-sym {
+  color: #e8e4dc;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
+.cot-td-bull {
+  color: #c8f060;
+}
+.cot-td-bear {
+  color: #ff6060;
+}
+.cot-td-chg-up {
+  color: #c8f060;
+}
+.cot-td-chg-dn {
+  color: #ff6060;
+}
+.cot-bias-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.cot-bias-pill.cot-bull {
+  background: rgba(200, 240, 96, 0.1);
+  color: #c8f060;
+}
+.cot-bias-pill.cot-bear {
+  background: rgba(255, 96, 96, 0.08);
+  color: #ff6060;
+}
+.cot-bias-pill.cot-neutral {
+  background: rgba(100, 100, 100, 0.12);
+  color: #d0ccd8;
+}
+
+.cot-gauge-section {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.cot-gauge-svg {
+  width: 180px;
+  height: 100px;
+}
+.cot-gauge-val {
+  font-size: 28px;
+  font-weight: 800;
+  color: #e8e4dc;
+  text-align: center;
+  margin-top: 8px;
+}
+.cot-gauge-label {
+  font-size: 10px;
+  color: #b0acb8;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  margin-top: 4px;
+}
+
+.cot-extremes-list {
+  padding: 0 0 8px;
+}
+.cot-ext-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  gap: 12px;
+}
+.cot-ext-row:last-child {
+  border-bottom: none;
+}
+.cot-ext-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.cot-ext-sym {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #e8e4dc;
+  width: 88px;
+  flex-shrink: 0;
+}
+.cot-ext-desc {
+  font-size: 10px;
+  color: #b0acb8;
+}
+.cot-ext-pct {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.cot-ext-bar-wrap {
+  width: 80px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.cot-ext-bar {
+  height: 100%;
+  border-radius: 2px;
+}
+
+.cot-week-sel {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.cot-wk-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-variant-numeric: tabular-nums;
+  font-size: 9px;
+  color: #a8a5b0;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.cot-wk-btn:hover {
+  color: #c4c0cc;
+}
+.cot-wk-btn.cot-active {
+  background: rgba(200, 240, 96, 0.08);
+  border-color: rgba(200, 240, 96, 0.2);
+  color: #c8f060;
+}
+
+.cot-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.04);
+  margin: 0 20px;
+}
+
+.cot-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9ca3af;
+  margin-bottom: 0;
+}
+.cot-hint {
+  font-size: 9px;
+  color: #a8a5b0;
+  font-variant-numeric: tabular-nums;
+}
+
+.cot-loading {
+  padding: 80px 32px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: #b0acb8;
+}
+.cot-error {
+  padding: 40px;
+  color: #ff6060;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.cot-view-row {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cot-flip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  gap: 12px;
+}
+.cot-flip-row:last-child {
+  border-bottom: none;
+}

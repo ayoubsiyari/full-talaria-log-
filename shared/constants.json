@@ -1,0 +1,137 @@
+{
+  "app": {
+    "name": "Talaria Trading Journal",
+    "version": "1.0.0",
+    "domain": "talaria-log.com",
+    "supportEmail": "contact@talaria.services"
+  },
+  
+  "storage_keys": {
+    "AUTH_TOKEN": "token",
+    "REFRESH_TOKEN": "refresh_token",
+    "USER_DATA": "talaria_current_user",
+    "IS_ADMIN": "is_admin",
+    "THEME": "theme",
+    "ADMIN_LOGIN_SESSION": "admin_login_session",
+    "ACTIVE_PROFILE": "active_profile_id"
+  },
+  
+  "feature_flags": {
+    "core": [
+      "dashboard",
+      "journal",
+      "analytics",
+      "trades"
+    ],
+    "analytics": [
+      "advanced_analytics",
+      "symbol_analysis",
+      "strategy_analysis",
+      "variables_analysis",
+      "exit_analysis",
+      "equity_curve",
+      "streaks",
+      "pnl_distribution",
+      "risk_summary"
+    ],
+    "advanced": [
+      "trade_import",
+      "trade_export",
+      "ai_summary",
+      "combinations_filter",
+      "performance_highlights"
+    ],
+    "admin": [
+      "admin_dashboard",
+      "user_management",
+      "group_management",
+      "bulk_email",
+      "feature_flag_manager",
+      "login_as_user"
+    ]
+  },
+  
+  "api_endpoints": {
+    "auth": {
+      "login": "/api/auth/login",
+      "register": "/api/auth/register",
+      "logout": "/api/auth/logout",
+      "refresh": "/api/auth/refresh",
+      "verify_email": "/api/auth/verify-email",
+      "forgot_password": "/api/auth/forgot-password",
+      "reset_password": "/api/auth/reset-password"
+    },
+    "journal": {
+      "list": "/api/journal/list",
+      "add": "/api/journal/add",
+      "update": "/api/journal/{id}",
+      "delete": "/api/journal/delete/{id}",
+      "stats": "/api/journal/stats",
+      "export": "/api/journal/export",
+      "import_excel": "/api/journal/import/excel",
+      "import_history": "/api/journal/import/history"
+    },
+    "profile": {
+      "list": "/api/profile/list",
+      "create": "/api/profile/create",
+      "update": "/api/profile/{id}",
+      "delete": "/api/profile/{id}",
+      "activate": "/api/profile/{id}/activate"
+    },
+    "admin": {
+      "users": "/api/admin/users",
+      "groups": "/api/admin/groups",
+      "login_as_user": "/api/admin/login-as-user/{id}"
+    }
+  },
+  
+  "defaults": {
+    "page_size": 10,
+    "date_format": "yyyy-MM-dd",
+    "time_format": "HH:mm",
+    "currency": "USD",
+    "timezone": "UTC"
+  },
+  
+  "limits": {
+    "max_file_size_mb": 16,
+    "max_import_rows": 10000,
+    "api_timeout_ms": 30000,
+    "token_expiry_hours": 24,
+    "refresh_token_expiry_days": 30,
+    "verification_code_expiry_minutes": 10,
+    "reset_code_expiry_minutes": 15
+  },
+  
+  "instrument_types": [
+    "crypto",
+    "forex",
+    "stocks",
+    "futures",
+    "options",
+    "indices",
+    "commodities"
+  ],
+  
+  "trade_directions": [
+    "long",
+    "short"
+  ],
+  
+  "profile_modes": [
+    "journal",
+    "backtest",
+    "journal_live"
+  ],
+  
+  "user_roles": [
+    "user",
+    "admin"
+  ],
+  
+  "account_types": [
+    "individual",
+    "group",
+    "admin"
+  ]
+}

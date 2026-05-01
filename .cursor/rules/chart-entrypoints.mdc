@@ -1,0 +1,26 @@
+---
+description: Which files to edit for the Talaria chart (avoid the legacy monolithic HTML)
+globs: chart v 1.4/chart/**/*, chart v 1.4/talaria-design/**/*
+alwaysApply: false
+---
+
+# Chart UI entrypoints (do not waste edits on the wrong `index.html`)
+
+## Canonical live app (what `/chart/index.html` serves in production)
+
+1. **FastAPI** prefers `chart/dist-v9/index.html` when `chart/dist-v9/` exists (`chart/api_server.py`).
+2. **Sources**: `chart v 1.4/talaria-design/` — especially `live/index.html`, `live/main.jsx`, `src/TalariaV8bLive.jsx`.
+3. **Build**: from `talaria-design/`, run `npm run build:live` → output goes to `chart/dist-v9/`.
+4. **Shared engine**: `chart/chart.js`, `chart/modules/*.js` — loaded by URLs under `/chart/` (not bundled inside the React chunk).
+
+## Legacy files (avoid editing unless you intentionally need the old workflow)
+
+- **`chart/legacy-index.html`** — **only** full legacy monolithic page (~61k lines). Includes **`modules/v9-chrome.css`**. Served at **`/chart/legacy-index.html`**.
+- **`chart/index.html`** — short stub (not the app).
+- **`chart/index.v9.html`** — tiny **redirect** to `legacy-index.html` (keeps old bookmarks; do not restore a second giant HTML).
+
+Do **not** add another parallel `index*.html` monolith — extend **`legacy-index.html`** or the **V9** sources.
+
+**Docker / `npm run build:chart-client`** reads **`chart/legacy-index.html`** for `<!-- CHART_CLIENT_SCRIPTS_* -->` markers and writes **`chart/dist/index.html`** + minified JS. The repo root **`chart/index.html`** stub is **not** used by that script.
+
+When fixing chart behavior for the deployed site, **edit V9 sources + `chart.js` / modules**, rebuild **`dist-v9`**, bump **`?v=`** on script tags if needed, and deploy **`chart/dist-v9/`** plus updated **`chart/chart.js`** (and any touched **`chart/modules/`** files).

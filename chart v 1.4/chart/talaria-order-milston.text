@@ -1,0 +1,687 @@
+
+TALARIA BACKTESTING PLATFORM
+
+Development Milestones
+Definitive Version — All Scenarios Covered
+Multi-Entry  ·  Multi-TP  ·  Auto-BE  ·  Trailing SL  ·  Multi-Instrument
+
+Session  →  Execution  →  Advanced Management  →  Excursion  →  Post-Exit  →  Storage  →  Dashboard  →  What-If
+
+What This Document Covers
+This is the DEFINITIVE milestone document. It incorporates:• Multi-instrument sessions (up to 10 pairs, shared margin pool)• Leverage, spread, commission per instrument• Multiple entries per trade (averaging in)• Multiple take profits (scaling out)• Auto breakeven trigger• Trailing stop loss• Planned vs actual tracking• MAE/MFE excursion engine with 3 arrays per trade• Post-exit tracking (50 bars)• What-If TP/SL simulator• Every edge case and interaction scenario with explicit solutionsEvery scenario is marked with a blue box. Every formula is written out. Every edge case has a rule. The coder should be able to implement each milestone with zero ambiguity.
+
+
+Document Structure
+Milestone 0: Session creation (account, leverage, instrument table)Milestone 1: Trade execution (margin, spread, entries, close checks)Milestone 2: Advanced trade management (multi-TP, auto-BE, trailing SL)Milestone 3: MFE/MAE excursion engineMilestone 4: Post-exit trackingMilestone 5: StorageMilestone 6: Analytics dashboardMilestone 7: What-If simulatorMilestone 8: Polish & edge casesAppendix A: Complete scenario matrix (every possible interaction)Appendix B: Complete trade object schema
+
+
+
+Milestone 0: Multi-Instrument Session
+Effort: Medium–Large. No changes from previous version.
+
+Refer to the Multi-Instrument Milestones document for complete Milestone 0 specification. This includes: account settings (balance, leverage, margin call/stop-out levels, account currency), instrument table (up to 10 pairs with per-pair spread, commission, pip size, pip value, contract size), session state initialization, and session header display.
+
+All of that is unchanged and not repeated here. This document focuses on what’s NEW: the advanced trade management features and their impact on every subsequent milestone.
+
+Milestone 1: Trade Execution with Multi-Entry
+Depends on: Milestone 0. Effort: Large.
+
+1.1 Trade Object (Revised for Multi-Entry)
+A trade is no longer a single entry point. It’s a collection of planned entries, some of which may fill and some may not.
+
+Field
+Type
+Description
+trade_id
+UUID
+Unique identifier
+session_id
+UUID
+Links to session
+ticker
+String
+Instrument for this trade
+direction
+Enum
+LONG or SHORT
+status
+Enum
+PENDING_FILLS | OPEN | POST_EXIT | ARCHIVED
+planned_entries[]
+Array
+Each: { price, size_lots, size_pct, filled: false, fill_bar: null, fill_time: null }
+filled_entries[]
+Array
+Entries that have executed. Populated as fills occur.
+total_planned_lots
+Float
+Sum of all planned entry sizes
+total_filled_lots
+Float
+Sum of filled entries only. Updates as fills occur.
+average_entry_price
+Float
+Weighted average of filled entries. Recalculated on each fill.
+chart_entry_prices[]
+Array
+Where user clicked for each entry (display only)
+original_sl
+Float
+SL at time of trade creation. FROZEN forever.
+original_tps[]
+Array
+All planned TP levels with sizes. FROZEN. Each: { price, size_lots, size_pct }
+active_sl
+Float
+Current SL (changes with modifications, BE, trailing)
+active_tps[]
+Array
+Current TP levels. Changes if user modifies. Each: { price, size_lots, remaining_lots }
+planned_risk_pts
+Float
+Recalculated on each entry fill: |average_entry − original_sl|
+planned_rr
+Float
+Blended RR based on all original TPs and average entry
+entry_timeframe
+String
+Chart TF at trade creation. LOCKED.
+first_fill_bar
+Integer
+Bar when first entry filled
+first_fill_time
+Datetime
+Timestamp of first fill
+setup_tag
+String
+User-selected setup label
+session_name
+String
+Trading session/killzone
+margin_required
+Float
+Margin for currently filled lots only
+balance_at_creation
+Float
+Account balance when trade was created
+
+
+1.2 Entry Fill Logic
+How Multiple Entries Fill
+The user pre-defines 1–5 entry levels with sizes (e.g., 50% at 1.0850, 50% at 1.0830).When the trade is created:  status = PENDING_FILLS  No entries have filled yet. No margin is consumed. No tracking starts.On every bar advance, for each UNFILLED planned entry:  FOR LONG TRADES:    If bar_low ≤ planned_entry_price → this entry FILLS.    fill_price = planned_entry_price + half_spread (spread-adjusted)  FOR SHORT TRADES:    If bar_high ≥ planned_entry_price → this entry FILLS.    fill_price = planned_entry_price − half_spread  On fill:    1. Run MARGIN CHECK for this entry’s lot size against free_margin.       If fails: cancel this entry and all remaining unfilled entries.       Log: “Entry #N cancelled: insufficient margin.”    2. Move entry from planned_entries to filled_entries.    3. total_filled_lots += this entry’s size.    4. Recalculate average_entry_price:       average_entry_price = sum(fill_price × size for each filled entry) ÷ total_filled_lots    5. Recalculate planned_risk_pts = |average_entry_price − original_sl|    6. Update margin_required for the newly filled portion.    7. If this is the FIRST fill: set status = OPEN, start MFE/MAE tracking.
+
+
+💡 SCENARIO: Entry #2 fills AFTER a partial TP already hit
+Entries: 50% at 1.0850, 50% at 1.0830. TPs: 50% at +2R, 50% at +3R.Price fills entry #1 at 1.0850. Price runs to TP1, closing 50%. Then price pulls back to 1.0830, filling entry #2.RULE: Once ANY partial exit (TP hit) has occurred, CANCEL all unfilled entries. The trade’s entry phase is over.Reason: after a partial exit, the trade structure has changed. Adding a new entry creates an inconsistent state — the new fill’s R-reference doesn’t match the already-exited portion.Implementation: when processing a partial_exit, set a flag: entries_locked = true. The entry fill check skips any trade where entries_locked = true.
+
+
+💡 SCENARIO: SL is hit before all entries fill
+Entry #1 fills at 1.0850. Entry #2 is pending at 1.0830. Price drops and hits SL at 1.0835 (above entry #2).RULE: Close the trade with only the filled lots. Cancel all unfilled entries.The trade closes with total_filled_lots = 50% of planned. actual_rr is calculated from the filled average entry (1.0850) to exit. The unfilled entry #2 is marked as CANCELLED in planned_entries.This is a smaller loss than if both entries had filled, which is realistic — the second entry was meant to lower the average, but the trade went bad before it could.
+
+
+💡 SCENARIO: User tries to add a new entry AFTER all planned entries have filled
+Both entries fill. Trade is OPEN and running. User wants to “pyramid” by adding more size at current price.RULE: Do NOT allow adding entries after all planned entries have filled. If the user wants to add size, they must open a SEPARATE new trade. The original trade’s recording stays clean.Show message: “All planned entries have filled. To add size, open a new trade.”Reason: adding an entry mid-trade changes the average entry, which invalidates all historical bar_r arrays. Recomputing the arrays is error-prone and confusing.
+
+
+1.3 Close Check Logic
+Same as previous revision: gap check first (open vs SL/TP), then SL before TP. Uses active_sl and active_tps[]. Spread-adjusted exit. The close check only runs on bars where at least one entry has filled (status = OPEN).
+
+⚠ Close Check Uses ACTIVE Values, Not Original
+The close check compares against active_sl and active_tps[], which may differ from original_sl and original_tps[] if the user modified them, or if auto-BE or trailing SL moved them.The PLANNED vs ACTUAL comparison at the end uses the original values. The EXECUTION uses the active values.
+
+
+1.4 Margin Math
+Same as previous revision. Margin is calculated on filled lots only (not planned lots). Each fill triggers a margin check. Margin is shared across all instruments in the session. Margin call and stop-out logic unchanged.
+
+Milestone 2: Advanced Trade Management
+Depends on: Milestone 1. Effort: Large — this is the most complex milestone.
+
+This milestone implements the three advanced features from the order panel: multiple take profits (scaling out), auto breakeven, and trailing stop loss. Each feature interacts with the others, creating complex scenarios. Every interaction is documented below.
+
+2.1 Multiple Take Profits (Scaling Out)
+Data Structure
+Field
+Type
+Description
+original_tps[]
+Array
+FROZEN at creation. Each: { price, size_lots, size_pct }
+active_tps[]
+Array
+LIVE. Each: { price, size_lots, remaining_lots, filled: false }
+partial_exits[]
+Array
+Log of each partial close. Each: { price, size_lots, bar, time, rr_at_exit, pnl_dollars, exit_reason }
+entries_locked
+Boolean
+Set to true after first partial exit. Prevents new entry fills.
+
+
+Partial Exit Logic
+When a TP Level Is Hit
+On every bar, after MFE/MAE update, check each UNFILLED active TP:FOR LONGS: if bar_high ≥ active_tp_price → this TP level fills.FOR SHORTS: if bar_low ≤ active_tp_price → this TP level fills.On fill:  1. exit_price_raw = active_tp_price  2. Spread-adjust: fill_exit = exit_price_raw − half_spread (longs) or + half_spread (shorts)  3. Calculate this portion’s PnL:     rr_at_exit = (fill_exit − average_entry) ÷ planned_risk_pts (for longs)     pnl_dollars = rr_at_exit × planned_risk_pts ÷ pip_size × pip_value × this_tp_size_lots     Subtract commission for this portion: commission_this = comm_per_side × 2 × this_tp_size_lots  4. Append to partial_exits[]  5. Set this TP as filled. Set entries_locked = true.  6. total_filled_lots -= this_tp_size_lots (remaining position)  7. Release proportional margin: margin_required -= (this_tp_lots ÷ original_total_lots) × original_margin  8. Update session: current_balance += pnl_dollars_net  9. If total_filled_lots = 0 (all portions closed): fully close the trade.     Otherwise: trade stays OPEN with reduced size.CHECK ORDER: If multiple TPs could hit on same bar, fill them from closest to furthest.
+
+
+💡 SCENARIO: TP1 hit, then SL hit on remaining position
+TP1 at +2R (50%) fills on bar 20. Remaining 50% continues. On bar 35, price reverses and hits SL.partial_exits has one entry: { rr: +2.0R, lots: 50% }Final exit adds another: { rr: −1.0R, lots: 50%, reason: SL_HIT }Blended actual_rr = (+2.0 × 0.5) + (−1.0 × 0.5) = +0.5RBlended pnl_dollars = sum of both portions’ pnl_dollars_netThis is a NET WINNER despite the stop being hit on the remaining portion.
+
+
+💡 SCENARIO: User modifies TP2 after TP1 already filled
+TP1 filled at +2R. User drags TP2 from +3R to +4R.RULE: This is allowed. Log the modification in sl_tp_modifications:  { field: “TP2”, old: +3R price, new: +4R price, trigger: MANUAL }Update active_tps[1].price to the new level.original_tps[1] remains unchanged (for planned vs actual comparison).
+
+
+2.2 Auto Breakeven
+Data Structure
+Field
+Type
+Description
+be_enabled
+Boolean
+Is auto-BE active for this trade?
+be_trigger_r
+Float
+R-multiple that activates BE (e.g., 1.0)
+be_offset_pts
+Float
+Optional: move SL to entry + offset (e.g., +2 pips above entry for safety). Default 0.
+be_triggered
+Boolean
+Has BE activated? Initially false.
+be_triggered_bar
+Integer
+Bar when BE activated
+be_recalculated
+Boolean
+Was BE recalculated due to a new entry fill?
+
+
+BE Trigger Logic
+Auto-BE Check (runs every bar, AFTER MFE/MAE update, BEFORE close check)
+If be_enabled AND NOT be_triggered:  Calculate current favorable R:    LONGS: current_r = (bar_high − average_entry) ÷ planned_risk_pts    SHORTS: current_r = (average_entry − bar_low) ÷ planned_risk_pts  If current_r ≥ be_trigger_r:    new_sl = average_entry + be_offset_pts (longs) or average_entry − be_offset_pts (shorts)    Log modification: { field: “SL”, old: active_sl, new: new_sl, trigger: “AUTO_BE” }    active_sl = new_sl    be_triggered = true    be_triggered_bar = current_barIMPORTANT: BE target is the CURRENT average_entry, which accounts for all filled entries.
+
+
+💡 SCENARIO: BE triggers before second entry fills, then second entry fills
+Entry #1 fills at 1.0850. BE trigger = +1R. Price reaches +1R from 1.0850. BE triggers, active_sl = 1.0850.Then price pulls back, entry #2 fills at 1.0830. New average = 1.0840.RULE: When a new entry fills AFTER BE has triggered, RECALCULATE the BE level:  active_sl = new average_entry + be_offset_pts = 1.0840 + offset  Log modification: { trigger: “AUTO_BE_RECALC” }  Set be_recalculated = trueReason: the trader’s breakeven point has changed. Keeping the old SL at 1.0850 means the “breakeven” stop is actually +1 pip profit from the new average. Recalculating to 1.0840 gives true breakeven.
+
+
+2.3 Trailing Stop Loss
+Data Structure
+Field
+Type
+Description
+trail_enabled
+Boolean
+Is trailing SL active?
+trail_activation_r
+Float
+R-multiple at which trailing starts (e.g., +1.0R). 0 = starts immediately.
+trail_distance_pips
+Float
+Distance in pips behind the extreme. The SL follows this far behind the best price.
+trail_activated
+Boolean
+Has the trail started? Initially false.
+trail_activated_bar
+Integer
+Bar when trail activated
+trail_current_sl
+Float
+The current trailing SL value. Ratchets only in the favorable direction.
+trail_sl_path[]
+Array
+Trailing SL value at each bar (parallel to bar_close_r). For visualization.
+trail_disabled_by_manual
+Boolean
+Set to true if user manually overrides SL while trailing is active.
+
+
+Trailing Logic
+Trailing SL Update (runs every bar, AFTER BE check, BEFORE close check)
+If trail_enabled AND NOT trail_disabled_by_manual:  STEP 1 — Check activation:  If NOT trail_activated:    Calculate current_r (same as BE check).    If current_r ≥ trail_activation_r:      trail_activated = true      trail_activated_bar = current_bar      Initialize trail_current_sl:        LONGS: trail_current_sl = bar_high − trail_distance_pips × pip_size        SHORTS: trail_current_sl = bar_low + trail_distance_pips × pip_size  STEP 2 — Ratchet (only if trail_activated):    LONGS:      new_trail = bar_high − trail_distance_pips × pip_size      trail_current_sl = max(trail_current_sl, new_trail)  ← only moves UP    SHORTS:      new_trail = bar_low + trail_distance_pips × pip_size      trail_current_sl = min(trail_current_sl, new_trail)  ← only moves DOWN  STEP 3 — Apply to active_sl:    If trail_current_sl is more favorable than active_sl:      active_sl = trail_current_sl      (Do NOT log every tick as a modification — store trail_sl_path instead)  STEP 4 — Append to trail_sl_path[]:    trail_sl_path.append(trail_current_sl)The CLOSE CHECK then uses active_sl which now includes the trailing value.
+
+
+💡 SCENARIO: User manually drags SL while trailing is active
+Trailing is running. User manually moves SL to a different level.RULE: Manual SL override DISABLES trailing.  trail_disabled_by_manual = true  active_sl = user’s manual value  Log: { field: “SL”, old: trail_current_sl, new: manual_value, trigger: “MANUAL_OVERRIDE_TRAIL” }  trail_sl_path continues to be appended with the manual value (frozen, not ratcheting).If the user re-enables trailing: trail_disabled_by_manual = false. Trailing resumes from the current active_sl.
+
+
+💡 SCENARIO: Trailing SL vs multiple TPs interaction
+Trail is active. TP1 at +2R (50%). Trail is at +1.5R level. Price hits TP1.Close check order: SL first, then TP.  SL check: is bar_low ≤ trail_current_sl? If no → skip.  TP check: is bar_high ≥ TP1? If yes → partial exit at TP1.After partial exit, trailing continues for the remaining 50% with no changes. The trail distance and current level are unaffected by the partial exit.If price continues up, trail ratchets higher. If price reverses, remaining 50% gets stopped at the trail level.
+
+
+💡 SCENARIO: Trailing SL ratchets ABOVE a TP level
+Trail distance is very tight (5 pips). TP2 is at +3R. Price runs to +4R. Trail is now at +3.8R (above TP2).This CANNOT happen in practice because TP2 would have been checked and filled when price reached +3R, before the trail could pass it.But if TP2 was modified or cancelled: the trail SL is simply the active SL. The close check will trigger when price reverses down to the trail level. No TP is involved. This is correct behavior — the user chose to cancel TP2 and let the trail manage the exit.
+
+
+2.4 Processing Order Per Bar
+⚠ The Exact Order of Operations on Every Bar
+This is CRITICAL. Every bar must process in this exact sequence:1. ENTRY FILL CHECK: For each unfilled planned entry (if entries_locked = false), check if the bar’s price reached the entry level. Fill if yes. Recalculate average, risk, margin.2. MFE/MAE UPDATE: Update running MFE and MAE prices. Append to all three arrays (close_r, high_r, low_r). See Milestone 3.3. AUTO-BE CHECK: If enabled and not triggered, check if current R ≥ trigger. Move SL if yes.4. TRAILING SL UPDATE: If enabled and activated, ratchet the trail. Update active_sl.5. CLOSE CHECK: Check for gap, SL hit, then TP hits. Execute closes/partial exits.6. MARGIN CHECK: Recalculate equity with floating PnL. Check margin level. Trigger margin call or stop-out if needed.7. POST-EXIT TRACKING: For trades in POST_EXIT status, update post-exit MFE/MAE and arrays.This order ensures:  • New entries fill before anything else (they affect the average used by everything downstream).  • MFE/MAE captures the bar’s extremes before the trade might close.  • BE and trailing update SL before the close check uses it.  • The close check uses the most current active_sl.  • Margin is checked after all PnL changes.
+
+
+Acceptance Criteria — Milestone 2
+Two entries, two TPs. Both entries fill, TP1 fills at +2R closing 50%. TP2 fills at +3R closing remainder. Verify blended_rr = (2×0.5 + 3×0.5) = 2.5R.
+TP1 fills. Then verify entries_locked = true. Entry #2 (unfilled) is cancelled.
+SL hit before entry #2 fills. Verify trade closes with only entry #1’s lots.
+Auto-BE triggers at +1R. active_sl moves to average_entry. Then entry #2 fills. Verify active_sl recalculates to new average_entry.
+Trailing SL ratchets up over 10 bars. User manually moves SL. Trailing stops. Re-enable trailing: it resumes.
+Trail active + TP1 hit: verify partial exit occurs, trail continues for remainder.
+Margin released proportionally after each partial exit. Free margin increases.
+
+Milestone 3: MFE/MAE Excursion Engine
+Depends on: Milestone 2. Effort: Medium.
+
+3.1 When Does Tracking Start?
+Tracking starts on the bar AFTER the first entry fills (first_fill_bar + 1). Not on the fill bar itself (to avoid counting pre-fill price action).
+
+3.2 Reference Price for Arrays
+The Array Base Reference Problem
+With multiple entries, the average entry changes when the second fill occurs. But bar_high_r[] and bar_low_r[] need a consistent base.SOLUTION: Always record arrays relative to the FIRST fill price (entry_1_fill_price).  bar_high_r[i] = (bar_high − entry_1_fill_price) ÷ risk_at_that_pointWhen computing analytics (MFE in R, capture ratio, etc.), apply an OFFSET:  offset_r = (entry_1_fill_price − average_entry_price) ÷ planned_risk_pts  adjusted_value = raw_array_value + offset_rThis means:  • The raw arrays are always from entry_1’s perspective (never rewritten).  • When the second entry fills, compute the offset.  • All R-multiple analytics apply the offset to get values from the average_entry perspective.  • If only one entry fills, offset = 0 and everything works normally.Store: array_base_price = entry_1_fill_price (the reference for all three arrays).Store: entry_offset_r = offset (computed when average changes, updated on each new fill).
+
+
+3.3 MFE/MAE Update Logic
+Same as previous revision: spread-adjusted MFE, both checks on every bar, entry bar excluded. Uses the average_entry_price (not entry_1) as the reference for MFE/MAE price tracking. The arrays use entry_1 as base with offset.
+
+3.4 Exit-Bar Clamping
+For PARTIAL exits (TP1 hit): on the bar where TP1 fills, clamp bar_high_r to TP1 level (in R from entry_1 base). MFE is clamped to TP1 for that portion. Tracking continues for the remaining portion — subsequent bars are NOT clamped.
+
+For FINAL exit (last portion closes): clamp the exit bar as before. MFE clamped to exit level. This is the trade’s final MFE.
+
+3.5 MFE/MAE Finalization
+Final MFE/MAE with Multi-Entry Offset
+At trade close (all portions exited):  mfe_price: highest favorable price reached (spread-adjusted) during the trade.  mae_price: worst adverse price reached during the trade.  mfe_r = |mfe_price − average_entry_price| ÷ planned_risk_pts  mae_r = |average_entry_price − mae_price| ÷ planned_risk_pts  Blended actual_rr:    actual_rr_gross = sum(rr_at_exit × size for each partial_exit) ÷ total_planned_lots    commission_total = sum of commission for all exits    actual_rr_net = actual_rr_gross − (commission_total ÷ planned_risk_dollars)  capture_efficiency_net = (actual_rr_net ÷ mfe_r) × 100
+
+
+Acceptance Criteria
+Single entry: offset = 0. Arrays match previous behavior exactly.
+Two entries: verify arrays are stored from entry_1 base. Apply offset. MFE in R from average entry matches manual calculation.
+Partial exit at TP1: MFE on that bar is clamped. Next bar: tracking continues, no clamp.
+
+Milestone 4: Post-Exit Tracking
+Depends on: Milestone 3. Effort: Small.
+
+When Does Post-Exit Start?
+Post-Exit Starts at LAST Partial Exit
+A trade with multiple TPs closes in stages. TP1 at bar 20 (50%), TP2 at bar 35 (50%).RULE: Post-exit tracking starts when the LAST portion closes (bar 35).The first partial exit does NOT trigger post-exit. Only when total_filled_lots reaches 0 does the trade move to POST_EXIT status.Reason: the trade is still active until the last lot closes. Post-exit measures “what happened after I was completely out.”
+
+
+All other post-exit logic is unchanged: 50-bar observation, session boundary warning, three arrays continue, checkpoints at [5,10,15,20,25,30,40,50], merged metrics (total_mfe_r, capture_ratio, management_gap, exit_timing_gap, would_have_won, exit_confirmed).
+
+capture_ratio uses actual_rr_net (blended, after commission) ÷ total_mfe_r.
+
+Milestone 5: Trade & Session Storage
+Depends on: Milestone 4. Effort: Medium.
+
+Complete Trade Object to Store
+This is the full list of every field per archived trade. The coder should implement this as the trade schema.
+
+Identity & Context
+Field
+Type
+trade_id
+UUID
+session_id
+UUID
+ticker
+String
+direction
+LONG/SHORT
+setup_tag
+String
+session_name
+String
+entry_timeframe
+String
+balance_at_creation
+Float
+
+
+Entries
+Field
+Type
+planned_entries[]
+Array of { price, size_lots, size_pct }
+filled_entries[]
+Array of { fill_price, size_lots, fill_bar, fill_time }
+cancelled_entries[]
+Array of { price, size_lots, reason }
+average_entry_price
+Float
+array_base_price
+Float (= entry_1 fill price)
+entry_offset_r
+Float
+total_filled_lots
+Float
+first_fill_bar
+Integer
+first_fill_time
+Datetime
+
+
+Planned vs Actual
+Field
+Type
+original_sl
+Float (FROZEN)
+original_tps[]
+Array of { price, size_lots, size_pct } (FROZEN)
+active_sl_at_exit
+Float (what SL was when trade fully closed)
+active_tps_at_exit[]
+Array (what TPs were when trade fully closed)
+planned_risk_pts
+Float (from average entry)
+planned_rr
+Float
+planned_risk_dollars
+Float
+planned_risk_pct
+Float (% of account)
+actual_risk_r
+Float (|avg_entry − active_sl_at_exit| ÷ planned_risk_pts)
+sl_tp_modifications[]
+Array of { bar, time, field, old, new, trigger }
+
+
+Exits
+Field
+Type
+partial_exits[]
+Array of { price, size_lots, bar, time, rr, pnl_gross, pnl_net, commission, exit_reason }
+final_exit_bar
+Integer
+final_exit_time
+Datetime
+actual_rr_gross
+Float (blended)
+actual_rr_net
+Float (blended, after all costs)
+pnl_dollars_gross
+Float
+pnl_dollars_net
+Float
+commission_total
+Float
+slippage_pts
+Float
+total_bars_held
+Integer (final_exit_bar − first_fill_bar)
+
+
+Excursion
+Field
+Type
+mfe_price
+Float
+mae_price
+Float
+mfe_bar
+Integer
+mae_bar
+Integer
+mfe_r
+Float
+mae_r
+Float
+capture_efficiency_gross
+Float
+capture_efficiency_net
+Float
+bar_close_r[]
+Array (from array_base_price)
+bar_high_r[]
+Array
+bar_low_r[]
+Array
+
+
+Advanced Management State
+Field
+Type
+be_enabled
+Boolean
+be_trigger_r
+Float
+be_triggered
+Boolean
+be_triggered_bar
+Integer
+trail_enabled
+Boolean
+trail_activation_r
+Float
+trail_distance_pips
+Float
+trail_activated
+Boolean
+trail_activated_bar
+Integer
+trail_sl_path[]
+Array
+trail_disabled_by_manual
+Boolean
+entries_locked
+Boolean
+
+
+Post-Exit
+Field
+Type
+post_exit_bars_config
+Integer (50 default)
+post_mfe_price
+Float
+post_mae_price
+Float
+post_mfe_r
+Float
+post_mae_r
+Float
+post_mfe_from_entry_r
+Float
+total_mfe_r
+Float
+capture_ratio
+Float
+management_gap
+Float
+exit_timing_gap
+Float
+would_have_won
+Boolean
+exit_confirmed
+Boolean
+post_session_warning
+Boolean
+post_checkpoints[]
+Array
+
+
+Margin & Costs
+Field
+Type
+margin_required
+Float
+notional_value
+Float
+spread_at_entry
+Float (frozen from instrument settings)
+commission_per_side
+Float (frozen)
+pip_value_at_entry
+Float (frozen)
+balance_at_exit
+Float
+
+
+Milestones 6–8: Dashboard, What-If, Polish
+
+These milestones remain as specified in the Multi-Instrument document with the following additions:
+
+Milestone 6: Analytics Dashboard — Additions
+Multi-entry analytics: Show avg number of entries filled per trade, % of trades where all entries filled, % where entries were cancelled.
+Scaling-out analytics: Show avg number of TPs hit, % of trades that reached TP1 only vs TP1+TP2, avg RR at each TP level.
+BE analytics: % of trades where BE triggered, % of BE trades that then got stopped at breakeven (gave back the move), avg MFE before BE was hit.
+Trailing analytics: % of trades using trailing, avg additional R captured by trailing vs fixed TP, avg trail distance at exit.
+Discipline section: TP modification rate, SL modification rate, manual trail override rate, planned vs actual RR gap (per TP level).
+
+Milestone 7: What-If Simulator — Additions
+The what-if simulator needs to handle multi-TP and trailing when replaying:
+
+What-If Replay with Multi-TP
+When the user adjusts TP sliders, there are now two sliders: new_tp1_r and new_tp2_r (with their respective size splits).Replay logic per trade:  Walk bar_high_r and bar_low_r.  If bar hits new_sl → stopped (full remaining position).  If bar hits new_tp1 → partial exit (TP1 size). Continue for remainder.  If bar hits new_tp2 → final exit (remainder).  Compute blended simulated_rr from both portions.
+
+
+What-If Replay with Trailing
+When the user enables “simulate trailing” with a trail_distance parameter:  Walk bar_high_r.  On each bar, compute: trail_sl = max(previous_trail, bar_high_r[i] − trail_distance_r)  Check: bar_low_r[i] ≤ −trail_sl_r? If yes → stopped at trail.  This simulates: “what if I used a trailing stop instead of a fixed TP?”
+
+
+Milestone 8: Polish — Additions
+Trade summary panel: When hovering over a trade on the chart, show a popup: entries (filled/cancelled), partial exits, BE status, trail status, blended RR.
+Trade replay: Ability to step through a closed trade bar-by-bar, seeing MFE/MAE/trail/BE state at each bar. Educational tool for reviewing past trades.
+Preset management templates: Let the user save management profiles (e.g., “2 entries, 2 TPs, BE at 1R, trail at 1.5R with 20 pip distance”) and apply them to new trades with one click.
+
+Appendix A: Complete Scenario Matrix
+Every possible interaction between features, with the resolution for each.
+
+#
+Scenario
+Resolution
+1
+Single entry, single TP, fixed SL
+Standard trade. No special handling.
+2
+Single entry, single TP, hits SL
+Standard loss. Straightforward.
+3
+Two entries, both fill, single TP
+Weighted average entry. Blended risk. Normal close.
+4
+Two entries, SL hit before entry #2 fills
+Close with filled lots only. Cancel unfilled. Smaller loss.
+5
+Two entries, TP1 hit before entry #2 fills
+Partial exit locks entries. Cancel unfilled entry #2.
+6
+User tries to add entry after all fills
+Blocked. Message: open new trade instead.
+7
+Two TPs, both hit in sequence
+Two partial_exits. Blended RR. Full close after TP2.
+8
+TP1 hit, then SL hit on remainder
+Blended: partial win + partial loss. Can be net positive.
+9
+TP1 hit, user modifies TP2
+Allowed. Logged as modification. original_tp2 preserved.
+10
+BE triggers, then entry #2 fills
+Recalculate BE level to new average. Update active_sl.
+11
+BE triggers, then user manually moves SL
+Manual takes precedence. BE flag stays but SL is manual.
+12
+Trail active, TP1 hit (partial)
+Partial exit. Trail continues for remainder unchanged.
+13
+Trail active, user manually moves SL
+Trail disabled. Manual override. Can be re-enabled.
+14
+Trail ratchets above a TP level
+Cannot happen — TP would have filled first (SL checked before TP, but trail is above, not below). If TP cancelled, trail is just the SL.
+15
+Multiple TPs hit on same bar
+Fill from closest to furthest.
+16
+SL and TP hit on same bar
+SL wins (conservative assumption).
+17
+Gap through SL
+Exit at bar_open, not SL level. slippage_pts recorded.
+18
+Gap through TP
+Exit at bar_open, not TP level. Better fill recorded.
+19
+Gap through both SL and TP (huge gap)
+SL wins. Exit at bar_open.
+20
+BE + trailing both enabled
+BE triggers first (at lower R). Trail activates later (at higher R). No conflict.
+21
+Trail activates before BE trigger R
+If trail_activation_r < be_trigger_r: trail starts first. BE triggers later and may move SL above trail’s current level (if trail hasn’t ratcheted that far). Take the higher of the two.
+22
+Margin call while multiple trades open
+Liquidate largest loser across all instruments.
+23
+Partial exit releases margin, enabling new trade
+Correct. Free margin increases after partial. User can open new trades.
+24
+Trade on background instrument hits SL
+Processed via time sync. Balance updates. Notification shown.
+25
+User switches chart with open trades on other pair
+Chart jumps to current_time. Background trades visible in open positions panel.
+26
+Fast-forward 100 bars with open trades on 3 pairs
+Engine processes all 100 bars on all 3 instruments sequentially.
+27
+Post-exit starts after scaled-out trade
+Starts at LAST portion’s exit bar. Not at TP1.
+28
+Post-exit crosses session boundary
+post_session_warning = true. Tracking continues, data flagged.
+29
+TF switch while trade open
+Blocked, or tracker reads entry TF data in background.
+30
+Entry bar excluded from MFE/MAE
+Tracking starts at first_fill_bar + 1.
+31
+MFE arrays with multi-entry offset
+Arrays stored from entry_1. Offset applied in analytics.
+32
+What-if with multi-TP
+Replay handles two TP levels sequentially per trade.
+33
+What-if with trailing
+Replay simulates trail ratchet bar-by-bar using high_r array.
+
+
+Summary: Build Order
+
+#
+Milestone
+Effort
+0
+Session creation: account, leverage, instrument table (up to 10 pairs)
+Med–Lrg
+1
+Trade execution: multi-entry, margin check, spread-adjusted fills, gap handling
+Large
+2
+Advanced management: multi-TP, auto-BE, trailing SL, all interactions
+Large
+3
+MFE/MAE engine: 3 arrays, offset for multi-entry, exit-bar clamping
+Medium
+4
+Post-exit: 50-bar observation, starts at last partial exit
+Small
+5
+Storage: full trade schema (see Milestone 5), session record, export
+Medium
+6
+Dashboard: all charts + multi-entry/TP/BE/trail analytics sections
+Large
+7
+What-If: replay with multi-TP and trailing simulation
+Large
+8
+Polish: trade replay, management presets, notifications, positions panel
+Medium
+
+
+The One Rule That Prevents All Bugs
+Process every bar in the exact order defined in Milestone 2, Section 2.4. If the order of operations is wrong, everything breaks: BE triggers at the wrong time, trailing uses stale SL values, close checks miss the updated trail, MFE records post-exit data.The order is: Entry Fills → MFE/MAE → Auto-BE → Trailing → Close Check → Margin Check → Post-Exit.Print this on a sticky note. Put it on the monitor. Every bar, every trade, this order.
+
+

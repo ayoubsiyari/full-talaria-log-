@@ -1,0 +1,36 @@
+---
+description: Supply-chain safety, dependency verification, and preserving security controls (blocks AI from weakening guards)
+alwaysApply: true
+---
+
+# Security, supply chain, and agent discipline
+
+## Do not remove or weaken security to “fix” errors
+
+When builds, tests, or deploys fail, **do not**:
+
+- Remove or bypass `assert_production_security`, redirect URL checks (`security_redirects`, `is_allowed_stripe_redirect_url`), rate limits, JWT/`@jwt_required` usage, or admin checks.
+- Add or leave enabled escape hatches such as `DISABLE_PROD_SECURITY_CHECK`, except when the user **explicitly** asks for a temporary staging workaround and the risk is called out in the same change.
+- Delete security headers, CORS tightening, CSRF-related middleware, or Stripe webhook signature verification to silence failures.
+
+**Preferred approach:** fix configuration (env vars, URLs, secrets length, database URL), adjust tests/mocks, or narrow the failing scope—preserve the guard.
+
+## Hallucinated or malicious packages
+
+- **Never** add a dependency because a similar name “sounds right.” Confirm the **exact** package name against the official registry page (PyPI / npm).
+- Watch for **typosquats** (e.g. `reqeusts`, `python-secure`, random scoped packages with no reputation).
+- Prefer **`npm install <pkg>`** so `package-lock.json` updates correctly; avoid hand-editing lockfiles unless matching an exact audited diff.
+- **Do not** run `pip install` / `npm install` from arbitrary URLs, git repos from unknown sources, or `curl | bash` installers suggested in chat without user confirmation and source verification.
+
+## Arbitrary code execution
+
+Avoid introducing:
+
+- `eval` / `exec` on untrusted input; `pickle` on untrusted bytes; `yaml.load` without a safe loader; dynamic `__import__` from user input.
+- `subprocess` / `os.system` with unsanitized user-controlled strings.
+- Server-side template injection by passing raw user data into HTML/Jinja without escaping.
+
+## When adding dependencies
+
+- Prefer **widely used, maintained** packages; check recent releases and issue activity.
+- Before release, run **`./scripts/verify-dependencies.sh`** (npm audit, pip-audit, bandit when tools are installed). CI runs the same checks via **`.github/workflows/security.yml`** (plus Gitleaks for committed secrets).

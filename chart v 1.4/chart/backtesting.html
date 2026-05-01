@@ -1,0 +1,3758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Standard Backtesting Mode</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+        <style id="bt-all-styles">
+/* Fonts loaded from backtesting.html <link> so a blocked @import cannot drop the whole sheet */
+
+:root {
+  --bt-bg: #0d1117;
+  --bt-border: rgba(255, 255, 255, 0.07);
+  --bt-blue: #3b82f6;
+  --bt-blue-soft: rgba(59, 130, 246, 0.12);
+  --bt-blue-mid: rgba(59, 130, 246, 0.5);
+  --bt-text: #e2e8f0;
+  --bt-muted: #64748b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* ——— Shell (standalone) ——— */
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: #05060d;
+  color: var(--bt-text);
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59, 130, 246, 0.07), transparent 55%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bt-top-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  background: rgba(13, 17, 23, 0.92);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bt-top-bar-logo {
+  height: 28px;
+  margin-right: 12px;
+}
+
+.bt-top-bar-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f8fafc;
+  letter-spacing: -0.02em;
+}
+
+.bt-top-bar-actions {
+  margin-left: auto;
+}
+
+.bt-top-bar .bt-top-cancel {
+  padding: 7px 14px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  transition: all 0.15s;
+}
+
+.bt-top-bar .bt-top-cancel:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #94a3b8;
+}
+
+.bt-overlay {
+  position: relative;
+  z-index: 1;
+  min-height: calc(100vh - 52px);
+  margin-top: 52px;
+  background: rgba(5, 8, 18, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem 2.5rem;
+}
+
+.bt-modal {
+  background: var(--bt-bg);
+  border: 1px solid var(--bt-border);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 780px;
+  overflow: hidden;
+  color: var(--bt-text);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 52px - 4rem);
+}
+
+.bt-modal > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.bt-modal-header {
+  padding: 1.75rem 2rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.06) 0%, transparent 100%);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-icon {
+  width: 38px;
+  height: 38px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.header-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  padding: 5px;
+}
+
+.bt-modal-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #f1f5f9;
+  letter-spacing: -0.01em;
+}
+
+.bt-modal-subtitle {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.bt-close-btn {
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.bt-close-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+}
+
+.bt-modal-body {
+  padding: 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.bt-modal-body::-webkit-scrollbar {
+  width: 8px;
+}
+.bt-modal-body::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.25);
+  border-radius: 8px;
+}
+
+.bt-section-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #475569;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.section-label .section-label-note {
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #475569;
+  margin-left: 4px;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-full {
+  grid-column: 1 / -1;
+}
+
+.bt-modal-body label,
+.field label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+}
+
+label .req,
+label .required {
+  color: #f87171;
+  margin-left: 2px;
+}
+
+.bt-modal-body input[type='text'],
+.bt-modal-body input[type='number'],
+.bt-modal-body input[type='datetime-local'],
+.bt-modal-body input[type='date'],
+.bt-modal-body textarea,
+.bt-modal-body select {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: #e2e8f0;
+  font-family: 'DM Sans', sans-serif;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.bt-modal-body input:focus,
+.bt-modal-body textarea:focus,
+.bt-modal-body select:focus {
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(59, 130, 246, 0.04);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
+}
+
+.bt-modal-body input::placeholder,
+.bt-modal-body textarea::placeholder {
+  color: #334155;
+}
+
+.bt-modal-body textarea {
+  resize: vertical;
+  min-height: 68px;
+}
+
+.bt-modal-body select {
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 32px;
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.bt-modal-body select option {
+  background: #0d1117;
+  color: #e2e8f0;
+}
+
+.date-field,
+input.date-field,
+input.mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+  color: #a5b4fc;
+}
+
+.quick-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pill,
+.preset-btn {
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.12s;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.pill:hover,
+.preset-btn:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.pill.active,
+.preset-btn.active {
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #a5b4fc;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.instrument-table-wrap {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  overflow: auto;
+  max-width: 100%;
+}
+
+.instrument-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  min-width: 820px;
+}
+
+.instrument-table th {
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #475569;
+  font-weight: 500;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  white-space: nowrap;
+}
+
+.instrument-table td {
+  padding: 10px 10px;
+  color: #64748b;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  font-size: 11px;
+  vertical-align: middle;
+  font-style: normal;
+}
+
+.instrument-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.instrument-input {
+  width: 100%;
+  padding: 6px 9px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-family: 'DM Sans', sans-serif;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.instrument-input:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.04);
+}
+
+.protection-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.protection-row .field {
+  flex: 1;
+  min-width: 200px;
+}
+
+.new-btn {
+  height: 36px;
+  padding: 0 14px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 8px;
+  color: #60a5fa;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: 'DM Sans', sans-serif;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.new-btn:hover {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.new-btn svg {
+  flex-shrink: 0;
+}
+
+.bt-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  margin: 0 2rem 0;
+}
+
+.bt-toggle-row .toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.bt-toggle-row .toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.bt-toggle-row .toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.1);
+  transition: 0.2s;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bt-toggle-row .toggle-slider:before {
+  position: absolute;
+  content: '';
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 2px;
+  background: #fff;
+  transition: 0.2s;
+  border-radius: 50%;
+}
+
+.bt-toggle-row .toggle-switch input:checked + .toggle-slider {
+  background: rgba(59, 130, 246, 0.55);
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.bt-toggle-row .toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(15px);
+}
+
+.toggle-text-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.toggle-text {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.toggle-hint-inline {
+  font-size: 10px;
+  color: #475569;
+  margin-left: auto;
+}
+
+.hint,
+.helper-text {
+  font-size: 11px;
+  color: #475569;
+  margin-top: 3px;
+  line-height: 1.45;
+}
+
+.link {
+  font-size: 11px;
+  color: #60a5fa;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.link:hover {
+  color: #a5b4fc;
+  text-decoration: underline;
+}
+
+.readonly-input {
+  background: rgba(255, 255, 255, 0.03) !important;
+  color: #64748b !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  cursor: not-allowed;
+}
+
+/* File picker row */
+.bt-selected-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 28px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 8px;
+}
+
+.file-select-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.file-select-area {
+  flex: 1;
+  position: relative;
+  border: 1px solid rgba(139, 92, 246, 0.22);
+  border-radius: 10px;
+  padding: 10px 14px;
+  padding-right: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  min-height: 44px;
+  background: rgba(15, 15, 22, 0.85);
+}
+
+.file-select-area:hover {
+  border-color: rgba(167, 139, 250, 0.45);
+  background: rgba(139, 92, 246, 0.06);
+}
+
+.bt-asset-trigger-chevron {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+  pointer-events: none;
+  display: flex;
+}
+
+.bt-asset-trigger-chevron svg {
+  transition: transform 0.18s ease;
+}
+
+.file-select-area.bt-asset-trigger[aria-expanded='true'] .bt-asset-trigger-chevron svg {
+  transform: rotate(180deg);
+}
+
+.file-select-area.bt-asset-trigger[aria-expanded='true'] .bt-asset-trigger-chevron {
+  color: #a78bfa;
+}
+
+.bt-asset-sep {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.file-select-text {
+  font-size: 13px;
+  color: #e2e8f0;
+  flex: 1;
+  min-width: 0;
+  padding-right: 8px;
+  font-weight: 500;
+}
+
+.file-refresh-btn {
+  padding: 10px 12px;
+  min-width: 44px;
+  height: auto;
+  align-self: stretch;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
+  color: #60a5fa;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.file-refresh-btn:hover {
+  background: rgba(59, 130, 246, 0.14);
+}
+
+/* File dropdown */
+#fileDropdown.bt-file-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: none;
+  overflow: visible;
+  z-index: 200;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+#fileDropdown {
+  display: none;
+  background: #0a0a10 !important;
+  border: 1px solid rgba(139, 92, 246, 0.28) !important;
+  border-radius: 12px !important;
+  margin-top: 8px !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.72) !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 92, 246, 0.35) transparent;
+}
+
+.bt-asset-picker-inner {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bt-asset-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #f1f5f9;
+  font-family: 'DM Sans', sans-serif;
+  outline: none;
+}
+
+.bt-asset-search-input::placeholder {
+  color: #475569;
+}
+
+.bt-asset-search-input:focus {
+  border-color: rgba(167, 139, 250, 0.45);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
+}
+
+.bt-asset-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bt-asset-tab {
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.06);
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.bt-asset-tab:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: #e2e8f0;
+}
+
+.bt-asset-tab.bt-asset-tab--active {
+  background: rgba(91, 33, 182, 0.45);
+  border-color: rgba(167, 139, 250, 0.35);
+  color: #f5f3ff;
+}
+
+.bt-asset-list.bt-file-list {
+  max-height: 300px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 4px 2px 6px;
+  margin: 0 -2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 92, 246, 0.35) transparent;
+}
+
+.bt-asset-row-label {
+  padding: 11px 12px !important;
+}
+
+.bt-asset-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.bt-asset-row-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.bt-asset-symbol {
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.bt-asset-desc {
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.bt-asset-row-meta {
+  color: #64748b;
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 10px;
+}
+
+.bt-asset-row-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.bt-file-dropdown-label.bt-asset-row-label {
+  align-items: flex-start;
+}
+
+.bt-file-dropdown-label.bt-asset-row-label .bt-file-checkbox {
+  margin-top: 3px;
+}
+
+#fileDropdown::-webkit-scrollbar {
+  width: 8px;
+}
+#fileDropdown::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.28);
+  border-radius: 8px;
+}
+
+.bt-file-list {
+  padding: 6px;
+}
+
+.bt-file-dropdown-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin: 2px 0;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.bt-file-dropdown-label:hover {
+  background: rgba(59, 130, 246, 0.07);
+  border-color: rgba(59, 130, 246, 0.12);
+}
+
+.bt-file-dropdown-label.bt-file-row--selected {
+  background: rgba(59, 130, 246, 0.11);
+  border-color: rgba(59, 130, 246, 0.22);
+}
+
+.bt-file-dropdown-label.bt-file-row--locked {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.bt-file-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  margin: 0;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.bt-file-checkbox:hover {
+  border-color: rgba(129, 140, 248, 0.55);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+}
+
+.bt-file-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.bt-file-checkbox:checked {
+  background: linear-gradient(145deg, #2563eb 0%, #1d4ed8 100%);
+  border-color: rgba(129, 140, 248, 0.65);
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+}
+
+.bt-file-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  box-sizing: border-box;
+}
+
+.bt-file-row-main {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bt-file-row-name {
+  color: #f1f5f9;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bt-file-row-meta {
+  color: #64748b;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.symbol-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a5b4fc;
+}
+
+.symbol-tag button {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.bt-modal-footer {
+  padding: 1.25rem 2rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.btn-cancel {
+  padding: 8px 18px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  transition: all 0.15s;
+}
+
+.btn-cancel:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #94a3b8;
+}
+
+.bt-btn-create,
+.btn-primary {
+  padding: 8px 22px;
+  background: #2563eb;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.bt-btn-create:hover,
+.btn-primary:hover {
+  background: #1d4ed8;
+}
+
+.bt-btn-create svg,
+.btn-primary svg {
+  width: 14px;
+  height: 14px;
+}
+
+.info-tooltip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  background: rgba(59, 130, 246, 0.15);
+  border-radius: 50%;
+  font-size: 9px;
+  color: #60a5fa;
+  cursor: help;
+  vertical-align: middle;
+  margin-left: 3px;
+}
+
+.info-icon-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: help;
+}
+
+.info-icon {
+  color: #475569;
+  transition: color 0.15s;
+}
+
+.info-icon-container:hover .info-icon {
+  color: #60a5fa;
+}
+
+.info-icon-container .info-tooltip {
+  display: block;
+  width: 280px;
+  height: auto;
+  background: rgba(13, 17, 23, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s;
+  pointer-events: none;
+  z-index: 1000;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.95);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.info-icon-container:hover .info-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) scale(1);
+}
+
+#presetDetails {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 8px;
+}
+
+#presetDetailsContent {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.6;
+}
+
+.warning-box {
+  background: rgba(251, 191, 36, 0.06);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #fbbf24;
+  font-size: 12px;
+}
+
+/* Inner modals (templates, create preset) */
+/* Buttons inside secondary modals (templates, create preset) */
+.modal-overlay .btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.modal-overlay .btn-cancel {
+  background: transparent;
+  color: #64748b;
+}
+.modal-overlay .btn-cancel:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #94a3b8;
+}
+.modal-overlay .btn-primary {
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  font-weight: 600;
+}
+.modal-overlay .btn-primary:hover {
+  background: #1d4ed8;
+}
+
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 6, 15, 0.88);
+  backdrop-filter: blur(6px);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal-overlay.active {
+  display: flex;
+}
+
+.modal-content {
+  background: #0d1117;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 24px;
+  max-width: 500px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+  font-family: 'DM Sans', sans-serif;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.modal-header h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.modal-close {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 18px;
+  cursor: pointer;
+  color: #64748b;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.15s;
+}
+
+.modal-close:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: #e2e8f0;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 32px 16px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* Embedded in Sessions dashboard iframe: fill iframe height, keep scroll inside body */
+html.iframe-mode,
+html.iframe-mode body {
+  height: 100%;
+  margin: 0;
+  background: #0d1117;
+  overflow: hidden;
+}
+
+html.iframe-mode body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+html.iframe-mode body::before {
+  display: none;
+}
+
+html.iframe-mode .bt-top-bar {
+  display: none !important;
+}
+
+html.iframe-mode .bt-overlay {
+  flex: 1;
+  min-height: 0;
+  margin-top: 0;
+  padding: 0;
+  background: #0d1117;
+  align-items: stretch;
+  justify-content: flex-start;
+  display: flex;
+  flex-direction: column;
+}
+
+html.iframe-mode .bt-modal {
+  max-width: none;
+  width: 100%;
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+html.iframe-mode .bt-modal > form {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+html.iframe-mode .bt-modal-body {
+  flex: 1;
+  min-height: 0;
+}
+
+html.iframe-mode .bt-toggle-row {
+  margin: 0 2rem;
+  flex-shrink: 0;
+}
+
+html.iframe-mode .bt-modal-footer {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+@media (max-width: 720px) {
+  .grid-2,
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+  .protection-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .new-btn {
+    width: 100%;
+  }
+}
+
+    </style>
+
+    <script>
+        (function() {
+            function redirectToLogin() {
+                var next = window.location.pathname + window.location.search;
+                var loginUrl = '/login/?next=' + encodeURIComponent(next);
+                try {
+                    if (window.top && window.top !== window.self) {
+                        window.top.location.href = loginUrl;
+                        return;
+                    }
+                } catch (e) {}
+                window.location.href = loginUrl;
+            }
+
+            fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
+                .then(function(res) {
+                    if (!res.ok) {
+                        redirectToLogin();
+                    }
+                })
+                .catch(function() {
+                    redirectToLogin();
+                });
+        })();
+    </script>
+</head>
+<body>
+    <!-- Top Bar -->
+    <header class="bt-top-bar">
+        <img src="modules/logo-08.png" alt="" class="bt-top-bar-logo" width="28" height="28" decoding="async" />
+        <div class="bt-top-bar-title">Standard Backtesting Mode</div>
+        <div class="bt-top-bar-actions">
+            <button type="button" class="bt-top-cancel" onclick="handleCancel()">Back to Sessions</button>
+        </div>
+    </header>
+
+    <div class="bt-overlay">
+        <div class="bt-modal">
+            <div class="bt-modal-header">
+                <div class="header-left">
+                    <div class="header-icon" aria-hidden="true">
+                        <img src="modules/logo-08.png" alt="" class="header-logo-img" width="38" height="38" decoding="async" />
+                    </div>
+                    <div>
+                        <div class="bt-modal-title">Create Standard Backtest</div>
+                        <div class="bt-modal-subtitle">Configure session parameters and trading settings</div>
+                    </div>
+                </div>
+                <button type="button" class="bt-close-btn close-btn" onclick="handleCancel()" aria-label="Close">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+
+            <form id="backtestingForm">
+                <div class="bt-modal-body">
+                    <!-- General -->
+                    <div>
+                        <div class="section-label">General</div>
+                        <div class="bt-section-stack">
+                            <div class="grid-2">
+                                <div class="field">
+                                    <label>Session name <span class="req">*</span></label>
+                                    <input type="text" id="sessionName" name="sessionName" required placeholder="e.g. EURUSD Breakout Test">
+                                </div>
+                                <div class="field">
+                                    <label>Playbook / strategy</label>
+                                    <select id="playbook" name="playbook">
+                                        <option value="">Select playbook...</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label>Description</label>
+                                <textarea id="description" name="description" placeholder="Optional description of your backtesting session"></textarea>
+                                <span class="hint">Choose a strategy from Strategies Lab for analytics, or use a quick label. Shown in Backtest Analytics → Playbook.</span>
+                                <a href="/strategies-lab/" target="_blank" rel="noopener" class="link" style="margin-top:6px;display:inline-block;">Open Strategies Lab ↗</a>
+                            </div>
+                            <div class="field">
+                                <label>Symbols / Data files <span class="req">*</span></label>
+                                <span class="hint" style="display:block;margin-bottom:8px;">Select one or more files; switch between them on the chart.</span>
+                                <div id="selectedFilesContainer" class="bt-selected-wrap">
+                                    <span class="hint" id="noFilesText" style="margin:0;">No files selected</span>
+                                </div>
+                                <div class="file-select-row">
+                                    <div style="flex:1;position:relative;">
+                                        <div class="file-select-area bt-asset-trigger" id="fileAreaTrigger" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false">
+                                            <span class="file-select-text" id="fileAreaSummary">No files selected — select one or more datasets to backtest</span>
+                                            <span class="bt-asset-trigger-chevron" aria-hidden="true">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                                            </span>
+                                        </div>
+                                        <div id="fileDropdown" class="bt-file-dropdown bt-asset-picker-dropdown" style="display: none;">
+                                            <div class="bt-asset-picker-inner">
+                                                <input type="text" id="assetSearchInput" class="bt-asset-search-input" placeholder="Search symbol or name..." autocomplete="off" spellcheck="false">
+                                                <div class="bt-asset-tabs" role="tablist" aria-label="Instrument category">
+                                                    <button type="button" class="bt-asset-tab" data-asset-tab="recent" role="tab">Recently used</button>
+                                                    <button type="button" class="bt-asset-tab bt-asset-tab--active" data-asset-tab="all" role="tab">All</button>
+                                                    <button type="button" class="bt-asset-tab" data-asset-tab="Futures" role="tab">Futures</button>
+                                                    <button type="button" class="bt-asset-tab" data-asset-tab="Forex" role="tab">Forex</button>
+                                                    <button type="button" class="bt-asset-tab" data-asset-tab="Stocks" role="tab">Stocks</button>
+                                                    <button type="button" class="bt-asset-tab" data-asset-tab="Crypto" role="tab">Crypto</button>
+                                                </div>
+                                                <div id="fileList" class="bt-file-list bt-asset-list">
+                                                    <div style="color: #64748b; padding: 12px; text-align: center;">Loading files...</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="file-refresh-btn" onclick="loadAvailableFiles()" title="Refresh file list">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="23 4 23 10 17 10"></polyline>
+                                            <polyline points="1 20 1 14 7 14"></polyline>
+                                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+                                <input type="hidden" id="selectedFiles" name="selectedFiles" value="[]">
+                                <span class="hint">Datasets are managed by the admin. <a href="/strategies-lab/" class="link">Open Strategies Lab ↗</a></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Testing period -->
+                    <div>
+                        <div class="section-label">Testing period</div>
+                        <div class="grid-2">
+                            <div class="field">
+                                <label>Start date <span class="req">*</span></label>
+                                <input type="datetime-local" class="date-field" id="startDate" name="startDate" required>
+                            </div>
+                            <div class="field">
+                                <label>End date <span class="req">*</span></label>
+                                <input type="datetime-local" class="date-field" id="endDate" name="endDate" required>
+                            </div>
+                        </div>
+                        <span id="testingPeriodHint" class="hint" style="margin-top:6px;display:block;">Select a data file to see available date range</span>
+                    </div>
+
+                    <!-- Trading settings -->
+                    <div>
+                        <div class="section-label">Trading settings</div>
+                        <div class="bt-section-stack">
+                            <div class="grid-2">
+                                <div class="field">
+                                    <label>Start balance <span class="req">*</span></label>
+                                    <input type="number" id="startBalance" name="startBalance" placeholder="0" min="0" step="1000" required value="10000">
+                                    <div class="quick-pills preset-buttons" style="margin-top:6px;">
+                                        <button type="button" class="pill preset-btn" data-value="5000">5K</button>
+                                        <button type="button" class="pill preset-btn" data-value="10000">10K</button>
+                                        <button type="button" class="pill preset-btn" data-value="20000">20K</button>
+                                        <button type="button" class="pill preset-btn" data-value="40000">40K</button>
+                                        <button type="button" class="pill preset-btn" data-value="50000">50K</button>
+                                        <button type="button" class="pill preset-btn" data-value="100000">100K</button>
+                                    </div>
+                                    <span class="hint">Your starting account balance for this session</span>
+                                </div>
+                                <div class="field">
+                                    <label>Risk type</label>
+                                    <select id="defaultRiskType" name="defaultRiskType">
+                                        <option value="percent" selected>Percentage (%)</option>
+                                        <option value="dollar">Dollar ($)</option>
+                                        <option value="lot">Lot</option>
+                                    </select>
+                                    <span class="hint">How to specify risk per trade</span>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label id="defaultRiskLabel">Default risk per trade (%)</label>
+                                <input type="number" id="defaultRisk" name="defaultRisk" placeholder="1" min="0.1" step="0.1" value="1">
+                                <span class="hint" id="defaultRiskHelper">Percentage of account balance to risk</span>
+                            </div>
+                            <div class="grid-3">
+                                <div class="field">
+                                    <label>Account currency</label>
+                                    <select id="accountCurrency" name="accountCurrency">
+                                        <option value="USD" selected>USD</option>
+                                        <option value="EUR">EUR</option>
+                                        <option value="GBP">GBP</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Leverage</label>
+                                    <select id="accountLeverage" name="accountLeverage">
+                                        <option value="1:1">1:1</option>
+                                        <option value="1:10">1:10</option>
+                                        <option value="1:30" selected>1:30</option>
+                                        <option value="1:50">1:50</option>
+                                        <option value="1:100">1:100</option>
+                                        <option value="1:200">1:200</option>
+                                        <option value="1:500">1:500</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Asset class</label>
+                                    <input type="text" id="assetClass" name="assetClass" class="readonly-input" value="Forex" readonly>
+                                    <span class="hint">Auto-detected</span>
+                                </div>
+                            </div>
+                            <div class="grid-3">
+                                <div class="field">
+                                    <label>Margin call level (%)</label>
+                                    <input type="number" id="marginCallLevel" name="marginCallLevel" min="1" step="1" value="100">
+                                </div>
+                                <div class="field">
+                                    <label>Stop out level (%)</label>
+                                    <input type="number" id="stopOutLevel" name="stopOutLevel" min="1" step="1" value="50">
+                                </div>
+                                <div class="field">
+                                    <label>Max risk per trade (%)</label>
+                                    <input type="number" id="maxRiskPerTradePct" name="maxRiskPerTradePct" min="0" step="0.1" placeholder="Optional">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Instrument table -->
+                    <div>
+                        <div class="section-label">Instrument table <span class="section-label-note">max 10, one row per dataset</span></div>
+                        <span class="hint" style="display:block;margin-bottom:10px;">Configure spread and commission per instrument.</span>
+                        <div class="instrument-table-wrap">
+                            <table class="instrument-table">
+                                <thead>
+                                    <tr>
+                                        <th>Ticker</th>
+                                        <th>Spread (pips)</th>
+                                        <th>Commission / lot / side</th>
+                                        <th>Pip size</th>
+                                        <th>Pip value / lot</th>
+                                        <th>Contract size</th>
+                                        <th>Min lot</th>
+                                        <th>Lot step</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="instrumentTableBody"></tbody>
+                            </table>
+                        </div>
+                        <div id="instrumentTableHint" class="hint" style="margin-top:8px;">Select datasets to populate instrument rows.</div>
+                    </div>
+
+                    <!-- Protection -->
+                    <div>
+                        <div class="section-label">Protection settings</div>
+                        <div class="protection-row">
+                            <div class="field">
+                                <label>Load protection preset <span class="info-tooltip" title="Use protection presets created in the Place Order panel">?</span></label>
+                                <select id="protectionPresetSelect" name="protectionPreset">
+                                    <option value="">-- None (Configure in chart) --</option>
+                                </select>
+                                <span class="hint">Auto-applies breakeven, trailing stop, and take profit when configured</span>
+                                <div id="presetDetails" style="display: none;">
+                                    <div style="font-size: 12px; color: #a5b4fc; font-weight: 600; margin-bottom: 8px;">Preset details</div>
+                                    <div id="presetDetailsContent"></div>
+                                </div>
+                            </div>
+                            <button type="button" class="new-btn" onclick="openCreatePresetModal()" title="Create new protection preset">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                                Create new
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bt-toggle-row">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="allowBackNavigation" name="allowBackNavigation" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <div class="toggle-text-wrapper">
+                        <span class="toggle-text">Enable back/forward navigation</span>
+                        <div class="info-icon-container">
+                            <svg class="info-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="16" x2="12" y2="12"></line>
+                                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                            </svg>
+                            <div class="info-tooltip">
+                                When enabled, you can go backward in time during replay. A visible badge will appear on the chart for transparency. Disable this for forward-only testing (simulating real trading).
+                            </div>
+                        </div>
+                    </div>
+                    <span class="toggle-hint-inline">Step through trades chronologically</span>
+                </div>
+
+                <div class="bt-modal-footer">
+                    <button type="button" class="btn-cancel" onclick="handleCancel()">Cancel</button>
+                    <button type="submit" class="bt-btn-create btn-primary">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                        Create session
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        // Handle cancel button - close iframe if in modal, otherwise navigate
+        function handleCancel() {
+            const isInIframe = window.self !== window.top;
+            if (isInIframe) {
+                var p = window.parent;
+                if (typeof p.closePropFirmIframe === 'function') {
+                    p.closePropFirmIframe();
+                } else if (typeof p.closeBacktestingIframe === 'function') {
+                    p.closeBacktestingIframe();
+                }
+            } else {
+                window.location.href = '/chart/index.html';
+            }
+        }
+
+        // Hide top bar if in iframe (Sessions dashboard); parent provides chrome
+        if (window.self !== window.top) {
+            document.documentElement.classList.add('iframe-mode');
+            var topBarEl = document.querySelector('.bt-top-bar');
+            if (topBarEl) {
+                topBarEl.style.display = 'none';
+            }
+            var modalCloseBtn = document.querySelector('.bt-modal-header .bt-close-btn');
+            if (modalCloseBtn) {
+                modalCloseBtn.style.display = 'none';
+            }
+        }
+
+        // Open Create Preset Modal
+        function openCreatePresetModal() {
+            const modal = document.getElementById('createPresetModal');
+            modal.style.display = 'flex';
+            
+            // Reset modal state
+            let modalBeMode = 'rr';
+            let modalTrailMode = 'trail-rr';
+            
+            // Toggle handlers
+            document.getElementById('presetBreakevenToggle').onchange = (e) => {
+                document.getElementById('presetBreakevenSettings').style.display = e.target.checked ? 'block' : 'none';
+            };
+            
+            document.getElementById('presetTrailingToggle').onchange = (e) => {
+                document.getElementById('presetTrailingSettings').style.display = e.target.checked ? 'block' : 'none';
+            };
+            
+            document.getElementById('presetMultipleTPToggle').onchange = (e) => {
+                document.getElementById('presetMultipleTPSettings').style.display = e.target.checked ? 'block' : 'none';
+            };
+            
+            // Breakeven mode buttons
+            document.querySelectorAll('.preset-mode-btn').forEach(btn => {
+                btn.onclick = () => {
+                    const mode = btn.getAttribute('data-mode');
+                    modalBeMode = mode;
+                    
+                    document.querySelectorAll('.preset-mode-btn').forEach(b => {
+                        if (b.getAttribute('data-mode') === mode) {
+                            b.style.background = '#7c3aed';
+                            b.style.color = '#fff';
+                            b.style.border = 'none';
+                        } else {
+                            b.style.background = 'transparent';
+                            b.style.color = '#787b86';
+                            b.style.border = '1px solid #2a2e39';
+                        }
+                    });
+                    
+                    // Hide all inputs first
+                    document.getElementById('presetBreakevenRRInput').style.display = 'none';
+                    document.getElementById('presetBreakevenAmountInput').style.display = 'none';
+                    document.getElementById('presetBreakevenPercentInput').style.display = 'none';
+                    
+                    // Show the selected input
+                    if (mode === 'rr') {
+                        document.getElementById('presetBreakevenRRInput').style.display = 'flex';
+                    } else if (mode === 'amount') {
+                        document.getElementById('presetBreakevenAmountInput').style.display = 'flex';
+                    } else if (mode === 'percent') {
+                        document.getElementById('presetBreakevenPercentInput').style.display = 'flex';
+                    }
+                };
+            });
+            
+            // Trailing mode buttons
+            document.querySelectorAll('.preset-trail-btn').forEach(btn => {
+                btn.onclick = () => {
+                    const mode = btn.getAttribute('data-mode');
+                    modalTrailMode = mode;
+                    
+                    document.querySelectorAll('.preset-trail-btn').forEach(b => {
+                        if (b.getAttribute('data-mode') === mode) {
+                            b.style.background = '#7c3aed';
+                            b.style.color = '#fff';
+                            b.style.border = 'none';
+                        } else {
+                            b.style.background = 'transparent';
+                            b.style.color = '#787b86';
+                            b.style.border = '1px solid #2a2e39';
+                        }
+                    });
+                    
+                    // Hide all inputs first
+                    document.getElementById('presetTrailingRRInput').style.display = 'none';
+                    document.getElementById('presetTrailingPipsInput').style.display = 'none';
+                    document.getElementById('presetTrailingDollarInput').style.display = 'none';
+                    document.getElementById('presetTrailingPercentInput').style.display = 'none';
+                    
+                    // Show the selected input
+                    if (mode === 'trail-rr') {
+                        document.getElementById('presetTrailingRRInput').style.display = 'flex';
+                    } else if (mode === 'trail-pips') {
+                        document.getElementById('presetTrailingPipsInput').style.display = 'flex';
+                    } else if (mode === 'trail-dollar') {
+                        document.getElementById('presetTrailingDollarInput').style.display = 'flex';
+                    } else if (mode === 'trail-percent') {
+                        document.getElementById('presetTrailingPercentInput').style.display = 'flex';
+                    }
+                };
+            });
+            
+            // Store modes in window for access in saveNewPreset
+            window.currentModalBeMode = modalBeMode;
+            window.currentModalTrailMode = modalTrailMode;
+            
+            // Update modes when buttons are clicked
+            document.querySelectorAll('.preset-mode-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    window.currentModalBeMode = btn.getAttribute('data-mode');
+                });
+            });
+            
+            document.querySelectorAll('.preset-trail-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    window.currentModalTrailMode = btn.getAttribute('data-mode');
+                });
+            });
+        }
+        
+        // Close Create Preset Modal
+        function closeCreatePresetModal() {
+            document.getElementById('createPresetModal').style.display = 'none';
+            // Reset form
+            document.getElementById('presetName').value = '';
+            document.getElementById('presetBreakevenToggle').checked = false;
+            document.getElementById('presetTrailingToggle').checked = false;
+            document.getElementById('presetMultipleTPToggle').checked = false;
+            document.getElementById('presetBreakevenSettings').style.display = 'none';
+            document.getElementById('presetTrailingSettings').style.display = 'none';
+            document.getElementById('presetMultipleTPSettings').style.display = 'none';
+        }
+        
+        // Save New Preset
+        function saveNewPreset() {
+            const name = document.getElementById('presetName').value.trim();
+            if (!name) {
+                alert('⚠️ Please enter a preset name');
+                return;
+            }
+            
+            const preset = {
+                name: name,
+                breakeven: {
+                    enabled: document.getElementById('presetBreakevenToggle').checked,
+                    mode: window.currentModalBeMode || 'rr',
+                    rrValue: parseFloat(document.getElementById('presetBreakevenRR').value || 1),
+                    amountValue: parseFloat(document.getElementById('presetBreakevenAmount').value || 50),
+                    percentValue: parseFloat(document.getElementById('presetBreakevenPercent').value || 1),
+                    pipOffset: 0
+                },
+                trailing: {
+                    enabled: document.getElementById('presetTrailingToggle').checked,
+                    activateMode: window.currentModalTrailMode || 'trail-rr',
+                    rrValue: parseFloat(document.getElementById('presetTrailingRR').value || 1.5),
+                    pipsValue: parseFloat(document.getElementById('presetTrailingPips').value || 10),
+                    dollarValue: parseFloat(document.getElementById('presetTrailingDollar').value || 50),
+                    percentValue: parseFloat(document.getElementById('presetTrailingPercent').value || 1),
+                    stepSize: parseFloat(document.getElementById('presetTrailingStep').value || 4)
+                },
+                multipleTP: {
+                    enabled: document.getElementById('presetMultipleTPToggle').checked,
+                    numberOfTargets: parseInt(document.getElementById('presetNumTPTargets').value || 3),
+                    targets: []
+                }
+            };
+            
+            let saved = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
+            
+            // Check if name already exists
+            const existingIndex = saved.findIndex(s => s.name === preset.name);
+            if (existingIndex >= 0) {
+                if (!confirm(`Preset "${preset.name}" already exists. Overwrite?`)) return;
+                saved[existingIndex] = preset;
+            } else {
+                saved.push(preset);
+            }
+            
+            localStorage.setItem('protectionSettings', JSON.stringify(saved));
+            console.log('✅ Protection preset saved:', preset);
+            
+            // Reload presets dropdown
+            loadProtectionPresets();
+            
+            // Select the newly created preset
+            document.getElementById('protectionPresetSelect').value = preset.name;
+            showPresetDetails(preset.name);
+            
+            // Show success message
+            alert(`✅ Protection preset "${preset.name}" saved successfully!`);
+            
+            // Close modal
+            closeCreatePresetModal();
+        }
+
+        // Load Protection Presets
+        function loadProtectionPresets() {
+            const select = document.getElementById('protectionPresetSelect');
+            if (!select) return;
+
+            const presets = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
+            
+            // Clear existing options except first one
+            select.innerHTML = '<option value="">-- None (Configure in chart) --</option>';
+            
+            // Add presets
+            presets.forEach(preset => {
+                const option = document.createElement('option');
+                option.value = preset.name;
+                option.textContent = preset.name;
+                select.appendChild(option);
+            });
+
+            console.log(`✅ Loaded ${presets.length} protection presets`);
+        }
+
+        // Show preset details
+        function showPresetDetails(presetName) {
+            const detailsDiv = document.getElementById('presetDetails');
+            const contentDiv = document.getElementById('presetDetailsContent');
+            
+            if (!presetName) {
+                detailsDiv.style.display = 'none';
+                return;
+            }
+
+            const presets = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
+            const preset = presets.find(p => p.name === presetName);
+            
+            if (!preset) {
+                detailsDiv.style.display = 'none';
+                return;
+            }
+
+            let details = [];
+            
+            // Breakeven details
+            if (preset.breakeven && preset.breakeven.enabled) {
+                const beMode = preset.breakeven.mode === 'rr' ? 
+                    `at ${preset.breakeven.rrValue}:1 R:R` : 
+                    `at $${preset.breakeven.amountValue}`;
+                details.push(`🛡️ <strong>Breakeven:</strong> ${beMode}`);
+            }
+            
+            // Trailing SL details
+            if (preset.trailing && preset.trailing.enabled) {
+                const trailMode = preset.trailing.activateMode === 'trail-rr' ? 
+                    `${preset.trailing.rrValue}:1 R:R` : 
+                    `${preset.trailing.pipsValue} pips`;
+                details.push(`📊 <strong>Trailing SL:</strong> Activate at ${trailMode}, step ${preset.trailing.stepSize} pips`);
+            }
+            
+            // Multiple TP details
+            if (preset.multipleTP && preset.multipleTP.enabled) {
+                details.push(`🎯 <strong>Multiple TP:</strong> ${preset.multipleTP.numberOfTargets} targets`);
+            }
+            
+            if (details.length === 0) {
+                details.push('No protection features enabled');
+            }
+            
+            contentDiv.innerHTML = details.join('<br>');
+            detailsDiv.style.display = 'block';
+        }
+
+        // Preset select change handler
+        document.getElementById('protectionPresetSelect')?.addEventListener('change', function(e) {
+            showPresetDetails(e.target.value);
+        });
+
+        // Load presets on page load
+        loadProtectionPresets();
+    </script>
+
+    <!-- Templates Modal -->
+    <div id="templatesModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Load Template</h2>
+                <button class="modal-close" onclick="closeModal('templatesModal')">&times;</button>
+            </div>
+            <div id="templatesList" class="template-list">
+                <!-- Templates will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Sessions Modal -->
+    <div id="sessionsModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Recent Sessions</h2>
+                <button class="modal-close" onclick="closeModal('sessionsModal')">&times;</button>
+            </div>
+            <div id="sessionsList" class="session-list">
+                <!-- Sessions will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Template Modal -->
+    <div id="saveTemplateModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Save as Template</h2>
+                <button class="modal-close" onclick="closeModal('saveTemplateModal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>Template Name <span class="required">*</span></label>
+                <input type="text" id="templateName" placeholder="e.g., Scalping Setup">
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="templateDescription" placeholder="Describe this template..." style="min-height: 80px;"></textarea>
+            </div>
+            <div class="form-actions" style="border-top: none; padding-top: 0;">
+                <button type="button" class="btn btn-cancel" onclick="closeModal('saveTemplateModal')">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveTemplate()">Save Template</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Protection Preset Modal -->
+    <div id="createPresetModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>⚙️ Create Protection Preset</h2>
+                <button class="modal-close" onclick="closeCreatePresetModal()">&times;</button>
+            </div>
+            
+            <div class="form-group">
+                <label>Preset Name <span class="required">*</span></label>
+                <input type="text" id="presetName" placeholder="e.g., My Scalping Strategy" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 10px; font-size: 13px; color: #fff;">
+            </div>
+            
+            <!-- Auto Breakeven -->
+            <div style="background: rgba(255,255,255,0.02); border-radius: 6px; padding: 16px; margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <span style="font-size: 13px; font-weight: 600; color: #fff;">🛡️ Auto Breakeven</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="presetBreakevenToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="presetBreakevenSettings" style="display: none;">
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <button type="button" class="preset-mode-btn" data-mode="rr" style="flex: 1; padding: 8px; font-size: 12px; background: #7c3aed; border: none; color: #fff; border-radius: 4px; cursor: pointer;">R:R</button>
+                        <button type="button" class="preset-mode-btn" data-mode="amount" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Dollar $</button>
+                        <button type="button" class="preset-mode-btn" data-mode="percent" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Percent %</button>
+                    </div>
+                    <div id="presetBreakevenRRInput" style="display: flex; align-items: center; gap: 8px;">
+                        <input type="number" id="presetBreakevenRR" value="1" min="0.1" step="0.1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">RR</span>
+                    </div>
+                    <div id="presetBreakevenAmountInput" style="display: none; align-items: center; gap: 8px;">
+                        <input type="number" id="presetBreakevenAmount" value="50" min="1" step="1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">$</span>
+                    </div>
+                    <div id="presetBreakevenPercentInput" style="display: none; align-items: center; gap: 8px;">
+                        <input type="number" id="presetBreakevenPercent" value="1" min="0.1" step="0.1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">%</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Trailing Stop Loss -->
+            <div style="background: rgba(255,255,255,0.02); border-radius: 6px; padding: 16px; margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <span style="font-size: 13px; font-weight: 600; color: #fff;">📊 Trailing Stop Loss</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="presetTrailingToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="presetTrailingSettings" style="display: none;">
+                    <label style="display: block; font-size: 11px; color: #9ca3af; margin-bottom: 6px;">Activate At</label>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <button type="button" class="preset-trail-btn" data-mode="trail-rr" style="flex: 1; padding: 8px; font-size: 12px; background: #7c3aed; border: none; color: #fff; border-radius: 4px; cursor: pointer;">R:R</button>
+                        <button type="button" class="preset-trail-btn" data-mode="trail-pips" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Pips</button>
+                        <button type="button" class="preset-trail-btn" data-mode="trail-dollar" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Dollar $</button>
+                        <button type="button" class="preset-trail-btn" data-mode="trail-percent" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Percent %</button>
+                    </div>
+                    <div id="presetTrailingRRInput" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                        <input type="number" id="presetTrailingRR" value="1.5" min="0.1" step="0.1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">RR</span>
+                    </div>
+                    <div id="presetTrailingPipsInput" style="display: none; align-items: center; gap: 8px; margin-bottom: 10px;">
+                        <input type="number" id="presetTrailingPips" value="10" min="1" step="1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">Pips</span>
+                    </div>
+                    <div id="presetTrailingDollarInput" style="display: none; align-items: center; gap: 8px; margin-bottom: 10px;">
+                        <input type="number" id="presetTrailingDollar" value="50" min="1" step="1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">$</span>
+                    </div>
+                    <div id="presetTrailingPercentInput" style="display: none; align-items: center; gap: 8px; margin-bottom: 10px;">
+                        <input type="number" id="presetTrailingPercent" value="1" min="0.1" step="0.1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">%</span>
+                    </div>
+                    <label style="display: block; font-size: 11px; color: #9ca3af; margin-bottom: 6px;">Step Size</label>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="number" id="presetTrailingStep" value="4" min="1" step="1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                        <span style="font-size: 11px; color: #9ca3af;">Pips</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Multiple Take Profits -->
+            <div style="background: rgba(255,255,255,0.02); border-radius: 6px; padding: 16px; margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <span style="font-size: 13px; font-weight: 600; color: #fff;">🎯 Multiple Take Profits</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="presetMultipleTPToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="presetMultipleTPSettings" style="display: none;">
+                    <label style="display: block; font-size: 11px; color: #9ca3af; margin-bottom: 6px;">Number of Targets</label>
+                    <input type="number" id="presetNumTPTargets" value="3" min="2" max="10" step="1" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
+                </div>
+            </div>
+            
+            <!-- Buttons -->
+            <div class="form-actions" style="border-top: none; padding-top: 0;">
+                <button type="button" class="btn btn-cancel" onclick="closeCreatePresetModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveNewPreset()">💾 Save Preset</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // VERSION: 2.0 - Fixed Submit Handler
+        console.log('🔥 Script loaded - Version 2.0 (backtesting.html)');
+        
+        // Helper function to parse various date formats including European format
+        function parseFlexibleDate(dateStr) {
+            // Try European format: DD.MM.YYYY HH:MM:SS.mmm
+            if (dateStr.includes('.') && dateStr.includes(' ')) {
+                const [datePart, timePart] = dateStr.split(' ');
+                const dateParts = datePart.split('.');
+                
+                // Check if it's DD.MM.YYYY format
+                if (dateParts.length === 3 && dateParts[0].length <= 2) {
+                    const [day, month, year] = dateParts;
+                    const timeComponents = timePart.split(':');
+                    const hour = parseInt(timeComponents[0]) || 0;
+                    const minute = parseInt(timeComponents[1]) || 0;
+                    const secondStr = timeComponents[2] || '0';
+                    const second = parseFloat(secondStr) || 0;
+                    
+                    const timestamp = new Date(
+                        parseInt(year), 
+                        parseInt(month) - 1, 
+                        parseInt(day), 
+                        hour, 
+                        minute, 
+                        Math.floor(second)
+                    ).getTime();
+                    
+                    if (!isNaN(timestamp)) {
+                        return timestamp;
+                    }
+                }
+            }
+            
+            // Try standard Date parsing
+            const timestamp = new Date(dateStr).getTime();
+            if (!isNaN(timestamp)) {
+                return timestamp;
+            }
+            
+            return null;
+        }
+
+        /** Normalize API/CSV epoch values to milliseconds for Date(); reject corrupt timestamps. */
+        function normalizeEpochMs(raw) {
+            const n = Number(raw);
+            if (!Number.isFinite(n) || n <= 0) return null;
+            if (n >= 1e14) return null;
+            let ms;
+            if (n >= 1e12) ms = n;
+            else if (n >= 1e9) ms = n * 1000;
+            else return null;
+            const MIN = 631152000000;
+            const MAX = 4102444800000;
+            if (ms < MIN || ms > MAX) return null;
+            return ms;
+        }
+        
+        // Selected files array
+        let selectedFilesArray = [];
+        let availableFilesCache = [];
+        var BT_RECENT_LS = 'bt_backtest_recent_file_ids_v1';
+        var assetFilterTab = 'all';
+        var assetSearchStr = '';
+        var fileMetaHints = {};
+        var updateFileListDebounceTimer = null;
+        var metaPrefetchTimer = null;
+        var metaRequestedIds = new Set();
+
+        function escapeHtml(s) {
+            if (s == null) return '';
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function readRecentFileIds() {
+            try {
+                var raw = localStorage.getItem(BT_RECENT_LS);
+                var arr = raw ? JSON.parse(raw) : [];
+                return Array.isArray(arr) ? arr.map(function (x) { return String(x); }) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function pushRecentFileId(fileId) {
+            try {
+                var sid = String(fileId);
+                var arr = readRecentFileIds().filter(function (id) { return id !== sid; });
+                arr.unshift(sid);
+                arr = arr.slice(0, 24);
+                localStorage.setItem(BT_RECENT_LS, JSON.stringify(arr));
+            } catch (e) {
+                /* ignore */
+            }
+        }
+
+        function formatHistoryDate(ms) {
+            if (ms == null || !Number.isFinite(ms)) return '';
+            try {
+                return new Date(ms).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                });
+            } catch (e) {
+                return '';
+            }
+        }
+
+        function describeInstrument(file) {
+            var raw = file.original_name || file.name || file.filename || '';
+            var pair = cleanPairName(raw);
+            var cat = classifyFile(file);
+            var token = String(pair || '').replace('/', '').toUpperCase();
+
+            var CUR_NAMES = {
+                USD: 'US Dollar',
+                EUR: 'Euro',
+                GBP: 'British Pound',
+                JPY: 'Japanese Yen',
+                AUD: 'Australian Dollar',
+                NZD: 'New Zealand Dollar',
+                CAD: 'Canadian Dollar',
+                CHF: 'Swiss Franc',
+                HKD: 'Hong Kong Dollar',
+                SGD: 'Singapore Dollar',
+                SEK: 'Swedish Krona',
+                NOK: 'Norwegian Krone',
+                DKK: 'Danish Krone',
+                ZAR: 'South African Rand',
+                TRY: 'Turkish Lira',
+                MXN: 'Mexican Peso',
+                CNY: 'Chinese Yuan',
+                XAU: 'Gold',
+                XAG: 'Silver',
+                BTC: 'Bitcoin',
+                ETH: 'Ethereum',
+            };
+
+            var FUT_NAMES = {
+                '6A': 'Australian Dollar Futures',
+                '6B': 'British Pound Futures',
+                '6C': 'Canadian Dollar Futures',
+                '6E': 'Euro FX Futures',
+                '6J': 'Japanese Yen Futures',
+                '6S': 'Swiss Franc Futures',
+                '6N': 'New Zealand Dollar Futures',
+                ES: 'E-mini S&P 500 Futures',
+                NQ: 'E-mini Nasdaq-100 Futures',
+                YM: 'E-mini Dow Futures',
+                RTY: 'E-mini Russell 2000 Futures',
+                MES: 'Micro E-mini S&P 500 Futures',
+                MNQ: 'Micro E-mini Nasdaq Futures',
+                M2K: 'Micro E-mini Russell Futures',
+                CL: 'Crude Oil Futures',
+                GC: 'Gold Futures',
+                SI: 'Silver Futures',
+                NG: 'Natural Gas Futures',
+                ZB: '30-Year T-Bond Futures',
+                ZN: '10-Year T-Note Futures',
+                MCL: 'Micro Crude Oil Futures',
+                MGC: 'Micro Gold Futures',
+                MSI: 'Micro Silver Futures',
+                HG: 'Copper Futures',
+            };
+
+            if (cat === 'Stocks') {
+                return '';
+            }
+            if (cat === 'Futures') {
+                return FUT_NAMES[token] || 'Futures contract';
+            }
+            if (cat === 'Forex' && token.length === 6) {
+                var base = token.slice(0, 3);
+                var quote = token.slice(3, 6);
+                var bn = CUR_NAMES[base];
+                var qn = CUR_NAMES[quote];
+                if (bn && qn) {
+                    return bn + ' / ' + qn;
+                }
+                return 'Forex';
+            }
+            if (cat === 'Crypto') {
+                if (pair.indexOf('/') >= 0) {
+                    var halves = pair.split('/');
+                    var hb = CUR_NAMES[halves[0].toUpperCase()] || halves[0];
+                    var hq = CUR_NAMES[halves[1].toUpperCase()] || halves[1];
+                    return hb + ' / ' + hq + ' (Crypto)';
+                }
+                return 'Cryptocurrency';
+            }
+            return '';
+        }
+
+        function getFilteredDatasetFiles() {
+            if (!availableFilesCache.length) return [];
+
+            var q = (assetSearchStr || '').trim().toLowerCase();
+            var tab = assetFilterTab || 'all';
+
+            function matchesQuery(file) {
+                if (!q) return true;
+                var rawName = file.original_name || file.name || file.filename || '';
+                var pair = cleanPairName(rawName).toLowerCase();
+                var raw = rawName.toLowerCase();
+                var desc = describeInstrument(file).toLowerCase();
+                return pair.indexOf(q) >= 0 || raw.indexOf(q) >= 0 || desc.indexOf(q) >= 0;
+            }
+
+            if (tab === 'recent') {
+                var order = readRecentFileIds();
+                var out = [];
+                order.forEach(function (rid) {
+                    var f = findCachedFileById(rid);
+                    if (f && matchesQuery(f)) out.push(f);
+                });
+                return out;
+            }
+
+            var pool = availableFilesCache.filter(matchesQuery);
+            if (tab === 'all') return pool;
+
+            return pool.filter(function (f) {
+                return classifyFile(f) === tab;
+            });
+        }
+
+        function schedulePrefetchMetaForVisible() {
+            if (metaPrefetchTimer) clearTimeout(metaPrefetchTimer);
+            metaPrefetchTimer = setTimeout(function () {
+                var files = getFilteredDatasetFiles().slice(0, 40);
+                files.slice(0, 16).forEach(function (file) {
+                    var id = file.id;
+                    if (metaRequestedIds.has(id)) return;
+                    metaRequestedIds.add(id);
+                    fetch('/api/file/' + encodeURIComponent(id) + '/meta')
+                        .then(function (r) {
+                            return r.ok ? r.json() : null;
+                        })
+                        .then(function (meta) {
+                            if (!meta || meta.start_ts == null) {
+                                fileMetaHints[id] = { start_ts: null };
+                            } else {
+                                var ts = normalizeEpochMs(meta.start_ts);
+                                fileMetaHints[id] = { start_ts: ts };
+                            }
+                            if (updateFileListDebounceTimer) clearTimeout(updateFileListDebounceTimer);
+                            updateFileListDebounceTimer = setTimeout(function () {
+                                updateFileListUI();
+                            }, 50);
+                        })
+                        .catch(function () {
+                            fileMetaHints[id] = { start_ts: null };
+                        });
+                });
+            }, 120);
+        }
+
+        // Initialize file dropdown when DOM is ready
+        function initFileDropdown() {
+            var fileDropdown = document.getElementById('fileDropdown');
+            var fileAreaTrigger = document.getElementById('fileAreaTrigger');
+
+            if (!fileDropdown) {
+                console.log('File dropdown elements not found, retrying...');
+                setTimeout(initFileDropdown, 100);
+                return;
+            }
+
+            function setExpanded(open) {
+                if (fileAreaTrigger) {
+                    fileAreaTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+                }
+            }
+
+            function toggleFileDropdown(e) {
+                if (e) e.stopPropagation();
+                var open = fileDropdown.style.display === 'none';
+                fileDropdown.style.display = open ? 'block' : 'none';
+                setExpanded(open);
+                if (open) {
+                    updateFileListUI();
+                    schedulePrefetchMetaForVisible();
+                    var searchEl = document.getElementById('assetSearchInput');
+                    if (searchEl) {
+                        setTimeout(function () {
+                            searchEl.focus();
+                            searchEl.select();
+                        }, 0);
+                    }
+                }
+            }
+
+            if (fileAreaTrigger) {
+                fileAreaTrigger.addEventListener('click', function (e) {
+                    toggleFileDropdown(e);
+                });
+                fileAreaTrigger.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        toggleFileDropdown(e);
+                    }
+                });
+            }
+
+            var searchInput = document.getElementById('assetSearchInput');
+            if (searchInput && !searchInput._btBound) {
+                searchInput._btBound = true;
+                searchInput.addEventListener('input', function (e) {
+                    assetSearchStr = e.target.value || '';
+                    updateFileListUI();
+                    schedulePrefetchMetaForVisible();
+                });
+                searchInput.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                });
+            }
+
+            var tabBar = document.querySelector('.bt-asset-tabs');
+            if (tabBar && !tabBar._btBound) {
+                tabBar._btBound = true;
+                tabBar.addEventListener('click', function (e) {
+                    var btn = e.target.closest('[data-asset-tab]');
+                    if (!btn) return;
+                    e.stopPropagation();
+                    var t = btn.getAttribute('data-asset-tab');
+                    if (!t) return;
+                    assetFilterTab = t;
+                    tabBar.querySelectorAll('[data-asset-tab]').forEach(function (b) {
+                        b.classList.toggle('bt-asset-tab--active', b.getAttribute('data-asset-tab') === t);
+                    });
+                    updateFileListUI();
+                    schedulePrefetchMetaForVisible();
+                });
+            }
+
+            document.addEventListener('click', function (e) {
+                var fileArea = document.getElementById('fileAreaTrigger');
+                if (fileDropdown.contains(e.target) || (fileArea && fileArea.contains(e.target))) {
+                    return;
+                }
+                fileDropdown.style.display = 'none';
+                setExpanded(false);
+            });
+
+            loadAvailableFiles();
+            syncAutoAssetClass();
+
+            console.log('✅ File dropdown initialized');
+        }
+        
+        // Run when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initFileDropdown);
+        } else {
+            initFileDropdown();
+        }
+        
+        function sameFileId(a, b) {
+            return String(a) === String(b);
+        }
+
+        // Toggle file selection
+        function toggleFileSelection(fileId, fileName) {
+            const index = selectedFilesArray.findIndex(function (f) { return sameFileId(f.id, fileId); });
+            if (index === -1) {
+                if (selectedFilesArray.length >= 10) {
+                    alert('Maximum 10 instruments per session.');
+                    updateFileListUI();
+                    return;
+                }
+                const locked = selectionLockedGroup();
+                const cached = findCachedFileById(fileId);
+                if (locked && cached && classifyFile(cached) !== locked) {
+                    alert('You can only combine instruments from the same asset group (for example all Futures or all Forex). Remove your current selections to pick a different group.');
+                    updateFileListUI();
+                    return;
+                }
+                selectedFilesArray.push({ id: fileId, name: fileName });
+                pushRecentFileId(fileId);
+            } else {
+                selectedFilesArray.splice(index, 1);
+            }
+            updateSelectedFilesUI();
+            updateFileListUI();
+        }
+
+        // Remove file from selection
+        function removeSelectedFile(fileId) {
+            selectedFilesArray = selectedFilesArray.filter(function (f) { return !sameFileId(f.id, fileId); });
+            updateSelectedFilesUI();
+            updateFileListUI();
+        }
+        
+        // Update the selected files display
+        function updateSelectedFilesUI() {
+            const container = document.getElementById('selectedFilesContainer');
+            const hiddenInput = document.getElementById('selectedFiles');
+            const summaryEl = document.getElementById('fileAreaSummary');
+
+            hiddenInput.value = JSON.stringify(selectedFilesArray);
+
+            if (selectedFilesArray.length === 0) {
+                container.innerHTML = '<span class="hint" id="noFilesText" style="margin:0;">No files selected</span>';
+                if (summaryEl) {
+                    summaryEl.textContent = 'No files selected — select one or more datasets to backtest';
+                }
+                syncAutoAssetClass();
+                rebuildInstrumentTable();
+                return;
+            }
+
+            var names = selectedFilesArray.map(function (file) {
+                return cleanPairName(file.name);
+            });
+            if (summaryEl) {
+                summaryEl.textContent = names.length + ' file' + (names.length === 1 ? '' : 's') + ' — ' + names.slice(0, 4).join(', ') + (names.length > 4 ? '…' : '');
+            }
+
+            container.innerHTML = selectedFilesArray.map(function (file) {
+                var display = cleanPairName(file.name);
+                var sid = String(file.id).replace(/'/g, "\\'");
+                return (
+                    '<span class="symbol-tag">' + display +
+                    '<button type="button" onclick="removeSelectedFile(\'' + sid + '\')">&times;</button></span>'
+                );
+            }).join('');
+
+            if (selectedFilesArray.length > 0) {
+                loadDateRangeFromFile(selectedFilesArray[0].id);
+            }
+            rebuildInstrumentTable();
+            syncAutoAssetClass();
+        }
+
+        function defaultInstrumentConfigFor(file) {
+            const ticker = cleanPairName(file.name || '').replace('/', '');
+            const isJPY = ticker.endsWith('JPY');
+            return {
+                ticker: ticker || 'UNKNOWN',
+                fileId: file.id,
+                fileName: file.name,
+                spread_pips: 1.0,
+                commission_per_lot_per_side: 3.5,
+                pip_size: isJPY ? 0.01 : 0.0001,
+                pip_value_per_lot: isJPY ? 7 : 10,
+                contract_size: 100000,
+                min_lot_size: 0.01,
+                lot_step: 0.01
+            };
+        }
+
+        function detectAssetClassFromFiles(files = []) {
+            const futuresSymbols = new Set(['ES', 'NQ', 'YM', 'RTY', 'MES', 'MNQ', 'M2K', 'CL', 'GC', 'SI', 'NG', 'ZB', 'ZN']);
+            const cryptoSymbols = new Set(['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'DOGE', 'BNB', 'LTC']);
+            let hasFutures = false;
+            let hasCrypto = false;
+
+            files.forEach((file) => {
+                const raw = cleanPairName(file.name || '');
+                const token = String(raw || '').replace('/', '').toUpperCase();
+                if (!token) return;
+                if (futuresSymbols.has(token)) hasFutures = true;
+                const base = token.slice(0, 3);
+                const quote = token.slice(3, 6);
+                if (cryptoSymbols.has(base) || cryptoSymbols.has(quote)) hasCrypto = true;
+            });
+
+            if (hasFutures) return 'Futures';
+            if (hasCrypto) return 'Crypto';
+            return 'Forex';
+        }
+
+        function syncAutoAssetClass() {
+            const input = document.getElementById('assetClass');
+            if (!input) return;
+            input.value = detectAssetClassFromFiles(selectedFilesArray);
+        }
+
+        function rebuildInstrumentTable() {
+            const body = document.getElementById('instrumentTableBody');
+            const hint = document.getElementById('instrumentTableHint');
+            if (!body) return;
+            if (selectedFilesArray.length === 0) {
+                body.innerHTML = '';
+                if (hint) hint.textContent = 'Select datasets to populate instrument rows.';
+                return;
+            }
+            if (hint) hint.textContent = `${selectedFilesArray.length} instrument(s) selected.`;
+            body.innerHTML = selectedFilesArray.map((file, idx) => {
+                const d = defaultInstrumentConfigFor(file);
+                return `
+                <tr>
+                    <td style="padding:8px;"><input class="instrument-input" id="inst_${idx}_ticker" value="${d.ticker}"></td>
+                    <td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_${idx}_spread" value="${d.spread_pips}"></td>
+                    <td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_${idx}_commission" value="${d.commission_per_lot_per_side}"></td>
+                    <td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_${idx}_pipSize" value="${d.pip_size}"></td>
+                    <td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_${idx}_pipValue" value="${d.pip_value_per_lot}"></td>
+                    <td style="padding:8px;"><input class="instrument-input" type="number" step="1" min="1" id="inst_${idx}_contract" value="${d.contract_size}"></td>
+                    <td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_${idx}_minLot" value="${d.min_lot_size}"></td>
+                    <td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_${idx}_lotStep" value="${d.lot_step}"></td>
+                </tr>
+                `;
+            }).join('');
+        }
+
+        function parseDecimalInput(raw, fallback) {
+            const normalized = String(raw ?? '')
+                .trim()
+                .replace(/\s+/g, '')
+                .replace(',', '.');
+            const value = parseFloat(normalized);
+            return Number.isFinite(value) ? value : fallback;
+        }
+
+        function collectInstrumentConfigs() {
+            const rows = selectedFilesArray.map((file, idx) => {
+                const ticker = String(document.getElementById(`inst_${idx}_ticker`)?.value || '').toUpperCase().replace('/', '');
+                const defaults = defaultInstrumentConfigFor(file);
+                return {
+                    ticker: ticker || defaults.ticker,
+                    fileId: file.id,
+                    fileName: file.name,
+                    spread_pips: parseDecimalInput(document.getElementById(`inst_${idx}_spread`)?.value, defaults.spread_pips),
+                    commission_per_lot_per_side: parseDecimalInput(document.getElementById(`inst_${idx}_commission`)?.value, defaults.commission_per_lot_per_side),
+                    pip_size: parseDecimalInput(document.getElementById(`inst_${idx}_pipSize`)?.value, defaults.pip_size),
+                    pip_value_per_lot: parseDecimalInput(document.getElementById(`inst_${idx}_pipValue`)?.value, defaults.pip_value_per_lot),
+                    contract_size: parseDecimalInput(document.getElementById(`inst_${idx}_contract`)?.value, defaults.contract_size),
+                    min_lot_size: parseDecimalInput(document.getElementById(`inst_${idx}_minLot`)?.value, defaults.min_lot_size),
+                    lot_step: parseDecimalInput(document.getElementById(`inst_${idx}_lotStep`)?.value, defaults.lot_step)
+                };
+            });
+            return rows;
+        }
+        
+        // Update file list checkboxes
+        // Extract clean pair name from CSV filename.
+        //
+        // Dataset files arrive with various naming schemes:
+        //   EURUSD.csv                                       (raw FX upload)
+        //   20260217_182920_GBPUSD.csv                       (timestamped legacy upload)
+        //   BTC_full_1min_1min.csv                           (FirstRate crypto, implicit USD)
+        //   BTC-EUR_full_1min_1min.csv                       (FirstRate crypto, explicit quote)
+        //   ES_full_1min_1min.csv                            (FirstRate futures, 2-letter root)
+        //   AAPL_full_1min_adj_split_1min.csv                (FirstRate stock)
+        //
+        // The old implementation used a greedy /[a-zA-Z]{3,5}/ scan, which skipped short
+        // roots like `ES` (2 letters) and latched onto the next alpha run — usually `full`
+        // — so 2-letter-ticker files displayed as "FULL". The new implementation takes the
+        // first underscore-separated segment as the canonical ticker, treats hyphenated
+        // crypto pairs (`BTC-EUR`) specially, and skips FirstRate meta-words if a mis-split
+        // ever produces one as segment 0.
+        function cleanPairName(rawName) {
+            if (!rawName) return 'Unknown';
+            // Strip path and extension, then common prefixes the pipeline may add.
+            let name = rawName.replace(/^.*[\/\\]/, '').replace(/\.csv$/i, '');
+            name = name.replace(/^\d{8}_\d{6}_/, '');                          // 20260217_182920_
+            name = name.replace(/^b\d{2}_\d{4}_firstrate_/, '');               // b01_0003_firstrate_
+            name = name.replace(/^firstrate_/, '');                            // firstrate_
+
+            const CURRENCIES = ['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','CNY','BTC','ETH','XAU','XAG'];
+            const META = new Set([
+                'FULL','DAY','WEEK','MONTH','YEAR','HOUR','MIN',
+                'ADJ','UNADJ','CONTIN','CONTINUOUS','SPLIT','DIV','RATIO','ABSOLUTE',
+                '1MIN','5MIN','15MIN','30MIN','1HOUR','1DAY','1WEEK','1MONTH','1H','4H','1D','1W','1MO'
+            ]);
+
+            const parts = name.split('_').filter(Boolean);
+            if (!parts.length) return (rawName || 'Unknown').toUpperCase();
+
+            // Pick the first non-meta, non-numeric segment as the ticker candidate.
+            let seg = parts.find(p => {
+                const u = p.toUpperCase();
+                return !META.has(u) && !/^\d+$/.test(p);
+            }) || parts[0];
+
+            // Hyphenated crypto pair like BTC-EUR → BTC/EUR
+            if (/^[A-Za-z]{2,5}-[A-Za-z]{2,5}$/.test(seg)) {
+                const halves = seg.toUpperCase().split('-');
+                return halves[0] + '/' + halves[1];
+            }
+
+            const segU = seg.toUpperCase();
+
+            // Six-letter FX pair like EURUSD → EUR/USD (only when the halves are real currencies)
+            if (/^[A-Z]{6}$/.test(segU)) {
+                const base = segU.substring(0, 3);
+                const quote = segU.substring(3, 6);
+                if (CURRENCIES.includes(base) || CURRENCIES.includes(quote)) {
+                    return base + '/' + quote;
+                }
+            }
+
+            // Otherwise return the segment verbatim (strips hyphens for clean display of
+            // futures contract codes, tickers, crypto base symbols, etc.).
+            return segU;
+        }
+
+        function formatRowCount(count) {
+            if (!count) return '';
+            if (count >= 1000000) return (count / 1000000).toFixed(1) + 'M';
+            if (count >= 1000) return (count / 1000).toFixed(0) + 'K';
+            return count.toString();
+        }
+
+        // Classify a single file into Futures / Crypto / Forex / Stocks for grouping
+        // in the dropdown. Mirrors detectAssetClassFromFiles() but per-file, and adds
+        // a Stocks fallback so AAPL-style tickers don't silently fall into Forex.
+        function classifyFile(file) {
+            const FUTURES = new Set(['ES','NQ','YM','RTY','MES','MNQ','M2K','CL','GC','SI','NG','ZB','ZN','MCL','MGC','MSI','MNG','HG','PL','PA','ZC','ZS','ZW','ZL','ZM','6E','6B','6J','6A','6C','6S','6N']);
+            const CRYPTO = new Set(['BTC','ETH','SOL','XRP','ADA','DOGE','BNB','LTC','AVAX','ATOM','DOT','LINK','MATIC','UNI','BCH','ETC','FIL','NEAR','ALGO','XLM','TRX','SHIB','APT','ARB','OP']);
+            const CURRENCIES = new Set(['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','CNY','XAU','XAG']);
+
+            const raw = cleanPairName(file.original_name || file.name || file.filename || '');
+            const token = String(raw || '').replace('/', '').toUpperCase();
+            if (!token) return 'Other';
+
+            if (FUTURES.has(token)) return 'Futures';
+
+            // Pair-like tokens: treat each half independently
+            if (token.length >= 6) {
+                const base = token.slice(0, 3);
+                const quote = token.slice(3, 6);
+                if (CRYPTO.has(base) || CRYPTO.has(quote)) return 'Crypto';
+                if (CURRENCIES.has(base) && CURRENCIES.has(quote)) return 'Forex';
+            }
+
+            // Single-token tickers
+            if (CRYPTO.has(token)) return 'Crypto';
+            if (CURRENCIES.has(token)) return 'Forex';
+
+            // 1–5 letter alpha-only symbols that aren't currencies → assume stock ticker
+            if (/^[A-Z]{1,5}$/.test(token)) return 'Stocks';
+
+            return 'Other';
+        }
+
+        function findCachedFileById(fileId) {
+            return availableFilesCache.find(function (f) { return sameFileId(f.id, fileId); });
+        }
+
+        /** While the user has ≥1 symbol selected, all additions must match this asset group. */
+        function selectionLockedGroup() {
+            if (!selectedFilesArray.length) return null;
+            const first = findCachedFileById(selectedFilesArray[0].id);
+            if (!first) return null;
+            return classifyFile(first);
+        }
+
+        function updateFileListUI() {
+            const fileList = document.getElementById('fileList');
+            if (!fileList) return;
+            if (availableFilesCache.length === 0) return;
+
+            const pairCounts = {};
+            availableFilesCache.forEach(function (file) {
+                const raw = file.original_name || file.name || file.filename || '';
+                const pair = cleanPairName(raw);
+                pairCounts[pair] = (pairCounts[pair] || 0) + 1;
+            });
+
+            const lockedGroup = selectionLockedGroup();
+            const visible = getFilteredDatasetFiles();
+
+            if (assetFilterTab === 'recent' && visible.length === 0) {
+                fileList.innerHTML =
+                    '<div style="color:#64748b;padding:18px;text-align:center;font-size:12px;line-height:1.5;">No recently used instruments yet.<br/><span style="opacity:0.85;">Choose datasets under <strong>All</strong> — recent picks appear here.</span></div>';
+                return;
+            }
+
+            function renderRow(file) {
+                const isSelected = selectedFilesArray.some(function (f) {
+                    return sameFileId(f.id, file.id);
+                });
+                const fileGroup = classifyFile(file);
+                const crossLocked = Boolean(lockedGroup && !isSelected && fileGroup !== lockedGroup);
+                const rawName = file.original_name || file.name || file.filename || file.symbol || 'File ' + file.id;
+                const pairName = cleanPairName(rawName);
+                const rows = file.row_count ? formatRowCount(file.row_count) : '';
+                const hasDupes = pairCounts[pairName] > 1;
+                const displayName = hasDupes && rows ? pairName + ' (' + rows + ')' : pairName;
+                const safeName = displayName.replace(/'/g, "\\'");
+                const labelCls =
+                    'bt-file-dropdown-label' +
+                    (isSelected ? ' bt-file-row--selected' : '') +
+                    (crossLocked ? ' bt-file-row--locked' : '');
+                const lockedTitle = crossLocked
+                    ? ' title="Only one asset group per session — clear selection to switch (e.g. Futures vs Forex)."'
+                    : '';
+                const desc = describeInstrument(file);
+                const primaryLine =
+                    '<span class="bt-asset-symbol">' +
+                    escapeHtml(pairName) +
+                    '</span>' +
+                    (desc
+                        ? '<span class="bt-asset-sep"> - </span><span class="bt-asset-desc">' +
+                          escapeHtml(desc) +
+                          '</span>'
+                        : '');
+                const hint = fileMetaHints[file.id];
+                var metaRight = '';
+                if (hint && hint.start_ts != null) {
+                    metaRight = '(from ' + formatHistoryDate(hint.start_ts) + ')';
+                } else if (rows) {
+                    metaRight = rows + ' bars';
+                }
+                return (
+                    '<label class="' +
+                    labelCls +
+                    ' bt-asset-row-label"' +
+                    lockedTitle +
+                    '>' +
+                    '<input type="checkbox" class="bt-file-checkbox"' +
+                    (isSelected ? ' checked' : '') +
+                    (crossLocked ? ' disabled' : '') +
+                    ' onchange="toggleFileSelection(\'' +
+                    file.id +
+                    "', '" +
+                    safeName +
+                    "')\">" +
+                    '<div class="bt-asset-row-wrap">' +
+                    '<div class="bt-asset-row-main">' +
+                    '<div class="bt-asset-row-line">' +
+                    primaryLine +
+                    '</div>' +
+                    '</div>' +
+                    '<span class="bt-asset-row-meta">' +
+                    escapeHtml(metaRight) +
+                    '</span>' +
+                    '</div></label>'
+                );
+            }
+
+            fileList.innerHTML =
+                visible.length > 0
+                    ? visible.map(renderRow).join('')
+                    : '<div style="color:#64748b;padding:16px;text-align:center;font-size:12px;">No matching instruments.</div>';
+        }
+        
+        // Load available files on page load
+        async function loadAvailableFiles() {
+            const fileList = document.getElementById('fileList');
+            
+            try {
+                console.log('🔄 Fetching files from /api/files...');
+                
+                // Show loading state
+                fileList.innerHTML = '<div style="color: #64748b; padding: 12px; text-align: center;">Loading files...</div>';
+                
+                const response = await fetch('/api/files');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('📁 API Response:', data);
+                
+                // Handle multiple response formats
+                let files = [];
+                if (Array.isArray(data)) {
+                    files = data;
+                } else if (data.files && Array.isArray(data.files)) {
+                    files = data.files;
+                } else if (typeof data === 'object') {
+                    files = Object.values(data).find(val => Array.isArray(val)) || [];
+                }
+                
+                // Add id to each file if missing
+                files = files.map((file, idx) => ({
+                    ...file,
+                    id: file.id || file.filename || file.name || `file_${idx}`
+                }));
+                
+                console.log('📁 Number of files:', files.length);
+                
+                if (!files || files.length === 0) {
+                    fileList.innerHTML = '<div style="color: #64748b; padding: 12px; text-align: center;">No datasets available — contact your administrator.</div>';
+                    return;
+                }
+                
+                // Sort files by name
+                files.sort((a, b) => {
+                    const nameA = (a.original_name || a.name || a.filename || '').toLowerCase();
+                    const nameB = (b.original_name || b.name || b.filename || '').toLowerCase();
+                    return nameA.localeCompare(nameB);
+                });
+                
+                availableFilesCache = files;
+                fileMetaHints = {};
+                metaRequestedIds.clear();
+                updateFileListUI();
+                
+                console.log(`✅ Successfully loaded ${files.length} files`);
+            } catch (error) {
+                console.error('❌ Error loading files:', error);
+                fileList.innerHTML = '<div style="color: #ef4444; padding: 12px; text-align: center;">Error loading files - Click refresh</div>';
+            }
+        }
+
+        /** Default testing window: one calendar month ending at min(now, latest bar in file). */
+        var DEFAULT_BACKTEST_PERIOD_MONTHS = 1;
+
+        /**
+         * Sets min/max from file bounds and defaults the chosen window to the most recent
+         * DEFAULT_BACKTEST_PERIOD_MONTHS months ending at min(now, latest in file).
+         * Chart loads candles only between these dates until the user widens the range.
+         */
+        function applyDefaultTestingPeriodBounds(firstDate, lastDate) {
+            var startDateInput = document.getElementById('startDate');
+            var endDateInput = document.getElementById('endDate');
+            if (!startDateInput || !endDateInput) return;
+
+            var firstMs = firstDate.getTime();
+            var lastMs = lastDate.getTime();
+            var wallNow = Date.now();
+            var endMs = Math.min(wallNow, lastMs);
+            var end = new Date(endMs);
+
+            var start = new Date(endMs);
+            start.setMonth(start.getMonth() - DEFAULT_BACKTEST_PERIOD_MONTHS);
+
+            if (start.getTime() < firstMs) {
+                start = new Date(firstMs);
+            }
+            if (start.getTime() >= endMs) {
+                start = new Date(Math.max(firstMs, endMs - 86400000));
+            }
+
+            var minStr = firstDate.toISOString().slice(0, 16);
+            var maxStr = lastDate.toISOString().slice(0, 16);
+            startDateInput.min = minStr;
+            startDateInput.max = maxStr;
+            endDateInput.min = minStr;
+            endDateInput.max = maxStr;
+
+            startDateInput.value = start.toISOString().slice(0, 16);
+            endDateInput.value = end.toISOString().slice(0, 16);
+
+            var hintEl = document.getElementById('testingPeriodHint');
+            if (hintEl) {
+                hintEl.textContent =
+                    'Available data: ' +
+                    firstDate.toLocaleDateString() +
+                    ' — ' +
+                    lastDate.toLocaleDateString() +
+                    '. Default: last month (to latest / today), not the full file — widen dates to pull more history.';
+            }
+        }
+
+        // Load date range from selected file
+        async function loadDateRangeFromFile(fileId) {
+            if (!fileId) {
+                console.log('⚠️ No fileId provided');
+                return;
+            }
+            
+            try {
+                console.log(`📅 Loading date range from file ${fileId}...`);
+
+                // Preferred path: use metadata (binary-derived range) to avoid relying on
+                // potentially stale CSV row_count values when locating the last row.
+                try {
+                    const metaResponse = await fetch(`/api/file/${fileId}/meta`);
+                    if (metaResponse.ok) {
+                        const meta = await metaResponse.json();
+                        if (meta.start_ts != null && meta.end_ts != null) {
+                            const metaStartTs = normalizeEpochMs(meta.start_ts);
+                            const metaEndTs = normalizeEpochMs(meta.end_ts);
+
+                            if (metaStartTs != null && metaEndTs != null && metaEndTs >= metaStartTs) {
+                                const firstDate = new Date(metaStartTs);
+                                const lastDate = new Date(metaEndTs);
+
+                                applyDefaultTestingPeriodBounds(firstDate, lastDate);
+
+                                console.log(`✅ Date range (meta): ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
+                                return;
+                            }
+                        }
+                    }
+                } catch (metaError) {
+                    console.warn('⚠️ Meta range lookup failed, falling back to CSV row scan:', metaError);
+                }
+                
+                // Fetch file data (first and last few rows to get date range)
+                console.log(`🔄 Fetching from /api/file/${fileId}?offset=0&limit=1`);
+                const response = await fetch(`/api/file/${fileId}?offset=0&limit=1`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const responseData = await response.json();
+                console.log('📊 API Response:', responseData);
+                
+                // API returns {data: "csv string"}, need to parse it
+                if (!responseData.data) {
+                    console.warn('⚠️ No data in response');
+                    alert('No data found in this file');
+                    return;
+                }
+                
+                // Parse CSV string into rows
+                const lines = responseData.data.trim().split('\n');
+                console.log(`📊 Got ${lines.length} lines`);
+                
+                if (lines.length < 2) {
+                    console.warn('⚠️ Not enough data');
+                    alert('File contains no data rows');
+                    return;
+                }
+                
+                // First line is header (strip BOM so "timestamp" matches Binance-exported CSVs)
+                const header = lines[0].split(',').map(function (h) { return h.replace(/^\uFEFF/g, '').trim(); });
+                console.log('📊 CSV Headers:', header);
+                
+                // Second line is first data row
+                const firstRowValues = lines[1].split(',');
+                console.log('📊 First row values:', firstRowValues);
+                
+                // Create object from header and values
+                const firstRow = {};
+                header.forEach((key, index) => {
+                    firstRow[key] = firstRowValues[index];
+                });
+                console.log('📊 First row object:', firstRow);
+                
+                let firstTimestamp = null;
+                
+                // Strategy 1: Numeric epoch ms (Binance merged CSV uses "timestamp")
+                if (firstRow.timestamp !== undefined && firstRow.timestamp !== '' && /^\d+$/.test(String(firstRow.timestamp).trim())) {
+                    firstTimestamp = parseInt(String(firstRow.timestamp).trim(), 10);
+                } else if (firstRow.t) {
+                    firstTimestamp = firstRow.t;
+                } else if (firstRow.time) {
+                    firstTimestamp = firstRow.time;
+                } else if (firstRow.timestamp) {
+                    firstTimestamp = firstRow.timestamp;
+                }
+                // Strategy 2: Try to find date + time fields and combine them
+                else if (firstRow['<DTYYYYMMDD>'] && firstRow['<TIME>']) {
+                    // Format: <DTYYYYMMDD>=20240101, <TIME>=090000
+                    const dateStr = String(firstRow['<DTYYYYMMDD>']);
+                    const timeStr = String(firstRow['<TIME>']).padStart(6, '0');
+                    const year = dateStr.substring(0, 4);
+                    const month = dateStr.substring(4, 6);
+                    const day = dateStr.substring(6, 8);
+                    const hour = timeStr.substring(0, 2);
+                    const minute = timeStr.substring(2, 4);
+                    const second = timeStr.substring(4, 6);
+                    firstTimestamp = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`).getTime();
+                }
+                // Strategy 3: Search for any field with date/time in the name
+                else {
+                    const keys = Object.keys(firstRow);
+                    for (let key of keys) {
+                        if (key.toLowerCase().includes('date') || key.toLowerCase().includes('time')) {
+                            const value = firstRow[key];
+                            const timestamp = parseFlexibleDate(value);
+                            if (timestamp) {
+                                firstTimestamp = timestamp;
+                                console.log(`✅ Found date in field "${key}": ${value}`);
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (!firstTimestamp) {
+                    console.error('❌ Cannot find date/time field in data:', firstRow);
+                    alert('Cannot detect date format. Please contact support.');
+                    return;
+                }
+                
+                // Convert to number if it's a string epoch timestamp
+                if (typeof firstTimestamp === 'string' && /^\d+$/.test(firstTimestamp)) {
+                    firstTimestamp = parseInt(firstTimestamp, 10);
+                }
+                
+                const normFirstMs = normalizeEpochMs(firstTimestamp);
+                const firstDate = new Date(normFirstMs != null ? normFirstMs : firstTimestamp);
+                if (isNaN(firstDate.getTime())) {
+                    console.error('❌ Invalid first row timestamp');
+                    alert('Cannot read valid dates from this dataset file.');
+                    return;
+                }
+                console.log('📅 First date detected:', firstDate.toLocaleString());
+                
+                // Use reported total row count to get the last row (no hardcoded fallback).
+                const totalRows = Number(responseData.total);
+                if (!Number.isFinite(totalRows) || totalRows < 1) {
+                    console.warn('⚠️ Missing/invalid total row count; using first row timestamp for both bounds');
+                }
+                const lastOffset = Math.max(0, (Number.isFinite(totalRows) && totalRows > 0 ? totalRows : 1) - 1);
+                console.log(`📊 File has ${totalRows} rows, fetching row at offset ${lastOffset}`);
+                
+                // Fetch last row using actual row count
+                const response2 = await fetch(`/api/file/${fileId}?offset=${lastOffset}&limit=1`);
+                const lastResponseData = await response2.json();
+                
+                let lastDate = firstDate;
+                if (lastResponseData.data) {
+                    const lastLines = lastResponseData.data.trim().split('\n');
+                    if (lastLines.length >= 2) {
+                        // Get last data row (skip header)
+                        const lastRowValues = lastLines[lastLines.length - 1].split(',');
+                        const lastRow = {};
+                        header.forEach((key, index) => {
+                            lastRow[key] = lastRowValues[index];
+                        });
+                        console.log('📊 Last row object:', lastRow);
+                        
+                        let lastTimestamp = null;
+                        
+                        // Use same detection logic as first date
+                        if (lastRow.timestamp !== undefined && lastRow.timestamp !== '' && /^\d+$/.test(String(lastRow.timestamp).trim())) {
+                            lastTimestamp = parseInt(String(lastRow.timestamp).trim(), 10);
+                        } else if (lastRow.t) {
+                            lastTimestamp = lastRow.t;
+                        } else if (lastRow.time) {
+                            lastTimestamp = lastRow.time;
+                        } else if (lastRow.timestamp) {
+                            lastTimestamp = lastRow.timestamp;
+                        } else if (lastRow['<DTYYYYMMDD>'] && lastRow['<TIME>']) {
+                            const dateStr = String(lastRow['<DTYYYYMMDD>']);
+                            const timeStr = String(lastRow['<TIME>']).padStart(6, '0');
+                            const year = dateStr.substring(0, 4);
+                            const month = dateStr.substring(4, 6);
+                            const day = dateStr.substring(6, 8);
+                            const hour = timeStr.substring(0, 2);
+                            const minute = timeStr.substring(2, 4);
+                            const second = timeStr.substring(4, 6);
+                            lastTimestamp = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`).getTime();
+                        } else {
+                            const keys = Object.keys(lastRow);
+                            for (let key of keys) {
+                                if (key.toLowerCase().includes('date') || key.toLowerCase().includes('time')) {
+                                    const value = lastRow[key];
+                                    const timestamp = parseFlexibleDate(value);
+                                    if (timestamp) {
+                                        lastTimestamp = timestamp;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (lastTimestamp) {
+                            // Convert to number if it's a string epoch timestamp
+                            if (typeof lastTimestamp === 'string' && /^\d+$/.test(lastTimestamp)) {
+                                lastTimestamp = parseInt(lastTimestamp, 10);
+                            }
+                            const normLastMs = normalizeEpochMs(lastTimestamp);
+                            lastDate = new Date(normLastMs != null ? normLastMs : lastTimestamp);
+                            console.log('📅 Last date detected:', lastDate.toLocaleString());
+                        }
+                    }
+                }
+                
+                applyDefaultTestingPeriodBounds(firstDate, lastDate);
+
+                console.log(`✅ Date range: ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
+                
+            } catch (error) {
+                console.error('❌ Error loading date range:', error);
+            }
+        }
+
+
+        // Poll binary conversion status until all timeframes are ready
+        async function pollBinaryConversion(fileId, statusEl) {
+            const allTFs = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'];
+            let attempts = 0;
+            const maxAttempts = 120; // 2 minutes max
+
+            const poll = async () => {
+                if (attempts++ > maxAttempts) {
+                    statusEl.innerHTML = `<span style="color:#f59e0b">⚠ Conversion taking long — will complete in background</span>`;
+                    return;
+                }
+                try {
+                    const res = await fetch(`/api/file/${fileId}/meta`);
+                    if (!res.ok) return;
+                    const meta = await res.json();
+                    const tfs = meta.timeframes || {};
+                    
+                    const ready = allTFs.filter(tf => tfs[tf] && tfs[tf].status === 'ready').length;
+                    const total = allTFs.length;
+                    const pct = Math.round((ready / total) * 100);
+                    
+                    if (ready === total) {
+                        const rowCount = tfs['1m'] ? tfs['1m'].row_count : '?';
+                        statusEl.innerHTML = `<span style="color:#10b981">✓ Ready — ${typeof rowCount === 'number' ? rowCount.toLocaleString() : rowCount} candles, all ${total} timeframes converted to binary</span>`;
+                        setTimeout(() => { statusEl.innerHTML = ''; }, 8000);
+                        return;
+                    }
+                    
+                    // Show progress bar
+                    const processing = allTFs.filter(tf => tfs[tf] && tfs[tf].status === 'processing');
+                    const currentTF = processing.length > 0 ? processing[0] : '...';
+                    statusEl.innerHTML = `
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <div style="flex:1;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;min-width:120px;">
+                                <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,#3b82f6,#8b5cf6);border-radius:3px;transition:width 0.3s;"></div>
+                            </div>
+                            <span style="color:#a78bfa;font-size:12px;white-space:nowrap;">${ready}/${total} TFs — converting ${currentTF}</span>
+                        </div>`;
+                    
+                    setTimeout(poll, 1000);
+                } catch (e) {
+                    setTimeout(poll, 2000);
+                }
+            };
+            
+            setTimeout(poll, 1500); // First poll after 1.5s
+        }
+
+        // Check server status
+        async function checkServerStatus() {
+            const statusEl = document.getElementById('serverStatus');
+            try {
+                const response = await fetch('/api/files');
+                if (response.ok) {
+                    statusEl.textContent = '✓ Connected';
+                    statusEl.style.color = '#10b981';
+                    return true;
+                } else {
+                    throw new Error('Server error');
+                }
+            } catch (error) {
+                statusEl.textContent = '✗ Not connected (Start server first!)';
+                statusEl.style.color = '#ef4444';
+                console.error('❌ Server not reachable:', error);
+                return false;
+            }
+        }
+
+        // Load files when page loads
+        window.addEventListener('DOMContentLoaded', async () => {
+            console.log('🚀 Page loaded, initializing...');
+            
+            // Try to load files immediately
+            try {
+                await loadAvailableFiles();
+                console.log('✅ Initial file load successful');
+            } catch (error) {
+                console.error('❌ Initial file load failed:', error);
+                
+                // Check server status
+                const serverOk = await checkServerStatus();
+                if (!serverOk) {
+                    alert('⚠️ Server not running!\n\nPlease start the server first:\npython3 api_server.py');
+                } else {
+                    // Retry loading files
+                    console.log('🔄 Retrying file load...');
+                    setTimeout(async () => {
+                        await loadAvailableFiles();
+                    }, 1000);
+                }
+            }
+        });
+
+        // Balance preset buttons
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                document.getElementById('startBalance').value = this.dataset.value;
+            });
+        });
+
+        // Default Risk Type Update
+        const defaultRiskTypeSelect = document.getElementById('defaultRiskType');
+        const defaultRiskLabel = document.getElementById('defaultRiskLabel');
+        const defaultRiskInput = document.getElementById('defaultRisk');
+        const defaultRiskHelper = document.getElementById('defaultRiskHelper');
+
+        defaultRiskTypeSelect.addEventListener('change', function() {
+            const type = this.value;
+            
+            switch(type) {
+                case 'percent':
+                    defaultRiskLabel.textContent = 'Default Risk Per Trade (%)';
+                    defaultRiskInput.value = '1';
+                    defaultRiskInput.placeholder = '1';
+                    defaultRiskInput.step = '0.1';
+                    defaultRiskInput.min = '0.1';
+                    defaultRiskHelper.textContent = 'Percentage of account balance to risk';
+                    break;
+                case 'dollar':
+                    defaultRiskLabel.textContent = 'Default Risk Per Trade ($)';
+                    defaultRiskInput.value = '100';
+                    defaultRiskInput.placeholder = '100';
+                    defaultRiskInput.step = '10';
+                    defaultRiskInput.min = '1';
+                    defaultRiskHelper.textContent = 'Fixed dollar amount to risk per trade';
+                    break;
+                case 'lot':
+                    defaultRiskLabel.textContent = 'Default Risk Per Trade (Lot)';
+                    defaultRiskInput.value = '0.01';
+                    defaultRiskInput.placeholder = '0.01';
+                    defaultRiskInput.step = '0.01';
+                    defaultRiskInput.min = '0.01';
+                    defaultRiskHelper.textContent = 'Fixed lot size per trade';
+                    break;
+            }
+        });
+
+
+        // Form submission: do NOT rely only on `window` "load". If the document is already complete
+        // when this script runs (iframes, bfcache, fast cache), "load" has already fired and a load
+        // listener never runs — so no submit handler, no preventDefault, no redirect.
+        function attachBacktestingFormSubmit() {
+            if (window.__backtestingFormSubmitAttached) return;
+            window.__backtestingFormSubmitAttached = true;
+
+            console.log('📄 Attaching backtesting form submit handler (readyState=' + document.readyState + ')');
+
+            const backtestingForm = document.getElementById('backtestingForm');
+            console.log('🔍 Form element found:', backtestingForm);
+
+            if (!backtestingForm) {
+                console.error('❌ CRITICAL: Form element not found!');
+                alert('ERROR: Form not found! Please refresh the page.');
+                return;
+            }
+
+            backtestingForm.addEventListener('submit', async function(e) {
+                console.log('✅ Form submit event fired!');
+                e.preventDefault();
+                
+                // Get selected files from multi-select
+                if (selectedFilesArray.length === 0) {
+                    alert('Please select at least one data file');
+                    return;
+                }
+                
+                // Use first file as primary, store all files
+                const primaryFile = selectedFilesArray[0];
+                const selectedFileId = primaryFile.id;
+                const selectedFileName = primaryFile.name;
+                const instrumentRows = collectInstrumentConfigs();
+                if (instrumentRows.length > 10) {
+                    alert('Maximum 10 instruments per session.');
+                    return;
+                }
+                if (instrumentRows.some(row => !row.fileId)) {
+                    alert('Missing data loaded for one or more instruments. Please refresh selected datasets.');
+                    return;
+                }
+                if (instrumentRows.some(row => !Number.isFinite(row.pip_size) || row.pip_size <= 0)) {
+                    alert('Invalid pip size detected. Please use a positive number (e.g. 0.0001 or 0,0001).');
+                    return;
+                }
+                if (instrumentRows.some(row => !Number.isFinite(row.pip_value_per_lot) || row.pip_value_per_lot <= 0)) {
+                    alert('Invalid pip value detected. Please use a positive number.');
+                    return;
+                }
+
+                // Validate at least one market type is selected
+                syncAutoAssetClass();
+
+                // Get selected protection preset
+                const selectedPresetName = document.getElementById('protectionPresetSelect')?.value;
+                let protectionPreset = null;
+                if (selectedPresetName) {
+                    const presets = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
+                    protectionPreset = presets.find(p => p.name === selectedPresetName);
+                }
+
+                var playbookSel = document.getElementById('playbook');
+                var rawPlaybook = playbookSel ? playbookSel.value : '';
+                var playbookOpt = playbookSel && playbookSel.selectedOptions && playbookSel.selectedOptions[0];
+                var playbook_display = 'General';
+                var strategy_id = null;
+                if (!rawPlaybook) {
+                    playbook_display = 'General';
+                } else if (rawPlaybook.indexOf('strategy:') === 0) {
+                    strategy_id = parseInt(rawPlaybook.split(':')[1], 10);
+                    playbook_display = (playbookOpt && playbookOpt.getAttribute('data-label')) || (playbookOpt && playbookOpt.textContent && playbookOpt.textContent.trim()) || 'Strategy';
+                } else {
+                    playbook_display = (playbookOpt && playbookOpt.getAttribute('data-label')) || rawPlaybook;
+                }
+
+                var strategy_variables = [];
+                if (strategy_id && window.__strategiesLabStrategies && window.__strategiesLabStrategies.length) {
+                    var stFound = window.__strategiesLabStrategies.find(function (x) { return x.id === strategy_id; });
+                    if (stFound && stFound.strategy_definition && Array.isArray(stFound.strategy_definition.variables)) {
+                        strategy_variables = stFound.strategy_definition.variables;
+                    }
+                }
+
+                const formData = {
+                    type: 'standard', // Distinguish from prop firm mode
+                    sessionName: document.getElementById('sessionName').value,
+                    description: document.getElementById('description').value,
+                    playbook: rawPlaybook,
+                    playbook_display: playbook_display,
+                    strategy_id: strategy_id,
+                    strategy_variables: strategy_variables,
+                    fileId: selectedFileId,
+                    fileName: selectedFileName,
+                    // Store all selected files for symbol switching
+                    files: selectedFilesArray,
+                    instruments: instrumentRows.reduce((acc, row) => {
+                        acc[row.ticker] = row;
+                        return acc;
+                    }, {}),
+                    symbols: instrumentRows.map(row => ({ symbolName: row.ticker, fileId: row.fileId })),
+                    // Same as prop firm: used by /api/sessions list (Session page SYMBOL column)
+                    symbol:
+                        instrumentRows.length === 1
+                            ? instrumentRows[0].ticker
+                            : instrumentRows.length > 1
+                              ? instrumentRows.length + " symbols"
+                              : null,
+                    activeFileIndex: 0,
+                    startDate: document.getElementById('startDate').value,
+                    endDate: document.getElementById('endDate').value,
+                    startBalance: document.getElementById('startBalance').value,
+                    account_currency: document.getElementById('accountCurrency').value,
+                    leverage: document.getElementById('accountLeverage').value,
+                    asset_class: document.getElementById('assetClass').value,
+                    margin_call_level: parseFloat(document.getElementById('marginCallLevel').value || 100),
+                    stop_out_level: parseFloat(document.getElementById('stopOutLevel').value || 50),
+                    max_risk_per_trade_pct: parseFloat(document.getElementById('maxRiskPerTradePct').value || 0) || null,
+                    
+                    // Trading Settings
+                    marketType: [detectAssetClassFromFiles(selectedFilesArray).toLowerCase()],
+                    defaultRiskType: document.getElementById('defaultRiskType').value,
+                    defaultRisk: parseFloat(document.getElementById('defaultRisk').value) || 1,
+                    allowBackNavigation: document.getElementById('allowBackNavigation').checked,
+                    
+                    // Protection Preset
+                    protectionPreset: protectionPreset
+                };
+
+                let sessionId = null;
+                try {
+                    const res = await fetch('/api/sessions', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({
+                            name: String(formData.sessionName || '').trim() || 'Backtest Session',
+                            session_type: 'personal',
+                            config: formData
+                        })
+                    });
+                    if (!res.ok) {
+                        const body = await res.json().catch(() => null);
+                        throw new Error((body && body.detail) ? String(body.detail) : 'Failed to create session');
+                    }
+                    const payload = await res.json();
+                    sessionId = payload && payload.session && payload.session.id ? payload.session.id : null;
+                } catch (err) {
+                    alert('Failed to create session: ' + String(err && err.message ? err.message : err));
+                    return;
+                }
+
+                // Store session data locally for compatibility with existing UI
+                try {
+                    localStorage.setItem('backtestingSession', JSON.stringify(formData));
+                    if (sessionId) {
+                        localStorage.setItem('active_trading_session_id', String(sessionId));
+                    }
+                } catch (e) {}
+
+                // Save to session history
+                formData.created = new Date().toISOString();
+                const sessions = JSON.parse(localStorage.getItem('backtestingSessions') || '[]');
+                sessions.push(formData);
+                // Keep only last 20 sessions
+                if (sessions.length > 20) {
+                    sessions.shift();
+                }
+                localStorage.setItem('backtestingSessions', JSON.stringify(sessions));
+
+                // Chart URL: same origin as this frame, or parentOrigin from query when embedded (Sessions passes it).
+                var qs = new URLSearchParams();
+                qs.set('mode', 'backtest');
+                if (sessionId != null && sessionId !== '') {
+                    qs.set('sessionId', String(sessionId));
+                }
+                if (selectedFileId != null && selectedFileId !== '') {
+                    qs.set('fileId', String(selectedFileId));
+                }
+                function resolveParentOriginFromQuery() {
+                    try {
+                        var raw = new URLSearchParams(window.location.search).get('parentOrigin');
+                        if (!raw) return null;
+                        var dec = decodeURIComponent(raw);
+                        var u = new URL(dec);
+                        if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+                        return u.origin;
+                    } catch (e) {
+                        return null;
+                    }
+                }
+                var inIframe = window.self !== window.top;
+                var parentOriginFromQuery = resolveParentOriginFromQuery();
+                var chartOrigin = (inIframe && parentOriginFromQuery) ? parentOriginFromQuery : window.location.origin;
+                var absUrl = chartOrigin + '/chart/index.html?' + qs.toString();
+
+                function navigateToChartAfterCreate() {
+                    console.log('🚀 Redirecting to backtesting mode…', absUrl, 'inIframe=', inIframe);
+                    if (!inIframe) {
+                        window.location.replace(absUrl);
+                        return;
+                    }
+                    // 1) Tell parent (Sessions dashboard) to navigate — works cross-origin.
+                    try {
+                        window.parent.postMessage(
+                            { type: 'talaria-open-chart', url: absUrl },
+                            parentOriginFromQuery || '*'
+                        );
+                    } catch (err) {
+                        console.warn('[backtesting] postMessage failed', err);
+                    }
+                    // 2) Escape iframe: navigate top-level (often works when parent and chart share policy).
+                    try {
+                        var a = document.createElement('a');
+                        a.href = absUrl;
+                        a.target = '_top';
+                        a.rel = 'noopener noreferrer';
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                    } catch (err2) {
+                        console.warn('[backtesting] _top link failed', err2);
+                    }
+                    // 3) If still embedded after a tick, load chart in this frame so the user is not stuck.
+                    setTimeout(function () {
+                        try {
+                            if (window.self !== window.top) {
+                                window.location.replace(absUrl);
+                            }
+                        } catch (err3) {
+                            console.warn('[backtesting] iframe fallback navigation failed', err3);
+                        }
+                    }, 350);
+                }
+
+                navigateToChartAfterCreate();
+            });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', attachBacktestingFormSubmit);
+        } else {
+            attachBacktestingFormSubmit();
+        }
+
+        // Dates will be auto-populated when user selects a file
+
+        // ========== Template & Session Management ==========
+
+        // Modal functions
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        // Get current form data
+        function getCurrentFormData() {
+            return {
+                type: 'standard',
+                marketType: [detectAssetClassFromFiles(selectedFilesArray).toLowerCase()],
+                asset_class: document.getElementById('assetClass')?.value || 'Forex',
+                defaultRiskType: document.getElementById('defaultRiskType').value,
+                defaultRisk: parseFloat(document.getElementById('defaultRisk').value) || 1,
+                allowBackNavigation: document.getElementById('allowBackNavigation').checked
+            };
+        }
+
+        // Load form data
+        function loadFormData(data) {
+            if (!data) return;
+            
+            // Load all fields
+            document.getElementById('defaultRiskType').value = data.defaultRiskType || 'percent';
+            document.getElementById('defaultRisk').value = data.defaultRisk || 1;
+            document.getElementById('allowBackNavigation').checked = data.allowBackNavigation !== false;
+            if (document.getElementById('assetClass')) {
+                document.getElementById('assetClass').value = data.asset_class || document.getElementById('assetClass').value || 'Forex';
+            }
+            
+            // Trigger the risk type change to update labels
+            const riskEvent = new Event('change');
+            document.getElementById('defaultRiskType').dispatchEvent(riskEvent);
+        }
+
+        // Save Template
+        function saveTemplate() {
+            const name = document.getElementById('templateName').value.trim();
+            if (!name) {
+                alert('Please enter a template name');
+                return;
+            }
+
+            const template = {
+                name: name,
+                description: document.getElementById('templateDescription').value.trim(),
+                data: getCurrentFormData(),
+                created: new Date().toISOString()
+            };
+
+            const templates = JSON.parse(localStorage.getItem('backtestingTemplates') || '[]');
+            templates.push(template);
+            localStorage.setItem('backtestingTemplates', JSON.stringify(templates));
+
+            alert('✅ Template saved successfully!');
+            closeModal('saveTemplateModal');
+            document.getElementById('templateName').value = '';
+            document.getElementById('templateDescription').value = '';
+        }
+
+        // Load Templates
+        function loadTemplates() {
+            const templates = JSON.parse(localStorage.getItem('backtestingTemplates') || '[]');
+            const templatesList = document.getElementById('templatesList');
+
+            if (templates.length === 0) {
+                templatesList.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z"/>
+                        </svg>
+                        <p>No templates saved yet</p>
+                        <p style="font-size: 12px; margin-top: 8px;">Configure your settings and click "Save as Template"</p>
+                    </div>
+                `;
+                return;
+            }
+
+            templatesList.innerHTML = templates.map((template, index) => `
+                <div class="template-item" onclick="useTemplate(${index})">
+                    <div class="template-info">
+                        <div class="template-name">${template.name}</div>
+                        <div class="template-desc">${template.description || 'No description'} • ${new Date(template.created).toLocaleDateString()}</div>
+                    </div>
+                    <div class="template-actions">
+                        <button class="btn-icon delete" onclick="event.stopPropagation(); deleteTemplate(${index})" title="Delete">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Use Template
+        function useTemplate(index) {
+            const templates = JSON.parse(localStorage.getItem('backtestingTemplates') || '[]');
+            if (templates[index]) {
+                loadFormData(templates[index].data);
+                closeModal('templatesModal');
+                alert('✅ Template loaded successfully!');
+            }
+        }
+
+        // Delete Template
+        function deleteTemplate(index) {
+            if (!confirm('Are you sure you want to delete this template?')) return;
+
+            const templates = JSON.parse(localStorage.getItem('backtestingTemplates') || '[]');
+            templates.splice(index, 1);
+            localStorage.setItem('backtestingTemplates', JSON.stringify(templates));
+            loadTemplates();
+        }
+
+        // Load Recent Sessions
+        function loadRecentSessions() {
+            const sessions = JSON.parse(localStorage.getItem('backtestingSessions') || '[]');
+            const sessionsList = document.getElementById('sessionsList');
+
+            if (sessions.length === 0) {
+                sessionsList.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                        <p>No recent sessions</p>
+                        <p style="font-size: 12px; margin-top: 8px;">Your backtesting sessions will appear here</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Show last 10 sessions
+            const recentSessions = sessions.slice(-10).reverse();
+            sessionsList.innerHTML = recentSessions.map((session, index) => `
+                <div class="session-item" onclick="useSession(${sessions.length - 1 - index})">
+                    <div class="session-info">
+                        <div class="session-name">${session.sessionName}</div>
+                        <div class="session-desc">${session.fileName || 'Unknown file'} • ${(session.asset_class || session.marketType || 'Forex')} • ${new Date(session.created || Date.now()).toLocaleDateString()}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Use Recent Session
+        function useSession(index) {
+            const sessions = JSON.parse(localStorage.getItem('backtestingSessions') || '[]');
+            if (sessions[index]) {
+                loadFormData(sessions[index]);
+                // Also load session-specific data
+                document.getElementById('sessionName').value = sessions[index].sessionName + ' (Copy)';
+                document.getElementById('description').value = sessions[index].description || '';
+                closeModal('sessionsModal');
+                alert('✅ Session loaded successfully!');
+            }
+        }
+
+        // Button Event Listeners
+        document.getElementById('saveTemplateBtn').addEventListener('click', () => {
+            document.getElementById('saveTemplateModal').classList.add('active');
+        });
+
+        document.getElementById('loadTemplateBtn').addEventListener('click', () => {
+            loadTemplates();
+            document.getElementById('templatesModal').classList.add('active');
+        });
+
+        document.getElementById('recentSessionsBtn').addEventListener('click', () => {
+            loadRecentSessions();
+            document.getElementById('sessionsModal').classList.add('active');
+        });
+
+        // Close modals on overlay click
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    overlay.classList.remove('active');
+                }
+            });
+        });
+
+        // Note: Session history saving is already handled in the main submit handler above
+    </script>
+    <script>
+    (function () {
+        var PRESETS = [
+            { value: 'scalping', label: 'Scalping Strategy' },
+            { value: 'swing', label: 'Swing Trading' },
+            { value: 'breakout', label: 'Breakout Strategy' },
+            { value: 'momentum', label: 'Momentum Trading' },
+            { value: 'reversal', label: 'Reversal Strategy' }
+        ];
+        function rebuildPlaybookSelect(strategies) {
+            window.__strategiesLabStrategies = strategies || [];
+            var sel = document.getElementById('playbook');
+            if (!sel) return;
+            sel.innerHTML = '';
+            var o0 = document.createElement('option');
+            o0.value = '';
+            o0.textContent = 'Select playbook...';
+            sel.appendChild(o0);
+            var gUser = document.createElement('optgroup');
+            gUser.label = 'Your strategies (Strategies Lab)';
+            if (strategies && strategies.length) {
+                strategies.forEach(function (s) {
+                    var opt = document.createElement('option');
+                    opt.value = 'strategy:' + s.id;
+                    opt.setAttribute('data-label', s.name);
+                    opt.textContent = s.name;
+                    gUser.appendChild(opt);
+                });
+            } else {
+                var dis = document.createElement('option');
+                dis.disabled = true;
+                dis.textContent = 'No saved strategies — use Strategies Lab to create one';
+                gUser.appendChild(dis);
+            }
+            sel.appendChild(gUser);
+            var gPreset = document.createElement('optgroup');
+            gPreset.label = 'Quick labels';
+            PRESETS.forEach(function (p) {
+                var opt = document.createElement('option');
+                opt.value = p.value;
+                opt.setAttribute('data-label', p.label);
+                opt.textContent = p.label;
+                gPreset.appendChild(opt);
+            });
+            sel.appendChild(gPreset);
+        }
+        function loadPlaybookStrategies() {
+            var token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+            if (!token) {
+                rebuildPlaybookSelect([]);
+                return;
+            }
+            fetch('/journal/api/strategies', {
+                credentials: 'include',
+                headers: { 'Authorization': 'Bearer ' + token }
+            })
+                .then(function (res) {
+                    if (!res.ok) throw new Error('strategies');
+                    return res.json();
+                })
+                .then(function (data) {
+                    rebuildPlaybookSelect(data.strategies || []);
+                })
+                .catch(function () {
+                    rebuildPlaybookSelect([]);
+                });
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadPlaybookStrategies);
+        } else {
+            loadPlaybookStrategies();
+        }
+    })();
+    </script>
+</body>
+</html>
