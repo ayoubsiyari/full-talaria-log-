@@ -1211,8 +1211,9 @@ class FibArcsTool extends BaseDrawing {
         this.requiredPoints = 2;
         this.style.stroke = style.stroke || '#2962ff';
         this.style.strokeWidth = style.strokeWidth || 1;
-        if (this.style.showZones === undefined) this.style.showZones = true;
+        if (this.style.showZones === undefined) this.style.showZones = false;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
+        if (this.style.trendLineEnabled === undefined) this.style.trendLineEnabled = true;
         this.levels = style.levels || [
             { value: 0.236, enabled: true, color: '#f23645' },
             { value: 0.382, enabled: true, color: '#ff9800' },
@@ -1257,10 +1258,27 @@ class FibArcsTool extends BaseDrawing {
             return this.group;
         }
 
+        const trendOn = this.style.trendLineEnabled !== false;
+        if (trendOn) {
+            const tCol = this.style.trendLineColor || this.style.stroke || '#2962ff';
+            const twRaw = this.style.trendLineWidth != null ? parseInt(this.style.trendLineWidth, 10) : NaN;
+            const tW = Math.max(0.5, (!isNaN(twRaw) ? twRaw : (this.style.strokeWidth || 1)) * scaleFactor);
+            const tDash = (this.style.trendLineDasharray != null && `${this.style.trendLineDasharray}` !== '')
+                ? `${this.style.trendLineDasharray}` : '';
+            this.group.append('line')
+                .attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
+                .attr('stroke', tCol)
+                .attr('stroke-width', tW)
+                .attr('stroke-dasharray', tDash || 'none')
+                .attr('opacity', 0.85)
+                .style('pointer-events', 'none');
+        }
+
         // Like fib-circles but only half: arcs face the direction price came from
         const isDown = y2 >= y1;
         const sweep = isDown ? 0 : 1;
         const innerSweep = isDown ? 1 : 0;
+        const fullCircle = this.style.fullCircle === true;
 
         const showZones = this.style.showZones !== false;
         const zonesOpacity = (this.style.backgroundOpacity != null) ? this.style.backgroundOpacity : 0.12;
@@ -1301,8 +1319,15 @@ class FibArcsTool extends BaseDrawing {
                 if (prevR > 0) {
                     d = `M ${x1 - r} ${y1} A ${r} ${r} 0 0 ${sweep} ${x1 + r} ${y1} ` +
                         `L ${x1 + prevR} ${y1} A ${prevR} ${prevR} 0 0 ${innerSweep} ${x1 - prevR} ${y1} Z`;
+                    if (fullCircle) {
+                        d += ` M ${x1 - r} ${y1} A ${r} ${r} 0 0 ${innerSweep} ${x1 + r} ${y1} ` +
+                            `L ${x1 + prevR} ${y1} A ${prevR} ${prevR} 0 0 ${sweep} ${x1 - prevR} ${y1} Z`;
+                    }
                 } else {
                     d = `M ${x1 - r} ${y1} A ${r} ${r} 0 0 ${sweep} ${x1 + r} ${y1} L ${x1} ${y1} Z`;
+                    if (fullCircle) {
+                        d += ` M ${x1 - r} ${y1} A ${r} ${r} 0 0 ${innerSweep} ${x1 + r} ${y1} L ${x1} ${y1} Z`;
+                    }
                 }
 
                 this.group.append('path')
@@ -1332,10 +1357,14 @@ class FibArcsTool extends BaseDrawing {
             const scaledWidth = Math.max(0.5, (lineWidth || 1) * scaleFactor);
             const hitWidth = Math.max(10, scaledWidth * 6);
 
+            const arcHalf = `M ${x1 - r} ${y1} A ${r} ${r} 0 0 ${sweep} ${x1 + r} ${y1}`;
+            const arcHalfFlip = `M ${x1 + r} ${y1} A ${r} ${r} 0 0 ${innerSweep} ${x1 - r} ${y1}`;
+            const arcPath = fullCircle ? `${arcHalf} ${arcHalfFlip}` : arcHalf;
+
             // Hit area (solid, nearly invisible) so arcs are easy to click
             this.group.append('path')
                 .attr('class', 'fib-level-hit')
-                .attr('d', `M ${x1 - r} ${y1} A ${r} ${r} 0 0 ${sweep} ${x1 + r} ${y1}`)
+                .attr('d', arcPath)
                 .attr('stroke', 'rgba(255,255,255,0.001)')
                 .attr('stroke-width', hitWidth)
                 .attr('stroke-dasharray', '')
@@ -1345,7 +1374,7 @@ class FibArcsTool extends BaseDrawing {
                 .style('cursor', 'move');
 
             this.group.append('path')
-                .attr('d', `M ${x1 - r} ${y1} A ${r} ${r} 0 0 ${sweep} ${x1 + r} ${y1}`)
+                .attr('d', arcPath)
                 .attr('stroke', color)
                 .attr('stroke-width', scaledWidth)
                 .attr('stroke-dasharray', lineType || 'none')
