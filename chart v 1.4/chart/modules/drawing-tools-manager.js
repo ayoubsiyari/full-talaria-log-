@@ -3434,6 +3434,17 @@ class DrawingToolsManager {
                     if (this.chart) this.chart.render();
                     requestAnimationFrame(() => this._triggerAutoInlineEdit(drawing));
                 });
+            } else {
+                // Auto-select the drawing after placement so the user sees it highlighted
+                // and can immediately adjust style/position. Mirrors TradingView behavior.
+                // Use requestAnimationFrame so clearTool() runs first (sets pointer-events
+                // correctly) before selectDrawing re-enables SVG for the selected shape.
+                requestAnimationFrame(() => {
+                    if (this.drawings.includes(drawing)) {
+                        this.selectDrawing(drawing);
+                        if (this.chart) this.chart.render();
+                    }
+                });
             }
         }
         
