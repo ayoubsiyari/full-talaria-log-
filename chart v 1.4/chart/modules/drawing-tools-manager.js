@@ -3436,10 +3436,16 @@ class DrawingToolsManager {
                 });
             } else {
                 // Select the drawing synchronously so it is already selected when
-                // clearTool() runs below. clearTool checks selectedDrawings and keeps
-                // SVG pointer-events:"all", letting the user click empty space to
-                // deselect — the drawing stays visible, only handles disappear.
-                this.selectDrawing(drawing);
+                // clearTool() runs below. clearTool sees selectedDrawings.length > 0
+                // and keeps SVG pointer-events:"all" via _updateAxisZonePointerEvents,
+                // letting the user click empty space to deselect. The drawing stays
+                // visible — only handles and the floating toolbar disappear on deselect.
+                // Skip in keep-drawing-mode / persistent tools: user wants to keep drawing.
+                const persistentTools = ['brush', 'highlighter'];
+                const willKeepTool = this.keepDrawingMode || persistentTools.includes(this.currentTool);
+                if (!willKeepTool) {
+                    this.selectDrawing(drawing);
+                }
             }
         }
         
