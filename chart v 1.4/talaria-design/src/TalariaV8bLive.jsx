@@ -84,7 +84,8 @@ const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
   channel: new Set(["channel", "regressionCh", "flatChannel", "disjointCh", "pitchfork"]),
   brush2: new Set(["draw", "brush"]),
   fib: new Set(["fib", "fibExtension", "fibChannel", "fibTimeZone", "fibFan", "fibTime", "fibCircles", "fibSpiral", "fibArcs", "fibWedge", "gannBox", "gannSquare", "gannFan"]),
-  pattern: new Set(["elliott5", "elliottABC", "elliottTri", "elliottWXY", "elliottWXYXZ", "xabcd", "headShoulders", "abcdPattern", "triPattern", "threeDrives"]),
+  // Include Gann icons so v9SanitizeGroupSelected never strips them if a stale mapping still uses `pattern`.
+  pattern: new Set(["elliott5", "elliottABC", "elliottTri", "elliottWXY", "elliottWXYXZ", "xabcd", "headShoulders", "abcdPattern", "triPattern", "threeDrives", "gannBox", "gannSquare", "gannFan"]),
   measure: new Set(["shortPos", "longPos", "measure"]),
   text: new Set(["text", "note", "priceNote", "callout", "comment", "pin", "priceLabel", "signpost", "flag", "image", "emoji"]),
   crosshair: new Set(["crosshair", "cursorDot", "cursorArrow", "eraser"]),
@@ -3939,6 +3940,9 @@ const TalariaV8bLive = () => {
     return null;
   }, []);
 
+  const drawingTypeToPanelGroupRef = useRef(drawingTypeToPanelGroup);
+  drawingTypeToPanelGroupRef.current = drawingTypeToPanelGroup;
+
   const TL_LINE_SHAPE_GROUPS = useMemo(
     () => new Set(["trendline", "rect", "channel", "brush2", "fib", "pattern", "measure"]),
     [],
@@ -3948,7 +3952,7 @@ const TalariaV8bLive = () => {
   // `tool` is crosshair and tlSubTool used to fall through to Trend Line. Prefer the selected drawing's group.
   // Volume profile types map to group `brush` — normalize to `brush2` (V9 rail) for the floating bar.
   const tlBarDrawingGroupRaw =
-    tlBarSelected && tlBarSelectedType ? drawingTypeToPanelGroup(tlBarSelectedType) : null;
+    tlBarSelected && tlBarSelectedType ? drawingTypeToPanelGroupRef.current(tlBarSelectedType) : null;
   const tlBarDrawingGroup =
     tlBarDrawingGroupRaw === "brush" ? "brush2" : tlBarDrawingGroupRaw;
   const effectiveTlGroup =
@@ -5884,7 +5888,7 @@ const TalariaV8bLive = () => {
     const hook = (drawing, x, y) => {
       try {
         if (!drawing || !drawing.type) return false;
-        const group = drawingTypeToPanelGroup(drawing.type);
+        const group = drawingTypeToPanelGroupRef.current(drawing.type);
         if (!group) return false; // Let legacy panel handle text / volume / etc.
 
         // Drop stale close animation so reopening from the gear never plays PopOut first.
@@ -6152,7 +6156,7 @@ const TalariaV8bLive = () => {
           // deselects all drawings — the tool bridge must not run dm.setTool on the next pass
           // (see v9SelectionToolbarSyncRef). Crosshair keeps resolveLegacyTool() null.
           if (drawing && drawing.type && !editingDrawingRef.current) {
-            const g = drawingTypeToPanelGroup(drawing.type);
+            const g = drawingTypeToPanelGroupRef.current(drawing.type);
             if (g) {
               let icon = LEGACY_TYPE_TO_V9_ICON[drawing.type];
               if (!icon) {
