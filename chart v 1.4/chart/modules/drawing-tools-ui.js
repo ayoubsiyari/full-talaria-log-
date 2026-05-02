@@ -9489,6 +9489,25 @@ body.light-mode .template-save-dialog .dialog-title {
 
             }
 
+            // Fib Speed Resistance Arcs: same `enabled` shape as FibArcsTool (not retracement 0/1 with `visible`)
+            if (drawing.type === 'fib-arcs') {
+
+                return [
+                    { value: 0.236, label: '0.236', color: '#f23645', enabled: true },
+                    { value: 0.382, label: '0.382', color: '#ff9800', enabled: true },
+                    { value: 0.5, label: '0.5', color: '#ffeb3b', enabled: true },
+                    { value: 0.618, label: '0.618', color: '#4caf50', enabled: true },
+                    { value: 0.786, label: '0.786', color: '#00bcd4', enabled: true },
+                    { value: 1, label: '1', color: '#2962ff', enabled: true },
+                    { value: 1.618, label: '1.618', color: '#e91e63', enabled: true },
+                    { value: 2, label: '2', color: '#2962ff', enabled: true },
+                    { value: 2.618, label: '2.618', color: '#e91e63', enabled: true },
+                    { value: 3, label: '3', color: '#2962ff', enabled: true },
+                    { value: 4.236, label: '4.236', color: '#f23645', enabled: true },
+                ];
+
+            }
+
             // Default Fibonacci levels (retracement and generic)
 
             return [

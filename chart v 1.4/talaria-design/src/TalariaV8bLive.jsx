@@ -5849,6 +5849,20 @@ const TalariaV8bLive = () => {
               if (p.lineWidth) out.lineWidth = p.lineWidth;
               if (p.lineType) out.lineType = p.lineType;
             }
+            if (drawing.type === "fib-arcs") {
+              if (p.fibLevels) out.fibLevels = p.fibLevels;
+              if (p.fibLineWidth) out.fibLineWidth = p.fibLineWidth;
+              if (p.fibLineType) out.fibLineType = p.fibLineType;
+              if (p.fibBackground !== undefined) out.fibBackground = p.fibBackground;
+              if (p.fibBgOpacity !== undefined) out.fibBgOpacity = p.fibBgOpacity;
+              if (p.fibArcsTrendLine !== undefined) out.fibArcsTrendLine = p.fibArcsTrendLine;
+              if (p.fibArcsTrendType) out.fibArcsTrendType = p.fibArcsTrendType;
+              if (p.fibArcsTrendWidth) out.fibArcsTrendWidth = p.fibArcsTrendWidth;
+              if (p.fibArcsFullCircle !== undefined) out.fibArcsFullCircle = p.fibArcsFullCircle;
+              if (p.lineColor) out.lineColor = p.lineColor;
+              if (p.lineWidth) out.lineWidth = p.lineWidth;
+              if (p.lineType) out.lineType = p.lineType;
+            }
             return out;
           })(),
         }));
