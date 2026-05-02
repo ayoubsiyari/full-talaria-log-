@@ -3958,14 +3958,21 @@ const TalariaV8bLive = () => {
   // After finalizeDrawing, chart clears the tool (crosshair) but `toolbar.show` already ran; until then
   // `tool` is crosshair and tlSubTool used to fall through to Trend Line. Prefer the selected drawing's group.
   // Volume profile types map to group `brush` — normalize to `brush2` (V9 rail) for the floating bar.
-  // Resolve type from the actual selected drawing when possible — same source as template/gear
-  // (`getSelectedDrawingAcrossCharts`). Never trust `window.chart` alone: multi-panel layouts store
-  // selection on another tile's drawingManager, so reading only window.chart leaves stale trendline type.
+  // Prefer `tlBarSelectedType` when it is a text/label drawing: that value is set synchronously in
+  // drawingManager.toolbar.show from the same `drawing` the bar is for. Overwriting it with
+  // getSelectedDrawingAcrossCharts() could replace `text` with a stale trend line still present in
+  // another manager — which made the floating bar switch to Trend Line right after placing text.
   let chartPrimarySelectedDrawingType = tlBarSelectedType;
   if (tlBarSelected && typeof window !== "undefined") {
     try {
-      const d = getSelectedDrawingAcrossCharts(null);
-      if (d && d.type) chartPrimarySelectedDrawingType = d.type;
+      const hookT = tlBarSelectedType;
+      const hookG = hookT ? drawingTypeToPanelGroupRef.current(hookT) : null;
+      if (hookG === "text") {
+        chartPrimarySelectedDrawingType = hookT;
+      } else {
+        const d = getSelectedDrawingAcrossCharts(null);
+        chartPrimarySelectedDrawingType = (d && d.type) ? d.type : hookT;
+      }
     } catch (_) {}
   }
   const tlBarDrawingGroupRaw =
