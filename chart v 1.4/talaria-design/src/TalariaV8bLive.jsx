@@ -690,11 +690,6 @@ function v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthFallback) {
     (typeof widthFallback === "number" ? widthFallback : levelsW) ||
     1;
 
-  d.levels = v9TlFibSpeedFanLevelsToChart(
-    tlStyle.fibLevels,
-    tlStyle.fibLineType,
-    tlStyle.fibLineWidth,
-  );
   const st = d.style;
   st.stroke = tlStyle.lineColor;
   st.strokeWidth = strokeW;
@@ -747,11 +742,6 @@ function v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthFallback) {
     (typeof widthFallback === "number" ? widthFallback : 1) ||
     1;
 
-  d.levels = v9TlFibSpeedFanLevelsToChart(
-    tlStyle.fibLevels,
-    tlStyle.fibLineType,
-    tlStyle.fibLineWidth,
-  );
   const st = d.style;
   st.stroke = tlStyle.lineColor;
   st.trendLineEnabled = tlStyle.fibTrendLine !== false;
@@ -800,11 +790,6 @@ function v9ApplyFibArcsFromTlStyle(d, tlStyle, widthFallback) {
     (typeof widthFallback === "number" ? widthFallback : 1) ||
     1;
 
-  d.levels = v9TlFibSpeedFanLevelsToChart(
-    tlStyle.fibLevels,
-    tlStyle.fibLineType,
-    tlStyle.fibLineWidth,
-  );
   const st = d.style;
   st.stroke = tlStyle.lineColor;
   st.strokeWidth = strokeW;
@@ -840,11 +825,6 @@ function v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthFallback) {
     (typeof widthFallback === "number" ? widthFallback : levelsW) ||
     1;
 
-  d.levels = v9TlFibSpeedFanLevelsToChart(
-    tlStyle.fibLevels,
-    tlStyle.fibLineType,
-    tlStyle.fibLineWidth,
-  );
   const st = d.style;
   st.stroke = tlStyle.lineColor;
   st.strokeWidth = strokeW;
@@ -870,11 +850,6 @@ function v9ApplyClassicFibFromTlStyle(d, tlStyle, trendWidthFallback) {
     parseInt(String(tlStyle.lineWidth), 10) ||
     (typeof trendWidthFallback === "number" ? trendWidthFallback : 1) ||
     1;
-  d.levels = v9TlFibLevelsToChart(
-    tlStyle.fibLevels,
-    tlStyle.fibLineType,
-    tlStyle.fibLineWidth,
-  );
   const st = d.style;
   st.trendLineColor = tlStyle.lineColor;
   st.trendLineEnabled = tlStyle.fibTrendLine !== false;
@@ -891,6 +866,36 @@ function v9ApplyClassicFibFromTlStyle(d, tlStyle, trendWidthFallback) {
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
   st.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
   st.extendLines = !!tlStyle.fibExtendLines;
+}
+
+/**
+ * Push `tlStyle.fibLevels` → chart `d.levels` only when the V9 fib level model actually changes.
+ * Running this on every style-bridge pass (line color, dash, etc.) would let stale React `fibLevels`
+ * overwrite levels edited in the legacy settings modal.
+ */
+function v9ApplyChartFibLevelsFromTlStyle(d, tlStyle) {
+  if (!d || !tlStyle || !Array.isArray(tlStyle.fibLevels)) return;
+  if (v9IsClassicFibRetracementType(d.type)) {
+    d.levels = v9TlFibLevelsToChart(
+      tlStyle.fibLevels,
+      tlStyle.fibLineType,
+      tlStyle.fibLineWidth,
+    );
+  } else if (
+    v9IsFibSpeedFanType(d.type)
+    || v9IsTrendFibTimeType(d.type)
+    || v9IsFibCirclesType(d.type)
+    || v9IsFibArcsType(d.type)
+  ) {
+    d.levels = v9TlFibSpeedFanLevelsToChart(
+      tlStyle.fibLevels,
+      tlStyle.fibLineType,
+      tlStyle.fibLineWidth,
+    );
+  } else {
+    return;
+  }
+  if (d.style) d.style.levels = d.levels;
 }
 
 /** Full chart.js drawing → V9 `tlStyle` patch (toolbar selection + settings read-back). */
@@ -5671,6 +5676,35 @@ const TalariaV8bLive = () => {
   // Set true just before we update tlStyle from a selected drawing's style
   // so the forward bridge below skips that pass and we don't loop.
   const suppressForwardBridge = useRef(false);
+  /** Last serialized `tlStyle.fibLevels`; used so we only push fib levels to chart.js when V9 actually edits them. */
+  const v9LastTlFibLevelsJsonRef = useRef(null);
+
+  // Legacy fib modal → saveDrawings does not update React `tlStyle.fibLevels`. Re-anchor the
+  // serialized snapshot so a later V9 style tweak does not re-apply stale `fibLevels` from state.
+  useEffect(() => {
+    const onDrawingsChanged = () => {
+      try {
+        const d = getSelectedDrawingAcrossCharts(
+          editingDrawingRef.current ? editingDrawingRef.current.drawing : null,
+        );
+        if (!d) return;
+        const fibDrawing =
+          v9IsClassicFibRetracementType(d.type)
+          || v9IsFibSpeedFanType(d.type)
+          || v9IsTrendFibTimeType(d.type)
+          || v9IsFibCirclesType(d.type)
+          || v9IsFibArcsType(d.type);
+        if (!fibDrawing) return;
+        const p = v9TlStylePatchFromDrawing(d);
+        if (p && Array.isArray(p.fibLevels)) {
+          v9LastTlFibLevelsJsonRef.current = JSON.stringify(p.fibLevels);
+        }
+      } catch (_) { /* ignore */ }
+    };
+    if (typeof window === "undefined") return undefined;
+    window.addEventListener("drawingsChanged", onDrawingsChanged);
+    return () => window.removeEventListener("drawingsChanged", onDrawingsChanged);
+  }, []);
 
   // ─── V9 dblclick → V9 settings panel ─────────────────────────────────────
   // Register a hook that chart.js's drawing-tools-manager.editDrawing() calls
@@ -6120,6 +6154,15 @@ const TalariaV8bLive = () => {
     if (!styleBridgeReady.current) { styleBridgeReady.current = true; return; }
     // Skip the pass triggered by reading a selected drawing's style into tlStyle.
     if (suppressForwardBridge.current) { suppressForwardBridge.current = false; return; }
+
+    const fibLvJson = JSON.stringify(tlStyle.fibLevels ?? null);
+    let applyFibLevelsFromV9 = false;
+    if (v9LastTlFibLevelsJsonRef.current === null) {
+      v9LastTlFibLevelsJsonRef.current = fibLvJson;
+    } else if (fibLvJson !== v9LastTlFibLevelsJsonRef.current) {
+      v9LastTlFibLevelsJsonRef.current = fibLvJson;
+      applyFibLevelsFromV9 = true;
+    }
     // We continue even when legacyTool is null so that edits made while a
     // drawing is selected (with the cursor / crosshair active in the left
     // rail) still propagate to the selected drawing.
@@ -6223,6 +6266,9 @@ const TalariaV8bLive = () => {
         } else if (isFib) {
           d.style.trendLineColor = tlStyle.lineColor;
           d.style.trendLineWidth = widthNum;
+        }
+        if (applyFibLevelsFromV9) {
+          try { v9ApplyChartFibLevelsFromTlStyle(d, tlStyle); } catch (_) {}
         }
         try { v9ApplyPointsFromTlStyle(d, tlStyle); } catch (_) {}
         try { v9ApplyVisibilityFromTlStyle(d, tlStyle); } catch (_) {}

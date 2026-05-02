@@ -9870,6 +9870,19 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 Object.assign(actualDrawing.style, drawing.style);
 
+                // Object.assign can restore a stale `style.levels` from `drawing.style` if references
+                // diverged; always win with the live levels row model after merge.
+                drawing.levels = levelsRef;
+                drawing.style.levels = levelsRef;
+                actualDrawing.levels = levelsRef;
+                actualDrawing.style.levels = levelsRef;
+                if (isTimeZone) {
+                    drawing.fibNumbers = levelsRef;
+                    drawing.style.fibNumbers = levelsRef;
+                    actualDrawing.fibNumbers = levelsRef;
+                    actualDrawing.style.fibNumbers = levelsRef;
+                }
+
                 dm.renderDrawing(actualDrawing);
 
                 dm.saveDrawings();
