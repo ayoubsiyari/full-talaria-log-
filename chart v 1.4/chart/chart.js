@@ -13807,53 +13807,78 @@ class Chart {
             return '🌐';
         };
 
-        this.ctx.save();
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
+        const pad = radius + 8;
+        const plotLeft = m.l + pad;
+        const plotRight = this.w - m.r - pad;
 
+        /** @type {{ e: object, x: number }[]} */
+        const placements = [];
         for (let i = 0; i < events.length; i++) {
             const e = events[i];
             const ts = e && e.t;
             if (!Number.isFinite(ts)) continue;
             const idx = this._timestampToFractionalDataIndex(ts);
             if (idx == null || !Number.isFinite(idx)) continue;
-            const pad = radius + 8;
-            const plotLeft = m.l + pad;
-            const plotRight = this.w - m.r - pad;
             let x = this.dataIndexToPixel(idx);
             if (idx < 0) {
                 x = plotLeft;
             }
-            // Finnhub times often fall before the first loaded bar or after the last — clamp to the
-            // plot edges so flags still appear (tooltip shows the real timestamp).
             x = Math.max(plotLeft, Math.min(plotRight, x));
             if (!Number.isFinite(x) || !Number.isFinite(cy)) continue;
-
-            const jitter = (i % 7) * (radius * 0.22) - (3 * (radius * 0.22));
-            const xi = x + jitter;
-            if (!Number.isFinite(xi)) continue;
-            const flagStr = getFlag(e);
-
-            this.ctx.beginPath();
-            this.ctx.arc(xi, cy, radius, 0, Math.PI * 2);
-            this.ctx.fillStyle = fillCol;
-            this.ctx.fill();
-            this.ctx.strokeStyle = strokeCol;
-            this.ctx.lineWidth = Math.max(1, radius * 0.1);
-            this.ctx.stroke();
-
-            const innerFont = Math.max(9, Math.min(14, radius * 1.15));
-            this.ctx.font = `${innerFont}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
-            this.ctx.fillText(flagStr, xi, cy);
-
-            this._economicCalendarHitRegions.push({
-                left: xi - radius - 2,
-                right: xi + radius + 2,
-                top: cy - radius - 2,
-                bottom: cy + radius + 2,
-                event: e
-            });
+            placements.push({ e, x });
         }
+
+        placements.sort((a, b) => a.x - b.x);
+
+        const clusterGap = radius * 2 + 4;
+        const mergeDist = radius * 2.1;
+        const emojiFill = lightish ? 'rgba(30,32,38,0.96)' : 'rgba(240,243,248,0.98)';
+
+        this.ctx.save();
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+
+        let c = 0;
+        while (c < placements.length) {
+            let d = c + 1;
+            while (d < placements.length && placements[d].x - placements[d - 1].x <= mergeDist) {
+                d++;
+            }
+            const cluster = placements.slice(c, d);
+            const n = cluster.length;
+            for (let k = 0; k < n; k++) {
+                const { e, x } = cluster[k];
+                const offset = (k - (n - 1) / 2) * clusterGap;
+                let xi = x + offset;
+                xi = Math.max(plotLeft + radius, Math.min(plotRight - radius, xi));
+                if (!Number.isFinite(xi)) continue;
+
+                const flagStr = getFlag(e);
+
+                this.ctx.beginPath();
+                this.ctx.arc(xi, cy, radius, 0, Math.PI * 2);
+                this.ctx.fillStyle = fillCol;
+                this.ctx.fill();
+                this.ctx.strokeStyle = strokeCol;
+                this.ctx.lineWidth = Math.max(1, radius * 0.1);
+                this.ctx.stroke();
+
+                const innerFont = Math.max(9, Math.min(14, radius * 1.15));
+                this.ctx.font = `${innerFont}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+                this.ctx.fillStyle = emojiFill;
+                this.ctx.fillText(flagStr, xi, cy);
+
+                this._economicCalendarHitRegions.push({
+                    left: xi - radius - 2,
+                    right: xi + radius + 2,
+                    top: cy - radius - 2,
+                    bottom: cy + radius + 2,
+                    event: e
+                });
+            }
+            c = d;
+        }
+
         this.ctx.restore();
     }
 
