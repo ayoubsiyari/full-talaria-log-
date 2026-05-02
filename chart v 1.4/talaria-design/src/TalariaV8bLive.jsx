@@ -9447,8 +9447,11 @@ const TalariaV8bLive = () => {
         </div>
       , document.body)}
 
-      {/* ── Text Tool mini-bar ── */}
-      {tool === "text" && (()=>{
+      {/* ── Text Tool mini-bar ──
+          Active text tool OR a text/label drawing selected on the chart (toolbar.show
+          sets tool to crosshair — tlBarDrawingGroup === "text" so we must not fall through
+          to the Trend Line bar, which only keys off tlBarSelected). */}
+      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && (()=>{
         const TxBtn = ({id, isAct, onClick, children, isDel, tip}) => {
           const isH = hov === id;
           return (
@@ -11619,10 +11622,10 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Trend Line floating toolbar (fixed — can overlay any UI area except right panels) ── */}
-      {/* Visibility now gated on tlBarSelected (chart drawing selection),
-          not on the active tool, so the toolbar only shows when the user
-          has a shape selected and disappears on deselect. */}
-      {tlBarSelected && (()=>{
+      {/* Visibility: chart selection AND drawing maps to a line/shape rail group.
+          Text/label drawings map to group "text" (not in TL_LINE_SHAPE_GROUPS) — without
+          this guard, effectiveTlGroup is null and tlSubTool defaulted to Trend Line. */}
+      {tlBarSelected && tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) && (()=>{
         const TlBtn = ({id, isAct, children, onClick, w, tip}) => {
           const isH = hov === id;
           const isDel = id === "tl-del";
