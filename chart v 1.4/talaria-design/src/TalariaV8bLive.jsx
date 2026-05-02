@@ -3955,19 +3955,14 @@ const TalariaV8bLive = () => {
   // After finalizeDrawing, chart clears the tool (crosshair) but `toolbar.show` already ran; until then
   // `tool` is crosshair and tlSubTool used to fall through to Trend Line. Prefer the selected drawing's group.
   // Volume profile types map to group `brush` — normalize to `brush2` (V9 rail) for the floating bar.
-  // Resolve type from drawingManager when possible — `tlBarSelectedType` state can lag one frame behind
-  // `toolbar.show`, leaving a stale trendline type so the wrong floating bar flashes or sticks.
+  // Resolve type from the actual selected drawing when possible — same source as template/gear
+  // (`getSelectedDrawingAcrossCharts`). Never trust `window.chart` alone: multi-panel layouts store
+  // selection on another tile's drawingManager, so reading only window.chart leaves stale trendline type.
   let chartPrimarySelectedDrawingType = tlBarSelectedType;
   if (tlBarSelected && typeof window !== "undefined") {
     try {
-      const dm = window.chart && window.chart.drawingManager;
-      if (dm) {
-        let d = dm.selectedDrawing;
-        if (!d && Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length === 1) {
-          d = dm.selectedDrawings[0];
-        }
-        if (d && d.type) chartPrimarySelectedDrawingType = d.type;
-      }
+      const d = getSelectedDrawingAcrossCharts(null);
+      if (d && d.type) chartPrimarySelectedDrawingType = d.type;
     } catch (_) {}
   }
   const tlBarDrawingGroupRaw =
@@ -6180,35 +6175,25 @@ const TalariaV8bLive = () => {
   }, [txtSettOpen]);
 
   // ─── Drawing selection bridge ───────────────────────────────────────────
-  // Wrap drawingManager.toolbar.show / .hide once chart.js is ready so the
-  // V9 floating toolbar only appears when a drawing is actually selected.
-  // The legacy code calls these on every selection / deselection / delete
-  // (chart/modules/drawing-tools-manager.js — see toolbar.show/hide calls).
-  // We also read the selected drawing's style on show and push it into
-  // tlStyle so the V9 toolbar reflects the actual shape (not stale defaults).
+  // Wrap drawingManager.toolbar.show / .hide on **every** chart's DrawingToolbar instance.
+  // Each panel tile has its own drawingManager + toolbar; hooking only window.chart meant
+  // selections on another tile never updated React — tlBarSelectedType stayed on the old trendline.
+  // See enumerateV9DrawingManagersFromWindow + getSelectedDrawingAcrossCharts.
   useEffect(() => {
-    let cancelled = false; let n = 0;
-    const hook = () => {
-      if (cancelled) return;
-      const dm = window.chart && window.chart.drawingManager;
+    let cancelled = false;
+    let n = 0;
+    const attachToolbarHooks = (dm) => {
       const tb = dm && dm.toolbar;
-      if (!tb || tb.__v9Hooked) {
-        if (!tb && ++n < 60) setTimeout(hook, 100);
-        return;
-      }
+      if (!tb || tb.__v9Hooked) return false;
       const origShow = tb.show && tb.show.bind(tb);
       const origHide = tb.hide && tb.hide.bind(tb);
       tb.show = function (drawing, x, y) {
         try {
-          // Only treat as "chart selection" when not in V9 dblclick settings (editingDrawingRef).
           if (!editingDrawingRef.current) {
             v9SelectionToolbarSyncRef.current = true;
           }
           setTlBarSelected(true);
           setTlBarSelectedType(drawing && drawing.type);
-          // Sync `groupSelected` for template/style defaults + rail Cursor. `drawingManager.setTool`
-          // deselects all drawings — the tool bridge must not run dm.setTool on the next pass
-          // (see v9SelectionToolbarSyncRef). Crosshair keeps resolveLegacyTool() null.
           if (drawing && drawing.type && !editingDrawingRef.current) {
             const g = drawingTypeToPanelGroupRef.current(drawing.type);
             if (g) {
@@ -6224,7 +6209,6 @@ const TalariaV8bLive = () => {
               }
               let label = drawing.type;
               try {
-                const dm = window.chart && window.chart.drawingManager;
                 if (dm && typeof dm.getDrawingDisplayTitle === 'function') {
                   label = dm.getDrawingDisplayTitle(drawing) || label;
                 }
@@ -6243,20 +6227,14 @@ const TalariaV8bLive = () => {
           }
           if (!editingDrawingRef.current) {
             try {
-              const ch =
-                typeof window.getActiveChart === "function"
-                  ? window.getActiveChart()
-                  : window.chart;
-              const dmSync = ch && ch.drawingManager;
-              if (dmSync && typeof dmSync.clearTool === "function") dmSync.clearTool();
-              else if (dmSync) dmSync.currentTool = null;
+              if (dm && typeof dm.clearTool === 'function') dm.clearTool();
+              else if (dm) dm.currentTool = null;
             } catch (_) {}
           }
           const patch = v9TlStylePatchFromDrawing(drawing);
           if (patch) {
             suppressForwardBridge.current = true;
             setTlStyle(s => ({ ...s, ...patch }));
-            // Also reflect lock state in V9.
             if (typeof drawing.locked === 'boolean') setTlLocked(!!drawing.locked);
           }
         } catch (_) {}
@@ -6267,9 +6245,30 @@ const TalariaV8bLive = () => {
         return origHide ? origHide() : undefined;
       };
       tb.__v9Hooked = true;
+      return true;
     };
-    hook();
-    return () => { cancelled = true; };
+    const hookAll = () => {
+      if (cancelled) return;
+      try {
+        for (const dm of enumerateV9DrawingManagersFromWindow()) {
+          attachToolbarHooks(dm);
+        }
+      } catch (_) {}
+      const mgrs = enumerateV9DrawingManagersFromWindow();
+      const allHooked = mgrs.length > 0 && mgrs.every((dm) => dm && dm.toolbar && dm.toolbar.__v9Hooked);
+      if (!allHooked && ++n < 120) setTimeout(hookAll, 100);
+    };
+    hookAll();
+    const poll = setInterval(hookAll, 1500);
+    const onReady = () => hookAll();
+    window.addEventListener("chartDataLoaded", onReady);
+    window.addEventListener("panelSelected", onReady);
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+      window.removeEventListener("chartDataLoaded", onReady);
+      window.removeEventListener("panelSelected", onReady);
+    };
   }, []);
 
   // ─── V9 tlStyle → chart.js drawing style ─────────────────────────────────
