@@ -318,6 +318,25 @@ function enumerateV9DrawingManagersFromWindow() {
   return out;
 }
 
+/** Same set as enumerateV9DrawingManagersFromWindow but the focused tile's manager is first.
+ * Selection scans must prefer the chart the user is interacting with; otherwise `window.chart`
+ * can still have a selected trend line while the active panel shows newly placed text — V9 then
+ * picks the wrong drawing type and shows the line/shape floating bar (diagonal line + dash + “A”
+ * for line labels) instead of the Text mini-bar. */
+function enumerateV9DrawingManagersActiveFirst() {
+  const all = enumerateV9DrawingManagersFromWindow();
+  if (typeof window === "undefined" || all.length <= 1) return all;
+  try {
+    const ac = typeof window.getActiveChart === "function" ? window.getActiveChart() : null;
+    const dmActive = ac && ac.drawingManager;
+    if (!dmActive) return all;
+    const rest = all.filter((dm) => dm !== dmActive);
+    return [dmActive, ...rest];
+  } catch (_) {
+    return all;
+  }
+}
+
 function resolveLiveDrawingInDm(dm, d) {
   if (!d || !dm || !Array.isArray(dm.drawings)) return null;
   if (d.id != null) {
@@ -327,16 +346,16 @@ function resolveLiveDrawingInDm(dm, d) {
   return dm.drawings.find((x) => x === d) || null;
 }
 
-/** Which shape is selected for templates / gear — scan all chart instances, not just getActiveChart(). */
+/** Which shape is selected for templates / gear — scan chart instances; prefer the focused panel first. */
 function getSelectedDrawingAcrossCharts(editingRefDrawing) {
   if (editingRefDrawing) {
-    for (const dm of enumerateV9DrawingManagersFromWindow()) {
+    for (const dm of enumerateV9DrawingManagersActiveFirst()) {
       const live = resolveLiveDrawingInDm(dm, editingRefDrawing);
       if (live) return live;
     }
     return editingRefDrawing;
   }
-  const managers = enumerateV9DrawingManagersFromWindow();
+  const managers = enumerateV9DrawingManagersActiveFirst();
   // Prefer real drawingManager selection first. `toolbar.currentDrawing` can lag or belong to
   // another toolbar instance — returning it before dm.selectedDrawing made the V9 bar keep
   // Trend Line after placing Text (stale trend line still in drawings[] matched by id).
@@ -3971,7 +3990,11 @@ const TalariaV8bLive = () => {
         chartPrimarySelectedDrawingType = hookT;
       } else {
         const d = getSelectedDrawingAcrossCharts(null);
-        chartPrimarySelectedDrawingType = (d && d.type) ? d.type : hookT;
+        const scannedT = (d && d.type) ? d.type : null;
+        const scannedG = scannedT ? drawingTypeToPanelGroupRef.current(scannedT) : null;
+        // Stale hook can still report a line type after Text was placed on the focused panel; scan prefers active chart.
+        if (scannedG === "text") chartPrimarySelectedDrawingType = scannedT;
+        else chartPrimarySelectedDrawingType = scannedT || hookT;
       }
     } catch (_) {}
   }
