@@ -1856,6 +1856,172 @@ const EMOJI_CATS = [
   { id:"symbols",  icon:"❤️", label:"Symbols",  emojis:["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☪️","🕉","✡️","🔯","🕎","☯️","🛐","⛔","🚫","💯","✅","❌","❎","🔴","🟠","🟡","🟢","🔵","🟣","⚫","⚪","🟤","🔺","🔻","💠","🔶","🔷","🔸","🔹","▪️","▫️","◾","◽","⬛","⬜","🔱","⚜️","🏵","🔰","♻️","✔️","☑️","🔘","🔲","🔳","⬜","⬛","🏁","🚩","🎌","🏴","🏳","🏴‍☠️","💢","💥","💫","💦","💨","🕳","💬","💭","💤","♠️","♥️","♦️","♣️","🃏","🎴","🀄"] },
 ];
 
+/** Map chart.orderManager → bottom-panel trade rows (same shape as the legacy mock). */
+function v9FormatTradeTime(ms) {
+  if (!ms || !Number.isFinite(ms)) return "— — —";
+  const d = new Date(ms);
+  const mo = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()];
+  const day = d.getUTCDate();
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${mo} ${day} ${hh}:${mm}`;
+}
+
+function v9DisplaySymbol(ticker) {
+  const t = String(ticker || "").toUpperCase().replace(/\//g, "");
+  if (t.length === 6 && /^[A-Z]{6}$/.test(t)) return `${t.slice(0, 3)}/${t.slice(3)}`;
+  return t || "—";
+}
+
+function v9TradeDuration(openMs, closeMs, nowMs = Date.now()) {
+  const end = Number.isFinite(closeMs) ? closeMs : nowMs;
+  const ms = end - (openMs || end);
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return `${h}h ${m}m`;
+}
+
+function v9UsdPnLParts(n) {
+  if (!Number.isFinite(n)) return { text: "—", pc: null };
+  const sign = n >= 0 ? "+" : "-";
+  const abs = Math.abs(n);
+  const text = `${sign}$${abs.toFixed(2)}`;
+  return { text, pc: n >= 0 ? "gn" : "rd" };
+}
+
+function buildLiveTradeRowsFromOrderManager(om, theme) {
+  if (!om) return [];
+  const rowNowMs =
+    typeof window !== "undefined" && Number.isFinite(window.chart?.replaySystem?.replayTimestamp)
+      ? window.chart.replaySystem.replayTimestamp
+      : Date.now();
+  const fmtPx = (p) => {
+    const x = Number.parseFloat(p);
+    if (!Number.isFinite(x)) return "—";
+    try {
+      return typeof om.formatPrice === "function" ? om.formatPrice(x) : String(x);
+    } catch (_) {
+      return String(x);
+    }
+  };
+  const fmtQty = (q) => {
+    const x = Number.parseFloat(q);
+    if (!Number.isFinite(x)) return "—";
+    try {
+      return typeof om.formatQuantity === "function" ? om.formatQuantity(x) : x.toFixed(2);
+    } catch (_) {
+      return x.toFixed(2);
+    }
+  };
+  const sideStr = (dir) => {
+    const u = String(dir || "").toUpperCase();
+    return u === "SELL" ? "SHORT" : "LONG";
+  };
+  const typeLabel = (ot) => {
+    const u = String(ot || "").toLowerCase();
+    if (u === "limit") return "Limit";
+    if (u === "stop") return "Stop";
+    if (u === "market") return "Market";
+    return ot ? String(ot).charAt(0).toUpperCase() + String(ot).slice(1).toLowerCase() : "—";
+  };
+  const rows = [];
+  const pend = [...(om.pendingOrders || [])];
+  const open = [...(om.openPositions || [])];
+  const closed = [...(om.closedPositions || [])];
+
+  pend.forEach((o) => {
+    const tMs = o.placedTime || o.openTime || Date.now();
+    const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
+    const slTxt = o.stopLoss != null && Number.isFinite(Number.parseFloat(o.stopLoss)) ? fmtPx(o.stopLoss) : "—";
+    rows.push({
+      id: `#${o.id}`,
+      omId: o.id,
+      _sortMs: tMs,
+      time: v9FormatTradeTime(tMs),
+      status: "pending",
+      sym: v9DisplaySymbol(o.ticker || o.symbol),
+      side: sideStr(o.direction),
+      sz: fmtQty(o.quantity),
+      type: typeLabel(o.orderType),
+      entry: fmtPx(o.entryPrice),
+      exit: "—",
+      pnl: "—",
+      pc: theme.tm,
+      tp: tpTxt,
+      sl: slTxt,
+      dur: "—",
+      preTags: [],
+      postTags: [],
+    });
+  });
+
+  open.forEach((o) => {
+    const tMs = o.openTime || Date.now();
+    const uPnL = Number.parseFloat(o.unrealizedPnL);
+    const { text: pnlText, pc } = v9UsdPnLParts(uPnL);
+    const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
+    const slTxt = o.stopLoss != null && Number.isFinite(Number.parseFloat(o.stopLoss)) ? fmtPx(o.stopLoss) : "—";
+    const ot = o.orderType ? typeLabel(o.orderType) : "Market";
+    rows.push({
+      id: `#${o.id}`,
+      omId: o.id,
+      _sortMs: tMs,
+      time: v9FormatTradeTime(tMs),
+      status: "open",
+      sym: v9DisplaySymbol(o.ticker || o.symbol),
+      side: sideStr(o.type || o.direction),
+      sz: fmtQty(o.quantity),
+      type: ot,
+      entry: fmtPx(o.openPrice),
+      exit: "—",
+      pnl: pc ? pnlText : "—",
+      pc: pc ? theme[pc] : theme.tm,
+      tp: tpTxt,
+      sl: slTxt,
+      dur: v9TradeDuration(tMs, null, rowNowMs),
+      preTags: [],
+      postTags: [],
+    });
+  });
+
+  closed.forEach((o) => {
+    const tOpen = o.openTime;
+    const tClose = o.closeTime;
+    const sortMs = Number.isFinite(tClose) ? tClose : tOpen || 0;
+    const pnlN = Number.parseFloat(o.pnl);
+    const { text: pnlText, pc } = v9UsdPnLParts(pnlN);
+    const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
+    const slTxt = o.stopLoss != null && Number.isFinite(Number.parseFloat(o.stopLoss)) ? fmtPx(o.stopLoss) : "—";
+    const ot = o.orderType ? typeLabel(o.orderType) : "Market";
+    rows.push({
+      id: `#${o.id}`,
+      omId: o.id,
+      _sortMs: sortMs,
+      time: v9FormatTradeTime(tOpen || tClose),
+      status: "closed",
+      sym: v9DisplaySymbol(o.ticker || o.symbol),
+      side: sideStr(o.type || o.direction),
+      sz: fmtQty(o.quantity),
+      type: ot,
+      entry: fmtPx(o.openPrice),
+      exit: fmtPx(o.closePrice),
+      pnl: pnlText,
+      pc: pc ? theme[pc] : theme.tm,
+      tp: tpTxt,
+      sl: slTxt,
+      dur: v9TradeDuration(tOpen, tClose),
+      preTags: [],
+      postTags: [],
+      mae: o.mae != null && Number.isFinite(Number.parseFloat(o.mae)) ? fmtPx(o.mae) : undefined,
+      mfe: o.mfe != null && Number.isFinite(Number.parseFloat(o.mfe)) ? fmtPx(o.mfe) : undefined,
+    });
+  });
+
+  rows.sort((a, b) => (b._sortMs || 0) - (a._sortMs || 0));
+  return rows;
+}
+
 const TalariaV8bLive = () => {
   const [tool, setTool] = useState("crosshair");
   const [hov, setHov] = useState(null);
@@ -1872,6 +2038,8 @@ const TalariaV8bLive = () => {
   const [btmTab, setBtmTab] = useState("all");
   const [btmIndPos, setBtmIndPos] = useState(null);
   const [tblSort, setTblSort] = useState(null); // {col, dir:'asc'|'desc'}
+  /** Bumps when chart orderManager trades / P&L change so the trades table stays live. */
+  const [omTradeRev, setOmTradeRev] = useState(0);
   const btmTabBarRef = useRef(null);
   const [tradeCard, setTradeCard] = useState(null);
   const [tradeCardPreTags, setTradeCardPreTags] = useState([]);
@@ -2162,6 +2330,26 @@ const TalariaV8bLive = () => {
     }
 
     return () => { cancelled = true; if (ro) ro.disconnect(); };
+  }, []);
+
+  // Keep bottom trades panel in sync with chart orderManager (sim / session orders).
+  useEffect(() => {
+    const bump = () => setOmTradeRev((n) => n + 1);
+    const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+    const bus = om?.eventBus;
+    const unsubs = [];
+    if (bus && typeof bus.on === "function") {
+      ["order:pending", "order:opened", "order:closed", "order:pending-removed", "order:update-tick", "account:updated"].forEach((ev) => {
+        unsubs.push(bus.on(ev, bump));
+      });
+    }
+    const id = setInterval(bump, 800);
+    return () => {
+      clearInterval(id);
+      unsubs.forEach((fn) => {
+        try { fn(); } catch (_) { /* noop */ }
+      });
+    };
   }, []);
 
   // Ctrl+S — open V9 screenshot panel (same as camera), not the legacy DOM modal
@@ -15444,7 +15632,13 @@ const TalariaV8bLive = () => {
           <div data-v9-chrome="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ flexShrink:0, background:c.sf, borderTop:`1px solid ${c.brH}` }}>
             {/* Tab bar — always visible outside the collapsing panel */}
             {(()=>{
-              const ordTabs=[["all","All Trade",14],["pending","Pending",3],["open","Open Positions",4],["history","History",7],["analytics","Analytics",null]];
+              void omTradeRev;
+              const rawCounts = buildLiveTradeRowsFromOrderManager(typeof window !== "undefined" ? window.chart?.orderManager : null, c);
+              const nAll = rawCounts.length;
+              const nPend = rawCounts.filter((r) => r.status === "pending").length;
+              const nOpen = rawCounts.filter((r) => r.status === "open").length;
+              const nHist = rawCounts.filter((r) => r.status === "closed").length;
+              const ordTabs=[["all","All Trade",nAll],["pending","Pending",nPend],["open","Open Positions",nOpen],["history","History",nHist],["analytics","Analytics",null]];
               return(
               <div ref={btmTabBarRef} style={{display:"flex",flexShrink:0,borderBottom:`1px solid ${c.br}`,paddingLeft:10,position:"relative",alignItems:"center"}}>
                 {ordTabs.map(([id,label,cnt])=>{
@@ -15466,28 +15660,8 @@ const TalariaV8bLive = () => {
             {/* Panel content — only this collapses */}
             <div ref={btmPanelRef} style={{height:btmResizing?btmDragRef.current.curH:btmOpen?btmHeight:0,overflow:"hidden",transition:btmResizing?"none":"height 0.2s ease",display:"flex",flexDirection:"column"}}>
               {(()=>{
-                const allTrades=[
-                  {id:"#1001",time:"Apr 16 09:14",status:"open",    sym:"EUR/JPY", side:"LONG", sz:"0.50",type:"Market",entry:"126,100",exit:"126,745",pnl:"+$1,090",pc:c.gn,tp:"127,000",sl:"125,500",dur:"2h 14m",preTags:["scalp","trend"],postTags:["good entry"]},
-                  {id:"#1002",time:"Apr 16 10:45",status:"pending", sym:"GBP/USD", side:"SHORT",sz:"1.00",type:"Limit",  entry:"1.2650", exit:"—",       pnl:"—",     pc:c.tm,tp:"1.2550", sl:"1.2720", dur:"—",      preTags:["swing"],          postTags:[]},
-                  {id:"#1003",time:"Apr 16 11:32",status:"open",    sym:"USD/JPY", side:"LONG", sz:"0.75",type:"Limit",  entry:"149.20", exit:"148.85",  pnl:"-$263", pc:c.rd,tp:"150.50", sl:"148.00", dur:"1h 05m", preTags:[],                 postTags:["early exit"]},
-                  {id:"#1004",time:"Apr 15 08:05",status:"closed",  sym:"EUR/USD", side:"SHORT",sz:"2.00",type:"Market",entry:"1.0820", exit:"1.0845",  pnl:"-$500", pc:c.rd,tp:"1.0750", sl:"1.0900", dur:"5h 52m", preTags:["news"],           postTags:["oversize"],   mae:"25 pips",mfe:"40 pips"},
-                  {id:"#1005",time:"Apr 16 13:20",status:"open",    sym:"AUD/USD", side:"LONG", sz:"0.30",type:"Limit",  entry:"0.6540", exit:"0.6572",  pnl:"+$96",  pc:c.gn,tp:"0.6620", sl:"0.6480", dur:"3h 20m", preTags:["scalp"],          postTags:[]},
-                  {id:"#1006",time:"Apr 17 14:50",status:"pending", sym:"USD/CAD", side:"SHORT",sz:"0.50",type:"Stop",   entry:"1.3680", exit:"—",       pnl:"—",     pc:c.tm,tp:"1.3600", sl:"1.3760", dur:"—",      preTags:[],                 postTags:[]},
-                  {id:"#1007",time:"Apr 14 07:33",status:"closed",  sym:"NZD/USD", side:"LONG", sz:"0.40",type:"Market",entry:"0.5980", exit:"0.6015",  pnl:"+$140", pc:c.gn,tp:"0.6080", sl:"0.5920", dur:"6h 11m", preTags:["trend","breakout"],postTags:["textbook"],  mae:"8 pips", mfe:"62 pips"},
-                  {id:"#1008",time:"Apr 15 15:11",status:"closed",  sym:"EUR/GBP", side:"SHORT",sz:"0.80",type:"Limit",  entry:"0.8560", exit:"0.8541",  pnl:"+$152", pc:c.gn,tp:"0.8480", sl:"0.8630", dur:"2h 59m", preTags:["swing"],          postTags:[]},
-                  {id:"#1009",time:"Apr 15 12:01",status:"closed",  sym:"USD/CHF", side:"LONG", sz:"1.20",type:"Market",entry:"0.9020", exit:"0.8995",  pnl:"-$300", pc:c.rd,tp:"0.9120", sl:"0.8940", dur:"7h 03m", preTags:[],                 postTags:["fomo entry"]},
-                  {id:"#1010",time:"Apr 14 16:22",status:"closed",  sym:"GBP/JPY", side:"LONG", sz:"0.60",type:"Market",entry:"188.40", exit:"189.10",  pnl:"+$420", pc:c.gn,tp:"190.00", sl:"187.50", dur:"1h 44m", preTags:["scalp"],          postTags:["perfect tp"],mae:"12 pips",mfe:"78 pips"},
-                  {id:"#1011",time:"Apr 15 09:55",status:"closed",  sym:"EUR/AUD", side:"SHORT",sz:"0.35",type:"Limit",  entry:"1.6480", exit:"1.6510",  pnl:"-$105", pc:c.rd,tp:"1.6380", sl:"1.6580", dur:"3h 28m", preTags:["news"],           postTags:[]},
-                  {id:"#1012",time:"Apr 15 10:08",status:"closed",  sym:"CAD/JPY", side:"LONG", sz:"0.45",type:"Market",entry:"110.20", exit:"110.85",  pnl:"+$293", pc:c.gn,tp:"111.50", sl:"109.50", dur:"5h 16m", preTags:["trend"],          postTags:["held conviction"]},
-                  {id:"#1013",time:"Apr 16 17:40",status:"open",    sym:"GBP/CHF", side:"SHORT",sz:"0.55",type:"Market",entry:"1.1340", exit:"1.1318",  pnl:"+$121", pc:c.gn,tp:"1.1250", sl:"1.1420", dur:"0h 52m", preTags:["scalp"],          postTags:[]},
-                  {id:"#1014",time:"Apr 17 08:30",status:"pending", sym:"XAU/USD", side:"LONG", sz:"0.10",type:"Stop",   entry:"2,015",  exit:"—",       pnl:"—",     pc:c.tm,tp:"2,080",  sl:"1,990",  dur:"—",      preTags:["swing"],          postTags:[]},
-                  {id:"#1015",time:"Apr 17 10:05",status:"pending", sym:"NQ",      side:"LONG", sz:"3×0.25",type:"Limit",  entry:"19840 / 19800 / 19765", exit:"—", pnl:"—", pc:c.tm, tp:"19920 / 19980", sl:"19700", dur:"—", preTags:["scalp","trend"], postTags:[],
-                    entries:[{price:"19840",qty:"0.25",filled:false},{price:"19800",qty:"0.25",filled:false},{price:"19765",qty:"0.25",filled:false}],
-                    targets:[{price:"19920",hit:false},{price:"19980",hit:false}]},
-                  {id:"#1016",time:"Apr 18 09:30",status:"open",    sym:"ES",      side:"LONG", sz:"4×0.25",type:"Limit",  entry:"5820",               exit:"—", pnl:"+$312",pc:c.gn, tp:"5845",  sl:"5795", dur:"1h 22m",preTags:["trend","breakout"],postTags:[],
-                    entries:[{price:"5820",qty:"0.25",filled:true},{price:"5810",qty:"0.25",filled:true},{price:"5800",qty:"0.25",filled:false},{price:"5790",qty:"0.25",filled:false}],
-                    targets:[{price:"5845",hit:true},{price:"5862",hit:true},{price:"5878",hit:false},{price:"5900",hit:false}]},
-                ];
+                void omTradeRev;
+                const allTrades = buildLiveTradeRowsFromOrderManager(typeof window !== "undefined" ? window.chart?.orderManager : null, c);
                 // Apply tag edits overlay
                 const allTradesR = allTrades.map(t => { const ov=tradeTagOverrides[t.id]; return ov ? {...t, preTags:ov.pre??t.preTags, postTags:ov.post??t.postTags} : t; });
                 const updPreTags = (id, tags) => setTradeTagOverrides(prev => ({...prev, [id]: {...(prev[id]||{}), pre: tags}}));
@@ -15806,14 +15980,14 @@ const TalariaV8bLive = () => {
                       {/* Action column */}
                       <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,overflow:"hidden"}}>
                         {r.status==="pending"&&(
-                          <div onMouseEnter={()=>setHov(`cls-${i}`)} onMouseLeave={()=>setHov(null)} onClick={e=>e.stopPropagation()}
+                          <div onMouseEnter={()=>setHov(`cls-${i}`)} onMouseLeave={()=>setHov(null)} onClick={(e)=>{ e.stopPropagation(); const oid=r.omId ?? parseInt(String(r.id).replace(/\D/g,""),10); if(Number.isFinite(oid)) window.chart?.orderManager?.cancelPendingOrder?.(oid); }}
                             style={{position:"relative",cursor:"default",fontSize:9,fontWeight:700,letterSpacing:"0.06em",color:hov===`cls-${i}`?"#FFa055":"rgba(255,140,66,0.6)",transition:"color 0.15s",userSelect:"none"}}>
                             CANCEL
                             {hov===`cls-${i}`&&<div style={{position:"absolute",bottom:-1,left:0,right:0,height:1,background:"linear-gradient(90deg,transparent,#FF8C42,transparent)"}}/>}
                           </div>
                         )}
                         {r.status==="open"&&(
-                          <div onMouseEnter={()=>setHov(`cls-${i}`)} onMouseLeave={()=>setHov(null)} onClick={e=>e.stopPropagation()}
+                          <div onMouseEnter={()=>setHov(`cls-${i}`)} onMouseLeave={()=>setHov(null)} onClick={(e)=>{ e.stopPropagation(); const oid=r.omId ?? parseInt(String(r.id).replace(/\D/g,""),10); if(Number.isFinite(oid)) window.chart?.orderManager?.closePosition?.(oid); }}
                             style={{position:"relative",cursor:"default",fontSize:9,fontWeight:700,letterSpacing:"0.06em",color:hov===`cls-${i}`?c.rd:"rgba(220,80,80,0.85)",transition:"color 0.15s",userSelect:"none"}}>
                             CLOSE
                             {hov===`cls-${i}`&&<div style={{position:"absolute",bottom:-1,left:0,right:0,height:1,background:`linear-gradient(90deg,transparent,${c.rd},transparent)`}}/>}
