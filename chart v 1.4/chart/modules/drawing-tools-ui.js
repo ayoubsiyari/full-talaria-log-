@@ -362,6 +362,17 @@ class DrawingSettingsPanel {
 
     }
 
+    /**
+     * DrawingToolsManager assigns `this.drawingManager` in its constructor.
+     * Property dialogs must use that reference — `window.drawingManager` is optional legacy glue.
+     */
+    resolveDrawingManager() {
+        return this.drawingManager
+            || (typeof window !== 'undefined' && window.chart && window.chart.drawingManager)
+            || (typeof window !== 'undefined' && window.drawingManager)
+            || null;
+    }
+
 
 
     /**
@@ -9049,17 +9060,19 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const applyStyle = () => {
 
-                if (window.drawingManager) {
+                const dm = self.resolveDrawingManager();
 
-                    const actualDrawing = window.drawingManager.drawings.find(d => d.id === drawing.id) || drawing;
+                if (dm) {
+
+                    const actualDrawing = dm.drawings.find(d => d.id === drawing.id) || drawing;
 
                     if (!actualDrawing.style) actualDrawing.style = {};
 
                     Object.assign(actualDrawing.style, drawing.style);
 
-                    window.drawingManager.renderDrawing(actualDrawing);
+                    dm.renderDrawing(actualDrawing);
 
-                    window.drawingManager.saveDrawings();
+                    dm.saveDrawings();
 
                     return;
 
@@ -9189,9 +9202,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
             self.pendingChanges.levels = JSON.parse(JSON.stringify(drawing.levels));
 
-            if (window.drawingManager) {
+            const dm = self.resolveDrawingManager();
 
-                const actualDrawing = window.drawingManager.drawings.find(d => d.id === drawing.id);
+            if (dm) {
+
+                const actualDrawing = dm.drawings.find(d => d.id === drawing.id);
 
                 if (actualDrawing) {
 
@@ -9809,9 +9824,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
             self.pendingChanges.levels = levelsRef;
 
-            if (window.drawingManager) {
+            const dm = self.resolveDrawingManager();
 
-                const actualDrawing = window.drawingManager.drawings.find(d => d.id === drawing.id) || drawing;
+            if (dm) {
+
+                const actualDrawing = dm.drawings.find(d => d.id === drawing.id) || drawing;
 
                 if (isTimeZone) {
 
@@ -9851,9 +9868,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 Object.assign(actualDrawing.style, drawing.style);
 
-                window.drawingManager.renderDrawing(actualDrawing);
+                dm.renderDrawing(actualDrawing);
 
-                window.drawingManager.saveDrawings();
+                dm.saveDrawings();
 
                 return;
 
@@ -11141,9 +11158,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-            if (window.drawingManager) {
+            const dmTf = self.resolveDrawingManager();
 
-                const actualDrawing = window.drawingManager.drawings.find(d => d.id === drawing.id) || drawing;
+            if (dmTf) {
+
+                const actualDrawing = dmTf.drawings.find(d => d.id === drawing.id) || drawing;
 
                 if (!actualDrawing.style) actualDrawing.style = {};
 
@@ -11161,9 +11180,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 Object.assign(actualDrawing.style, drawing.style);
 
-                window.drawingManager.renderDrawing(actualDrawing);
+                dmTf.renderDrawing(actualDrawing);
 
-                window.drawingManager.saveDrawings();
+                dmTf.saveDrawings();
 
                 return;
 
@@ -11797,9 +11816,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
             self.pendingChanges.levels = drawing.levels;
 
-            if (window.drawingManager) {
+            const dmLv = self.resolveDrawingManager();
 
-                const actualDrawing = window.drawingManager.drawings.find(d => d.id === drawing.id);
+            if (dmLv) {
+
+                const actualDrawing = dmLv.drawings.find(d => d.id === drawing.id);
 
                 if (actualDrawing && actualDrawing !== drawing) {
 
@@ -15847,9 +15868,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-            if (window.drawingManager) {
+            const dmFibStyle = this.resolveDrawingManager();
 
-                const actualDrawing = window.drawingManager.drawings.find(d => d.id === drawing.id) || drawing;
+            if (dmFibStyle) {
+
+                const actualDrawing = dmFibStyle.drawings.find(d => d.id === drawing.id) || drawing;
 
                 if (!actualDrawing.style) actualDrawing.style = {};
 
@@ -15875,9 +15898,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-                window.drawingManager.renderDrawing(actualDrawing);
+                dmFibStyle.renderDrawing(actualDrawing);
 
-                window.drawingManager.saveDrawings();
+                dmFibStyle.saveDrawings();
 
                 return;
 
@@ -17123,7 +17146,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-    const drawingManager = window.chart?.drawingManager || window.drawingManager;
+    const drawingManager = this.resolveDrawingManager();
 
     const chart = drawingManager?.chart || window.chart || drawing.chart;
 
@@ -23524,11 +23547,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
         // Also try to re-render via the drawing manager
 
-        if (window.drawingManager) {
+        const dmSave = this.resolveDrawingManager();
 
-            window.drawingManager.renderDrawing(drawing);
+        if (dmSave) {
 
-            window.drawingManager.saveDrawings();
+            dmSave.renderDrawing(drawing);
+
+            dmSave.saveDrawings();
 
         }
 
@@ -23640,7 +23665,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         // Re-render immediately
 
-        const drawingManager = window.chart?.drawingManager || window.drawingManager;
+        const drawingManager = this.resolveDrawingManager();
 
         if (drawingManager) {
 
@@ -23674,7 +23699,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         // Re-render the drawing with updated style
 
-        const drawingManager = window.chart?.drawingManager || window.drawingManager;
+        const drawingManager = this.resolveDrawingManager();
 
         if (drawingManager) {
 
@@ -24264,75 +24289,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-/**
+    /**
 
- * Apply a single change immediately (for live preview)
+     * Show template dropdown (same as floating toolbar)
 
- */
+     */
 
-applyImmediateChange(drawing, prop, value) {
-
-    switch (prop) {
-
-        case 'lineColor':
-
-            drawing.style.stroke = value;
-
-            break;
-
-        case 'lineType':
-
-            drawing.style.strokeDasharray = value;
-
-            break;
-
-        case 'lineWidth':
-
-            drawing.style.strokeWidth = parseInt(value);
-
-            break;
-
-        case 'backgroundColor':
-
-            drawing.style.fill = value;
-
-            break;
-
-        case 'textColor':
-
-            drawing.style.textColor = value;
-
-            break;
-
-        case 'fontSize':
-
-            drawing.style.fontSize = parseInt(value);
-
-            break;
-
-    }
-
-
-
-    // Re-render immediately
-
-    if (window.drawingManager) {
-
-        window.drawingManager.renderDrawing(drawing);
-
-    }
-
-}
-
-
-
-/**
-
- * Show template dropdown (same as floating toolbar)
-
- */
-
-showTemplateDropdown(btn, drawing, modal) {
+    showTemplateDropdown(btn, drawing, modal) {
 
     // Toggle off if already open
 
