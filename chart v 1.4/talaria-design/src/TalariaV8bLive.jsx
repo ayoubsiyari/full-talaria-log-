@@ -6086,20 +6086,29 @@ const TalariaV8bLive = () => {
           })(),
         }));
 
-        // Position panel near dblclick (clientX/Y are post-zoom; tlSettPos
-        // is consumed inside the zoomed root, so divide by Z to get
-        // pre-zoom CSS pixels).
+        // Position panel near dblclick (clientX/Y are post-zoom; tlSettPos / txtSettPos
+        // are consumed inside the zoomed root, so divide by Z to get pre-zoom CSS pixels).
         const zForPos = (typeof window !== 'undefined' && Number(window.__v9Zoom)) || 1;
         const px = Math.max(20, Number(x) / zForPos - 220);
         const py = Math.max(60, Number(y) / zForPos - 40);
-        setTlSettPos({ x: px, y: py });
 
         // Force tool group → JSX conditional renders the panel.
         setTool(group);
-        setTlSettOpen(true);
-        // Match legacy index: level edits live on the Input tab — open there for Gann tools.
-        if (drawing.type === "gann-box" || drawing.type === "gann-square-fixed" || drawing.type === "gann-fan") {
-          setTlSettTab("input");
+
+        if (group === 'text') {
+          // Text tools have their own dedicated settings panel (txtSettOpen).
+          // The generic tlSettOpen panel requires effectiveTlGroup which only
+          // covers line/shape groups — text is intentionally excluded from that
+          // set, so we open the text panel directly instead.
+          setTxtSettPos({ x: px, y: py });
+          setTxtSettOpen(true);
+        } else {
+          setTlSettPos({ x: px, y: py });
+          setTlSettOpen(true);
+          // Match legacy index: level edits live on the Input tab — open there for Gann tools.
+          if (drawing.type === "gann-box" || drawing.type === "gann-square-fixed" || drawing.type === "gann-fan") {
+            setTlSettTab("input");
+          }
         }
         return true;
       } catch (err) {
@@ -6131,6 +6140,23 @@ const TalariaV8bLive = () => {
       if (editing.prevGroupSelected !== undefined) setGroupSelected(v9SanitizeGroupSelected(editing.prevGroupSelected));
     });
   }, [tlSettOpen]);
+
+  // Mirror the same editingDrawingRef cleanup for the text settings panel.
+  // Without this, the forward bridge permanently stays in clearTool() mode
+  // after the text panel closes (editingDrawingRef is never cleared).
+  useEffect(() => {
+    if (txtSettOpen) return;
+    const editing = editingDrawingRef.current;
+    if (!editing) return;
+    // Only clear if it was set by a text-tool dblclick (group === 'text').
+    const group = editing.drawing && drawingTypeToPanelGroupRef.current(editing.drawing.type);
+    if (group !== 'text') return;
+    editingDrawingRef.current = null;
+    Promise.resolve().then(() => {
+      if (editing.prevTool !== undefined) setTool(editing.prevTool);
+      if (editing.prevGroupSelected !== undefined) setGroupSelected(v9SanitizeGroupSelected(editing.prevGroupSelected));
+    });
+  }, [txtSettOpen]);
 
   // ─── Drawing selection bridge ───────────────────────────────────────────
   // Wrap drawingManager.toolbar.show / .hide once chart.js is ready so the
