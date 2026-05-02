@@ -3918,7 +3918,7 @@ const TalariaV8bLive = () => {
     if (!type) return null;
     // Match chart text/annotation kinds (see drawing-tools-ui unifiedTextTypes).
     if (['text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'callout', 'comment',
-         'price-label', 'price-label-2', 'signpost-2', 'flag-mark', 'image', 'emoji', 'pin'].includes(type)) {
+         'price-label', 'price-label-2', 'signpost', 'signpost-2', 'flag-mark', 'image', 'emoji', 'pin', 'table'].includes(type)) {
       return 'text';
     }
     if (['anchored-vwap', 'fixed-range-volume-profile', 'anchored-volume-profile'].includes(type)) return 'brush';
@@ -3955,8 +3955,25 @@ const TalariaV8bLive = () => {
   // After finalizeDrawing, chart clears the tool (crosshair) but `toolbar.show` already ran; until then
   // `tool` is crosshair and tlSubTool used to fall through to Trend Line. Prefer the selected drawing's group.
   // Volume profile types map to group `brush` — normalize to `brush2` (V9 rail) for the floating bar.
+  // Resolve type from drawingManager when possible — `tlBarSelectedType` state can lag one frame behind
+  // `toolbar.show`, leaving a stale trendline type so the wrong floating bar flashes or sticks.
+  let chartPrimarySelectedDrawingType = tlBarSelectedType;
+  if (tlBarSelected && typeof window !== "undefined") {
+    try {
+      const dm = window.chart && window.chart.drawingManager;
+      if (dm) {
+        let d = dm.selectedDrawing;
+        if (!d && Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length === 1) {
+          d = dm.selectedDrawings[0];
+        }
+        if (d && d.type) chartPrimarySelectedDrawingType = d.type;
+      }
+    } catch (_) {}
+  }
   const tlBarDrawingGroupRaw =
-    tlBarSelected && tlBarSelectedType ? drawingTypeToPanelGroupRef.current(tlBarSelectedType) : null;
+    tlBarSelected && chartPrimarySelectedDrawingType
+      ? drawingTypeToPanelGroupRef.current(chartPrimarySelectedDrawingType)
+      : null;
   const tlBarDrawingGroup =
     tlBarDrawingGroupRaw === "brush" ? "brush2" : tlBarDrawingGroupRaw;
   const effectiveTlGroup =
