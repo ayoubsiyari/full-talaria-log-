@@ -5677,6 +5677,42 @@ const TalariaV8bLive = () => {
   // so the forward bridge below skips that pass and we don't loop.
   const suppressForwardBridge = useRef(false);
 
+  // Legacy chart.js saves drawings and updates `d.levels` / style directly; React `tlStyle` does not
+  // hear those edits. The forward bridge below would then push *stale* `tlStyle.fibLevels` back onto
+  // the chart on the next toolbar interaction. Re-read the live selection into `tlStyle` whenever
+  // drawings persist — chart modules stay unchanged; this is integration-only.
+  useEffect(() => {
+    let rafId = 0;
+    const v9DrawingUsesFibStyleBridge = (t) =>
+      !!t
+      && (t.startsWith("fibonacci-") || t.startsWith("fib-") || t.startsWith("trend-fib-"));
+    const syncTlStyleFromSelectedDrawing = () => {
+      try {
+        const d = getSelectedDrawingAcrossCharts(
+          editingDrawingRef.current ? editingDrawingRef.current.drawing : null,
+        );
+        if (!d || !d.type || !v9DrawingUsesFibStyleBridge(d.type)) return;
+        const patch = v9TlStylePatchFromDrawing(d);
+        if (!patch || Object.keys(patch).length === 0) return;
+        suppressForwardBridge.current = true;
+        setTlStyle((s) => ({ ...s, ...patch }));
+      } catch (_) { /* ignore */ }
+    };
+    const onDrawingsChanged = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        syncTlStyleFromSelectedDrawing();
+      });
+    };
+    if (typeof window === "undefined") return undefined;
+    window.addEventListener("drawingsChanged", onDrawingsChanged);
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      window.removeEventListener("drawingsChanged", onDrawingsChanged);
+    };
+  }, []);
+
   // ─── V9 dblclick → V9 settings panel ─────────────────────────────────────
   // Register a hook that chart.js's drawing-tools-manager.editDrawing() calls
   // when the user double-clicks an existing drawing. Replaces the legacy
