@@ -6854,7 +6854,7 @@ const TalariaV8bLive = () => {
   }, [rollback, darkMode, c.gn, c.rd]);
 
   return (
-    <div data-v9-app="1" style={{ width: "100%", height: "100dvh", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
+    <div data-v9-app="1" style={{ width: "100%", height: "100dvh", boxSizing: "border-box", paddingLeft: isFullscreen ? 0 : 14, background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
       onClick={(e) => {
         // Never run closeAll on bubbled clicks from children — it ran after every button/dropdown
         // handler and cleared state in the same tick (felt like “dead clicks”, many taps needed).
@@ -14265,7 +14265,7 @@ const TalariaV8bLive = () => {
           </button>
         ))}
       </div>
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0, paddingLeft: 14, background: c.bg, boxSizing: "border-box" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
         <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, paddingLeft: 8, overflowY: "auto", overflowX: "hidden" }}>
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%" }}>

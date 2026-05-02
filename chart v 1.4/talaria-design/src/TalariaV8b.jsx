@@ -1851,7 +1851,7 @@ const TalariaV8b = () => {
   const ddItems = getDdItems();
 
   return (
-    <div style={{ width: "100%", height: "calc(100dvh / 1.05)", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zoom: 1.05, animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
+    <div style={{ width: "100%", height: "calc(100dvh / 1.05)", boxSizing: "border-box", paddingLeft: isFullscreen ? 0 : 14, background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zoom: 1.05, animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
       onClick={closeAll}>
       <style>{`
         @keyframes tlrWinIn  { from { opacity:0; transform:translate(-50%,-50%) scale(0.97) translateY(7px); } to { opacity:1; transform:translate(-50%,-50%) scale(1) translateY(0); } }
@@ -9016,7 +9016,7 @@ const TalariaV8b = () => {
           </button>
         ))}
       </div>
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0, paddingLeft: 14, background: c.bg, boxSizing: "border-box" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
         <div onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, paddingLeft: 8, overflowY: "auto", overflowX: "hidden" }}>
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%" }}>
