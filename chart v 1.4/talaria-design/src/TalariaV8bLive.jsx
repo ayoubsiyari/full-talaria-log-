@@ -5648,11 +5648,18 @@ const TalariaV8bLive = () => {
       }
       if (v9SelectionToolbarSyncRef.current) {
         v9SelectionToolbarSyncRef.current = false;
-        try {
-          if (typeof dm.clearTool === 'function') dm.clearTool();
-          else dm.currentTool = null;
-        } catch (_) {}
-        return;
+        const legacy = resolveLegacyTool();
+        // Only suppress if switching to crosshair (the toolbar.show sync-back).
+        // If the user explicitly clicked a real drawing tool while a shape was
+        // selected, fall through and activate it instead of just clearing.
+        if (!legacy) {
+          try {
+            if (typeof dm.clearTool === 'function') dm.clearTool();
+            else dm.currentTool = null;
+          } catch (_) {}
+          return;
+        }
+        // fall through → activate the real tool below
       }
       const legacy = resolveLegacyTool();
       try {
