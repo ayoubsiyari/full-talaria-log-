@@ -3916,7 +3916,11 @@ const TalariaV8bLive = () => {
   /** chart.js `drawing.type` → V9 rail group (`tool` state). Shared by settings open + floating toolbar selection sync. */
   const drawingTypeToPanelGroup = useCallback((type) => {
     if (!type) return null;
-    if (['text', 'note', 'price-note', 'callout', 'comment', 'price-label', 'signpost-2', 'flag-mark', 'image', 'emoji', 'pin'].includes(type)) return 'text';
+    // Match chart text/annotation kinds (see drawing-tools-ui unifiedTextTypes).
+    if (['text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'callout', 'comment',
+         'price-label', 'price-label-2', 'signpost-2', 'flag-mark', 'image', 'emoji', 'pin'].includes(type)) {
+      return 'text';
+    }
     if (['anchored-vwap', 'fixed-range-volume-profile', 'anchored-volume-profile'].includes(type)) return 'brush';
     if (type.startsWith('fibonacci-') || type.startsWith('fib-') || type.startsWith('trend-fib-')) return 'fib';
     // Gann tools live on the Fibonacci & Gann rail (`gannBox` … are in V9_RAIL_ICONS_BY_GROUP.fib, not `pattern`).
@@ -5896,7 +5900,7 @@ const TalariaV8bLive = () => {
       try {
         if (!drawing || !drawing.type) return false;
         const group = drawingTypeToPanelGroupRef.current(drawing.type);
-        if (!group) return false; // Let legacy panel handle text / volume / etc.
+        if (!group) return false; // Unknown type → legacy settings panel
 
         // Drop stale close animation so reopening from the gear never plays PopOut first.
         setClosing(s => { const n = new Set(s); n.delete("tlsett"); return n; });

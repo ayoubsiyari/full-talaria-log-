@@ -6312,11 +6312,17 @@ class DrawingToolsManager {
         
         // Re-render all drawings with updated scales.
         // skipInteraction=true: skip the expensive ~20-selectAll setupDrawingInteraction
-        // call on each drawing. The SVG-level geometric hit-tester handles selection
-        // without per-element listeners. Full interaction is wired up by selectDrawing /
-        // addDrawing when the user actually interacts with a specific drawing.
+        // on unselected drawings (pan/zoom hot path). Selected drawings and tools that
+        // always expose point handles must keep full setup so gear/dblclick/resize still
+        // work after a redraw (SVG groups are recreated here).
         this.drawings.forEach(drawing => {
-            this.renderDrawing(drawing, { skipInteraction: true });
+            const needsFullInteraction =
+                !!drawing.selected ||
+                (this.selectedDrawings && this.selectedDrawings.includes(drawing)) ||
+                drawing.type === 'polyline' ||
+                drawing.type === 'path' ||
+                drawing.type === 'double-curve';
+            this.renderDrawing(drawing, { skipInteraction: !needsFullInteraction });
         });
         
         this.chart._isRendering = wasRendering;
