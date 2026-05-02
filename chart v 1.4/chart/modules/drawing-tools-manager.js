@@ -6322,8 +6322,7 @@ class DrawingToolsManager {
                 drawing.type === 'polyline' ||
                 drawing.type === 'path' ||
                 drawing.type === 'double-curve';
-            this.renderDrawing(drawing, { skipInteraction: !needsFullInteraction });
-        });
+                this.renderDrawing(drawing, { skipInteraction: true });        });
         
         this.chart._isRendering = wasRendering;
         
