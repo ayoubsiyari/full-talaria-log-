@@ -9682,8 +9682,8 @@ const TalariaV8bLive = () => {
         );
       })()}
 
-      {/* ── Text Tool Settings Window ── */}
-      {tool === "text" && (txtSettOpen || closing.has("txtsett")) && (()=>{
+      {/* ── Text Tool Settings Window (portal → body: same stacking as TL settings / chart toolbar) ── */}
+      {tool === "text" && (txtSettOpen || closing.has("txtsett")) && typeof document !== "undefined" && createPortal((()=>{
         const txtSizes = [10,12,14,16,18,20,22,24];
         const openTxtCP = (e, key, val) => {
           const p = parseColor(val||'#ffffff'); const hsv = rgbToHsv(p.r,p.g,p.b);
@@ -9721,7 +9721,7 @@ const TalariaV8bLive = () => {
         const txtTabIdx=txtTabs.findIndex(([id])=>id===txtSettTab);
         return (
         <div data-sdrop="1" onClick={e=>{e.stopPropagation();setTxtSizeOpen(false);}}
-          style={{position:"fixed",left:txtSettPos.x,top:txtSettPos.y,zIndex:10050,width:420,fontFamily:F,
+          style={{position:"fixed",left:txtSettPos.x,top:txtSettPos.y,zIndex:11000,width:420,fontFamily:F,
                   background:c.sf,border:`1px solid ${c.brH}`,
                   boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                   display:"flex",flexDirection:"column",
@@ -10287,7 +10287,7 @@ const TalariaV8bLive = () => {
           </div>
         </div>
         );
-      })()}
+      })(), document.body)}
 
       {/* Trend line floating bar dropdowns */}
       {((tlBarDrop&&tlBarDrop!=="template")||(closing.has("tlbardrop")&&tlLastBarDropRef.current!=="template")) && (()=>{
@@ -12201,6 +12201,37 @@ const TalariaV8bLive = () => {
                     <I n={item.icon} s={15} cl={isSelected ? c.acL : rowHov ? c.tx : c.ts}/>
                     {item.label}
                   </button>
+                  {activeKey === "text" && <div
+                    title="Settings"
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      setTool("text");
+                      setGroupSelected((p) => v9SanitizeGroupSelected({ ...p, text: item }));
+                      const r = e.currentTarget.getBoundingClientRect();
+                      const vpW = window.innerWidth / Z;
+                      const x = Math.max(8, Math.min(r.left / Z - 220, vpW - 420));
+                      const y = Math.max(60, r.top / Z);
+                      if (tlSettOpen) closeTlSett();
+                      if (vwapSettOpen) closeVwapSett();
+                      if (vpSettOpen) closeVpSett();
+                      if (avSettOpen) closeAvSett();
+                      setTxtSettPos({ x, y });
+                      setTxtSettTab(item.icon === "emoji" ? "coordinates" : "style");
+                      setTxtSettOpen(true);
+                      closeDropdown();
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onMouseEnter={() => setHov(`ddtxtsett-${item.icon}-${i}`)}
+                    onMouseLeave={() => setHov(`dd-${i}`)}
+                    style={{
+                      padding: 4, cursor: "default", marginLeft: 2, flexShrink: 0,
+                      opacity: hov === `ddtxtsett-${item.icon}-${i}` ? 1 : rowHov ? 0.75 : 0.45,
+                      transition: "opacity 0.12s",
+                    }}>
+                    <I n="settings" s={12} cl={hov === `ddtxtsett-${item.icon}-${i}` ? c.acL : c.ts}/>
+                  </div>}
                   {!["eye","magnet","trash"].includes(activeKey) && <div
                     onPointerDown={(e) => {
                       e.stopPropagation(); e.preventDefault();
