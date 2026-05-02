@@ -13828,14 +13828,19 @@ class Chart {
         if (entry) return entry;
         const img = new Image();
         entry = { img, failed: false, url };
-        img.onload = () => {
+        const bump = () => {
             if (typeof this.scheduleRender === 'function') this.scheduleRender();
+            if (!this.isLoading && typeof this.render === 'function') this.render();
+        };
+        img.onload = () => {
+            bump();
         };
         img.onerror = () => {
             entry.failed = true;
-            if (typeof this.scheduleRender === 'function') this.scheduleRender();
+            bump();
         };
-        img.crossOrigin = 'anonymous';
+        // Do not set crossOrigin: flagcdn allows hotlinking but CORS mode can block loads,
+        // leaving empty badges until decode — canvas display works without tainting for typical use.
         img.src = url;
         this._econCalFlagImgCache.set(url, entry);
         return entry;
@@ -13904,8 +13909,15 @@ class Chart {
 
         placements.sort((a, b) => a.x - b.x);
 
-        const clusterGap = badgeW + 6;
-        const mergeDist = badgeW * 1.1;
+        if (typeof api.getFlagImageUrl === 'function') {
+            for (let pi = 0; pi < placements.length; pi++) {
+                const u = api.getFlagImageUrl(placements[pi].e.country || placements[pi].e.currency || '');
+                if (u) this._ensureEconomicCalendarFlagImage(u);
+            }
+        }
+
+        const clusterGap = badgeW + 10;
+        const mergeDist = badgeW * 1.35;
 
         this.ctx.save();
         this.ctx.textAlign = 'center';
@@ -13955,11 +13967,22 @@ class Chart {
                     this.ctx.lineWidth = Math.max(1, badgeW * 0.06);
                     this.ctx.stroke();
 
-                    const flagStr = getFlagEmojiFallback(e);
-                    const innerFont = Math.max(8, Math.min(12, badgeH * 0.85));
-                    this.ctx.font = `${innerFont}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
-                    this.ctx.fillStyle = emojiFill;
-                    this.ctx.fillText(flagStr, xi, cy);
+                    const iso = typeof api.getCalendarFlagCode === 'function'
+                        ? api.getCalendarFlagCode(e)
+                        : '';
+                    if (iso && /^[A-Z]{2}$/i.test(iso)) {
+                        const codeStr = String(iso).toUpperCase();
+                        const codeFont = Math.max(7, Math.min(11, badgeH * 0.42));
+                        this.ctx.font = `700 ${codeFont}px system-ui,"Segoe UI",sans-serif`;
+                        this.ctx.fillStyle = emojiFill;
+                        this.ctx.fillText(codeStr, xi, cy);
+                    } else {
+                        const flagStr = getFlagEmojiFallback(e);
+                        const innerFont = Math.max(8, Math.min(12, badgeH * 0.85));
+                        this.ctx.font = `${innerFont}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+                        this.ctx.fillStyle = emojiFill;
+                        this.ctx.fillText(flagStr, xi, cy);
+                    }
                 }
 
                 this._economicCalendarHitRegions.push({

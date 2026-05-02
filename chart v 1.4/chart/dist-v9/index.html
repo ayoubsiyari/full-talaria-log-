@@ -541,7 +541,7 @@
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=20260502_drawing_manager_alias"></script>
+    <script defer src="/chart/chart.js?v=20260503_econ_axis_flags"></script>
     <!-- V9 React theme panel → chart.chartSettings (shared with legacy-index.html). Must load after chart.js. -->
     <script defer src="/chart/modules/v9-theme-bridge.js?v=20260428_v9_theme_bridge"></script>
 
@@ -562,7 +562,7 @@
          instantiates this inline; V9's bootstrap below does the same. -->
     <script defer src="/chart/modules/panel-manager.js?v=20260428b_dblclick_v9"></script>
     <!-- Economic calendar: Finnhub via /api + chart time-axis markers (__economicCalendarForChart). -->
-    <script defer src="/chart/modules/economic-news-sidebar.js?v=20260428_cal_chart_now"></script>
+    <script defer src="/chart/modules/economic-news-sidebar.js?v=20260503_econ_axis_flags"></script>
   <script type="module" crossorigin src="/chart/dist-v9/assets/index-B63KpOll.js"></script>
 </head>
 <body>
