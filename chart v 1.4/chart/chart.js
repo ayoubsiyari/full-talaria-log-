@@ -13770,45 +13770,6 @@ class Chart {
         return data.length - 1;
     }
 
-    _drawEconomicCalendarFlagInCircle(ctx, xi, cy, innerR, img) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(xi, cy, innerR, 0, Math.PI * 2);
-        ctx.clip();
-        const iw = img.naturalWidth || img.width;
-        const ih = img.naturalHeight || img.height;
-        if (!iw || !ih) {
-            ctx.restore();
-            return false;
-        }
-        const scale = Math.max((innerR * 2) / iw, (innerR * 2) / ih);
-        const dw = iw * scale;
-        const dh = ih * scale;
-        ctx.drawImage(img, xi - dw / 2, cy - dh / 2, dw, dh);
-        ctx.restore();
-        return true;
-    }
-
-    _ensureEconomicCalendarFlagImage(url) {
-        if (!url) return null;
-        if (!this._econCalFlagImgCache) this._econCalFlagImgCache = new Map();
-        let entry = this._econCalFlagImgCache.get(url);
-        if (entry) return entry;
-        const img = new Image();
-        entry = { img, failed: false, url };
-        img.onload = () => {
-            if (typeof this.scheduleRender === 'function') this.scheduleRender();
-        };
-        img.onerror = () => {
-            entry.failed = true;
-            if (typeof this.scheduleRender === 'function') this.scheduleRender();
-        };
-        img.crossOrigin = 'anonymous';
-        img.src = url;
-        this._econCalFlagImgCache.set(url, entry);
-        return entry;
-    }
-
     /**
      * Economic calendar: neutral circular badges with country flag inside (no red/orange impact colors on canvas).
      * Hover hit regions stored on this._economicCalendarHitRegions for updateEconomicCalendarHover.
@@ -13840,98 +13801,59 @@ class Chart {
         const fillCol = lightish ? 'rgba(255,255,255,0.96)' : 'rgba(54,58,69,0.96)';
         const strokeCol = lightish ? 'rgba(120,123,134,0.88)' : 'rgba(150,153,165,0.65)';
 
-        const getFlagEmojiFallback = (ev) => {
+        const getFlag = (ev) => {
             if (ev.flagEmoji) return ev.flagEmoji;
             if (typeof api.getFlagEmoji === 'function') return api.getFlagEmoji(ev.country || ev.currency || '');
             return '🌐';
         };
 
-        const pad = radius + 8;
-        const plotLeft = m.l + pad;
-        const plotRight = this.w - m.r - pad;
+        this.ctx.save();
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
 
-        /** @type {{ e: object, x: number }[]} */
-        const placements = [];
         for (let i = 0; i < events.length; i++) {
             const e = events[i];
             const ts = e && e.t;
             if (!Number.isFinite(ts)) continue;
             const idx = this._timestampToFractionalDataIndex(ts);
             if (idx == null || !Number.isFinite(idx)) continue;
+            const pad = radius + 8;
+            const plotLeft = m.l + pad;
+            const plotRight = this.w - m.r - pad;
             let x = this.dataIndexToPixel(idx);
             if (idx < 0) {
                 x = plotLeft;
             }
+            // Finnhub times often fall before the first loaded bar or after the last — clamp to the
+            // plot edges so flags still appear (tooltip shows the real timestamp).
             x = Math.max(plotLeft, Math.min(plotRight, x));
             if (!Number.isFinite(x) || !Number.isFinite(cy)) continue;
-            placements.push({ e, x });
+
+            const jitter = (i % 7) * (radius * 0.22) - (3 * (radius * 0.22));
+            const xi = x + jitter;
+            if (!Number.isFinite(xi)) continue;
+            const flagStr = getFlag(e);
+
+            this.ctx.beginPath();
+            this.ctx.arc(xi, cy, radius, 0, Math.PI * 2);
+            this.ctx.fillStyle = fillCol;
+            this.ctx.fill();
+            this.ctx.strokeStyle = strokeCol;
+            this.ctx.lineWidth = Math.max(1, radius * 0.1);
+            this.ctx.stroke();
+
+            const innerFont = Math.max(9, Math.min(14, radius * 1.15));
+            this.ctx.font = `${innerFont}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+            this.ctx.fillText(flagStr, xi, cy);
+
+            this._economicCalendarHitRegions.push({
+                left: xi - radius - 2,
+                right: xi + radius + 2,
+                top: cy - radius - 2,
+                bottom: cy + radius + 2,
+                event: e
+            });
         }
-
-        placements.sort((a, b) => a.x - b.x);
-
-        const clusterGap = radius * 2 + 4;
-        const mergeDist = radius * 2.1;
-        const emojiFill = lightish ? 'rgba(30,32,38,0.96)' : 'rgba(240,243,248,0.98)';
-
-        this.ctx.save();
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
-
-        let c = 0;
-        while (c < placements.length) {
-            let d = c + 1;
-            while (d < placements.length && placements[d].x - placements[d - 1].x <= mergeDist) {
-                d++;
-            }
-            const cluster = placements.slice(c, d);
-            const n = cluster.length;
-            for (let k = 0; k < n; k++) {
-                const { e, x } = cluster[k];
-                const offset = (k - (n - 1) / 2) * clusterGap;
-                let xi = x + offset;
-                xi = Math.max(plotLeft + radius, Math.min(plotRight - radius, xi));
-                if (!Number.isFinite(xi)) continue;
-
-                const flagUrl = typeof api.getFlagImageUrl === 'function'
-                    ? api.getFlagImageUrl(e.country || e.currency || '')
-                    : null;
-
-                this.ctx.beginPath();
-                this.ctx.arc(xi, cy, radius, 0, Math.PI * 2);
-                this.ctx.fillStyle = fillCol;
-                this.ctx.fill();
-                this.ctx.strokeStyle = strokeCol;
-                this.ctx.lineWidth = Math.max(1, radius * 0.1);
-                this.ctx.stroke();
-
-                const innerR = Math.max(radius - Math.max(2, radius * 0.18), radius * 0.62);
-                let drewFlag = false;
-                if (flagUrl) {
-                    const entry = this._ensureEconomicCalendarFlagImage(flagUrl);
-                    const { img } = entry || {};
-                    if (img && !entry.failed && img.complete && img.naturalWidth) {
-                        drewFlag = this._drawEconomicCalendarFlagInCircle(this.ctx, xi, cy, innerR, img);
-                    }
-                }
-                if (!drewFlag) {
-                    const flagStr = getFlagEmojiFallback(e);
-                    const innerFont = Math.max(9, Math.min(14, radius * 1.15));
-                    this.ctx.font = `${innerFont}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
-                    this.ctx.fillStyle = emojiFill;
-                    this.ctx.fillText(flagStr, xi, cy);
-                }
-
-                this._economicCalendarHitRegions.push({
-                    left: xi - radius - 2,
-                    right: xi + radius + 2,
-                    top: cy - radius - 2,
-                    bottom: cy + radius + 2,
-                    event: e
-                });
-            }
-            c = d;
-        }
-
         this.ctx.restore();
     }
 
@@ -13972,15 +13894,9 @@ class Chart {
         });
         const impactLabel = ev.impact === 'high' ? 'High' : (ev.impact === 'medium' ? 'Medium' : ev.impact || '—');
         const esc = (s) => this._escapeHtmlForEconTooltip(s);
-        const calApi = typeof window !== 'undefined' ? window.__economicCalendarForChart : null;
-        const flagImgUrl = calApi && typeof calApi.getFlagImageUrl === 'function'
-            ? calApi.getFlagImageUrl(ev.country || ev.currency || '')
-            : null;
-        const flagLead = flagImgUrl
-            ? `<img src="${String(flagImgUrl).replace(/"/g, '&quot;')}" width="20" height="15" alt="" style="vertical-align:-3px;margin-right:6px;border-radius:3px;object-fit:cover;box-shadow:0 0 0 1px rgba(255,255,255,.18)" />`
-            : `${esc(ev.flagEmoji || '🌐')} `;
+        const flag = ev.flagEmoji || '🌐';
         el.innerHTML = `
-            <div style="font-weight:600;font-size:13px;margin-bottom:6px;color:#fff;">${flagLead}${esc(ev.event)}</div>
+            <div style="font-weight:600;font-size:13px;margin-bottom:6px;color:#fff;">${flag} ${esc(ev.event)}</div>
             <div style="opacity:.88;font-size:11px;margin-bottom:8px;">${esc(timeStr)}</div>
             <div style="display:grid;grid-template-columns:72px 1fr;gap:4px 10px;font-size:11px;">
                 <span style="opacity:.75;">Country</span><span>${esc(ev.country || '—')}</span>

@@ -417,13 +417,6 @@
         return String.fromCodePoint(A + a, A + b);
     }
 
-    /** PNG flag URL for chart canvas / tooltips (same CDN as pair flags in chart.js). */
-    function flagImageUrl(raw) {
-        var c = countryCode(raw);
-        if (!c || c.length !== 2) return null;
-        return 'https://flagcdn.com/w40/' + c.toLowerCase() + '.png';
-    }
-
     function impactClass(raw) {
         var im = raw;
         if (typeof im === 'number') {
@@ -887,9 +880,6 @@
         },
         getFlagEmoji: function (code) {
             return flagEmoji(code);
-        },
-        getFlagImageUrl: function (code) {
-            return flagImageUrl(code);
         }
     };
 
