@@ -3918,7 +3918,10 @@ const TalariaV8bLive = () => {
     if (['text', 'note', 'price-note', 'callout', 'comment', 'price-label', 'signpost-2', 'flag-mark', 'image', 'emoji', 'pin'].includes(type)) return 'text';
     if (['anchored-vwap', 'fixed-range-volume-profile', 'anchored-volume-profile'].includes(type)) return 'brush';
     if (type.startsWith('fibonacci-') || type.startsWith('fib-') || type.startsWith('trend-fib-')) return 'fib';
-    if (type.startsWith('gann-') || type.startsWith('elliott-')
+    // Gann tools live on the Fibonacci & Gann rail (`gannBox` … are in V9_RAIL_ICONS_BY_GROUP.fib, not `pattern`).
+    // Mapping them to `pattern` caused v9SanitizeGroupSelected to strip the selection → Elliott fallback → no Input tab.
+    if (type === 'gann-box' || type === 'gann-square' || type === 'gann-square-fixed' || type === 'gann-fan') return 'fib';
+    if (type.startsWith('elliott-')
         || type === 'xabcd-pattern' || type === 'head-shoulders'
         || type === 'abcd-pattern' || type === 'triangle-pattern'
         || type === 'three-drives' || type === 'cypher-pattern') return 'pattern';
