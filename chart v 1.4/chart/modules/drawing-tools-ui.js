@@ -9396,7 +9396,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
         header.style.cssText = 'color: #787b86; font-size: 12px; margin-bottom: 12px; text-transform: uppercase;';
 
-        header.textContent = 'Fibonacci Levels';
+        header.textContent = drawing.type === 'fib-arcs'
+            ? 'Speed resistance arc ratios'
+            : 'Fibonacci Levels';
 
         section.appendChild(header);
 
@@ -9409,6 +9411,58 @@ body.light-mode .template-save-dialog .dialog-title {
         const lockFixedLevelCount = false;
 
         const fixedLevelCount = 20;
+
+        // Must stay in sync with FibArcsTool in drawing-tools-fib-gann.js (radius multipliers, not retracement 0–1 rows).
+        const FIB_ARCS_CANONICAL_LEVELS = [
+            { value: 0.236, label: '0.236', color: '#f23645', enabled: true },
+            { value: 0.382, label: '0.382', color: '#ff9800', enabled: true },
+            { value: 0.5, label: '0.5', color: '#ffeb3b', enabled: true },
+            { value: 0.618, label: '0.618', color: '#4caf50', enabled: true },
+            { value: 0.786, label: '0.786', color: '#00bcd4', enabled: true },
+            { value: 1, label: '1', color: '#2962ff', enabled: true },
+            { value: 1.618, label: '1.618', color: '#e91e63', enabled: true },
+            { value: 2, label: '2', color: '#2962ff', enabled: true },
+            { value: 2.618, label: '2.618', color: '#e91e63', enabled: true },
+            { value: 3, label: '3', color: '#2962ff', enabled: true },
+            { value: 4.236, label: '4.236', color: '#f23645', enabled: true }
+        ];
+
+        if (drawing.type === 'fib-arcs') {
+            const raw = Array.isArray(drawing.levels) && drawing.levels.length
+                ? drawing.levels
+                : (drawing.style && Array.isArray(drawing.style.levels) && drawing.style.levels.length
+                    ? drawing.style.levels
+                    : null);
+            const looksLikeRetracementOrChannel = Array.isArray(raw) && raw.some((l) => l && Object.prototype.hasOwnProperty.call(l, 'visible'));
+            const hasLockedEndpoints = Array.isArray(raw) && raw.some((l) => l && l.locked === true && (parseFloat(l.value) === 0 || parseFloat(l.value) === 1));
+            const tooFewRows = !Array.isArray(raw) || raw.length === 0 || raw.length < FIB_ARCS_CANONICAL_LEVELS.length - 1;
+            const needsCanonical = !Array.isArray(raw) || raw.length === 0
+                || looksLikeRetracementOrChannel
+                || hasLockedEndpoints
+                || tooFewRows;
+            if (needsCanonical) {
+                const byVal = new Map();
+                if (Array.isArray(raw)) {
+                    raw.forEach((l) => {
+                        if (!l || typeof l !== 'object') return;
+                        const v = parseFloat(l.value);
+                        if (!isNaN(v)) byVal.set(Math.round(v * 10000) / 10000, l);
+                    });
+                }
+                drawing.levels = FIB_ARCS_CANONICAL_LEVELS.map((def) => {
+                    const p = byVal.get(Math.round(def.value * 10000) / 10000);
+                    if (!p) return { ...def };
+                    const enabled = p.enabled !== false && p.visible !== false;
+                    return {
+                        ...def,
+                        enabled,
+                        color: (typeof p.color === 'string' && p.color) ? p.color : def.color
+                    };
+                });
+                if (!drawing.style) drawing.style = {};
+                drawing.style.levels = drawing.levels;
+            }
+        }
 
 
 
@@ -9506,22 +9560,10 @@ body.light-mode .template-save-dialog .dialog-title {
 
             }
 
-            // Fib Speed Resistance Arcs: same `enabled` shape as FibArcsTool (not retracement 0/1 with `visible`)
+            // Fib Speed Resistance Arcs: same list as FIB_ARCS_CANONICAL_LEVELS / FibArcsTool (not retracement rows).
             if (drawing.type === 'fib-arcs') {
 
-                return [
-                    { value: 0.236, label: '0.236', color: '#f23645', enabled: true },
-                    { value: 0.382, label: '0.382', color: '#ff9800', enabled: true },
-                    { value: 0.5, label: '0.5', color: '#ffeb3b', enabled: true },
-                    { value: 0.618, label: '0.618', color: '#4caf50', enabled: true },
-                    { value: 0.786, label: '0.786', color: '#00bcd4', enabled: true },
-                    { value: 1, label: '1', color: '#2962ff', enabled: true },
-                    { value: 1.618, label: '1.618', color: '#e91e63', enabled: true },
-                    { value: 2, label: '2', color: '#2962ff', enabled: true },
-                    { value: 2.618, label: '2.618', color: '#e91e63', enabled: true },
-                    { value: 3, label: '3', color: '#2962ff', enabled: true },
-                    { value: 4.236, label: '4.236', color: '#f23645', enabled: true },
-                ];
+                return FIB_ARCS_CANONICAL_LEVELS.map((l) => ({ ...l }));
 
             }
 
