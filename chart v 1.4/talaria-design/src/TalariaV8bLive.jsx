@@ -6255,6 +6255,26 @@ const TalariaV8bLive = () => {
     });
   }, [txtSettOpen]);
 
+  // Latest React dispatchers/maps for toolbar wrappers — avoids stale closures when React Strict Mode
+  // remounts: the chart keeps one DrawingToolbar instance; without restoring show/hide on cleanup,
+  // __v9Hooked blocks re-attach and setState from the old wrapper is dropped.
+  const v9ToolbarBridgeActRef = useRef({});
+  v9ToolbarBridgeActRef.current = {
+    setTlBarSelected,
+    setTlBarSelectedType,
+    setGroupSelected,
+    setTool,
+    setDropdown,
+    setBtnPressed,
+    setTlStyle,
+    setTlLocked,
+    LEGACY_TYPE_TO_V9_ICON,
+    suppressForwardBridge,
+    v9SelectionToolbarSyncRef,
+    drawingTypeToPanelGroupRef,
+    editingDrawingRef,
+  };
+
   // ─── Drawing selection bridge ───────────────────────────────────────────
   // Wrap drawingManager.toolbar.show / .hide on **every** chart's DrawingToolbar instance.
   // Each panel tile has its own drawingManager + toolbar; hooking only window.chart meant
@@ -6268,17 +6288,21 @@ const TalariaV8bLive = () => {
       if (!tb || tb.__v9Hooked) return false;
       const origShow = tb.show && tb.show.bind(tb);
       const origHide = tb.hide && tb.hide.bind(tb);
+      tb.__v9OrigShow = origShow;
+      tb.__v9OrigHide = origHide;
       tb.show = function (drawing, x, y) {
         try {
-          if (!editingDrawingRef.current) {
-            v9SelectionToolbarSyncRef.current = true;
+          const br = v9ToolbarBridgeActRef.current;
+          const editRef = br.editingDrawingRef;
+          if (!editRef || !editRef.current) {
+            br.v9SelectionToolbarSyncRef.current = true;
           }
-          setTlBarSelected(true);
-          setTlBarSelectedType(drawing && drawing.type);
-          if (drawing && drawing.type && !editingDrawingRef.current) {
-            const g = drawingTypeToPanelGroupRef.current(drawing.type);
+          br.setTlBarSelected(true);
+          br.setTlBarSelectedType(drawing && drawing.type);
+          if (drawing && drawing.type && (!editRef || !editRef.current)) {
+            const g = br.drawingTypeToPanelGroupRef.current(drawing.type);
             if (g) {
-              let icon = LEGACY_TYPE_TO_V9_ICON[drawing.type];
+              let icon = br.LEGACY_TYPE_TO_V9_ICON[drawing.type];
               if (!icon) {
                 const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
                 icon = fb[g] || 'trendline';
@@ -6294,19 +6318,19 @@ const TalariaV8bLive = () => {
                   label = dm.getDrawingDisplayTitle(drawing) || label;
                 }
               } catch (_) {}
-              suppressForwardBridge.current = true;
-              setGroupSelected(prev => v9SanitizeGroupSelected({ ...prev, [g]: { icon, label } }));
-              setTool("crosshair");
-              setDropdown(null);
-              setBtnPressed(null);
+              br.suppressForwardBridge.current = true;
+              br.setGroupSelected(prev => v9SanitizeGroupSelected({ ...prev, [g]: { icon, label } }));
+              br.setTool("crosshair");
+              br.setDropdown(null);
+              br.setBtnPressed(null);
             } else {
-              suppressForwardBridge.current = true;
-              setTool("crosshair");
-              setDropdown(null);
-              setBtnPressed(null);
+              br.suppressForwardBridge.current = true;
+              br.setTool("crosshair");
+              br.setDropdown(null);
+              br.setBtnPressed(null);
             }
           }
-          if (!editingDrawingRef.current) {
+          if (!editRef || !editRef.current) {
             try {
               if (dm && typeof dm.clearTool === 'function') dm.clearTool();
               else if (dm) dm.currentTool = null;
@@ -6314,15 +6338,19 @@ const TalariaV8bLive = () => {
           }
           const patch = v9TlStylePatchFromDrawing(drawing);
           if (patch) {
-            suppressForwardBridge.current = true;
-            setTlStyle(s => ({ ...s, ...patch }));
-            if (typeof drawing.locked === 'boolean') setTlLocked(!!drawing.locked);
+            br.suppressForwardBridge.current = true;
+            br.setTlStyle(s => ({ ...s, ...patch }));
+            if (typeof drawing.locked === 'boolean') br.setTlLocked(!!drawing.locked);
           }
         } catch (_) {}
         return origShow ? origShow(drawing, x, y) : undefined;
       };
       tb.hide = function () {
-        try { setTlBarSelected(false); setTlBarSelectedType(null); } catch (_) {}
+        try {
+          const br = v9ToolbarBridgeActRef.current;
+          br.setTlBarSelected(false);
+          br.setTlBarSelectedType(null);
+        } catch (_) {}
         return origHide ? origHide() : undefined;
       };
       tb.__v9Hooked = true;
@@ -6349,7 +6377,72 @@ const TalariaV8bLive = () => {
       clearInterval(poll);
       window.removeEventListener("chartDataLoaded", onReady);
       window.removeEventListener("panelSelected", onReady);
+      try {
+        for (const dm of enumerateV9DrawingManagersFromWindow()) {
+          const tb = dm && dm.toolbar;
+          if (tb && tb.__v9OrigShow) {
+            tb.show = tb.__v9OrigShow;
+            tb.hide = tb.__v9OrigHide;
+            delete tb.__v9OrigShow;
+            delete tb.__v9OrigHide;
+            delete tb.__v9Hooked;
+          }
+        }
+      } catch (_) {}
     };
+  }, []);
+
+  // Chart.js fires this whenever a drawing becomes primary selection (see drawing-tools-manager
+  // `_notifyV9SelectionSync`) — survives toolbar wrapper loss and reaches always after finalize/select.
+  useEffect(() => {
+    const onV9Sel = (ev) => {
+      try {
+        const t = ev && ev.detail && ev.detail.drawingType;
+        if (!t) return;
+        const br = v9ToolbarBridgeActRef.current;
+        br.setTlBarSelected(true);
+        br.setTlBarSelectedType(t);
+        br.v9SelectionToolbarSyncRef.current = true;
+        const g = br.drawingTypeToPanelGroupRef.current(t);
+        let live = null;
+        try {
+          const d = getSelectedDrawingAcrossCharts(null);
+          if (d && d.type === t) live = d;
+        } catch (_) {}
+        const drawing = live || { type: t };
+        if (g && !br.editingDrawingRef?.current) {
+          let icon = br.LEGACY_TYPE_TO_V9_ICON[t];
+          if (!icon) {
+            const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
+            icon = fb[g] || 'trendline';
+          }
+          const allowRail = V9_RAIL_ICONS_BY_GROUP[g];
+          if (allowRail && icon && !allowRail.has(icon)) {
+            const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
+            icon = fb[g] || allowRail.values().next().value;
+          }
+          let label = t;
+          try {
+            const dm = live && typeof window !== "undefined" ? window.getActiveChart?.()?.drawingManager : null;
+            if (dm && typeof dm.getDrawingDisplayTitle === 'function' && live) {
+              label = dm.getDrawingDisplayTitle(live) || label;
+            }
+          } catch (_) {}
+          br.suppressForwardBridge.current = true;
+          br.setGroupSelected((prev) => v9SanitizeGroupSelected({ ...prev, [g]: { icon, label } }));
+          br.setTool("crosshair");
+          br.setDropdown(null);
+          br.setBtnPressed(null);
+        }
+        const patch = v9TlStylePatchFromDrawing(drawing);
+        if (patch) {
+          br.suppressForwardBridge.current = true;
+          br.setTlStyle((s) => ({ ...s, ...patch }));
+        }
+      } catch (_) {}
+    };
+    window.addEventListener("talaria:v9-selected-drawing", onV9Sel);
+    return () => window.removeEventListener("talaria:v9-selected-drawing", onV9Sel);
   }, []);
 
   // ─── V9 tlStyle → chart.js drawing style ─────────────────────────────────

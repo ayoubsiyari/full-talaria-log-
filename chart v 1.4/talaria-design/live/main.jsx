@@ -7,12 +7,7 @@
  *
  * Loaded by live/index.html, which is the entry for vite.config.live.js.
  */
-import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import TalariaV8bLive from '../src/TalariaV8bLive.jsx'
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <TalariaV8bLive />
-  </StrictMode>,
-)
+createRoot(document.getElementById('root')).render(<TalariaV8bLive />)

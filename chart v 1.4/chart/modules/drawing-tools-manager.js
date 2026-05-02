@@ -220,6 +220,19 @@ class DrawingToolsManager {
         this.init();
     }
 
+    /**
+     * V9 React (`TalariaV8bLive.jsx`) listens for this so the floating mini-bar tracks the
+     * selected drawing even when toolbar.show wrappers were lost (e.g. React Strict Mode remount).
+     */
+    _notifyV9SelectionSync(drawing) {
+        try {
+            if (!drawing || !drawing.type) return;
+            window.dispatchEvent(new CustomEvent('talaria:v9-selected-drawing', {
+                detail: { drawingType: drawing.type, drawingId: drawing.id },
+            }));
+        } catch (_) {}
+    }
+
     _setupHandleMouseDownCapture() {
         if (this._handleMouseDownCaptureHandler) return;
 
@@ -3820,6 +3833,7 @@ class DrawingToolsManager {
                 }
             } catch (e) {}
         }
+        this._notifyV9SelectionSync(drawing);
         
         // [debug removed]
     }
@@ -5507,6 +5521,7 @@ class DrawingToolsManager {
                     const y = svgRect.top + bbox.y;
                     if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(lastDrawing);
                 this.toolbar.show(lastDrawing, x, y);
+                    this._notifyV9SelectionSync(lastDrawing);
                 }
             }
         } else {
@@ -5525,6 +5540,7 @@ class DrawingToolsManager {
                     const y = svgRect.top + bbox.y;
                     if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
                     this.toolbar.show(drawing, x, y);
+                    this._notifyV9SelectionSync(drawing);
                 }
                 return;
             }
@@ -5545,6 +5561,7 @@ class DrawingToolsManager {
                 const y = svgRect.top + bbox.y;
                 if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
                 this.toolbar.show(drawing, x, y);
+                this._notifyV9SelectionSync(drawing);
             }
         }
         
