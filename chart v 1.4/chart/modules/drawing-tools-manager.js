@@ -3826,9 +3826,13 @@ class DrawingToolsManager {
 
     /**
      * Render a single drawing
+     * @param {Object} drawing
+     * @param {Object} [opts]
+     * @param {boolean} [opts.skipInteraction=false] - Skip setupDrawingInteraction (hot path: pan/zoom redraws)
      */
-    renderDrawing(drawing) {
+    renderDrawing(drawing, opts = {}) {
         if (!drawing) return;
+        const skipInteraction = !!opts.skipInteraction;
         
         // Set re-entry guard so hideAxisHighlights → scheduleRender doesn't re-enter
         // during the render cycle (stack overflow when scheduleRender is synchronous).
@@ -3899,7 +3903,19 @@ class DrawingToolsManager {
         }
         
         // Setup interaction handlers
-        this.setupDrawingInteraction(drawing);
+        // Skip during hot-path redraws (pan/zoom): the SVG-level geometric hit-tester
+        // (findDrawingsAtPoint / handleMouseDown) handles selection without per-element
+        // event listeners. setupDrawingInteraction is called when a drawing is actually
+        // selected (renderDrawing from selectDrawing) or first placed (addDrawing).
+        if (!skipInteraction) {
+            this.setupDrawingInteraction(drawing);
+        } else {
+            // Minimal pointer-events pass: set group to none so SVG root can
+            // receive events for geometric hit testing. Per-stroke pointer-events
+            // are still needed for mouse-cursor changes on hover, so we do a
+            // lightweight version that avoids the expensive per-element scan.
+            this._applyMinimalPointerEvents(drawing);
+        }
         // Order panel preview lines are appended to the root SVG after .drawings — they stack on top
         // and steal drags from risk/reward / other tools unless we lift the drawing layers again.
         this.raiseDrawingLayersAboveOrderPreviews();
@@ -3932,6 +3948,20 @@ class DrawingToolsManager {
     /**
      * Setup interaction for a drawing
      */
+    /**
+     * Lightweight pointer-events pass used during hot-path redraws (pan/zoom).
+     * Only sets the top-level group to pointer-events:none and a single broad
+     * selector for strokes — avoids the ~20 selectAll() calls in setupDrawingInteraction.
+     * Full setupDrawingInteraction runs when a drawing is selected or first placed.
+     */
+    _applyMinimalPointerEvents(drawing) {
+        if (!drawing.group) return;
+        drawing.group.style('pointer-events', 'none');
+        // Keep fills non-interactive and strokes reachable for the SVG hit layer
+        drawing.group.selectAll('.shape-fill, .upper-fill, .lower-fill, .line-visible-path')
+            .style('pointer-events', 'none');
+    }
+
     setupDrawingInteraction(drawing) {
         if (!drawing.group) return;
         
@@ -5616,7 +5646,7 @@ class DrawingToolsManager {
         
         this.selectedDrawings.forEach(d => {
             d.deselect();
-            this.renderDrawing(d);
+            this.renderDrawing(d, { skipInteraction: true });
         });
         this.selectedDrawing = null;
         this.selectedDrawings = [];
@@ -6280,9 +6310,13 @@ class DrawingToolsManager {
             this.labelsGroup.selectAll('*').remove();
         }
         
-        // Re-render all drawings with updated scales
+        // Re-render all drawings with updated scales.
+        // skipInteraction=true: skip the expensive ~20-selectAll setupDrawingInteraction
+        // call on each drawing. The SVG-level geometric hit-tester handles selection
+        // without per-element listeners. Full interaction is wired up by selectDrawing /
+        // addDrawing when the user actually interacts with a specific drawing.
         this.drawings.forEach(drawing => {
-            this.renderDrawing(drawing);
+            this.renderDrawing(drawing, { skipInteraction: true });
         });
         
         this.chart._isRendering = wasRendering;
