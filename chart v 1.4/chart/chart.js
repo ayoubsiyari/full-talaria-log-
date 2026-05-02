@@ -19830,6 +19830,12 @@ async function _talariaInitializeChart() {
     const chartInstance = new Chart();
     window.chart = chartInstance;
     window.mainChart = chartInstance;
+    // drawing-tools-ui.js and other modules use `window.drawingManager` to push property
+    // dialog edits to the live chart. `window.chart` is assigned only after `new Chart()`,
+    // so the manager must be aliased here (not during Chart construction).
+    if (chartInstance.drawingManager) {
+        window.drawingManager = chartInstance.drawingManager;
+    }
     
     // Initialize timeframe favorites
     if (typeof TimeframeFavorites !== 'undefined') {

@@ -9581,7 +9581,15 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
         const levelsRef = ensureLevelsArray();
-        levelsRef.forEach(l => { if (l && typeof l === 'object' && (parseFloat(l.value) === 0 || parseFloat(l.value) === 1)) l.locked = true; });
+        // Retracement-style tools use 0/1 as fixed anchors; fib-arcs / circles / wedge use
+        // the same numeric values as radii — do not mark those rows as immutably "locked".
+        const lock01AsAnchors = drawing.type !== 'fib-arcs' && drawing.type !== 'fib-wedge'
+            && drawing.type !== 'fib-circles' && drawing.type !== 'fib-spiral';
+        if (lock01AsAnchors) {
+            levelsRef.forEach((l) => {
+                if (l && typeof l === 'object' && (parseFloat(l.value) === 0 || parseFloat(l.value) === 1)) l.locked = true;
+            });
+        }
 
 
 
