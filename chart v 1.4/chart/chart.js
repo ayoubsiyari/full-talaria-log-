@@ -13770,8 +13770,79 @@ class Chart {
         return data.length - 1;
     }
 
+    _economicCalendarRoundRectPath(ctx, x, y, w, h, r) {
+        const rr = Math.min(Math.max(0, r), w / 2, h / 2);
+        ctx.moveTo(x + rr, y);
+        ctx.arcTo(x + w, y, x + w, y + h, rr);
+        ctx.arcTo(x + w, y + h, x, y + h, rr);
+        ctx.arcTo(x, y + h, x, y, rr);
+        ctx.arcTo(x, y, x + w, y, rr);
+        ctx.closePath();
+    }
+
     /**
-     * Economic calendar: neutral circular badges with country flag inside (no red/orange impact colors on canvas).
+     * Rounded-rect flag badge — matches V9 news list FlagSvg aspect (16×10) and PNG flags from flagcdn.
+     */
+    _drawEconomicCalendarFlagBadge(ctx, xi, cy, bw, bh, img, strokeCol) {
+        const x = xi - bw / 2;
+        const y = cy - bh / 2;
+        const rx = Math.max(1, Math.min(2.5, bw * 0.125));
+        ctx.save();
+        ctx.beginPath();
+        if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(x, y, bw, bh, rx);
+        } else {
+            this._economicCalendarRoundRectPath(ctx, x, y, bw, bh, rx);
+        }
+        ctx.clip();
+        const iw = img.naturalWidth || img.width;
+        const ih = img.naturalHeight || img.height;
+        if (!iw || !ih) {
+            ctx.restore();
+            return false;
+        }
+        const scale = Math.max(bw / iw, bh / ih);
+        const dw = iw * scale;
+        const dh = ih * scale;
+        ctx.drawImage(img, xi - dw / 2, cy - dh / 2, dw, dh);
+        ctx.restore();
+
+        ctx.save();
+        ctx.beginPath();
+        if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(x, y, bw, bh, rx);
+        } else {
+            this._economicCalendarRoundRectPath(ctx, x, y, bw, bh, rx);
+        }
+        ctx.strokeStyle = strokeCol;
+        ctx.lineWidth = Math.max(1, bw * 0.06);
+        ctx.stroke();
+        ctx.restore();
+        return true;
+    }
+
+    _ensureEconomicCalendarFlagImage(url) {
+        if (!url) return null;
+        if (!this._econCalFlagImgCache) this._econCalFlagImgCache = new Map();
+        let entry = this._econCalFlagImgCache.get(url);
+        if (entry) return entry;
+        const img = new Image();
+        entry = { img, failed: false, url };
+        img.onload = () => {
+            if (typeof this.scheduleRender === 'function') this.scheduleRender();
+        };
+        img.onerror = () => {
+            entry.failed = true;
+            if (typeof this.scheduleRender === 'function') this.scheduleRender();
+        };
+        img.crossOrigin = 'anonymous';
+        img.src = url;
+        this._econCalFlagImgCache.set(url, entry);
+        return entry;
+    }
+
+    /**
+     * Economic calendar: same flag assets / aspect as V9 news rail (FlagSvg + flagcdn).
      * Hover hit regions stored on this._economicCalendarHitRegions for updateEconomicCalendarHover.
      */
     drawEconomicCalendarAxisMarkers() {
@@ -13789,71 +13860,119 @@ class Chart {
 
         const m = this.margin;
         const cs = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8;
-        const radius = Math.max(10, Math.min(16, cs * 0.78));
+        // Match TalariaV8bLive news row: <FlagSvg w={16} h={10} />
+        const badgeW = Math.max(14, Math.min(22, cs * 1.12));
+        const badgeH = badgeW * (10 / 16);
         const axisLineY = this.h - m.b;
         const gapAboveLine = 8;
-        let cy = axisLineY - radius - gapAboveLine;
-        cy = Math.max(m.t + radius + 6, cy);
+        let cy = axisLineY - badgeH / 2 - gapAboveLine;
+        cy = Math.max(m.t + badgeH / 2 + 6, cy);
 
         const bg = (this.chartSettings && this.chartSettings.backgroundColor) ? String(this.chartSettings.backgroundColor) : '';
         const bodyLight = typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode');
         const lightish = bodyLight || !bg || /#f{3,6}\b|#fff|white|rgb\s*\(\s*255/i.test(bg) || /245|250|252/.test(bg);
         const fillCol = lightish ? 'rgba(255,255,255,0.96)' : 'rgba(54,58,69,0.96)';
         const strokeCol = lightish ? 'rgba(120,123,134,0.88)' : 'rgba(150,153,165,0.65)';
+        const emojiFill = lightish ? 'rgba(30,32,38,0.96)' : 'rgba(240,243,248,0.98)';
 
-        const getFlag = (ev) => {
+        const getFlagEmojiFallback = (ev) => {
             if (ev.flagEmoji) return ev.flagEmoji;
             if (typeof api.getFlagEmoji === 'function') return api.getFlagEmoji(ev.country || ev.currency || '');
             return '🌐';
         };
 
-        this.ctx.save();
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
+        const edgePad = 8;
+        const plotLeft = m.l + edgePad + badgeW / 2;
+        const plotRight = this.w - m.r - edgePad - badgeW / 2;
 
+        /** @type {{ e: object, x: number }[]} */
+        const placements = [];
         for (let i = 0; i < events.length; i++) {
             const e = events[i];
             const ts = e && e.t;
             if (!Number.isFinite(ts)) continue;
             const idx = this._timestampToFractionalDataIndex(ts);
             if (idx == null || !Number.isFinite(idx)) continue;
-            const pad = radius + 8;
-            const plotLeft = m.l + pad;
-            const plotRight = this.w - m.r - pad;
             let x = this.dataIndexToPixel(idx);
             if (idx < 0) {
                 x = plotLeft;
             }
-            // Finnhub times often fall before the first loaded bar or after the last — clamp to the
-            // plot edges so flags still appear (tooltip shows the real timestamp).
             x = Math.max(plotLeft, Math.min(plotRight, x));
             if (!Number.isFinite(x) || !Number.isFinite(cy)) continue;
-
-            const jitter = (i % 7) * (radius * 0.22) - (3 * (radius * 0.22));
-            const xi = x + jitter;
-            if (!Number.isFinite(xi)) continue;
-            const flagStr = getFlag(e);
-
-            this.ctx.beginPath();
-            this.ctx.arc(xi, cy, radius, 0, Math.PI * 2);
-            this.ctx.fillStyle = fillCol;
-            this.ctx.fill();
-            this.ctx.strokeStyle = strokeCol;
-            this.ctx.lineWidth = Math.max(1, radius * 0.1);
-            this.ctx.stroke();
-
-            const innerFont = Math.max(9, Math.min(14, radius * 1.15));
-            this.ctx.font = `${innerFont}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
-            this.ctx.fillText(flagStr, xi, cy);
-
-            this._economicCalendarHitRegions.push({
-                left: xi - radius - 2,
-                right: xi + radius + 2,
-                top: cy - radius - 2,
-                bottom: cy + radius + 2,
-                event: e
-            });
+            placements.push({ e, x });
         }
+
+        placements.sort((a, b) => a.x - b.x);
+
+        const clusterGap = badgeW + 6;
+        const mergeDist = badgeW * 1.1;
+
+        this.ctx.save();
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+
+        let c = 0;
+        while (c < placements.length) {
+            let d = c + 1;
+            while (d < placements.length && placements[d].x - placements[d - 1].x <= mergeDist) {
+                d++;
+            }
+            const cluster = placements.slice(c, d);
+            const n = cluster.length;
+            for (let k = 0; k < n; k++) {
+                const { e, x } = cluster[k];
+                const offset = (k - (n - 1) / 2) * clusterGap;
+                let xi = x + offset;
+                xi = Math.max(plotLeft, Math.min(plotRight, xi));
+                if (!Number.isFinite(xi)) continue;
+
+                const flagUrl = typeof api.getFlagImageUrl === 'function'
+                    ? api.getFlagImageUrl(e.country || e.currency || '')
+                    : null;
+
+                let drew = false;
+                if (flagUrl) {
+                    const entry = this._ensureEconomicCalendarFlagImage(flagUrl);
+                    const { img } = entry || {};
+                    if (img && !entry.failed && img.complete && img.naturalWidth) {
+                        drew = this._drawEconomicCalendarFlagBadge(this.ctx, xi, cy, badgeW, badgeH, img, strokeCol);
+                    }
+                }
+
+                if (!drew) {
+                    const bx = xi - badgeW / 2;
+                    const by = cy - badgeH / 2;
+                    const rx = Math.max(1, Math.min(2.5, badgeW * 0.125));
+                    this.ctx.beginPath();
+                    if (typeof this.ctx.roundRect === 'function') {
+                        this.ctx.roundRect(bx, by, badgeW, badgeH, rx);
+                    } else {
+                        this._economicCalendarRoundRectPath(this.ctx, bx, by, badgeW, badgeH, rx);
+                    }
+                    this.ctx.fillStyle = fillCol;
+                    this.ctx.fill();
+                    this.ctx.strokeStyle = strokeCol;
+                    this.ctx.lineWidth = Math.max(1, badgeW * 0.06);
+                    this.ctx.stroke();
+
+                    const flagStr = getFlagEmojiFallback(e);
+                    const innerFont = Math.max(8, Math.min(12, badgeH * 0.85));
+                    this.ctx.font = `${innerFont}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+                    this.ctx.fillStyle = emojiFill;
+                    this.ctx.fillText(flagStr, xi, cy);
+                }
+
+                this._economicCalendarHitRegions.push({
+                    left: xi - badgeW / 2 - 2,
+                    right: xi + badgeW / 2 + 2,
+                    top: cy - badgeH / 2 - 2,
+                    bottom: cy + badgeH / 2 + 2,
+                    event: e
+                });
+            }
+            c = d;
+        }
+
         this.ctx.restore();
     }
 
@@ -13894,9 +14013,15 @@ class Chart {
         });
         const impactLabel = ev.impact === 'high' ? 'High' : (ev.impact === 'medium' ? 'Medium' : ev.impact || '—');
         const esc = (s) => this._escapeHtmlForEconTooltip(s);
-        const flag = ev.flagEmoji || '🌐';
+        const calApi = typeof window !== 'undefined' ? window.__economicCalendarForChart : null;
+        const tipFlagUrl = calApi && typeof calApi.getFlagImageUrl === 'function'
+            ? calApi.getFlagImageUrl(ev.country || ev.currency || '')
+            : null;
+        const flagLead = tipFlagUrl
+            ? `<img src="${String(tipFlagUrl).replace(/"/g, '&quot;')}" width="20" height="13" alt="" style="vertical-align:-3px;margin-right:6px;border-radius:2px;object-fit:cover;box-shadow:0 0 0 1px rgba(255,255,255,.14)" />`
+            : `${esc(ev.flagEmoji || '🌐')} `;
         el.innerHTML = `
-            <div style="font-weight:600;font-size:13px;margin-bottom:6px;color:#fff;">${flag} ${esc(ev.event)}</div>
+            <div style="font-weight:600;font-size:13px;margin-bottom:6px;color:#fff;">${flagLead}${esc(ev.event)}</div>
             <div style="opacity:.88;font-size:11px;margin-bottom:8px;">${esc(timeStr)}</div>
             <div style="display:grid;grid-template-columns:72px 1fr;gap:4px 10px;font-size:11px;">
                 <span style="opacity:.75;">Country</span><span>${esc(ev.country || '—')}</span>

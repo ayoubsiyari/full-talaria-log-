@@ -417,6 +417,23 @@
         return String.fromCodePoint(A + a, A + b);
     }
 
+    /**
+     * Same currency→region mapping as FlagSvg in TalariaV8bLive.jsx (EUR→EU, CHF→CH, …).
+     * Used for flag CDN URLs so chart markers match the news rail flags.
+     */
+    function calendarFlagCode(raw) {
+        var up = String(raw || '').trim().toUpperCase();
+        var curMap = { EUR: 'EU', JPY: 'JP', USD: 'US', GBP: 'GB', AUD: 'AU', CAD: 'CA', CHF: 'CH', NZD: 'NZ' };
+        if (curMap[up]) return curMap[up];
+        return countryCode(raw);
+    }
+
+    function flagImageUrl(raw) {
+        var code = calendarFlagCode(raw);
+        if (!code || code.length !== 2) return null;
+        return 'https://flagcdn.com/w40/' + code.toLowerCase() + '.png';
+    }
+
     function impactClass(raw) {
         var im = raw;
         if (typeof im === 'number') {
@@ -464,7 +481,7 @@
             event: ev,
             country: country,
             currency: currency,
-            countryKey: countryCode(country) || '',
+            countryKey: countryCode(country || currency) || '',
             flagEmoji: flagEmoji(country || currency),
             impact: impactClass(raw.impact),
             actual: fmtVal(raw.actual, unit),
@@ -880,6 +897,15 @@
         },
         getFlagEmoji: function (code) {
             return flagEmoji(code);
+        },
+        getFlagImageUrl: function (code) {
+            return flagImageUrl(code);
+        },
+        /** ISO/euro flag code for an event — mirrors V9 FlagSvg input (countryKey / currency). */
+        getCalendarFlagCode: function (ev) {
+            if (!ev) return '';
+            var raw = ev.country || ev.currency || '';
+            return calendarFlagCode(raw) || '';
         }
     };
 
