@@ -384,6 +384,31 @@ function getSelectedDrawingAcrossCharts(editingRefDrawing) {
   return null;
 }
 
+/** chart.js `drawing.type` → V9 Text rail icon id (see `toolGroups` text row + V9_ICON_TO_LEGACY). */
+function legacyChartTextTypeToV9Icon(type) {
+  if (!type) return "text";
+  const map = {
+    text: "text",
+    notebox: "note",
+    label: "text",
+    "anchored-text": "text",
+    note: "note",
+    "price-note": "priceNote",
+    callout: "callout",
+    comment: "comment",
+    "price-label": "priceLabel",
+    "price-label-2": "priceLabel",
+    "signpost-2": "signpost",
+    signpost: "signpost",
+    "flag-mark": "flag",
+    image: "image",
+    emoji: "emoji",
+    pin: "pin",
+    table: "text",
+  };
+  return map[type] || "text";
+}
+
 function collectV9BridgeTargetPairs(editingRefDrawing) {
   const targets = [];
   const seenIds = new Set();
@@ -3977,24 +4002,25 @@ const TalariaV8bLive = () => {
   // After finalizeDrawing, chart clears the tool (crosshair) but `toolbar.show` already ran; until then
   // `tool` is crosshair and tlSubTool used to fall through to Trend Line. Prefer the selected drawing's group.
   // Volume profile types map to group `brush` — normalize to `brush2` (V9 rail) for the floating bar.
-  // Prefer `tlBarSelectedType` when it is a text/label drawing: that value is set synchronously in
-  // drawingManager.toolbar.show from the same `drawing` the bar is for. Overwriting it with
-  // getSelectedDrawingAcrossCharts() could replace `text` with a stale trend line still present in
-  // another manager — which made the floating bar switch to Trend Line right after placing text.
+  // Prefer live selection from getSelectedDrawingAcrossCharts (active chart first). If that drawing
+  // is any text/annotation type, it wins — fixes wrong Trend Line bar when the toolbar hook type or
+  // tlBarSelectedType is stale. Else fall back to hook type when it is text; else scanned || hook.
   let chartPrimarySelectedDrawingType = tlBarSelectedType;
   if (tlBarSelected && typeof window !== "undefined") {
     try {
-      const hookT = tlBarSelectedType;
-      const hookG = hookT ? drawingTypeToPanelGroupRef.current(hookT) : null;
-      if (hookG === "text") {
-        chartPrimarySelectedDrawingType = hookT;
+      const live = getSelectedDrawingAcrossCharts(null);
+      const liveT = live && live.type;
+      const liveG = liveT ? drawingTypeToPanelGroupRef.current(liveT) : null;
+      if (liveG === "text") {
+        chartPrimarySelectedDrawingType = liveT;
       } else {
-        const d = getSelectedDrawingAcrossCharts(null);
-        const scannedT = (d && d.type) ? d.type : null;
-        const scannedG = scannedT ? drawingTypeToPanelGroupRef.current(scannedT) : null;
-        // Stale hook can still report a line type after Text was placed on the focused panel; scan prefers active chart.
-        if (scannedG === "text") chartPrimarySelectedDrawingType = scannedT;
-        else chartPrimarySelectedDrawingType = scannedT || hookT;
+        const hookT = tlBarSelectedType;
+        const hookG = hookT ? drawingTypeToPanelGroupRef.current(hookT) : null;
+        if (hookG === "text") {
+          chartPrimarySelectedDrawingType = hookT;
+        } else {
+          chartPrimarySelectedDrawingType = liveT || hookT;
+        }
       }
     } catch (_) {}
   }
@@ -4004,9 +4030,12 @@ const TalariaV8bLive = () => {
       : null;
   const tlBarDrawingGroup =
     tlBarDrawingGroupRaw === "brush" ? "brush2" : tlBarDrawingGroupRaw;
+  // Selected annotation must never inherit line/shape rail from `tool`, or tlSubTool defaults to Trend Line.
   const effectiveTlGroup =
-    (tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) ? tlBarDrawingGroup : null)
-    || (TL_LINE_SHAPE_GROUPS.has(tool) ? tool : null);
+    tlBarDrawingGroup === "text"
+      ? null
+      : (tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) ? tlBarDrawingGroup : null)
+      || (TL_LINE_SHAPE_GROUPS.has(tool) ? tool : null);
 
   // Active line/shape sub-tool (icon + label)
   const tlSubTool = effectiveTlGroup === "rect"
@@ -4023,7 +4052,14 @@ const TalariaV8bLive = () => {
     ? v9RailSubtoolOrFallback("measure", groupSelected.measure, { icon: "measure", label: "Range Tool" })
     : v9RailSubtoolOrFallback("trendline", groupSelected.trendline, { icon: "trendline", label: "Trend Line" });
   const tlSubToolRef = useRef(tlSubTool.label);
-  const txtSubTool = groupSelected.text || { icon: "text", label: "Text" };
+  const txtSubToolFromRail = groupSelected.text || { icon: "text", label: "Text" };
+  const txtSubTool =
+    tlBarSelected && tlBarDrawingGroup === "text" && chartPrimarySelectedDrawingType
+      ? {
+          icon: legacyChartTextTypeToV9Icon(chartPrimarySelectedDrawingType),
+          label: chartPrimarySelectedDrawingType,
+        }
+      : txtSubToolFromRail;
   const txtSubToolRef = useRef(txtSubTool.label);
   const isFibTool = tlSubTool.icon.startsWith("fib");
   const isGannTool = ["gannBox","gannSquare","gannFan"].includes(tlSubTool.icon);
@@ -4033,7 +4069,10 @@ const TalariaV8bLive = () => {
 
   const lineShapeRailActive =
     tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || tool === "pattern" || tool === "measure";
-  const lineShapeUiContext = lineShapeRailActive || (tlBarSelected && !!effectiveTlGroup);
+  const annotationSelectedOnChart = tlBarSelected && tlBarDrawingGroup === "text";
+  const lineShapeUiContext =
+    !annotationSelectedOnChart &&
+    (lineShapeRailActive || (tlBarSelected && !!effectiveTlGroup));
 
   useEffect(() => {
     // Include `measure` — opening Style sets tool to the drawing’s panel group; omitting it
@@ -4042,8 +4081,15 @@ const TalariaV8bLive = () => {
       setTlSettOpen(false);
       setTlBarDrop(null);
     }
-    if (tool !== "text") { setTxtSettOpen(false); setTxtSizeOpen(false); setTxtBarSizeOpen(false); setTxtBarDrop(null); }
-  }, [tool]);
+    const textUiActive =
+      tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text");
+    if (!textUiActive) {
+      setTxtSettOpen(false);
+      setTxtSizeOpen(false);
+      setTxtBarSizeOpen(false);
+      setTxtBarDrop(null);
+    }
+  }, [tool, tlBarSelected, tlBarDrawingGroup]);
 
   // Update name when switching between sub-tools; also reset to Style tab so the
   // tab indicator never lands off-screen when the previous tab doesn't exist on the new tool
@@ -4055,14 +4101,16 @@ const TalariaV8bLive = () => {
     }
   }, [tlSubTool.label, lineShapeUiContext]);
 
-  // Update txtName when switching text sub-tools (Text → Note → Callout etc.)
+  // Update txtName when switching text sub-tools (Text → Note → Callout etc.), including when a placed annotation is selected.
   useEffect(() => {
-    if (tool === "text" && txtSubTool.label !== txtSubToolRef.current) {
+    const textUiActive =
+      tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text");
+    if (textUiActive && txtSubTool.label !== txtSubToolRef.current) {
       txtSubToolRef.current = txtSubTool.label;
       setTxtName(txtSubTool.label);
       setTxtSettTab(txtSubTool.icon === "emoji" ? "coordinates" : "style");
     }
-  }, [txtSubTool.label, tool]);
+  }, [txtSubTool.label, tool, tlBarSelected, tlBarDrawingGroup]);
 
   // Keep color picker anchored to its tl bar button while the bar is being dragged
   useEffect(() => {
@@ -9735,7 +9783,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Text Tool Settings Window (portal → body: same stacking as TL settings / chart toolbar) ── */}
-      {tool === "text" && (txtSettOpen || closing.has("txtsett")) && typeof document !== "undefined" && createPortal((()=>{
+      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && (txtSettOpen || closing.has("txtsett")) && typeof document !== "undefined" && createPortal((()=>{
         const txtSizes = [10,12,14,16,18,20,22,24];
         const openTxtCP = (e, key, val) => {
           const p = parseColor(val||'#ffffff'); const hsv = rgbToHsv(p.r,p.g,p.b);
