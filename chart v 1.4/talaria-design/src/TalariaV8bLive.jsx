@@ -2615,6 +2615,12 @@ const TalariaV8bLive = () => {
   const v9LangToLegacy = (l) => (l === "arabic" ? "ar" : "en");
   const legacyLangToV9 = (l) => (l === "ar" ? "arabic" : "english");
 
+  useEffect(() => {
+    try {
+      window.__V9_LIVE_SHELL_BUILD = "20260504_v9_selection_sync";
+    } catch (_) {}
+  }, []);
+
   // Mount: hydrate name/avatar/language from the same sources legacy reads.
   useEffect(() => {
     // Cached user (synchronous).

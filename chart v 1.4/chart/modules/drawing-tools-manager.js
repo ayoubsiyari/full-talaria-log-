@@ -8971,3 +8971,8 @@ class DrawingToolsManager {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = DrawingToolsManager;
 }
+
+// DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
+try {
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260504_v9_selection_sync';
+} catch (_) {}
