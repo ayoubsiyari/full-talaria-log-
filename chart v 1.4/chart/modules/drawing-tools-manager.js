@@ -3434,6 +3434,12 @@ class DrawingToolsManager {
                     if (this.chart) this.chart.render();
                     requestAnimationFrame(() => this._triggerAutoInlineEdit(drawing));
                 });
+            } else {
+                // Select the drawing synchronously so it is already selected when
+                // clearTool() runs below. clearTool checks selectedDrawings and keeps
+                // SVG pointer-events:"all", letting the user click empty space to
+                // deselect — the drawing stays visible, only handles disappear.
+                this.selectDrawing(drawing);
             }
         }
         
