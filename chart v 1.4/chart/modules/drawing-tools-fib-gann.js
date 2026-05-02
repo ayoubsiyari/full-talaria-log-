@@ -1226,6 +1226,16 @@ class FibArcsTool extends BaseDrawing {
             { value: 3, enabled: true, color: '#2962ff' },
             { value: 4.236, enabled: true, color: '#f23645' }
         ];
+        // Persist/load same model as FibonacciRetracementTool — BaseDrawing.toJSON only ships `style`.
+        this.style.levels = this.levels;
+    }
+
+    toJSON() {
+        this.style.levels = this.levels;
+        return {
+            ...super.toJSON(),
+            levels: this.levels
+        };
     }
 
     render(container, scales) {
@@ -1411,7 +1421,7 @@ class FibArcsTool extends BaseDrawing {
     }
 
     static fromJSON(data, chart = null) {
-        const tool = new FibArcsTool(data.points, data.style);
+        const tool = new FibArcsTool(data.points, data.style || {});
         tool.id = data.id;
         tool.visible = data.visible !== undefined ? data.visible : true;
         tool.meta = data.meta || { createdAt: Date.now(), updatedAt: Date.now() };
@@ -1422,6 +1432,23 @@ class FibArcsTool extends BaseDrawing {
                 price: p.price || p.y
             }));
         }
+        if (Array.isArray(data.levels) && data.levels.length) {
+            tool.levels = data.levels.map((level) => {
+                const value = typeof level.value === 'number' ? level.value : parseFloat(level.value) || 0;
+                const enabled = level.enabled !== false && level.visible !== false;
+                return {
+                    value,
+                    label: level.label != null ? `${level.label}` : `${value}`,
+                    color: level.color || '#787b86',
+                    enabled,
+                    lineType: level.lineType != null ? `${level.lineType}` : '',
+                    lineWidth: (level.lineWidth != null && !isNaN(parseInt(level.lineWidth, 10)))
+                        ? parseInt(level.lineWidth, 10)
+                        : 2
+                };
+            });
+        }
+        tool.style.levels = tool.levels;
         return tool;
     }
 }

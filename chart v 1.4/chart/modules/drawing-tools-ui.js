@@ -18528,6 +18528,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         actualDrawing.levels = JSON.parse(JSON.stringify(drawing.levels));
 
+                        if (actualDrawing.style) actualDrawing.style.levels = actualDrawing.levels;
+
                         // [debug removed]
 
                     }
@@ -23473,6 +23475,8 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.pendingChanges.levels) {
 
             drawing.levels = this.pendingChanges.levels;
+
+            if (drawing.style) drawing.style.levels = drawing.levels;
 
         }
 
