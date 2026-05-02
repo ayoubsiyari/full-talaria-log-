@@ -5746,9 +5746,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const isElliottWaveType = typeof drawing.type === 'string' && drawing.type.startsWith('elliott-');
 
-        const isFibTool = drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension';
+        // Same “trend line vs levels” split as Fib Retracement: trend fields live on this Style row.
+        const isFibTool = drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension'
+            || drawing.type === 'fib-arcs' || drawing.type === 'fib-wedge';
 
-        if (!isArrowMarker && drawing.type !== 'fib-channel' && drawing.type !== 'fib-timezone' && drawing.type !== 'fib-speed-fan' && drawing.type !== 'trend-fib-time' && drawing.type !== 'fib-circles' && drawing.type !== 'fib-arcs' && drawing.type !== 'fib-wedge' && drawing.type !== 'gann-box' && drawing.type !== 'gann-square-fixed' && drawing.type !== 'gann-fan') {
+        if (!isArrowMarker && drawing.type !== 'fib-channel' && drawing.type !== 'fib-timezone' && drawing.type !== 'fib-speed-fan' && drawing.type !== 'trend-fib-time' && drawing.type !== 'fib-circles' && drawing.type !== 'gann-box' && drawing.type !== 'gann-square-fixed' && drawing.type !== 'gann-fan') {
 
             const isBrushOrHighlighterHeader = drawing.type === 'brush' || drawing.type === 'highlighter';
 
@@ -5854,7 +5856,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         // Line Property Row (skip for arrow-marker - it only needs fill color)
 
-        const skipLineRow = drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down' || drawing.type === 'fib-channel' || drawing.type === 'fib-timezone' || drawing.type === 'fib-speed-fan' || drawing.type === 'trend-fib-time' || drawing.type === 'fib-circles' || drawing.type === 'fib-arcs' || drawing.type === 'fib-wedge' || drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed' || drawing.type === 'gann-fan';
+        const skipLineRow = drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down' || drawing.type === 'fib-channel' || drawing.type === 'fib-timezone' || drawing.type === 'fib-speed-fan' || drawing.type === 'trend-fib-time' || drawing.type === 'fib-circles' || drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed' || drawing.type === 'gann-fan';
 
         if (!skipLineRow) {
 
@@ -18496,7 +18498,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             // Save the current style as default for this tool type
 
-            const drawingManager = window.chart?.drawingManager || window.drawingManager;
+            const drawingManager = this.resolveDrawingManager();
 
             if (drawingManager && drawing && drawing.type) {
 
@@ -22733,7 +22735,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
         if (this.pendingChanges.trendLineEnabled !== undefined) drawing.style.trendLineEnabled = this.pendingChanges.trendLineEnabled;
 
-        if (drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension') {
+        if (drawing.type === 'fibonacci-retracement' || drawing.type === 'fibonacci-extension' || drawing.type === 'trend-fib-extension'
+            || drawing.type === 'fib-arcs' || drawing.type === 'fib-wedge') {
 
             if (drawing.style.trendLineDasharray === undefined || drawing.style.trendLineDasharray === null) {
 
