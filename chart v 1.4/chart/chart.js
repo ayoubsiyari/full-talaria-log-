@@ -11380,14 +11380,33 @@ class Chart {
     }
 
     /**
-     * Schedule a render using requestAnimationFrame for throttling
+     * Schedule a render using requestAnimationFrame for throttling.
+     * During pan / inertia / time-axis zoom / replay playback, render immediately so time-axis
+     * overlays (economic calendar flags, etc.) stay glued to candles instead of lagging one frame.
      */
     scheduleRender() {
-        this.renderPending = true;
-        // Force immediate render for drawing updates
-        if (this.selectedDrawing !== null) {
+        const replayPlaying = this.replaySystem && this.replaySystem.isPlaying;
+        const panOrZoomAxis =
+            this.drag &&
+            this.drag.active &&
+            (this.drag.type === 'pan' || this.drag.type === 'timeAxis');
+        const inertialPan = this.inertia && this.inertia.active;
+        const wheelBurst =
+            typeof this._wheelBurstUntil === 'number' &&
+            performance.now() < this._wheelBurstUntil;
+
+        if (
+            this.selectedDrawing !== null ||
+            replayPlaying ||
+            panOrZoomAxis ||
+            inertialPan ||
+            wheelBurst
+        ) {
+            this.renderPending = false;
             this.render();
+            return;
         }
+        this.renderPending = true;
     }
 
     bumpDataVersion() {
@@ -13830,7 +13849,6 @@ class Chart {
         entry = { img, failed: false, url };
         const bump = () => {
             if (typeof this.scheduleRender === 'function') this.scheduleRender();
-            if (!this.isLoading && typeof this.render === 'function') this.render();
         };
         img.onload = () => {
             bump();
@@ -14301,6 +14319,7 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         const handleWheel = (e) => {
             e.preventDefault();
+            this._wheelBurstUntil = performance.now() + 45;
 
             // No zoom if we have no data
             if (!this.data || this.data.length === 0) return;
