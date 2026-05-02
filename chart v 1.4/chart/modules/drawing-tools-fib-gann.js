@@ -1264,6 +1264,7 @@ class FibArcsTool extends BaseDrawing {
 
         const showZones = this.style.showZones !== false;
         const zonesOpacity = (this.style.backgroundOpacity != null) ? this.style.backgroundOpacity : 0.12;
+        const fullCirc = this.style.v9FibArcsFullCircle === true || this.style.fullCircle === true;
 
         const hexToRgba = (hex, alpha) => {
             if (!hex || typeof hex !== 'string') return `rgba(41, 98, 255, ${alpha})`;
@@ -1281,11 +1282,30 @@ class FibArcsTool extends BaseDrawing {
         const enabledLevelsSorted = this.levels
             .map(l => ({
                 value: typeof l === 'object' ? l.value : l,
-                enabled: typeof l === 'object' ? (l.enabled !== false) : true,
+                enabled: typeof l === 'object' ? (l.enabled !== false && l.visible !== false) : true,
                 color: typeof l === 'object' ? l.color : this.style.stroke
             }))
             .filter(l => l.enabled)
             .sort((a, b) => a.value - b.value);
+
+        const arcPathHalf = (r) =>
+            `M ${x1 - r} ${y1} A ${r} ${r} 0 0 ${sweep} ${x1 + r} ${y1}`;
+        const arcPathFull = (r) =>
+            `M ${x1 - r} ${y1} A ${r} ${r} 0 1 1 ${x1 + r} ${y1} A ${r} ${r} 0 1 1 ${x1 - r} ${y1}`;
+        const zonePathHalf = (r, prevR) => {
+            if (prevR > 0) {
+                return `M ${x1 - r} ${y1} A ${r} ${r} 0 0 ${sweep} ${x1 + r} ${y1} ` +
+                    `L ${x1 + prevR} ${y1} A ${prevR} ${prevR} 0 0 ${innerSweep} ${x1 - prevR} ${y1} Z`;
+            }
+            return `M ${x1 - r} ${y1} A ${r} ${r} 0 0 ${sweep} ${x1 + r} ${y1} L ${x1} ${y1} Z`;
+        };
+        const zonePathFull = (r, prevR) => {
+            if (prevR > 0) {
+                return `M ${x1 - r} ${y1} A ${r} ${r} 0 1 1 ${x1 + r} ${y1} A ${r} ${r} 0 1 1 ${x1 - r} ${y1} ` +
+                    `M ${x1 + prevR} ${y1} A ${prevR} ${prevR} 0 1 0 ${x1 - prevR} ${y1} A ${prevR} ${prevR} 0 1 0 ${x1 + prevR} ${y1} Z`;
+            }
+            return `M ${x1 - r} ${y1} A ${r} ${r} 0 1 1 ${x1 + r} ${y1} A ${r} ${r} 0 1 1 ${x1 - r} ${y1} Z`;
+        };
 
         if (showZones && enabledLevelsSorted.length) {
             let prevR = 0;
@@ -1297,17 +1317,12 @@ class FibArcsTool extends BaseDrawing {
                 }
 
                 const fill = hexToRgba(lvl.color, zonesOpacity);
-                let d = '';
-                if (prevR > 0) {
-                    d = `M ${x1 - r} ${y1} A ${r} ${r} 0 0 ${sweep} ${x1 + r} ${y1} ` +
-                        `L ${x1 + prevR} ${y1} A ${prevR} ${prevR} 0 0 ${innerSweep} ${x1 - prevR} ${y1} Z`;
-                } else {
-                    d = `M ${x1 - r} ${y1} A ${r} ${r} 0 0 ${sweep} ${x1 + r} ${y1} L ${x1} ${y1} Z`;
-                }
+                const d = fullCirc ? zonePathFull(r, prevR) : zonePathHalf(r, prevR);
 
                 this.group.append('path')
                     .attr('d', d)
                     .attr('fill', fill)
+                    .attr('fill-rule', fullCirc && prevR > 0 ? 'evenodd' : 'nonzero')
                     .attr('stroke', 'none')
                     .style('pointer-events', 'none');
 
@@ -1317,7 +1332,9 @@ class FibArcsTool extends BaseDrawing {
 
         this.levels.forEach(levelObj => {
             const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
-            const enabled = typeof levelObj === 'object' ? levelObj.enabled !== false : true;
+            const enabled = typeof levelObj === 'object'
+                ? (levelObj.enabled !== false && levelObj.visible !== false)
+                : true;
             const color = typeof levelObj === 'object' ? levelObj.color : this.style.stroke;
             const baseWidth = typeof levelObj === 'object' && levelObj.lineWidth ? levelObj.lineWidth : this.style.strokeWidth;
             const baseType = typeof levelObj === 'object' && levelObj.lineType ? levelObj.lineType : '';
@@ -1331,11 +1348,12 @@ class FibArcsTool extends BaseDrawing {
 
             const scaledWidth = Math.max(0.5, (lineWidth || 1) * scaleFactor);
             const hitWidth = Math.max(10, scaledWidth * 6);
+            const arcD = fullCirc ? arcPathFull(r) : arcPathHalf(r);
 
             // Hit area (solid, nearly invisible) so arcs are easy to click
             this.group.append('path')
                 .attr('class', 'fib-level-hit')
-                .attr('d', `M ${x1 - r} ${y1} A ${r} ${r} 0 0 ${sweep} ${x1 + r} ${y1}`)
+                .attr('d', arcD)
                 .attr('stroke', 'rgba(255,255,255,0.001)')
                 .attr('stroke-width', hitWidth)
                 .attr('stroke-dasharray', '')
@@ -1345,7 +1363,7 @@ class FibArcsTool extends BaseDrawing {
                 .style('cursor', 'move');
 
             this.group.append('path')
-                .attr('d', `M ${x1 - r} ${y1} A ${r} ${r} 0 0 ${sweep} ${x1 + r} ${y1}`)
+                .attr('d', arcD)
                 .attr('stroke', color)
                 .attr('stroke-width', scaledWidth)
                 .attr('stroke-dasharray', lineType || 'none')
@@ -1362,6 +1380,31 @@ class FibArcsTool extends BaseDrawing {
                 .style('pointer-events', 'none')
                 .text(level.toFixed(3));
         });
+
+        if (this.style.trendLineEnabled !== false) {
+            const tCol = this.style.trendLineColor || this.style.stroke || '#2962ff';
+            const tW = Math.max(0.5, (parseInt(this.style.trendLineWidth, 10) || 1) * scaleFactor);
+            const tHit = Math.max(10, tW * 6);
+            const tDashRaw = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '';
+            const tDash = tDashRaw.replace(/\s+/g, '') === '' ? 'none' : tDashRaw;
+            this.group.append('line')
+                .attr('class', 'fib-arcs-trend-hit')
+                .attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
+                .attr('stroke', 'rgba(255,255,255,0.001)')
+                .attr('stroke-width', tHit)
+                .attr('stroke-dasharray', '')
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+            this.group.append('line')
+                .attr('class', 'fib-arcs-trend')
+                .attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
+                .attr('stroke', tCol)
+                .attr('stroke-width', tW)
+                .attr('stroke-dasharray', tDash)
+                .attr('opacity', 0.85)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
 
         this.createHandles(this.group, scales);
         return this.group;

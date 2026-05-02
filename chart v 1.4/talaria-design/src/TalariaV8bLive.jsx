@@ -771,6 +771,60 @@ function v9IsFibCirclesType(t) {
   return t === "fib-circles";
 }
 
+function v9IsFibArcsType(t) {
+  return t === "fib-arcs";
+}
+
+/** Fib Speed Resistance Arcs (`fib-arcs`): ratio arcs + zones + optional anchor trend line + full/half circle. */
+function v9ApplyFibArcsFromTlStyle(d, tlStyle, widthFallback) {
+  if (!d || !d.style || !v9IsFibArcsType(d.type)) return;
+  const fibDashStr =
+    tlStyle.fibLineType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
+        : "");
+  const trendDashStr =
+    tlStyle.fibArcsTrendType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibArcsTrendType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibArcsTrendType]
+        : "");
+  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
+  const strokeW =
+    parseInt(String(tlStyle.lineWidth), 10) ||
+    (typeof widthFallback === "number" ? widthFallback : levelsW) ||
+    1;
+  const trendW =
+    parseInt(String(tlStyle.fibArcsTrendWidth), 10) ||
+    (typeof widthFallback === "number" ? widthFallback : 1) ||
+    1;
+
+  d.levels = v9TlFibSpeedFanLevelsToChart(
+    tlStyle.fibLevels,
+    tlStyle.fibLineType,
+    tlStyle.fibLineWidth,
+  );
+  const st = d.style;
+  st.stroke = tlStyle.lineColor;
+  st.strokeWidth = strokeW;
+  st.levelsLineWidth = levelsW;
+  st.levelsLineDasharray = fibDashStr;
+
+  st.showZones = tlStyle.fibBackground !== false;
+  st.backgroundOpacity =
+    tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
+      ? +tlStyle.fibBgOpacity
+      : 0.12;
+
+  st.trendLineEnabled = tlStyle.fibArcsTrendLine !== false;
+  st.trendLineColor = tlStyle.lineColor;
+  st.trendLineWidth = trendW;
+  st.trendLineDasharray = trendDashStr;
+
+  st.v9FibArcsFullCircle = !!tlStyle.fibArcsFullCircle;
+}
+
 /** Fib Circles: `d.levels` ratio rings + global line dash/width; background UI persisted on style (chart does not fill zones yet). */
 function v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthFallback) {
   if (!d || !d.style || !v9IsFibCirclesType(d.type)) return;
@@ -851,6 +905,7 @@ function v9TlStylePatchFromDrawing(d) {
   const isFibFan = v9IsFibSpeedFanType(d.type);
   const isTrendFibTime = v9IsTrendFibTimeType(d.type);
   const isFibCircles = v9IsFibCirclesType(d.type);
+  const isFibArcs = v9IsFibArcsType(d.type);
   const stroke =
     d.type === "pitchfork"
       ? (s.medianColor || s.stroke || s.color || s.lineColor)
@@ -859,7 +914,7 @@ function v9TlStylePatchFromDrawing(d) {
         : (s.stroke || s.color || s.lineColor);
   const widthRaw = isClassicFib
     ? (s.trendLineWidth ?? s.strokeWidth ?? s.lineWidth)
-    : isFibFan || isFibCircles
+    : isFibFan || isFibCircles || isFibArcs
       ? (s.strokeWidth ?? s.levelsLineWidth ?? s.lineWidth)
       : isTrendFibTime
         ? (s.trendLineWidth ?? s.strokeWidth ?? s.lineWidth)
@@ -869,7 +924,7 @@ function v9TlStylePatchFromDrawing(d) {
     : undefined;
   const dashRaw = isClassicFib
     ? String(s.trendLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
-    : isFibFan || isFibCircles
+    : isFibFan || isFibCircles || isFibArcs
       ? String(s.levelsLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
       : isTrendFibTime
         ? String(s.trendLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
@@ -1068,6 +1123,31 @@ function v9TlStylePatchFromDrawing(d) {
             fibLineType,
             fibBackground: s.v9FibCirclesBackground === true,
             fibBgOpacity: bgOp,
+          };
+        })()
+      : {}),
+    ...(d.type === "fib-arcs"
+      ? (() => {
+          const fl = v9FibSpeedFanLevelsChartToTl(d.levels);
+          const fibDashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const fibLineType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
+          const trendDashRaw = String(s.trendLineDasharray ?? "").replace(/\s+/g, "");
+          const fibArcsTrendType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[trendDashRaw] ?? (!trendDashRaw ? "solid" : "dashed");
+          return {
+            ...(fl ? { fibLevels: fl } : {}),
+            fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            fibLineType,
+            fibBackground: s.showZones !== false,
+            fibBgOpacity:
+              s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+                ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+                : 0.12,
+            fibArcsTrendLine: s.trendLineEnabled !== false,
+            fibArcsTrendType,
+            fibArcsTrendWidth: String(parseInt(s.trendLineWidth, 10) || 1),
+            fibArcsFullCircle: !!s.v9FibArcsFullCircle,
           };
         })()
       : {}),
@@ -6124,6 +6204,8 @@ const TalariaV8bLive = () => {
           v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthNum);
         } else if (v9IsFibCirclesType(d.type)) {
           v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthNum);
+        } else if (v9IsFibArcsType(d.type)) {
+          v9ApplyFibArcsFromTlStyle(d, tlStyle, widthNum);
         } else if (isFib) {
           d.style.trendLineColor = tlStyle.lineColor;
           d.style.trendLineWidth = widthNum;
@@ -6218,6 +6300,10 @@ const TalariaV8bLive = () => {
     tlStyle.fibGridWidth,
     tlStyle.fibTimeTrendType,
     tlStyle.fibTimeTrendWidth,
+    tlStyle.fibArcsTrendLine,
+    tlStyle.fibArcsTrendType,
+    tlStyle.fibArcsTrendWidth,
+    tlStyle.fibArcsFullCircle,
     tool, groupSelected,
   ]);
 
