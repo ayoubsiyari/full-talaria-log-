@@ -337,13 +337,9 @@ function getSelectedDrawingAcrossCharts(editingRefDrawing) {
     return editingRefDrawing;
   }
   const managers = enumerateV9DrawingManagersFromWindow();
-  for (const dm of managers) {
-    const tb = dm.toolbar;
-    if (tb && tb.currentDrawing) {
-      const live = resolveLiveDrawingInDm(dm, tb.currentDrawing);
-      if (live) return live;
-    }
-  }
+  // Prefer real drawingManager selection first. `toolbar.currentDrawing` can lag or belong to
+  // another toolbar instance — returning it before dm.selectedDrawing made the V9 bar keep
+  // Trend Line after placing Text (stale trend line still in drawings[] matched by id).
   for (const dm of managers) {
     if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
       const live = resolveLiveDrawingInDm(dm, dm.selectedDrawings[0]);
@@ -358,6 +354,13 @@ function getSelectedDrawingAcrossCharts(editingRefDrawing) {
     if (!Array.isArray(dm.drawings)) continue;
     const selected = dm.drawings.filter((x) => x && x.selected);
     if (selected.length) return selected[0];
+  }
+  for (const dm of managers) {
+    const tb = dm.toolbar;
+    if (tb && tb.currentDrawing) {
+      const live = resolveLiveDrawingInDm(dm, tb.currentDrawing);
+      if (live && live.selected) return live;
+    }
   }
   return null;
 }
