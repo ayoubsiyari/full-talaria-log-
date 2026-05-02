@@ -754,10 +754,12 @@ class BaseDrawing {
             this.chart.svg.selectAll(`.axis-highlight-group[data-drawing-id="${this.id}"]`).remove();
             this.chart.svg.selectAll(`.drawings-labels [data-id="${this.id}"]`).remove();
         }
-        // Clear canvas-based zones only if this drawing had set them
+        // Clear canvas-based zones only if this drawing had set them.
+        // Guard: never call scheduleRender from inside a render cycle (would cause
+        // infinite recursion when scheduleRender is synchronous, e.g. during replay).
         if (this.hasAxisHighlightZones && this.chart?.clearAxisHighlightZones) {
             this.chart.clearAxisHighlightZones();
-            if (this.chart.scheduleRender) {
+            if (this.chart.scheduleRender && !this.chart._isRendering) {
                 this.chart.scheduleRender();
             }
         }

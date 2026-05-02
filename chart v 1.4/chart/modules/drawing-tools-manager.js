@@ -3829,6 +3829,11 @@ class DrawingToolsManager {
      */
     renderDrawing(drawing) {
         if (!drawing) return;
+        
+        // Set re-entry guard so hideAxisHighlights → scheduleRender doesn't re-enter
+        // during the render cycle (stack overflow when scheduleRender is synchronous).
+        const wasRendering = this.chart && this.chart._isRendering;
+        if (this.chart) this.chart._isRendering = true;
 
         const trackedDrawing = this.drawings.find(d => d === drawing || (d && drawing && d.id === drawing.id));
         if (!trackedDrawing) {
@@ -3836,6 +3841,7 @@ class DrawingToolsManager {
                 drawing.group.remove();
                 drawing.group = null;
             }
+            if (this.chart) this.chart._isRendering = wasRendering;
             return;
         }
         drawing = trackedDrawing;
@@ -3843,6 +3849,7 @@ class DrawingToolsManager {
         // Ensure scales are available
         if (!this.chart.xScale || !this.chart.yScale) {
             console.warn('⚠️ Cannot render drawing - scales not ready');
+            if (this.chart) this.chart._isRendering = wasRendering;
             return;
         }
         
@@ -3857,6 +3864,7 @@ class DrawingToolsManager {
             if (typeof drawing.hideAxisHighlights === 'function') {
                 drawing.hideAxisHighlights();
             }
+            if (this.chart) this.chart._isRendering = wasRendering;
             return;
         }
         
@@ -3868,6 +3876,7 @@ class DrawingToolsManager {
             if (typeof drawing.hideAxisHighlights === 'function') {
                 drawing.hideAxisHighlights();
             }
+            if (this.chart) this.chart._isRendering = wasRendering;
             return;
         }
         
@@ -3894,6 +3903,9 @@ class DrawingToolsManager {
         // Order panel preview lines are appended to the root SVG after .drawings — they stack on top
         // and steal drags from risk/reward / other tools unless we lift the drawing layers again.
         this.raiseDrawingLayersAboveOrderPreviews();
+        
+        // Restore re-entry guard
+        if (this.chart) this.chart._isRendering = wasRendering;
     }
 
     /**
@@ -6257,6 +6269,11 @@ class DrawingToolsManager {
         // Update clip path dimensions in case chart was resized
         this.updateClipPath();
         
+        // Set re-entry guard so hideAxisHighlights → scheduleRender doesn't re-enter
+        // during the render cycle (would cause stack overflow when scheduleRender is synchronous)
+        const wasRendering = this.chart._isRendering;
+        this.chart._isRendering = true;
+        
         // Clear existing SVG elements
         this.drawingsGroup.selectAll('*').remove();
         if (this.labelsGroup) {
@@ -6267,6 +6284,9 @@ class DrawingToolsManager {
         this.drawings.forEach(drawing => {
             this.renderDrawing(drawing);
         });
+        
+        this.chart._isRendering = wasRendering;
+        
         this.raiseDrawingLayersAboveOrderPreviews();
     }
 
