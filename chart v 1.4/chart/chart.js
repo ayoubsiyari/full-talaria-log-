@@ -13904,9 +13904,11 @@ class Chart {
             return '🌐';
         };
 
-        const edgePad = 8;
-        const plotLeft = m.l + edgePad + badgeW / 2;
-        const plotRight = this.w - m.r - edgePad - badgeW / 2;
+        // Horizontal plot band (axis labels live inside margin); markers clip naturally when panning —
+        // do not clamp x to the edges or stacks “stick” at the border instead of scrolling off-screen.
+        const plotClipL = m.l;
+        const plotClipR = this.w - m.r;
+        const halfBadgeW = badgeW / 2;
 
         /** @type {{ e: object, x: number }[]} */
         const placements = [];
@@ -13916,11 +13918,7 @@ class Chart {
             if (!Number.isFinite(ts)) continue;
             const idx = this._timestampToFractionalDataIndex(ts);
             if (idx == null || !Number.isFinite(idx)) continue;
-            let x = this.dataIndexToPixel(idx);
-            if (idx < 0) {
-                x = plotLeft;
-            }
-            x = Math.max(plotLeft, Math.min(plotRight, x));
+            const x = this.dataIndexToPixel(idx);
             if (!Number.isFinite(x) || !Number.isFinite(cy)) continue;
             placements.push({ e, x });
         }
@@ -13952,9 +13950,10 @@ class Chart {
             for (let k = 0; k < n; k++) {
                 const { e, x } = cluster[k];
                 const offset = (k - (n - 1) / 2) * clusterGap;
-                let xi = x + offset;
-                xi = Math.max(plotLeft, Math.min(plotRight, xi));
+                const xi = x + offset;
                 if (!Number.isFinite(xi)) continue;
+                // Omit badges wholly outside the plot so they don’t hug the rim after clustering.
+                if (xi + halfBadgeW < plotClipL || xi - halfBadgeW > plotClipR) continue;
 
                 const flagUrl = typeof api.getFlagImageUrl === 'function'
                     ? api.getFlagImageUrl(e.country || e.currency || '')
