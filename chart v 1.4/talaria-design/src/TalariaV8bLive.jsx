@@ -384,6 +384,114 @@ function getSelectedDrawingAcrossCharts(editingRefDrawing) {
   return null;
 }
 
+/** Prefer the focused panel's selection so the floating bar matches the tile being edited.
+ * Falls back to cross-chart scan when the active chart has no primary selection yet. */
+function getPrimarySelectedDrawingForActiveChart(editingRefDrawing) {
+  if (editingRefDrawing) {
+    for (const dm of enumerateV9DrawingManagersFromWindow()) {
+      const live = resolveLiveDrawingInDm(dm, editingRefDrawing);
+      if (live) return live;
+    }
+    return editingRefDrawing;
+  }
+  if (typeof window === "undefined") return null;
+  try {
+    const ac = typeof window.getActiveChart === "function" ? window.getActiveChart() : null;
+    const dm = ac && ac.drawingManager;
+    if (dm) {
+      if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+        const live = resolveLiveDrawingInDm(dm, dm.selectedDrawings[0]);
+        if (live) return live;
+      }
+      if (dm.selectedDrawing) {
+        const live = resolveLiveDrawingInDm(dm, dm.selectedDrawing);
+        if (live) return live;
+      }
+      if (Array.isArray(dm.drawings)) {
+        const sel = dm.drawings.filter((x) => x && x.selected);
+        if (sel.length) return sel[0];
+      }
+    }
+  } catch (_) {}
+  return getSelectedDrawingAcrossCharts(null);
+}
+
+/** Merge fragment for `txtStyle` state from a legacy text/callout drawing (toolbar hydrate). */
+function v9TxtStylePatchFromDrawing(d) {
+  if (!d || !d.style) return null;
+  const s = d.style;
+  const out = {};
+  const fs = parseInt(String(s.fontSize), 10);
+  out.fontSize = Number.isFinite(fs) && fs > 0 ? fs : 14;
+  out.textColor = s.textColor ?? "#ffffff";
+  out.bold = s.fontWeight === "bold" || String(s.fontWeight) === "700";
+  out.italic = s.fontStyle === "italic";
+  out.borderColor = s.borderColor ?? "#787B86";
+  out.bgColor = s.backgroundColor ?? "#000000";
+  out.borderOn = s.borderColor != null && s.borderColor !== "transparent";
+  const bg = s.backgroundColor;
+  out.bgOn = !!(bg && bg !== "transparent");
+  if (s.textAlign) out.horizAlign = s.textAlign;
+  if (typeof d.text === "string") out.content = d.text;
+  return out;
+}
+
+/** Push V9 text floating-bar state into chart.js drawing.style (+ text) for the selected annotation. */
+function v9ApplyTxtStyleToDrawing(d, txt) {
+  if (!d || !d.style || !txt) return;
+  const s = d.style;
+  const t = d.type;
+  const applyCommon = () => {
+    if (txt.textColor != null) s.textColor = txt.textColor;
+    const fs = parseInt(String(txt.fontSize), 10);
+    if (Number.isFinite(fs) && fs > 0) s.fontSize = fs;
+    s.fontWeight = txt.bold ? "bold" : "normal";
+    s.fontStyle = txt.italic ? "italic" : "normal";
+  };
+  if (t === "callout" || t === "comment") {
+    applyCommon();
+    if (txt.borderColor != null) s.borderColor = txt.borderColor;
+    if (txt.bgColor != null) s.backgroundColor = txt.bgColor;
+    if (txt.horizAlign != null) s.textAlign = txt.horizAlign;
+    if (txt.content != null) {
+      d.text = String(txt.content);
+      if (typeof d.setText === "function") {
+        try {
+          d.setText(d.text);
+        } catch (_) {}
+      }
+    }
+    return;
+  }
+  if (
+    t === "text" ||
+    t === "label" ||
+    t === "anchored-text" ||
+    t === "notebox" ||
+    t === "note" ||
+    t === "price-note"
+  ) {
+    applyCommon();
+    if (txt.horizAlign != null) s.textAlign = txt.horizAlign;
+    if (txt.content != null) {
+      d.text = String(txt.content);
+      if (typeof d.setText === "function") {
+        try {
+          d.setText(d.text);
+        } catch (_) {}
+      }
+    }
+    return;
+  }
+  applyCommon();
+  if (txt.content != null) {
+    d.text = String(txt.content);
+    try {
+      if (typeof d.setText === "function") d.setText(d.text);
+    } catch (_) {}
+  }
+}
+
 /** chart.js `drawing.type` → V9 Text rail icon id (see `toolGroups` text row + V9_ICON_TO_LEGACY). */
 function legacyChartTextTypeToV9Icon(type) {
   if (!type) return "text";
@@ -4014,7 +4122,7 @@ const TalariaV8bLive = () => {
   let chartPrimarySelectedDrawingType = tlBarSelectedType;
   if (tlBarSelected && typeof window !== "undefined") {
     try {
-      const live = getSelectedDrawingAcrossCharts(null);
+      const live = getPrimarySelectedDrawingForActiveChart(null);
       const liveT = live && live.type;
       const liveG = liveT ? drawingTypeToPanelGroupRef.current(liveT) : null;
       if (liveG === "text") {
@@ -5946,6 +6054,7 @@ const TalariaV8bLive = () => {
   // Set true just before we update tlStyle from a selected drawing's style
   // so the forward bridge below skips that pass and we don't loop.
   const suppressForwardBridge = useRef(false);
+  const suppressTxtForwardBridge = useRef(false);
 
   // Legacy chart.js saves drawings and updates `d.levels` / style directly; React `tlStyle` does not
   // hear those edits. The forward bridge below would then push *stale* `tlStyle.fibLevels` back onto
@@ -6276,6 +6385,8 @@ const TalariaV8bLive = () => {
     setTlLocked,
     LEGACY_TYPE_TO_V9_ICON,
     suppressForwardBridge,
+    suppressTxtForwardBridge,
+    setTxtStyle,
     v9SelectionToolbarSyncRef,
     drawingTypeToPanelGroupRef,
     editingDrawingRef,
@@ -6348,6 +6459,16 @@ const TalariaV8bLive = () => {
             br.setTlStyle(s => ({ ...s, ...patch }));
             if (typeof drawing.locked === 'boolean') br.setTlLocked(!!drawing.locked);
           }
+          if (drawing && drawing.type) {
+            const gTxt = br.drawingTypeToPanelGroupRef.current(drawing.type);
+            if (gTxt === "text") {
+              const tp = v9TxtStylePatchFromDrawing(drawing);
+              if (tp && Object.keys(tp).length) {
+                br.suppressTxtForwardBridge.current = true;
+                br.setTxtStyle((s) => ({ ...s, ...tp }));
+              }
+            }
+          }
         } catch (_) {}
         return origShow ? origShow(drawing, x, y) : undefined;
       };
@@ -6412,8 +6533,12 @@ const TalariaV8bLive = () => {
         const g = br.drawingTypeToPanelGroupRef.current(t);
         let live = null;
         try {
-          const d = getSelectedDrawingAcrossCharts(null);
-          if (d && d.type === t) live = d;
+          const p = getPrimarySelectedDrawingForActiveChart(null);
+          if (p && p.type === t) live = p;
+          if (!live) {
+            const d = getSelectedDrawingAcrossCharts(null);
+            if (d && d.type === t) live = d;
+          }
         } catch (_) {}
         const drawing = live || { type: t };
         if (g && !br.editingDrawingRef?.current) {
@@ -6445,6 +6570,13 @@ const TalariaV8bLive = () => {
           br.suppressForwardBridge.current = true;
           br.setTlStyle((s) => ({ ...s, ...patch }));
         }
+        if (g === "text") {
+          const tp = v9TxtStylePatchFromDrawing(drawing);
+          if (tp && Object.keys(tp).length) {
+            br.suppressTxtForwardBridge.current = true;
+            br.setTxtStyle((s) => ({ ...s, ...tp }));
+          }
+        }
       } catch (_) {}
     };
     window.addEventListener("talaria:v9-selected-drawing", onV9Sel);
@@ -6464,6 +6596,7 @@ const TalariaV8bLive = () => {
   // Skip the first run so V9's default tlStyle doesn't overwrite the user's
   // previously-saved per-tool styles every time the page loads.
   const styleBridgeReady = useRef(false);
+  const txtStyleBridgeReady = useRef(false);
   // Coalesce localStorage writes — saveToolStyle does a synchronous
   // JSON.stringify + setItem of the entire savedToolStyles map, which can
   // stall click handlers when the bridge fires on every dropdown change.
@@ -6484,6 +6617,7 @@ const TalariaV8bLive = () => {
       };
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (drawingTypeToPanelGroupRef.current(d.type) === "text") return;
         const tb = dm.toolbar;
         try {
           tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
@@ -6649,6 +6783,9 @@ const TalariaV8bLive = () => {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
+        // Text / callout / notes use `txtStyle` bridge only — Trend Line patches would
+        // overwrite annotation fields (stroke, dash, fontSize from line label tab, etc.).
+        if (drawingTypeToPanelGroupRef.current(d.type) === "text") return;
         const tb = dm.toolbar;
         // Capture before state for undo (mirror legacy onBeforeUpdate).
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
@@ -6784,6 +6921,66 @@ const TalariaV8bLive = () => {
     tlStyle.gannBackground,
     tlStyle.gannBgOpacity,
     tool, groupSelected,
+  ]);
+
+  // V9 txtStyle → selected text/callout/note drawings (annotation rail bar).
+  useLayoutEffect(() => {
+    if (!txtStyleBridgeReady.current) {
+      txtStyleBridgeReady.current = true;
+      if (suppressTxtForwardBridge.current) {
+        suppressTxtForwardBridge.current = false;
+      }
+      return;
+    }
+    if (suppressTxtForwardBridge.current) {
+      suppressTxtForwardBridge.current = false;
+      return;
+    }
+    try {
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || !d.style) return;
+        if (drawingTypeToPanelGroupRef.current(d.type) !== "text") return;
+        const tb = dm.toolbar;
+        try {
+          tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
+        } catch (_) {}
+        v9ApplyTxtStyleToDrawing(d, txtStyle);
+        if (tb && typeof tb.onUpdate === "function") {
+          try {
+            tb.onUpdate(d);
+          } catch (_) {
+            try {
+              dm.renderDrawing?.(d);
+            } catch (_) {}
+          }
+        } else {
+          try {
+            dm.renderDrawing?.(d);
+          } catch (_) {}
+        }
+        if (d.selected && typeof d.showAxisHighlights === "function") {
+          try {
+            d.showAxisHighlights();
+          } catch (_) {}
+        }
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
+    } catch (err) {
+      console.warn("[V9 txtStyle bridge] failed:", err);
+    }
+  }, [
+    txtStyle.textColor,
+    txtStyle.fontSize,
+    txtStyle.bold,
+    txtStyle.italic,
+    txtStyle.borderColor,
+    txtStyle.bgColor,
+    txtStyle.content,
+    txtStyle.horizAlign,
+    tool,
+    groupSelected,
   ]);
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelected(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
