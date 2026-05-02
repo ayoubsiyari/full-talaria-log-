@@ -898,6 +898,91 @@ function v9ApplyClassicFibFromTlStyle(d, tlStyle, trendWidthFallback) {
   st.extendLines = !!tlStyle.fibExtendLines;
 }
 
+/** Chart Gann level rows ↔ V9 Input tab (`on` / string `value` / `color`). */
+function v9ChartRatioLevelsToGannTl(arr) {
+  if (!Array.isArray(arr) || !arr.length) return null;
+  return arr.map((l) => ({
+    on: l && l.enabled !== false,
+    value: l && l.value != null ? String(l.value) : "0",
+    color: l && l.color ? l.color : "#787B86",
+  }));
+}
+
+function v9GannTlLevelsToChartRatioLevels(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map((l) => ({
+    enabled: l && l.on !== false,
+    value: parseFloat(String(l && l.value != null ? l.value : "0")) || 0,
+    color: l && l.color ? l.color : "#787b86",
+  }));
+}
+
+/** Map chart `levelsLineDasharray` → V9 gann line type (bold / dotted / dashed / dashdot). */
+function v9GannDashArrayToLineType(dashRaw) {
+  const raw = String(dashRaw ?? "").replace(/\s+/g, "");
+  if (!raw) return "bold";
+  const lt = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[raw];
+  if (lt === "dotted" || lt === "dashed" || lt === "dashdot") return lt;
+  if (raw === "2,2") return "dotted";
+  if (raw === "5,5" || raw === "7,4") return "dashed";
+  if (raw === "8,4,2,4") return "dashdot";
+  return raw ? "dashed" : "bold";
+}
+
+function v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle) {
+  if (!d || !d.style) return;
+  const st = d.style;
+  const dashStr =
+    tlStyle.gannLineType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.gannLineType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.gannLineType]
+        : "");
+  st.levelsLineDasharray = dashStr;
+  st.levelsLineWidth = parseInt(String(tlStyle.gannLineWidth), 10) || 2;
+  st.showZones =
+    d.type === "gann-square-fixed" || d.type === "gann-fan"
+      ? tlStyle.gannBackground !== false
+      : !!tlStyle.gannBackground;
+  st.backgroundOpacity =
+    tlStyle.gannBgOpacity != null && !Number.isNaN(+tlStyle.gannBgOpacity)
+      ? Math.max(0, Math.min(1, +tlStyle.gannBgOpacity))
+      : 0.12;
+}
+
+function v9ApplyGannBoxFromTlStyle(d, tlStyle) {
+  if (!d || d.type !== "gann-box" || !d.style) return;
+  v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
+  d.style.priceLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannPriceLevels);
+  d.style.timeLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannTimeLevels);
+}
+
+function v9ApplyGannSquareFixedFromTlStyle(d, tlStyle) {
+  if (!d || d.type !== "gann-square-fixed" || !d.style) return;
+  v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
+  d.style.gridLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannGridLevels);
+  d.style.fanLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannFanLevels);
+  d.style.arcLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannArcLevels);
+}
+
+function v9ApplyGannFanFromTlStyle(d, tlStyle) {
+  if (!d || d.type !== "gann-fan" || !d.style) return;
+  v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
+  const prev = Array.isArray(d.style.fanLevels) ? d.style.fanLevels : [];
+  const tl = tlStyle.gannFanLevels;
+  if (!Array.isArray(tl)) return;
+  d.style.fanLevels = tl.map((l, i) => {
+    const value = parseFloat(String(l && l.value != null ? l.value : "0")) || 0;
+    const p = prev[i];
+    return {
+      value,
+      enabled: l && l.on !== false,
+      color: (l && l.color) ? l.color : (d.style.stroke || "#4caf50"),
+      ...(p && p.label != null ? { label: p.label } : {}),
+    };
+  });
+}
+
 /** Full chart.js drawing → V9 `tlStyle` patch (toolbar selection + settings read-back). */
 function v9TlStylePatchFromDrawing(d) {
   if (!d) return null;
@@ -1153,6 +1238,74 @@ function v9TlStylePatchFromDrawing(d) {
             fibArcsTrendType,
             fibArcsTrendWidth: String(parseInt(s.trendLineWidth, 10) || 1),
             fibArcsFullCircle: !!s.v9FibArcsFullCircle,
+          };
+        })()
+      : {}),
+    ...(d.type === "gann-box"
+      ? (() => {
+          const dashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const price = v9ChartRatioLevelsToGannTl(s.priceLevels);
+          const time = v9ChartRatioLevelsToGannTl(s.timeLevels);
+          const bgOp =
+            s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+              ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+              : 0.12;
+          return {
+            ...(price ? { gannPriceLevels: price } : {}),
+            ...(time ? { gannTimeLevels: time } : {}),
+            gannLineType: v9GannDashArrayToLineType(dashRaw),
+            gannLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            gannBackground: !!s.showZones,
+            gannBgOpacity: bgOp,
+            lineColor: s.stroke || s.color || stroke,
+            lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
+          };
+        })()
+      : {}),
+    ...(d.type === "gann-square-fixed"
+      ? (() => {
+          const dashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const grid = v9ChartRatioLevelsToGannTl(s.gridLevels);
+          const fan = v9ChartRatioLevelsToGannTl(s.fanLevels);
+          const arc = v9ChartRatioLevelsToGannTl(s.arcLevels);
+          const bgOp =
+            s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+              ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+              : 0.12;
+          return {
+            ...(grid ? { gannGridLevels: grid } : {}),
+            ...(fan ? { gannFanLevels: fan } : {}),
+            ...(arc ? { gannArcLevels: arc } : {}),
+            gannLineType: v9GannDashArrayToLineType(dashRaw),
+            gannLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            gannBackground: s.showZones !== false,
+            gannBgOpacity: bgOp,
+            lineColor: s.stroke || stroke,
+            lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
+          };
+        })()
+      : {}),
+    ...(d.type === "gann-fan"
+      ? (() => {
+          const dashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const fanArr = Array.isArray(s.fanLevels) ? s.fanLevels : [];
+          const fan = fanArr.map((l) => ({
+            on: l && l.enabled !== false,
+            value: l && l.value != null ? String(l.value) : "1",
+            color: l && l.color ? l.color : "#787B86",
+          }));
+          const bgOp =
+            s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+              ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+              : 0.12;
+          return {
+            ...(fan.length ? { gannFanLevels: fan } : {}),
+            gannLineType: v9GannDashArrayToLineType(dashRaw),
+            gannLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            gannBackground: s.showZones !== false,
+            gannBgOpacity: bgOp,
+            lineColor: s.stroke || stroke,
+            lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
           };
         })()
       : {}),
@@ -5685,7 +5838,8 @@ const TalariaV8bLive = () => {
     let rafId = 0;
     const v9DrawingUsesFibStyleBridge = (t) =>
       !!t
-      && (t.startsWith("fibonacci-") || t.startsWith("fib-") || t.startsWith("trend-fib-"));
+      && (t.startsWith("fibonacci-") || t.startsWith("fib-") || t.startsWith("trend-fib-")
+        || t === "gann-box" || t === "gann-square-fixed" || t === "gann-fan");
     const syncTlStyleFromSelectedDrawing = () => {
       try {
         const d = getSelectedDrawingAcrossCharts(
@@ -5904,6 +6058,16 @@ const TalariaV8bLive = () => {
               if (p.lineWidth) out.lineWidth = p.lineWidth;
               if (p.lineType) out.lineType = p.lineType;
             }
+            if (drawing.type === "gann-box" || drawing.type === "gann-square-fixed" || drawing.type === "gann-fan") {
+              [
+                "gannPriceLevels", "gannTimeLevels", "gannGridLevels", "gannFanLevels", "gannArcLevels",
+                "gannLineType", "gannLineWidth", "gannBackground", "gannBgOpacity",
+              ].forEach((k) => {
+                if (p[k] !== undefined) out[k] = p[k];
+              });
+              if (p.lineColor) out.lineColor = p.lineColor;
+              if (p.lineWidth) out.lineWidth = p.lineWidth;
+            }
             return out;
           })(),
         }));
@@ -5919,6 +6083,10 @@ const TalariaV8bLive = () => {
         // Force tool group → JSX conditional renders the panel.
         setTool(group);
         setTlSettOpen(true);
+        // Match legacy index: level edits live on the Input tab — open there for Gann tools.
+        if (drawing.type === "gann-box" || drawing.type === "gann-square-fixed" || drawing.type === "gann-fan") {
+          setTlSettTab("input");
+        }
         return true;
       } catch (err) {
         console.warn('[V9 dblclick hook] failed:', err);
@@ -6300,6 +6468,13 @@ const TalariaV8bLive = () => {
               ? +tlStyle.pfBgOpacity
               : 0.2;
         }
+        if (d.type === "gann-box") {
+          v9ApplyGannBoxFromTlStyle(d, tlStyle);
+        } else if (d.type === "gann-square-fixed") {
+          v9ApplyGannSquareFixedFromTlStyle(d, tlStyle);
+        } else if (d.type === "gann-fan") {
+          v9ApplyGannFanFromTlStyle(d, tlStyle);
+        }
         // Prefer onUpdate (history + render + persist + saveDrawings).
         if (tb && typeof tb.onUpdate === 'function') {
           try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
@@ -6359,6 +6534,15 @@ const TalariaV8bLive = () => {
     tlStyle.fibArcsTrendType,
     tlStyle.fibArcsTrendWidth,
     tlStyle.fibArcsFullCircle,
+    tlStyle.gannPriceLevels,
+    tlStyle.gannTimeLevels,
+    tlStyle.gannGridLevels,
+    tlStyle.gannFanLevels,
+    tlStyle.gannArcLevels,
+    tlStyle.gannLineType,
+    tlStyle.gannLineWidth,
+    tlStyle.gannBackground,
+    tlStyle.gannBgOpacity,
     tool, groupSelected,
   ]);
 
