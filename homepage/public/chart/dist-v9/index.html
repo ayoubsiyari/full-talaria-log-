@@ -24,6 +24,19 @@
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body, #root { width: 100%; height: 100%; overflow: hidden; background: #07080E; }
 
+        /* Single-layout default for main tiles. Multi-panel: panel-manager.applyLayout() sets
+           width/height/left/top as INLINE styles — React must not own #chartWrapper geometry or
+           each re-render replaces the whole style attribute and drops panel placement (wrapper
+           goes full #chart-container and paints over #panels-container → duplicate main UI). */
+        #chartWrapper.chart-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
         /* Canvas + drawing-svg sit inside the V9 chart-area div.
            They fill their parent so chart.js renders into the available space.
            Pointer events stay on the canvas; SVG is for drawings only. */
@@ -33,10 +46,47 @@
             display: block;
             background: transparent;
         }
+        /* Drawing overlay — layout only here; pointer-events + z-index are driven by chart.js / drawingToolsManager
+           (see DrawingManager._updateAxisZonePointerEvents, Chart.updateSVGPointerEvents). */
         #drawingSvg {
-            position: absolute; inset: 0;
-            width: 100%; height: 100%;
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             pointer-events: none;
+            z-index: 2;
+            overflow: visible;
+        }
+        #drawingSvg.drawing {
+            pointer-events: all;
+            cursor: crosshair;
+        }
+        /* Mirror chart/styles.svg drawing hover — V9 live does not load full styles.css */
+        #chart-container #drawingSvg line {
+            transition: stroke-width 0.15s ease, opacity 0.15s ease;
+        }
+        #chart-container #drawingSvg line:hover {
+            stroke-width: 3;
+            filter: drop-shadow(0 0 4px rgba(41, 98, 255, 0.5));
+        }
+        #chart-container #drawingSvg rect {
+            transition: opacity 0.15s ease, stroke-width 0.15s ease;
+        }
+        #chart-container #drawingSvg rect:hover {
+            stroke-width: 3;
+            filter: drop-shadow(0 0 4px rgba(41, 98, 255, 0.5));
+        }
+        #chart-container #drawingSvg text {
+            transition: opacity 0.15s ease;
+            user-select: none;
+        }
+        #chart-container #drawingSvg circle {
+            transition: all 0.15s ease;
+            cursor: pointer;
+        }
+        #chart-container #drawingSvg circle:hover {
+            r: 6;
+            filter: drop-shadow(0 2px 6px rgba(41, 98, 255, 0.6));
         }
         #priceAxisZone, #timeAxisZone {
             position: absolute;
@@ -104,6 +154,205 @@
         .time-label {
             bottom: 6px;
             top: auto !important;
+        }
+
+        /* ── Multi-panel selection ring + resize handles (mirror chart/legacy-index.html) ──
+           panel-manager adds .panel-selected, .panel-selection-frame, .panel-resize-handle */
+        /* Exclude .panel-resize-handle — #chart-container * loses borders via border:none !important,
+           which strips the thin side borders that widen the grab hit area (legacy keeps handles usable). */
+        #chart-container canvas,
+        #chart-container *:not(.panel-resize-handle) {
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-user-drag: none;
+            -webkit-touch-callout: none;
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+        }
+        .panel-select-bar {
+            display: none;
+        }
+        #chart-container .panel-selected {
+            position: relative;
+            z-index: 6;
+        }
+        #chart-container .panel-selected::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            box-sizing: border-box;
+            border: 3px solid rgba(65, 154, 255, 0.84) !important;
+            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32) !important;
+            border-radius: 2px;
+            pointer-events: none;
+            z-index: 5000;
+        }
+        #chart-container > .panel-selection-frame {
+            position: absolute;
+            border: 3px solid rgba(65, 154, 255, 0.84) !important;
+            box-shadow: 0 0 10px rgba(41, 98, 255, 0.32) !important;
+            border-radius: 2px;
+            pointer-events: none;
+            box-sizing: border-box;
+            z-index: 250;
+        }
+        .chart-panel,
+        #chartWrapper {
+            border: none !important;
+            box-sizing: border-box !important;
+            overflow: hidden;
+        }
+        .panel-resize-handle {
+            position: absolute;
+            z-index: 200;
+            pointer-events: auto;
+            transition: background-color 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+        }
+        .panel-resize-handle.vertical {
+            cursor: col-resize;
+            width: 1.875px;
+            transform: translateX(-0.9375px);
+            background: transparent;
+            border-left: 0.75px solid transparent;
+            border-right: 0.75px solid transparent;
+            border-top: none;
+            border-bottom: none;
+            box-sizing: border-box;
+            background-clip: content-box;
+            background-color: #ffffff;
+        }
+        .panel-resize-handle.horizontal {
+            cursor: row-resize;
+            height: 1.875px;
+            transform: translateY(-0.9375px);
+            background: transparent;
+            border-top: 0.75px solid transparent;
+            border-bottom: 0.75px solid transparent;
+            border-left: none;
+            border-right: none;
+            box-sizing: border-box;
+            background-clip: content-box;
+            background-color: #ffffff;
+        }
+        .panel-resize-handle.vertical:hover {
+            background-color: #ffffff;
+            box-shadow: 0 0 0 1px rgba(41, 98, 255, 0.55), 0 0 14px rgba(41, 98, 255, 0.85) !important;
+            filter: drop-shadow(0 0 8px rgba(41, 98, 255, 0.8)) !important;
+        }
+        .panel-resize-handle.horizontal:hover {
+            background-color: #ffffff;
+            box-shadow: 0 0 0 1px rgba(41, 98, 255, 0.55), 0 0 14px rgba(41, 98, 255, 0.85) !important;
+            filter: drop-shadow(0 0 8px rgba(41, 98, 255, 0.8)) !important;
+        }
+        #chart-container .panel-resize-handle.vertical:hover,
+        #chart-container .panel-resize-handle.horizontal:hover {
+            box-shadow: 0 0 0 1px rgba(41, 98, 255, 0.55), 0 0 14px rgba(41, 98, 255, 0.85) !important;
+            filter: drop-shadow(0 0 8px rgba(41, 98, 255, 0.8)) !important;
+        }
+        .panel-resize-handle.vertical.dragging {
+            background-color: #2962ff !important;
+        }
+        .panel-resize-handle.horizontal.dragging {
+            background-color: #2962ff !important;
+        }
+        body.light-mode .panel-resize-handle.vertical,
+        body.light-mode .panel-resize-handle.horizontal {
+            background-color: #ffffff;
+        }
+        body.light-mode .panel-resize-handle.vertical:hover,
+        body.light-mode .panel-resize-handle.horizontal:hover {
+            background-color: #ffffff;
+        }
+        body.light-mode .panel-resize-handle.vertical.dragging,
+        body.light-mode .panel-resize-handle.horizontal.dragging {
+            background-color: #2962ff !important;
+        }
+
+        /* Multi-panel + main #chartWrapper: same OHLC layout as panel-manager (chart.js updates these).
+           Panel .panel-canvas is z-index:1 — OHLC needs stacking above canvas. */
+        #chart-container #chartWrapper .ohlc-info,
+        #panels-container .panel-chart-container .ohlc-info {
+            position: absolute;
+            top: 8px;
+            left: 10px;
+            z-index: 25;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            font-size: 11px;
+            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: #d1d4dc;
+            pointer-events: none;
+            max-width: min(560px, 92%);
+        }
+        #chart-container #chartWrapper .ohlc-header,
+        #panels-container .ohlc-header {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        #chart-container #chartWrapper .ohlc-stats,
+        #panels-container .ohlc-stats {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        #chart-container #chartWrapper .ohlc-item,
+        #panels-container .ohlc-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        /* chart.js loads FlagCDN `w80` PNGs into #ohlcSymbolDot / #ohlcSymbolDot1 … */
+        #chart-container #chartWrapper .ohlc-symbol-dot,
+        #panels-container .ohlc-symbol-dot {
+            width: 18px;
+            height: 18px;
+            border-radius: 6px;
+            background: rgba(255, 198, 0, 0.18);
+            border: 1px solid rgba(255, 198, 0, 0.45);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            vertical-align: middle;
+            box-sizing: border-box;
+        }
+        #chart-container #chartWrapper .ohlc-symbol-dot.ohlc-dot-flags,
+        #panels-container .ohlc-symbol-dot.ohlc-dot-flags {
+            width: 29px;
+            height: 16px;
+            border-radius: 0;
+            background: none;
+            border: none;
+            position: relative;
+            overflow: visible;
+        }
+        #chart-container #chartWrapper .ohlc-dot-flag,
+        #panels-container .ohlc-dot-flag {
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            object-fit: cover;
+            box-sizing: border-box;
+            pointer-events: none;
+        }
+        #chart-container #chartWrapper .ohlc-dot-flag-base,
+        #panels-container .ohlc-dot-flag-base {
+            left: 0;
+            top: 0;
+            z-index: 2;
+        }
+        #chart-container #chartWrapper .ohlc-dot-flag-quote,
+        #panels-container .ohlc-dot-flag-quote {
+            left: 11px;
+            top: 0;
+            z-index: 1;
         }
 
         /* Hide legacy chart.js floating drawing toolbar — V9 renders its own
@@ -246,9 +495,9 @@
          time it runs (React's main.jsx is also deferred).
          ────────────────────────────────────────────────────────────── -->
 
-    <!-- Tier A — pure helpers (no DOM dependencies). -->
-    <script defer src="/chart/modules/preferences-init.js?v=20260428b_dblclick_v9"></script>
-    <script defer src="/chart/modules/preferences-sync.js?v=20260428_prefs_drawing_sync"></script>
+    <!-- Tier A — preferences-sync MUST run before preferences-init (defines window.preferencesSync). -->
+    <script defer src="/chart/modules/preferences-sync.js?v=20260429_v9_prefs_order"></script>
+    <script defer src="/chart/modules/preferences-init.js?v=20260429_v9_prefs_order"></script>
     <script defer src="/chart/modules/market-calculations.js?v=20260428b_dblclick_v9"></script>
     <script defer src="/chart/modules/chart-env.defaults.js?v=20260428b_dblclick_v9"></script>
     <script defer src="/chart/modules/chart-env.generated.js?v=20260428b_dblclick_v9"></script>
@@ -259,9 +508,9 @@
          - Each drawing-tools-*.js registers tools into the global registry.
          - drawing-tools-ui.js provides shared UI helpers used by tools.
          - drawing-tools-manager.js orchestrates everything (loaded later). -->
-    <script defer src="/chart/modules/drawing-tools-base.js?v=20260428b_dblclick_v9"></script>
-    <script defer src="/chart/modules/drawing-tools-lines.js?v=20260428b_dblclick_v9"></script>
-    <script defer src="/chart/modules/drawing-tools-shapes.js?v=20260428b_dblclick_v9"></script>
+    <script defer src="/chart/modules/drawing-tools-base.js?v=20260502_render_guard"></script>
+    <script defer src="/chart/modules/drawing-tools-lines.js?v=20260430_show_info_metrics"></script>
+    <script defer src="/chart/modules/drawing-tools-shapes.js?v=20260429_midline_paint_sync"></script>
     <script defer src="/chart/modules/drawing-tools-fibonacci.js?v=20260428b_dblclick_v9"></script>
     <script defer src="/chart/modules/drawing-tools-text.js?v=20260428b_dblclick_v9"></script>
     <script defer src="/chart/modules/drawing-tools-emoji.js?v=20260428b_dblclick_v9"></script>
@@ -270,21 +519,21 @@
     <script defer src="/chart/modules/emoji-picker-simple.js?v=20260428b_dblclick_v9"></script>
     <script defer src="/chart/modules/drawing-tools-advanced-volume.js?v=20260428b_dblclick_v9"></script>
     <script defer src="/chart/modules/drawing-tools-advanced.js?v=20260428b_dblclick_v9"></script>
-    <script defer src="/chart/modules/drawing-tools-extended.js?v=20260428b_dblclick_v9"></script>
+    <script defer src="/chart/modules/drawing-tools-extended.js?v=20260429_rot_rect_midline"></script>
     <script defer src="/chart/modules/drawing-tools-patterns.js?v=20260428b_dblclick_v9"></script>
     <script defer src="/chart/modules/drawing-tools-fib-gann.js?v=20260502_fib_arcs_levels_json"></script>
     <script defer src="/chart/modules/drawing-tools-channels.js?v=20260428b_dblclick_v9"></script>
-    <script defer src="/chart/modules/drawing-tools-ui.js?v=20260502_fib_arcs_style_sync"></script>
+    <script defer src="/chart/modules/drawing-tools-ui.js?v=20260502_fib_arcs_input_canonical"></script>
 
     <!-- Drawing-tool support (color picker, toolbar UI, undo/redo). -->
     <script defer src="/chart/modules/color-picker.js?v=20260428b_dblclick_v9"></script>
-    <script defer src="/chart/modules/drawing-toolbar.js?v=20260428b_dblclick_v9"></script>
+    <script defer src="/chart/modules/drawing-toolbar.js?v=20260429c_v9_ui_stack"></script>
     <script defer src="/chart/modules/undo-redo-manager.js?v=20260428b_dblclick_v9"></script>
 
     <!-- Drawing-tools manager — orchestrator. Must load AFTER all individual
          drawing-tools-*.js so the registry is populated before init. -->
-    <script defer src="/chart/modules/drawing-tools-manager.js?v=20260503_text_settings_interaction"></script>
-    <script defer src="/chart/modules/favorites-manager.js?v=20260428b_dblclick_v9"></script>
+    <script defer src="/chart/modules/drawing-tools-manager.js?v=20260504_v9_selection_sync"></script>
+    <script defer src="/chart/modules/favorites-manager.js?v=20260429_fav_v9_silent"></script>
     <script defer src="/chart/modules/keyboard-shortcuts.js?v=20260428_v9_ss_wire"></script>
 
     <!-- Chart engine.
@@ -292,12 +541,12 @@
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=20260502_drawing_manager_alias"></script>
+    <script defer src="/chart/chart.js?v=20260504_econ_no_edge_pin"></script>
     <!-- V9 React theme panel → chart.chartSettings (shared with legacy-index.html). Must load after chart.js. -->
     <script defer src="/chart/modules/v9-theme-bridge.js?v=20260428_v9_theme_bridge"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
-    <script defer src="/chart/modules/replay-system.js?v=20260428_goback_cut"></script>
+    <script defer src="/chart/modules/replay-system.js?v=20260428c_panel_pair_fix"></script>
 
     <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->
     <script defer src="/chart/modules/order-event-bus.js?v=20260428_place_order_v9"></script>
@@ -306,15 +555,15 @@
     <script defer src="/chart/modules/screenshot-manager.js?v=20260428_v9_wire"></script>
 
     <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
-    <script defer src="/chart/modules/chart-indicators-full.js?v=20260428b_dblclick_v9"></script>
+    <script defer src="/chart/modules/chart-indicators-full.js?v=20260429_ohlc_ind_sync"></script>
 
     <!-- Panel manager — multi-panel layouts. Must load AFTER chart.js so
          it can wire scroll-sync against window.chart. The legacy index.html
          instantiates this inline; V9's bootstrap below does the same. -->
     <script defer src="/chart/modules/panel-manager.js?v=20260428b_dblclick_v9"></script>
     <!-- Economic calendar: Finnhub via /api + chart time-axis markers (__economicCalendarForChart). -->
-    <script defer src="/chart/modules/economic-news-sidebar.js?v=20260428_cal_chart_now"></script>
-  <script type="module" crossorigin src="/chart/dist-v9/assets/index-D79NR_IY.js"></script>
+    <script defer src="/chart/modules/economic-news-sidebar.js?v=20260503_econ_axis_flags"></script>
+  <script type="module" crossorigin src="/chart/dist-v9/assets/index-B63KpOll.js"></script>
 </head>
 <body>
     <div id="backtestingLoader" aria-live="polite" aria-busy="true">
@@ -352,6 +601,25 @@
          ────────────────────────────────────────────────────────────────── -->
     <script>
     (function bootstrapPanelManager() {
+        /* chart.js, drawing-tools-manager, indicator-ui, order-manager call this to resolve
+           the focused tile. Legacy index defines it; V9 must too or everything targets window.chart. */
+        if (typeof window.getActiveChart !== 'function') {
+            window.getActiveChart = function() {
+                try {
+                    var pm = window.panelManager;
+                    if (pm && pm.panels && pm.panels.length > 0) {
+                        var idx = pm.selectedPanelIndex || 0;
+                        var panel = pm.panels[idx];
+                        if (panel) {
+                            if (idx === 0 && panel.isMainChart) return window.chart;
+                            if (panel.chartInstance) return panel.chartInstance;
+                        }
+                    }
+                } catch (e) {}
+                return window.chart;
+            };
+        }
+
         var attempts = 0;
         var MAX_ATTEMPTS = 200; // ~20s
         function tryBoot() {
@@ -478,10 +746,43 @@
                 }
             };
 
-            // Compatibility shim used by panel-manager internals on layout switch.
-            window.renderPanelChart = function(panel /*, sourceData */) {
+            // Same as legacy chart/index.html renderPanelChart — seeds panel data when the main
+            // chart finishes loading after panels already exist (V9 React mount order).
+            window.renderPanelChart = function(panel, sourceData) {
+                var chart = window.chart;
                 if (!panel) return;
                 if (!panel.chartInstance) window.initPanelChart(panel);
+                if (sourceData && panel.chartInstance) {
+                    var pcSelf = panel.chartInstance;
+                    var alreadyHasData = (Array.isArray(pcSelf.data) && pcSelf.data.length > 0)
+                        || (Array.isArray(pcSelf.rawData) && pcSelf.rawData.length > 0)
+                        || (Array.isArray(pcSelf._panelFullRawData) && pcSelf._panelFullRawData.length > 0)
+                        || pcSelf._isLoadingOwnPairData;
+                    if (alreadyHasData) return;
+                    if (chart && chart.chartSettings) {
+                        panel.chartInstance.chartSettings = JSON.parse(JSON.stringify(chart.chartSettings));
+                        if (panel.chartInstance.canvas) {
+                            panel.chartInstance.canvas.style.backgroundColor = panel.chartInstance.chartSettings.backgroundColor;
+                        }
+                    }
+                    var hasOwnPairData = panel.chartInstance._isLoadingOwnPairData
+                        || (Array.isArray(panel.chartInstance._panelFullRawData) && panel.chartInstance._panelFullRawData.length > 0);
+                    if (!hasOwnPairData) {
+                        if (chart && chart.currentSymbol) {
+                            panel.chartInstance.currentSymbol = chart.currentSymbol;
+                        }
+                        panel.chartInstance.rawData = chart.rawData || [];
+                        panel.chartInstance.data = panel.chartInstance.resampleData(
+                            panel.chartInstance.rawData,
+                            panel.timeframe || '1m'
+                        );
+                        panel.chartInstance.fitToView();
+                        panel.chartInstance.render();
+                        if (panel.chartInstance.currentSymbol && panel.chartInstance.updateChartOHLCSymbol) {
+                            panel.chartInstance.updateChartOHLCSymbol(panel.chartInstance.currentSymbol);
+                        }
+                    }
+                }
             };
 
             window.addEventListener('panelsCreated', function(event) {
@@ -495,6 +796,49 @@
                         try { window.chart.orderManager.syncOrderVisualsToActiveChart(); } catch(_){}
                     }
                 }, 200);
+            });
+
+            window.addEventListener('panelTimeframeChanged', function(event) {
+                var d = event && event.detail;
+                if (!d) return;
+                var panelIndex = d.panelIndex;
+                var timeframe = d.timeframe;
+                var panel = d.panel;
+                if (panel && panel.chartInstance) {
+                    panel.chartInstance.setTimeframe(timeframe);
+                    if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
+                        window.panelManager.syncInterval(panel, timeframe);
+                    }
+                } else if (window.panelManager) {
+                    var plist = window.panelManager.getPanels();
+                    var targetPanel = plist && plist[panelIndex];
+                    if (targetPanel && targetPanel.chartInstance) {
+                        targetPanel.chartInstance.setTimeframe(timeframe);
+                        if (window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
+                            window.panelManager.syncInterval(targetPanel, timeframe);
+                        }
+                    }
+                }
+            });
+
+            window.addEventListener('chartDataLoaded', function(event) {
+                if (!window.panelManager || window.panelManager.getCurrentLayout() === '1') return;
+                var panels = window.panelManager.getPanels();
+                if (!panels || !panels.length) return;
+                var detail = event && event.detail;
+                var sourceData = detail && detail.data;
+                panels.forEach(function(panel) {
+                    if (!panel.chartInstance) {
+                        window.initPanelChart(panel);
+                        return;
+                    }
+                    var pc = panel.chartInstance;
+                    var hasData = (Array.isArray(pc.data) && pc.data.length > 0)
+                        || (Array.isArray(pc.rawData) && pc.rawData.length > 0)
+                        || (Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0);
+                    if (hasData) return;
+                    window.renderPanelChart(panel, sourceData);
+                });
             });
 
             // panelDrawingSync stub matching legacy (drawing sync is handled

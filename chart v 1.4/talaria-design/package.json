@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "dev:live": "vite --config vite.config.live.js",
-    "build:live": "vite build --config vite.config.live.js",
+    "build:live": "vite build --config vite.config.live.js && node scripts/sync-v9-to-homepage.mjs",
     "preview:live": "vite preview --config vite.config.live.js"
   },
   "dependencies": {
