@@ -1819,6 +1819,59 @@ function analyticsEntryKey(e) {
   return `h:${sym}_${t}_${Number.isFinite(p) ? p.toFixed(4) : "x"}`;
 }
 
+/**
+ * Align Balance / Equity with closed-trade Net P&L for journal analytics.
+ * Replay / session paths often populate `tradeJournal` + realized totals while `orderManager.balance`
+ * still sits on `initialBalance` — then Net P&L matches the list but Balance/Equity look wrong.
+ * When flat (no open positions), prefer initial + sum(closed pnl) unless OM already matches that.
+ */
+function reconcileJournalBalanceEquityStats(stats, mergedList, om) {
+  if (!stats || !Array.isArray(mergedList)) return;
+
+  const totalPnl = Number(stats.total_pnl);
+  const ini = Number(stats.initial_balance ?? om?.initialBalance);
+  const omBal = om != null ? Number(om.balance) : NaN;
+  const omEq = om != null ? Number(om.equity) : NaN;
+  let openN = 0;
+  try {
+    openN = Array.isArray(om?.openPositions) ? om.openPositions.length : 0;
+  } catch (_) {}
+
+  if (!Number.isFinite(totalPnl) || mergedList.length === 0) {
+    if (Number.isFinite(omBal)) stats.balance = omBal;
+    if (Number.isFinite(omEq)) stats.equity = omEq;
+    return;
+  }
+
+  if (!Number.isFinite(ini)) {
+    if (Number.isFinite(omBal)) stats.balance = omBal;
+    if (Number.isFinite(omEq)) stats.equity = omEq;
+    return;
+  }
+
+  const derivedBal = ini + totalPnl;
+  const tol = Math.max(0.05, Math.abs(totalPnl) * 1e-9 + 1e-6);
+
+  if (openN > 0 && Number.isFinite(omBal)) {
+    stats.balance = omBal;
+    stats.equity = Number.isFinite(omEq) ? omEq : omBal;
+    stats.initial_balance = ini;
+    return;
+  }
+
+  const omTracksClosed =
+    Number.isFinite(omBal) && Math.abs(omBal - derivedBal) <= tol;
+
+  if (omTracksClosed && Number.isFinite(omBal)) {
+    stats.balance = omBal;
+    stats.equity = Number.isFinite(omEq) ? omEq : omBal;
+  } else {
+    stats.balance = derivedBal;
+    stats.equity = derivedBal;
+  }
+  stats.initial_balance = ini;
+}
+
 function computeJournalStatsFromNormalizedList(list) {
   const pnls = list.map((e) => Number(e.pnl)).filter(Number.isFinite);
   const n = pnls.length;
@@ -1955,6 +2008,8 @@ function buildJournalAnalyticsFromOrderManager(om) {
   if (Number.isFinite(eq)) stats.equity = eq;
   if (Number.isFinite(ini)) stats.initial_balance = ini;
 
+  reconcileJournalBalanceEquityStats(stats, list, om);
+
   return {
     stats,
     symbols: symbolBucketsFromNormalizedList(list),
@@ -1999,6 +2054,9 @@ function mergeJournalAnalyticsRemoteLocal(remote, local) {
   if (Number.isFinite(bal)) stats.balance = bal;
   if (Number.isFinite(eq)) stats.equity = eq;
   if (Number.isFinite(ini)) stats.initial_balance = ini;
+
+  const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+  reconcileJournalBalanceEquityStats(stats, mergedList, om);
 
   return {
     stats,

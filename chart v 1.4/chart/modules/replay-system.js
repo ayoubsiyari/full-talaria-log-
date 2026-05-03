@@ -2398,6 +2398,12 @@ class ReplaySystem {
             this.tickElapsedMs = 0;
             this.startCandleByCandle(true);
         }
+
+        requestAnimationFrame(() => {
+            try {
+                this.updateAutoScrollIndicator();
+            } catch (_) {}
+        });
     }
     
     /**
@@ -3659,6 +3665,17 @@ class ReplaySystem {
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
             this.chart.orderManager.updatePositions();
         }
+
+        // Tick replay never hits updateChartData(); still refresh follow chrome while bars advance.
+        const tn = performance.now();
+        if (!this._animFollowIndTs || tn - this._animFollowIndTs >= 90) {
+            this._animFollowIndTs = tn;
+            if (this.isActive && !this.isPickingPoint) {
+                try {
+                    this.updateAutoScrollIndicator();
+                } catch (_) {}
+            }
+        }
     }
     
     /**
@@ -3791,6 +3808,10 @@ class ReplaySystem {
         
         // Sync panel charts
         this.syncPanelCharts();
+
+        try {
+            this.updateAutoScrollIndicator();
+        } catch (_) {}
         
         // Start animation for next candle if still playing
         if (this.isPlaying && this.currentIndex < this.fullRawData.length - 1) {
