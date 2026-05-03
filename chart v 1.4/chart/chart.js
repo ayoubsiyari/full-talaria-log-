@@ -14756,12 +14756,12 @@ class Chart {
                 
                 if (mode === 'priceAxis' || mode === 'separatePanelAxis') {
                     this.canvas.classList.add('cursor-price-axis');
-                    if (mode === 'separatePanelAxis') {
-                        this.canvas.style.cursor = 'ns-resize';
-                        if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
-                    }
+                    this.canvas.style.cursor = 'ns-resize';
+                    if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
                 } else if (mode === 'timeAxis') {
                     this.canvas.classList.add('cursor-time-axis');
+                    this.canvas.style.cursor = 'ew-resize';
+                    if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ew-resize';
                 } else if (this.tool) {
                     this.canvas.style.cursor = 'crosshair';
                 } else {

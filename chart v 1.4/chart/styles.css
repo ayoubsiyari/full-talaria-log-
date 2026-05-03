@@ -308,6 +308,26 @@ body {
     -moz-user-select: none;
 }
 
+#chartCanvas.cursor-price-axis,
+canvas.cursor-price-axis {
+    cursor: ns-resize !important;
+}
+
+#chartCanvas.cursor-time-axis,
+canvas.cursor-time-axis {
+    cursor: ew-resize !important;
+}
+
+#priceAxisZone.axis-cursor-zone,
+.price-axis-zone {
+    cursor: ns-resize !important;
+}
+
+#timeAxisZone.axis-cursor-zone,
+.time-axis-zone {
+    cursor: ew-resize !important;
+}
+
 #drawingSvg {
     position: absolute;
     top: 0;

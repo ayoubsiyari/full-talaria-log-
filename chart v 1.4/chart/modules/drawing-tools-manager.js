@@ -8797,13 +8797,17 @@ class DrawingToolsManager {
             this._hoverHandleBoundGroupNode = null;
         }
         
-        // Handle axis cursor modes
+        // Handle axis cursor modes (inline cursor: checkDrawingProximity may clear style above)
         if (this.chart) {
             const mode = this.chart.cursor?.mode;
-            if (mode === 'priceAxis') {
+            if (mode === 'priceAxis' || mode === 'separatePanelAxis') {
                 canvas.classList.add('cursor-price-axis');
+                canvas.style.cursor = 'ns-resize';
+                this.svg.style('cursor', 'ns-resize');
             } else if (mode === 'timeAxis') {
                 canvas.classList.add('cursor-time-axis');
+                canvas.style.cursor = 'ew-resize';
+                this.svg.style('cursor', 'ew-resize');
             }
         }
 

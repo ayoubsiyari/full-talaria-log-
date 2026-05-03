@@ -1946,8 +1946,10 @@ class CompareOverlay {
                 canvas.style.cursor = 'crosshair';
             } else if (isOverPriceAxis(e)) {
                 canvas.classList.add('cursor-price-axis');
+                canvas.style.cursor = 'ns-resize';
             } else if (isOverTimeAxis(e)) {
                 canvas.classList.add('cursor-time-axis');
+                canvas.style.cursor = 'ew-resize';
             }
         });
         
