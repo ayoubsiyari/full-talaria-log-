@@ -59,8 +59,13 @@ function legacyTokensFromCommaAndStrategy(tagsStr, strategyVars) {
     add(tok);
     const m = tok.match(/^([^:]+):\s*(.+)$/);
     if (m) {
-      add(m[1].trim());
-      add(m[2].trim());
+      const nm = m[1].trim();
+      const vl = m[2].trim();
+      const vLow = vl.toLowerCase();
+      add(vl);
+      // Strategies Lab bool YES uses pill tokens that include the variable label; NO must omit it.
+      if (vLow === "yes" || vLow === "true" || vLow === "1") add(nm);
+      else if (vLow !== "no" && vLow !== "false" && vLow !== "0") add(nm);
     }
   });
   if (Array.isArray(strategyVars)) {
@@ -69,6 +74,8 @@ function legacyTokensFromCommaAndStrategy(tagsStr, strategyVars) {
       const val = v.value != null ? String(v.value).trim() : "";
       if (val) add(val);
       if (name && val) add(`${name}: ${val}`);
+      const vLow = val.toLowerCase();
+      if (name && (vLow === "yes" || vLow === "true" || vLow === "1")) add(name);
     });
   }
   return out;

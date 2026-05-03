@@ -1591,6 +1591,56 @@ function sessionPreTradeVarsToTagDefs(chart) {
   });
 }
 
+/** POST variables from session — same filter as order-manager `_getPostTradeVariableDefs`. */
+function getPostTradeVariablesFromSession(chart) {
+  try {
+    const sess = chart?.backtestingSession || {};
+    const raw = sess.strategy_variables;
+    const list = Array.isArray(raw) ? raw : (sess.strategy_definition?.variables || []);
+    return list.filter((v) => v && v.type === 'variable' && v.timing === 'post');
+  } catch (_) {
+    return [];
+  }
+}
+
+function snapshotPostTradeStrategySig(chart) {
+  try {
+    const post = getPostTradeVariablesFromSession(chart);
+    return JSON.stringify(
+      post.map((v) => ({
+        id: v.id,
+        name: v.name,
+        vtype: v.vtype,
+        timing: v.timing,
+        options: v.options,
+      }))
+    );
+  } catch (_) {
+    return '';
+  }
+}
+
+/** Maps Strategies Lab POST vars (filled at exit / trade card) to the same pill shape as PRE. */
+function sessionPostTradeVarsToTagDefs(chart) {
+  const post = getPostTradeVariablesFromSession(chart);
+  return post.map((v, idx) => {
+    const id = String(v.id || v.name || '').trim() || `post_var_${idx}`;
+    const isMulti = v.vtype === 'multi';
+    const options =
+      isMulti && Array.isArray(v.options) && v.options.length
+        ? v.options.map(String)
+        : isMulti
+          ? ['—']
+          : [];
+    return {
+      id,
+      label: v.name || 'Variable',
+      type: isMulti ? 'multi' : 'bool',
+      options,
+    };
+  });
+}
+
 // ── Color Picker Popup ───────────────────────────────────────────────────────
 const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange, onAChange, onHexChange, onClose, onDragStart, dragging, animation, hideAlpha }) => {
   const rgb = hsvToRgb(h, s, v);
@@ -1923,20 +1973,19 @@ const TalariaV8bLive = () => {
   /** Multi-TP footer: total size (#orderQuantity) + WAP — matches chart "Avg TP … lots" + weighted price. */
   const [omTpAvgLotsTxt, setOmTpAvgLotsTxt] = useState("");
   const [omTpWapPriceTxt, setOmTpWapPriceTxt] = useState("");
-  /** Strategies Lab PRE playbook → same defs as `#orderStrategyVariablesMount` (order-manager). */
+  /** Strategies Lab PRE/POST playbook revision — bumps when session strategy_variables change. */
   const [preTradeDefRevision, setPreTradeDefRevision] = useState(0);
   const preTradeStrategySigRef = useRef("");
+  const postTradeStrategySigRef = useRef("");
   const preTradeDomHydratedRef = useRef(false);
   const tagDefs = useMemo(
     () => sessionPreTradeVarsToTagDefs(typeof window !== "undefined" ? window.chart : null),
     [preTradeDefRevision]
   );
-  const [postTagDefs] = useState([
-    { id:"execution", label:"Execution",     type:"multi", options:["Perfect","Good","OK","Poor"] },
-    { id:"followed",  label:"Followed Plan", type:"bool" },
-    { id:"emotion",   label:"Emotion",       type:"multi", options:["Calm","FOMO","Fearful","Greedy"] },
-    { id:"exitRsn",   label:"Exit Reason",   type:"multi", options:["TP Hit","Manual","SL Hit","Trailing"] },
-  ]);
+  const postTagDefs = useMemo(
+    () => sessionPostTradeVarsToTagDefs(typeof window !== "undefined" ? window.chart : null),
+    [preTradeDefRevision]
+  );
   const [tagSels, setTagSels] = useState({});
   const [tagDropOpen, setTagDropOpen] = useState(null);
   const [tagsOpen, setTagsOpen] = useState(true);
@@ -4808,10 +4857,17 @@ const TalariaV8bLive = () => {
       );
 
       const sigPt = snapshotPreTradeStrategySig(window.chart);
+      const sigPo = snapshotPostTradeStrategySig(window.chart);
+      let bumped = false;
       if (sigPt !== preTradeStrategySigRef.current) {
         preTradeStrategySigRef.current = sigPt;
-        setPreTradeDefRevision((n) => n + 1);
+        bumped = true;
       }
+      if (sigPo !== postTradeStrategySigRef.current) {
+        postTradeStrategySigRef.current = sigPo;
+        bumped = true;
+      }
+      if (bumped) setPreTradeDefRevision((n) => n + 1);
     };
 
     tick();
@@ -15765,10 +15821,11 @@ const TalariaV8bLive = () => {
                                                   const isH2=swHov===`td-yn-${r.id}-${def.id}-${lbl}`;
                                                   return(
                                                     <div key={lbl}
-                                                      onClick={()=>updTags(r.id,val?[...editTags.filter(x=>x!==def.label),def.label]:editTags.filter(x=>x!==def.label))}
-                                                      onMouseEnter={()=>setSwHov(`td-yn-${r.id}-${def.id}-${lbl}`)} onMouseLeave={()=>setSwHov(null)}
+                                                      onClick={()=>{ if(!canEdit) return; updTags(r.id,val?[...editTags.filter(x=>x!==def.label),def.label]:editTags.filter(x=>x!==def.label)); }}
+                                                      onMouseEnter={()=>canEdit&&setSwHov(`td-yn-${r.id}-${def.id}-${lbl}`)} onMouseLeave={()=>setSwHov(null)}
                                                       style={{padding:"1px 7px",fontSize:9,fontWeight:sel?700:500,cursor:"default",transition:"all 0.12s",
-                                                        color:sel?accentCol:isH2?"rgba(255,255,255,0.65)":c.ts,
+                                                        opacity:canEdit?1:0.72,
+                                                        color:sel?accentCol:!canEdit?c.trk:isH2?"rgba(255,255,255,0.65)":c.ts,
                                                         background:sel?accentBg:"transparent",
                                                         border:`1px solid ${sel?accentBorder:"rgba(255,255,255,0.08)"}`}}>
                                                       {lbl}
@@ -15787,10 +15844,11 @@ const TalariaV8bLive = () => {
                                                   const active=editTags.includes(opt);
                                                   const isH=swHov===`td-opt-${r.id}-${def.id}-${opt}`;
                                                   return(
-                                                    <div key={opt} onClick={()=>updTags(r.id,active?editTags.filter(x=>x!==opt):[...editTags,opt])}
-                                                      onMouseEnter={()=>setSwHov(`td-opt-${r.id}-${def.id}-${opt}`)} onMouseLeave={()=>setSwHov(null)}
+                                                    <div key={opt} onClick={()=>{ if(!canEdit) return; updTags(r.id,active?editTags.filter(x=>x!==opt):[...editTags,opt]); }}
+                                                      onMouseEnter={()=>canEdit&&setSwHov(`td-opt-${r.id}-${def.id}-${opt}`)} onMouseLeave={()=>setSwHov(null)}
                                                       style={{padding:"2px 8px",fontSize:9,fontWeight:active?700:400,cursor:"default",transition:"all 0.12s",
-                                                        color:active?accentCol:isH?"rgba(255,255,255,0.55)":c.ts,
+                                                        opacity:canEdit?1:0.72,
+                                                        color:active?accentCol:!canEdit?c.trk:isH?"rgba(255,255,255,0.55)":c.ts,
                                                         background:active?accentBg:"transparent",
                                                         border:`1px solid ${active?accentBorder:"rgba(255,255,255,0.07)"}`}}>
                                                       {opt}
@@ -18607,10 +18665,7 @@ const TalariaV8bLive = () => {
               if(r.status==="closed"){
                 const existing=Array.isArray(om.tradeJournal)?om.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid))||{}:{};
                 const patch={tradeId:tid,id:tid,v9TradeNotes:tradeCardNotes};
-                if(canEditPre){
-                  patch.v9PreTradeTags=[...tradeCardPreTags];
-                  patch.preTradeNotes={...(typeof existing.preTradeNotes==="object"?existing.preTradeNotes:{}),tags:tradeCardPreTags.join(", ")};
-                }
+                // PRE is frozen once closed — only POST edits persist here.
                 if(canEditPost){
                   patch.v9PostTradeTags=[...tradeCardPostTags];
                   const postJoin=tradeCardPostTags.join(", ");
@@ -18882,6 +18937,7 @@ const TalariaV8bLive = () => {
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr"}}>
                 {["pre","post"].map((slot,si)=>{
                   const imgs=(tradeScreenshots[r.id]||{})[slot]||[];
+                  const canEditSs=slot==="pre"?canEditPre:canEditPost;
                   return(
                   <div key={slot} style={{padding:"10px 14px",borderRight:si===0?`1px solid ${c.br}`:"none"}}>
                     <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.1em",marginBottom:6}}>
@@ -18897,13 +18953,16 @@ const TalariaV8bLive = () => {
                               style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.1)",cursor:"default",transition:"background 0.1s"}}>
                               <I n="eye" s={10} cl="rgba(255,255,255,0.85)"/>
                             </div>
+                            {canEditSs&&(
                             <div className="ss-del-btn" onClick={()=>setTradeScreenshots(prev=>{const n={...prev};const cur={...(n[r.id]||{})};cur[slot]=(cur[slot]||[]).filter((_,j)=>j!==ssi);n[r.id]=cur;return n;})}
                               style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.1)",cursor:"default",transition:"background 0.1s"}}>
                               <I n="x" s={10} cl="rgba(255,100,100,0.85)"/>
                             </div>
+                            )}
                           </div>
                         </div>
                       ))}
+                      {canEditSs&&(
                       <div className="tc-ss-add" onClick={()=>{setTcSsSlot(slot);tcFileRef.current?.click();}}
                         style={{width:64,height:44,border:`1px dashed rgba(140,160,255,0.2)`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,cursor:"default",flexShrink:0,transition:"background 0.12s"}}>
                         <svg width={10} height={10} viewBox="0 0 14 14" fill="none">
@@ -18912,6 +18971,7 @@ const TalariaV8bLive = () => {
                         </svg>
                         <span className="tc-ss-lbl" style={{fontSize:9,color:c.trk}}>ADD</span>
                       </div>
+                      )}
                     </div>
                   </div>
                   );
