@@ -15491,20 +15491,6 @@ const TalariaV8bLive = () => {
                 <div id="priceAxisZone" className="axis-cursor-zone price-axis-zone" style={{ position: "absolute", right: 0, top: 5, bottom: 30, width: 14, background: "transparent", zIndex: 10, cursor: "ns-resize", pointerEvents: "auto" }} />
                 <div id="timeAxisZone"  className="axis-cursor-zone time-axis-zone"  style={{ position: "absolute", left: 0, right: 60, bottom: 0, height: 10, background: "transparent", zIndex: 10, cursor: "ew-resize", pointerEvents: "auto" }} />
 
-                {/* `#replayFollow` — replay-system keeps this visible while replay is active; click re-enables scroll-with-playback after panning. */}
-                <button
-                  type="button"
-                  id="replayFollow"
-                  className="replay-follow-float-btn"
-                  title="Follow replay — scroll the chart with playback (click after panning to catch up)"
-                  aria-label="Follow replay candle"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth={0.5} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 4v16" fill="none" strokeWidth={2} />
-                    <path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z" />
-                  </svg>
-                </button>
-
                 {/* Crosshair elements — chart.js positions these on mousemove */}
                 <div className="crosshair-vertical" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
                 <div className="crosshair-horizontal" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
@@ -15520,6 +15506,24 @@ const TalariaV8bLive = () => {
               {screenshotFlash && <div onAnimationEnd={()=>setScreenshotFlash(false)} style={{position:"absolute",inset:0,background:"white",animation:"tlrFlash 0.35s ease-out forwards",zIndex:9998,pointerEvents:"none"}}/>}
               {rollback&&<div ref={rollbackLineRef} style={{position:"absolute",top:0,bottom:0,left:0,width:1,opacity:0,willChange:"transform",background:c.acL,boxShadow:`0 0 6px ${c.acL}, 0 0 16px ${c.acG}`,zIndex:22,pointerEvents:"none"}}/>}
               {rollback&&<div ref={(node)=>{ if(!node&&rollbackOverlayRef.current?._rbCleanup){rollbackOverlayRef.current._rbCleanup();}rollbackOverlayCallbackRef(node); }} style={{position:"absolute",inset:0,zIndex:21,cursor:"none"}}/>}
+
+              {/*
+                `#replayFollow` MUST live AFTER rollback/screenshot layers. Inside `#chartWrapper` it sat under
+                sibling overlays (#chart-container isolation), so it looked "missing" while rollback UI was off —
+                paint order still favored later siblings in some builds.
+              */}
+              <button
+                type="button"
+                id="replayFollow"
+                className="replay-follow-float-btn"
+                title="Follow replay — scroll with playback (click after panning to catch up)"
+                aria-label="Follow replay candle"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth={0.5} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 4v16" fill="none" strokeWidth={2} />
+                  <path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z" />
+                </svg>
+              </button>
             </div>
             {/* V9 mock price axis div removed — chart.js draws the real
                 price axis on the right edge of #chartCanvas. Adding back a

@@ -364,15 +364,16 @@
         /* Replay follow-latest — matches legacy `#replayFollow` (chart/legacy-index.html ~42867).
            replay-system.js sets inline display:flex/none; avoid putting display in React inline styles
            so re-renders don’t reset visibility after replay attaches handlers on DOMContentLoaded. */
-        /* Injected fallback (replay-system): lives on body so React cannot detach it */
+        /* Replay follow: DOM lives under #chart-container AFTER rollback overlays (z 21–22) so it is not painted under siblings. */
         body > button.replay-follow-float-btn[data-talaria-replay-follow="injected"],
+        #chart-container #replayFollow.replay-follow-float-btn,
+        #chart-container button#replayFollow,
         #chart-container #chartWrapper #replayFollow.replay-follow-float-btn,
-        #chart-container #chartWrapper button#replayFollow,
         #panels-container .panel-chart-container .panel-follow-btn {
             position: absolute;
             bottom: 70px;
             right: 120px;
-            z-index: 320;
+            z-index: 500;
             display: none;
             align-items: center;
             justify-content: center;
@@ -392,6 +393,7 @@
             pointer-events: auto;
         }
         body > button.replay-follow-float-btn[data-talaria-replay-follow="injected"].replay-follow--attention,
+        #chart-container #replayFollow.replay-follow--attention,
         #chart-container #chartWrapper #replayFollow.replay-follow--attention {
             animation: tlrReplayFollowAttention 1s ease-in-out infinite;
             box-shadow: 0 0 16px rgba(41, 98, 255, 0.42), 0 2px 10px rgba(0, 0, 0, 0.18);
@@ -399,6 +401,7 @@
             color: #e8ecff;
         }
         body > button.replay-follow-float-btn[data-talaria-replay-follow="injected"] svg,
+        #chart-container #replayFollow svg,
         #chart-container #chartWrapper #replayFollow svg,
         #panels-container .panel-chart-container .panel-follow-btn svg {
             width: 20px;
@@ -407,6 +410,7 @@
             flex-shrink: 0;
         }
         body > button.replay-follow-float-btn[data-talaria-replay-follow="injected"]:hover,
+        #chart-container #replayFollow:hover,
         #chart-container #chartWrapper #replayFollow:hover,
         #panels-container .panel-chart-container .panel-follow-btn:hover {
             background: rgba(45, 55, 72, 0.7);
@@ -610,7 +614,7 @@
     <script defer src="/chart/modules/v9-theme-bridge.js?v=20260503g_replay_hud_v9"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
-    <script defer src="/chart/modules/replay-system.js?v=20260503l_tick_follow_ui"></script>
+    <script defer src="/chart/modules/replay-system.js?v=20260503m_follow_stack_play"></script>
 
     <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->
     <script defer src="/chart/modules/order-event-bus.js?v=20260503g_replay_hud_v9"></script>

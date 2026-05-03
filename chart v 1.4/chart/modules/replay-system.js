@@ -4333,7 +4333,7 @@ class ReplaySystem {
         btn.style.bottom = `${Math.max(8, Math.round(window.innerHeight - r.bottom + padB))}px`;
         btn.style.left = 'auto';
         btn.style.top = 'auto';
-        btn.style.zIndex = '2147482000';
+        btn.style.zIndex = '2147483646';
     }
 
     /**
@@ -4436,10 +4436,9 @@ class ReplaySystem {
     updateAutoScrollIndicator() {
         const btn = this.ensureReplayFollowButton();
         const hideChrome = !this.isActive || this.isPickingPoint;
-        // Legacy / TradingView-style: only show "jump to replay" when user unpinned scroll or the bar left view.
-        const showFollow =
-            !hideChrome &&
-            (!this.autoScrollEnabled || !this.isLastCandleVisible());
+        const needsCatchUp = !this.autoScrollEnabled || !this.isLastCandleVisible();
+        // Show while playback runs (user can always snap back) and when paused but viewport drifted / unfollowed.
+        const showFollow = !hideChrome && (!!this.isPlaying || needsCatchUp);
 
         if (btn) {
             if (!showFollow) {
@@ -4452,7 +4451,8 @@ class ReplaySystem {
                 btn.style.display = 'flex';
                 btn.style.opacity = '1';
                 btn.style.visibility = 'visible';
-                btn.classList.add('replay-follow--attention');
+                if (needsCatchUp) btn.classList.add('replay-follow--attention');
+                else btn.classList.remove('replay-follow--attention');
             }
         }
 
