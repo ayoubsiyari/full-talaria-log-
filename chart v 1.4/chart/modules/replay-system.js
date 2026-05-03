@@ -4286,7 +4286,7 @@ class ReplaySystem {
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
 
-        // Scroll to latest position (keep `#replayFollow` visible — it stays on-chart during replay)
+        // Scroll to latest position; follow chrome hides again once the replay head is in view.
         this.updateChartData(true);
 
         requestAnimationFrame(() => {
@@ -4384,27 +4384,29 @@ class ReplaySystem {
     }
 
     /**
-     * Check if the last candle is visible in the viewport
+     * Check if the replay head (last rendered candle) lies inside the drawable viewport.
+     * Uses the same pixel test as panel `.panel-follow-btn` — `getVisibleEndIndex()` overshoots
+     * because it maps the full canvas width, so the floating follow rarely appeared on V9.
      */
     isLastCandleVisible() {
-        if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
+        const chart = this.chart;
+        if (!chart || !chart.data || chart.data.length === 0) {
             return true;
         }
-        
-        const lastIndex = this.chart.data.length - 1;
-        
-        // Use getVisibleEndIndex method if available, otherwise fall back to property
-        let visibleEnd;
-        if (typeof this.chart.getVisibleEndIndex === 'function') {
-            visibleEnd = this.chart.getVisibleEndIndex();
-        } else {
-            visibleEnd = this.chart.visibleEndIndex || 0;
+
+        const m = chart.margin || { l: 0, r: 70 };
+        const spacing =
+            typeof chart.getCandleSpacing === 'function'
+                ? chart.getCandleSpacing()
+                : chart.candleWidth + (chart.candleGap || 2);
+        if (!Number.isFinite(spacing) || spacing <= 0) {
+            return true;
         }
-        
-        
-        // Last candle is visible if it's within the visible range (with small buffer)
-        const isVisible = visibleEnd >= (lastIndex - 1);
-        return isVisible;
+
+        const lastIdx = chart.data.length - 1;
+        const lastX = m.l + lastIdx * spacing + (chart.offsetX || 0);
+        const plotRight = chart.w || 0;
+        return lastX >= 0 && lastX <= plotRight + spacing * 2;
     }
 
     /**
@@ -4413,13 +4415,13 @@ class ReplaySystem {
     updateAutoScrollIndicator() {
         const btn = this.ensureReplayFollowButton();
         const hideChrome = !this.isActive || this.isPickingPoint;
-        const needsAttention =
-            this.isActive &&
+        // Legacy / TradingView-style: only show "jump to replay" when user unpinned scroll or the bar left view.
+        const showFollow =
             !hideChrome &&
             (!this.autoScrollEnabled || !this.isLastCandleVisible());
 
         if (btn) {
-            if (hideChrome) {
+            if (!showFollow) {
                 btn.style.display = 'none';
                 btn.classList.remove('replay-follow--attention');
             } else {
@@ -4429,8 +4431,7 @@ class ReplaySystem {
                 btn.style.display = 'flex';
                 btn.style.opacity = '1';
                 btn.style.visibility = 'visible';
-                if (needsAttention) btn.classList.add('replay-follow--attention');
-                else btn.classList.remove('replay-follow--attention');
+                btn.classList.add('replay-follow--attention');
             }
         }
 

@@ -8591,6 +8591,14 @@ class Chart {
             
             this.constrainOffset();
             this.scheduleRender();
+
+            if (this.replaySystem && this.replaySystem.isActive) {
+                const now = performance.now();
+                if (!this._replayFollowIndicatorMomentumTs || now - this._replayFollowIndicatorMomentumTs >= 48) {
+                    this._replayFollowIndicatorMomentumTs = now;
+                    this.replaySystem.updateAutoScrollIndicator();
+                }
+            }
             
             // Continue animation
             requestAnimationFrame(animateMomentum);
