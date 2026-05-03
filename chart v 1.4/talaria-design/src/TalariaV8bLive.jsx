@@ -1732,9 +1732,12 @@ function cumulativePnLFromJournalEntries(entries) {
   const sorted = [...entries]
     .filter((e) => e && e.pnl != null && Number.isFinite(Number(e.pnl)))
     .sort((a, b) => {
-      const da = a.date ? Date.parse(a.date) : a.close_time ? Date.parse(a.close_time) : 0;
-      const db = b.date ? Date.parse(b.date) : b.close_time ? Date.parse(b.close_time) : 0;
-      return da - db;
+      const parseT = (e) => {
+        const raw = e.date || e.close_time;
+        const n = raw ? Date.parse(raw) : NaN;
+        return Number.isFinite(n) ? n : Number(e.trade_id ?? e.tradeId ?? e.id) || 0;
+      };
+      return parseT(a) - parseT(b);
     });
   let cum = 0;
   return sorted.map((e, idx) => {
@@ -1755,6 +1758,254 @@ function bestWorstJournalTrades(entries) {
   return {
     best: { sym: fmtJournalPair(best.symbol), pnl: best.pnl },
     worst: { sym: fmtJournalPair(worst.symbol), pnl: worst.pnl },
+  };
+}
+
+function coalesceAnalyticsTimeMs(...vals) {
+  for (const v of vals) {
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string" && v.trim()) {
+      const n = Date.parse(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return NaN;
+}
+
+function inferStrategyLabelFromJournal(j) {
+  const s = String(j?.strategy || j?.setupName || "").trim();
+  if (s) return s;
+  const vars = j?.strategy_variables ?? j?.strategyVariables;
+  if (Array.isArray(vars) && vars.length) {
+    const named = vars.find((v) => v && String(v.name || "").trim());
+    if (named) return String(named.name).trim();
+  }
+  return "Other";
+}
+
+function normalizeRemoteJournalListEntry(e) {
+  if (!e || typeof e !== "object") return null;
+  const pnl = Number(e.pnl ?? e.net_pnl ?? e.netPnL ?? NaN);
+  if (!Number.isFinite(pnl)) return null;
+  const symbol = e.symbol ?? e.pair ?? e.ticker ?? "";
+  const tid = e.trade_id ?? e.tradeId ?? e.id;
+  const idNum = tid != null ? Number(tid) : NaN;
+  const d = e.date ?? e.close_time ?? e.closed_at;
+  const ds =
+    typeof d === "string"
+      ? d
+      : d != null && Number.isFinite(Number(d))
+        ? new Date(Number(d)).toISOString()
+        : Number.isFinite(Date.parse(String(d)))
+          ? new Date(Date.parse(String(d))).toISOString()
+          : "";
+  const strategy = String(e.strategy ?? e.setup ?? "").trim() || "Other";
+  return {
+    trade_id: Number.isFinite(idNum) ? idNum : undefined,
+    symbol,
+    pnl,
+    date: ds || undefined,
+    close_time: ds || undefined,
+    strategy,
+  };
+}
+
+function analyticsEntryKey(e) {
+  const id = e?.trade_id ?? e?.tradeId ?? e?.id;
+  if (id != null && Number.isFinite(Number(id))) return `id:${Number(id)}`;
+  const sym = String(e?.symbol || "").replace(/\//g, "").toUpperCase();
+  const t = e?.date || e?.close_time || "";
+  const p = Number(e?.pnl);
+  return `h:${sym}_${t}_${Number.isFinite(p) ? p.toFixed(4) : "x"}`;
+}
+
+function computeJournalStatsFromNormalizedList(list) {
+  const pnls = list.map((e) => Number(e.pnl)).filter(Number.isFinite);
+  const n = pnls.length;
+  const wins = pnls.filter((p) => p > 0);
+  const losses = pnls.filter((p) => p < 0);
+  const winning_trades = wins.length;
+  const losing_trades = losses.length;
+  const denom = winning_trades + losing_trades;
+  const total_pnl = pnls.reduce((s, p) => s + p, 0);
+  const avg_win = wins.length ? wins.reduce((s, p) => s + p, 0) / wins.length : null;
+  const avg_loss = losses.length ? Math.abs(losses.reduce((s, p) => s + p, 0) / losses.length) : null;
+  const win_rate = denom > 0 ? (winning_trades / denom) * 100 : null;
+  const grossProfit = wins.reduce((s, p) => s + p, 0);
+  const grossLossAbs = Math.abs(losses.reduce((s, p) => s + p, 0));
+  let profit_factor = null;
+  if (grossLossAbs > 0) profit_factor = grossProfit / grossLossAbs;
+  else if (grossProfit > 0) profit_factor = Infinity;
+  return {
+    total_trades: n,
+    winning_trades,
+    losing_trades,
+    total_pnl,
+    avg_win,
+    avg_loss,
+    win_rate,
+    profit_factor,
+  };
+}
+
+function symbolBucketsFromNormalizedList(list) {
+  const m = new Map();
+  for (const e of list) {
+    const raw = String(e.symbol || "UNKNOWN").replace(/\//g, "").toUpperCase();
+    if (!m.has(raw)) m.set(raw, { symbol: raw, total_trades: 0, total_pnl: 0 });
+    const b = m.get(raw);
+    b.total_trades += 1;
+    b.total_pnl += Number(e.pnl) || 0;
+  }
+  return [...m.values()].sort((a, b) => Math.abs(b.total_pnl) - Math.abs(a.total_pnl));
+}
+
+function strategyBucketsFromNormalizedList(list) {
+  const mm = new Map();
+  for (const e of list) {
+    const tag = String(e.strategy || "Other").trim() || "Other";
+    if (!mm.has(tag)) mm.set(tag, { strategy: tag, pnls: [] });
+    mm.get(tag).pnls.push(Number(e.pnl) || 0);
+  }
+  return [...mm.values()]
+    .map((b) => {
+      const pnls = b.pnls;
+      const n = pnls.length;
+      const w = pnls.filter((p) => p > 0).length;
+      const l = pnls.filter((p) => p < 0).length;
+      const d = w + l;
+      return {
+        strategy: b.strategy,
+        total_trades: n,
+        win_rate: d > 0 ? (w / d) * 100 : null,
+        total_pnl: pnls.reduce((s, p) => s + p, 0),
+      };
+    })
+    .sort((a, b) => Math.abs(b.total_pnl) - Math.abs(a.total_pnl));
+}
+
+/** Closed P&amp;L from persisted `tradeJournal` + in-memory `closedPositions` (saved session trades). */
+function buildJournalAnalyticsFromOrderManager(om) {
+  if (!om) {
+    return {
+      stats: {
+        total_trades: 0,
+        winning_trades: 0,
+        losing_trades: 0,
+        total_pnl: 0,
+        avg_win: null,
+        avg_loss: null,
+        win_rate: null,
+        profit_factor: null,
+      },
+      symbols: [],
+      strategies: [],
+      list: [],
+      source: "session",
+    };
+  }
+
+  const normalized = [];
+  const seenIds = new Set();
+
+  for (const j of Array.isArray(om.tradeJournal) ? om.tradeJournal : []) {
+    const tidRaw = j.tradeId ?? j.id;
+    const idNum = tidRaw != null ? Number(tidRaw) : NaN;
+    const pnl = Number.parseFloat(j.netPnL ?? j.realizedPnL ?? j.pnl ?? NaN);
+    if (!Number.isFinite(pnl)) continue;
+    if (Number.isFinite(idNum)) seenIds.add(idNum);
+    const sym = j.ticker || j.symbol || "UNKNOWN";
+    const closeMs = coalesceAnalyticsTimeMs(j.closeTime, j.exitTime, j.closedAt);
+    const iso = Number.isFinite(closeMs) ? new Date(closeMs).toISOString() : "";
+    normalized.push({
+      trade_id: Number.isFinite(idNum) ? idNum : undefined,
+      symbol: sym,
+      pnl,
+      date: iso || undefined,
+      close_time: iso || undefined,
+      strategy: inferStrategyLabelFromJournal(j),
+    });
+  }
+
+  for (const p of Array.isArray(om.closedPositions) ? om.closedPositions : []) {
+    const idNum = Number(p.id);
+    if (Number.isFinite(idNum) && seenIds.has(idNum)) continue;
+    const pnl = Number.parseFloat(p.netPnL ?? p.realizedPnL ?? p.pnl ?? NaN);
+    if (!Number.isFinite(pnl)) continue;
+    if (Number.isFinite(idNum)) seenIds.add(idNum);
+    const sym = p.ticker || p.symbol || "UNKNOWN";
+    const closeMs = coalesceAnalyticsTimeMs(p.closeTime, p.closedAt);
+    const iso = Number.isFinite(closeMs) ? new Date(closeMs).toISOString() : "";
+    normalized.push({
+      trade_id: Number.isFinite(idNum) ? idNum : undefined,
+      symbol: sym,
+      pnl,
+      date: iso || undefined,
+      close_time: iso || undefined,
+      strategy: String(p.strategy || "").trim() || "Other",
+    });
+  }
+
+  const list = normalized;
+  const stats = computeJournalStatsFromNormalizedList(list);
+  const bal = Number(om.balance);
+  const eq = Number(om.equity);
+  const ini = Number(om.initialBalance);
+  if (Number.isFinite(bal)) stats.balance = bal;
+  if (Number.isFinite(eq)) stats.equity = eq;
+  if (Number.isFinite(ini)) stats.initial_balance = ini;
+
+  return {
+    stats,
+    symbols: symbolBucketsFromNormalizedList(list),
+    strategies: strategyBucketsFromNormalizedList(list),
+    list,
+    source: "session",
+  };
+}
+
+function mergeJournalAnalyticsRemoteLocal(remote, local) {
+  const loc = local || { stats: {}, symbols: [], strategies: [], list: [] };
+  const locList = Array.isArray(loc.list) ? loc.list : [];
+  const remNorm = (Array.isArray(remote?.list) ? remote.list : [])
+    .map(normalizeRemoteJournalListEntry)
+    .filter(Boolean);
+
+  const byKey = new Map();
+  for (const e of remNorm) {
+    byKey.set(analyticsEntryKey(e), { ...e });
+  }
+  for (const e of locList) {
+    const k = analyticsEntryKey(e);
+    const prev = byKey.get(k);
+    if (prev) {
+      byKey.set(k, {
+        ...prev,
+        ...e,
+        pnl: Number.isFinite(Number(e.pnl)) ? Number(e.pnl) : Number(prev.pnl),
+        symbol: e.symbol || prev.symbol,
+        strategy: e.strategy || prev.strategy,
+      });
+    } else {
+      byKey.set(k, { ...e });
+    }
+  }
+
+  const mergedList = [...byKey.values()].filter((x) => Number.isFinite(Number(x.pnl)));
+  const stats = computeJournalStatsFromNormalizedList(mergedList);
+  const bal = Number(loc.stats?.balance);
+  const eq = Number(loc.stats?.equity);
+  const ini = Number(loc.stats?.initial_balance);
+  if (Number.isFinite(bal)) stats.balance = bal;
+  if (Number.isFinite(eq)) stats.equity = eq;
+  if (Number.isFinite(ini)) stats.initial_balance = ini;
+
+  return {
+    stats,
+    symbols: symbolBucketsFromNormalizedList(mergedList),
+    strategies: strategyBucketsFromNormalizedList(mergedList),
+    list: mergedList,
+    source: remNorm.length ? "merged" : "session",
   };
 }
 
@@ -2392,12 +2643,18 @@ const TalariaV8bLive = () => {
     };
   }, []);
 
-  // Journal backend analytics (same `/api/journal` routes as journal-frontend).
+  // Journal analytics: session-saved trades (`tradeJournal` / `closedPositions`) + balance/equity from orderManager;
+  // merges with `/api/journal` when the backend responds.
   useEffect(() => {
     if (btmTab !== "analytics") return undefined;
     let cancelled = false;
+
+    const snapshotOm = () => (typeof window !== "undefined" ? window.chart?.orderManager : null);
+
+    setJournalAnalytics(buildJournalAnalyticsFromOrderManager(snapshotOm()));
+    setJournalAnalyticsMeta({ loading: true, error: null });
+
     (async () => {
-      setJournalAnalyticsMeta({ loading: true, error: null });
       try {
         const [statsRes, symRes, stratRes, listRes] = await Promise.all([
           fetchJournalEndpoint("/stats"),
@@ -2406,41 +2663,49 @@ const TalariaV8bLive = () => {
           fetchJournalEndpoint("/list"),
         ]);
         if (cancelled) return;
-        if (!statsRes.ok && !listRes.ok) {
-          const code = statsRes.status || listRes.status;
-          setJournalAnalytics(null);
-          setJournalAnalyticsMeta({
-            loading: false,
-            error:
-              code === 401 || code === 403
-                ? "Journal analytics requires sign-in (Bearer token in localStorage)."
-                : `Analytics unavailable (${code || "network"}).`,
-          });
-          return;
-        }
+
+        const okEnough = statsRes.ok || listRes.ok;
         const stats = statsRes.ok ? await statsRes.json().catch(() => null) : null;
         const symbols = symRes.ok ? await symRes.json().catch(() => []) : [];
         const strategies = stratRes.ok ? await stratRes.json().catch(() => []) : [];
         const list = listRes.ok ? await listRes.json().catch(() => []) : [];
-        if (cancelled) return;
-        setJournalAnalytics({
+
+        const remotePayload = {
           stats: stats && typeof stats === "object" ? stats : null,
           symbols: Array.isArray(symbols) ? symbols : [],
           strategies: Array.isArray(strategies) ? strategies : [],
           list: Array.isArray(list) ? list : [],
-        });
-        setJournalAnalyticsMeta({ loading: false, error: null });
+        };
+        const merged = mergeJournalAnalyticsRemoteLocal(remotePayload, buildJournalAnalyticsFromOrderManager(snapshotOm()));
+        const hasTrades = (merged.list?.length || 0) > 0;
+        const code = statsRes.status || listRes.status;
+
+        if (!cancelled) {
+          setJournalAnalytics(merged);
+          setJournalAnalyticsMeta({
+            loading: false,
+            error:
+              !okEnough && !hasTrades
+                ? code === 401 || code === 403
+                  ? "Journal analytics requires sign-in (Bearer token in localStorage)."
+                  : `Analytics unavailable (${code || "network"}).`
+                : null,
+          });
+        }
       } catch (e) {
         if (!cancelled) {
-          setJournalAnalytics(null);
-          setJournalAnalyticsMeta({ loading: false, error: String(e?.message || e) });
+          const merged = mergeJournalAnalyticsRemoteLocal(null, buildJournalAnalyticsFromOrderManager(snapshotOm()));
+          setJournalAnalytics(merged);
+          const hasTrades = (merged.list?.length || 0) > 0;
+          setJournalAnalyticsMeta({ loading: false, error: hasTrades ? null : String(e?.message || e) });
         }
       }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [btmTab]);
+  }, [btmTab, omTradeRev]);
 
   // Ctrl+S — open V9 screenshot panel (same as camera), not the legacy DOM modal
   useEffect(() => {
@@ -4181,7 +4446,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260503-replay-hud-live-metrics";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260503-analytics-session-journal-merge";
   }, []);
 
   useEffect(() => {
@@ -15825,8 +16090,16 @@ const TalariaV8bLive = () => {
                 const jSt = ja?.stats || {};
                 const jTotalTrades = jSt.total_trades != null ? String(jSt.total_trades) : "—";
                 const jWinRate = jSt.win_rate != null ? `${Number(jSt.win_rate).toFixed(1)}%` : "—";
-                const jPf = jSt.profit_factor != null && Number.isFinite(Number(jSt.profit_factor)) ? Number(jSt.profit_factor).toFixed(2) : "—";
+                const jPfRaw = jSt.profit_factor;
+                const jPf =
+                  jPfRaw === Infinity
+                    ? "∞"
+                    : jPfRaw != null && Number.isFinite(Number(jPfRaw))
+                      ? Number(jPfRaw).toFixed(2)
+                      : "—";
                 const jNet = fmtUsdAnalytics(jSt.total_pnl, 0);
+                const jBal = fmtUsdAnalytics(jSt.balance, 0);
+                const jEq = fmtUsdAnalytics(jSt.equity, 0);
                 const jAvgWin = fmtUsdAnalytics(jSt.avg_win, 0);
                 const jAvgLoss = jSt.avg_loss != null && Number(jSt.avg_loss) > 0 ? `-$${Number(jSt.avg_loss).toFixed(0)}` : "—";
                 const jNWins = Number(jSt.winning_trades) || 0;
@@ -15849,9 +16122,45 @@ const TalariaV8bLive = () => {
                     )}
                     {!jMeta.loading&&(
                     <>
-                    {/* Summary cards — `/api/journal/stats` */}
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:8}}>
-                      {[{l:"Total Trades",v:jTotalTrades,col:c.tx},{l:"Win Rate",v:jWinRate,col:jSt.win_rate==null||!Number.isFinite(Number(jSt.win_rate))?c.tx:Number(jSt.win_rate)>=50?c.gn:c.rd},{l:"Profit Factor",v:jPf,col:jPf==="—"?c.tx:Number(jSt.profit_factor)>=1?c.gn:c.rd},{l:"Net P&L",v:jNet,col:jSt.total_pnl==null||!Number.isFinite(Number(jSt.total_pnl))?c.tx:Number(jSt.total_pnl)>=0?c.gn:c.rd},{l:"Avg Win",v:jAvgWin,col:c.gn},{l:"Avg Loss",v:jAvgLoss,col:c.rd}].map(({l,v,col},i)=>(
+                    {/* Summary — computed from merged journal list + live balance/equity from orderManager */}
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:8}}>
+                      {[
+                        { l: "Balance", v: jBal, col: c.tx },
+                        { l: "Equity", v: jEq, col: c.tx },
+                        { l: "Total Trades", v: jTotalTrades, col: c.tx },
+                        {
+                          l: "Win Rate",
+                          v: jWinRate,
+                          col:
+                            jSt.win_rate == null || !Number.isFinite(Number(jSt.win_rate))
+                              ? c.tx
+                              : Number(jSt.win_rate) >= 50
+                                ? c.gn
+                                : c.rd,
+                        },
+                        {
+                          l: "Profit Factor",
+                          v: jPf,
+                          col:
+                            jPf === "—"
+                              ? c.tx
+                              : jPfRaw === Infinity || Number(jPfRaw) >= 1
+                                ? c.gn
+                                : c.rd,
+                        },
+                        {
+                          l: "Net P&L",
+                          v: jNet,
+                          col:
+                            jSt.total_pnl == null || !Number.isFinite(Number(jSt.total_pnl))
+                              ? c.tx
+                              : Number(jSt.total_pnl) >= 0
+                                ? c.gn
+                                : c.rd,
+                        },
+                        { l: "Avg Win", v: jAvgWin, col: c.gn },
+                        { l: "Avg Loss", v: jAvgLoss, col: c.rd },
+                      ].map(({ l, v, col }, i) => (
                         <div key={i} style={{background:c.bg,border:`1px solid ${c.br}`,padding:"10px 12px",display:"flex",flexDirection:"column",gap:5}}>
                           <span style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em"}}>{l}</span>
                           <span style={{fontSize:18,fontWeight:700,color:col||c.tx,fontVariantNumeric:"tabular-nums"}}>{v}</span>
