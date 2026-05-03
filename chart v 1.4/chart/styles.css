@@ -324,37 +324,11 @@ body {
     cursor: crosshair;
 }
 
-#drawingSvg line {
-    transition: stroke-width 0.15s ease, opacity 0.15s ease;
-}
-
-#drawingSvg line:hover {
-    stroke-width: 3;
-    filter: drop-shadow(0 0 4px rgba(var(--sp-accent-rgb), 0.5));
-}
-
-#drawingSvg rect {
-    transition: opacity 0.15s ease, stroke-width 0.15s ease;
-}
-
-#drawingSvg rect:hover {
-    stroke-width: 3;
-    filter: drop-shadow(0 0 4px rgba(var(--sp-accent-rgb), 0.5));
-}
-
+/* No global :hover on line/rect/circle — it targeted every sub-path (flashing), forced
+   expensive filter:drop-shadow repaints (lag), and overlapped drawing-manager hover + handles. */
 #drawingSvg text {
     transition: opacity 0.15s ease;
     user-select: none;
-}
-
-#drawingSvg circle {
-    transition: all 0.15s ease;
-    cursor: pointer;
-}
-
-#drawingSvg circle:hover {
-    r: 6;
-    filter: drop-shadow(0 2px 6px rgba(var(--sp-accent-rgb), 0.6));
 }
 
 /* Crosshair */

@@ -1029,22 +1029,6 @@ class HorizontalLineTool extends BaseDrawing {
             .style('opacity', this.selected ? 1 : 0)
             .attr('data-point-index', 0);
         
-        // Hover effect
-        handle.on('mouseenter', function() {
-            d3.select(this)
-                .transition()
-                .duration(150)
-                .attr('r', handleRadius + 1)
-                .attr('stroke-width', handleStrokeWidth + 0.5);
-        })
-        .on('mouseleave', function() {
-            d3.select(this)
-                .transition()
-                .duration(150)
-                .attr('r', handleRadius)
-                .attr('stroke-width', handleStrokeWidth);
-        });
-
         return this.group;
     }
 
@@ -1414,22 +1398,6 @@ class VerticalLineTool extends BaseDrawing {
             .style('opacity', this.selected ? 1 : 0)
             .attr('data-point-index', 0);
         
-        // Hover effect
-        handle.on('mouseenter', function() {
-            d3.select(this)
-                .transition()
-                .duration(150)
-                .attr('r', handleRadius + 1)
-                .attr('stroke-width', handleStrokeWidth + 0.5);
-        })
-        .on('mouseleave', function() {
-            d3.select(this)
-                .transition()
-                .duration(150)
-                .attr('r', handleRadius)
-                .attr('stroke-width', handleStrokeWidth);
-        });
-
         return this.group;
     }
 
@@ -2188,22 +2156,6 @@ class HorizontalRayTool extends BaseDrawing {
             .style('opacity', this.selected ? 1 : 0)
             .attr('data-point-index', 0);
         
-        // Hover effect
-        handle.on('mouseenter', function() {
-            d3.select(this)
-                .transition()
-                .duration(150)
-                .attr('r', handleRadius + 1)
-                .attr('stroke-width', handleStrokeWidth + 0.5);
-        })
-        .on('mouseleave', function() {
-            d3.select(this)
-                .transition()
-                .duration(150)
-                .attr('r', handleRadius)
-                .attr('stroke-width', handleStrokeWidth);
-        });
-
         return this.group;
     }
 

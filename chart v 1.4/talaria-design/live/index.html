@@ -61,32 +61,11 @@
             pointer-events: all;
             cursor: crosshair;
         }
-        /* Mirror chart/styles.svg drawing hover — V9 live does not load full styles.css */
-        #chart-container #drawingSvg line {
-            transition: stroke-width 0.15s ease, opacity 0.15s ease;
-        }
-        #chart-container #drawingSvg line:hover {
-            stroke-width: 3;
-            filter: drop-shadow(0 0 4px rgba(41, 98, 255, 0.5));
-        }
-        #chart-container #drawingSvg rect {
-            transition: opacity 0.15s ease, stroke-width 0.15s ease;
-        }
-        #chart-container #drawingSvg rect:hover {
-            stroke-width: 3;
-            filter: drop-shadow(0 0 4px rgba(41, 98, 255, 0.5));
-        }
+        /* Drawing hover: do not mirror old line/rect/circle :hover + drop-shadow (sub-element
+           flash + jank). Selection + resize handles are driven in JS (drawing-tools-manager). */
         #chart-container #drawingSvg text {
             transition: opacity 0.15s ease;
             user-select: none;
-        }
-        #chart-container #drawingSvg circle {
-            transition: all 0.15s ease;
-            cursor: pointer;
-        }
-        #chart-container #drawingSvg circle:hover {
-            r: 6;
-            filter: drop-shadow(0 2px 6px rgba(41, 98, 255, 0.6));
         }
         #priceAxisZone, #timeAxisZone {
             position: absolute;

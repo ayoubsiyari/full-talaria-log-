@@ -263,22 +263,6 @@ class RectangleTool extends BaseDrawing {
                 .attr('data-handle-role', pos.role)
                 .attr('data-point-index', index);
             
-            // Hover effect
-            handle.on('mouseenter', function() {
-                d3.select(this)
-                    .transition()
-                    .duration(150)
-                    .attr('r', handleRadius + 1)
-                    .attr('stroke-width', handleStrokeWidth + 0.5);
-            })
-            .on('mouseleave', function() {
-                d3.select(this)
-                    .transition()
-                    .duration(150)
-                    .attr('r', handleRadius)
-                    .attr('stroke-width', handleStrokeWidth);
-            });
-            
             this.handles.push(handleGroup);
         });
     }
@@ -636,22 +620,6 @@ class EllipseTool extends BaseDrawing {
                 .style('opacity', this.selected ? 1 : 0)
                 .attr('data-handle-role', pos.role)
                 .attr('data-point-index', index);
-            
-            // Hover effect
-            handle.on('mouseenter', function() {
-                d3.select(this)
-                    .transition()
-                    .duration(150)
-                    .attr('r', handleRadius + 1)
-                    .attr('stroke-width', handleStrokeWidth + 0.5);
-            })
-            .on('mouseleave', function() {
-                d3.select(this)
-                    .transition()
-                    .duration(150)
-                    .attr('r', handleRadius)
-                    .attr('stroke-width', handleStrokeWidth);
-            });
             
             this.handles.push(handleGroup);
         });
