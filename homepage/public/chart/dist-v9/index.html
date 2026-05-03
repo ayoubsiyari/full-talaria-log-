@@ -364,6 +364,8 @@
         /* Replay follow-latest — matches legacy `#replayFollow` (chart/legacy-index.html ~42867).
            replay-system.js sets inline display:flex/none; avoid putting display in React inline styles
            so re-renders don’t reset visibility after replay attaches handlers on DOMContentLoaded. */
+        /* Injected fallback (replay-system): lives on body so React cannot detach it */
+        body > button.replay-follow-float-btn[data-talaria-replay-follow="injected"],
         #chart-container #chartWrapper #replayFollow.replay-follow-float-btn,
         #chart-container #chartWrapper button#replayFollow,
         #panels-container .panel-chart-container .panel-follow-btn {
@@ -389,12 +391,14 @@
             animation: tlrReplayFollowIdle 3s ease-in-out infinite;
             pointer-events: auto;
         }
+        body > button.replay-follow-float-btn[data-talaria-replay-follow="injected"].replay-follow--attention,
         #chart-container #chartWrapper #replayFollow.replay-follow--attention {
             animation: tlrReplayFollowAttention 1s ease-in-out infinite;
             box-shadow: 0 0 16px rgba(41, 98, 255, 0.42), 0 2px 10px rgba(0, 0, 0, 0.18);
             border-color: rgba(140, 160, 255, 0.5);
             color: #e8ecff;
         }
+        body > button.replay-follow-float-btn[data-talaria-replay-follow="injected"] svg,
         #chart-container #chartWrapper #replayFollow svg,
         #panels-container .panel-chart-container .panel-follow-btn svg {
             width: 20px;
@@ -402,6 +406,7 @@
             display: block;
             flex-shrink: 0;
         }
+        body > button.replay-follow-float-btn[data-talaria-replay-follow="injected"]:hover,
         #chart-container #chartWrapper #replayFollow:hover,
         #panels-container .panel-chart-container .panel-follow-btn:hover {
             background: rgba(45, 55, 72, 0.7);
@@ -605,7 +610,7 @@
     <script defer src="/chart/modules/v9-theme-bridge.js?v=20260503g_replay_hud_v9"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
-    <script defer src="/chart/modules/replay-system.js?v=20260503h_replay_follow_fix"></script>
+    <script defer src="/chart/modules/replay-system.js?v=20260503j_replay_follow_body"></script>
 
     <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->
     <script defer src="/chart/modules/order-event-bus.js?v=20260503g_replay_hud_v9"></script>

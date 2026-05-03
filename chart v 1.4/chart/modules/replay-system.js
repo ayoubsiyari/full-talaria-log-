@@ -276,7 +276,9 @@ class ReplaySystem {
             let tries = 0;
             const iv = setInterval(() => {
                 tries++;
-                const btn = document.getElementById('replayFollow');
+                const btn =
+                    document.getElementById('replayFollow') ||
+                    document.querySelector('button[data-talaria-replay-follow="injected"]');
                 if (btn && !btn.dataset.replayFollowBound) {
                     btn.dataset.replayFollowBound = '1';
                     btn.addEventListener('click', () => this.enableAutoScroll());
@@ -2111,6 +2113,19 @@ class ReplaySystem {
         // Hide control bar
         this.hideToolbar();
 
+        try {
+            const injected = document.querySelector('button[data-talaria-replay-follow="injected"]');
+            if (injected && injected.parentElement) injected.remove();
+        } catch (_) {}
+
+        if (this._replayFollowResizeBound) {
+            try {
+                window.removeEventListener('resize', this._replayFollowResizeBound);
+            } catch (_) {}
+            this._replayFollowResizeBound = null;
+        }
+
+        this.followBtn = null;
         this.updateAutoScrollIndicator();
     }
 
@@ -2361,7 +2376,12 @@ class ReplaySystem {
         }
         
         this.isPlaying = true;
-        
+
+        // UX (esp. V9): starting playback should scroll the viewport with the replay head again.
+        // Panning during playback still calls onUserPan() and disables auto-scroll until follow is clicked.
+        this.autoScrollEnabled = true;
+        this.userHasPanned = false;
+
         // Update button UI immediately
         this.togglePlayUI(true);
         
@@ -3223,14 +3243,12 @@ class ReplaySystem {
             this.syncPanelCharts();
         }
 
-        // Keep follow/jump-to-latest button responsive in fast mode too.
-        // Throttle checks to avoid unnecessary work at high replay speeds.
-        if (!this.autoScrollEnabled) {
-            const now = performance.now();
-            if (!this._lastFollowIndicatorCheckTs || now - this._lastFollowIndicatorCheckTs >= 100) {
-                this._lastFollowIndicatorCheckTs = now;
-                this.updateAutoScrollIndicator();
-            }
+        // Keep follow button responsive in fast mode (injected fixed overlay must stay aligned with #chartWrapper).
+        const now = performance.now();
+        const throttleMs = this.autoScrollEnabled ? 200 : 100;
+        if (!this._lastFollowIndicatorCheckTs || now - this._lastFollowIndicatorCheckTs >= throttleMs) {
+            this._lastFollowIndicatorCheckTs = now;
+            this.updateAutoScrollIndicator();
         }
 
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function' && this.isActive) {
@@ -4277,13 +4295,86 @@ class ReplaySystem {
     }
 
     /**
-     * Resolve `#replayFollow` after React mounts / remounts V9 chrome (stale refs otherwise).
+     * Place `#replayFollow` relative to the chart wrapper viewport (fixed coords survive React reconciler).
+     */
+    positionReplayFollowChrome(btn) {
+        const wrap =
+            document.getElementById('chartWrapper') ||
+            document.querySelector('.chart-wrapper') ||
+            this.chart?.canvas?.closest('#chartWrapper') ||
+            this.chart?.canvas?.parentElement;
+        if (!btn || !wrap) return;
+        const r = wrap.getBoundingClientRect();
+        const padR = 120;
+        const padB = 70;
+        btn.style.position = 'fixed';
+        btn.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right + padR))}px`;
+        btn.style.bottom = `${Math.max(8, Math.round(window.innerHeight - r.bottom + padB))}px`;
+        btn.style.left = 'auto';
+        btn.style.top = 'auto';
+        btn.style.zIndex = '2147482000';
+    }
+
+    /**
+     * Resolve `#replayFollow`. If the V9 bundle is stale (no React node), inject a fixed button on
+     * `document.body` so it cannot be removed by React re-renders inside `#chartWrapper`.
      */
     ensureReplayFollowButton() {
         let btn = this.followBtn;
         if (btn && document.body.contains(btn)) return btn;
+
         btn = document.getElementById('replayFollow');
+
+        if (!btn) {
+            btn = document.querySelector('button[data-talaria-replay-follow="injected"]');
+        }
+
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.type = 'button';
+            // No id — avoids duplicate id="replayFollow" if V9 React mounts after injection.
+            btn.dataset.talariaReplayFollow = 'injected';
+            btn.className = 'replay-follow-float-btn';
+            btn.title = 'Follow replay — scroll with playback';
+            btn.setAttribute('aria-label', 'Follow replay candle');
+            btn.innerHTML =
+                '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round">' +
+                '<path d="M21 4v16" fill="none" stroke-width="2"/>' +
+                '<path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/>' +
+                '</svg>';
+            Object.assign(btn.style, {
+                display: 'none',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '44px',
+                height: '44px',
+                padding: '0',
+                margin: '0',
+                boxSizing: 'border-box',
+                background: 'rgba(45, 55, 72, 0.88)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                border: '1.5px solid rgba(160, 174, 192, 0.38)',
+                borderRadius: '50%',
+                color: 'rgba(236, 241, 252, 0.96)',
+                cursor: 'pointer',
+                boxShadow: '0 2px 16px rgba(0, 0, 0, 0.42)',
+                pointerEvents: 'auto',
+            });
+            document.body.appendChild(btn);
+
+            if (!this._replayFollowResizeBound) {
+                this._replayFollowResizeBound = () => {
+                    try {
+                        this.positionReplayFollowChrome(this.followBtn);
+                    } catch (_) {}
+                };
+                window.addEventListener('resize', this._replayFollowResizeBound);
+            }
+        }
+
         if (!btn) return null;
+
         if (!btn.dataset.replayFollowBound) {
             btn.dataset.replayFollowBound = '1';
             btn.addEventListener('click', () => this.enableAutoScroll());
@@ -4332,6 +4423,9 @@ class ReplaySystem {
                 btn.style.display = 'none';
                 btn.classList.remove('replay-follow--attention');
             } else {
+                if (btn.dataset.talariaReplayFollow === 'injected') {
+                    this.positionReplayFollowChrome(btn);
+                }
                 btn.style.display = 'flex';
                 btn.style.opacity = '1';
                 btn.style.visibility = 'visible';
