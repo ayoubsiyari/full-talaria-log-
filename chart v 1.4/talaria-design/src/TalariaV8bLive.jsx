@@ -3890,7 +3890,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260509-rail-36-ic17-lc1";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260509-rail-36-ic17-lc1-selclip";
   }, []);
 
   useEffect(() => {
@@ -7179,9 +7179,9 @@ const TalariaV8bLive = () => {
             : <span style={{ display: "flex", pointerEvents: "none" }}><I n={railIcon} s={17} cl={pressCol}/></span>
           }
         </button>
-        {act && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 6px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
+        {act && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `-2px 0 6px -1px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
         {h && !act && !isPressed && <div style={{ position: "absolute", left: 3, top: "25%", bottom: "25%", width: 1, background: `linear-gradient(180deg, transparent, `+c.hvLn+`, transparent)`, pointerEvents: "none", zIndex: 2 }}/>}
-        {isPressed && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}`, pointerEvents: "none", zIndex: 2 }}/>}
+        {isPressed && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${c.acL}, transparent)`, boxShadow: `-2px 0 6px -1px ${c.acG}`, pointerEvents: "none", zIndex: 2 }}/>}
         {t.dd && (
           <button
             type="button"
@@ -14751,7 +14751,7 @@ const TalariaV8bLive = () => {
         ))}
       </div>
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
-        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 1, paddingLeft: 1, overflowY: "auto", overflowX: "hidden" }}>
+        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, boxSizing: "border-box", background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 1, paddingLeft: 1, paddingRight: 2, overflowY: "auto", overflowX: "hidden" }}>
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%" }}>
               {gi === toolGroups.length - 1 && <div style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>}
