@@ -3890,7 +3890,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260509-rail-tight-left";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260509-root-pl0-sidebar-flush";
   }, []);
 
   useEffect(() => {
@@ -7317,7 +7317,7 @@ const TalariaV8bLive = () => {
   }, [rollback, darkMode, c.gn, c.rd]);
 
   return (
-    <div data-v9-app="1" style={{ width: "100%", height: "100dvh", boxSizing: "border-box", paddingLeft: isFullscreen ? 0 : 14, background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
+    <div data-v9-app="1" style={{ width: "100%", height: "100dvh", boxSizing: "border-box", paddingLeft: 0, background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
       onClick={(e) => {
         // Never run closeAll on bubbled clicks from children — it ran after every button/dropdown
         // handler and cleared state in the same tick (felt like “dead clicks”, many taps needed).
