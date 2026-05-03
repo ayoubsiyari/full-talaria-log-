@@ -3890,7 +3890,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260509-rail-accent-match-dd";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260509-tool-bridge-no-reset-dup";
   }, []);
 
   useEffect(() => {
@@ -5888,8 +5888,10 @@ const TalariaV8bLive = () => {
         // selected, fall through and activate it instead of just clearing.
         if (!legacy) {
           try {
-            if (typeof dm.clearTool === 'function') dm.clearTool();
-            else dm.currentTool = null;
+            if (dm.currentTool != null) {
+              if (typeof dm.clearTool === 'function') dm.clearTool();
+              else dm.currentTool = null;
+            }
           } catch (_) {}
           return;
         }
@@ -5898,9 +5900,14 @@ const TalariaV8bLive = () => {
       const legacy = resolveLegacyTool();
       try {
         if (!legacy) {
-          if (typeof dm.clearTool === 'function') dm.clearTool();
-          else dm.currentTool = null;
-        } else {
+          if (dm.currentTool != null) {
+            if (typeof dm.clearTool === 'function') dm.clearTool();
+            else dm.currentTool = null;
+          }
+        } else if (dm.currentTool !== legacy) {
+          // drawing-tools-manager setTool() always deselects + drawingState.reset().
+          // Re-applying the same legacy id (e.g. [tool, groupSelected] re-ran) during
+          // a drag wiped the in-progress stroke and could freeze or crash the chart.
           dm.setTool(legacy);
         }
       } catch (err) { console.warn('[V9 tool bridge] setTool failed:', legacy, err); }
