@@ -4437,8 +4437,9 @@ class ReplaySystem {
         const btn = this.ensureReplayFollowButton();
         const hideChrome = !this.isActive || this.isPickingPoint;
         const needsCatchUp = !this.autoScrollEnabled || !this.isLastCandleVisible();
-        // Show while playback runs (user can always snap back) and when paused but viewport drifted / unfollowed.
-        const showFollow = !hideChrome && (!!this.isPlaying || needsCatchUp);
+        // Always show during replay (many users run from a stale V9 bundle with no `#replayFollow` in React —
+        // injection still creates the node; hiding unless `isPlaying` looked like "nothing works").
+        const showFollow = !hideChrome;
 
         if (btn) {
             if (!showFollow) {
