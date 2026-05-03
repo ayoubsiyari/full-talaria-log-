@@ -3890,7 +3890,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260509-rail-36-ic17";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260509-rail-36-ic17-lc";
   }, []);
 
   useEffect(() => {
@@ -7166,10 +7166,10 @@ const TalariaV8bLive = () => {
             else { setTool(t.id); setDropdown(null); }
           }}
           style={{
-            width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "flex-end",
+            width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "flex-start",
             background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
             border: "none", cursor: "default", color: pressCol,
-            padding: 0, paddingRight: 10,
+            padding: 0, paddingLeft: 2, paddingRight: t.dd ? 11 : 4,
             boxSizing: "border-box", touchAction: "manipulation",
             transition: "color 0.15s ease, background 0.12s", position: "relative", fontFamily: F,
           }}>
@@ -14751,7 +14751,7 @@ const TalariaV8bLive = () => {
         ))}
       </div>
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
-        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, paddingLeft: 8, overflowY: "auto", overflowX: "hidden" }}>
+        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, paddingLeft: 2, overflowY: "auto", overflowX: "hidden" }}>
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%" }}>
               {gi === toolGroups.length - 1 && <div style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>}
@@ -14766,8 +14766,8 @@ const TalariaV8bLive = () => {
           {/* Dark / Light mode toggle */}
           <div onClick={(e) => { e.stopPropagation(); setDarkMode(v => !v); }}
             onMouseEnter={() => setHov("sb-theme")} onMouseLeave={() => setHov(null)}
-            style={{ width:"100%", height:32, display:"flex", alignItems:"center", justifyContent:"flex-end",
-              paddingRight:10, boxSizing:"border-box", cursor:"default", position:"relative",
+            style={{ width:"100%", height:32, display:"flex", alignItems:"center", justifyContent:"center",
+              paddingLeft:2, paddingRight:2, boxSizing:"border-box", cursor:"default", position:"relative",
               background: hov==="sb-theme" ? c.hv : "transparent",
               transition:"background 0.12s" }}>
             {darkMode ? (
