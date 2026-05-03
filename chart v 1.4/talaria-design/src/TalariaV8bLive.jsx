@@ -4128,15 +4128,11 @@ const TalariaV8bLive = () => {
   const [cpHex, setCpHex] = useState('ffffff');
   const [cpDragging, setCpDragging] = useState(null);
   const [cpDragRect, setCpDragRect] = useState(null);
-  /** Document mousedown uses capture + [] deps — keep latest values for dismiss-outside logic. */
+  /** Mirror state for document listeners registered once ([] effect) — assign each render (no useEffect lag). */
   const colorPickerRef = useRef(null);
   const cpDraggingRef = useRef(null);
-  useEffect(() => {
-    colorPickerRef.current = colorPicker;
-  }, [colorPicker]);
-  useEffect(() => {
-    cpDraggingRef.current = cpDragging;
-  }, [cpDragging]);
+  colorPickerRef.current = colorPicker;
+  cpDraggingRef.current = cpDragging;
   const [settings, setSettings] = useState({
     theme: "Talaria Dark", chartType: "candlestick", precision: "0.00000", timezone: "UTC",
     textColor: "#8CA0FF", background: "#07080E", gridColor: "rgba(140,160,255,0.15)", crosshairColor: "rgba(255,255,255,0.4)",
@@ -4657,13 +4653,18 @@ const TalariaV8bLive = () => {
         setCpDragRect(null);
       }
     };
-    const handler = (e) => {
+    // TxBtn/TlBtn open the picker on pointerdown with stopPropagation — so bubble never reaches
+    // document. Using mousedown *capture* ran after pointerdown and cleared the picker on the same
+    // gesture (felt like a missed click or two-tap to open).
+    const dismissPointerHandler = (e) => {
+      const el = eventTargetEl(e);
+      dismissColorPickerIfOutside(el);
+    };
+    const chromeMouseHandler = (e) => {
       const el = eventTargetEl(e);
       if (!el) return;
-      dismissColorPickerIfOutside(el);
       // IMPORTANT: return BEFORE tlBar / chart dismiss setState. Presses inside [data-sdrop] must not
-      // clear tlBar on first press ("needs many taps"). Color picker is handled above so it still
-      // closes when clicking empty space inside settings/menus (those roots use data-sdrop).
+      // clear tlBar on first press ("needs many taps").
       if (!isOutsideUiChrome(el)) return;
 
       setTlBarDrop(null);
@@ -4687,10 +4688,12 @@ const TalariaV8bLive = () => {
       if (!isOutsideUiChrome(el)) return;
       setSettDrop(null);
     };
-    document.addEventListener("mousedown", handler, true);
+    document.addEventListener("pointerdown", dismissPointerHandler, false);
+    document.addEventListener("mousedown", chromeMouseHandler, false);
     document.addEventListener("wheel", scrollHandler, { passive: true });
     return () => {
-      document.removeEventListener("mousedown", handler, true);
+      document.removeEventListener("pointerdown", dismissPointerHandler, false);
+      document.removeEventListener("mousedown", chromeMouseHandler, false);
       document.removeEventListener("wheel", scrollHandler);
     };
   }, []);
