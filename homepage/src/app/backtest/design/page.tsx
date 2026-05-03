@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 
 /**
  * Full-screen chart embed.
@@ -8,11 +8,21 @@ import React, { useEffect } from "react";
  * `/talaria-v8b-design/` is the **minimal** Vite build (React only — no chart.js, no economic calendar).
  * For the **full V9 live** chart + Finnhub calendar + markers, the iframe must load the **`build:live`**
  * output (`chart/dist-v9/`), copied under `public/chart/dist-v9/` so this resolves to `/chart/dist-v9/index.html`.
+ * After editing `talaria-design/src/*.jsx`, run repo-root **`npm run build:chart-v9`** (or **`npm run sync:chart-v9`**
+ * after `build:live:chart`), or use **`npm run dev:chart-v9`** (port 5173) for instant HMR without Next.
  *
  * Override with `NEXT_PUBLIC_TALARIA_V9_IFRAME_SRC` (e.g. `https://your-api-host/chart/index.html`).
  */
 const TALARIA_V9_IFRAME_SRC =
   process.env.NEXT_PUBLIC_TALARIA_V9_IFRAME_SRC || "/chart/dist-v9/index.html";
+
+/** In `next dev`, avoid a stale cached iframe document after `npm run build:chart-v9`. */
+function v9IframeSrcForEnv(base: string) {
+  if (process.env.NODE_ENV !== "development") return base;
+  if (/^https?:\/\//i.test(base)) return base;
+  const sep = base.includes("?") ? "&" : "?";
+  return `${base}${sep}_devcb=${Date.now()}`;
+}
 
 export default function BacktestDesignDemoPage() {
   useEffect(() => {
@@ -60,12 +70,17 @@ export default function BacktestDesignDemoPage() {
     };
   }, []);
 
+  const iframeSrc = useMemo(
+    () => v9IframeSrcForEnv(TALARIA_V9_IFRAME_SRC),
+    [],
+  );
+
   return (
     <div className="fixed inset-0 z-[100] flex flex-col bg-[#07080E] m-0 p-0" dir="ltr" lang="en">
       
       <iframe
         title="Talaria V9 live chart"
-        src={TALARIA_V9_IFRAME_SRC}
+        src={iframeSrc}
         className="h-[100dvh] w-full flex-1 shrink-0 border-0"
       />
     </div>
