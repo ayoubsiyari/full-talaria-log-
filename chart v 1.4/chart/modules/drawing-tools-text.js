@@ -1577,6 +1577,7 @@ class PriceNoteTool extends BaseDrawing {
         this.style.stroke = style.stroke || '#2962ff';
         this.style.strokeWidth = style.strokeWidth || 1;
         this.style.fill = style.fill || '#2962ff';
+        this.style.borderColor = style.borderColor || 'none';
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontSize = style.fontSize || 12;
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
@@ -1705,12 +1706,17 @@ class PriceNoteTool extends BaseDrawing {
         const boxX = -boxWidth / 2;
         const boxY = -boxHeight / 2;
 
+        const brd = this.style.borderColor;
+        const hasLabelBorder = brd && brd !== 'none' && brd !== 'transparent';
+
         labelGroup.append('rect')
             .attr('x', boxX)
             .attr('y', boxY)
             .attr('width', boxWidth)
             .attr('height', boxHeight)
             .attr('fill', this.style.fill)
+            .attr('stroke', hasLabelBorder ? brd : 'none')
+            .attr('stroke-width', hasLabelBorder ? 1 : 0)
             .attr('rx', 4)
             .attr('class', 'shape-fill')
             .style('pointer-events', 'none')

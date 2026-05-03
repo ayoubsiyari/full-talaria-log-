@@ -493,6 +493,7 @@ function getPrimarySelectedDrawingForActiveChart(editingRefDrawing) {
 function v9TxtStylePatchFromDrawing(d) {
   if (!d || !d.style) return null;
   const s = d.style;
+  const t = d.type;
   const out = {};
   const fs = parseInt(String(s.fontSize), 10);
   out.fontSize = Number.isFinite(fs) && fs > 0 ? fs : 14;
@@ -501,9 +502,50 @@ function v9TxtStylePatchFromDrawing(d) {
   out.italic = s.fontStyle === "italic";
   out.borderColor = s.borderColor ?? "#787B86";
   out.bgColor = s.backgroundColor ?? "#000000";
-  out.borderOn = s.borderColor != null && s.borderColor !== "transparent";
+  out.borderOn = s.borderColor != null && s.borderColor !== "transparent" && s.borderColor !== "none";
   const bg = s.backgroundColor;
   out.bgOn = !!(bg && bg !== "transparent");
+
+  if (t === "text") {
+    const fill = s.fill;
+    out.bgColor = fill && fill !== "none" ? fill : out.bgColor;
+    out.bgOn = !!(fill && fill !== "none");
+    const stroke = s.stroke;
+    out.borderColor = stroke && stroke !== "none" ? stroke : out.borderColor;
+    out.borderOn = !!(stroke && stroke !== "none");
+  } else if (t === "notebox") {
+    out.bgColor = s.backgroundColor ?? out.bgColor;
+    out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
+    const sw = s.strokeWidth != null ? Number(s.strokeWidth) : 0;
+    out.borderOn = !!(s.stroke && s.stroke !== "none" && sw > 0);
+    if (out.borderOn) out.borderColor = s.stroke;
+  } else if (t === "anchored-text") {
+    out.bgColor = s.backgroundColor ?? out.bgColor;
+    out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
+    out.borderColor = s.borderColor ?? out.borderColor;
+    out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
+  } else if (t === "note") {
+    const fill = s.fill;
+    out.bgColor = fill ?? out.bgColor;
+    out.bgOn = !!(fill && fill !== "transparent" && fill !== "none");
+  } else if (t === "price-note") {
+    const fill = s.fill;
+    out.bgColor = fill ?? out.bgColor;
+    out.bgOn = !!(fill && fill !== "transparent" && fill !== "none");
+    out.borderColor = s.borderColor ?? out.borderColor;
+    out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
+  } else if (t === "callout") {
+    out.bgColor = s.backgroundColor ?? out.bgColor;
+    out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
+    out.borderColor = s.borderColor ?? out.borderColor;
+    out.borderOn = !!(s.borderColor && s.borderColor !== "none" && s.borderColor !== "transparent");
+  } else if (t === "comment") {
+    out.bgColor = s.backgroundColor ?? out.bgColor;
+    out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
+    out.borderColor = s.borderColor ?? out.borderColor;
+    out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
+  }
+
   if (s.textAlign) out.horizAlign = s.textAlign;
   if (typeof d.text === "string") out.content = d.text;
   return out;
@@ -521,10 +563,7 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
     s.fontWeight = txt.bold ? "bold" : "normal";
     s.fontStyle = txt.italic ? "italic" : "normal";
   };
-  if (t === "callout" || t === "comment") {
-    applyCommon();
-    if (txt.borderColor != null) s.borderColor = txt.borderColor;
-    if (txt.bgColor != null) s.backgroundColor = txt.bgColor;
+  const applyTextBlock = () => {
     if (txt.horizAlign != null) s.textAlign = txt.horizAlign;
     if (txt.content != null) {
       d.text = String(txt.content);
@@ -533,27 +572,67 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
           d.setText(d.text);
         } catch (_) {}
       }
+    }
+  };
+  if (t === "callout") {
+    applyCommon();
+    applyTextBlock();
+    s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
+    s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "none";
+    return;
+  }
+  if (t === "comment") {
+    applyCommon();
+    applyTextBlock();
+    s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
+    s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "transparent";
+    return;
+  }
+  if (t === "text") {
+    applyCommon();
+    applyTextBlock();
+    s.fill = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.fill) : "none";
+    s.stroke = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.stroke) : "none";
+    return;
+  }
+  if (t === "notebox") {
+    applyCommon();
+    applyTextBlock();
+    s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
+    if (txt.borderOn) {
+      s.stroke = txt.borderColor != null ? txt.borderColor : s.stroke || "#787b86";
+      s.strokeWidth = Math.max(Number(s.strokeWidth) || 0, 1) || 1;
+    } else {
+      s.stroke = "none";
+      s.strokeWidth = 0;
     }
     return;
   }
-  if (
-    t === "text" ||
-    t === "label" ||
-    t === "anchored-text" ||
-    t === "notebox" ||
-    t === "note" ||
-    t === "price-note"
-  ) {
+  if (t === "anchored-text") {
     applyCommon();
-    if (txt.horizAlign != null) s.textAlign = txt.horizAlign;
-    if (txt.content != null) {
-      d.text = String(txt.content);
-      if (typeof d.setText === "function") {
-        try {
-          d.setText(d.text);
-        } catch (_) {}
-      }
-    }
+    applyTextBlock();
+    s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
+    s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "transparent";
+    return;
+  }
+  if (t === "note") {
+    applyCommon();
+    applyTextBlock();
+    s.fill = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.fill) : "transparent";
+    return;
+  }
+  if (t === "price-note") {
+    applyCommon();
+    applyTextBlock();
+    s.fill = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.fill) : "transparent";
+    s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor || "#787b86") : "none";
+    return;
+  }
+  if (t === "label") {
+    applyCommon();
+    applyTextBlock();
+    if (txt.bgOn && txt.bgColor != null) s.fill = txt.bgColor;
+    else if (!txt.bgOn) s.fill = "#787b86";
     return;
   }
   applyCommon();
@@ -7643,6 +7722,9 @@ const TalariaV8bLive = () => {
     txtStyle.italic,
     txtStyle.borderColor,
     txtStyle.bgColor,
+    txtStyle.bgOn,
+    txtStyle.borderOn,
+    txtStyle.wrapText,
     txtStyle.content,
     txtStyle.horizAlign,
     tool,
