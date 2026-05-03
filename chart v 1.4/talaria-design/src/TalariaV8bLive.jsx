@@ -3890,7 +3890,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260509-rail-36-ic17-lc1-selclip";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260509-rail-accent-match-dd";
   }, []);
 
   useEffect(() => {
@@ -7108,6 +7108,9 @@ const TalariaV8bLive = () => {
     const pressCol = isPressed ? c.acL : col;
     const hArr = hov === t.id + "-arr";
     const arrCol = act ? accentCol : hArr ? c.tx : c.tm;
+    /* Same selection strip as tool dropdown rows (`ddPanel` map): left edge + soft glow + inset icon via padding. */
+    const railAccentPad =
+      act || isPressed || (h && !act && !isPressed) ? 6 : 1;
     return (
       <div key={t.id} style={{ position: "relative", width: "100%", display: "flex", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
         {/* Left rail: match TalariaV8b.jsx dimensions (Live has no root zoom). */}
@@ -7169,9 +7172,9 @@ const TalariaV8bLive = () => {
             width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "flex-start",
             background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
             border: "none", cursor: "default", color: pressCol,
-            padding: 0, paddingLeft: 1, paddingRight: t.dd ? 11 : 4,
+            padding: 0, paddingLeft: railAccentPad, paddingRight: t.dd ? 11 : 4,
             boxSizing: "border-box", touchAction: "manipulation",
-            transition: "color 0.15s ease, background 0.12s", position: "relative", fontFamily: F,
+            transition: "color 0.15s ease, background 0.12s, padding-left 0.12s", position: "relative", fontFamily: F,
           }}>
           {/* pointer-events:none on icon so the whole <button type="button"> hit box counts — SVG paths alone miss gaps between strokes */}
           {t.id === "pinbar"
@@ -7179,9 +7182,9 @@ const TalariaV8bLive = () => {
             : <span style={{ display: "flex", pointerEvents: "none" }}><I n={railIcon} s={17} cl={pressCol}/></span>
           }
         </button>
-        {act && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `-2px 0 6px -1px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
-        {h && !act && !isPressed && <div style={{ position: "absolute", left: 3, top: "25%", bottom: "25%", width: 1, background: `linear-gradient(180deg, transparent, `+c.hvLn+`, transparent)`, pointerEvents: "none", zIndex: 2 }}/>}
-        {isPressed && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${c.acL}, transparent)`, boxShadow: `-2px 0 6px -1px ${c.acG}`, pointerEvents: "none", zIndex: 2 }}/>}
+        {act && <div style={{ position: "absolute", left: 0, top: "10%", bottom: "10%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 4px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
+        {h && !act && !isPressed && <div style={{ position: "absolute", left: 0, top: "12%", bottom: "12%", width: 1, background: `linear-gradient(180deg, transparent, `+c.hvLn+`, transparent)`, pointerEvents: "none", zIndex: 2 }}/>}
+        {isPressed && <div style={{ position: "absolute", left: 0, top: "10%", bottom: "10%", width: 2, background: `linear-gradient(180deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 4px ${c.acG}`, pointerEvents: "none", zIndex: 2 }}/>}
         {t.dd && (
           <button
             type="button"
