@@ -2180,7 +2180,7 @@ const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange
   const hueColor = `hsl(${h},100%,50%)`;
   const outColor = cpBuildColor(rgb.r, rgb.g, rgb.b, a);
   return (
-    <div className="tlr-cp tlr-gloss" data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex:11100,width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(38,67,247,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
+    <div className="tlr-cp tlr-gloss" data-tlr-cp="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex:11100,width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(38,67,247,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
       <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
       <div style={{padding:10}}>
         {/* SV square */}
@@ -4128,6 +4128,15 @@ const TalariaV8bLive = () => {
   const [cpHex, setCpHex] = useState('ffffff');
   const [cpDragging, setCpDragging] = useState(null);
   const [cpDragRect, setCpDragRect] = useState(null);
+  /** Document mousedown uses capture + [] deps — keep latest values for dismiss-outside logic. */
+  const colorPickerRef = useRef(null);
+  const cpDraggingRef = useRef(null);
+  useEffect(() => {
+    colorPickerRef.current = colorPicker;
+  }, [colorPicker]);
+  useEffect(() => {
+    cpDraggingRef.current = cpDragging;
+  }, [cpDragging]);
   const [settings, setSettings] = useState({
     theme: "Talaria Dark", chartType: "candlestick", precision: "0.00000", timezone: "UTC",
     textColor: "#8CA0FF", background: "#07080E", gridColor: "rgba(140,160,255,0.15)", crosshairColor: "rgba(255,255,255,0.4)",
@@ -4440,6 +4449,8 @@ const TalariaV8bLive = () => {
     setTimeout(() => { setTlSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("tlsett"); return n; }); }, 105);
   };
   const closeTxtSett = () => {
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
     setClosing(s => new Set([...s, "txtsett"]));
     setTxtSizeOpen(false); setTxtBarSizeOpen(false); setTxtBarDrop(null);
     setTimeout(() => { setTxtSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("txtsett"); return n; }); }, 155);
@@ -4461,6 +4472,8 @@ const TalariaV8bLive = () => {
   };
   const closeDropdown = () => {
     if (!dropdown) return;
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
     closingDropdownKey.current = dropdown;
     setClosing(s => new Set([...s, "tldrop"]));
     setDropdown(null);
@@ -4634,17 +4647,25 @@ const TalariaV8bLive = () => {
       !el.closest(".drawing-toolbar") &&
       !el.closest(".tlr-cp");
 
+    const dismissColorPickerIfOutside = (el) => {
+      if (!el) return;
+      const insideCp = typeof el.closest === "function" && el.closest(".tlr-cp");
+      if (colorPickerRef.current && !insideCp && !cpDraggingRef.current) {
+        cpBarAnchorRef.current = null;
+        setColorPicker(null);
+        setCpDragging(null);
+        setCpDragRect(null);
+      }
+    };
     const handler = (e) => {
       const el = eventTargetEl(e);
       if (!el) return;
-      // IMPORTANT: return BEFORE any setState. Previously setColorPicker / tlBar ran first; presses
-      // inside [data-sdrop] (tool dropdown, settings, etc.) still triggered those updates on
-      // mousedown—extra renders before click and “needs many taps” symptoms on crowded stacks.
-      // [data-tlbar]: floating / portaled toolbars had data-tlbar but not always data-sdrop on every
-      // inner node—mousedown still cleared color picker on first press.
+      dismissColorPickerIfOutside(el);
+      // IMPORTANT: return BEFORE tlBar / chart dismiss setState. Presses inside [data-sdrop] must not
+      // clear tlBar on first press ("needs many taps"). Color picker is handled above so it still
+      // closes when clicking empty space inside settings/menus (those roots use data-sdrop).
       if (!isOutsideUiChrome(el)) return;
 
-      setColorPicker(null);
       setTlBarDrop(null);
       setTlSaveAsMode(false);
       setTlNewTplName("");
@@ -4661,15 +4682,16 @@ const TalariaV8bLive = () => {
     };
     const scrollHandler = (ev) => {
       const el = eventTargetEl(ev);
-      if (!el || !isOutsideUiChrome(el)) return;
+      if (!el) return;
+      dismissColorPickerIfOutside(el);
+      if (!isOutsideUiChrome(el)) return;
       setSettDrop(null);
-      setColorPicker(null);
     };
-    document.addEventListener('mousedown', handler);
-    document.addEventListener('wheel', scrollHandler, { passive: true });
+    document.addEventListener("mousedown", handler, true);
+    document.addEventListener("wheel", scrollHandler, { passive: true });
     return () => {
-      document.removeEventListener('mousedown', handler);
-      document.removeEventListener('wheel', scrollHandler);
+      document.removeEventListener("mousedown", handler, true);
+      document.removeEventListener("wheel", scrollHandler);
     };
   }, []);
 
@@ -4708,7 +4730,7 @@ const TalariaV8bLive = () => {
       if (!style) { style = document.createElement('style'); style.id = 'tlr-scrollbar-css'; document.head.appendChild(style); }
       const sbC = darkMode ? "rgba(140,160,255,0.22)" : "rgba(0,5,40,0.22)";
       const sbH = darkMode ? "rgba(140,160,255,0.44)" : "rgba(0,5,40,0.40)";
-      style.textContent = `*{user-select:none!important;-webkit-user-select:none!important;cursor:default}input,textarea{user-select:text!important;-webkit-user-select:text!important;cursor:text}.tlr-scroll::-webkit-scrollbar{width:3px;height:3px}.tlr-scroll::-webkit-scrollbar-track{background:transparent}.tlr-scroll::-webkit-scrollbar-thumb{background:${sbC};border-radius:2px}.tlr-scroll::-webkit-scrollbar-thumb:hover{background:${sbH}}.tlr-scroll{scrollbar-width:thin;scrollbar-color:${sbC} transparent}@keyframes tlrCpIn{from{opacity:0;transform:translateY(-5px) scale(0.98)}to{opacity:1;transform:translateY(0) scale(1)}}.tlr-cp{animation:tlrCpIn 0.15s cubic-bezier(0.16,1,0.3,1)}`;
+      style.textContent = `*{user-select:none!important;-webkit-user-select:none!important;cursor:default}input,textarea{user-select:text!important;-webkit-user-select:text!important;cursor:text}.tlr-scroll::-webkit-scrollbar{width:3px;height:3px}.tlr-scroll::-webkit-scrollbar-track{background:transparent}.tlr-scroll::-webkit-scrollbar-thumb{background:${sbC};border-radius:2px}.tlr-scroll::-webkit-scrollbar-thumb:hover{background:${sbH}}.tlr-scroll{scrollbar-width:thin;scrollbar-color:${sbC} transparent}`;
     }
   }, [darkMode]);
 
