@@ -1,5 +1,5 @@
 /**
- * After `vite build --config vite.config.live.js`, chart output lives at
+ * After `vite build` + `bump-dist-v9-cache.mjs`, chart output lives at
  * `chart v 1.4/chart/dist-v9/`. This copies it to `homepage/public/chart/dist-v9/`
  * so `next build` ships the same files in `out/`.
  *

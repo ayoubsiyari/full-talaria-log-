@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "dev:live": "vite --config vite.config.live.js",
-    "build:live": "vite build --config vite.config.live.js && node scripts/sync-v9-to-homepage.mjs",
+    "build:live": "vite build --config vite.config.live.js && node scripts/bump-dist-v9-cache.mjs && node scripts/sync-v9-to-homepage.mjs",
+    "build:live:chart": "vite build --config vite.config.live.js && node scripts/bump-dist-v9-cache.mjs",
     "preview:live": "vite preview --config vite.config.live.js"
   },
   "dependencies": {

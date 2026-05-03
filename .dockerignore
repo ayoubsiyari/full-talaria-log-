@@ -1,0 +1,8 @@
+# Keep `docker compose build` context small (context = repo root for chart image).
+.git
+**/.DS_Store
+**/.next
+**/out
+**/node_modules
+journal-backend/venv
+journal-frontend/node_modules

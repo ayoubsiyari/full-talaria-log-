@@ -1,4 +1,26 @@
-# Trading Chart Application - Local Docker Image (no homepage build)
+# Trading Chart API — builds V9 React (TalariaV8bLive) inside the image so VPS deploys
+# always ship fresh dist-v9 + cache-bumped index.html without manual local npm.
+#
+# Build from repository root (required paths: chart v 1.4/talaria-design + chart v 1.4/chart):
+#   docker compose build trading-chart
+# Optional stable cache-bust id:
+#   docker compose build --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) trading-chart
+
+FROM node:20-alpine AS v9_react
+WORKDIR /build
+ARG GIT_COMMIT=
+ENV BUILD_ID=${GIT_COMMIT}
+
+COPY ["chart v 1.4/talaria-design/package.json", "chart v 1.4/talaria-design/package-lock.json", "./talaria-design/"]
+WORKDIR /build/talaria-design
+RUN npm ci
+WORKDIR /build
+COPY ["chart v 1.4/talaria-design", "./talaria-design/"]
+COPY ["chart v 1.4/chart", "./chart/"]
+WORKDIR /build/talaria-design
+ENV NODE_ENV=production
+RUN npm run build:live:chart
+
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -14,13 +36,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     npm \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY ["chart v 1.4/chart/requirements.txt", "./requirements.txt"]
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY package.json package-lock.json* ./
+COPY ["chart v 1.4/chart/package.json", "chart v 1.4/chart/package-lock.json", "./"]
 RUN npm ci
 
-COPY . .
+COPY ["chart v 1.4/chart", "./"]
+
+# Overwrite committed dist-v9 with freshly built + bump-dist-v9-cache output.
+COPY --from=v9_react /build/chart/dist-v9 ./dist-v9
 
 RUN npm run build:chart-client
 

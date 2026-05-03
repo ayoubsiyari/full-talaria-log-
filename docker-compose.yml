@@ -55,10 +55,13 @@ services:
     depends_on:
       - journal-backend
 
+  # Context = repo root: Dockerfile runs `npm run build:live:chart` in talaria-design (V9 bundle + ?v= bump).
   trading-chart:
     build:
-      context: "./chart v 1.4/chart"
-      dockerfile: Dockerfile.local
+      context: .
+      dockerfile: chart v 1.4/chart/Dockerfile.local
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-}
     volumes:
       - chart_uploads:/app/uploads
       - chart_data:/app/data
@@ -101,8 +104,10 @@ services:
 
   trading-chart-worker:
     build:
-      context: "./chart v 1.4/chart"
-      dockerfile: Dockerfile.local
+      context: .
+      dockerfile: chart v 1.4/chart/Dockerfile.local
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-}
     command:
       [
         "gunicorn",

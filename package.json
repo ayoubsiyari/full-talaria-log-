@@ -5,7 +5,9 @@
   "scripts": {
     "build:chart-v9": "npm run build:live --prefix \"chart v 1.4/talaria-design\"",
     "build:homepage": "npm run build --prefix homepage",
-    "build:web": "npm run build:chart-v9 && npm run build:homepage"
+    "build:web": "npm run build:chart-v9 && npm run build:homepage",
+    "docker:build-chart": "docker compose build trading-chart",
+    "docker:up-chart": "docker compose up -d --build trading-chart"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",
