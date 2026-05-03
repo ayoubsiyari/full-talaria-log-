@@ -15670,7 +15670,20 @@ const TalariaV8bLive = () => {
                     const isSelected=selRow===r.id;
                     const isHov=hov===`pos-${i}`;
                     const rowBg=isSelected?"rgba(140,160,255,0.07)":isHov?"rgba(140,160,255,0.025)":"transparent";
-                    const openCard=()=>{setTradeCard(r);setTradeCardPreTags([...r.preTags]);setTradeCardPostTags([...r.postTags]);setTradeCardNotes(tradeNotes[r.id]||"");};
+                    const openCard=()=>{
+                      const om=typeof window!=="undefined"?window.chart?.orderManager:null;
+                      const tid=r.omId;
+                      let noteFallback="";
+                      if(om&&tid!=null){
+                        const j=Array.isArray(om.tradeJournal)?om.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
+                        const order=om.pendingOrders?.find(o=>o.id===tid)||om.openPositions?.find(o=>o.id===tid)||om.closedPositions?.find(o=>o.id===tid);
+                        noteFallback=j?.v9TradeNotes||order?.journalEntry?.v9TradeNotes||"";
+                      }
+                      setTradeCard(r);
+                      setTradeCardPreTags([...r.preTags]);
+                      setTradeCardPostTags([...r.postTags]);
+                      setTradeCardNotes(tradeNotes[r.id]||noteFallback||"");
+                    };
                     const isActive=r.status==="open"||r.status==="pending";
                     return(
                     <div key={r.id}
@@ -18574,10 +18587,48 @@ const TalariaV8bLive = () => {
         const sizeUnit=r.sym.includes("/")?((r.sym.startsWith("XAU")||r.sym.startsWith("XAG"))?"oz":"Lots"):"Contracts";
         const hasProtection=!!(r.breakeven||r.trailingSL);
         const saveCard=()=>{
-          if(canEditPre) setTradeTagOverrides(prev=>({...prev,[r.id]:{...(prev[r.id]||{}),pre:tradeCardPreTags}}));
-          if(canEditPost) setTradeTagOverrides(prev=>({...prev,[r.id]:{...(prev[r.id]||{}),post:tradeCardPostTags}}));
+          const om=typeof window!=="undefined"?window.chart?.orderManager:null;
+          const tid=r.omId;
+          try{
+            if(om&&tid!=null&&Number.isFinite(Number(tid))){
+              const order=om.pendingOrders?.find(o=>o.id===tid)||om.openPositions?.find(o=>o.id===tid)||om.closedPositions?.find(o=>o.id===tid)||null;
+              const isActiveTrade=r.status==="pending"||r.status==="open";
+              if(isActiveTrade&&order){
+                const jv={...(order.journalEntry||{})};
+                if(canEditPre){
+                  jv.v9PreTradeTags=[...tradeCardPreTags];
+                  jv.preTradeNotes={...(jv.preTradeNotes||{}),tags:tradeCardPreTags.join(", ")};
+                }
+                jv.v9TradeNotes=tradeCardNotes;
+                jv.timestamp=Date.now();
+                order.journalEntry=jv;
+                if(typeof om.persistRuntimeOrderState==="function")om.persistRuntimeOrderState({critical:true});
+              }
+              if(r.status==="closed"){
+                const existing=Array.isArray(om.tradeJournal)?om.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid))||{}:{};
+                const patch={tradeId:tid,id:tid,v9TradeNotes:tradeCardNotes};
+                if(canEditPre){
+                  patch.v9PreTradeTags=[...tradeCardPreTags];
+                  patch.preTradeNotes={...(typeof existing.preTradeNotes==="object"?existing.preTradeNotes:{}),tags:tradeCardPreTags.join(", ")};
+                }
+                if(canEditPost){
+                  patch.v9PostTradeTags=[...tradeCardPostTags];
+                  const postJoin=tradeCardPostTags.join(", ");
+                  patch.postTradeNotes={...(typeof existing.postTradeNotes==="object"?existing.postTradeNotes:{}),tags:postJoin};
+                  patch.tags=[...tradeCardPostTags];
+                }
+                const sym=order?.ticker||order?.symbol||existing.ticker||existing.symbol;
+                if(sym){patch.ticker=sym;patch.symbol=sym;}
+                om.upsertJournalEntry({...existing,...patch});
+                if(typeof om.persistJournal==="function")om.persistJournal();
+              }
+            }
+          }catch(e){console.warn("Trade card journal save failed",e);}
+          if(canEditPre)setTradeTagOverrides(prev=>({...prev,[r.id]:{...(prev[r.id]||{}),pre:tradeCardPreTags}}));
+          if(canEditPost)setTradeTagOverrides(prev=>({...prev,[r.id]:{...(prev[r.id]||{}),post:tradeCardPostTags}}));
           setTradeNotes(prev=>({...prev,[r.id]:tradeCardNotes}));
           setTradeCard(null);
+          setOmTradeRev(n=>n+1);
         };
         const accentPre="rgba(255,140,66,0.9)", accentPreBg="rgba(255,140,66,0.1)", accentPreBd="rgba(255,140,66,0.4)";
         const accentPost="rgba(180,140,255,0.9)", accentPostBg="rgba(180,140,255,0.1)", accentPostBd="rgba(180,140,255,0.4)";
