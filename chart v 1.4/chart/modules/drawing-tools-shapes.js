@@ -105,6 +105,14 @@ class RectangleTool extends BaseDrawing {
         const width = Math.abs(x2 - x1);
         const height = Math.abs(scales.yScale(p2.y) - scales.yScale(p1.y));
 
+        if (![x, y, width, height].every((v) => Number.isFinite(v))) {
+            try {
+                if (this.group) this.group.remove();
+            } catch (_) {}
+            this.group = null;
+            return null;
+        }
+
         // Draw the rectangle fill (not interactive)
         this.group.append('rect')
             .attr('class', 'shape-fill')

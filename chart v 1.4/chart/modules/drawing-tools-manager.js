@@ -47,6 +47,9 @@ class DrawingToolsManager {
         this.dragFirstTwoStartScreen = null;
         this._liveSyncDrawingId = null;
         this._liveSyncBroadcasted = false;
+        /** Coalesce cross-panel live previews to one broadcast per animation frame (rectangle drag was freezing UI). */
+        this._liveSyncPreviewRaf = null;
+        this._pendingLiveSyncDrawing = null;
 
         /** Remote sync (session PATCH + cloud API) lags localStorage; drives toolbar save indicator */
         this._drawingsPendingTargets = { session: false, api: false };
@@ -1557,24 +1560,44 @@ class DrawingToolsManager {
         return drawing.id;
     }
 
+    _cancelScheduledLiveSyncPreview() {
+        if (this._liveSyncPreviewRaf) {
+            cancelAnimationFrame(this._liveSyncPreviewRaf);
+            this._liveSyncPreviewRaf = null;
+        }
+        this._pendingLiveSyncDrawing = null;
+    }
+
     _syncLivePreviewDrawing(tempDrawing) {
         if (!tempDrawing || !this.chart || !this.chart.broadcastDrawingChange) return;
         if (!window.panelManager || !window.panelManager.syncSettings || !window.panelManager.syncSettings.drawings) return;
         if (window.panelManager.currentLayout === '1') return;
 
-        if (!this._liveSyncDrawingId) this._liveSyncDrawingId = this._nextLiveSyncId();
-        tempDrawing.id = this._liveSyncDrawingId;
+        this._pendingLiveSyncDrawing = tempDrawing;
 
-        const payload = (typeof tempDrawing.toJSON === 'function')
-            ? tempDrawing.toJSON()
-            : JSON.parse(JSON.stringify(tempDrawing));
-        payload.id = this._liveSyncDrawingId;
+        const flush = () => {
+            this._liveSyncPreviewRaf = null;
+            const td = this._pendingLiveSyncDrawing;
+            if (!td || !this.chart || !this.chart.broadcastDrawingChange) return;
 
-        this.chart.broadcastDrawingChange(this._liveSyncBroadcasted ? 'update' : 'add', payload);
-        this._liveSyncBroadcasted = true;
+            if (!this._liveSyncDrawingId) this._liveSyncDrawingId = this._nextLiveSyncId();
+            td.id = this._liveSyncDrawingId;
+
+            const payload = (typeof td.toJSON === 'function')
+                ? td.toJSON()
+                : JSON.parse(JSON.stringify(td));
+            payload.id = this._liveSyncDrawingId;
+
+            this.chart.broadcastDrawingChange(this._liveSyncBroadcasted ? 'update' : 'add', payload);
+            this._liveSyncBroadcasted = true;
+        };
+
+        if (this._liveSyncPreviewRaf) return;
+        this._liveSyncPreviewRaf = requestAnimationFrame(flush);
     }
 
     _clearLiveSyncPreview() {
+        this._cancelScheduledLiveSyncPreview();
         if (!this._liveSyncDrawingId) {
             this._liveSyncBroadcasted = false;
             return;
@@ -3337,6 +3360,8 @@ class DrawingToolsManager {
         
         // Apply saved style for this tool type
         this.applySavedStyle(drawing);
+        // Drop any coalesced preview broadcast so it cannot fire after we promote/remove live ids in addDrawing.
+        this._cancelScheduledLiveSyncPreview();
 
         // For image tools, don't save if no image is uploaded
         if (this.currentTool === 'image' && 
