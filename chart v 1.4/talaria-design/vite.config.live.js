@@ -87,5 +87,18 @@ export default defineConfig({
         // to chart/dist/ and would overwrite our index.html.
         outDir: path.resolve(__dirname, '../chart/dist-v9'),
         emptyOutDir: true,
+        /**
+         * Stable entry filename (no content hash in the basename) so partial deploys
+         * are less likely to 404: index.html and assets/talaria-v9-live.js stay aligned.
+         * Cache bust: bump ?v= on the script in live/index.html when needed.
+         */
+        rollupOptions: {
+            output: {
+                inlineDynamicImports: true,
+                entryFileNames: 'assets/talaria-v9-live.js',
+                chunkFileNames: 'assets/chunk-[hash].js',
+                assetFileNames: 'assets/[name][hash][extname]',
+            },
+        },
     },
 })
