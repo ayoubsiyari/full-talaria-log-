@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
+import { createPortal, flushSync } from "react-dom";
+import { applyV9ThemeSettingsToChart } from "./v9ThemeSync.js";
 import { buildLiveTradeRowsFromOrderManager } from "./orderManagerTradeRows.js";
 
 // ── Color utilities ──────────────────────────────────────────────────────────
@@ -31,6 +33,1564 @@ function cpBuildColor(r, g, b, a) {
   return a>=1 ? `#${toHex2(r)}${toHex2(g)}${toHex2(b)}` : `rgba(${r},${g},${b},${+a.toFixed(2)})`;
 }
 
+/** Multi-panel layouts (≠ single tile): V9 header symbol/TF follows `panelManager` selection. */
+function v9IsMultiPanelLayoutActive() {
+  try {
+    const pm = typeof window !== "undefined" ? window.panelManager : null;
+    if (!pm) return false;
+    const lay = pm.getCurrentLayout?.() || pm.currentLayout || "1";
+    if (lay !== "1") return true;
+    return Array.isArray(pm.panels) && pm.panels.length > 1;
+  } catch (_) {
+    return false;
+  }
+}
+
+/** Chart instance that should drive the V9 pair + timeframe display. */
+function v9ActiveChartInstance() {
+  try {
+    const pm = typeof window !== "undefined" ? window.panelManager : null;
+    if (!pm || !v9IsMultiPanelLayoutActive()) {
+      return typeof window !== "undefined" ? window.chart : null;
+    }
+    return pm.getSelectedPanel?.()?.chartInstance
+      || (typeof window !== "undefined" ? window.chart : null);
+  } catch (_) {
+    return typeof window !== "undefined" ? window.chart : null;
+  }
+}
+
+/** V9 drawing panel uses `tlStyle.showInfo` + `showInfoTypes` (labels); chart.js reads `drawing.style.infoSettings` booleans. */
+const V9_INFO_LABEL_TO_PROP = {
+  "Price range": "priceRange",
+  "Percent change": "percentChange",
+  "Change in pips": "changeInPips",
+  "Bars range": "barsRange",
+  "Date/time range": "dateTimeRange",
+  "Volume": "volume",
+  "Distance": "distance",
+  "Angle": "angle",
+};
+const V9_INFO_PROP_TO_LABEL = Object.fromEntries(
+  Object.entries(V9_INFO_LABEL_TO_PROP).map(([label, prop]) => [prop, label])
+);
+
+/** Sub-tool icon ids per left-rail group (matches `toolGroups` dd). Used to clamp stale `groupSelected` so the Shapes rail cannot show a Lines icon.
+ * Arrow tools (`arrowMarker` … `arrowDn`) belong to group `rect` only (Shapes dropdown); chart arrow drawings map there so the Lines rail is not overwritten. */
+const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
+  trendline: new Set([
+    "trendline", "hray", "hline", "vline", "ray", "extendedLine", "crossLine", "polyline", "pathTool", "curve", "doubleCurve",
+  ]),
+  rect: new Set(["rect", "triangle", "arcShape", "ellipse", "circle", "arrowMarker", "arrowLine", "arrowUp", "arrowDn"]),
+  channel: new Set(["channel", "regressionCh", "flatChannel", "disjointCh", "pitchfork"]),
+  brush2: new Set(["draw", "brush"]),
+  fib: new Set(["fib", "fibExtension", "fibChannel", "fibTimeZone", "fibFan", "fibTime", "fibCircles", "fibSpiral", "fibArcs", "fibWedge", "gannBox", "gannSquare", "gannFan"]),
+  // Include Gann icons so v9SanitizeGroupSelected never strips them if a stale mapping still uses `pattern`.
+  pattern: new Set(["elliott5", "elliottABC", "elliottTri", "elliottWXY", "elliottWXYXZ", "xabcd", "headShoulders", "abcdPattern", "triPattern", "threeDrives", "gannBox", "gannSquare", "gannFan"]),
+  measure: new Set(["shortPos", "longPos", "measure"]),
+  text: new Set(["text", "note", "priceNote", "callout", "comment", "pin", "priceLabel", "signpost", "flag", "image", "emoji"]),
+  crosshair: new Set(["crosshair", "cursorDot", "cursorArrow", "eraser"]),
+  brush: new Set(["vwap", "volProfile", "anchoredVol"]),
+});
+
+function v9RailSubtoolOrFallback(groupId, sel, fallback) {
+  const allowed = V9_RAIL_ICONS_BY_GROUP[groupId];
+  if (!allowed) return sel || fallback;
+  if (sel && sel.icon && allowed.has(sel.icon)) return sel;
+  return fallback;
+}
+
+/** Single source for left-rail `<I n={…} />` so Lines vs Shapes never share an icon from stale state. */
+function v9LeftRailIconForButton(t, groupSelected) {
+  if (!t || !t.id) return t && t.icon;
+  const firstDdIcon = t.dd && t.dd.find((x) => !x.h)?.icon;
+  const sel = groupSelected && groupSelected[t.id];
+  const candidate =
+    (t.dd &&
+      (sel?.icon ||
+        (t.id === "brush"
+          ? firstDdIcon || "vwap"
+          : t.icon || firstDdIcon))) ||
+    t.icon;
+  const allowed = V9_RAIL_ICONS_BY_GROUP[t.id];
+  if (!allowed) return candidate;
+  if (candidate && allowed.has(candidate)) return candidate;
+  return t.icon || firstDdIcon || allowed.values().next().value;
+}
+
+/** Drop rail entries whose icon belongs to another group (prevents mirrored selection UI). */
+function v9SanitizeGroupSelected(prev) {
+  if (!prev || typeof prev !== "object") return prev;
+  let next = null;
+  for (const gid of Object.keys(prev)) {
+    const allowed = V9_RAIL_ICONS_BY_GROUP[gid];
+    if (!allowed) continue;
+    const sel = prev[gid];
+    if (sel && sel.icon && !allowed.has(sel.icon)) {
+      if (!next) next = { ...prev };
+      delete next[gid];
+    }
+  }
+  return next || prev;
+}
+
+function v9ChartInfoSettingsFromTlStyle(tlStyle) {
+  const show = !!tlStyle?.showInfo;
+  const types = Array.isArray(tlStyle?.showInfoTypes) ? tlStyle.showInfoTypes : [];
+  const info = {
+    showInfo: show,
+    priceRange: false,
+    percentChange: false,
+    changeInPips: false,
+    barsRange: false,
+    dateTimeRange: false,
+    volume: false,
+    distance: false,
+    angle: false,
+  };
+  types.forEach((label) => {
+    const prop = V9_INFO_LABEL_TO_PROP[label];
+    if (prop) info[prop] = true;
+  });
+  if (show && types.length === 0) {
+    info.priceRange = true;
+  }
+  return info;
+}
+
+function v9ShowInfoTypesFromChartInfoSettings(info) {
+  if (!info || typeof info !== "object") return [];
+  const out = [];
+  Object.keys(V9_INFO_PROP_TO_LABEL).forEach((prop) => {
+    if (info[prop] === true) out.push(V9_INFO_PROP_TO_LABEL[prop]);
+  });
+  return out;
+}
+
+/** V9 Text tab uses `vertAlign` "center"; chart line tools use `textVAlign` / `textPosition` "middle". */
+function v9UiVertToChartVert(ui) {
+  const v = ui || "top";
+  return v === "center" ? "middle" : v;
+}
+function v9ChartVertToUi(chartVert) {
+  const v = chartVert || "top";
+  return v === "middle" ? "center" : v;
+}
+
+/** drawing.points[] — x = bar index, y = price → V9 Coordinates tab (`pt{n}Price` / `pt{n}Bar`). */
+function v9CoordPatchFromDrawing(d) {
+  const pts = d && d.points;
+  if (!Array.isArray(pts) || pts.length === 0) return {};
+  const patch = {};
+  const fmtPrice = (y) => {
+    if (typeof y !== "number" || !Number.isFinite(y)) return "";
+    const s = String(y);
+    return s.length > 14 ? y.toFixed(8).replace(/\.?0+$/, "") : s;
+  };
+  for (let i = 0; i < Math.min(pts.length, 7); i++) {
+    const p = pts[i];
+    if (!p) continue;
+    const n = i + 1;
+    patch[`pt${n}Price`] = fmtPrice(p.y);
+    patch[`pt${n}Bar`] = Number.isFinite(p.x) ? String(Math.round(p.x)) : "";
+  }
+  return patch;
+}
+
+/** drawing.visibility._ranges — keys m/h/d/w/M (chart.js) ↔ V9 Visibility tab. */
+function v9VisibilityPatchFromDrawing(d) {
+  const rng = d && d.visibility && d.visibility._ranges;
+  if (!rng || typeof rng !== "object") return {};
+  const row = (r) => {
+    if (!r || typeof r !== "object") return null;
+    return {
+      checked: r.enabled !== false,
+      min: Number.isFinite(+r.min) ? +r.min : 1,
+      max: Number.isFinite(+r.max) ? +r.max : 1,
+    };
+  };
+  const patch = {};
+  const vm = row(rng.m);
+  if (vm) patch.visMinutes = vm;
+  const vh = row(rng.h);
+  if (vh) patch.visHours = vh;
+  const vd = row(rng.d);
+  if (vd) patch.visDays = vd;
+  const vw = row(rng.w);
+  if (vw) patch.visWeeks = vw;
+  const vmo = row(rng.M || rng.mo);
+  if (vmo) patch.visMonths = vmo;
+  return patch;
+}
+
+function v9ApplyPointsFromTlStyle(d, tlStyle) {
+  if (!d || !Array.isArray(d.points) || d.points.length === 0 || !tlStyle) return false;
+  const next = d.points.map((p, i) => {
+    const n = i + 1;
+    const pk = `pt${n}Price`;
+    const bk = `pt${n}Bar`;
+    let x = p.x;
+    let y = p.y;
+    const rawP = tlStyle[pk];
+    if (rawP !== undefined && rawP !== null && String(rawP).trim() !== "") {
+      const py = parseFloat(String(rawP).replace(/,/g, ""));
+      if (Number.isFinite(py)) y = py;
+    }
+    const rawB = tlStyle[bk];
+    if (rawB !== undefined && rawB !== null && String(rawB).trim() !== "") {
+      const px = parseInt(String(rawB), 10);
+      if (Number.isFinite(px)) x = px;
+    }
+    return { ...p, x, y };
+  });
+  const same =
+    next.length === d.points.length &&
+    next.every((np, i) => {
+      const op = d.points[i];
+      return op && np.x === op.x && np.y === op.y;
+    });
+  if (same) return false;
+  if (typeof d.update === "function") {
+    d.update(next);
+  } else {
+    d.points = next;
+    if (d.meta) d.meta.updatedAt = Date.now();
+    if (typeof d.recalculateTimestamps === "function") d.recalculateTimestamps();
+  }
+  return true;
+}
+
+/** Writes tlStyle.vis* → drawing.visibility._ranges (units m/h/d/w/M; mo mirrors M). */
+function v9ApplyVisibilityFromTlStyle(d, tlStyle) {
+  if (!d || !tlStyle) return false;
+  const pairs = [
+    ["m", "visMinutes"],
+    ["h", "visHours"],
+    ["d", "visDays"],
+    ["w", "visWeeks"],
+    ["M", "visMonths"],
+  ];
+  let changed = false;
+  for (const [unit, key] of pairs) {
+    const v = tlStyle[key];
+    if (!v || typeof v !== "object") continue;
+    if (!d.visibility) d.visibility = {};
+    if (!d.visibility._ranges) d.visibility._ranges = {};
+    const prev = d.visibility._ranges[unit];
+    const next = {
+      enabled: v.checked !== false,
+      min: Number(v.min) || 1,
+      max: Number(v.max) || 1,
+    };
+    const prevEq =
+      prev &&
+      prev.enabled === next.enabled &&
+      Number(prev.min) === next.min &&
+      Number(prev.max) === next.max;
+    if (!prevEq) changed = true;
+    d.visibility._ranges[unit] = next;
+  }
+  if (tlStyle.visMonths && d.visibility && d.visibility._ranges && d.visibility._ranges.M) {
+    d.visibility._ranges.mo = { ...d.visibility._ranges.M };
+  }
+  return changed;
+}
+
+// ─── Multi-chart: every panel tile has its own drawingManager. Never assume getActiveChart()
+// or window.chart alone — focus can point at one surface while the selection lives on another.
+function enumerateV9DrawingManagersFromWindow() {
+  const out = [];
+  const seen = new Set();
+  const add = (chart) => {
+    const dm = chart && chart.drawingManager;
+    if (!dm || seen.has(dm)) return;
+    seen.add(dm);
+    out.push(dm);
+  };
+  if (typeof window === "undefined") return out;
+  try {
+    add(window.chart);
+    if (typeof window.getActiveChart === "function") add(window.getActiveChart());
+    const pm = window.panelManager;
+    if (pm && Array.isArray(pm.panels)) {
+      pm.panels.forEach((p) => add(p && p.chartInstance));
+    }
+  } catch (_) {}
+  return out;
+}
+
+/** Same set as enumerateV9DrawingManagersFromWindow but the focused tile's manager is first.
+ * Selection scans must prefer the chart the user is interacting with; otherwise `window.chart`
+ * can still have a selected trend line while the active panel shows newly placed text — V9 then
+ * picks the wrong drawing type and shows the line/shape floating bar (diagonal line + dash + “A”
+ * for line labels) instead of the Text mini-bar. */
+function enumerateV9DrawingManagersActiveFirst() {
+  const all = enumerateV9DrawingManagersFromWindow();
+  if (typeof window === "undefined" || all.length <= 1) return all;
+  try {
+    const ac = typeof window.getActiveChart === "function" ? window.getActiveChart() : null;
+    const dmActive = ac && ac.drawingManager;
+    if (!dmActive) return all;
+    const rest = all.filter((dm) => dm !== dmActive);
+    return [dmActive, ...rest];
+  } catch (_) {
+    return all;
+  }
+}
+
+function resolveLiveDrawingInDm(dm, d) {
+  if (!d || !dm || !Array.isArray(dm.drawings)) return null;
+  if (d.id != null) {
+    const found = dm.drawings.find((x) => x && x.id === d.id);
+    if (found) return found;
+  }
+  return dm.drawings.find((x) => x === d) || null;
+}
+
+/** Which shape is selected for templates / gear — scan chart instances; prefer the focused panel first. */
+function getSelectedDrawingAcrossCharts(editingRefDrawing) {
+  if (editingRefDrawing) {
+    for (const dm of enumerateV9DrawingManagersActiveFirst()) {
+      const live = resolveLiveDrawingInDm(dm, editingRefDrawing);
+      if (live) return live;
+    }
+    return editingRefDrawing;
+  }
+  const managers = enumerateV9DrawingManagersActiveFirst();
+  // Prefer real drawingManager selection first. `toolbar.currentDrawing` can lag or belong to
+  // another toolbar instance — returning it before dm.selectedDrawing made the V9 bar keep
+  // Trend Line after placing Text (stale trend line still in drawings[] matched by id).
+  for (const dm of managers) {
+    if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+      const live = resolveLiveDrawingInDm(dm, dm.selectedDrawings[0]);
+      if (live) return live;
+    }
+    if (dm.selectedDrawing) {
+      const live = resolveLiveDrawingInDm(dm, dm.selectedDrawing);
+      if (live) return live;
+    }
+  }
+  for (const dm of managers) {
+    if (!Array.isArray(dm.drawings)) continue;
+    const selected = dm.drawings.filter((x) => x && x.selected);
+    if (selected.length) return selected[0];
+  }
+  for (const dm of managers) {
+    const tb = dm.toolbar;
+    if (tb && tb.currentDrawing) {
+      const live = resolveLiveDrawingInDm(dm, tb.currentDrawing);
+      if (live && live.selected) return live;
+    }
+  }
+  return null;
+}
+
+/** Prefer the focused panel's selection so the floating bar matches the tile being edited.
+ * Falls back to cross-chart scan when the active chart has no primary selection yet. */
+function getPrimarySelectedDrawingForActiveChart(editingRefDrawing) {
+  if (editingRefDrawing) {
+    for (const dm of enumerateV9DrawingManagersFromWindow()) {
+      const live = resolveLiveDrawingInDm(dm, editingRefDrawing);
+      if (live) return live;
+    }
+    return editingRefDrawing;
+  }
+  if (typeof window === "undefined") return null;
+  try {
+    const ac = typeof window.getActiveChart === "function" ? window.getActiveChart() : null;
+    const dm = ac && ac.drawingManager;
+    if (dm) {
+      if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+        const live = resolveLiveDrawingInDm(dm, dm.selectedDrawings[0]);
+        if (live) return live;
+      }
+      if (dm.selectedDrawing) {
+        const live = resolveLiveDrawingInDm(dm, dm.selectedDrawing);
+        if (live) return live;
+      }
+      if (Array.isArray(dm.drawings)) {
+        const sel = dm.drawings.filter((x) => x && x.selected);
+        if (sel.length) return sel[0];
+      }
+    }
+  } catch (_) {}
+  return getSelectedDrawingAcrossCharts(null);
+}
+
+/** Merge fragment for `txtStyle` state from a legacy text/callout drawing (toolbar hydrate). */
+function v9TxtStylePatchFromDrawing(d) {
+  if (!d || !d.style) return null;
+  const s = d.style;
+  const out = {};
+  const fs = parseInt(String(s.fontSize), 10);
+  out.fontSize = Number.isFinite(fs) && fs > 0 ? fs : 14;
+  out.textColor = s.textColor ?? "#ffffff";
+  out.bold = s.fontWeight === "bold" || String(s.fontWeight) === "700";
+  out.italic = s.fontStyle === "italic";
+  out.borderColor = s.borderColor ?? "#787B86";
+  out.bgColor = s.backgroundColor ?? "#000000";
+  out.borderOn = s.borderColor != null && s.borderColor !== "transparent";
+  const bg = s.backgroundColor;
+  out.bgOn = !!(bg && bg !== "transparent");
+  if (s.textAlign) out.horizAlign = s.textAlign;
+  if (typeof d.text === "string") out.content = d.text;
+  return out;
+}
+
+/** Push V9 text floating-bar state into chart.js drawing.style (+ text) for the selected annotation. */
+function v9ApplyTxtStyleToDrawing(d, txt) {
+  if (!d || !d.style || !txt) return;
+  const s = d.style;
+  const t = d.type;
+  const applyCommon = () => {
+    if (txt.textColor != null) s.textColor = txt.textColor;
+    const fs = parseInt(String(txt.fontSize), 10);
+    if (Number.isFinite(fs) && fs > 0) s.fontSize = fs;
+    s.fontWeight = txt.bold ? "bold" : "normal";
+    s.fontStyle = txt.italic ? "italic" : "normal";
+  };
+  if (t === "callout" || t === "comment") {
+    applyCommon();
+    if (txt.borderColor != null) s.borderColor = txt.borderColor;
+    if (txt.bgColor != null) s.backgroundColor = txt.bgColor;
+    if (txt.horizAlign != null) s.textAlign = txt.horizAlign;
+    if (txt.content != null) {
+      d.text = String(txt.content);
+      if (typeof d.setText === "function") {
+        try {
+          d.setText(d.text);
+        } catch (_) {}
+      }
+    }
+    return;
+  }
+  if (
+    t === "text" ||
+    t === "label" ||
+    t === "anchored-text" ||
+    t === "notebox" ||
+    t === "note" ||
+    t === "price-note"
+  ) {
+    applyCommon();
+    if (txt.horizAlign != null) s.textAlign = txt.horizAlign;
+    if (txt.content != null) {
+      d.text = String(txt.content);
+      if (typeof d.setText === "function") {
+        try {
+          d.setText(d.text);
+        } catch (_) {}
+      }
+    }
+    return;
+  }
+  applyCommon();
+  if (txt.content != null) {
+    d.text = String(txt.content);
+    try {
+      if (typeof d.setText === "function") d.setText(d.text);
+    } catch (_) {}
+  }
+}
+
+/** chart.js `drawing.type` → V9 Text rail icon id (see `toolGroups` text row + V9_ICON_TO_LEGACY). */
+function legacyChartTextTypeToV9Icon(type) {
+  if (!type) return "text";
+  const map = {
+    text: "text",
+    notebox: "note",
+    label: "text",
+    "anchored-text": "text",
+    note: "note",
+    "price-note": "priceNote",
+    callout: "callout",
+    comment: "comment",
+    "price-label": "priceLabel",
+    "price-label-2": "priceLabel",
+    "signpost-2": "signpost",
+    signpost: "signpost",
+    "flag-mark": "flag",
+    image: "image",
+    emoji: "emoji",
+    pin: "pin",
+    table: "text",
+  };
+  return map[type] || "text";
+}
+
+function collectV9BridgeTargetPairs(editingRefDrawing) {
+  const targets = [];
+  const seenIds = new Set();
+  const pushPair = (dm, raw) => {
+    const live = resolveLiveDrawingInDm(dm, raw);
+    if (!live || !live.style) return;
+    const id = live.id;
+    if (id != null) {
+      if (seenIds.has(id)) return;
+      seenIds.add(id);
+    }
+    targets.push({ dm, d: live });
+  };
+  if (editingRefDrawing) {
+    enumerateV9DrawingManagersFromWindow().forEach((dm) => pushPair(dm, editingRefDrawing));
+  }
+  enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+    const tb = dm.toolbar;
+    if (tb && tb.currentDrawing) pushPair(dm, tb.currentDrawing);
+    if (Array.isArray(dm.selectedDrawings)) {
+      dm.selectedDrawings.forEach((x) => pushPair(dm, x));
+    }
+    if (dm.selectedDrawing) pushPair(dm, dm.selectedDrawing);
+    if (Array.isArray(dm.drawings)) {
+      dm.drawings.forEach((x) => {
+        if (x && x.selected) pushPair(dm, x);
+      });
+    }
+  });
+  return targets;
+}
+
+const V9_LEGACY_DASH_STRING_TO_LINE_TYPE = (() => {
+  const map = {};
+  Object.entries({ solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' }).forEach(([k, v]) => { map[v] = k; });
+  map['7,4'] = 'dashed'; map['4,4'] = 'dashed'; map['1,3'] = 'dotted';
+  return map;
+})();
+
+/** V9 line type → chart.js `stroke-dasharray` for parallel-channel level lines. */
+const V9_LINE_TYPE_TO_LEGACY_DASH = { solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4', bold: '' };
+
+/** `drawing.levels` (parallel-channel) ↔ Settings panel `tlStyle.chLines`. */
+function v9ParallelLevelsToChLines(levels) {
+  if (!Array.isArray(levels) || !levels.length) return undefined;
+  return levels.map((lv) => {
+    const raw = (lv.lineType != null && lv.lineType !== '') ? String(lv.lineType).replace(/\s+/g, '') : '';
+    let lineType = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[raw];
+    if (lineType == null) {
+      if (raw === '0' || raw === 'none') lineType = 'solid';
+      else lineType = raw ? 'dashed' : 'solid';
+    }
+    const w = lv.lineWidth != null ? String(parseInt(lv.lineWidth, 10) || 2) : '2';
+    const numVal = typeof lv.value === 'number' ? lv.value : parseFloat(lv.value);
+    const valueStr = Number.isFinite(numVal)
+      ? (Number.isInteger(numVal) ? String(numVal) : numVal.toFixed(4).replace(/\.?0+$/, '') || '0')
+      : String(lv.value ?? '0');
+    return {
+      on: lv.enabled !== false,
+      value: valueStr,
+      color: lv.color || '#2962FF',
+      type: lineType,
+      width: w,
+    };
+  });
+}
+
+function v9ChLinesToParallelLevels(chLines) {
+  if (!Array.isArray(chLines)) return [];
+  return chLines.map((ln, idx) => {
+    const t = parseFloat(ln.value);
+    const value = Number.isFinite(t) ? t : 0;
+    const baseW = parseInt(ln.width, 10) || 2;
+    const isBold = ln.type === 'bold';
+    const dashStr = isBold ? '' : (V9_LINE_TYPE_TO_LEGACY_DASH[ln.type] !== undefined
+      ? V9_LINE_TYPE_TO_LEGACY_DASH[ln.type]
+      : '');
+    const uiOn = !!(ln.on || (chLines.length === 5 && idx === 2));
+    return {
+      value,
+      color: ln.color || '#2962FF',
+      enabled: uiOn,
+      lineType: dashStr,
+      lineWidth: isBold ? Math.max(baseW, 3) : baseW,
+    };
+  });
+}
+
+/** Regression channel: `d.style` (middle / upper / lower strokes) ↔ `tlStyle.regLines`. */
+function v9RegDashStringToType(dashRaw) {
+  const raw = (dashRaw ?? "").toString().replace(/\s+/g, "");
+  if (!raw || raw === "0" || raw === "none") return "solid";
+  return V9_LEGACY_DASH_STRING_TO_LINE_TYPE[raw] ?? "dashed";
+}
+
+function v9RegLinesFromRegressionStyle(s) {
+  if (!s || typeof s !== "object") return undefined;
+  const sw = String(parseInt(s.strokeWidth, 10) || 2);
+  const uw = String(parseInt(s.upperStrokeWidth, 10) || 2);
+  const lw = String(parseInt(s.lowerStrokeWidth, 10) || 2);
+  const stroke = s.stroke || "#9c27b0";
+  return [
+    { on: true, label: "Middle Line", color: stroke, type: v9RegDashStringToType(s.strokeDasharray), width: sw },
+    {
+      on: s.useUpperDeviation !== false,
+      label: "Upper Line",
+      color: s.upperStroke || stroke,
+      type: v9RegDashStringToType(s.upperStrokeDasharray),
+      width: uw,
+    },
+    {
+      on: s.useLowerDeviation !== false,
+      label: "Lower Line",
+      color: s.lowerStroke || stroke,
+      type: v9RegDashStringToType(s.lowerStrokeDasharray),
+      width: lw,
+    },
+  ];
+}
+
+function v9ChartSourceToUiSource(src) {
+  const x = (src == null ? "close" : String(src)).toLowerCase();
+  if (x === "open") return "Open";
+  if (x === "high") return "High";
+  if (x === "low") return "Low";
+  return "Close";
+}
+
+function v9UiSourceToChartSource(label) {
+  const m = { Open: "open", High: "high", Low: "low", Close: "close" };
+  if (label != null && m[label] != null) return m[label];
+  return String(label || "close").toLowerCase();
+}
+
+function v9ApplyRegLinesToRegressionStyle(style, regLines) {
+  if (!style || !Array.isArray(regLines) || regLines.length < 3) return;
+  const [mid, up, lo] = regLines;
+  const midW = parseInt(mid.width, 10) || 2;
+  const upW = parseInt(up.width, 10) || 2;
+  const loW = parseInt(lo.width, 10) || 2;
+  const dashStr = (ln) => {
+    if (ln.type === "bold") return "0";
+    const d = V9_LINE_TYPE_TO_LEGACY_DASH[ln.type];
+    return d === "" || d === undefined ? "0" : d;
+  };
+  style.stroke = mid.color;
+  style.strokeWidth = mid.type === "bold" ? Math.max(midW, 3) : midW;
+  style.strokeDasharray = dashStr(mid);
+  style.upperStroke = up.color;
+  style.upperStrokeWidth = up.type === "bold" ? Math.max(upW, 3) : upW;
+  style.upperStrokeDasharray = dashStr(up);
+  style.useUpperDeviation = up.on !== false;
+  style.lowerStroke = lo.color;
+  style.lowerStrokeWidth = lo.type === "bold" ? Math.max(loW, 3) : loW;
+  style.lowerStrokeDasharray = dashStr(lo);
+  style.useLowerDeviation = lo.on !== false;
+}
+
+/** Pitchfork: chart `d.levels` + style ↔ V9 `pfLevels` / `pitchforkStyle` / median color / background. */
+const V9_PF_UI_TO_CHART = {
+  Original: "original",
+  Schiff: "schiff",
+  "Modified Schiff": "modified-schiff",
+  Inside: "inside",
+};
+const V9_PF_CHART_TO_UI = {
+  original: "Original",
+  schiff: "Schiff",
+  "modified-schiff": "Modified Schiff",
+  inside: "Inside",
+};
+
+function v9UiPitchforkStyleToChart(label) {
+  if (label != null && V9_PF_UI_TO_CHART[label] != null) return V9_PF_UI_TO_CHART[label];
+  const t = String(label || "original").trim().toLowerCase();
+  if (t === "modified schiff") return "modified-schiff";
+  if (["original", "schiff", "modified-schiff", "inside"].includes(t)) return t;
+  return "original";
+}
+
+function v9ChartPitchforkStyleToUi(v) {
+  if (v == null || v === "") return "Original";
+  const k = String(v).trim().toLowerCase();
+  if (V9_PF_CHART_TO_UI[k] != null) return V9_PF_CHART_TO_UI[k];
+  if (k === "modified schiff") return "Modified Schiff";
+  return "Original";
+}
+
+function v9PitchforkLevelsToPf(levels) {
+  if (!Array.isArray(levels) || !levels.length) return undefined;
+  return levels.map((lv) => {
+    const raw = lv.value != null ? lv.value : lv.label;
+    const valueStr =
+      raw !== undefined && raw !== null && raw !== ""
+        ? String(raw).trim()
+        : "0";
+    return {
+      on: lv.enabled !== false,
+      value: valueStr,
+      color: lv.color || "#2962FF",
+    };
+  });
+}
+
+function v9PfToPitchforkLevels(pfLevels) {
+  if (!Array.isArray(pfLevels)) return [];
+  return pfLevels.map((ln) => {
+    const t = parseFloat(ln.value);
+    const value = Number.isFinite(t) ? t : 0;
+    const vs = String(ln.value != null ? ln.value : "").trim() || String(value);
+    return {
+      value,
+      label: vs,
+      color: ln.color || "#2962FF",
+      enabled: ln.on !== false,
+    };
+  });
+}
+
+/** Fib Retracement / Extension (`drawing-tools-fibonacci.js`) share `tlStyle.fibLevels` + fib* toggles. */
+function v9IsClassicFibRetracementType(t) {
+  return t === "fibonacci-retracement" || t === "fibonacci-extension";
+}
+
+function v9FibLevelsModeUiToChart(mode) {
+  const m = String(mode || "Value");
+  if (m === "Percent") return "percent";
+  return "values";
+}
+
+function v9FibLevelsModeChartToUi(ch) {
+  if (ch === "percent") return "Percent";
+  return "Value";
+}
+
+function v9FibLevelsChartToTl(levels) {
+  if (!Array.isArray(levels) || !levels.length) return undefined;
+  return levels.map((lv) => ({
+    on: lv.visible !== false,
+    value:
+      lv.label != null && String(lv.label).trim() !== ""
+        ? String(lv.label).trim()
+        : String(lv.value != null ? lv.value : "").trim() || "0",
+    color: lv.color || "#787B86",
+  }));
+}
+
+function v9TlFibLevelsToChart(levels, fibLineType, fibLineWidth) {
+  if (!Array.isArray(levels)) return [];
+  const isBold = fibLineType === "bold";
+  const dashStr = isBold
+    ? ""
+    : (V9_LINE_TYPE_TO_LEGACY_DASH[fibLineType] !== undefined
+      ? V9_LINE_TYPE_TO_LEGACY_DASH[fibLineType]
+      : "");
+  const baseW = parseInt(String(fibLineWidth), 10) || 2;
+  const w = isBold ? Math.max(baseW, 3) : baseW;
+  return levels.map((ln) => {
+    const v = parseFloat(ln.value);
+    const value = Number.isFinite(v) ? v : 0;
+    const vs = String(ln.value != null ? ln.value : "").trim() || String(value);
+    return {
+      value,
+      label: vs,
+      color: ln.color || "#787b86",
+      visible: ln.on !== false,
+      lineType: dashStr,
+      lineWidth: w,
+    };
+  });
+}
+
+/** Fib Speed Resistance Fan (`fib-speed-fan`): price levels on `d.levels`; time levels stored on `style.v9FanTimeLevels` for persistence (chart render uses price levels only). */
+function v9IsFibSpeedFanType(t) {
+  return t === "fib-speed-fan";
+}
+
+function v9FibSpeedFanLevelsChartToTl(levels) {
+  if (!Array.isArray(levels) || !levels.length) return undefined;
+  return levels.map((lv) => ({
+    on: lv.enabled !== false,
+    value: String(lv.value != null ? lv.value : "").trim() || "0",
+    color: lv.color || "#787B86",
+  }));
+}
+
+function v9FanTimeLevelsChartToTl(raw) {
+  if (!Array.isArray(raw) || !raw.length) return undefined;
+  return raw.map((lv) => ({
+    on: lv.on !== false && lv.enabled !== false,
+    value:
+      lv.value != null && String(lv.value).trim() !== ""
+        ? String(lv.value).trim()
+        : "0",
+    color: lv.color || "#787B86",
+  }));
+}
+
+function v9TlFibSpeedFanLevelsToChart(levels, fibLineType, fibLineWidth) {
+  const rows = v9TlFibLevelsToChart(levels, fibLineType, fibLineWidth);
+  return rows.map((row) => ({
+    value: row.value,
+    enabled: row.visible,
+    color: row.color,
+    lineType: row.lineType,
+    lineWidth: row.lineWidth,
+  }));
+}
+
+function v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthFallback) {
+  if (!d || !d.style || !v9IsFibSpeedFanType(d.type)) return;
+  const fibDashStr =
+    tlStyle.fibLineType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
+        : "");
+  const gridDashStr =
+    tlStyle.fibGridType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibGridType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibGridType]
+        : "");
+  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
+  const strokeW =
+    parseInt(String(tlStyle.lineWidth), 10) ||
+    (typeof widthFallback === "number" ? widthFallback : levelsW) ||
+    1;
+
+  d.levels = v9TlFibSpeedFanLevelsToChart(
+    tlStyle.fibLevels,
+    tlStyle.fibLineType,
+    tlStyle.fibLineWidth,
+  );
+  if (d.style) d.style.levels = d.levels;
+  const st = d.style;
+  st.stroke = tlStyle.lineColor;
+  st.strokeWidth = strokeW;
+  st.levelsLineWidth = levelsW;
+  st.levelsLineDasharray = fibDashStr;
+
+  st.backgroundEnabled = tlStyle.fibBackground !== false;
+  st.backgroundOpacity =
+    tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
+      ? +tlStyle.fibBgOpacity
+      : 0.12;
+  st.reverse = !!tlStyle.fibReverse;
+
+  st.gridEnabled = tlStyle.fibGrid !== false;
+  st.gridColor = tlStyle.fibGridColor || "#787b86";
+  st.gridLineWidth = parseInt(String(tlStyle.fibGridWidth), 10) || 1;
+  st.gridLineDasharray = gridDashStr;
+
+  if (Array.isArray(tlStyle.fibFanTimeLevels)) {
+    st.v9FanTimeLevels = tlStyle.fibFanTimeLevels.map((ln) => ({
+      on: ln.on !== false,
+      value: ln.value != null ? String(ln.value) : "0",
+      color: ln.color || "#787B86",
+    }));
+  }
+}
+
+function v9IsTrendFibTimeType(t) {
+  return t === "trend-fib-time";
+}
+
+/** Trend-Based Fib Time: vertical time levels + zones + styled anchor legs (`trendLine*` + `levelsLine*`). */
+function v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthFallback) {
+  if (!d || !d.style || !v9IsTrendFibTimeType(d.type)) return;
+  const fibDashStr =
+    tlStyle.fibLineType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
+        : "");
+  const trendDashStr =
+    tlStyle.fibTimeTrendType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibTimeTrendType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibTimeTrendType]
+        : "");
+  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
+  const trendW =
+    parseInt(String(tlStyle.fibTimeTrendWidth), 10) ||
+    (typeof widthFallback === "number" ? widthFallback : 1) ||
+    1;
+
+  d.levels = v9TlFibSpeedFanLevelsToChart(
+    tlStyle.fibLevels,
+    tlStyle.fibLineType,
+    tlStyle.fibLineWidth,
+  );
+  if (d.style) d.style.levels = d.levels;
+  const st = d.style;
+  st.stroke = tlStyle.lineColor;
+  st.trendLineEnabled = tlStyle.fibTrendLine !== false;
+  st.trendLineColor = tlStyle.lineColor;
+  st.trendLineWidth = trendW;
+  st.trendLineDasharray = trendDashStr;
+  st.levelsLineWidth = levelsW;
+  st.levelsLineDasharray = fibDashStr;
+  st.showZones = tlStyle.fibBackground !== false;
+  st.backgroundOpacity =
+    tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
+      ? +tlStyle.fibBgOpacity
+      : 0.12;
+}
+
+function v9IsFibCirclesType(t) {
+  return t === "fib-circles";
+}
+
+function v9IsFibArcsType(t) {
+  return t === "fib-arcs";
+}
+
+/** Fib Speed Resistance Arcs (`fib-arcs`): ratio arcs + zones + optional anchor trend line + full/half circle. */
+function v9ApplyFibArcsFromTlStyle(d, tlStyle, widthFallback) {
+  if (!d || !d.style || !v9IsFibArcsType(d.type)) return;
+  const fibDashStr =
+    tlStyle.fibLineType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
+        : "");
+  const trendDashStr =
+    tlStyle.fibArcsTrendType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibArcsTrendType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibArcsTrendType]
+        : "");
+  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
+  const strokeW =
+    parseInt(String(tlStyle.lineWidth), 10) ||
+    (typeof widthFallback === "number" ? widthFallback : levelsW) ||
+    1;
+  const trendW =
+    parseInt(String(tlStyle.fibArcsTrendWidth), 10) ||
+    (typeof widthFallback === "number" ? widthFallback : 1) ||
+    1;
+
+  d.levels = v9TlFibSpeedFanLevelsToChart(
+    tlStyle.fibLevels,
+    tlStyle.fibLineType,
+    tlStyle.fibLineWidth,
+  );
+  if (d.style) d.style.levels = d.levels;
+  const st = d.style;
+  st.stroke = tlStyle.lineColor;
+  st.strokeWidth = strokeW;
+  st.levelsLineWidth = levelsW;
+  st.levelsLineDasharray = fibDashStr;
+
+  st.showZones = tlStyle.fibBackground !== false;
+  st.backgroundOpacity =
+    tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
+      ? +tlStyle.fibBgOpacity
+      : 0.12;
+
+  st.trendLineEnabled = tlStyle.fibArcsTrendLine !== false;
+  st.trendLineColor = tlStyle.lineColor;
+  st.trendLineWidth = trendW;
+  st.trendLineDasharray = trendDashStr;
+
+  st.v9FibArcsFullCircle = !!tlStyle.fibArcsFullCircle;
+}
+
+/** Fib Circles: `d.levels` ratio rings + global line dash/width; background UI persisted on style (chart does not fill zones yet). */
+function v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthFallback) {
+  if (!d || !d.style || !v9IsFibCirclesType(d.type)) return;
+  const fibDashStr =
+    tlStyle.fibLineType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
+        : "");
+  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
+  const strokeW =
+    parseInt(String(tlStyle.lineWidth), 10) ||
+    (typeof widthFallback === "number" ? widthFallback : levelsW) ||
+    1;
+
+  d.levels = v9TlFibSpeedFanLevelsToChart(
+    tlStyle.fibLevels,
+    tlStyle.fibLineType,
+    tlStyle.fibLineWidth,
+  );
+  if (d.style) d.style.levels = d.levels;
+  const st = d.style;
+  st.stroke = tlStyle.lineColor;
+  st.strokeWidth = strokeW;
+  st.levelsLineWidth = levelsW;
+  st.levelsLineDasharray = fibDashStr;
+  st.v9FibCirclesBackground = !!tlStyle.fibBackground;
+  st.v9FibCirclesBgOpacity =
+    tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
+      ? +tlStyle.fibBgOpacity
+      : 0.5;
+}
+
+function v9ApplyClassicFibFromTlStyle(d, tlStyle, trendWidthFallback) {
+  if (!d || !d.style || !v9IsClassicFibRetracementType(d.type)) return;
+  const fibDashStr =
+    tlStyle.fibLineType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
+        : "");
+  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
+  const trendW =
+    parseInt(String(tlStyle.lineWidth), 10) ||
+    (typeof trendWidthFallback === "number" ? trendWidthFallback : 1) ||
+    1;
+  d.levels = v9TlFibLevelsToChart(
+    tlStyle.fibLevels,
+    tlStyle.fibLineType,
+    tlStyle.fibLineWidth,
+  );
+  if (d.style) d.style.levels = d.levels;
+  const st = d.style;
+  st.trendLineColor = tlStyle.lineColor;
+  st.trendLineEnabled = tlStyle.fibTrendLine !== false;
+  st.trendLineWidth = trendW;
+  st.levelsLineWidth = levelsW;
+  st.levelsLineDasharray = fibDashStr;
+  st.showZones = !!tlStyle.fibBackground;
+  st.backgroundOpacity =
+    tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
+      ? +tlStyle.fibBgOpacity
+      : 0.08;
+  st.reverse = !!tlStyle.fibReverse;
+  st.showPrices = tlStyle.fibPrices !== false;
+  st.levelsEnabled = tlStyle.fibLevelsOn !== false;
+  st.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
+  st.extendLines = !!tlStyle.fibExtendLines;
+}
+
+/** Chart Gann level rows ↔ V9 Input tab (`on` / string `value` / `color`). */
+function v9ChartRatioLevelsToGannTl(arr) {
+  if (!Array.isArray(arr) || !arr.length) return null;
+  return arr.map((l) => ({
+    on: l && l.enabled !== false,
+    value: l && l.value != null ? String(l.value) : "0",
+    color: l && l.color ? l.color : "#787B86",
+  }));
+}
+
+function v9GannTlLevelsToChartRatioLevels(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map((l) => ({
+    enabled: l && l.on !== false,
+    value: parseFloat(String(l && l.value != null ? l.value : "0")) || 0,
+    color: l && l.color ? l.color : "#787b86",
+  }));
+}
+
+/** Map chart `levelsLineDasharray` → V9 gann line type (bold / dotted / dashed / dashdot). */
+function v9GannDashArrayToLineType(dashRaw) {
+  const raw = String(dashRaw ?? "").replace(/\s+/g, "");
+  if (!raw) return "bold";
+  const lt = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[raw];
+  if (lt === "dotted" || lt === "dashed" || lt === "dashdot") return lt;
+  if (raw === "2,2") return "dotted";
+  if (raw === "5,5" || raw === "7,4") return "dashed";
+  if (raw === "8,4,2,4") return "dashdot";
+  return raw ? "dashed" : "bold";
+}
+
+function v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle) {
+  if (!d || !d.style) return;
+  const st = d.style;
+  const dashStr =
+    tlStyle.gannLineType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.gannLineType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.gannLineType]
+        : "");
+  st.levelsLineDasharray = dashStr;
+  st.levelsLineWidth = parseInt(String(tlStyle.gannLineWidth), 10) || 2;
+  st.showZones =
+    d.type === "gann-square-fixed" || d.type === "gann-fan"
+      ? tlStyle.gannBackground !== false
+      : !!tlStyle.gannBackground;
+  st.backgroundOpacity =
+    tlStyle.gannBgOpacity != null && !Number.isNaN(+tlStyle.gannBgOpacity)
+      ? Math.max(0, Math.min(1, +tlStyle.gannBgOpacity))
+      : 0.12;
+}
+
+function v9ApplyGannBoxFromTlStyle(d, tlStyle) {
+  if (!d || d.type !== "gann-box" || !d.style) return;
+  v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
+  d.style.priceLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannPriceLevels);
+  d.style.timeLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannTimeLevels);
+}
+
+function v9ApplyGannSquareFixedFromTlStyle(d, tlStyle) {
+  if (!d || d.type !== "gann-square-fixed" || !d.style) return;
+  v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
+  d.style.gridLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannGridLevels);
+  d.style.fanLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannFanLevels);
+  d.style.arcLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannArcLevels);
+}
+
+function v9ApplyGannFanFromTlStyle(d, tlStyle) {
+  if (!d || d.type !== "gann-fan" || !d.style) return;
+  v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
+  const prev = Array.isArray(d.style.fanLevels) ? d.style.fanLevels : [];
+  const tl = tlStyle.gannFanLevels;
+  if (!Array.isArray(tl)) return;
+  d.style.fanLevels = tl.map((l, i) => {
+    const value = parseFloat(String(l && l.value != null ? l.value : "0")) || 0;
+    const p = prev[i];
+    return {
+      value,
+      enabled: l && l.on !== false,
+      color: (l && l.color) ? l.color : (d.style.stroke || "#4caf50"),
+      ...(p && p.label != null ? { label: p.label } : {}),
+    };
+  });
+}
+
+/** Full chart.js drawing → V9 `tlStyle` patch (toolbar selection + settings read-back). */
+function v9TlStylePatchFromDrawing(d) {
+  if (!d) return null;
+  const s = d.style || {};
+  const chVert = s.textVAlign || s.textPosition;
+  const bold =
+    s.fontWeight === "bold" ||
+    (typeof s.fontWeight === "number" && s.fontWeight >= 600);
+  const isClassicFib = v9IsClassicFibRetracementType(d.type);
+  const isFibFan = v9IsFibSpeedFanType(d.type);
+  const isTrendFibTime = v9IsTrendFibTimeType(d.type);
+  const isFibCircles = v9IsFibCirclesType(d.type);
+  const isFibArcs = v9IsFibArcsType(d.type);
+  const stroke =
+    d.type === "pitchfork"
+      ? (s.medianColor || s.stroke || s.color || s.lineColor)
+      : isClassicFib || isTrendFibTime
+        ? (s.trendLineColor || s.stroke || s.color || s.lineColor)
+        : (s.stroke || s.color || s.lineColor);
+  const widthRaw = isClassicFib
+    ? (s.trendLineWidth ?? s.strokeWidth ?? s.lineWidth)
+    : isFibFan || isFibCircles || isFibArcs
+      ? (s.strokeWidth ?? s.levelsLineWidth ?? s.lineWidth)
+      : isTrendFibTime
+        ? (s.trendLineWidth ?? s.strokeWidth ?? s.lineWidth)
+        : (s.strokeWidth ?? s.lineWidth);
+  const widthStr = widthRaw != null
+    ? String(parseInt(widthRaw, 10) || (isClassicFib || isTrendFibTime ? 1 : 2))
+    : undefined;
+  const dashRaw = isClassicFib
+    ? String(s.trendLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
+    : isFibFan || isFibCircles || isFibArcs
+      ? String(s.levelsLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
+      : isTrendFibTime
+        ? String(s.trendLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
+        : String(s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "");
+  const lineType = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[dashRaw] ?? (dashRaw ? "dashed" : "solid");
+  return {
+    ...(stroke ? { lineColor: stroke } : {}),
+    ...(widthStr ? { lineWidth: widthStr } : {}),
+    lineType,
+    ...(s.fill ? { bgColor: s.fill } : (s.backgroundColor ? { bgColor: s.backgroundColor } : {})),
+    ...(s.startStyle ? { ep1: s.startStyle } : {}),
+    ...(s.endStyle ? { ep2: s.endStyle } : {}),
+    ...(typeof s.extendLeft === 'boolean' ? { extendLeft: s.extendLeft } : {}),
+    ...(typeof s.extendRight === 'boolean' ? { extendRight: s.extendRight } : {}),
+    ...(typeof s.showPriceLabel === 'boolean' ? { priceLabels: s.showPriceLabel } : {}),
+    ...(typeof s.showTimeLabel === 'boolean' ? { timeLabels: s.showTimeLabel } : {}),
+    ...(s.labelColor ? { labelColor: s.labelColor } : {}),
+    ...(s.labelFontSize != null ? { labelFontSize: String(s.labelFontSize) } : {}),
+    ...(typeof s.labelBackground === 'boolean' ? { labelBg: s.labelBackground } : {}),
+    ...(s.labelBackgroundColor ? { labelBgColor: s.labelBackgroundColor } : {}),
+    ...(s.infoSettings && typeof s.infoSettings === 'object'
+      ? (() => {
+          const types = v9ShowInfoTypesFromChartInfoSettings(s.infoSettings);
+          const show =
+            s.infoSettings.showInfo === true ||
+            (types.length > 0 && s.infoSettings.showInfo !== false);
+          return {
+            showInfo: show,
+            showInfoTypes: types.length > 0 ? types : ['Price range'],
+          };
+        })()
+      : {}),
+    ...(typeof d.text === 'string' ? { textContent: d.text } : {}),
+    ...(s.textColor ? { textColor: s.textColor } : {}),
+    ...(s.fontSize != null ? { textSize: String(s.fontSize) } : {}),
+    ...(s.fontWeight != null && s.fontWeight !== '' ? { textBold: bold } : {}),
+    ...(s.fontStyle ? { textItalic: s.fontStyle === 'italic' } : {}),
+    ...(chVert ? { vertAlign: v9ChartVertToUi(chVert) } : {}),
+    ...((s.textHAlign || s.textAlign) ? { horizAlign: s.textHAlign || s.textAlign } : {}),
+    // Must always sync midLine for rect/ellipse/circle: if showMiddleLine is missing (undefined),
+    // omitting midLine leaves a stale true in tlStyle while the canvas sees falsy — "checkbox on, no line".
+    ...(d.type === "rectangle" || d.type === "rotated-rectangle" || d.type === "ellipse" || d.type === "circle"
+      ? { midLine: !!s.showMiddleLine }
+      : (typeof s.showMiddleLine === "boolean" ? { midLine: s.showMiddleLine } : {})),
+    ...(s.middleLineColor ? { midLineColor: s.middleLineColor } : {}),
+    ...(s.middleLineWidth != null && s.middleLineWidth !== ""
+      ? { midLineWidth: String(parseInt(s.middleLineWidth, 10) || 1) }
+      : {}),
+    ...(s.middleLineDash !== undefined && s.middleLineDash !== null
+      ? (() => {
+          const md = String(s.middleLineDash).replace(/\s+/g, "");
+          const mt = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[md] ?? (md ? "dashed" : "solid");
+          return { midLineType: mt };
+        })()
+      : {}),
+    ...(d.type === "parallel-channel" && Array.isArray(d.levels) && d.levels.length
+      ? (() => {
+          const ch = v9ParallelLevelsToChLines(d.levels);
+          return ch ? { chLines: ch } : {};
+        })()
+      : {}),
+    ...(d.type === "regression-trend"
+      ? (() => {
+          const rl = v9RegLinesFromRegressionStyle(s);
+          const base = rl ? { regLines: rl } : {};
+          return {
+            ...base,
+            regUpperDev: {
+              on: s.useUpperDeviation !== false,
+              value: String(s.upperDeviation != null && s.upperDeviation !== "" ? s.upperDeviation : 2),
+            },
+            regLowerDev: {
+              on: s.useLowerDeviation !== false,
+              value: String(
+                Math.abs(s.lowerDeviation != null && s.lowerDeviation !== "" ? Number(s.lowerDeviation) : -2),
+              ),
+            },
+            regPearsonR: !!s.showPearsonsR,
+            source: v9ChartSourceToUiSource(s.source),
+          };
+        })()
+      : {}),
+    ...(d.type === "pitchfork"
+      ? (() => {
+          const pf = v9PitchforkLevelsToPf(d.levels);
+          return {
+            ...(pf ? { pfLevels: pf } : {}),
+            pitchforkStyle: v9ChartPitchforkStyleToUi(s.pitchforkStyle),
+            pfBackground: s.backgroundEnabled !== false,
+            pfBgOpacity:
+              s.backgroundOpacity != null && !Number.isNaN(Number(s.backgroundOpacity))
+                ? Number(s.backgroundOpacity)
+                : 0.2,
+          };
+        })()
+      : {}),
+    ...(d.type === "fib-speed-fan"
+      ? (() => {
+          const fl = v9FibSpeedFanLevelsChartToTl(d.levels);
+          const ftRaw = v9FanTimeLevelsChartToTl(s.v9FanTimeLevels);
+          const ft =
+            ftRaw && ftRaw.length
+              ? ftRaw
+              : [
+                  { on: true, value: "0", color: "#787B86" },
+                  { on: true, value: "0.25", color: "#F44336" },
+                  { on: true, value: "0.5", color: "#FF9800" },
+                  { on: true, value: "0.75", color: "#FFEB3B" },
+                  { on: true, value: "1", color: "#4CAF50" },
+                ];
+          const fibDashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const fibLineType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
+          const gridDashRaw = String(s.gridLineDasharray ?? "").replace(/\s+/g, "");
+          const fibGridType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[gridDashRaw] ?? (!gridDashRaw ? "solid" : "dashed");
+          return {
+            ...(fl ? { fibLevels: fl } : {}),
+            fibFanTimeLevels: ft,
+            fibBackground: s.backgroundEnabled !== false,
+            fibBgOpacity:
+              s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+                ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+                : 0.12,
+            fibReverse: !!s.reverse,
+            fibGrid: s.gridEnabled !== false,
+            fibGridColor: s.gridColor || "#787B86",
+            fibGridType,
+            fibGridWidth: String(parseInt(s.gridLineWidth, 10) || 1),
+            fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            fibLineType,
+          };
+        })()
+      : {}),
+    ...(v9IsClassicFibRetracementType(d.type)
+      ? (() => {
+          const fl = v9FibLevelsChartToTl(d.levels);
+          const fibDashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const fibLineType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
+          return {
+            ...(fl ? { fibLevels: fl } : {}),
+            fibTrendLine: s.trendLineEnabled !== false,
+            fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            fibLineType,
+            fibBackground: !!s.showZones,
+            fibBgOpacity:
+              s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+                ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+                : 0.08,
+            fibReverse: !!s.reverse,
+            fibPrices: s.showPrices !== false,
+            fibLevelsOn: s.levelsEnabled !== false,
+            fibLevelsMode: v9FibLevelsModeChartToUi(s.levelsLabelMode),
+            fibExtendLines: !!s.extendLines,
+          };
+        })()
+      : {}),
+    ...(d.type === "trend-fib-time"
+      ? (() => {
+          const fl = v9FibSpeedFanLevelsChartToTl(d.levels);
+          const fibDashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const fibLineType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
+          const trendDashRaw = String(s.trendLineDasharray ?? "").replace(/\s+/g, "");
+          const fibTimeTrendType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[trendDashRaw] ?? (!trendDashRaw ? "solid" : "dashed");
+          return {
+            ...(fl ? { fibLevels: fl } : {}),
+            fibTrendLine: s.trendLineEnabled !== false,
+            fibTimeTrendType,
+            fibTimeTrendWidth: String(parseInt(s.trendLineWidth, 10) || 1),
+            fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            fibLineType,
+            fibBackground: s.showZones !== false,
+            fibBgOpacity:
+              s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+                ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+                : 0.12,
+          };
+        })()
+      : {}),
+    ...(d.type === "fib-circles"
+      ? (() => {
+          const fl = v9FibSpeedFanLevelsChartToTl(d.levels);
+          const fibDashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const fibLineType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
+          const bgOp =
+            s.v9FibCirclesBgOpacity != null && !Number.isNaN(parseFloat(s.v9FibCirclesBgOpacity))
+              ? Math.max(0, Math.min(1, parseFloat(s.v9FibCirclesBgOpacity)))
+              : 0.5;
+          return {
+            ...(fl ? { fibLevels: fl } : {}),
+            fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            fibLineType,
+            fibBackground: s.v9FibCirclesBackground === true,
+            fibBgOpacity: bgOp,
+          };
+        })()
+      : {}),
+    ...(d.type === "fib-arcs"
+      ? (() => {
+          const fl = v9FibSpeedFanLevelsChartToTl(d.levels);
+          const fibDashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const fibLineType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
+          const trendDashRaw = String(s.trendLineDasharray ?? "").replace(/\s+/g, "");
+          const fibArcsTrendType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[trendDashRaw] ?? (!trendDashRaw ? "solid" : "dashed");
+          return {
+            ...(fl ? { fibLevels: fl } : {}),
+            fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            fibLineType,
+            fibBackground: s.showZones !== false,
+            fibBgOpacity:
+              s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+                ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+                : 0.12,
+            fibArcsTrendLine: s.trendLineEnabled !== false,
+            fibArcsTrendType,
+            fibArcsTrendWidth: String(parseInt(s.trendLineWidth, 10) || 1),
+            fibArcsFullCircle: !!s.v9FibArcsFullCircle,
+          };
+        })()
+      : {}),
+    ...(d.type === "gann-box"
+      ? (() => {
+          const dashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const price = v9ChartRatioLevelsToGannTl(s.priceLevels);
+          const time = v9ChartRatioLevelsToGannTl(s.timeLevels);
+          const bgOp =
+            s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+              ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+              : 0.12;
+          return {
+            ...(price ? { gannPriceLevels: price } : {}),
+            ...(time ? { gannTimeLevels: time } : {}),
+            gannLineType: v9GannDashArrayToLineType(dashRaw),
+            gannLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            gannBackground: !!s.showZones,
+            gannBgOpacity: bgOp,
+            lineColor: s.stroke || s.color || stroke,
+            lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
+          };
+        })()
+      : {}),
+    ...(d.type === "gann-square-fixed"
+      ? (() => {
+          const dashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const grid = v9ChartRatioLevelsToGannTl(s.gridLevels);
+          const fan = v9ChartRatioLevelsToGannTl(s.fanLevels);
+          const arc = v9ChartRatioLevelsToGannTl(s.arcLevels);
+          const bgOp =
+            s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+              ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+              : 0.12;
+          return {
+            ...(grid ? { gannGridLevels: grid } : {}),
+            ...(fan ? { gannFanLevels: fan } : {}),
+            ...(arc ? { gannArcLevels: arc } : {}),
+            gannLineType: v9GannDashArrayToLineType(dashRaw),
+            gannLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            gannBackground: s.showZones !== false,
+            gannBgOpacity: bgOp,
+            lineColor: s.stroke || stroke,
+            lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
+          };
+        })()
+      : {}),
+    ...(d.type === "gann-fan"
+      ? (() => {
+          const dashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const fanArr = Array.isArray(s.fanLevels) ? s.fanLevels : [];
+          const fan = fanArr.map((l) => ({
+            on: l && l.enabled !== false,
+            value: l && l.value != null ? String(l.value) : "1",
+            color: l && l.color ? l.color : "#787B86",
+          }));
+          const bgOp =
+            s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+              ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+              : 0.12;
+          return {
+            ...(fan.length ? { gannFanLevels: fan } : {}),
+            gannLineType: v9GannDashArrayToLineType(dashRaw),
+            gannLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            gannBackground: s.showZones !== false,
+            gannBgOpacity: bgOp,
+            lineColor: s.stroke || stroke,
+            lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
+          };
+        })()
+      : {}),
+    ...v9CoordPatchFromDrawing(d),
+    ...v9VisibilityPatchFromDrawing(d),
+  };
+}
+
+const V9_DEFAULT_TL_LINE_COLOR = "#8C8C8C";
+const V9_DEFAULT_TL_SHAPE_FILL = "rgba(74,106,255,0.15)";
+
+/** When the user switches armed drawing tools, merge chart.js saved defaults into V9 `tlStyle` so the next stroke does not inherit the previous tool's colors/fill. */
+function v9MergeHydratePatchFromLegacy(dm, legacy) {
+  const saved =
+    dm && typeof dm.getSavedToolStyle === "function"
+      ? dm.getSavedToolStyle(legacy) || {}
+      : {};
+  const strokeFallback =
+    saved.stroke || saved.color || saved.lineColor || V9_DEFAULT_TL_LINE_COLOR;
+  const styleForPatch = {
+    ...saved,
+    stroke: saved.stroke || strokeFallback,
+    color: saved.color || saved.stroke || strokeFallback,
+  };
+  const basePatch = v9TlStylePatchFromDrawing({ type: legacy, style: styleForPatch }) || {};
+  const fillRaw =
+    saved.fill !== undefined && saved.fill !== ""
+      ? saved.fill
+      : saved.backgroundColor !== undefined && saved.backgroundColor !== ""
+        ? saved.backgroundColor
+        : null;
+  const bgResolved =
+    basePatch.bgColor !== undefined
+      ? basePatch.bgColor
+      : fillRaw !== null && fillRaw !== ""
+        ? fillRaw
+        : V9_DEFAULT_TL_SHAPE_FILL;
+  return {
+    ...basePatch,
+    lineColor: basePatch.lineColor ?? strokeFallback,
+    bgColor: bgResolved,
+  };
+}
+
+function v9DeepCloneJson(obj) {
+  if (obj === undefined) return undefined;
+  return JSON.parse(JSON.stringify(obj));
+}
+
+/** Persists a drawing template like `drawing-toolbar.js` showSaveTemplateDialog (per drawing.type). */
+function v9SaveDrawingTemplateToStorage(name, drawing) {
+  if (typeof window === 'undefined' || !name || !drawing || !drawing.type) return false;
+  const ch = typeof window.getActiveChart === 'function' ? window.getActiveChart() : window.chart;
+  const dm = ch && ch.drawingManager;
+  const tb = dm && dm.toolbar;
+  const us = window.userStorage;
+  if (!tb || typeof tb.getSavedTemplates !== 'function' || typeof tb.getTemplatesKey !== 'function' || !us) return false;
+  const actualDrawing = (dm && dm.drawings && dm.drawings.find((x) => x.id === drawing.id)) || drawing;
+  const templates = tb.getSavedTemplates(actualDrawing.type);
+  const styleSnapshot = v9DeepCloneJson(actualDrawing.style || {}) || {};
+  const newTemplate = {
+    id: Date.now().toString(),
+    name: name.trim(),
+    style: styleSnapshot,
+    text: actualDrawing.text,
+    levels: v9DeepCloneJson(actualDrawing.levels),
+    stroke: styleSnapshot.stroke || (actualDrawing.style && actualDrawing.style.stroke),
+    strokeWidth: styleSnapshot.strokeWidth ?? (actualDrawing.style && actualDrawing.style.strokeWidth),
+    fill: styleSnapshot.fill,
+    opacity: styleSnapshot.opacity !== undefined ? styleSnapshot.opacity : (actualDrawing.style && actualDrawing.style.opacity),
+  };
+  templates.push(newTemplate);
+  us.setItem(tb.getTemplatesKey(actualDrawing.type), JSON.stringify(templates));
+  window.dispatchEvent(new CustomEvent('drawingTemplatesUpdated', { detail: { toolType: actualDrawing.type } }));
+  if (typeof tb.showNotification === 'function') tb.showNotification(`Template "${name.trim()}" saved!`);
+  return true;
+}
+
+/** PRE variables from `chart.backtestingSession` — same filter as order-manager.js `_getPreTradeVariableDefs`. */
+function getPreTradeVariablesFromSession(chart) {
+  try {
+    const sess = chart?.backtestingSession || {};
+    const raw = sess.strategy_variables;
+    const list = Array.isArray(raw) ? raw : (sess.strategy_definition?.variables || []);
+    return list.filter((v) => v && v.type === 'variable' && v.timing === 'pre');
+  } catch (_) {
+    return [];
+  }
+}
+
+function snapshotPreTradeStrategySig(chart) {
+  try {
+    const pre = getPreTradeVariablesFromSession(chart);
+    return JSON.stringify(
+      pre.map((v) => ({
+        id: v.id,
+        name: v.name,
+        vtype: v.vtype,
+        timing: v.timing,
+        options: v.options,
+      }))
+    );
+  } catch (_) {
+    return '';
+  }
+}
+
+/** Maps Strategies Lab PRE vars to the rail tag shape (labels / bool vs multi — UI unchanged). */
+function sessionPreTradeVarsToTagDefs(chart) {
+  const pre = getPreTradeVariablesFromSession(chart);
+  return pre.map((v, idx) => {
+    const id = String(v.id || v.name || '').trim() || `pre_var_${idx}`;
+    const isMulti = v.vtype === 'multi';
+    const options =
+      isMulti && Array.isArray(v.options) && v.options.length
+        ? v.options.map(String)
+        : isMulti
+          ? ['—']
+          : [];
+    return {
+      id,
+      label: v.name || 'Variable',
+      type: isMulti ? 'multi' : 'bool',
+      options,
+    };
+  });
+}
+
 // ── Color Picker Popup ───────────────────────────────────────────────────────
 const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange, onAChange, onHexChange, onClose, onDragStart, dragging, animation, hideAlpha }) => {
   const rgb = hsvToRgb(h, s, v);
@@ -38,7 +1598,7 @@ const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange
   const hueColor = `hsl(${h},100%,50%)`;
   const outColor = cpBuildColor(rgb.r, rgb.g, rgb.b, a);
   return (
-    <div className="tlr-cp tlr-gloss" data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex:9200,width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(38,67,247,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
+    <div className="tlr-cp tlr-gloss" data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex:11100,width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(38,67,247,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
       <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
       <div style={{padding:10}}>
         {/* SV square */}
@@ -78,7 +1638,16 @@ const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange
         </div>
       </div>
       <div style={{padding:"5px 10px",borderTop:`1px solid ${c.br}`,display:"flex",justifyContent:"flex-end"}}>
-        <div onClick={onClose} style={{fontSize:10,color:c.acL,cursor:"default",fontWeight:800,fontFamily:F,padding:"2px 6px",letterSpacing:"0.05em"}}>DONE</div>
+        <button
+          type="button"
+          onPointerDown={(e)=>{ e.stopPropagation(); onClose(e); }}
+          onMouseDown={(e)=>e.stopPropagation()}
+          onClick={(e)=>{ e.stopPropagation(); onClose(e); }}
+          style={{
+            fontSize:10,color:c.acL,cursor:"default",fontWeight:800,fontFamily:F,padding:"2px 6px",letterSpacing:"0.05em",
+            background:"transparent",border:"none",margin:0,lineHeight:1.2
+          }}
+        >DONE</button>
       </div>
     </div>
   );
@@ -288,8 +1857,8 @@ const EMOJI_CATS = [
   { id:"symbols",  icon:"❤️", label:"Symbols",  emojis:["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☪️","🕉","✡️","🔯","🕎","☯️","🛐","⛔","🚫","💯","✅","❌","❎","🔴","🟠","🟡","🟢","🔵","🟣","⚫","⚪","🟤","🔺","🔻","💠","🔶","🔷","🔸","🔹","▪️","▫️","◾","◽","⬛","⬜","🔱","⚜️","🏵","🔰","♻️","✔️","☑️","🔘","🔲","🔳","⬜","⬛","🏁","🚩","🎌","🏴","🏳","🏴‍☠️","💢","💥","💫","💦","💨","🕳","💬","💭","💤","♠️","♥️","♦️","♣️","🃏","🎴","🀄"] },
 ];
 
-const TalariaV8b = () => {
-  const [tool, setTool] = useState("trendline");
+const TalariaV8bLive = () => {
+  const [tool, setTool] = useState("crosshair");
   const [hov, setHov] = useState(null);
   const [btnPressed, setBtnPressed] = useState(null);
   const [dropdown, setDropdown] = useState(null);
@@ -336,19 +1905,32 @@ const TalariaV8b = () => {
   const [slEnabled, setSlEnabled] = useState(false);
   const [entryRows, setEntryRows] = useState([{ id:0, price:"0", risk:"100" }]);
   const entryScrollRef = useRef(null);
-  const [slPrice, setSlPrice] = useState("0");
   const [slRows, setSlRows] = useState([{ id:0, price:"0" }]);
   const slScrollRef = useRef(null);
   const [tpRows, setTpRows] = useState([{ id:0, price:"0", qty:"100", enabled:true }]);
   const tpScrollRef = useRef(null);
-  const [tagDefs] = useState([
-    { id:"setup",     label:"Setup OK",    type:"bool" },
-    { id:"htf",       label:"HTF Bias",    type:"bool" },
-    { id:"direction", label:"Direction",   type:"multi", options:["With Trend","Counter","Range"] },
-    { id:"session",   label:"Session",     type:"multi", options:["London","NY","Overlap","Asian"] },
-    { id:"risk",      label:"Risk Size",   type:"multi", options:["Normal","Half","Double"] },
-    { id:"news",      label:"News Risk",   type:"bool" },
-  ]);
+  /** Mirrors #riskAmount / #rewardAmount / pip distance from hidden order panel (order-manager). */
+  const [omRiskSummaryTxt, setOmRiskSummaryTxt] = useState("$0");
+  const [omRewardSummaryTxt, setOmRewardSummaryTxt] = useState("$0");
+  const [omSlDistTxt, setOmSlDistTxt] = useState("—");
+  const [omTpDistTxt, setOmTpDistTxt] = useState("—");
+  /** Per-row strings scraped from hidden #orderPanel (order-manager) — matches chart/preview math. */
+  const [omEntryRowStatLines, setOmEntryRowStatLines] = useState([]);
+  const [omTpRowStatLines, setOmTpRowStatLines] = useState([]);
+  const [omMultiEntryTotalQtyTxt, setOmMultiEntryTotalQtyTxt] = useState("");
+  /** Multi-entry footer: same weighted Avg Entry as chart / #multiEntryAvgPrice — not unweighted mean of row prices. */
+  const [omEntryAvgPriceTxt, setOmEntryAvgPriceTxt] = useState("");
+  /** Multi-TP footer: total size (#orderQuantity) + WAP — matches chart "Avg TP … lots" + weighted price. */
+  const [omTpAvgLotsTxt, setOmTpAvgLotsTxt] = useState("");
+  const [omTpWapPriceTxt, setOmTpWapPriceTxt] = useState("");
+  /** Strategies Lab PRE playbook → same defs as `#orderStrategyVariablesMount` (order-manager). */
+  const [preTradeDefRevision, setPreTradeDefRevision] = useState(0);
+  const preTradeStrategySigRef = useRef("");
+  const preTradeDomHydratedRef = useRef(false);
+  const tagDefs = useMemo(
+    () => sessionPreTradeVarsToTagDefs(typeof window !== "undefined" ? window.chart : null),
+    [preTradeDefRevision]
+  );
   const [postTagDefs] = useState([
     { id:"execution", label:"Execution",     type:"multi", options:["Perfect","Good","OK","Poor"] },
     { id:"followed",  label:"Followed Plan", type:"bool" },
@@ -366,6 +1948,12 @@ const TalariaV8b = () => {
   const [ssOpen, setSsOpen] = useState(true);
   const [replaceTargetId, setReplaceTargetId] = useState(null);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    const onClearDraft = () => setScreenshots([]);
+    window.addEventListener("talaria:order-rail-clear-draft", onClearDraft);
+    return () => window.removeEventListener("talaria:order-rail-clear-draft", onClearDraft);
+  }, []);
   const replaceInputRef = useRef(null);
   const tipTimerRef = useRef(null);
   const [tipData, setTipData] = useState(null);
@@ -397,7 +1985,7 @@ const TalariaV8b = () => {
   const rbPressTimer = useRef(null);
   const [gotoOpen, setGotoOpen] = useState(false);
   const [gotoItems, setGotoItems] = useState([
-    {id:1,type:"datetime",label:"09 Jan 2009",time:"07:00",repeat:"none",pinned:true},
+    {id:1,type:"datetime",label:"09 Jan 2009",time:"07:00",repeat:"none",pinned:true,dateIso:"2009-01-09"},
     {id:2,type:"session",label:"NY Open",time:"13:30",pinned:true},
     {id:4,type:"price",label:"126.500",pinned:true},
   ]);
@@ -429,6 +2017,9 @@ const TalariaV8b = () => {
   const [ddPos, setDdPos] = useState({ top: 60, left: 40 }); // position for dropdown
   const [symbolOpen, setSymbolOpen] = useState(false);
   const [symbol, setSymbol] = useState("EUR/JPY");
+  // Pairs available in the active backtest session (read from chart.js / userStorage).
+  // Each entry: { ticker: 'EUR/JPY', fileId: 12 }. Empty until session loads.
+  const [sessionPairs, setSessionPairs] = useState([]);
   const [symbolSearch, setSymbolSearch] = useState("");
   const [chartTypeOpen, setChartTypeOpen] = useState(false);
   const [chartType, setChartType] = useState("Candles");
@@ -464,14 +2055,672 @@ const TalariaV8b = () => {
   const [tfIndPos, setTfIndPos] = useState(null);
   const tfBarRef = useRef(null);
   const chartCanvasRef = useRef(null);
+
+  // ─── LIVE CHART INITIALIZATION ──────────────────────────────────────────
+  // Wire chart.js (loaded as <script> in live/index.html) to the React-rendered
+  // <canvas id="chartCanvas"> + <svg id="drawingSvg">. chart.js exposes its
+  // init function as window.initializeChart, which is idempotent and bails
+  // safely if the canvas isn't in the DOM yet. We poll briefly because:
+  //   - chart.js may finish loading after React mounts (script defer order),
+  //   - or React may mount after chart.js's auto-init bailed (no canvas yet),
+  //   - or D3 may still be loading from the CDN.
+  // Once window.chart exists, we trigger an initial resize so the canvas
+  // sizes correctly to its parent container.
+  useEffect(() => {
+    let cancelled = false;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 100; // ~10s at 100ms
+
+    const tryInit = async () => {
+      if (cancelled) return;
+      attempts += 1;
+
+      // chart.js not loaded yet — keep polling.
+      if (typeof window.initializeChart !== 'function') {
+        if (attempts < MAX_ATTEMPTS) setTimeout(tryInit, 100);
+        else console.error('[TalariaV8bLive] chart.js never exposed window.initializeChart');
+        return;
+      }
+
+      // Already initialized? Just notify resize + push latest V9 theme (StrictMode / HMR).
+      if (window.chart) {
+        window.dispatchEvent(new Event('resize'));
+        try {
+          applyV9ThemeSettingsToChart(settingsRef.current);
+        } catch (_) {}
+        return;
+      }
+
+      try {
+        const instance = await window.initializeChart();
+        if (cancelled) return;
+
+        if (!instance) {
+          // Init bailed (canvas not ready, D3 not ready, etc.) — retry.
+          if (attempts < MAX_ATTEMPTS) setTimeout(tryInit, 100);
+          return;
+        }
+
+        // Force a layout pass so the canvas matches its container size.
+        // Brave/Chromium can finish chart.js init BEFORE V9's flex layout has
+        // assigned a real size to #chart-container, which leaves the canvas
+        // at 0×0 and pushes axes off-screen. Safari happens to time this
+        // differently, so the same code looks fine there. Resetting
+        // _lastResizeDpr is the same escape-hatch panel-manager.js uses
+        // (line 1672) to bypass chart.resize()'s DPR-equal early-bail and
+        // make it ACTUALLY recalculate based on current clientWidth/Height.
+        const forceResize = () => {
+          try {
+            window.dispatchEvent(new Event('resize'));
+            if (window.chart && window.chart.resize) {
+              window.chart._lastResizeDpr = 0;
+              window.chart.resize();
+              window.chart._chartViewRestored = false;
+              window.chart.fitToView && window.chart.fitToView();
+              window.chart.render && window.chart.render();
+            }
+          } catch (_) {}
+        };
+        forceResize();
+        try {
+          applyV9ThemeSettingsToChart(settingsRef.current);
+        } catch (_) {}
+        try {
+          const om = window.chart?.orderManager;
+          om?.syncOrderPanelMountTarget?.();
+          const p = document.getElementById("orderPanel");
+          if (typeof window !== "undefined" && window.__talariaV9OrderRailOpen && p && !p.classList.contains("visible") && typeof om?.toggleOrderPanel === "function") {
+            om.toggleOrderPanel();
+          }
+        } catch (_) {}
+        // Two extra passes catch the case where layout reports real dims a
+        // frame or two later.
+        requestAnimationFrame(forceResize);
+        setTimeout(forceResize, 200);
+        setTimeout(forceResize, 600);
+        console.log('[TalariaV8bLive] chart.js initialized', instance);
+      } catch (err) {
+        console.error('[TalariaV8bLive] chart.js init failed:', err);
+      }
+    };
+
+    tryInit();
+
+    // ResizeObserver on the chart container — any future size change
+    // (sidebar toggle, settings drawer, browser zoom, fullscreen, OS
+    // window resize) triggers a real chart.resize() that bypasses the
+    // DPR-equal early-bail in chart.js. Keeps axes glued to the right
+    // edge / bottom regardless of how the container is reflowed.
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined' && chartCanvasRef.current) {
+      ro = new ResizeObserver(() => {
+        if (!window.chart || !window.chart.resize) return;
+        try {
+          window.chart._lastResizeDpr = 0;
+          window.chart.resize();
+          window.chart.render && window.chart.render();
+        } catch (_) {}
+      });
+      ro.observe(chartCanvasRef.current);
+    }
+
+    return () => { cancelled = true; if (ro) ro.disconnect(); };
+  }, []);
+
+  // Keep bottom trades panel in sync with chart orderManager (sim / session orders).
+  useEffect(() => {
+    const bump = () => setOmTradeRev((n) => n + 1);
+    const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+    const bus = om?.eventBus;
+    const unsubs = [];
+    if (bus && typeof bus.on === "function") {
+      ["order:pending", "order:opened", "order:closed", "order:pending-removed", "order:update-tick", "account:updated"].forEach((ev) => {
+        unsubs.push(bus.on(ev, bump));
+      });
+    }
+    const id = setInterval(bump, 800);
+    return () => {
+      clearInterval(id);
+      unsubs.forEach((fn) => {
+        try { fn(); } catch (_) { /* noop */ }
+      });
+    };
+  }, []);
+
+  // Ctrl+S — open V9 screenshot panel (same as camera), not the legacy DOM modal
+  useEffect(() => {
+    const onOpen = () => {
+      try {
+        const el = chartCanvasRef.current;
+        if (el) {
+          const r = el.getBoundingClientRect();
+          setCanvasDims({ w: Math.round(r.width), h: Math.round(r.height) });
+        }
+      } catch (_) {}
+      setScreenshotFlash(true);
+      setTimeout(() => setScreenshotOpen(true), 260);
+    };
+    window.addEventListener("talaria-v9-open-screenshot", onOpen);
+    return () => window.removeEventListener("talaria-v9-open-screenshot", onOpen);
+  }, []);
+
+  // ─── SYNC SYMBOL FROM CHART.JS ───────────────────────────────────────────
+  // chart.js fires 'chartDataLoaded' (with detail.symbol, detail.timeframe)
+  // whenever a new backtest session / pair is loaded. chart.js stores the
+  // symbol in compact form ('EURJPY'); V9's pair list uses 'EUR/JPY'.
+  // Normalize 6-char FX pairs to slash-separated form so V9 finds the entry.
+  useEffect(() => {
+    const normalizeSymbol = (s) => {
+      if (!s || typeof s !== 'string') return s;
+      const u = s.toUpperCase().replace(/\s+/g, '');
+      if (u.includes('/')) return u;
+      // 6-letter FX (EURJPY → EUR/JPY)
+      if (/^[A-Z]{6}$/.test(u)) return u.slice(0, 3) + '/' + u.slice(3);
+      return u;
+    };
+
+    let lastSeen = null;
+    const apply = (raw, source) => {
+      const sym = normalizeSymbol(raw);
+      if (!sym || sym === lastSeen) return;
+      lastSeen = sym;
+      console.log("[V9 sym] from", source, "->", sym);
+      setSymbol(sym);
+    };
+
+    // Read all pairs from the active backtest session and populate the
+    // V9 dropdown list. Each entry: { ticker, fileId } so we can call
+    // chart.loadFileData(fileId) when the user picks one in V9.
+    const refreshSessionPairs = () => {
+      try {
+        let session = window.chart?.backtestingSession;
+        if (!session) {
+          const raw = window.userStorage?.getItem?.('backtestingSession')
+            ?? localStorage.getItem('backtestingSession');
+          session = raw ? JSON.parse(raw) : null;
+        }
+        if (!session) return;
+
+        const chart = window.chart;
+        /** Prefer chart.js pair resolver (parses EURUSD from filename when map key is wrong). */
+        const resolveTickerForInstrument = (tickerKey, info, fileId) => {
+          const fid = fileId ?? info?.fileId ?? info?.datasetId ?? null;
+          let resolved = null;
+          try {
+            if (chart?.resolveSessionTickerForFileId && fid != null)
+              resolved = chart.resolveSessionTickerForFileId(session, fid);
+          } catch (_) {}
+          if (resolved && String(resolved).trim())
+            return normalizeSymbol(String(resolved).trim());
+          const rawLabel =
+            (info && (info.symbolName || info.symbol || info.displaySymbol || info.display_symbol || info.name))
+            || info?.ticker
+            || tickerKey;
+          let attempt = String(rawLabel || "").trim();
+          try {
+            if (chart?._formatPairTicker && (attempt || info?.fileName || info?.name))
+              attempt = chart._formatPairTicker(attempt, info?.fileName || info?.name || "") || attempt;
+          } catch (_) {}
+          let out = normalizeSymbol(attempt);
+          // Quote-only keys (CHF, USD, …) — only substitute session/chart symbol when there is a single instrument.
+          const instCount =
+            session.instruments && typeof session.instruments === "object"
+              ? Object.keys(session.instruments).length
+              : 0;
+          const looksBroken = !out.includes("/") && /^[A-Z]{3}$/.test(out);
+          if (looksBroken && instCount <= 1) {
+            const fb =
+              session.symbol || session.pair || session.symbolName
+              || chart?.currentSymbol
+              || null;
+            if (fb) out = normalizeSymbol(String(fb).trim());
+          }
+          return out;
+        };
+
+        const pairs = [];
+        const seen = new Set();
+        const pushPair = (ticker, fileId) => {
+          if (!ticker) return;
+          const fid = fileId != null ? fileId : null;
+          const dedupeKey = fid != null ? `id:${fid}` : `sym:${ticker}`;
+          if (seen.has(dedupeKey)) return;
+          seen.add(dedupeKey);
+          pairs.push({ ticker: normalizeSymbol(String(ticker).trim()), fileId: fid });
+        };
+
+        // Same source as chart.js multi-file picker: session.files + resolveSessionTickerForFileId.
+        // Instruments map keys are often quote currencies only (CHF, CAD, …) — listing from files fixes labels + flags.
+        if (Array.isArray(session.files) && session.files.length > 0) {
+          for (const f of session.files) {
+            if (!f) continue;
+            const fileId = f.id != null ? f.id : f.fileId;
+            if (fileId == null) continue;
+            let display = null;
+            try {
+              if (chart?.resolveSessionTickerForFileId)
+                display = chart.resolveSessionTickerForFileId(session, fileId);
+            } catch (_) {}
+            if (!display || !String(display).trim()) {
+              const rawName = String(f.name || f.fileName || "");
+              try {
+                if (chart?._formatPairTicker)
+                  display =
+                    chart._formatPairTicker(rawName, "") ||
+                    rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
+                else display = rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
+              } catch (_) {
+                display = rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
+              }
+            }
+            if (display && String(display).trim()) pushPair(String(display).trim(), fileId);
+          }
+        }
+
+        if (pairs.length === 0 && session.instruments && typeof session.instruments === "object") {
+          for (const [ticker, info] of Object.entries(session.instruments)) {
+            const fid = info?.fileId ?? info?.datasetId ?? null;
+            const sym = resolveTickerForInstrument(ticker, info, fid);
+            if (sym) pushPair(sym, fid);
+          }
+        }
+        if (pairs.length === 0 && Array.isArray(session.symbols)) {
+          for (const s of session.symbols) {
+            const nm = s?.symbolName || s?.symbol || s?.ticker;
+            if (nm) pushPair(normalizeSymbol(String(nm).trim()), s.fileId ?? null);
+          }
+        }
+        if (pairs.length === 0 && Array.isArray(session.instrumentTickers)) {
+          for (const t of session.instrumentTickers) {
+            pushPair(normalizeSymbol(t), null);
+          }
+        }
+        if (pairs.length) setSessionPairs(pairs);
+      } catch (err) {
+        console.warn('[V9 sym] refreshSessionPairs failed', err);
+      }
+    };
+
+    // Poll window.chart.currentSymbol until it stabilizes. Two reasons we can't
+    // rely on chartDataLoaded alone:
+    //   1. The event may have fired before V9 mounted.
+    //   2. Some chart.js code paths set currentSymbol without firing the event
+    //      (e.g. session restore from replay/backtest).
+    let cancelled = false;
+    let attempts = 0;
+    const tick = () => {
+      if (cancelled) return;
+      const activeChart = v9ActiveChartInstance();
+      const s = activeChart?.currentSymbol;
+      if (s) apply(s, "poll");
+      refreshSessionPairs();
+      // Keep polling for ~30s in case the user navigates between sessions.
+      if (attempts++ < 150) setTimeout(tick, 200);
+    };
+    tick();
+
+    const handleDataLoaded = (e) => {
+      const d = e?.detail || {};
+      const src = d.chart;
+      if (v9IsMultiPanelLayoutActive()) {
+        const active = v9ActiveChartInstance();
+        if (src && active && src !== active) return;
+      }
+      apply(d.symbol, "event");
+      refreshSessionPairs();
+    };
+    window.addEventListener('chartDataLoaded', handleDataLoaded);
+    window.__v9RefreshSessionPairs = refreshSessionPairs;
+    return () => {
+      cancelled = true;
+      try {
+        delete window.__v9RefreshSessionPairs;
+      } catch (_) {}
+      window.removeEventListener('chartDataLoaded', handleDataLoaded);
+    };
+  }, []);
+
+  // Refresh BACKTEST pair list when opening the picker so chart.js session resolvers are available.
+  useEffect(() => {
+    if (!symbolOpen) return;
+    try {
+      if (typeof window.__v9RefreshSessionPairs === "function") window.__v9RefreshSessionPairs();
+    } catch (_) {}
+  }, [symbolOpen]);
+
+  // Finnhub economic calendar pair-filter reads window.chart.currentSymbol; V9 can show
+  // the correct pair before chart.js finishes resolving tickers. Mirror compact ticker here.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const compact = String(symbol || "")
+      .toUpperCase()
+      .replace(/[^A-Z]/g, "");
+    try {
+      window.__v9ChartSymbol = compact || undefined;
+    } catch (_) {}
+    try {
+      if (window.chart && typeof window.chart.scheduleRender === "function") {
+        window.chart.scheduleRender();
+      }
+    } catch (_) {}
+    try {
+      window.dispatchEvent(new CustomEvent("economicCalendarUpdated"));
+    } catch (_) {}
+  }, [symbol]);
+
+  // ─── SYNC CHART TYPE → chart.js ──────────────────────────────────────────
+  // V9 React state (chartType) drives chart.js's chartSettings.chartType.
+  // chart.js value vocabulary is lowercase / no spaces; map V9 labels here.
+  // Mirrors what legacy index.html's chart-type dropdown handler does:
+  //     activeChart.chartSettings.chartType = chartType;
+  //     activeChart.render();
+  // Plus _syncChartTypeUI keeps the legacy toolbar icon in sync if it's around.
+  useEffect(() => {
+    const CHART_TYPE_MAP = {
+      "Candles": "candles",
+      "Hollow Candles": "hollow",
+      "Heikin Ashi": "heikinashi",
+      "Bars": "bars",
+      "Line": "line",
+      "Area": "area",
+    };
+    const mapped = CHART_TYPE_MAP[chartType] || "candles";
+
+    let cancelled = false;
+    let attempts = 0;
+
+    const apply = () => {
+      if (cancelled) return;
+      const chart = window.chart;
+      if (!chart || !chart.chartSettings || typeof chart.render !== "function") {
+        // chart.js not ready yet — retry briefly. Once ready it stays ready.
+        if (attempts++ < 60) setTimeout(apply, 100);
+        return;
+      }
+      if (chart.chartSettings.chartType === mapped) return;
+      chart.chartSettings.chartType = mapped;
+      try { chart.render(); } catch (err) { console.warn("[V9] chart.render failed after chartType change:", err); }
+      // Apply to other panels too (multi-panel sync, mirrors legacy behavior).
+      try {
+        const panels = window.panelManager?.getPanels?.() || [];
+        for (const p of panels) {
+          const pc = p?.chartInstance;
+          if (pc && pc !== chart && pc.chartSettings) {
+            pc.chartSettings.chartType = mapped;
+            if (typeof pc.render === "function") pc.render();
+          }
+        }
+      } catch (_) {}
+      // Sync legacy toolbar UI if it exists in the DOM.
+      if (typeof window._syncChartTypeUI === "function") {
+        try { window._syncChartTypeUI(mapped); } catch (_) {}
+      }
+    };
+
+    apply();
+    return () => { cancelled = true; };
+  }, [chartType]);
+
+  // Per Chart instance (main + panel tiles): V9 id (e.g. "SMA") → chart.js runtime id.
+  // WeakMap so each focused tile keeps its own mapping (multi-panel).
+  const indicatorMapsByChartRef = useRef(null); // WeakMap<object, Record<string, string>> | null
+
+  const chartTfToV9 = (cTf) => {
+    if (!cTf) return null;
+    const s = String(cTf).toLowerCase().trim();
+    if (s === "1mo") return "1M";
+    if (/^\d+h$/.test(s)) return s.toUpperCase();
+    if (/^\d+d$/.test(s) || /^\d+w$/.test(s)) return s.toUpperCase();
+    return s;
+  };
+
+  const routeSessionFileLoadToSelectedPanel = (fileId) => {
+    if (fileId == null) return;
+    const fid = typeof fileId === "string" ? fileId : String(fileId);
+    try {
+      const pm = window.panelManager;
+      if (!pm || !v9IsMultiPanelLayoutActive()) {
+        if (window.chart && typeof window.chart.loadFileData === "function") {
+          window.chart.loadFileData(fid);
+        }
+        return;
+      }
+      const panel = pm.panels?.[pm.selectedPanelIndex ?? 0];
+      const pc = panel?.chartInstance;
+      const isMain = !!(panel && (panel.isMainChart || pc === window.chart));
+      if (isMain && window.chart && typeof window.chart.loadFileData === "function") {
+        window.chart.loadFileData(fid);
+      } else if (pc && typeof pc.loadPanelFileData === "function") {
+        void pc.loadPanelFileData(fid);
+      } else if (window.chart && typeof window.chart.loadFileData === "function") {
+        window.chart.loadFileData(fid);
+      }
+    } catch (err) {
+      console.warn("[V9 sym] routeSessionFileLoadToSelectedPanel failed", err);
+    }
+  };
+
+  // ─── SYNC TIMEFRAME → chart.js ───────────────────────────────────────────
+  // V9 'tf' state ("1m", "5m", "15m", "30m", "1H", "4H", "1D", "1W", "1M")
+  // drives chart.js's setTimeframe().
+  //
+  // CRITICAL: chart.js's vocabulary uses lowercase AND uses "1mo" for month
+  // (because "1m" already means 1 minute). V9 uses capital "1M" for month,
+  // which would be misread as "1m" minute if naively lowercased. Map carefully.
+  useEffect(() => {
+    // Convert V9 tf → chart.js timeframe string.
+    const v9ToChartTf = (v9) => {
+      if (!v9 || typeof v9 !== "string") return "1m";
+      const trimmed = v9.trim();
+      // Month: V9 capital "1M" → chart.js "1mo".
+      if (/^\d+M$/.test(trimmed)) return trimmed.replace("M", "mo").toLowerCase();
+      // Everything else: simple lowercase. "1H" → "1h", "1D" → "1d", "1W" → "1w".
+      return trimmed.toLowerCase();
+    };
+
+    const target = v9ToChartTf(tf);
+    let cancelled = false;
+    let attempts = 0;
+
+    const apply = () => {
+      if (cancelled) return;
+      const chart = window.chart;
+      if (!chart || typeof chart.setTimeframe !== "function") {
+        if (attempts++ < 60) setTimeout(apply, 200);
+        return;
+      }
+      const pm = window.panelManager;
+      if (
+        pm &&
+        typeof pm.updateSelectedPanelTimeframe === "function" &&
+        v9IsMultiPanelLayoutActive()
+      ) {
+        const sel = pm.getSelectedPanel?.();
+        const pci = sel?.chartInstance;
+        const curTf = pci?.currentTimeframe ?? chart.currentTimeframe;
+        if (curTf === target) return;
+        try {
+          pm.updateSelectedPanelTimeframe(target);
+        } catch (err) {
+          console.warn("[V9] updateSelectedPanelTimeframe failed for", tf, "->", target, err);
+        }
+        return;
+      }
+      // setTimeframe early-returns if rawData empty AND no currentFileId; that's fine.
+      if (chart.currentTimeframe === target) return;
+      try {
+        chart.setTimeframe(target);
+      } catch (err) {
+        console.warn("[V9] setTimeframe failed for", tf, "->", target, err);
+      }
+    };
+
+    apply();
+    return () => { cancelled = true; };
+  }, [tf]);
+
+  // Listen for chart.js timeframe changes (e.g. legacy hotkey, replay system,
+  // panel sync) and reflect them back into V9 state so the UI stays in sync.
+  useEffect(() => {
+    const handleTfChanged = (e) => {
+      let cTf = e?.detail?.timeframe;
+      if (!cTf) {
+        const active = v9ActiveChartInstance();
+        cTf = active?.currentTimeframe ?? window.chart?.currentTimeframe;
+      }
+      const mapped = chartTfToV9(cTf);
+      if (mapped) setTf(mapped);
+    };
+
+    window.addEventListener("timeframeChanged", handleTfChanged);
+    return () => window.removeEventListener("timeframeChanged", handleTfChanged);
+  }, []);
+
+  // Multi-panel: keep toolbar pair/TF in sync with the focused panel (see also the effect
+  // below that re-stamps main-tile OHLC from window.chart).
+  useEffect(() => {
+    const normalizeSymbol = (s) => {
+      if (!s || typeof s !== "string") return s;
+      const u = s.toUpperCase().replace(/\s+/g, "");
+      if (u.includes("/")) return u;
+      if (/^[A-Z]{6}$/.test(u)) return u.slice(0, 3) + "/" + u.slice(3);
+      return u;
+    };
+
+    const onPanelSelected = (e) => {
+      const d = e?.detail || {};
+      const panel = d.panel;
+      const ci = panel?.chartInstance;
+      if (ci) {
+        const raw = ci.currentSymbol ?? ci.symbol;
+        if (raw) {
+          const sym = normalizeSymbol(String(raw).trim());
+          if (sym) setSymbol(sym);
+        }
+      }
+      const cTf = (ci && ci.currentTimeframe) || d.timeframe;
+      const mapped = chartTfToV9(cTf);
+      if (mapped) setTf(mapped);
+    };
+
+    const onPanelTimeframeChanged = (e) => {
+      const cTf = e?.detail?.timeframe;
+      const mapped = chartTfToV9(cTf);
+      if (mapped) setTf(mapped);
+    };
+
+    window.addEventListener("panelSelected", onPanelSelected);
+    window.addEventListener("panelTimeframeChanged", onPanelTimeframeChanged);
+    return () => {
+      window.removeEventListener("panelSelected", onPanelSelected);
+      window.removeEventListener("panelTimeframeChanged", onPanelTimeframeChanged);
+    };
+  }, []);
+
+  // Multi-panel: top toolbar `symbol` / `tf` track the focused tile; the main tile's
+  // #chartSymbol / #chartTimeframe must stay `window.chart`'s pair. Re-stamp from chart.js
+  // whenever toolbar state changes so nothing leaves the unsuffixed OHLC nodes stale or wrong.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!v9IsMultiPanelLayoutActive()) return;
+    const main = window.chart;
+    if (!main || typeof main.updateChartOHLCSymbol !== "function") return;
+    const sym = main.currentSymbol;
+    if (!sym) return;
+    requestAnimationFrame(() => {
+      try {
+        main.updateChartOHLCSymbol(sym);
+      } catch (_) {}
+    });
+  }, [symbol, tf]);
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Replay bridge — wires V9 replay-bar UI to window.chart.replaySystem
+  // (defined in chart/modules/replay-system.js). Mirrors the legacy toolbar
+  // exactly: same play()/pause(), setSpeed(), setPlaybackMode(),
+  // requestStepForward(), enterReplayMode()/exitReplayMode() calls.
+  //
+  // Ensures user actions on V9 buttons reach the chart, and that legacy
+  // hotkeys (Space=play, →=step) are reflected back into V9 state.
+  // ──────────────────────────────────────────────────────────────────────
+  const getReplaySystem = () => {
+    return (window.chart && window.chart.replaySystem) || null;
+  };
+
+  // Helper: ensure replay is active before play/step. Returns the rs or null.
+  // When replay isn't yet active, callers should typically open the V9
+  // rollback (cut-line) overlay so the user can pick a start point with the
+  // V9 styling — NOT the legacy DOM overlay from goBackToPickPoint(). This
+  // helper is a fallback used only when the cut-line UI isn't available.
+  const ensureReplayActive = () => {
+    const rs = getReplaySystem();
+    if (!rs) return null;
+    if (rs.isActive) return rs;
+    if (typeof rs.enterReplayMode === 'function') {
+      try { rs.enterReplayMode(); } catch(e) { console.warn('[V9 Replay] enter failed', e); }
+    }
+    return rs;
+  };
+
+  // Poll replaySystem state and reflect into V9 (legacy hotkeys / clone toolbar
+  // can change isPlaying/playbackMode/speed without going through V9 buttons).
+  useEffect(() => {
+    let cancelled = false;
+    const sync = () => {
+      if (cancelled) return;
+      const rs = getReplaySystem();
+      if (rs) {
+        if (typeof rs.isPlaying === 'boolean' && rs.isPlaying !== playing) {
+          setPlaying(rs.isPlaying);
+        }
+        const mode = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : rs.playbackMode;
+        if (mode && mode !== replayMode) setReplayMode(mode);
+        if (Number.isFinite(rs.speed) && rs.speed !== speed) setSpeed(rs.speed);
+      }
+    };
+    const id = setInterval(sync, 250);
+    return () => { cancelled = true; clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, replayMode, speed]);
+
+  // Push V9 mode changes into the replaySystem (skip if user just synced from rs).
+  useEffect(() => {
+    const rs = getReplaySystem();
+    if (!rs || typeof rs.setPlaybackMode !== 'function') return;
+    const current = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : rs.playbackMode;
+    if (current !== replayMode) {
+      try { rs.setPlaybackMode(replayMode); } catch(e) { console.warn('[V9 Replay] setPlaybackMode failed', e); }
+    }
+  }, [replayMode]);
+
+  // Push V9 speed changes into the replaySystem.
+  useEffect(() => {
+    const rs = getReplaySystem();
+    if (!rs || typeof rs.setSpeed !== 'function') return;
+    if (rs.speed !== speed) {
+      try { rs.setSpeed(speed); } catch(e) { console.warn('[V9 Replay] setSpeed failed', e); }
+    }
+  }, [speed]);
+
+  // ────────────────────────────────────────────────────────────────────────
+
   const rollbackLineRef = useRef(null);
   const rollbackOverlayRef = useRef(null);
   const tlBarRef = useRef(null);
   const tlBarDropRef = useRef(null);
   const pinnedBarRef = useRef(null);
   const cpBarAnchorRef = useRef(null); // set when color picker is opened from the tl bar
+  /** Latest cpApply + drag inputs for window-level pointer listeners (avoids fullscreen overlay above picker). */
+  const cpApplyRef = useRef(() => {});
+  const cpPickerDragRef = useRef({});
   const closingDropdownKey = useRef(null);
+  /** Keeps latest closeWindows for chart.js → `talaria-v9-open-settings` without stale closures */
+  const closeWindowsRef = useRef(() => {});
+  /** Latest closeAll for document mousedown (must not be inlined before closeAll exists below). */
+  const closeAllRef = useRef(() => {});
   const [canvasDims, setCanvasDims] = useState({w:888,h:360});
+  /** Data URL from real #chart-container capture — matches Copy/Download output (not SVG mock). */
+  const [screenshotPreviewUrl, setScreenshotPreviewUrl] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileTab, setProfileTab] = useState("account");
@@ -485,6 +2734,96 @@ const TalariaV8b = () => {
   const [profileCurPw, setProfileCurPw] = useState("");
   const [profileNewPw, setProfileNewPw] = useState("");
   const [profileConfirmPw, setProfileConfirmPw] = useState("");
+
+  // ─── PROFILE ↔ LEGACY USER STORAGE ──────────────────────────────────────
+  // Mirror V9's profile UI to the same sources legacy index.html uses:
+  //   - localStorage 'talaria_current_user' (cached user from /api/auth/me)
+  //   - userStorage 'chartLanguage'  ('en' | 'ar')
+  //   - userStorage 'talaria_avatar' (base64 dataURL, V9-specific persistence)
+  //
+  // V9's profileLang vocabulary is "english"/"arabic"; legacy uses "en"/"ar".
+  // Map both directions.
+  const v9LangToLegacy = (l) => (l === "arabic" ? "ar" : "en");
+  const legacyLangToV9 = (l) => (l === "ar" ? "arabic" : "english");
+
+  useEffect(() => {
+    try {
+      window.__V9_LIVE_SHELL_BUILD = "20260504_v9_selection_sync";
+    } catch (_) {}
+  }, []);
+
+  // Mount: hydrate name/avatar/language from the same sources legacy reads.
+  useEffect(() => {
+    // Cached user (synchronous).
+    try {
+      const cached = JSON.parse(localStorage.getItem("talaria_current_user") || "{}");
+      if (cached && cached.name) setProfileName(cached.name);
+    } catch (_) {}
+    // Language (userStorage shim with localStorage fallback).
+    try {
+      const lang =
+        (window.userStorage?.getItem?.("chartLanguage")) ||
+        localStorage.getItem("chartLanguage") ||
+        "en";
+      setProfileLang(legacyLangToV9(lang));
+    } catch (_) {}
+    // Avatar (V9-only key — legacy uses initial letter, no avatar storage).
+    try {
+      const av =
+        (window.userStorage?.getItem?.("talaria_avatar")) ||
+        localStorage.getItem("talaria_avatar");
+      if (av) setProfileAvatar(av);
+    } catch (_) {}
+    // Live fetch (same call legacy makes ~index.html:59205).
+    fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d || !d.user) return;
+        if (d.user.name) setProfileName(d.user.name);
+        try { localStorage.setItem("talaria_current_user", JSON.stringify(d.user)); } catch (_) {}
+      })
+      .catch(() => {});
+  }, []);
+
+  // Persist name edits back to the cached user blob so legacy & V9 stay in sync.
+  useEffect(() => {
+    if (!profileName) return;
+    try {
+      const cached = JSON.parse(localStorage.getItem("talaria_current_user") || "{}");
+      if (cached.name === profileName) return;
+      cached.name = profileName;
+      localStorage.setItem("talaria_current_user", JSON.stringify(cached));
+    } catch (_) {}
+  }, [profileName]);
+
+  // Persist avatar to both userStorage (per-user) and localStorage (fallback).
+  useEffect(() => {
+    try {
+      if (profileAvatar) {
+        window.userStorage?.setItem?.("talaria_avatar", profileAvatar);
+        localStorage.setItem("talaria_avatar", profileAvatar);
+      } else {
+        window.userStorage?.removeItem?.("talaria_avatar");
+        localStorage.removeItem("talaria_avatar");
+      }
+    } catch (_) {}
+  }, [profileAvatar]);
+
+  // Language: write to userStorage 'chartLanguage' and trigger legacy
+  // window._applyLanguage so any DOM the chart owns gets retranslated.
+  useEffect(() => {
+    const code = v9LangToLegacy(profileLang);
+    try {
+      const cur = window.userStorage?.getItem?.("chartLanguage") || localStorage.getItem("chartLanguage");
+      if (cur === code) return;
+      window.userStorage?.setItem?.("chartLanguage", code);
+      try { localStorage.setItem("chartLanguage", code); } catch (_) {}
+      if (typeof window._applyLanguage === "function") {
+        try { window._applyLanguage(code); } catch (_) {}
+      }
+    } catch (_) {}
+  }, [profileLang]);
+
   const [darkMode, setDarkMode] = useState(true);
   const [faqOpen, setFaqOpen] = useState(false);
   const [faqCat, setFaqCat] = useState("faq");
@@ -499,11 +2838,48 @@ const TalariaV8b = () => {
   const [scLinkSearch, setScLinkSearch] = useState("");
   const [scLinkedTrade, setScLinkedTrade] = useState(null);
   const [scLinkPhase, setScLinkPhase] = useState(null);
+
+  useEffect(() => {
+    if (!screenshotOpen) {
+      setScreenshotPreviewUrl(null);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      for (let i = 0; i < 35 && !cancelled; i++) {
+        const sm = window.screenshotManager;
+        const el = document.getElementById("chart-container");
+        if (sm && typeof sm.captureCanvasDirect === "function" && el) {
+          try {
+            const canvas = await sm.captureCanvasDirect(el, 0.34);
+            if (cancelled || !canvas) return;
+            setScreenshotPreviewUrl(canvas.toDataURL("image/jpeg", 0.78));
+            return;
+          } catch (_) {
+            /* wait for manager / next frame */
+          }
+        }
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      if (!cancelled) setScreenshotPreviewUrl(null);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [screenshotOpen, symbol, tf, chartType]);
+
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [pinnedBarOpen, setPinnedBarOpen] = useState(true);
+  const [pinnedBarOpen, setPinnedBarOpen] = useState(false);
   const [pinnedBarPos, setPinnedBarPos] = useState({ x: 50, y: 80 });
   const [groupSelected, setGroupSelected] = useState({});
   const [tlBarPos, setTlBarPos] = useState({ x: 130, y: 200 });
+  // True only when a drawing is currently selected (set by hooking the
+  // legacy drawing-toolbar's show/hide via drawingManager.toolbar in the
+  // useEffect below). Drives the visibility of the V9 floating toolbar so
+  // it only appears when the user actually has a shape selected.
+  const [tlBarSelected, setTlBarSelected] = useState(false);
+  const [tlBarSelectedType, setTlBarSelectedType] = useState(null);
   const [tlSettOpen, setTlSettOpen] = useState(false);
   const [tlSettPos, setTlSettPos] = useState({ x: 200, y: 90 });
   const [tlName, setTlName] = useState("Trend Line");
@@ -524,7 +2900,7 @@ const TalariaV8b = () => {
   const [tlInfoDropAnchor, setTlInfoDropAnchor] = useState(null);
   const [tlStyleDropUp, setTlStyleDropUp] = useState(false);
   const [tlBarDrop, setTlBarDrop] = useState(null);
-  const [tlTemplates, setTlTemplates] = useState([]);
+  const [tlTemplatesRev, setTlTemplatesRev] = useState(0);
   const [tlBarDropAnchor, setTlBarDropAnchor] = useState({ btnTop: 0, btnBottom: 0, left: 0, right: 0, barX: 0, barY: 0 });
   const tlLastBarDropRef = useRef("style");
   const [tlSaveAsMode, setTlSaveAsMode] = useState(false);
@@ -549,17 +2925,20 @@ const TalariaV8b = () => {
     chLines: [
       { on: true, value: "1.00", color: "#2962FF", type: "solid", width: "2" },
       { on: true, value: "0.75", color: "#2962FF", type: "dashed", width: "1" },
-      { on: false, value: "0.50", color: "#8C8C8C", type: "dashed", width: "1" },
+      { on: true, value: "0.50", color: "#8C8C8C", type: "dashed", width: "1" },
       { on: true, value: "0.25", color: "#2962FF", type: "dashed", width: "1" },
       { on: true, value: "0.00", color: "#2962FF", type: "solid", width: "2" },
     ],
     regLines: [
-      { on: true, label: "Middle Line", color: "#2962FF", type: "solid", width: "2" },
-      { on: true, label: "Upper Line", color: "#2962FF", type: "dashed", width: "1" },
-      { on: true, label: "Lower Line", color: "#2962FF", type: "dashed", width: "1" },
+      { on: true, label: "Middle Line", color: "#9c27b0", type: "dashed", width: "2" },
+      { on: true, label: "Upper Line", color: "#9c27b0", type: "dashed", width: "2" },
+      { on: true, label: "Lower Line", color: "#9c27b0", type: "dashed", width: "2" },
     ],
     regUpperBg: "rgba(74,106,255,0.15)", regLowerBg: "rgba(255,82,82,0.15)",
     source: "Close", regressionType: "Linear",
+    regUpperDev: { on: true, value: "2" },
+    regLowerDev: { on: true, value: "2" },
+    regPearsonR: false,
     fibTzLevels: [
       { on: true, value: "1",  color: "#787B86", type: "solid",  width: "1" },
       { on: true, value: "2",  color: "#F44336", type: "solid",  width: "1" },
@@ -781,6 +3160,10 @@ const TalariaV8b = () => {
   const [detachPos, setDetachPos] = useState({ x: 900, y: 80 });
   const [detachSize, setDetachSize] = useState({ w: 336, h: 560 });
   const [panelMode, setPanelMode] = useState("advanced");
+  /** Short windows where React row counts intentionally lead OM (panel add/delete) so reverse poll must not fight the forward bridge. */
+  const omPanelBridgeRef = useRef({ entryAdd: 0, entryDel: 0, tpAdd: 0, tpDel: 0 });
+  const OM_PANEL_BRIDGE_LEAD_MS = 750;
+  const isOmBridgeLead = (ts) => !!(ts && Date.now() - ts < OM_PANEL_BRIDGE_LEAD_MS);
   const isWide = panelDetached && detachSize.w >= 520;
   const opTemplates = ["Default","Scalp — Trend","Swing Trade","Breakout","Reversal"];
   const [rightPanel, setRightPanel] = useState(null);
@@ -788,16 +3171,9 @@ const TalariaV8b = () => {
   const [layersOpen, setLayersOpen] = useState(false);
   const [layersPos, setLayersPos] = useState({ x: 0, y: 0 });
   const [layersCat, setLayersCat] = useState("drawings");
-  const [layersItems, setLayersItems] = useState(Array.from({length:100},(_,i)=>{
-    const types=[
-      {icon:"trendline",name:"Trend Line"},{icon:"hline",name:"Horizontal Line"},
-      {icon:"fib",name:"Fib Retracement"},{icon:"rect",name:"Rectangle"},
-      {icon:"channel",name:"Channel"},{icon:"vline",name:"Vertical Line"},
-      {icon:"hray",name:"Horizontal Ray"},{icon:"polyline",name:"Polyline"},
-    ];
-    const t=types[i%types.length];
-    return {id:`l${i+1}`,icon:t.icon,name:`${t.name} ${i+1}`,color:"#4A6AFF"};
-  }));
+  // Populated from chart.js drawingManager.drawings — see the
+  // "Objects Tree sync" effect below. Initially empty until chart.js loads.
+  const [layersItems, setLayersItems] = useState([]);
   const [layersVis, setLayersVis] = useState({});
   const [layersSearch, setLayersSearch] = useState("");
   const [newsOpen, setNewsOpen] = useState(false);
@@ -814,6 +3190,251 @@ const TalariaV8b = () => {
   const [layoutPanels, setLayoutPanels] = useState({n:1,li:0});
   const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: true, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
   const [layoutTab, setLayoutTab] = useState("panels");
+
+  /** Same keys as the legacy News country filter (economic-news-sidebar.js). */
+  const ECON_CAL_COUNTRIES = ["US", "EU", "GB", "JP", "AU", "CA", "DE", "FR", "IT", "CN", "CH"];
+  const [ecoNewsRev, setEcoNewsRev] = useState(0);
+  const newsSearchToModuleDebounceRef = useRef(null);
+
+  const pushEconNewsFiltersToModule = (impactArr, symOnly, cntSel) => {
+    const api = window.__economicCalendarUi;
+    const impact =
+      Array.isArray(impactArr) && impactArr.length > 0 ? impactArr : ["high", "med", "low"];
+    const allOff = ECON_CAL_COUNTRIES.every((co) => !cntSel[co]);
+    const allOn = ECON_CAL_COUNTRIES.every((co) => cntSel[co]);
+    let countryCodes;
+    if (allOff) countryCodes = ["__"];
+    else if (allOn) countryCodes = [];
+    else countryCodes = ECON_CAL_COUNTRIES.filter((co) => cntSel[co]);
+    if (!api) {
+      try {
+        window.chart?.scheduleRender?.();
+      } catch (_) {}
+      try {
+        window.dispatchEvent(new CustomEvent("economicCalendarUpdated"));
+      } catch (_) {}
+      return;
+    }
+    api.setFilters({
+      impactHigh: impact.includes("high"),
+      impactMedium: impact.includes("med"),
+      impactLow: impact.includes("low"),
+      pairOnly: !!symOnly,
+      countryCodes,
+    });
+    try {
+      window.chart?.scheduleRender?.();
+    } catch (_) {}
+    try {
+      window.dispatchEvent(new CustomEvent("economicCalendarUpdated"));
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    if (rightPanel !== "news") {
+      try { window.__v9NewsPanelActive = false; } catch (_) {}
+      try {
+        document.getElementById("newsContent")?.classList.remove("active");
+      } catch (_) {}
+      return undefined;
+    }
+    try { window.__v9NewsPanelActive = true; } catch (_) {}
+    try {
+      document.getElementById("newsContent")?.classList.add("active");
+    } catch (_) {}
+    const api = window.__economicCalendarUi;
+    if (api) {
+      const s = api.getStatus();
+      setNewsTab(s.tab);
+      setNewsSearch(s.query);
+      const f = s.filters;
+      setNewsImpact([
+        ...(f.impactHigh ? ["high"] : []),
+        ...(f.impactMedium ? ["med"] : []),
+        ...(f.impactLow ? ["low"] : []),
+      ]);
+      setNewsSymbolOnly(!!f.pairOnly);
+      const codes = f.countryCodes || [];
+      const allOn = codes.length === 0;
+      const isNoneMode = codes.length === 1 && codes[0] === "__";
+      setNewsCntSel(
+        ECON_CAL_COUNTRIES.reduce((acc, co) => {
+          let v = 0;
+          if (allOn) v = 1;
+          else if (isNoneMode) v = 0;
+          else v = codes.indexOf(co) >= 0 ? 1 : 0;
+          acc[co] = v;
+          return acc;
+        }, {})
+      );
+    }
+    try {
+      window.loadEconomicNewsSidebar?.();
+    } catch (_) {}
+    const bump = () => setEcoNewsRev((x) => x + 1);
+    window.addEventListener("economicCalendarUpdated", bump);
+    const tick = setInterval(bump, 1000);
+    return () => {
+      try { window.__v9NewsPanelActive = false; } catch (_) {}
+      try {
+        document.getElementById("newsContent")?.classList.remove("active");
+      } catch (_) {}
+      window.removeEventListener("economicCalendarUpdated", bump);
+      clearInterval(tick);
+    };
+  }, [rightPanel]);
+
+  // ─── MULTI-PANEL LAYOUTS + SYNC ↔ window.panelManager ───────────────────
+  // V9's layout picker uses (n=panel count 1..8, li=variant index). Legacy
+  // panelManager.applyLayout takes string IDs like '1','2v','2h','3l','4tl'.
+  // The 2D array below maps V9 (n,li) → legacy id, in the SAME visual order
+  // V9 renders the variants (see lyLines around line 10635). Variants whose
+  // visual layout doesn't exactly match a legacy id fall through to the
+  // closest legacy variant for that panel count.
+  const LAYOUT_ID_MAP = [
+    ["1"],
+    ["2v","2h"],
+    ["3v","3h","3l","3r","3t","3b"],
+    ["4","4h","4v","4b","4t","4l","4r","4tl"],
+    ["5a","5b","5c","5v","5h"],
+    ["6","6b","6v","6h"],
+    ["7a","7v"],
+    ["8","8b","8v","8h"],
+  ];
+  const layoutTupleFromId = (id) => {
+    for (let n = 0; n < LAYOUT_ID_MAP.length; n++) {
+      const li = LAYOUT_ID_MAP[n].indexOf(id);
+      if (li >= 0) return { n: n + 1, li };
+    }
+    return null;
+  };
+
+  // Mount: hydrate V9 state from whatever panelManager already has loaded
+  // from userStorage so the UI shows the correct active layout/sync toggles.
+  useEffect(() => {
+    let cancelled = false;
+    let attempts = 0;
+    const tryHydrate = () => {
+      if (cancelled) return;
+      const pm = window.panelManager;
+      if (!pm || !pm.syncSettings) {
+        if (attempts++ < 60) setTimeout(tryHydrate, 100);
+        return;
+      }
+      try {
+        const cur = pm.getCurrentLayout?.() || pm.currentLayout || "1";
+        const tuple = layoutTupleFromId(cur);
+        if (tuple) setLayoutPanels(tuple);
+      } catch (_) {}
+      try {
+        // Only copy keys V9 knows about so we don't spread legacy-only keys
+        // into V9's state object.
+        setLayoutSync((prev) => {
+          const next = { ...prev };
+          for (const k of Object.keys(prev)) {
+            if (k in pm.syncSettings) next[k] = !!pm.syncSettings[k];
+          }
+          return next;
+        });
+      } catch (_) {}
+    };
+    tryHydrate();
+    return () => { cancelled = true; };
+  }, []);
+
+  // V9 layout picker → panelManager.applyLayout(id).
+  // Skips the very first run (initial defaults) so we don't reset whatever
+  // layout panelManager restored from userStorage on boot.
+  const layoutFirstApplyRef = useRef(true);
+  useEffect(() => {
+    if (layoutFirstApplyRef.current) { layoutFirstApplyRef.current = false; return; }
+    const id = LAYOUT_ID_MAP[layoutPanels.n - 1]?.[layoutPanels.li];
+    if (!id) return;
+    const apply = () => {
+      const pm = window.panelManager;
+      if (!pm || typeof pm.applyLayout !== "function") return false;
+      try {
+        if (pm.getCurrentLayout?.() === id || pm.currentLayout === id) return true;
+        pm.applyLayout(id);
+      } catch (err) { console.warn("[V9 layout] applyLayout failed:", err); }
+      return true;
+    };
+    if (apply()) return;
+    let n = 0;
+    const t = setInterval(() => { if (apply() || ++n > 60) clearInterval(t); }, 100);
+    return () => clearInterval(t);
+  }, [layoutPanels]);
+
+  // After a layout switch, force EVERY chart instance to fully recompute its
+  // dimensions and re-render axes. chart.resize() bails early when DPR hasn't
+  // changed, so the panel-0 main chart can keep its old axis positions even
+  // though #chartWrapper was resized to half width. Resetting _lastResizeDpr
+  // is the same trick panel-manager.js uses for non-main panels (line 1672).
+  // We also do TWO passes (RAF + ~250ms timeout) because percent-based widths
+  // sometimes report 0×0 on the first frame after a layout change.
+  useEffect(() => {
+    const id = LAYOUT_ID_MAP[layoutPanels.n - 1]?.[layoutPanels.li];
+    if (!id) return;
+    const forceResizeAll = () => {
+      try {
+        if (window.chart && window.chart.resize) {
+          window.chart._lastResizeDpr = 0;
+          window.chart.resize();
+          window.chart.render && window.chart.render();
+        }
+        const pm = window.panelManager;
+        if (pm && Array.isArray(pm.panels)) {
+          pm.panels.forEach((p) => {
+            const pc = p && p.chartInstance;
+            if (!pc || !pc.resize || pc === window.chart) return;
+            pc._lastResizeDpr = 0;
+            pc.resize();
+            pc.render && pc.render();
+          });
+        }
+      } catch (err) { console.warn("[V9 layout] resize-after-apply failed:", err); }
+    };
+    const r1 = requestAnimationFrame(forceResizeAll);
+    const r2 = setTimeout(forceResizeAll, 250);
+    return () => { cancelAnimationFrame(r1); clearTimeout(r2); };
+  }, [layoutPanels]);
+
+  // V9 sync toggles → panelManager.syncSettings + saveSyncSettings + the
+  // same one-shot side-effects legacy fires when toggles flip on:
+  //   - crosshair: window.crosshairSyncEnabled mirror
+  //   - drawings:  every panel.chartInstance.syncDrawings = bool
+  //   - indicators: syncIndicatorsNow()
+  //   - chartType:  syncChartTypeNow()
+  const layoutSyncFirstRef = useRef(true);
+  useEffect(() => {
+    if (layoutSyncFirstRef.current) { layoutSyncFirstRef.current = false; return; }
+    const pm = window.panelManager;
+    if (!pm || !pm.syncSettings) return;
+    let changed = false;
+    const fired = {};
+    for (const [k, v] of Object.entries(layoutSync)) {
+      if (pm.syncSettings[k] !== v) {
+        pm.syncSettings[k] = v;
+        fired[k] = v;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    try { pm.saveSyncSettings?.(); } catch (_) {}
+    if ("crosshair" in fired) {
+      try { window.crosshairSyncEnabled = layoutSync.crosshair; } catch (_) {}
+    }
+    if ("drawings" in fired) {
+      try {
+        (pm.panels || []).forEach((p) => {
+          if (p?.chartInstance) p.chartInstance.syncDrawings = layoutSync.drawings;
+        });
+      } catch (_) {}
+    }
+    if (fired.indicators) { try { pm.syncIndicatorsNow?.(); } catch (_) {} }
+    if (fired.chartType)  { try { pm.syncChartTypeNow?.();  } catch (_) {} }
+  }, [layoutSync]);
+
   const [sessionDemoName, setSessionDemoName] = useState("Talaria V8b");
   const [settingsTab, setSettingsTab] = useState("chart");
   const [balVis, setBalVis] = useState(true);
@@ -841,17 +3462,235 @@ const TalariaV8b = () => {
     priceLine: true, priceLineColor: "#FF5068",
     scaleTextColor: "rgba(255,255,255,0.25)", scaleLineColor: "rgba(140,160,255,0.12)",
     bullBody: "#00D4A1", bullBorder: "#00D4A1", bullWick: "#00D4A1",
-    bearBody: "#FF5068", bearBorder: "#FF5068", bearWick: "#FF5068", unifiedBarColor: true, unifiedBarColorVal: "#00D4A1",
+    bearBody: "#FF5068", bearBorder: "#FF5068", bearWick: "#FF5068", unifiedBarColor: false, unifiedBarColorVal: "#00D4A1",
     orderPlacement: "instant", showOrderHistory: true, showOpenOrders: true, timeFormat: "24h",
     gridLinesOn: true, gridLineStyle: "solid", gridLineThickness: 1,
     crosshairOn: true, crosshairStyle: "dashed",
     priceLineStyle: "solid", priceLineThickness: 1,
     chartTemplate: "Dark Classic",
   });
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
 
   const [indOpen, setIndOpen] = useState(false);
   const [indPinned, setIndPinned] = useState([]);
   const [indActive, setIndActive] = useState([]);
+
+  // ─── SYNC V9 SETTINGS PANEL → chart.chartSettings ───────────────────────
+  // V9 has its own native Settings/Profile UI which we keep as-is. But the
+  // colour/grid/crosshair pickers must drive chart.js's chartSettings (same
+  // keys legacy index.html uses) so the chart actually changes.
+  // NOTE: must live AFTER the `settings` useState above to avoid a TDZ.
+  //
+  // Mapping (V9 key → chart.js chartSettings key):
+  //   bullBody    → bodyUpColor + candleUpColor
+  //   bullBorder  → borderUpColor
+  //   bullWick    → wickUpColor
+  //   bearBody    → bodyDownColor + candleDownColor
+  //   bearBorder  → borderDownColor
+  //   bearWick    → wickDownColor
+  //   background  → backgroundColor
+  //   gridColor   → gridColor
+  //   crosshairColor → crosshairColor
+  //   priceLineColor → priceLineColor
+  //   priceLine   → showPriceLine
+  //   textColor   → scaleTextColor + symbolTextColor
+  //   unifiedBarColor (checkbox) → unifiedBarColorEnabled
+  //   unifiedBarColorVal → unifiedBarColor (hex)
+  //   gridLinesOn → showGrid + gridStyle (Vert and horz | None)
+  //   gridLineStyle / gridLineThickness → gridPattern, gridLineWidth
+  //   crosshairOn → showCrosshair (chart.js updateCrosshair + panel sync)
+  //   crosshairStyle → crosshairPattern
+  //   priceLineStyle / priceLineThickness → priceLinePattern, priceLineWidth
+  // Same fn as chart/modules/v9-theme-bridge.js — exposed for legacy HTML; implementation is bundled here
+  // so dev (vite proxy to remote /chart/modules/) cannot 404 the bridge.
+  useEffect(() => {
+    window.talariaApplyV9ThemeSettings = applyV9ThemeSettingsToChart;
+    return () => {
+      try {
+        if (window.talariaApplyV9ThemeSettings === applyV9ThemeSettingsToChart) {
+          delete window.talariaApplyV9ThemeSettings;
+        }
+      } catch (_) {}
+    };
+  }, []);
+
+  useEffect(() => {
+    const apply = () => applyV9ThemeSettingsToChart(settings);
+    if (apply()) return;
+    let n = 0;
+    const id = setInterval(() => {
+      if (apply() || ++n > 60) clearInterval(id);
+    }, 100);
+    return () => clearInterval(id);
+  }, [settings]);
+
+  // ─── SYNC INDICATORS → chart.js ──────────────────────────────────────────
+  // V9's indActive (array of V9 indicator IDs like "SMA", "RSI") drives
+  // chart.js's chart.addIndicator(type) / chart.removeIndicator(id).
+  // Each chart.js indicator gets a unique runtime ID; we track V9-ID → chart-ID
+  // per Chart instance in indicatorMapsByChartRef (WeakMap).
+  // Placed AFTER `indActive`'s useState because the dep array `[indActive]` is
+  // evaluated at render time and would TDZ if hoisted above.
+  useEffect(() => {
+    const ID_TO_TYPE = {
+      // Trend
+      SMA: "sma", EMA: "ema", WMA: "wma", DEMA: "dema", TEMA: "tema",
+      HMA: "hma", SUPERTREND: "supertrend",
+      // Momentum
+      RSI: "rsi", MACD: "macd", STOCH: "stoch", CCI: "cci", MOM: "mom",
+      ROC: "roc", WPR: "williams", DPO: "dpo", PPO: "ppo", AO: "ao",
+      STOCHRSI: "stochrsi",
+      // Volatility
+      BB: "bb", ATR: "atr", KC: "keltner", DC: "donchian",
+      // Volume
+      VWAP: "vwap", OBV: "obv", CMF: "cmf", MFI: "mfi",
+      // Sessions
+      SESS: "sessions",
+      // Others
+      PSAR: "psar", ADX: "adx", AROON: "aroon",
+    };
+
+    console.log("[V9 ind] useEffect fired, indActive =", indActive);
+    let cancelled = false;
+    let attempts = 0;
+
+    const getMapForChart = (ch) => {
+      if (!ch) return null;
+      let wm = indicatorMapsByChartRef.current;
+      if (!wm) {
+        wm = new WeakMap();
+        indicatorMapsByChartRef.current = wm;
+      }
+      let m = wm.get(ch);
+      if (!m) {
+        m = Object.create(null);
+        wm.set(ch, m);
+      }
+      return m;
+    };
+
+    const apply = () => {
+      if (cancelled) return;
+      const chart =
+        typeof window.getActiveChart === "function"
+          ? window.getActiveChart()
+          : window.chart;
+      // Wait for chart.js to be ready AND data to be loaded — addIndicator
+      // alerts and bails out early when this.data is empty.
+      if (!chart || typeof chart.addIndicator !== "function" || !chart.data || chart.data.length === 0) {
+        if (attempts === 0) {
+          console.log("[V9 ind] waiting: chart=", !!chart,
+            "addIndicator=", typeof chart?.addIndicator,
+            "data.length=", chart?.data?.length);
+        }
+        if (attempts++ < 60) setTimeout(apply, 200);
+        return;
+      }
+      console.log("[V9 ind] chart ready, applying. data.length=", chart.data.length);
+
+      const map = getMapForChart(chart);
+      if (!map) return;
+      const nowSet = new Set(indActive);
+      const prevSet = new Set(Object.keys(map));
+
+      // Remove indicators that are no longer active.
+      for (const v9Id of prevSet) {
+        if (!nowSet.has(v9Id)) {
+          const chartId = map[v9Id];
+          try {
+            if (chartId && typeof chart.removeIndicator === "function") {
+              chart.removeIndicator(chartId);
+            }
+          } catch (err) {
+            console.warn("[V9] removeIndicator failed for", v9Id, err);
+          }
+          delete map[v9Id];
+        }
+      }
+
+      // Add indicators that are newly active.
+      for (const v9Id of nowSet) {
+        if (prevSet.has(v9Id)) continue;
+        const type = ID_TO_TYPE[v9Id];
+        if (!type) {
+          console.warn("[V9] indicator", v9Id, "is not yet supported by chart.js");
+          continue;
+        }
+        try {
+          const ind = chart.addIndicator(type);
+          console.log("[V9 ind] addIndicator(", type, ") =>", ind);
+          if (ind && ind.id) {
+            map[v9Id] = ind.id;
+          } else {
+            console.warn("[V9 ind] addIndicator returned falsy for", v9Id, "->", type);
+          }
+        } catch (err) {
+          console.warn("[V9 ind] addIndicator failed for", v9Id, err);
+        }
+      }
+
+      try {
+        if (typeof chart.render === "function") chart.render();
+        // `#ohlcIndicators` is React-rendered; addIndicator can run before first commit → chips empty forever unless we re-sync.
+        if (typeof chart.updateOHLCIndicators === "function") chart.updateOHLCIndicators();
+      } catch (_) {}
+    };
+
+    const onPanelOrData = () => {
+      attempts = 0;
+      apply();
+    };
+
+    // When the focused tile changes, mirror V9's indActive + id-map from that chart's
+    // real indicators (so we don't re-apply the previous tile's list onto the new one).
+    const syncIndUiFromFocusedChart = () => {
+      if (cancelled) return;
+      const chart =
+        typeof window.getActiveChart === "function"
+          ? window.getActiveChart()
+          : window.chart;
+      if (!chart || !Array.isArray(chart.indicators?.active)) return;
+      const TYPE_TO_V9 = {};
+      for (const [v9Id, t] of Object.entries(ID_TO_TYPE)) {
+        TYPE_TO_V9[t] = v9Id;
+      }
+      const map = getMapForChart(chart);
+      if (!map) return;
+      for (const k of Object.keys(map)) delete map[k];
+      const next = [];
+      for (const ind of chart.indicators.active) {
+        const v9 = TYPE_TO_V9[ind.type];
+        if (v9 && ind.id) {
+          map[v9] = ind.id;
+          if (!next.includes(v9)) next.push(v9);
+        }
+      }
+      setIndActive((prev) => {
+        if (
+          prev.length === next.length &&
+          prev.every((x, i) => x === next[i])
+        ) {
+          return prev;
+        }
+        return next;
+      });
+    };
+
+    apply();
+    window.addEventListener("panelSelected", syncIndUiFromFocusedChart);
+    window.addEventListener("panelsCreated", onPanelOrData);
+    window.addEventListener("chartDataLoaded", onPanelOrData);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("panelSelected", syncIndUiFromFocusedChart);
+      window.removeEventListener("panelsCreated", onPanelOrData);
+      window.removeEventListener("chartDataLoaded", onPanelOrData);
+    };
+  }, [indActive]);
+
   const [indSelected, setIndSelected] = useState(null);
   const [indSearch, setIndSearch] = useState("");
   const [indPos, setIndPos] = useState({ x: 0, y: 0 });
@@ -879,9 +3718,18 @@ const TalariaV8b = () => {
     setTimeout(() => { setTlBarDrop(null); setTlSaveAsMode(false); setTlNewTplName(""); setClosing(s => { const n = new Set(s); n.delete("tlbardrop"); return n; }); }, 130);
   };
   const closeTlSett = () => {
-    setClosing(s => new Set([...s, "tlsett"]));
+    setCpDragging(null);
+    setCpDragRect(null);
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
+    setClosing(s => {
+      const n = new Set(s);
+      n.delete("cp");
+      n.add("tlsett");
+      return n;
+    });
     setTlSettTplDrop(false); setTlSaveAsMode(false); setTlNewTplName(""); setTlStyleDrop(null);
-    setTimeout(() => { setTlSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("tlsett"); return n; }); }, 155);
+    setTimeout(() => { setTlSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("tlsett"); return n; }); }, 105);
   };
   const closeTxtSett = () => {
     setClosing(s => new Set([...s, "txtsett"]));
@@ -928,6 +3776,9 @@ const TalariaV8b = () => {
     setTimeout(() => { setClosing(s => { const n = new Set(s); n.delete("tlSettTplDrop"); return n; }); }, 130);
   };
   const closeCP = () => {
+    setCpDragging(null);
+    setCpDragRect(null);
+    cpBarAnchorRef.current = null;
     setClosing(s => new Set([...s, "cp"]));
     setColorPicker(null);
     setTimeout(() => { setClosing(s => { const n = new Set(s); n.delete("cp"); return n; }); }, 150);
@@ -972,10 +3823,74 @@ const TalariaV8b = () => {
   const currentChartType = chartTypeMap[chartType] || { icon: "candle", label: chartType };
   const gotoNextId = () => Date.now() + Math.random();
 
+  const parseGotoTimeParts = (timeStr) => {
+    if (!timeStr) return [0, 0];
+    const s = String(timeStr).replace(/\s*UTC\s*/gi, "").trim();
+    const segs = s.split(":");
+    return [parseInt(segs[0], 10) || 0, parseInt(segs[1], 10) || 0];
+  };
+
+  const buildGotoTimestampMs = (dateIso, timeStr) => {
+    if (!dateIso || typeof dateIso !== "string") return null;
+    const p = dateIso.split("-").map((x) => parseInt(x, 10));
+    if (p.length < 3 || !p.every((n) => Number.isFinite(n))) return null;
+    const [y, mo, d] = p;
+    const [hh, mm] = parseGotoTimeParts(timeStr);
+    const tm = typeof window !== "undefined" ? window.timezoneManager : null;
+    const utc = Date.UTC(y, mo - 1, d, hh, mm, 0, 0);
+    return tm ? utc - tm.getOffsetMs() : new Date(y, mo - 1, d, hh, mm, 0, 0).getTime();
+  };
+
+  const defaultGotoDateIsoFromChart = () => {
+    const ch = typeof window !== "undefined" ? window.chart : null;
+    if (!ch) return null;
+    const t =
+      ch.replaySystem?.fullRawData?.[0]?.t ??
+      ch.rawData?.[0]?.t ??
+      ch.data?.[0]?.t;
+    if (!Number.isFinite(t)) return null;
+    const d = new Date(t);
+    // Use UTC calendar parts so presets/session times align with chart bar timestamps (ms since epoch).
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+  };
+
+  const executeGotoItem = (item) => {
+    if (!item) return;
+    const ch = typeof window !== "undefined" ? window.chart : null;
+    if (!ch) return;
+    if (item.type === "price") {
+      const raw = String(item.label ?? "").replace(/[^0-9.-]/g, "");
+      const p = parseFloat(raw);
+      if (Number.isFinite(p) && typeof ch.jumpToPrice === "function") ch.jumpToPrice(p);
+      return;
+    }
+    const timeStr = item.time || "00:00";
+    const dateIso = item.dateIso || defaultGotoDateIsoFromChart() || gotoNewDate;
+    const ms = buildGotoTimestampMs(dateIso, timeStr);
+    if (ms == null || !Number.isFinite(ms)) return;
+    if (typeof ch.jumpToTimestamp === "function") {
+      void ch.jumpToTimestamp(ms, { showLoadingOverlay: true });
+    }
+  };
+
+  // Always use effective zoom 1: CSS `zoom` on the shell broke hit-testing vs visually
+  // stacked layers (left rail, floating bars) in Chromium — clicks registered on #chart-container
+  // “behind” chrome so the first mousedown cleared React panel state and it felt like buttons
+  // needed many clicks. Safari already used 1; one path keeps layout/pointer math consistent.
+  const Z = 1;
+  if (typeof window !== 'undefined' && window.__v9Zoom !== Z) {
+    window.__v9Zoom = Z;
+  }
+
   useEffect(() => {
     const onFSChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", onFSChange);
     return () => document.removeEventListener("fullscreenchange", onFSChange);
+  }, []);
+
+  // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
+  useEffect(() => {
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429w-curve-bg";
   }, []);
 
   useEffect(() => {
@@ -995,17 +3910,53 @@ const TalariaV8b = () => {
   }, []);
 
   useEffect(() => {
+    const eventTargetEl = (e) => {
+      const t = e && e.target;
+      if (!t) return null;
+      if (t.nodeType === 1 && typeof t.closest === "function") return t;
+      const p = t.parentElement;
+      return p && typeof p.closest === "function" ? p : null;
+    };
+    const isOutsideUiChrome = (el) =>
+      !!el &&
+      !el.closest("[data-sdrop]") &&
+      !el.closest("[data-v9-chrome]") &&
+      !el.closest("[data-tlbar]") &&
+      !el.closest("#drawing-toolbar") &&
+      !el.closest(".drawing-toolbar") &&
+      !el.closest(".tlr-cp");
+
     const handler = (e) => {
-      if (!e.target.closest('.tlr-cp')) setColorPicker(null);
-      if (!e.target.closest('[data-tlbar]')) { setTlBarDrop(null); setTlSaveAsMode(false); setTlNewTplName(""); setVwapBarDrop(null); }
+      const el = eventTargetEl(e);
+      if (!el) return;
+      // IMPORTANT: return BEFORE any setState. Previously setColorPicker / tlBar ran first; presses
+      // inside [data-sdrop] (tool dropdown, settings, etc.) still triggered those updates on
+      // mousedown—extra renders before click and “needs many taps” symptoms on crowded stacks.
+      // [data-tlbar]: floating / portaled toolbars had data-tlbar but not always data-sdrop on every
+      // inner node—mousedown still cleared color picker on first press.
+      if (!isOutsideUiChrome(el)) return;
+
+      setColorPicker(null);
+      setTlBarDrop(null);
+      setTlSaveAsMode(false);
+      setTlNewTplName("");
+      setVwapBarDrop(null);
+
+      const onChartSurface =
+        el.closest("#chart-container") ||
+        el.closest("#panels-container");
+      if (!onChartSurface) return;
+
+      try { closeAllRef.current?.(); } catch (_) {}
       setTlSettTplDrop(false);
-      if (e.target.closest('[data-sdrop]')) return;
-      setSettDrop(null);
-      setTlStyleDrop(null);
-      setDropdown(null);
       setTlSettOpen(false);
     };
-    const scrollHandler = () => { setSettDrop(null); setColorPicker(null); };
+    const scrollHandler = (ev) => {
+      const el = eventTargetEl(ev);
+      if (!el || !isOutsideUiChrome(el)) return;
+      setSettDrop(null);
+      setColorPicker(null);
+    };
     document.addEventListener('mousedown', handler);
     document.addEventListener('wheel', scrollHandler, { passive: true });
     return () => {
@@ -1013,6 +3964,29 @@ const TalariaV8b = () => {
       document.removeEventListener('wheel', scrollHandler);
     };
   }, []);
+
+  // While the V9 style panel is open, release the full-chart #drawingSvg hit-capture layer
+  // (z-index 11 + pointer-events all) so nothing under the body-portaled panel eats clicks.
+  useEffect(() => {
+    const active = tlSettOpen || closing.has("tlsett");
+    if (!active || typeof document === "undefined") return;
+    const svg = document.getElementById("drawingSvg");
+    if (!svg) return;
+    const prev = svg.style.pointerEvents;
+    const prevZ = svg.style.zIndex;
+    svg.style.pointerEvents = "none";
+    svg.style.zIndex = "1";
+    return () => {
+      svg.style.pointerEvents = prev;
+      svg.style.zIndex = prevZ;
+      try {
+        const ch = typeof window !== "undefined" ? window.chart : null;
+        if (ch && typeof ch.updateSVGPointerEvents === "function") ch.updateSVGPointerEvents();
+        const dm = ch && ch.drawingManager;
+        if (dm && typeof dm._updateAxisZonePointerEvents === "function") dm._updateAxisZonePointerEvents();
+      } catch (_) {}
+    };
+  }, [tlSettOpen, closing]);
 
   useEffect(() => {
     if (!document.querySelector('link[href*="Exo+2"]')) {
@@ -1050,83 +4024,230 @@ const TalariaV8b = () => {
     }
   }, [btmTab]);
 
-  useEffect(() => {
-    const bump = () => setOmTradeRev((n) => n + 1);
-    const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
-    const bus = om?.eventBus;
-    const unsubs = [];
-    if (bus && typeof bus.on === "function") {
-      ["order:pending", "order:opened", "order:closed", "order:pending-removed", "order:update-tick", "account:updated"].forEach((ev) => {
-        unsubs.push(bus.on(ev, bump));
-      });
-    }
-    const id = setInterval(bump, 800);
-    return () => {
-      clearInterval(id);
-      unsubs.forEach((fn) => {
-        try { fn(); } catch (_) { /* noop */ }
-      });
-    };
-  }, []);
-
-  // When rollback is active, block and dismiss on any click
+  // When the V9 rollback (cut-line) overlay is active, intercept the next
+  // click: compute the candle index/timestamp at the click x and drive the
+  // legacy replaySystem to seek there. Mirrors the legacy pick-point flow
+  // (handlePickModeClick → startReplayAtIndex) but keeps V9 visual styling.
   useEffect(() => {
     if (!rollback) return;
     const handleClick = (e) => {
+      const el = e.target;
+      // Never steal clicks from header, rail, or any UI outside the chart slot (#chart-container).
+      if (!el || !el.closest || !el.closest("#chart-container")) return;
+      // OHLC row, indicator chips, LOCKED toggle — must receive clicks normally.
+      if (el.closest(".ohlc-info")) return;
+
       e.stopPropagation();
       e.stopImmediatePropagation();
+      try {
+        const rs = getReplaySystem();
+        const chart =
+          typeof window.getActiveChart === "function"
+            ? window.getActiveChart()
+            : window.chart;
+        if (rs && chart) {
+          const containerNode =
+            chart.container && typeof chart.container.node === "function"
+              ? chart.container.node()
+              : (chart.canvas && chart.canvas.parentElement) || chartCanvasRef.current;
+          if (containerNode) {
+            const rect = containerNode.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const inChartArea =
+              x >= (chart.margin?.l || 0) &&
+              x <= (chart.w - (chart.margin?.r || 0));
+            if (inChartArea) {
+              const candleIndex =
+                typeof rs.getCandleIndexAtX === "function"
+                  ? rs.getCandleIndexAtX(x)
+                  : typeof chart.pixelToDataIndex === "function"
+                    ? Math.round(chart.pixelToDataIndex(x))
+                    : -1;
+              if (
+                candleIndex >= 0 &&
+                Array.isArray(chart.data) &&
+                chart.data[candleIndex]
+              ) {
+                const ts = chart.data[candleIndex].t;
+                if (!rs.isActive) {
+                  if (typeof rs.startReplayAtIndex === "function") {
+                    rs.startReplayAtIndex(candleIndex);
+                  } else {
+                    if (typeof rs.enterReplayMode === "function") rs.enterReplayMode();
+                    if (typeof rs.goToReplayTimestamp === "function") {
+                      rs.goToReplayTimestamp(ts);
+                    }
+                  }
+                } else if (typeof rs.goToReplayTimestamp === "function") {
+                  rs.goToReplayTimestamp(ts);
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[V9 Replay] cut-line click failed", err);
+      }
       setRollback(false);
     };
-    const t = setTimeout(() => window.addEventListener('click', handleClick, true), 0);
-    return () => { clearTimeout(t); window.removeEventListener('click', handleClick, true); };
+    const t = setTimeout(() => window.addEventListener("click", handleClick, true), 0);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("click", handleClick, true);
+    };
   }, [rollback]);
 
+  /** chart.js `drawing.type` → V9 rail group (`tool` state). Shared by settings open + floating toolbar selection sync. */
+  const drawingTypeToPanelGroup = useCallback((type) => {
+    if (!type) return null;
+    // Match chart text/annotation kinds (see drawing-tools-ui unifiedTextTypes).
+    if (['text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'callout', 'comment',
+         'price-label', 'price-label-2', 'signpost', 'signpost-2', 'flag-mark', 'image', 'emoji', 'pin', 'table'].includes(type)) {
+      return 'text';
+    }
+    if (['anchored-vwap', 'fixed-range-volume-profile', 'anchored-volume-profile'].includes(type)) return 'brush';
+    if (type.startsWith('fibonacci-') || type.startsWith('fib-') || type.startsWith('trend-fib-')) return 'fib';
+    // Gann tools live on the Fibonacci & Gann rail (`gannBox` … are in V9_RAIL_ICONS_BY_GROUP.fib, not `pattern`).
+    // Mapping them to `pattern` caused v9SanitizeGroupSelected to strip the selection → Elliott fallback → no Input tab.
+    if (type === 'gann-box' || type === 'gann-square' || type === 'gann-square-fixed' || type === 'gann-fan') return 'fib';
+    if (type.startsWith('elliott-')
+        || type === 'xabcd-pattern' || type === 'head-shoulders'
+        || type === 'abcd-pattern' || type === 'triangle-pattern'
+        || type === 'three-drives' || type === 'cypher-pattern') return 'pattern';
+    if (['rectangle', 'rotated-rectangle', 'triangle', 'arc', 'ellipse', 'circle',
+         'arrow', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down'].includes(type)) return 'rect';
+    if (['parallel-channel', 'regression-trend', 'flat-top-bottom',
+         'disjoint-channel', 'pitchfork'].includes(type)) return 'channel';
+    if (['brush', 'highlighter'].includes(type)) return 'brush2';
+    if (['ruler', 'short-position', 'long-position', 'price-range',
+         'date-range', 'date-and-price-range'].includes(type)) return 'measure';
+    if (['trendline', 'horizontal', 'vertical', 'horizontal-ray', 'ray',
+         'extended-line', 'cross-line', 'polyline', 'path', 'curve', 'double-curve'].includes(type)) {
+      return 'trendline';
+    }
+    return null;
+  }, []);
+
+  const drawingTypeToPanelGroupRef = useRef(drawingTypeToPanelGroup);
+  drawingTypeToPanelGroupRef.current = drawingTypeToPanelGroup;
+
+  const TL_LINE_SHAPE_GROUPS = useMemo(
+    () => new Set(["trendline", "rect", "channel", "brush2", "fib", "pattern", "measure"]),
+    [],
+  );
+
+  // After finalizeDrawing, chart clears the tool (crosshair) but `toolbar.show` already ran; until then
+  // `tool` is crosshair and tlSubTool used to fall through to Trend Line. Prefer the selected drawing's group.
+  // Volume profile types map to group `brush` — normalize to `brush2` (V9 rail) for the floating bar.
+  // Prefer live selection from getSelectedDrawingAcrossCharts (active chart first). If that drawing
+  // is any text/annotation type, it wins — fixes wrong Trend Line bar when the toolbar hook type or
+  // tlBarSelectedType is stale. Else fall back to hook type when it is text; else scanned || hook.
+  let chartPrimarySelectedDrawingType = tlBarSelectedType;
+  if (tlBarSelected && typeof window !== "undefined") {
+    try {
+      const live = getPrimarySelectedDrawingForActiveChart(null);
+      const liveT = live && live.type;
+      const liveG = liveT ? drawingTypeToPanelGroupRef.current(liveT) : null;
+      if (liveG === "text") {
+        chartPrimarySelectedDrawingType = liveT;
+      } else {
+        const hookT = tlBarSelectedType;
+        const hookG = hookT ? drawingTypeToPanelGroupRef.current(hookT) : null;
+        if (hookG === "text") {
+          chartPrimarySelectedDrawingType = hookT;
+        } else {
+          chartPrimarySelectedDrawingType = liveT || hookT;
+        }
+      }
+    } catch (_) {}
+  }
+  const tlBarDrawingGroupRaw =
+    tlBarSelected && chartPrimarySelectedDrawingType
+      ? drawingTypeToPanelGroupRef.current(chartPrimarySelectedDrawingType)
+      : null;
+  const tlBarDrawingGroup =
+    tlBarDrawingGroupRaw === "brush" ? "brush2" : tlBarDrawingGroupRaw;
+  // Selected annotation must never inherit line/shape rail from `tool`, or tlSubTool defaults to Trend Line.
+  const effectiveTlGroup =
+    tlBarDrawingGroup === "text"
+      ? null
+      : (tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) ? tlBarDrawingGroup : null)
+      || (TL_LINE_SHAPE_GROUPS.has(tool) ? tool : null);
+
   // Active line/shape sub-tool (icon + label)
-  const tlSubTool = tool === "rect"
-    ? (groupSelected.rect || { icon: "rect", label: "Rectangle" })
-    : tool === "channel"
-    ? (groupSelected.channel || { icon: "channel", label: "Parallel Channel" })
-    : tool === "brush2"
-    ? (groupSelected.brush2 || { icon: "draw", label: "Brush" })
-    : tool === "fib"
-    ? (groupSelected.fib || { icon: "fib", label: "Fib Retracement" })
-    : tool === "pattern"
-    ? (groupSelected.pattern || { icon: "elliott5", label: "Elliott Impulse (12345)" })
-    : tool === "measure"
-    ? (groupSelected.measure || { icon: "measure", label: "Range Tool" })
-    : (groupSelected.trendline || { icon: "trendline", label: "Trend Line" });
+  const tlSubTool = effectiveTlGroup === "rect"
+    ? v9RailSubtoolOrFallback("rect", groupSelected.rect, { icon: "rect", label: "Rectangle" })
+    : effectiveTlGroup === "channel"
+    ? v9RailSubtoolOrFallback("channel", groupSelected.channel, { icon: "channel", label: "Parallel Channel" })
+    : effectiveTlGroup === "brush2"
+    ? v9RailSubtoolOrFallback("brush2", groupSelected.brush2, { icon: "draw", label: "Brush" })
+    : effectiveTlGroup === "fib"
+    ? v9RailSubtoolOrFallback("fib", groupSelected.fib, { icon: "fib", label: "Fib Retracement" })
+    : effectiveTlGroup === "pattern"
+    ? v9RailSubtoolOrFallback("pattern", groupSelected.pattern, { icon: "elliott5", label: "Elliott Impulse (12345)" })
+    : effectiveTlGroup === "measure"
+    ? v9RailSubtoolOrFallback("measure", groupSelected.measure, { icon: "measure", label: "Range Tool" })
+    : v9RailSubtoolOrFallback("trendline", groupSelected.trendline, { icon: "trendline", label: "Trend Line" });
   const tlSubToolRef = useRef(tlSubTool.label);
-  const txtSubTool = groupSelected.text || { icon: "text", label: "Text" };
+  const txtSubToolFromRail = groupSelected.text || { icon: "text", label: "Text" };
+  const txtSubTool =
+    tlBarSelected && tlBarDrawingGroup === "text" && chartPrimarySelectedDrawingType
+      ? {
+          icon: legacyChartTextTypeToV9Icon(chartPrimarySelectedDrawingType),
+          label: chartPrimarySelectedDrawingType,
+        }
+      : txtSubToolFromRail;
   const txtSubToolRef = useRef(txtSubTool.label);
   const isFibTool = tlSubTool.icon.startsWith("fib");
   const isGannTool = ["gannBox","gannSquare","gannFan"].includes(tlSubTool.icon);
   const isElliottTool = ["elliott5","elliottABC","elliottTri","elliottWXY","elliottWXYXZ"].includes(tlSubTool.icon);
-  const isPatternTool = tool === "pattern";
+  const isPatternTool = effectiveTlGroup === "pattern";
   const isRRTool = tlSubTool.icon === "longPos" || tlSubTool.icon === "shortPos";
 
+  const lineShapeRailActive =
+    tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || tool === "pattern" || tool === "measure";
+  const annotationSelectedOnChart = tlBarSelected && tlBarDrawingGroup === "text";
+  const lineShapeUiContext =
+    !annotationSelectedOnChart &&
+    (lineShapeRailActive || (tlBarSelected && !!effectiveTlGroup));
+
   useEffect(() => {
-    if (tool !== "trendline" && tool !== "rect" && tool !== "channel" && tool !== "brush2" && tool !== "fib" && tool !== "pattern") { setTlSettOpen(false); setTlBarDrop(null); }
-    if (tool !== "text") { setTxtSettOpen(false); setTxtSizeOpen(false); setTxtBarSizeOpen(false); setTxtBarDrop(null); }
-  }, [tool]);
+    // Include `measure` — opening Style sets tool to the drawing’s panel group; omitting it
+    // immediately cleared tlSettOpen whenever the active rail tool was Range / measure.
+    if (!lineShapeRailActive) {
+      setTlSettOpen(false);
+      setTlBarDrop(null);
+    }
+    const textUiActive =
+      tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text");
+    if (!textUiActive) {
+      setTxtSettOpen(false);
+      setTxtSizeOpen(false);
+      setTxtBarSizeOpen(false);
+      setTxtBarDrop(null);
+    }
+  }, [tool, tlBarSelected, tlBarDrawingGroup]);
 
   // Update name when switching between sub-tools; also reset to Style tab so the
   // tab indicator never lands off-screen when the previous tab doesn't exist on the new tool
   useEffect(() => {
-    if ((tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || tool === "pattern" || tool === "measure") && tlSubTool.label !== tlSubToolRef.current) {
+    if (lineShapeUiContext && tlSubTool.label !== tlSubToolRef.current) {
       tlSubToolRef.current = tlSubTool.label;
       setTlName(tlSubTool.label);
       setTlSettTab("style");
     }
-  }, [tlSubTool.label, tool]);
+  }, [tlSubTool.label, lineShapeUiContext]);
 
-  // Update txtName when switching text sub-tools (Text → Note → Callout etc.)
+  // Update txtName when switching text sub-tools (Text → Note → Callout etc.), including when a placed annotation is selected.
   useEffect(() => {
-    if (tool === "text" && txtSubTool.label !== txtSubToolRef.current) {
+    const textUiActive =
+      tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text");
+    if (textUiActive && txtSubTool.label !== txtSubToolRef.current) {
       txtSubToolRef.current = txtSubTool.label;
       setTxtName(txtSubTool.label);
       setTxtSettTab(txtSubTool.icon === "emoji" ? "coordinates" : "style");
     }
-  }, [txtSubTool.label, tool]);
+  }, [txtSubTool.label, tool, tlBarSelected, tlBarDrawingGroup]);
 
   // Keep color picker anchored to its tl bar button while the bar is being dragged
   useEffect(() => {
@@ -1149,12 +4270,633 @@ const TalariaV8b = () => {
     }
   }, [rightPanel, orderPanelOpen]);
 
+  useEffect(() => {
+    const onVis = (e) => {
+      const open = !!(e.detail && e.detail.open);
+      setOrderPanelOpen(open);
+    };
+    window.addEventListener("talaria:order-panel-visibility", onVis);
+    return () => window.removeEventListener("talaria:order-panel-visibility", onVis);
+  }, []);
+
+  const prevOrderPanelOpenRef = useRef(undefined);
+  useLayoutEffect(() => {
+    if (prevOrderPanelOpenRef.current === undefined) {
+      prevOrderPanelOpenRef.current = orderPanelOpen;
+      return;
+    }
+    if (prevOrderPanelOpenRef.current === orderPanelOpen) return;
+    prevOrderPanelOpenRef.current = orderPanelOpen;
+    const om = typeof window !== "undefined" && window.chart && window.chart.orderManager;
+    const panel = document.getElementById("orderPanel");
+    if (!om || typeof om.toggleOrderPanel !== "function") return;
+    const vis = !!(panel && panel.classList.contains("visible"));
+    if (orderPanelOpen && !vis) om.toggleOrderPanel();
+    else if (!orderPanelOpen && vis) om.toggleOrderPanel();
+  }, [orderPanelOpen]);
+
+  useEffect(() => {
+    if (!orderPanelOpen) return;
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 160;
+    const tryOpen = () => {
+      if (cancelled || attempts++ > maxAttempts) return;
+      const om = window.chart?.orderManager;
+      const p = document.getElementById("orderPanel");
+      if (!p) {
+        requestAnimationFrame(tryOpen);
+        return;
+      }
+      if (typeof om?.toggleOrderPanel === "function" && !p.classList.contains("visible")) {
+        om.toggleOrderPanel();
+      }
+    };
+    tryOpen();
+    const t = setTimeout(tryOpen, 50);
+    const t2 = setTimeout(tryOpen, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+      clearTimeout(t2);
+    };
+  }, [orderPanelOpen]);
+
+  // Native #orderPanel stays in DOM but off-screen; V8b rail is the visible UI (same flags as V9ReactPlaceOrder).
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+    window.__talariaV9ReactOrderUi = !!orderPanelOpen;
+    window.__talariaV9OrderRailOpen = !!orderPanelOpen;
+    try {
+      window.chart?.orderManager?.syncOrderPanelMountTarget?.();
+    } catch (_) {}
+  }, [orderPanelOpen]);
+
+  // Push V8b controls into order-manager's hidden inputs so calculations + Place Order match chart.js.
+  useEffect(() => {
+    if (!orderPanelOpen) return;
+    const panel = document.getElementById("orderPanel");
+    // Always push into #orderPanel when the rail is open. updatePreviewLines() still requires
+    // .visible on #orderPanel to draw — toggleOrderPanel normally sets that; do not skip sync here
+    // if the class lags one frame (otherwise multi-entry / TP never reaches order-manager.js).
+    if (!panel) return;
+
+    const tid = window.setTimeout(() => {
+      try {
+        const wantBuy = buySell === "buy";
+        const buyActive = document.getElementById("buyTab")?.classList.contains("active");
+        if (wantBuy !== !!buyActive) {
+          document.getElementById(wantBuy ? "buyTab" : "sellTab")?.click();
+        }
+
+        const otBtn = document.querySelector(`#orderPanel .order-type-btn[data-type="${orderType}"]`);
+        if (otBtn && !otBtn.classList.contains("active")) otBtn.click();
+
+        const modeMap = { $: "risk-usd", "%": "risk-percent", "#": "lot-size" };
+        const dm = modeMap[sizeMode];
+        const ptab = dm && document.querySelector(`#orderPanel .position-mode-tab[data-mode="${dm}"]`);
+        if (ptab && !ptab.classList.contains("active")) ptab.click();
+
+        const setIn = (id, val) => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          const s = String(val ?? "");
+          if (el.value === s) return;
+          el.value = s;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        };
+
+        const setChk = (id, checked) => {
+          const el = document.getElementById(id);
+          if (!el || el.checked === !!checked) return;
+          el.checked = !!checked;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        };
+
+        const om = window.chart?.orderManager;
+        const skipPosSync = !!om?.isDraggingPreviewLine;
+
+        if (sizeMode === "$") setIn("riskAmountUSD", riskVal);
+        else if (sizeMode === "%") {
+          let pct = riskVal;
+          // order-manager.js applies % to balance (current/initial), not equity; scale so $ risk matches V8b EQ mode.
+          if (riskBasis === "equity" && om) {
+            const b = Number(om.balance);
+            const eq = Number(om.equity);
+            if (b > 0 && Number.isFinite(eq)) {
+              pct = String((parseFloat(riskVal || "0") * eq) / b);
+            }
+          }
+          setIn("riskAmountPercent", pct);
+          const wantBal = "current";
+          const br = document.querySelector(`input[name="balanceType"][value="${wantBal}"]`);
+          if (br && !br.checked) br.click();
+        } else setIn("lotSizeAmount", riskVal);
+        // Multi-entry / multi-TP: chart preview uses orderManager.multiEntryLevels + tpTargets (see order-manager.js).
+        const omHasMultiEntry = !!(om?.isMultiEntryMode && (om.multiEntryLevels?.length ?? 0) > 1);
+        const mtpOn = !!document.getElementById("multipleTPToggle")?.checked;
+        const omHasMultiTp = mtpOn && Array.isArray(om?.tpTargets) && om.tpTargets.length > 1;
+
+        if (!skipPosSync && entryRows.length > 1 && om) {
+          const want = entryRows.map((r, i) => {
+            let pid = r.id;
+            if (typeof pid === "number" && Number.isFinite(pid)) {
+              /* keep */
+            } else if (pid != null && Number.isFinite(Number(pid))) {
+              pid = Number(pid);
+            } else {
+              pid = om.multiEntryLevels?.[i]?.id ?? i + 1;
+            }
+            return {
+              id: pid,
+              price: parseFloat(r.price) || 0,
+              amount: parseFloat(r.risk) || 0,
+            };
+          });
+          const levels = want.map((w) => ({ id: w.id, price: w.price, amount: w.amount }));
+          const wantBuyEntry = document.getElementById("buyTab")?.classList.contains("active");
+          levels.sort((a, b) => (wantBuyEntry ? a.price - b.price : b.price - a.price));
+
+          if (!om.isMultiEntryMode) {
+            // Pre-fill levels before setEntryMode(true). Otherwise order-manager seeds two default
+            // legs from #orderEntryPrice and ignores the React "+" rows until the next tick.
+            om.multiEntryLevels = levels;
+            om.setEntryMode(true);
+          } else {
+            let dirty =
+              !Array.isArray(om.multiEntryLevels) || om.multiEntryLevels.length !== levels.length;
+            if (!dirty) {
+              for (let i = 0; i < levels.length; i++) {
+                const a = om.multiEntryLevels[i];
+                const w = levels[i];
+                if (!a || a.price !== w.price || a.amount !== w.amount) {
+                  dirty = true;
+                  break;
+                }
+              }
+            }
+            if (dirty) {
+              om.multiEntryLevels = levels.map((x) => ({ ...x }));
+              om.renderMultiEntryRows?.();
+              om.updateMultiEntrySummary?.();
+            }
+            // Keep #orderEntryPrice + splitEntries aligned when already in multi mode.
+            om.syncMultiEntryToSplitEntries?.();
+          }
+        } else if (!skipPosSync && entryRows.length === 1 && om?.isMultiEntryMode) {
+          try {
+            om.setEntryMode(false);
+          } catch (_) {}
+          const entryPx = parseFloat(entryRows[0]?.price ?? "0");
+          if (entryPx > 0) {
+            setIn("orderEntryPrice", String(entryPx));
+          } else {
+            om?.updateOrderPanelPrice?.();
+          }
+        } else if (!skipPosSync && !omHasMultiEntry) {
+          // Preview lines require #orderEntryPrice > 0 (order-manager.js updatePreviewLines). The V8b
+          // mock defaults entry to "0"; writing that wipes the live price updateOrderPanelPrice() set.
+          const entryPx = parseFloat(entryRows[0]?.price ?? "0");
+          if (entryPx > 0) {
+            setIn("orderEntryPrice", String(entryPx));
+          } else {
+            om?.updateOrderPanelPrice?.();
+          }
+        }
+
+        // Multi-TP: mirror React rows into om.tpTargets + list DOM (avoid toggling checkbox every tick — it re-inits).
+        const tpActive = tpRows.filter((r) => r.enabled !== false);
+        if (!skipPosSync && tpActive.length > 1 && om) {
+          const mtpEl = document.getElementById("multipleTPToggle");
+          if (mtpEl && !mtpEl.checked) {
+            mtpEl.checked = true;
+            const multiTPBtn = document.getElementById("multiTPBtn");
+            const multipleTPSettings = document.getElementById("multipleTPSettings");
+            const tpSingleView = document.querySelector("#orderPanel .order-tp-single");
+            if (multiTPBtn) {
+              multiTPBtn.textContent = "Single";
+              multiTPBtn.classList.add("active");
+            }
+            if (multipleTPSettings) multipleTPSettings.classList.remove("is-hidden");
+            if (tpSingleView) tpSingleView.classList.add("is-hidden");
+            mtpEl.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+          const nextTgts = tpActive.map((r, idx) => ({
+            id: typeof r.id === "number" && Number.isFinite(r.id) ? r.id : idx + 1,
+            price: parseFloat(r.price) || 0,
+            percentage: parseFloat(r.qty) || 0,
+          }));
+          const wantBuyTp = document.getElementById("buyTab")?.classList.contains("active");
+          nextTgts.sort((a, b) =>
+            wantBuyTp ? a.price - b.price : b.price - a.price
+          );
+          let tgDirty = !Array.isArray(om.tpTargets) || om.tpTargets.length !== nextTgts.length;
+          if (!tgDirty) {
+            for (let i = 0; i < nextTgts.length; i++) {
+              const a = om.tpTargets[i];
+              const w = nextTgts[i];
+              if (!a || a.price !== w.price || a.percentage !== w.percentage) {
+                tgDirty = true;
+                break;
+              }
+            }
+          }
+          if (tgDirty) {
+            om.tpTargets = nextTgts.map((t) => ({ ...t }));
+            om.renderTPTargets?.();
+          }
+          const numEl = document.getElementById("numTPTargets");
+          // Update display only — dispatching input/change runs calculateTPTargetsFromNumber() and
+          // rebuilds ladder TPs, wiping manually added rows / prices from the React rail.
+          if (numEl && String(numEl.value || "") !== String(nextTgts.length)) {
+            numEl.value = String(nextTgts.length);
+          }
+        } else if (!skipPosSync && om && omHasMultiTp && tpRows.length === 1) {
+          // React has one TP row but OM still lists multiple (bridge missed remove). Drop extras so preview math matches.
+          while (Array.isArray(om.tpTargets) && om.tpTargets.length > 1) {
+            const last = om.tpTargets[om.tpTargets.length - 1];
+            try {
+              om.removeTPTarget(last != null && last.id != null ? last.id : om.tpTargets.length - 1);
+            } catch (_) {
+              break;
+            }
+          }
+        } else if (!skipPosSync && !omHasMultiTp) {
+          const mtpEl = document.getElementById("multipleTPToggle");
+          if (mtpEl?.checked && tpActive.length <= 1) {
+            mtpEl.checked = false;
+            const multiTPBtn = document.getElementById("multiTPBtn");
+            const multipleTPSettings = document.getElementById("multipleTPSettings");
+            const tpSingleView = document.querySelector("#orderPanel .order-tp-single");
+            if (multiTPBtn) {
+              multiTPBtn.textContent = "Multi";
+              multiTPBtn.classList.remove("active");
+            }
+            if (multipleTPSettings) multipleTPSettings.classList.add("is-hidden");
+            if (tpSingleView) tpSingleView.classList.remove("is-hidden");
+            mtpEl.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+        }
+
+        const tp0 = tpRows[0];
+        setChk("enableSL", slEnabled);
+        setChk("enableTP", !!tp0?.enabled);
+
+        const slRowPx = String(slRows[0]?.price ?? "0");
+        const slPx = parseFloat(slRowPx);
+        if (!skipPosSync) {
+          if (slEnabled && slPx > 0) setIn("slPrice", slRowPx);
+
+          const tpMultiActive = !!document.getElementById("multipleTPToggle")?.checked;
+          const tpPx = parseFloat(tp0?.price ?? "0");
+          if (!tpMultiActive && tpActive.length <= 1 && tp0?.enabled !== false && tpPx > 0) {
+            setIn("tpPrice", String(tp0.price));
+          }
+
+          om?.calculatePositionFromRisk?.();
+          om?.calculateAdvancedRiskReward?.();
+          om?.updatePlaceButtonText?.();
+
+          try {
+            om?.updatePreviewLines?.();
+          } catch (_) {}
+          requestAnimationFrame(() => {
+            try {
+              om?.updatePreviewLines?.();
+            } catch (_) {}
+          });
+        }
+      } catch (_) {}
+    }, 80);
+
+    return () => clearTimeout(tid);
+  }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, riskBasis, slEnabled, slRows, entryRows, tpRows]);
+
+  // Mirror hidden #orderPanel → V8b React state. Chart drags / OM logic update the native inputs only;
+  // without this, the rail still shows 0 / Market while preview lines show Limit + real prices.
+  useEffect(() => {
+    if (!orderPanelOpen) return;
+    const tick = () => {
+      const panel = document.getElementById("orderPanel");
+      // Mirror from OM + hidden inputs whenever the rail is open (class "visible" can lag toggleOrderPanel).
+      if (!panel) return;
+
+      const ep = document.getElementById("orderEntryPrice")?.value ?? "";
+      const slp = document.getElementById("slPrice")?.value ?? "";
+      const tpp = document.getElementById("tpPrice")?.value ?? "";
+      const om = window.chart?.orderManager;
+      const omMultiEntry =
+        !!(om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length > 0);
+      const omMultiTp =
+        !!document.getElementById("multipleTPToggle")?.checked &&
+        Array.isArray(om?.tpTargets) &&
+        om.tpTargets.length > 0;
+
+      if (omMultiEntry) {
+        const next = om.multiEntryLevels.map((l) => ({
+          id: l.id,
+          price: String(l.price ?? "0"),
+          risk: String(l.amount ?? "0"),
+        }));
+        const entrySame = (a, b) =>
+          Math.abs((parseFloat(a.price) || 0) - (parseFloat(b.price) || 0)) < 1e-8 &&
+          Math.abs((parseFloat(a.risk) || 0) - (parseFloat(b.risk) || 0)) < 1e-6;
+        setEntryRows((prev) => {
+          if (prev.length > next.length) {
+            // Panel just added rows; OM not updated yet — hold. Chart deleted rows — apply OM.
+            if (isOmBridgeLead(omPanelBridgeRef.current.entryAdd)) return prev;
+            return next;
+          }
+          if (prev.length < next.length) {
+            // Panel removed a row; OM not updated yet — hold. Chart added a leg — apply OM.
+            if (isOmBridgeLead(omPanelBridgeRef.current.entryDel)) return prev;
+            return next;
+          }
+          if (prev.length === next.length && prev.every((p, i) => entrySame(p, next[i]))) return prev;
+          return next;
+        });
+        if (next.length > 1) setPanelMode("advanced");
+      } else {
+        setEntryRows((rows) => {
+          if (!rows.length) return rows;
+          // Don't collapse while user just clicked "+" — OM is still single-entry until forward bridge runs (~80ms).
+          if (rows.length > 1 && !isOmBridgeLead(omPanelBridgeRef.current.entryAdd)) {
+            const r0 = rows[0];
+            return [{ ...r0, price: ep, risk: r0.risk }];
+          }
+          const epp = parseFloat(ep);
+          const cur = parseFloat(rows[0].price || "0");
+          if (Number.isFinite(epp) && Number.isFinite(cur) && Math.abs(cur - epp) < 1e-8) return rows;
+          const nex = [...rows];
+          nex[0] = { ...nex[0], price: ep };
+          return nex;
+        });
+      }
+
+      setSlRows((rows) => {
+        if (!rows.length) return rows;
+        const slpN = parseFloat(slp);
+        const cur = parseFloat(rows[0].price || "0");
+        if (Number.isFinite(slpN) && Number.isFinite(cur) && Math.abs(cur - slpN) < 1e-8) return rows;
+        const next = [...rows];
+        next[0] = { ...next[0], price: slp };
+        return next;
+      });
+
+      const slOn = !!document.getElementById("enableSL")?.checked;
+      setSlEnabled((prev) => (prev === slOn ? prev : slOn));
+
+      if (omMultiTp && om.tpTargets.length >= 1) {
+        const nextTp = om.tpTargets.map((t) => ({
+          id: t.id,
+          price: String(t.price ?? "0"),
+          qty: String(t.percentage ?? "0"),
+          enabled: true,
+        }));
+        const tpSame = (a, b) =>
+          Math.abs((parseFloat(a.price) || 0) - (parseFloat(b.price) || 0)) < 1e-8 &&
+          Math.abs((parseFloat(a.qty) || 0) - (parseFloat(b.qty) || 0)) < 1e-6;
+        setTpRows((prev) => {
+          if (prev.length > nextTp.length) {
+            if (isOmBridgeLead(omPanelBridgeRef.current.tpAdd)) return prev;
+            return nextTp;
+          }
+          if (prev.length < nextTp.length) {
+            if (isOmBridgeLead(omPanelBridgeRef.current.tpDel)) return prev;
+            return nextTp;
+          }
+          if (prev.length === nextTp.length && prev.every((p, i) => tpSame(p, nextTp[i]))) return prev;
+          return nextTp;
+        });
+        if (nextTp.length > 1) setPanelMode("advanced");
+      } else {
+        setTpRows((rows) => {
+          if (!rows.length) return rows;
+          const tpOn = !!document.getElementById("enableTP")?.checked;
+          // Don't collapse while user just clicked "+" — OM is still single-TP until forward bridge enables multi.
+          if (rows.length > 1 && !isOmBridgeLead(omPanelBridgeRef.current.tpAdd)) {
+            const r0 = rows[0];
+            return [{ ...r0, price: tpp, qty: r0.qty ?? "100", enabled: tpOn }];
+          }
+          const r0 = rows[0];
+          const tppN = parseFloat(tpp);
+          const curP = parseFloat(r0.price || "0");
+          const priceChg = !Number.isFinite(tppN) || !Number.isFinite(curP) || Math.abs(curP - tppN) >= 1e-8;
+          const enChg = !!r0.enabled !== tpOn;
+          if (!priceChg && !enChg) return rows;
+          const next = [...rows];
+          next[0] = { ...r0, price: tpp, enabled: tpOn };
+          return next;
+        });
+      }
+
+      const buyOn = document.getElementById("buyTab")?.classList.contains("active");
+      const side = buyOn ? "buy" : "sell";
+      setBuySell((prev) => (prev === side ? prev : side));
+
+      const activeOt = document.querySelector("#orderPanel .order-type-btn.active");
+      const ot = activeOt?.dataset?.type;
+      if (ot && ["market", "limit", "stop"].includes(ot)) {
+        setOrderType((prev) => (prev === ot ? prev : ot));
+      }
+
+      const pm = document.querySelector("#orderPanel .position-mode-tab.active")?.dataset?.mode;
+      const sz = pm === "risk-percent" ? "%" : pm === "lot-size" ? "#" : "$";
+      setSizeMode((prev) => (prev === sz ? prev : sz));
+
+      const rid =
+        pm === "risk-percent" ? "riskAmountPercent" : pm === "lot-size" ? "lotSizeAmount" : "riskAmountUSD";
+      let rv = document.getElementById(rid)?.value;
+      if (rv != null && rv !== "" && pm === "risk-percent" && riskBasis === "equity") {
+        const omm = window.chart?.orderManager;
+        const b = Number(omm?.balance);
+        const eq = Number(omm?.equity);
+        if (b > 0 && Number.isFinite(eq)) {
+          rv = String((parseFloat(rv) * b) / eq);
+        }
+      }
+      if (rv != null && rv !== "") {
+        setRiskVal((prev) => (prev === rv ? prev : rv));
+      }
+
+      const rsk = document.getElementById("riskAmount")?.textContent?.trim() || "$0";
+      const rwd = document.getElementById("rewardAmount")?.textContent?.trim() || "$0";
+      setOmRiskSummaryTxt((prev) => (prev === rsk ? prev : rsk));
+      setOmRewardSummaryTxt((prev) => (prev === rwd ? prev : rwd));
+
+      const sd = document.getElementById("slPipsDisplay")?.textContent?.trim() || "—";
+      let td = document.getElementById("tpDistanceDisplay")?.textContent?.trim() || "—";
+      const mtpMirror = !!document.getElementById("multipleTPToggle")?.checked;
+      if ((td === "—" || td === "") && mtpMirror && om?.tpTargets && om.tpTargets.length > 1) {
+        const entryPx = parseFloat(document.getElementById("orderEntryPrice")?.value || 0);
+        const pip =
+          Number.isFinite(om.pipSize) && om.pipSize > 0 ? om.pipSize : 0.0001;
+        if (entryPx > 0 && pip > 0) {
+          let sum = 0;
+          let n = 0;
+          om.tpTargets.forEach((t) => {
+            const px = parseFloat(t?.price);
+            if (px > 0) {
+              sum += Math.abs(px - entryPx) / pip;
+              n++;
+            }
+          });
+          if (n > 0) td = `${(sum / n).toFixed(2)}`;
+        }
+      }
+      setOmSlDistTxt((prev) => (prev === sd ? prev : sd));
+      setOmTpDistTxt((prev) => (prev === td ? prev : td));
+
+      const oqNum = parseFloat(document.getElementById("orderQuantity")?.value ?? "");
+      const lotsStr = Number.isFinite(oqNum) ? oqNum.toFixed(2) : "";
+      setOmTpAvgLotsTxt((prev) => (prev === lotsStr ? prev : lotsStr));
+      let wapStr = "";
+      if (
+        mtpMirror &&
+        om?.tpTargets &&
+        om.tpTargets.length > 1 &&
+        typeof om._weightedAvgTPFromPricedTargets === "function"
+      ) {
+        const priced = om.tpTargets.filter((t) => t && parseFloat(t.price) > 0);
+        if (priced.length > 0) {
+          try {
+            const wap = om._weightedAvgTPFromPricedTargets(priced, "preview", {
+              quantity: Number.isFinite(oqNum) ? oqNum : parseFloat(document.getElementById("orderQuantity")?.value) || 1,
+              entryPrice: parseFloat(document.getElementById("orderEntryPrice")?.value || 0),
+              type: om.orderSide || "BUY",
+            });
+            if (Number.isFinite(wap) && typeof om.formatPrice === "function") wapStr = om.formatPrice(wap);
+          } catch (_) {}
+        }
+      }
+      setOmTpWapPriceTxt((prev) => (prev === wapStr ? prev : wapStr));
+
+      const entryInfos = Array.from(document.querySelectorAll("#multiEntryRows .multi-entry-row-info")).map(
+        (el) => el.textContent?.replace(/\s+/g, " ").trim() || ""
+      );
+      setOmEntryRowStatLines((prev) =>
+        prev.length === entryInfos.length && prev.every((v, i) => v === entryInfos[i]) ? prev : entryInfos
+      );
+      const mq = document.getElementById("multiEntryTotalQty")?.textContent?.trim() || "";
+      setOmMultiEntryTotalQtyTxt((prev) => (prev === mq ? prev : mq));
+
+      let entryAvgStr = "";
+      const avgDom = document.getElementById("multiEntryAvgPrice")?.textContent?.trim() || "";
+      if (avgDom && avgDom !== "0.00000") {
+        entryAvgStr = avgDom;
+      } else if (
+        om &&
+        typeof om._calcMultiEntryAvgPrice === "function" &&
+        typeof om.formatPrice === "function"
+      ) {
+        try {
+          const ap = om._calcMultiEntryAvgPrice();
+          if (Number.isFinite(ap) && ap > 0) entryAvgStr = om.formatPrice(ap);
+        } catch (_) {}
+      }
+      setOmEntryAvgPriceTxt((prev) => (prev === entryAvgStr ? prev : entryAvgStr));
+
+      const tpStats = Array.from(document.querySelectorAll("#multipleTPList .order-tp-multi__row")).map((row) => {
+        const rr = row.querySelector(".order-tp-multi__row-rr input")?.value?.trim() ?? "—";
+        const profit = row.querySelector(".order-tp-multi__row-profit input")?.value?.trim() ?? "0";
+        return `${rr}R · $${profit}`;
+      });
+      setOmTpRowStatLines((prev) =>
+        prev.length === tpStats.length && prev.every((v, i) => v === tpStats[i]) ? prev : tpStats
+      );
+
+      const sigPt = snapshotPreTradeStrategySig(window.chart);
+      if (sigPt !== preTradeStrategySigRef.current) {
+        preTradeStrategySigRef.current = sigPt;
+        setPreTradeDefRevision((n) => n + 1);
+      }
+    };
+
+    tick();
+    const id = window.setInterval(tick, 24);
+    return () => clearInterval(id);
+  }, [orderPanelOpen, riskBasis]);
+
+  // PRE tags ↔ Strategies Lab: hydrate from hidden #orderStrategyVariablesMount, mirror writes back so place-order picks up strategyVariables.
+  useEffect(() => {
+    if (!orderPanelOpen) {
+      preTradeDomHydratedRef.current = false;
+      return;
+    }
+    const defs = sessionPreTradeVarsToTagDefs(window.chart);
+    if (!defs.length) {
+      preTradeDomHydratedRef.current = false;
+      return;
+    }
+    const om = window.chart?.orderManager;
+    if (typeof om?._renderStrategyVariablesPanel === "function") {
+      om._renderStrategyVariablesPanel();
+    }
+    let cancelled = false;
+    const raf1 = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        const mount = document.getElementById("orderStrategyVariablesMount");
+        if (!mount) {
+          preTradeDomHydratedRef.current = false;
+          return;
+        }
+        const next = {};
+        defs.forEach((def) => {
+          const sel = Array.from(mount.querySelectorAll("select.order-strategy-var-input")).find(
+            (el) => el.getAttribute("data-var-id") === def.id
+          );
+          if (!sel) return;
+          const raw = sel.value;
+          if (def.type === "bool") {
+            if (raw === "yes") next[def.id] = true;
+            else if (raw === "no") next[def.id] = false;
+          } else if (raw && raw !== "" && raw !== "—") {
+            next[def.id] = raw;
+          }
+        });
+        setTagSels(next);
+        preTradeDomHydratedRef.current = true;
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf1);
+    };
+  }, [orderPanelOpen, preTradeDefRevision]);
+
+  useEffect(() => {
+    if (!orderPanelOpen || !preTradeDomHydratedRef.current) return;
+    const defs = sessionPreTradeVarsToTagDefs(window.chart);
+    if (!defs.length) return;
+    const mount = document.getElementById("orderStrategyVariablesMount");
+    if (!mount) return;
+    defs.forEach((def) => {
+      const sel = Array.from(mount.querySelectorAll("select.order-strategy-var-input")).find(
+        (el) => el.getAttribute("data-var-id") === def.id
+      );
+      if (!sel) return;
+      if (def.type === "bool") {
+        const v = tagSels[def.id];
+        const domVal = v === true ? "yes" : v === false ? "no" : "";
+        if (sel.value !== domVal) sel.value = domVal;
+      } else {
+        const v = tagSels[def.id];
+        const want = v != null && v !== "" ? String(v) : "—";
+        if (sel.value !== want && [...sel.options].some((o) => o.value === want)) {
+          sel.value = want;
+        }
+      }
+    });
+  }, [tagSels, orderPanelOpen, preTradeDefRevision]);
+
   // Rollback overlay — callback ref attaches native mousemove the instant the node mounts
   // (avoids useEffect timing gap when rollback first becomes true)
   const rollbackOverlayCallbackRef = (node) => {
     rollbackOverlayRef.current = node;
     if (!node) return;
-    const Z = 1.05;
     // Cache rect — recomputed only on scroll/resize, never inside the hot path
     let rectLeft = 0, rectWidth = 0;
     const refreshRect = () => { const r = node.getBoundingClientRect(); rectLeft = r.left; rectWidth = r.width; };
@@ -1269,7 +5011,11 @@ const TalariaV8b = () => {
       </svg>
     );
     return (
-      <div onClick={toggle} onMouseEnter={()=>setHov(hKey)} onMouseLeave={()=>setHov(null)}
+      <div
+        onPointerDown={(e) => { e.stopPropagation(); toggle(); }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onMouseEnter={()=>setHov(hKey)} onMouseLeave={()=>setHov(null)}
         style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"default",userSelect:"none",WebkitUserSelect:"none",
                 opacity: on && isH ? 0.65 : 1, transition:"opacity 0.12s"}}>
         <div style={{width:10,height:10,flexShrink:0}}>{indicator}</div>
@@ -1277,7 +5023,6 @@ const TalariaV8b = () => {
       </div>
     );
   };
-  const Z = 1.05; // root zoom — divide getBoundingClientRect values by this before using as fixed CSS coords
   const cpW = 210; // color picker width
   const CP_H = 280; // color picker estimated height
   const posFromRect = (rect, popW, gapY = 6) => {
@@ -1335,9 +5080,10 @@ const TalariaV8b = () => {
     setColorPicker("gotoNewColor");
   };
   const cpApply = (nh, ns, nv, na, key) => {
+    const targetKey = key || colorPicker;
+    if (targetKey == null || targetKey === "") return;
     const rgb = hsvToRgb(nh, ns, nv);
     setCpHex(toHex2(rgb.r)+toHex2(rgb.g)+toHex2(rgb.b));
-    const targetKey = key || colorPicker;
     const colorVal = cpBuildColor(rgb.r, rgb.g, rgb.b, na);
     if(targetKey === "gotoNewColor") setGotoNewColor(colorVal);
     else if(targetKey === "tlLineColor") setTlStyle(s=>isFibTool ? {...s, lineColor: colorVal, fibLevels: s.fibLevels.map(l=>({...l, color: colorVal}))} : {...s, lineColor: colorVal});
@@ -1401,6 +5147,47 @@ const TalariaV8b = () => {
     else if(targetKey === "rr_labelColor")  setRrStyle(s=>({...s, labelColor:  colorVal}));
     else updateSetting(targetKey, colorVal);
   };
+  cpApplyRef.current = cpApply;
+  cpPickerDragRef.current = { cpH, cpS, cpV, cpA, cpDragging, cpDragRect, colorPicker };
+
+  // Drag SV / hue / alpha via window listeners so no fullscreen portal sits above the picker and blocks DONE.
+  useEffect(() => {
+    if (!cpDragging || !cpDragRect) return;
+    const cap = { capture: true };
+    const onMove = (e) => {
+      const d = cpPickerDragRef.current;
+      const r = d.cpDragRect;
+      if (!r || !d.cpDragging) return;
+      if (d.cpDragging === "sv") {
+        const ns = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+        const nv = 1 - Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+        setCpS(ns);
+        setCpV(nv);
+        cpApplyRef.current(d.cpH, ns, nv, d.cpA, d.colorPicker);
+      } else if (d.cpDragging === "hue") {
+        const nh = Math.max(0, Math.min(360, ((e.clientX - r.left) / r.width) * 360));
+        setCpH(nh);
+        cpApplyRef.current(nh, d.cpS, d.cpV, d.cpA, d.colorPicker);
+      } else if (d.cpDragging === "alpha") {
+        const na = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+        setCpA(na);
+        cpApplyRef.current(d.cpH, d.cpS, d.cpV, na, d.colorPicker);
+      }
+    };
+    const onEnd = () => {
+      setCpDragging(null);
+      setCpDragRect(null);
+    };
+    window.addEventListener("pointermove", onMove, cap);
+    window.addEventListener("pointerup", onEnd, cap);
+    window.addEventListener("pointercancel", onEnd, cap);
+    return () => {
+      window.removeEventListener("pointermove", onMove, cap);
+      window.removeEventListener("pointerup", onEnd, cap);
+      window.removeEventListener("pointercancel", onEnd, cap);
+    };
+  }, [cpDragging, cpDragRect]);
+
   const indicatorData = [
     // Trend
     {id:"SMA",name:"Simple Moving Average",abbr:"SMA",cat:"trend",desc:"Smoothed average of closing prices over N periods"},
@@ -1573,6 +5360,8 @@ const TalariaV8b = () => {
     if (n === "trashDraw") return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><line x1="3" y1="7" x2="21" y2="7" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><path d="M9 7V5h6v2" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M4.5 7l1 15h13l1-15" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><line x1="8.5" y1="20" x2="15.5" y2="11" stroke={cl} strokeWidth="1.3" strokeLinecap="round" strokeOpacity="0.7"/><circle cx="8.5" cy="20" r="1.1" fill={cl} fillOpacity="0.7"/></svg>;
     if (n === "trashInd")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><line x1="3" y1="7" x2="21" y2="7" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><path d="M9 7V5h6v2" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M4.5 7l1 15h13l1-15" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><polyline points="7.5,19.5 10,15.5 13,17.5 16.5,12.5" stroke={cl} strokeWidth="1.3" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.7"/></svg>;
     if (n === "measure")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><g transform="rotate(45 12 12)"><rect x="2" y="9" width="20" height="6" rx="1" stroke={cl} strokeWidth="1.4"/><line x1="12" y1="9" x2="12" y2="13.5" stroke={cl} strokeWidth="1.2" strokeLinecap="round"/><line x1="7" y1="9" x2="7" y2="12.5" stroke={cl} strokeWidth="1.1" strokeLinecap="round"/><line x1="17" y1="9" x2="17" y2="12.5" stroke={cl} strokeWidth="1.1" strokeLinecap="round"/><line x1="4.5" y1="9" x2="4.5" y2="12" stroke={cl} strokeWidth="1" strokeLinecap="round"/><line x1="9.5" y1="9" x2="9.5" y2="12" stroke={cl} strokeWidth="1" strokeLinecap="round"/><line x1="14.5" y1="9" x2="14.5" y2="12" stroke={cl} strokeWidth="1" strokeLinecap="round"/><line x1="19.5" y1="9" x2="19.5" y2="12" stroke={cl} strokeWidth="1" strokeLinecap="round"/></g></svg>;
+    // Stroke-only frame (Material P.rect fill can look like a diagonal smear at 17px next to line tools).
+    if (n === "rect") return <svg width={s} height={s} viewBox="0 0 17 17" fill="none" style={{ display: "block" }}><rect x="2.5" y="2.5" width="12" height="12" rx="1" stroke={cl} strokeWidth="1.5"/></svg>;
     const P = {
       trendline:  "m136-240-56-56 296-298 160 160 208-206H640v-80h240v240h-80v-104L536-320 376-480 136-240Z",
       rect:       "M80-160v-640h800v640H80Zm80-80h640v-480H160v480Zm0 0v-480 480Z",
@@ -1627,15 +5416,27 @@ const TalariaV8b = () => {
   };
 
   // Button component
-  const B = ({ children, onClick, primary, small, hk, sx = {} }) => {
+  // `fireOnPointerDown`: modal footers (Cancel/OK) — runs the action on pointerdown so it still
+  // fires if chart/document eats the synthetic click; suppress duplicate click when true.
+  const B = ({ children, onClick, primary, small, hk, sx = {}, fireOnPointerDown }) => {
     const isH = hk ? swHov === hk : false;
     const isP = hk ? swHov === hk + "_dn" : false;
     return (
-      <button
-        onClick={onClick}
+      <button type="button"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          if (fireOnPointerDown && typeof onClick === "function") onClick(e);
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!fireOnPointerDown && typeof onClick === "function") onClick(e);
+        }}
         onMouseEnter={hk ? () => setSwHov(hk) : undefined}
         onMouseLeave={hk ? () => setSwHov(null) : undefined}
-        onMouseDown={hk ? () => setSwHov(hk + "_dn") : undefined}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          if (hk) setSwHov(hk + "_dn");
+        }}
         onMouseUp={hk ? () => setSwHov(hk) : undefined}
         style={{
           padding: small ? "0 10px" : "0 14px",
@@ -1666,6 +5467,16 @@ const TalariaV8b = () => {
     );
   };
 
+  /** Primary action for floating UI (modals, portaled panels): run on pointerdown so it still fires if synthetic click is lost after stopPropagation on the press path. */
+  const modalPointerActivate = (fn) => ({
+    onPointerDown: (e) => {
+      e.stopPropagation();
+      fn(e);
+    },
+    onMouseDown: (e) => e.stopPropagation(),
+    onClick: (e) => e.stopPropagation(),
+  });
+
   const Sel = ({ children, w }) => (
     <select style={{ background: c.well, border: `1px solid ${c.br}`, color: c.tx, padding: "3px 6px", fontSize: 11, fontFamily: F, outline: "none", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.2)", width: w }}>{children}</select>
   );
@@ -1693,7 +5504,7 @@ const TalariaV8b = () => {
     ]}],
     // Group 4 - Shapes
     [{ id: "rect", icon: "rect", label: "Shapes", dd: [
-      {h:"SHAPES"},{icon:"triangle",label:"Triangle"},{icon:"rect",label:"Rectangle"},{icon:"arcShape",label:"Arc"},{icon:"ellipse",label:"Ellipse"},{icon:"circle",label:"Circle"},
+      {h:"SHAPES"},{icon:"rect",label:"Rectangle"},{icon:"triangle",label:"Triangle"},{icon:"arcShape",label:"Arc"},{icon:"ellipse",label:"Ellipse"},{icon:"circle",label:"Circle"},
       {h:"ARROWS"},{icon:"arrowMarker",label:"Arrow Marker"},{icon:"arrowLine",label:"Arrow"},{icon:"arrowUp",label:"Arrow Mark Up"},{icon:"arrowDn",label:"Arrow Mark Down"}
     ]}],
     // Group 5 - Channels & Pitchforks
@@ -1746,11 +5557,1457 @@ const TalariaV8b = () => {
     { id: "redo", icon: "redo", label: "Redo", action: true },
   ];
 
-  const priceLabels = ["127.100","127.000","126.900","126.800","126.700","126.600","126.500","126.400","126.300","126.200"];
-  const timeLabels = ["16:36","16:46","16:56","17:01","17:06","17:11","17:16","17:21","17:26","17:31","17:36","17:41","17:46","17:51"];
-  const priceAxisWidth = Math.max(50, Math.ceil(Math.max(...priceLabels.map(p=>p.length)) * 5.5 + 16));
+  // Magnet dropdown items (must match `toolGroups` magnet dd). Legacy applyMagnetMode sets BOTH
+  // drawingManager + chart.magnetMode + all panel charts; V9 previously only called dm.setMagnetMode,
+  // so chart.snapToOHLC / UI stayed on 'off' and the menu always showed "Off" (no groupSelected.magnet).
+  const MAGNET_MENU_ITEMS = {
+    off: { icon: "magnetOff", label: "Off" },
+    weak: { icon: "magnetWeak", label: "Weak" },
+    strong: { icon: "magnetStrong", label: "Strong" },
+  };
+
+  const applyV9MagnetMode = useCallback((item) => {
+    const mode =
+      item?.icon === "magnetOff" ? "off"
+      : item?.icon === "magnetWeak" ? "weak"
+      : item?.icon === "magnetStrong" ? "strong"
+      : "off";
+    const applyOne = (chartInst) => {
+      if (!chartInst) return;
+      try {
+        const dm = chartInst.drawingManager;
+        if (dm && typeof dm.setMagnetMode === "function") dm.setMagnetMode(mode);
+        else if (dm) dm.magnetMode = mode;
+        chartInst.magnetMode = mode;
+        if (typeof chartInst.syncMagnetButton === "function") chartInst.syncMagnetButton();
+      } catch (_) {}
+    };
+    try {
+      if (typeof window !== "undefined") window.magnetMode = mode;
+      const ch =
+        typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+      applyOne(ch);
+      const pm = typeof window !== "undefined" ? window.panelManager : null;
+      if (pm && Array.isArray(pm.panels)) {
+        pm.panels.forEach((p) => applyOne(p && p.chartInstance));
+      }
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    const syncMagnetUiFromChart = () => {
+      try {
+        const ch =
+          typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+        const dm = ch && ch.drawingManager;
+        let raw = dm && dm.magnetMode != null ? dm.magnetMode : ch && ch.magnetMode;
+        if (raw === true) raw = "weak";
+        if (raw === false || raw == null) raw = "off";
+        const key = String(raw).toLowerCase();
+        const item = MAGNET_MENU_ITEMS[key] || MAGNET_MENU_ITEMS.off;
+        setGroupSelected((p) => {
+          if (p.magnet && p.magnet.label === item.label) return p;
+          return { ...p, magnet: item };
+        });
+      } catch (_) {}
+    };
+    syncMagnetUiFromChart();
+    window.addEventListener("chartDataLoaded", syncMagnetUiFromChart);
+    window.addEventListener("panelSelected", syncMagnetUiFromChart);
+    return () => {
+      window.removeEventListener("chartDataLoaded", syncMagnetUiFromChart);
+      window.removeEventListener("panelSelected", syncMagnetUiFromChart);
+    };
+  }, []);
+
+  // Mock price/time labels removed: chart.js renders the real axes directly
+  // on the canvas (right edge for price, bottom for time). V9 used to render
+  // these as separate sibling <div>s, which caused duplicate axes on screen.
+  // Kept priceAxisWidth = 0 so any remaining layout calculations don't break.
+  const priceAxisWidth = 0;
+
+  // ─── V9 ICON → LEGACY chart.js TOOL REGISTRY KEY ────────────────────────
+  // Every V9 icon id maps to a key in DrawingToolsManager.toolRegistry
+  // (see chart/modules/drawing-tools-manager.js line 108). Unmapped icons
+  // resolve to null and clear the tool (cursor mode).
+  const V9_ICON_TO_LEGACY = {
+    // Cursor / utility
+    crosshair: null, cursorDot: null, cursorArrow: null, eraser: null, lock: null,
+    // Brushes
+    draw: 'brush', brush: 'highlighter',
+    // Lines
+    trendline: 'trendline', hray: 'horizontal-ray', hline: 'horizontal',
+    vline: 'vertical', ray: 'ray', extendedLine: 'extended-line',
+    crossLine: 'cross-line', polyline: 'polyline', pathTool: 'path',
+    curve: 'curve', doubleCurve: 'double-curve',
+    // Shapes
+    triangle: 'triangle', rect: 'rectangle', arcShape: 'arc',
+    ellipse: 'ellipse', circle: 'circle',
+    // Arrows
+    arrowMarker: 'arrow-marker', arrowLine: 'arrow',
+    arrowUp: 'arrow-mark-up', arrowDn: 'arrow-mark-down',
+    // Channels & pitchforks
+    channel: 'parallel-channel', regressionCh: 'regression-trend',
+    flatChannel: 'flat-top-bottom', disjointCh: 'disjoint-channel',
+    pitchfork: 'pitchfork',
+    // Fibonacci
+    fib: 'fibonacci-retracement', fibExtension: 'fibonacci-extension',
+    fibChannel: 'fib-channel', fibTimeZone: 'fib-timezone',
+    fibFan: 'fib-speed-fan', fibTime: 'trend-fib-time',
+    fibCircles: 'fib-circles', fibSpiral: 'fib-spiral',
+    fibArcs: 'fib-arcs', fibWedge: 'fib-wedge',
+    // Gann
+    gannBox: 'gann-box', gannSquare: 'gann-square-fixed', gannFan: 'gann-fan',
+    // Text & labels
+    text: 'text', note: 'note', priceNote: 'price-note',
+    callout: 'callout', comment: 'comment',
+    pin: 'pin', priceLabel: 'price-label', signpost: 'signpost-2',
+    flag: 'flag-mark', image: 'image', emoji: 'emoji',
+    // Patterns & waves
+    elliott5: 'elliott-impulse', elliottABC: 'elliott-correction',
+    elliottTri: 'elliott-triangle', elliottWXY: 'elliott-double-combo',
+    elliottWXYXZ: 'elliott-triple-combo',
+    xabcd: 'xabcd-pattern', headShoulders: 'head-shoulders',
+    abcdPattern: 'abcd-pattern', triPattern: 'triangle-pattern',
+    threeDrives: 'three-drives',
+    // Projections
+    shortPos: 'short-position', longPos: 'long-position', measure: 'ruler',
+    // Volume
+    vwap: 'anchored-vwap', volProfile: 'fixed-range-volume-profile',
+    anchoredVol: 'anchored-volume-profile',
+  };
+
+  // ─── Objects Tree sync ──────────────────────────────────────────────────
+  // Build inverse map (legacy chart.js drawing.type → V9 icon id) from
+  // V9_ICON_TO_LEGACY so the Objects Tree row icon matches the left-rail
+  // icon used to draw the shape.
+  const LEGACY_TYPE_TO_V9_ICON = useMemo(() => {
+    const m = {};
+    Object.entries(V9_ICON_TO_LEGACY).forEach(([v9, legacy]) => {
+      if (legacy && !m[legacy]) m[legacy] = v9;
+    });
+    if (!m["rotated-rectangle"]) m["rotated-rectangle"] = "rect";
+    return m;
+  }, []);
+
+  // Listen for chart.js drawing changes and rebuild layersItems from
+  // dm.drawings. Legacy code dispatches `drawingsChanged` on window after
+  // every add / delete / load / undo / redo (see drawing-tools-manager.js
+  // line ~6410). We also poll once on mount to catch already-loaded
+  // drawings (e.g. session restore that fires before V9 mounts).
+  useEffect(() => {
+    const rebuild = () => {
+      try {
+        const dm = window.chart && window.chart.drawingManager;
+        if (!dm || !Array.isArray(dm.drawings)) {
+          setLayersItems([]);
+          return;
+        }
+        // Filter out orphaned / unfinalized drawings:
+        //  - missing type or id (not a real shape yet)
+        //  - SVG group destroyed or detached from the document
+        //  - no valid points (placement was cancelled mid-draw)
+        const valid = dm.drawings.filter((d) => {
+          if (!d || !d.type) return false;
+          // group is a d3 selection; .node() returns the underlying SVGElement.
+          // After destroy() group is null/undefined or its node is no longer
+          // in the document — treat as stale.
+          try {
+            const g = d.group;
+            const node = g && (typeof g.node === 'function' ? g.node() : g);
+            if (!node || (node.isConnected === false)) return false;
+          } catch (_) { return false; }
+          if (!Array.isArray(d.points) || d.points.length === 0) return false;
+          const hasValidPoint = d.points.some(p => p && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)));
+          if (!hasValidPoint) return false;
+          return true;
+        });
+        const items = valid.map((d) => {
+          const icon = LEGACY_TYPE_TO_V9_ICON[d.type] || 'trendline';
+          const name = (typeof dm.getDrawingDisplayTitle === 'function')
+            ? dm.getDrawingDisplayTitle(d)
+            : (d.type || 'Drawing');
+          return {
+            id: d.id || `d-${Math.random().toString(36).slice(2, 9)}`,
+            icon,
+            name,
+            _visible: d.visible !== false,
+            _locked: !!d.locked,
+            _drawing: d,
+          };
+        });
+        setLayersItems(items);
+      } catch (err) {
+        console.warn('[V9 Objects Tree] rebuild failed:', err);
+      }
+    };
+
+    let cancelled = false;
+    let attempts = 0;
+    const waitForChart = () => {
+      if (cancelled) return;
+      const dm = window.chart && window.chart.drawingManager;
+      if (dm && Array.isArray(dm.drawings)) { rebuild(); return; }
+      if (++attempts < 80) setTimeout(waitForChart, 100);
+    };
+    waitForChart();
+
+    window.addEventListener('drawingsChanged', rebuild);
+    // Style edits don't fire drawingsChanged — but we want the row name to
+    // refresh if the user renames a drawing via the legacy toolbar.
+    window.addEventListener('drawingStyleChanged', rebuild);
+    // File / symbol / timeframe switch reloads dm.drawings from storage —
+    // catch that or the tree keeps showing the previous chart's drawings.
+    window.addEventListener('chartDataLoaded', rebuild);
+    // Multi-panel: the active panel (and therefore window.chart.drawingManager)
+    // changes — rebuild against the newly active drawingManager.
+    window.addEventListener('panelSelected', rebuild);
+    window.addEventListener('returnedToSinglePanel', rebuild);
+    // Manual trigger: V9 calls window.__rebuildObjectsTree() when the
+    // Objects Tree panel is opened, to catch anything we may have missed.
+    window.__rebuildObjectsTree = rebuild;
+    return () => {
+      cancelled = true;
+      window.removeEventListener('drawingsChanged', rebuild);
+      window.removeEventListener('drawingStyleChanged', rebuild);
+      window.removeEventListener('chartDataLoaded', rebuild);
+      window.removeEventListener('panelSelected', rebuild);
+      window.removeEventListener('returnedToSinglePanel', rebuild);
+      if (window.__rebuildObjectsTree === rebuild) delete window.__rebuildObjectsTree;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Force a rebuild whenever the user opens the Objects Tree panel — a
+  // safety net for any drawing-state event we may not be listening to.
+  useEffect(() => {
+    if (rightPanel === 'layers' && typeof window.__rebuildObjectsTree === 'function') {
+      window.__rebuildObjectsTree();
+    }
+  }, [rightPanel]);
+
+  // V9 group id → default legacy tool (used when no sub-tool was picked yet).
+  const V9_GROUP_DEFAULT = {
+    crosshair: null, brush2: 'brush', trendline: 'trendline', rect: 'rectangle',
+    channel: 'parallel-channel', fib: 'fibonacci-retracement', text: 'text',
+    pattern: 'elliott-impulse', measure: 'ruler', brush: 'anchored-vwap',
+    eye: null, magnet: null, lock: null,
+  };
+
+  // Resolve current legacy tool from V9 state. Sub-tool selection in
+  // groupSelected[tool] wins; otherwise falls back to the group default.
+  const resolveLegacyTool = () => {
+    const sub = groupSelected[tool];
+    if (sub && sub.icon && V9_ICON_TO_LEGACY[sub.icon] !== undefined) {
+      return V9_ICON_TO_LEGACY[sub.icon];
+    }
+    // Per-group defaults before treating `tool` as an icon id. The Volume Tools
+    // group id is `brush` but V9_ICON_TO_LEGACY also maps icon `brush` → highlighter
+    // (Brushes sub-tool); without this order, anchored-vwap never wins.
+    if (V9_GROUP_DEFAULT[tool] !== undefined) return V9_GROUP_DEFAULT[tool];
+    if (V9_ICON_TO_LEGACY[tool] !== undefined) return V9_ICON_TO_LEGACY[tool];
+    return null;
+  };
+
+  // Set true while the user is editing an EXISTING drawing through the V9
+  // settings panel (opened via dblclick). We need to:
+  //   1. Force `tool` to the matching panel-group key so the JSX panel
+  //      conditional renders (`tool === "trendline" || tool === "rect" ...`).
+  //   2. Prevent the tool bridge below from arming chart.js's draw tool —
+  //      otherwise clicking the chart while the panel is open would start
+  //      drawing a new trendline. We zero out the legacy tool while editing.
+  // The ref also stores the drawing reference + the tool/groupSelected we
+  // had before the panel opened, so closing the panel restores them.
+  const editingDrawingRef = useRef(null);
+
+  // `drawingManager.toolbar.show` (shape selected / floating bar): the next tool-bridge tick must
+  // only clear chart.js. If we dm.setTool(legacy), drawing-tools-manager.setTool calls deselectAll()
+  // and wipes the selection the user just made — and leaves draw mode armed.
+  const v9SelectionToolbarSyncRef = useRef(false);
+
+  const getSelectedDrawingForTemplate = useCallback(() => {
+    try {
+      return getSelectedDrawingAcrossCharts(editingDrawingRef.current?.drawing) || null;
+    } catch (_) {
+      return null;
+    }
+  }, []);
+
+  const tlSavedTemplateList = useMemo(() => {
+    void tlTemplatesRev;
+    try {
+      const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+      const tb = ch?.drawingManager?.toolbar;
+      if (!tb || typeof tb.getSavedTemplates !== "function") return [];
+      const d = getSelectedDrawingForTemplate();
+      const toolType = (d && d.type) || resolveLegacyTool();
+      if (!toolType) return [];
+      return tb.getSavedTemplates(toolType) || [];
+    } catch (_) {
+      return [];
+    }
+  }, [tlTemplatesRev, tool, groupSelected, tlBarSelected, tlBarSelectedType, tlSettOpen, getSelectedDrawingForTemplate]);
+
+  useEffect(() => {
+    const bump = () => setTlTemplatesRev((n) => n + 1);
+    window.addEventListener("drawingTemplatesUpdated", bump);
+    return () => window.removeEventListener("drawingTemplatesUpdated", bump);
+  }, []);
+
+  // Push the current tool selection into the legacy chart.js drawing system.
+  // Runs whenever V9's tool / groupSelected changes. Polls briefly because
+  // chart.js / drawingManager may not be initialized yet on first mount.
+  useEffect(() => {
+    let cancelled = false; let n = 0;
+    const apply = () => {
+      if (cancelled) return;
+      const ch =
+        typeof window.getActiveChart === "function"
+          ? window.getActiveChart()
+          : window.chart;
+      const dm = ch && ch.drawingManager;
+      if (!dm || typeof dm.setTool !== 'function') {
+        if (++n < 50) setTimeout(apply, 100);
+        return;
+      }
+      // While editing an existing drawing through the V9 settings panel,
+      // keep chart.js in cursor mode regardless of `tool` (which we forced
+      // to the panel-group key purely so the JSX conditional renders).
+      if (editingDrawingRef.current) {
+        try {
+          if (typeof dm.clearTool === 'function') dm.clearTool();
+          else dm.currentTool = null;
+        } catch (_) {}
+        return;
+      }
+      if (v9SelectionToolbarSyncRef.current) {
+        v9SelectionToolbarSyncRef.current = false;
+        const legacy = resolveLegacyTool();
+        // Only suppress if switching to crosshair (the toolbar.show sync-back).
+        // If the user explicitly clicked a real drawing tool while a shape was
+        // selected, fall through and activate it instead of just clearing.
+        if (!legacy) {
+          try {
+            if (typeof dm.clearTool === 'function') dm.clearTool();
+            else dm.currentTool = null;
+          } catch (_) {}
+          return;
+        }
+        // fall through → activate the real tool below
+      }
+      const legacy = resolveLegacyTool();
+      try {
+        if (!legacy) {
+          if (typeof dm.clearTool === 'function') dm.clearTool();
+          else dm.currentTool = null;
+        } else {
+          dm.setTool(legacy);
+        }
+      } catch (err) { console.warn('[V9 tool bridge] setTool failed:', legacy, err); }
+    };
+    apply();
+    const onPanelSelected = () => {
+      n = 0;
+      apply();
+    };
+    window.addEventListener("panelSelected", onPanelSelected);
+    window.addEventListener("panelsCreated", onPanelSelected);
+    window.addEventListener("chartDataLoaded", onPanelSelected);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("panelSelected", onPanelSelected);
+      window.removeEventListener("panelsCreated", onPanelSelected);
+      window.removeEventListener("chartDataLoaded", onPanelSelected);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool, groupSelected]);
+
+  // Keep V9 left rail in sync when legacy drawing mode ends: (1) finalizeDrawing
+  // clears the tool after a completed stroke; (2) clearTool runs in many paths
+  // (cancel, panel switch, etc.). Without syncing, React can still show Trend Line
+  // as selected while dm.currentTool is null — looks armed but clicks pan/don't draw.
+  // Skip while dblclick edit panel is open (editingDrawingRef) — same rule as tool bridge.
+  useEffect(() => {
+    let cancelled = false;
+    /** @type {{ dm: object, origF?: function, wrapF?: function, origC?: function, wrapC?: function }[]} */
+    const tracked = [];
+
+    const syncRailIfCursor = (dm, mirrored) => {
+      try {
+        if (editingDrawingRef.current) return;
+        // panel-manager.selectPanel clears non-focused tiles with clearTool(true).
+        // Syncing React from those mirrored clears races the tool bridge and forces
+        // the V9 rail back to Cursor even when the user immediately picks a draw tool.
+        if (mirrored) return;
+        const activeCh =
+          typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+        const activeDm = activeCh && activeCh.drawingManager;
+        // Only sync the left rail from the focused tile's drawing manager. Clearing or
+        // finishing a stroke on a background chart must not reset V9 while a panel is active.
+        if (activeDm && dm !== activeDm) return;
+        if (!dm || dm.currentTool) return;
+        setTool("crosshair");
+        setDropdown(null);
+        setBtnPressed(null);
+      } catch (_) {}
+    };
+
+    const patchDm = (dm) => {
+      if (!dm) return;
+      if (tracked.some((t) => t.dm === dm)) return;
+      const entry = { dm };
+      let any = false;
+
+      if (typeof dm.finalizeDrawing === "function") {
+        const orig = dm.finalizeDrawing.bind(dm);
+        const wrapped = function v9WrappedFinalizeDrawing() {
+          orig();
+          syncRailIfCursor(dm);
+          queueMicrotask(() => syncRailIfCursor(dm));
+        };
+        dm.finalizeDrawing = wrapped;
+        entry.origF = orig;
+        entry.wrapF = wrapped;
+        any = true;
+      }
+      if (typeof dm.clearTool === "function") {
+        const origC = dm.clearTool.bind(dm);
+        const wrappedC = function v9WrappedClearTool(mirrored) {
+          origC.apply(this, arguments);
+          syncRailIfCursor(dm, mirrored);
+          queueMicrotask(() => syncRailIfCursor(dm, mirrored));
+        };
+        dm.clearTool = wrappedC;
+        entry.origC = origC;
+        entry.wrapC = wrappedC;
+        any = true;
+      }
+      if (any) tracked.push(entry);
+    };
+
+    const patchAllManagers = () => {
+      if (cancelled) return;
+      patchDm(window.chart && window.chart.drawingManager);
+      const panels = window.panelManager && window.panelManager.panels;
+      if (Array.isArray(panels)) {
+        panels.forEach((p) => patchDm(p && p.chartInstance && p.chartInstance.drawingManager));
+      }
+    };
+
+    let attempts = 0;
+    const tick = () => {
+      if (cancelled) return;
+      patchAllManagers();
+      if (++attempts < 100) setTimeout(tick, 100);
+    };
+    tick();
+
+    const onChartStructure = () => patchAllManagers();
+    window.addEventListener("panelSelected", onChartStructure);
+    window.addEventListener("panelsCreated", onChartStructure);
+    window.addEventListener("chartDataLoaded", onChartStructure);
+    window.addEventListener("returnedToSinglePanel", onChartStructure);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("panelSelected", onChartStructure);
+      window.removeEventListener("panelsCreated", onChartStructure);
+      window.removeEventListener("chartDataLoaded", onChartStructure);
+      window.removeEventListener("returnedToSinglePanel", onChartStructure);
+      tracked.forEach((e) => {
+        try {
+          if (e.wrapF && e.dm.finalizeDrawing === e.wrapF) e.dm.finalizeDrawing = e.origF;
+          if (e.wrapC && e.dm.clearTool === e.wrapC) e.dm.clearTool = e.origC;
+        } catch (_) {}
+      });
+    };
+  }, []);
+
+  // Legacy chart.js finishes many drag tools in chart.js (SVG path) via Chart#setTool('cursor'),
+  // which clears chart.tool only — it never calls drawingManager.finalizeDrawing/clearTool.
+  // Patch the prototype once so V9 matches after those completions.
+  useEffect(() => {
+    let cancelled = false;
+    let restore = null;
+    let attempts = 0;
+    const tryPatch = () => {
+      if (cancelled) return;
+      const C = typeof window !== "undefined" && window.Chart;
+      if (!C || !C.prototype || typeof C.prototype.setTool !== "function") {
+        if (++attempts < 100) setTimeout(tryPatch, 100);
+        return;
+      }
+      if (C.prototype.__v9ChartSetToolHooked) return;
+      C.prototype.__v9ChartSetToolHooked = true;
+      const proto = C.prototype;
+      const orig = proto.setTool;
+      const patched = function v9PatchedChartSetTool(tool) {
+        orig.call(this, tool);
+        try {
+          if (editingDrawingRef.current) return;
+          if (!this.tool) {
+            const active =
+              typeof window.getActiveChart === "function"
+                ? window.getActiveChart()
+                : window.chart;
+            // Legacy Chart#setTool('cursor') still runs on window.chart when a secondary
+            // panel is focused; without this guard it clears the V9 rail on every tick.
+            if (active && this !== active) return;
+            setTool("crosshair");
+            setDropdown(null);
+            setBtnPressed(null);
+          }
+        } catch (_) {}
+      };
+      proto.setTool = patched;
+      restore = () => {
+        try {
+          if (proto.setTool === patched) proto.setTool = orig;
+          delete C.prototype.__v9ChartSetToolHooked;
+        } catch (_) {}
+      };
+    };
+    tryPatch();
+    return () => {
+      cancelled = true;
+      if (restore) restore();
+    };
+  }, []);
+
+  // Set true just before we update tlStyle from a selected drawing's style
+  // so the forward bridge below skips that pass and we don't loop.
+  const suppressForwardBridge = useRef(false);
+  const suppressTxtForwardBridge = useRef(false);
+
+  // Legacy chart.js saves drawings and updates `d.levels` / style directly; React `tlStyle` does not
+  // hear those edits. The forward bridge below would then push *stale* `tlStyle.fibLevels` back onto
+  // the chart on the next toolbar interaction. Re-read the live selection into `tlStyle` whenever
+  // drawings persist — chart modules stay unchanged; this is integration-only.
+  useEffect(() => {
+    let rafId = 0;
+    const v9DrawingUsesFibStyleBridge = (t) =>
+      !!t
+      && (t.startsWith("fibonacci-") || t.startsWith("fib-") || t.startsWith("trend-fib-")
+        || t === "gann-box" || t === "gann-square-fixed" || t === "gann-fan");
+    const syncTlStyleFromSelectedDrawing = () => {
+      try {
+        const d = getSelectedDrawingAcrossCharts(
+          editingDrawingRef.current ? editingDrawingRef.current.drawing : null,
+        );
+        if (!d || !d.type || !v9DrawingUsesFibStyleBridge(d.type)) return;
+        const patch = v9TlStylePatchFromDrawing(d);
+        if (!patch || Object.keys(patch).length === 0) return;
+        suppressForwardBridge.current = true;
+        setTlStyle((s) => ({ ...s, ...patch }));
+      } catch (_) { /* ignore */ }
+    };
+    const onDrawingsChanged = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        syncTlStyleFromSelectedDrawing();
+      });
+    };
+    if (typeof window === "undefined") return undefined;
+    window.addEventListener("drawingsChanged", onDrawingsChanged);
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      window.removeEventListener("drawingsChanged", onDrawingsChanged);
+    };
+  }, []);
+
+  // ─── V9 dblclick → V9 settings panel ─────────────────────────────────────
+  // Register a hook that chart.js's drawing-tools-manager.editDrawing() calls
+  // when the user double-clicks an existing drawing. Replaces the legacy
+  // tv-settings-modal with the V9 floating panel (tlSettOpen) pre-filled
+  // from the drawing's current style. Edits propagate back to the drawing
+  // through the existing forward bridge above (line 2880+) because the
+  // drawing is already selected by drawing-tools-manager before editDrawing.
+  useEffect(() => {
+    // Map from drawing.style.dashArray back to V9 lineType.
+    const LEGACY_DASH_TO_V9 = { '': 'solid', '5,5': 'dashed', '2,4': 'dotted', '7,4,2,4': 'dashdot' };
+
+    const hook = (drawing, x, y) => {
+      try {
+        if (!drawing || !drawing.type) return false;
+        const group = drawingTypeToPanelGroupRef.current(drawing.type);
+        if (!group) return false; // Unknown type → legacy settings panel
+
+        // Drop stale close animation so reopening from the gear never plays PopOut first.
+        setClosing(s => { const n = new Set(s); n.delete("tlsett"); return n; });
+
+        const s = drawing.style || {};
+        // Stash the drawing so the tool bridge keeps chart.js in cursor mode
+        // and so closeTlSett (Esc / outside-click) can clear this on close.
+        editingDrawingRef.current = { drawing, prevTool: tool, prevGroupSelected: groupSelected };
+
+        // Match `toolbar.show`: map this drawing to the correct rail icon. Without this,
+        // dblclick/gear opens the panel while `groupSelected` still reflects the last line
+        // tool (e.g. Trend Line) because `editDrawing` calls `toolbar.hide()` and never
+        // re-ran selection sync for this drawing.
+        {
+          const g = group;
+          let icon = LEGACY_TYPE_TO_V9_ICON[drawing.type];
+          if (!icon) {
+            const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
+            icon = fb[g] || 'trendline';
+          }
+          const allowRail = V9_RAIL_ICONS_BY_GROUP[g];
+          if (allowRail && icon && !allowRail.has(icon)) {
+            const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
+            icon = fb[g] || allowRail.values().next().value;
+          }
+          let label = drawing.type;
+          try {
+            const dm = window.chart && window.chart.drawingManager;
+            if (dm && typeof dm.getDrawingDisplayTitle === 'function') {
+              label = dm.getDrawingDisplayTitle(drawing) || label;
+            }
+          } catch (_) {}
+          suppressForwardBridge.current = true;
+          setGroupSelected(prev => v9SanitizeGroupSelected({ ...prev, [g]: { icon, label } }));
+        }
+
+        // Suppress the forward bridge once: this read-back into tlStyle
+        // would otherwise re-emit the same values back to the drawing.
+        suppressForwardBridge.current = true;
+        setTlStyle(prev => ({
+          ...prev,
+          lineColor: s.stroke || s.color || prev.lineColor,
+          lineWidth: String(s.strokeWidth ?? prev.lineWidth),
+          lineType: LEGACY_DASH_TO_V9[(s.dashArray ?? s.strokeDasharray ?? '')] || prev.lineType,
+          bgColor: s.fill || s.backgroundColor || prev.bgColor,
+          ep1: s.startStyle || prev.ep1,
+          ep2: s.endStyle || prev.ep2,
+          extendLeft: !!s.extendLeft,
+          extendRight: !!s.extendRight,
+          priceLabels: s.showPriceLabel !== false,
+          timeLabels: s.showTimeLabel !== false,
+          rangeType: s.rangeMode === 'price' ? 'Price'
+                   : s.rangeMode === 'time' ? 'Date and time'
+                   : (prev.rangeType || 'Date & Price'),
+          ...(() => {
+            const info = s.infoSettings;
+            const types = v9ShowInfoTypesFromChartInfoSettings(info);
+            const showInfo = info
+              ? (info.showInfo === true || (types.length > 0 && info.showInfo !== false))
+              : false;
+            return {
+              showInfo,
+              showInfoTypes: types.length > 0 ? types : (prev.showInfoTypes || ['Price range']),
+            };
+          })(),
+          labelColor: s.labelColor || prev.labelColor,
+          labelFontSize: String(s.labelFontSize ?? prev.labelFontSize),
+          labelBg: !!s.labelBackground,
+          labelBgColor: s.labelBackgroundColor || prev.labelBgColor,
+          textContent: typeof drawing.text === 'string' ? drawing.text : prev.textContent,
+          textColor: s.textColor || prev.textColor,
+          textSize: String(s.fontSize ?? prev.textSize),
+          textBold: s.fontWeight === 'bold' || (typeof s.fontWeight === 'number' && s.fontWeight >= 600),
+          textItalic: s.fontStyle === 'italic',
+          vertAlign: v9ChartVertToUi(s.textVAlign || s.textPosition || prev.vertAlign),
+          horizAlign: (s.textHAlign || s.textAlign || prev.horizAlign),
+          midLine:
+            drawing.type === "rectangle" || drawing.type === "rotated-rectangle"
+            || drawing.type === "ellipse" || drawing.type === "circle"
+              ? !!s.showMiddleLine
+              : (typeof s.showMiddleLine === "boolean" ? s.showMiddleLine : prev.midLine),
+          midLineColor: s.middleLineColor != null && s.middleLineColor !== "" ? s.middleLineColor : prev.midLineColor,
+          midLineWidth: s.middleLineWidth != null ? String(parseInt(s.middleLineWidth, 10) || 1) : prev.midLineWidth,
+          midLineType: s.middleLineDash != null && s.middleLineDash !== undefined
+            ? (V9_LEGACY_DASH_STRING_TO_LINE_TYPE[String(s.middleLineDash).replace(/\s+/g, "")] ?? (String(s.middleLineDash).replace(/\s+/g, "") ? "dashed" : "solid"))
+            : prev.midLineType,
+          ...v9CoordPatchFromDrawing(drawing),
+          ...v9VisibilityPatchFromDrawing(drawing),
+          ...(() => {
+            const p = v9TlStylePatchFromDrawing(drawing);
+            if (!p) return {};
+            const out = {};
+            if (drawing.type === "parallel-channel" && p.chLines) out.chLines = p.chLines;
+            if (drawing.type === "regression-trend") {
+              if (p.regLines) out.regLines = p.regLines;
+              if (p.regUpperDev) out.regUpperDev = p.regUpperDev;
+              if (p.regLowerDev) out.regLowerDev = p.regLowerDev;
+              if (p.regPearsonR !== undefined) out.regPearsonR = p.regPearsonR;
+              if (p.source) out.source = p.source;
+            }
+            if (drawing.type === "pitchfork") {
+              if (p.pfLevels) out.pfLevels = p.pfLevels;
+              if (p.pitchforkStyle) out.pitchforkStyle = p.pitchforkStyle;
+              if (p.pfBackground !== undefined) out.pfBackground = p.pfBackground;
+              if (p.pfBgOpacity !== undefined) out.pfBgOpacity = p.pfBgOpacity;
+            }
+            if (v9IsClassicFibRetracementType(drawing.type)) {
+              if (p.fibLevels) out.fibLevels = p.fibLevels;
+              if (p.fibTrendLine !== undefined) out.fibTrendLine = p.fibTrendLine;
+              if (p.fibLineWidth) out.fibLineWidth = p.fibLineWidth;
+              if (p.fibLineType) out.fibLineType = p.fibLineType;
+              if (p.fibBackground !== undefined) out.fibBackground = p.fibBackground;
+              if (p.fibBgOpacity !== undefined) out.fibBgOpacity = p.fibBgOpacity;
+              if (p.fibReverse !== undefined) out.fibReverse = p.fibReverse;
+              if (p.fibPrices !== undefined) out.fibPrices = p.fibPrices;
+              if (p.fibLevelsOn !== undefined) out.fibLevelsOn = p.fibLevelsOn;
+              if (p.fibLevelsMode) out.fibLevelsMode = p.fibLevelsMode;
+              if (p.fibExtendLines !== undefined) out.fibExtendLines = p.fibExtendLines;
+              if (p.lineColor) out.lineColor = p.lineColor;
+              if (p.lineWidth) out.lineWidth = p.lineWidth;
+              if (p.lineType) out.lineType = p.lineType;
+            }
+            if (drawing.type === "fib-speed-fan") {
+              if (p.fibLevels) out.fibLevels = p.fibLevels;
+              if (p.fibFanTimeLevels) out.fibFanTimeLevels = p.fibFanTimeLevels;
+              if (p.fibBackground !== undefined) out.fibBackground = p.fibBackground;
+              if (p.fibBgOpacity !== undefined) out.fibBgOpacity = p.fibBgOpacity;
+              if (p.fibReverse !== undefined) out.fibReverse = p.fibReverse;
+              if (p.fibGrid !== undefined) out.fibGrid = p.fibGrid;
+              if (p.fibGridColor) out.fibGridColor = p.fibGridColor;
+              if (p.fibGridType) out.fibGridType = p.fibGridType;
+              if (p.fibGridWidth) out.fibGridWidth = p.fibGridWidth;
+              if (p.fibLineWidth) out.fibLineWidth = p.fibLineWidth;
+              if (p.fibLineType) out.fibLineType = p.fibLineType;
+              if (p.lineColor) out.lineColor = p.lineColor;
+              if (p.lineWidth) out.lineWidth = p.lineWidth;
+              if (p.lineType) out.lineType = p.lineType;
+            }
+            if (drawing.type === "trend-fib-time") {
+              if (p.fibLevels) out.fibLevels = p.fibLevels;
+              if (p.fibTrendLine !== undefined) out.fibTrendLine = p.fibTrendLine;
+              if (p.fibTimeTrendType) out.fibTimeTrendType = p.fibTimeTrendType;
+              if (p.fibTimeTrendWidth) out.fibTimeTrendWidth = p.fibTimeTrendWidth;
+              if (p.fibLineWidth) out.fibLineWidth = p.fibLineWidth;
+              if (p.fibLineType) out.fibLineType = p.fibLineType;
+              if (p.fibBackground !== undefined) out.fibBackground = p.fibBackground;
+              if (p.fibBgOpacity !== undefined) out.fibBgOpacity = p.fibBgOpacity;
+              if (p.lineColor) out.lineColor = p.lineColor;
+              if (p.lineWidth) out.lineWidth = p.lineWidth;
+              if (p.lineType) out.lineType = p.lineType;
+            }
+            if (drawing.type === "fib-circles") {
+              if (p.fibLevels) out.fibLevels = p.fibLevels;
+              if (p.fibLineWidth) out.fibLineWidth = p.fibLineWidth;
+              if (p.fibLineType) out.fibLineType = p.fibLineType;
+              if (p.fibBackground !== undefined) out.fibBackground = p.fibBackground;
+              if (p.fibBgOpacity !== undefined) out.fibBgOpacity = p.fibBgOpacity;
+              if (p.lineColor) out.lineColor = p.lineColor;
+              if (p.lineWidth) out.lineWidth = p.lineWidth;
+              if (p.lineType) out.lineType = p.lineType;
+            }
+            if (drawing.type === "fib-arcs") {
+              if (p.fibLevels) out.fibLevels = p.fibLevels;
+              if (p.fibLineWidth) out.fibLineWidth = p.fibLineWidth;
+              if (p.fibLineType) out.fibLineType = p.fibLineType;
+              if (p.fibBackground !== undefined) out.fibBackground = p.fibBackground;
+              if (p.fibBgOpacity !== undefined) out.fibBgOpacity = p.fibBgOpacity;
+              if (p.fibArcsTrendLine !== undefined) out.fibArcsTrendLine = p.fibArcsTrendLine;
+              if (p.fibArcsTrendType) out.fibArcsTrendType = p.fibArcsTrendType;
+              if (p.fibArcsTrendWidth) out.fibArcsTrendWidth = p.fibArcsTrendWidth;
+              if (p.fibArcsFullCircle !== undefined) out.fibArcsFullCircle = p.fibArcsFullCircle;
+              if (p.lineColor) out.lineColor = p.lineColor;
+              if (p.lineWidth) out.lineWidth = p.lineWidth;
+              if (p.lineType) out.lineType = p.lineType;
+            }
+            if (drawing.type === "gann-box" || drawing.type === "gann-square-fixed" || drawing.type === "gann-fan") {
+              [
+                "gannPriceLevels", "gannTimeLevels", "gannGridLevels", "gannFanLevels", "gannArcLevels",
+                "gannLineType", "gannLineWidth", "gannBackground", "gannBgOpacity",
+              ].forEach((k) => {
+                if (p[k] !== undefined) out[k] = p[k];
+              });
+              if (p.lineColor) out.lineColor = p.lineColor;
+              if (p.lineWidth) out.lineWidth = p.lineWidth;
+            }
+            return out;
+          })(),
+        }));
+
+        // Position panel near dblclick (clientX/Y are post-zoom; tlSettPos / txtSettPos
+        // are consumed inside the zoomed root, so divide by Z to get pre-zoom CSS pixels).
+        const zForPos = (typeof window !== 'undefined' && Number(window.__v9Zoom)) || 1;
+        const px = Math.max(20, Number(x) / zForPos - 220);
+        const py = Math.max(60, Number(y) / zForPos - 40);
+
+        // Force tool group → JSX conditional renders the panel.
+        setTool(group);
+
+        if (group === 'text') {
+          // Text tools have their own dedicated settings panel (txtSettOpen).
+          // The generic tlSettOpen panel requires effectiveTlGroup which only
+          // covers line/shape groups — text is intentionally excluded from that
+          // set, so we open the text panel directly instead.
+          setTxtSettPos({ x: px, y: py });
+          setTxtSettOpen(true);
+        } else {
+          setTlSettPos({ x: px, y: py });
+          setTlSettOpen(true);
+          // Match legacy index: level edits live on the Input tab — open there for Gann tools.
+          if (drawing.type === "gann-box" || drawing.type === "gann-square-fixed" || drawing.type === "gann-fan") {
+            setTlSettTab("input");
+          }
+        }
+        return true;
+      } catch (err) {
+        console.warn('[V9 dblclick hook] failed:', err);
+        return false;
+      }
+    };
+
+    if (typeof window !== 'undefined') window.__v9OpenDrawingSettings = hook;
+    return () => {
+      if (typeof window !== 'undefined' && window.__v9OpenDrawingSettings === hook) {
+        window.__v9OpenDrawingSettings = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool, groupSelected, drawingTypeToPanelGroup, LEGACY_TYPE_TO_V9_ICON]);
+
+  // When the panel closes (tlSettOpen → false), restore the previous tool
+  // and clear editingDrawingRef so the chart re-arms the user's prior tool.
+  useEffect(() => {
+    if (tlSettOpen) return;
+    const editing = editingDrawingRef.current;
+    if (!editing) return;
+    editingDrawingRef.current = null;
+    // Restore prior tool / sub-tool. Schedule a microtask so the JSX
+    // panel's exit animation (closing.has('tlsett')) finishes first.
+    Promise.resolve().then(() => {
+      if (editing.prevTool !== undefined) setTool(editing.prevTool);
+      if (editing.prevGroupSelected !== undefined) setGroupSelected(v9SanitizeGroupSelected(editing.prevGroupSelected));
+    });
+  }, [tlSettOpen]);
+
+  // Mirror the same editingDrawingRef cleanup for the text settings panel.
+  // Without this, the forward bridge permanently stays in clearTool() mode
+  // after the text panel closes (editingDrawingRef is never cleared).
+  useEffect(() => {
+    if (txtSettOpen) return;
+    const editing = editingDrawingRef.current;
+    if (!editing) return;
+    // Only clear if it was set by a text-tool dblclick (group === 'text').
+    const group = editing.drawing && drawingTypeToPanelGroupRef.current(editing.drawing.type);
+    if (group !== 'text') return;
+    editingDrawingRef.current = null;
+    Promise.resolve().then(() => {
+      if (editing.prevTool !== undefined) setTool(editing.prevTool);
+      if (editing.prevGroupSelected !== undefined) setGroupSelected(v9SanitizeGroupSelected(editing.prevGroupSelected));
+    });
+  }, [txtSettOpen]);
+
+  // Latest React dispatchers/maps for toolbar wrappers — avoids stale closures when React Strict Mode
+  // remounts: the chart keeps one DrawingToolbar instance; without restoring show/hide on cleanup,
+  // __v9Hooked blocks re-attach and setState from the old wrapper is dropped.
+  const v9ToolbarBridgeActRef = useRef({});
+  v9ToolbarBridgeActRef.current = {
+    setTlBarSelected,
+    setTlBarSelectedType,
+    setGroupSelected,
+    setTool,
+    setDropdown,
+    setBtnPressed,
+    setTlStyle,
+    setTlLocked,
+    LEGACY_TYPE_TO_V9_ICON,
+    suppressForwardBridge,
+    suppressTxtForwardBridge,
+    setTxtStyle,
+    v9SelectionToolbarSyncRef,
+    drawingTypeToPanelGroupRef,
+    editingDrawingRef,
+  };
+
+  // ─── Drawing selection bridge ───────────────────────────────────────────
+  // Wrap drawingManager.toolbar.show / .hide on **every** chart's DrawingToolbar instance.
+  // Each panel tile has its own drawingManager + toolbar; hooking only window.chart meant
+  // selections on another tile never updated React — tlBarSelectedType stayed on the old trendline.
+  // See enumerateV9DrawingManagersFromWindow + getSelectedDrawingAcrossCharts.
+  useEffect(() => {
+    let cancelled = false;
+    let n = 0;
+    const attachToolbarHooks = (dm) => {
+      const tb = dm && dm.toolbar;
+      if (!tb || tb.__v9Hooked) return false;
+      const origShow = tb.show && tb.show.bind(tb);
+      const origHide = tb.hide && tb.hide.bind(tb);
+      tb.__v9OrigShow = origShow;
+      tb.__v9OrigHide = origHide;
+      tb.show = function (drawing, x, y) {
+        try {
+          const br = v9ToolbarBridgeActRef.current;
+          const editRef = br.editingDrawingRef;
+          if (!editRef || !editRef.current) {
+            br.v9SelectionToolbarSyncRef.current = true;
+          }
+          br.setTlBarSelected(true);
+          br.setTlBarSelectedType(drawing && drawing.type);
+          if (drawing && drawing.type && (!editRef || !editRef.current)) {
+            const g = br.drawingTypeToPanelGroupRef.current(drawing.type);
+            if (g) {
+              let icon = br.LEGACY_TYPE_TO_V9_ICON[drawing.type];
+              if (!icon) {
+                const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
+                icon = fb[g] || 'trendline';
+              }
+              const allowRail = V9_RAIL_ICONS_BY_GROUP[g];
+              if (allowRail && icon && !allowRail.has(icon)) {
+                const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
+                icon = fb[g] || allowRail.values().next().value;
+              }
+              let label = drawing.type;
+              try {
+                if (dm && typeof dm.getDrawingDisplayTitle === 'function') {
+                  label = dm.getDrawingDisplayTitle(drawing) || label;
+                }
+              } catch (_) {}
+              br.suppressForwardBridge.current = true;
+              br.setGroupSelected(prev => v9SanitizeGroupSelected({ ...prev, [g]: { icon, label } }));
+              br.setTool("crosshair");
+              br.setDropdown(null);
+              br.setBtnPressed(null);
+            } else {
+              br.suppressForwardBridge.current = true;
+              br.setTool("crosshair");
+              br.setDropdown(null);
+              br.setBtnPressed(null);
+            }
+          }
+          if (!editRef || !editRef.current) {
+            try {
+              if (dm && typeof dm.clearTool === 'function') dm.clearTool();
+              else if (dm) dm.currentTool = null;
+            } catch (_) {}
+          }
+          const patch = v9TlStylePatchFromDrawing(drawing);
+          if (patch) {
+            br.suppressForwardBridge.current = true;
+            br.setTlStyle(s => ({ ...s, ...patch }));
+            if (typeof drawing.locked === 'boolean') br.setTlLocked(!!drawing.locked);
+          }
+          if (drawing && drawing.type) {
+            const gTxt = br.drawingTypeToPanelGroupRef.current(drawing.type);
+            if (gTxt === "text") {
+              const tp = v9TxtStylePatchFromDrawing(drawing);
+              if (tp && Object.keys(tp).length) {
+                br.suppressTxtForwardBridge.current = true;
+                br.setTxtStyle((s) => ({ ...s, ...tp }));
+              }
+            }
+          }
+        } catch (_) {}
+        return origShow ? origShow(drawing, x, y) : undefined;
+      };
+      tb.hide = function () {
+        try {
+          const br = v9ToolbarBridgeActRef.current;
+          br.setTlBarSelected(false);
+          br.setTlBarSelectedType(null);
+        } catch (_) {}
+        return origHide ? origHide() : undefined;
+      };
+      tb.__v9Hooked = true;
+      return true;
+    };
+    const hookAll = () => {
+      if (cancelled) return;
+      try {
+        for (const dm of enumerateV9DrawingManagersFromWindow()) {
+          attachToolbarHooks(dm);
+        }
+      } catch (_) {}
+      const mgrs = enumerateV9DrawingManagersFromWindow();
+      const allHooked = mgrs.length > 0 && mgrs.every((dm) => dm && dm.toolbar && dm.toolbar.__v9Hooked);
+      if (!allHooked && ++n < 120) setTimeout(hookAll, 100);
+    };
+    hookAll();
+    const poll = setInterval(hookAll, 1500);
+    const onReady = () => hookAll();
+    window.addEventListener("chartDataLoaded", onReady);
+    window.addEventListener("panelSelected", onReady);
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+      window.removeEventListener("chartDataLoaded", onReady);
+      window.removeEventListener("panelSelected", onReady);
+      try {
+        for (const dm of enumerateV9DrawingManagersFromWindow()) {
+          const tb = dm && dm.toolbar;
+          if (tb && tb.__v9OrigShow) {
+            tb.show = tb.__v9OrigShow;
+            tb.hide = tb.__v9OrigHide;
+            delete tb.__v9OrigShow;
+            delete tb.__v9OrigHide;
+            delete tb.__v9Hooked;
+          }
+        }
+      } catch (_) {}
+    };
+  }, []);
+
+  // Chart.js fires this whenever a drawing becomes primary selection (see drawing-tools-manager
+  // `_notifyV9SelectionSync`) — survives toolbar wrapper loss and reaches always after finalize/select.
+  useEffect(() => {
+    const onV9Sel = (ev) => {
+      try {
+        const t = ev && ev.detail && ev.detail.drawingType;
+        if (!t) return;
+        const br = v9ToolbarBridgeActRef.current;
+        br.setTlBarSelected(true);
+        br.setTlBarSelectedType(t);
+        br.v9SelectionToolbarSyncRef.current = true;
+        const g = br.drawingTypeToPanelGroupRef.current(t);
+        let live = null;
+        try {
+          const p = getPrimarySelectedDrawingForActiveChart(null);
+          if (p && p.type === t) live = p;
+          if (!live) {
+            const d = getSelectedDrawingAcrossCharts(null);
+            if (d && d.type === t) live = d;
+          }
+        } catch (_) {}
+        const drawing = live || { type: t };
+        if (g && !br.editingDrawingRef?.current) {
+          let icon = br.LEGACY_TYPE_TO_V9_ICON[t];
+          if (!icon) {
+            const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
+            icon = fb[g] || 'trendline';
+          }
+          const allowRail = V9_RAIL_ICONS_BY_GROUP[g];
+          if (allowRail && icon && !allowRail.has(icon)) {
+            const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
+            icon = fb[g] || allowRail.values().next().value;
+          }
+          let label = t;
+          try {
+            const dm = live && typeof window !== "undefined" ? window.getActiveChart?.()?.drawingManager : null;
+            if (dm && typeof dm.getDrawingDisplayTitle === 'function' && live) {
+              label = dm.getDrawingDisplayTitle(live) || label;
+            }
+          } catch (_) {}
+          br.suppressForwardBridge.current = true;
+          br.setGroupSelected((prev) => v9SanitizeGroupSelected({ ...prev, [g]: { icon, label } }));
+          br.setTool("crosshair");
+          br.setDropdown(null);
+          br.setBtnPressed(null);
+        }
+        const patch = v9TlStylePatchFromDrawing(drawing);
+        if (patch) {
+          br.suppressForwardBridge.current = true;
+          br.setTlStyle((s) => ({ ...s, ...patch }));
+        }
+        if (g === "text") {
+          const tp = v9TxtStylePatchFromDrawing(drawing);
+          if (tp && Object.keys(tp).length) {
+            br.suppressTxtForwardBridge.current = true;
+            br.setTxtStyle((s) => ({ ...s, ...tp }));
+          }
+        }
+      } catch (_) {}
+    };
+    window.addEventListener("talaria:v9-selected-drawing", onV9Sel);
+    return () => window.removeEventListener("talaria:v9-selected-drawing", onV9Sel);
+  }, []);
+
+  // ─── V9 tlStyle → chart.js drawing style ─────────────────────────────────
+  // Whenever the V9 floating toolbar changes line color / width / dash type,
+  // push that into the legacy drawing system so:
+  //   - the currently-SELECTED drawing repaints with the new style, and
+  //   - subsequent NEW drawings of the active tool use it as the default
+  //     (drawingManager.saveToolStyle persists per-tool defaults the same
+  //      way the legacy toolbar does in chart/modules/drawing-toolbar.js).
+  // Maps V9 dash names to the dash-array strings the legacy code uses
+  // (chart/modules/drawing-toolbar.js line 1521-1525).
+  const V9_DASH_TO_LEGACY = { solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' };
+  // Skip the first run so V9's default tlStyle doesn't overwrite the user's
+  // previously-saved per-tool styles every time the page loads.
+  const styleBridgeReady = useRef(false);
+  const txtStyleBridgeReady = useRef(false);
+  // Coalesce localStorage writes — saveToolStyle does a synchronous
+  // JSON.stringify + setItem of the entire savedToolStyles map, which can
+  // stall click handlers when the bridge fires on every dropdown change.
+  const saveToolStyleTimer = useRef(null);
+  const collectV9BridgeTargets = () =>
+    collectV9BridgeTargetPairs(editingDrawingRef.current && editingDrawingRef.current.drawing);
+  // Pointer-toggle — flush middle-line fields immediately (same targets as full bridge).
+  const flushV9MiddleLineToChart = (prevTl, nextMidLineOn) => {
+    try {
+      const midDashArr =
+        prevTl.midLineType === "bold" ? "" : (V9_DASH_TO_LEGACY[prevTl.midLineType] ?? "");
+      const midWidthNum = parseInt(prevTl.midLineWidth, 10) || 1;
+      const patch = {
+        showMiddleLine: !!nextMidLineOn,
+        middleLineColor: prevTl.midLineColor,
+        middleLineWidth: midWidthNum,
+        middleLineDash: midDashArr,
+      };
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (drawingTypeToPanelGroupRef.current(d.type) === "text") return;
+        const tb = dm.toolbar;
+        try {
+          tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
+        } catch (_) {}
+        Object.assign(d.style, patch);
+        try {
+          if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
+          else dm.renderDrawing?.(d);
+        } catch (_) {
+          try {
+            dm.renderDrawing?.(d);
+          } catch (_) {}
+        }
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
+    } catch (err) {
+      console.warn("[V9 middle-line flush] failed:", err);
+    }
+  };
+
+  // When the armed legacy tool changes (e.g. Rectangle → Triangle), reload `tlStyle` from
+  // `drawingManager.getSavedToolStyle` *before* the forward bridge runs so we do not persist the
+  // previous tool's colors into the new tool's saved defaults.
+  const v9LastHydratedLegacyRef = useRef(null);
+  const [legacyHydrateNonce, setLegacyHydrateNonce] = useState(0);
+  useEffect(() => {
+    const onChartData = () => {
+      v9LastHydratedLegacyRef.current = null;
+      setLegacyHydrateNonce((n) => n + 1);
+    };
+    const onPanel = () => setLegacyHydrateNonce((n) => n + 1);
+    window.addEventListener("chartDataLoaded", onChartData);
+    window.addEventListener("panelSelected", onPanel);
+    return () => {
+      window.removeEventListener("chartDataLoaded", onChartData);
+      window.removeEventListener("panelSelected", onPanel);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (editingDrawingRef.current) return;
+    const legacy = resolveLegacyTool();
+    if (!legacy) {
+      v9LastHydratedLegacyRef.current = null;
+      return;
+    }
+    if (v9LastHydratedLegacyRef.current === legacy) return;
+
+    let ch =
+      typeof window !== "undefined" && typeof window.getActiveChart === "function"
+        ? window.getActiveChart()
+        : window.chart;
+    let dm = ch && ch.drawingManager;
+    if (!dm && window.chart && window.chart !== ch) {
+      ch = window.chart;
+      dm = ch && ch.drawingManager;
+    }
+    if (!dm || typeof dm.getSavedToolStyle !== "function") return;
+
+    v9LastHydratedLegacyRef.current = legacy;
+    const mergePatch = v9MergeHydratePatchFromLegacy(dm, legacy);
+    flushSync(() => {
+      setTlStyle((prev) => ({ ...prev, ...mergePatch }));
+    });
+  }, [tool, groupSelected, legacyHydrateNonce]);
+
+  // useLayoutEffect: apply drawing.style in the same frame as tlStyle (legacy TV panel mutates
+  // synchronously on checkbox; late useEffect let the chart eat checkbox clicks and felt "unsynced").
+  useLayoutEffect(() => {
+    // Prefer focused tile; fall back to main chart if that instance is not ready yet.
+    let ch =
+      typeof window !== "undefined" && typeof window.getActiveChart === "function"
+        ? window.getActiveChart()
+        : window.chart;
+    let dm = ch && ch.drawingManager;
+    if (!dm && window.chart && window.chart !== ch) {
+      ch = window.chart;
+      dm = ch && ch.drawingManager;
+    }
+    if (!dm) return;
+    const legacyTool = resolveLegacyTool();
+    if (!styleBridgeReady.current) { styleBridgeReady.current = true; return; }
+    // Skip the pass triggered by reading a selected drawing's style into tlStyle.
+    if (suppressForwardBridge.current) { suppressForwardBridge.current = false; return; }
+    // We continue even when legacyTool is null so that edits made while a
+    // drawing is selected (with the cursor / crosshair active in the left
+    // rail) still propagate to the selected drawing.
+
+    const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? '';
+    // UI "bold" = thick solid (no dash); not a key in V9_DASH_TO_LEGACY.
+    const midDashArr = tlStyle.midLineType === 'bold' ? '' : (V9_DASH_TO_LEGACY[tlStyle.midLineType] ?? '');
+    const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
+    const midWidthNum = parseInt(tlStyle.midLineWidth, 10) || 1;
+    const stylePatch = {
+      // Stroke / line
+      stroke: tlStyle.lineColor,
+      color: tlStyle.lineColor,
+      strokeWidth: widthNum,
+      dashArray: dashArr,
+      strokeDasharray: dashArr,
+      // Fill (shapes, channels, range tool background, etc.)
+      fill: tlStyle.bgColor,
+      backgroundColor: tlStyle.bgColor,
+      // Endpoints (V9 uses 'normal' / 'arrow' / 'arrowFilled' etc; chart.js
+      // drawing-tools-lines.js reads style.startStyle / style.endStyle).
+      startStyle: tlStyle.ep1,
+      endStyle: tlStyle.ep2,
+      // Extend left / right (trendline + ray)
+      extendLeft: !!tlStyle.extendLeft,
+      extendRight: !!tlStyle.extendRight,
+      // Price / time labels
+      showPriceLabel: !!tlStyle.priceLabels,
+      showTimeLabel: !!tlStyle.timeLabels,
+      // Range tool (Date & Price): which info rows to show + which mode
+      rangeMode: tlStyle.rangeType === 'Price' ? 'price'
+                : tlStyle.rangeType === 'Date and time' ? 'time'
+                : 'both',
+      infoSettings: v9ChartInfoSettingsFromTlStyle(tlStyle),
+      // Label sub-styling (used by range tool / fib labels)
+      labelColor: tlStyle.labelColor,
+      labelFontSize: parseInt(tlStyle.labelFontSize, 10) || 12,
+      labelBackground: !!tlStyle.labelBg,
+      labelBackgroundColor: tlStyle.labelBgColor,
+      // Line/shape label text (Text tab — matches drawing-tools-lines renderTextLabel)
+      textColor: tlStyle.textColor,
+      fontSize: parseInt(String(tlStyle.textSize), 10) || 14,
+      fontWeight: tlStyle.textBold ? "bold" : "normal",
+      fontStyle: tlStyle.textItalic ? "italic" : "normal",
+      ...(() => {
+        const tv = v9UiVertToChartVert(tlStyle.vertAlign);
+        return { textVAlign: tv, textPosition: tv };
+      })(),
+      textHAlign: tlStyle.horizAlign || "center",
+      textAlign: tlStyle.horizAlign || "center",
+      // Middle line (rectangle / ellipse / circle — drawing-tools-shapes.js)
+      showMiddleLine: !!tlStyle.midLine,
+      middleLineColor: tlStyle.midLineColor,
+      middleLineWidth: midWidthNum,
+      middleLineDash: midDashArr,
+    };
+
+    // Persist as default for this tool — new drawings inherit via applySavedStyle.
+    // Debounced: avoid hammering localStorage on every dropdown click.
+    if (legacyTool) {
+      if (saveToolStyleTimer.current) clearTimeout(saveToolStyleTimer.current);
+      saveToolStyleTimer.current = setTimeout(() => {
+        try {
+          const merged = { ...(dm.getSavedToolStyle?.(legacyTool) || {}), ...stylePatch };
+          dm.saveToolStyle?.(legacyTool, merged);
+        } catch (err) { /* ignore */ }
+      }, 300);
+    }
+
+    // Mutate currently-selected drawing(s) and repaint immediately.
+    // We funnel through the legacy toolbar.onUpdate hook so renderDrawing,
+    // saveDrawings, history.recordModify and saveToolStyle all run exactly
+    // as they do when the user changes color via the legacy DOM toolbar.
+    // Without this the underlying drawing path was repainted but the
+    // selection layer (handles + cached stroke) kept showing the old color
+    // until the user deselected and reselected.
+    try {
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || !d.style) return;
+        // Text / callout / notes use `txtStyle` bridge only — Trend Line patches would
+        // overwrite annotation fields (stroke, dash, fontSize from line label tab, etc.).
+        if (drawingTypeToPanelGroupRef.current(d.type) === "text") return;
+        const tb = dm.toolbar;
+        // Capture before state for undo (mirror legacy onBeforeUpdate).
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+        Object.assign(d.style, stylePatch);
+        const nextText = tlStyle.textContent != null ? String(tlStyle.textContent) : "";
+        d.text = nextText;
+        if (typeof d.setText === "function") {
+          try { d.setText(nextText); } catch (_) {}
+        }
+        const isFib = d.type && (d.type.startsWith('fibonacci-') || d.type.startsWith('fib-') || d.type.startsWith('trend-fib-'));
+        if (v9IsClassicFibRetracementType(d.type)) {
+          v9ApplyClassicFibFromTlStyle(d, tlStyle, widthNum);
+        } else if (v9IsFibSpeedFanType(d.type)) {
+          v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthNum);
+        } else if (v9IsTrendFibTimeType(d.type)) {
+          v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthNum);
+        } else if (v9IsFibCirclesType(d.type)) {
+          v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthNum);
+        } else if (v9IsFibArcsType(d.type)) {
+          v9ApplyFibArcsFromTlStyle(d, tlStyle, widthNum);
+        } else if (isFib) {
+          d.style.trendLineColor = tlStyle.lineColor;
+          d.style.trendLineWidth = widthNum;
+        }
+        try { v9ApplyPointsFromTlStyle(d, tlStyle); } catch (_) {}
+        try { v9ApplyVisibilityFromTlStyle(d, tlStyle); } catch (_) {}
+        if (d.type === "parallel-channel" && Array.isArray(tlStyle.chLines)) {
+          d.levels = v9ChLinesToParallelLevels(tlStyle.chLines);
+        }
+        if (d.type === "regression-trend" && Array.isArray(tlStyle.regLines) && tlStyle.regLines.length >= 3) {
+          v9ApplyRegLinesToRegressionStyle(d.style, tlStyle.regLines);
+        }
+        if (d.type === "regression-trend") {
+          const sty = d.style;
+          sty.source = v9UiSourceToChartSource(tlStyle.source);
+          sty.showPearsonsR = !!tlStyle.regPearsonR;
+          const uv = tlStyle.regUpperDev;
+          const lv = tlStyle.regLowerDev;
+          if (uv && typeof uv === "object") {
+            const nu = parseFloat(uv.value);
+            if (Number.isFinite(nu)) sty.upperDeviation = Math.max(0, nu);
+          }
+          if (lv && typeof lv === "object") {
+            const nl = parseFloat(lv.value);
+            if (Number.isFinite(nl)) sty.lowerDeviation = -Math.abs(nl);
+          }
+        }
+        if (d.type === "pitchfork") {
+          if (Array.isArray(tlStyle.pfLevels)) {
+            d.levels = v9PfToPitchforkLevels(tlStyle.pfLevels);
+          }
+          d.style.pitchforkStyle = v9UiPitchforkStyleToChart(tlStyle.pitchforkStyle);
+          d.style.medianColor = tlStyle.lineColor;
+          d.style.backgroundEnabled = tlStyle.pfBackground !== false;
+          d.style.backgroundOpacity =
+            tlStyle.pfBgOpacity != null && !Number.isNaN(+tlStyle.pfBgOpacity)
+              ? +tlStyle.pfBgOpacity
+              : 0.2;
+        }
+        if (d.type === "gann-box") {
+          v9ApplyGannBoxFromTlStyle(d, tlStyle);
+        } else if (d.type === "gann-square-fixed") {
+          v9ApplyGannSquareFixedFromTlStyle(d, tlStyle);
+        } else if (d.type === "gann-fan") {
+          v9ApplyGannFanFromTlStyle(d, tlStyle);
+        }
+        // Prefer onUpdate (history + render + persist + saveDrawings).
+        if (tb && typeof tb.onUpdate === 'function') {
+          try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
+        } else {
+          try { dm.renderDrawing?.(d); } catch (_) {}
+        }
+        if (d.selected && typeof d.showAxisHighlights === 'function') {
+          try { d.showAxisHighlights(); } catch (_) {}
+        }
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
+    } catch (err) { console.warn('[V9 style bridge] failed:', err); }
+  }, [
+    tlStyle.lineColor, tlStyle.lineWidth, tlStyle.lineType, tlStyle.bgColor,
+    tlStyle.midLine, tlStyle.midLineColor, tlStyle.midLineType, tlStyle.midLineWidth,
+    tlStyle.ep1, tlStyle.ep2, tlStyle.extendLeft, tlStyle.extendRight,
+    tlStyle.priceLabels, tlStyle.timeLabels, tlStyle.rangeType,
+    tlStyle.showInfo, tlStyle.showInfoTypes,
+    tlStyle.labelColor, tlStyle.labelFontSize, tlStyle.labelBg, tlStyle.labelBgColor,
+    tlStyle.textContent, tlStyle.textColor, tlStyle.textSize, tlStyle.textBold, tlStyle.textItalic,
+    tlStyle.vertAlign, tlStyle.horizAlign,
+    tlStyle.pt1Price, tlStyle.pt1Bar, tlStyle.pt2Price, tlStyle.pt2Bar,
+    tlStyle.pt3Price, tlStyle.pt3Bar, tlStyle.pt4Price, tlStyle.pt4Bar,
+    tlStyle.pt5Price, tlStyle.pt5Bar, tlStyle.pt6Price, tlStyle.pt6Bar,
+    tlStyle.pt7Price, tlStyle.pt7Bar,
+    tlStyle.visMinutes, tlStyle.visHours, tlStyle.visDays, tlStyle.visWeeks, tlStyle.visMonths,
+    tlStyle.chLines,
+    tlStyle.regLines,
+    tlStyle.source,
+    tlStyle.regUpperDev,
+    tlStyle.regLowerDev,
+    tlStyle.regPearsonR,
+    tlStyle.pfLevels,
+    tlStyle.pitchforkStyle,
+    tlStyle.pfBackground,
+    tlStyle.pfBgOpacity,
+    tlStyle.fibLevels,
+    tlStyle.fibTrendLine,
+    tlStyle.fibLineWidth,
+    tlStyle.fibLineType,
+    tlStyle.fibBackground,
+    tlStyle.fibBgOpacity,
+    tlStyle.fibReverse,
+    tlStyle.fibPrices,
+    tlStyle.fibLevelsOn,
+    tlStyle.fibLevelsMode,
+    tlStyle.fibExtendLines,
+    tlStyle.fibFanTimeLevels,
+    tlStyle.fibGrid,
+    tlStyle.fibGridColor,
+    tlStyle.fibGridType,
+    tlStyle.fibGridWidth,
+    tlStyle.fibTimeTrendType,
+    tlStyle.fibTimeTrendWidth,
+    tlStyle.fibArcsTrendLine,
+    tlStyle.fibArcsTrendType,
+    tlStyle.fibArcsTrendWidth,
+    tlStyle.fibArcsFullCircle,
+    tlStyle.gannPriceLevels,
+    tlStyle.gannTimeLevels,
+    tlStyle.gannGridLevels,
+    tlStyle.gannFanLevels,
+    tlStyle.gannArcLevels,
+    tlStyle.gannLineType,
+    tlStyle.gannLineWidth,
+    tlStyle.gannBackground,
+    tlStyle.gannBgOpacity,
+    tool, groupSelected,
+  ]);
+
+  // V9 txtStyle → selected text/callout/note drawings (annotation rail bar).
+  useLayoutEffect(() => {
+    if (!txtStyleBridgeReady.current) {
+      txtStyleBridgeReady.current = true;
+      if (suppressTxtForwardBridge.current) {
+        suppressTxtForwardBridge.current = false;
+      }
+      return;
+    }
+    if (suppressTxtForwardBridge.current) {
+      suppressTxtForwardBridge.current = false;
+      return;
+    }
+    try {
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || !d.style) return;
+        if (drawingTypeToPanelGroupRef.current(d.type) !== "text") return;
+        const tb = dm.toolbar;
+        try {
+          tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
+        } catch (_) {}
+        v9ApplyTxtStyleToDrawing(d, txtStyle);
+        if (tb && typeof tb.onUpdate === "function") {
+          try {
+            tb.onUpdate(d);
+          } catch (_) {
+            try {
+              dm.renderDrawing?.(d);
+            } catch (_) {}
+          }
+        } else {
+          try {
+            dm.renderDrawing?.(d);
+          } catch (_) {}
+        }
+        if (d.selected && typeof d.showAxisHighlights === "function") {
+          try {
+            d.showAxisHighlights();
+          } catch (_) {}
+        }
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
+    } catch (err) {
+      console.warn("[V9 txtStyle bridge] failed:", err);
+    }
+  }, [
+    txtStyle.textColor,
+    txtStyle.fontSize,
+    txtStyle.bold,
+    txtStyle.italic,
+    txtStyle.borderColor,
+    txtStyle.bgColor,
+    txtStyle.content,
+    txtStyle.horizAlign,
+    tool,
+    groupSelected,
+  ]);
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelected(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
+  closeWindowsRef.current = closeWindows;
   // closeAll is triggered by backdrop/outside clicks — intentionally does NOT close the indicators window
   const closeAll = () => {
     setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false);
@@ -1765,24 +7022,72 @@ const TalariaV8b = () => {
     setTagDrop(null); setTlStyleDrop(null); setTlBarDrop(null); setTxtBarSizeOpen(false); setTxtBarDrop(null); setEmojiPanelOpen(false);
     setOpSymOpen(false); setOpSymSearch(""); setOpSizeOpen(false);
   };
+  closeAllRef.current = closeAll;
+
+  const copyScreenshotPageLink = async () => {
+    const url = typeof window !== "undefined" ? window.location.href : "";
+    const sm = window.screenshotManager;
+    try {
+      if (sm && typeof sm.copyText === "function") {
+        const ok = await sm.copyText(url);
+        if (sm.showNotification) sm.showNotification(ok ? "Chart link copied!" : "Could not copy link", ok ? "success" : "warning");
+        return;
+      }
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        await navigator.clipboard.writeText(url);
+        if (sm?.showNotification) sm.showNotification("Chart link copied!", "success");
+      }
+    } catch (_) {
+      if (sm?.showNotification) sm.showNotification("Could not copy link", "warning");
+    }
+  };
+
+  const runV9Screenshot = (action) => {
+    const sm = window.screenshotManager;
+    if (!sm || typeof sm.takeScreenshotFromOptions !== "function") {
+      console.warn("[V9] screenshotManager not ready");
+      if (sm?.showNotification) sm.showNotification("Screenshot engine not ready yet", "warning");
+      return;
+    }
+    void sm.takeScreenshotFromOptions(action, {
+      flash: true,
+      includeToolbar: true,
+      includeSidebar: false,
+      includeWatermark: true,
+      format: "png",
+      quality: 0.9,
+    });
+  };
 
   const showTip = (label, el, side="top") => {
     clearTimeout(tipTimerRef.current);
     if (!label || !el) return;
     tipTimerRef.current = setTimeout(() => {
       const r = el.getBoundingClientRect();
-      const Z2 = 1.05;
-      const cx = (r.left + r.width/2) / Z2;
-      const y = side === "bottom" ? r.bottom/Z2 : r.top/Z2;
-      const vw = window.innerWidth / Z2;
+      const cx = (r.left + r.width/2) / Z;
+      const y = side === "bottom" ? r.bottom/Z : r.top/Z;
+      const vw = window.innerWidth / Z;
       setTipData({ label, x: Math.max(40, Math.min(vw - 40, cx)), y, side });
     }, 250);
   };
   const hideTip = () => { clearTimeout(tipTimerRef.current); setTipData(null); };
 
+  // Chart right-click → Settings: same as logo menu → Settings (see chart.js openSettingsFromContextMenu)
+  useEffect(() => {
+    const onOpenSettings = (e) => {
+      try {
+        closeWindowsRef.current?.();
+      } catch (_) {}
+      setSettingsOpen(true);
+      if (e && typeof e.preventDefault === "function") e.preventDefault();
+    };
+    window.addEventListener("talaria-v9-open-settings", onOpenSettings);
+    return () => window.removeEventListener("talaria-v9-open-settings", onOpenSettings);
+  }, []);
+
   // Render a tool button
   const renderTB = (t, ref) => {
-    const activeIcon = (t.dd && (groupSelected[t.id]?.icon || t.dd.find(x=>!x.h)?.icon)) || t.icon;
+    const railIcon = v9LeftRailIconForButton(t, groupSelected);
     const ddOpen = dropdown === t.id;
     const act = t.id === "pinbar" ? pinnedBarOpen : tool === t.id;
     const h = hov === t.id;
@@ -1804,59 +7109,108 @@ const TalariaV8b = () => {
     const hArr = hov === t.id + "-arr";
     const arrCol = act ? accentCol : hArr ? c.tx : c.tm;
     return (
-      <div key={t.id} style={{ position: "relative", width: "100%", display: "flex", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
-        {/* Icon button — selects the tool only */}
+      <div key={t.id} style={{ position: "relative", width: "100%", display: "flex", flexDirection: "row", alignItems: "stretch", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
+        {/* Icon button — selects the tool (split from chevron so arrow opens menu only) */}
         <button
+          type="button"
           ref={ref}
-          onPointerDown={t.action ? () => setBtnPressed(t.id) : undefined}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            if (t.action) setBtnPressed(t.id);
+          }}
           onPointerUp={t.action ? () => setBtnPressed(null) : undefined}
           onMouseEnter={() => setHov(t.id)}
           onMouseLeave={() => { setHov(null); setBtnPressed(null); }}
           onClick={(e) => {
             e.stopPropagation();
             if (t.id === "pinbar") { setPinnedBarOpen(v => !v); return; }
-            if (t.action) return;
-            if (t.id === "lock") { setTool(tool === "lock" ? "crosshair" : "lock"); setDropdown(null); return; }
-            if (t.dd) { setTool(t.id); if (act) openDd(e.currentTarget.parentElement); else closeDropdown(); }
+            if (t.action) {
+              // Wire to legacy undo/redo (chart.drawingManager.history) so V9
+              // buttons drive the same stack as keyboard shortcuts and the
+              // legacy index. drawingManager.history is created in init when
+              // UndoRedoManager class is loaded.
+              const dm = window.chart && window.chart.drawingManager;
+              const hist = dm && dm.history;
+              try {
+                if (t.id === "undo" && hist && hist.undo) hist.undo();
+                else if (t.id === "redo" && hist && hist.redo) hist.redo();
+              } catch (err) { console.warn('[V9] undo/redo failed:', err); }
+              return;
+            }
+            if (t.id === "lock") {
+              const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+              const dm = ch && ch.drawingManager;
+              const tb = dm && dm.toolbar;
+              if (dm) {
+                const list = [];
+                if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+                  dm.selectedDrawings.forEach(d => { if (d) list.push(d); });
+                } else if (dm.selectedDrawing) list.push(dm.selectedDrawing);
+                else if (tb && tb.currentDrawing) list.push(tb.currentDrawing);
+                if (list.length) {
+                  list.forEach(d => { try { dm.toggleLock(d); } catch (_) {} });
+                } else if (typeof tb?.showNotification === "function") {
+                  tb.showNotification("Select a drawing first");
+                } else if (typeof ch?.showNotification === "function") {
+                  ch.showNotification("Select a drawing first");
+                }
+              }
+              setDropdown(null);
+              return;
+            }
+            if (t.dd) {
+              // Main icon: activate tool only. Chevron is the only control that opens/toggles the menu.
+              if (!["eye", "magnet", "trash"].includes(t.id)) setTool(t.id);
+              if (dropdown) closeDropdown();
+            }
             else { setTool(t.id); setDropdown(null); }
           }}
           style={{
-            width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "flex-end",
+            flex: 1, minWidth: 0, height: 32, display: "flex", alignItems: "center", justifyContent: "flex-end",
             background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
             border: "none", cursor: "default", color: pressCol,
-            padding: 0, paddingRight: 10,
+            padding: 0, paddingLeft: 2, paddingRight: 4,
+            boxSizing: "border-box", touchAction: "manipulation",
             transition: "color 0.15s ease, background 0.12s", position: "relative", fontFamily: F,
           }}>
+          {/* pointer-events:none on icon so the whole <button type="button"> hit box counts — SVG paths alone miss gaps between strokes */}
           {t.id === "pinbar"
-            ? <span style={{display:"flex",transform:h&&!act?"rotate(-25deg) scale(1.15)":"scale(1)",transition:"transform 0.15s"}}><I n={act?"pinFill":"pin"} s={17} cl={pressCol}/></span>
-            : <I n={activeIcon} s={17} cl={pressCol}/>
+            ? <span style={{ display: "flex", flex: 1, width: "100%", minHeight: 32, alignItems: "center", justifyContent: "flex-end", pointerEvents: "none", transform: h && !act ? "rotate(-25deg) scale(1.15)" : "scale(1)", transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
+            : <span style={{ display: "flex", flex: 1, width: "100%", minHeight: 32, alignItems: "center", justifyContent: "flex-end", pointerEvents: "none" }}><I n={railIcon} s={17} cl={pressCol}/></span>
           }
         </button>
         {act && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 6px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
         {h && !act && !isPressed && <div style={{ position: "absolute", left: 3, top: "25%", bottom: "25%", width: 1, background: `linear-gradient(180deg, transparent, `+c.hvLn+`, transparent)`, pointerEvents: "none", zIndex: 2 }}/>}
         {isPressed && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}`, pointerEvents: "none", zIndex: 2 }}/>}
-        {/* Arrow button — opens dropdown independently */}
-        {t.dd && <button
-          onMouseEnter={() => setHov(t.id + "-arr")}
-          onMouseLeave={() => setHov(null)}
-          onClick={(e) => {
-            e.stopPropagation();
-            setTool(t.id);
-            openDd(e.currentTarget.parentElement);
-          }}
-          style={{
-            position: "absolute", right: 0, top: 0,
-            width: 8, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
-            background: hArr ? "rgba(255,255,255,0.06)" : "transparent",
-            border: "none", cursor: "default",
-            padding: 0, flexShrink: 0,
-            transition: "background 0.12s", fontFamily: F,
-          }}>
-          <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{transition:"fill 0.12s"}}>
-            <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
-          </svg>
-        </button>}
-        {h && !ddOpen && !t.dd && <div style={{ position: "absolute", left: "calc(100% + 10px)", top: "50%", transform: "translateY(-50%)", background: c.el, border: `1px solid ${c.brH}`, padding: "4px 10px", fontSize: 12, fontWeight: 600, fontFamily: F, color: c.tx, whiteSpace: "nowrap", zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.6)", borderLeft: `2px solid ${act ? accentCol : c.brH}` }}>{t.label}</div>}
+        {/* Chevron or same-width spacer so Lock / Pinned / Undo / Redo align with split rows */}
+        {t.dd ? (
+          <button
+            type="button"
+            aria-label="Open tool menu"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseEnter={() => setHov(t.id + "-arr")}
+            onMouseLeave={() => setHov(null)}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              openDd(e.currentTarget.parentElement);
+            }}
+            style={{
+              width: 14, minWidth: 14, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+              background: hArr ? "rgba(255,255,255,0.06)" : "transparent",
+              border: "none", cursor: "default",
+              padding: "0 2px", boxSizing: "border-box", touchAction: "manipulation",
+              transition: "background 0.12s", fontFamily: F,
+              zIndex: 2,
+            }}>
+            <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{ transition: "fill 0.12s", pointerEvents: "none", display: "block" }}>
+              <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
+            </svg>
+          </button>
+        ) : (
+          <div style={{ width: 14, height: 32, flexShrink: 0, pointerEvents: "none" }} aria-hidden />
+        )}
+        {h && !ddOpen && !t.dd && <div style={{ position: "absolute", left: "calc(100% + 10px)", top: "50%", transform: "translateY(-50%)", background: c.el, border: `1px solid ${c.brH}`, padding: "4px 10px", fontSize: 12, fontWeight: 600, fontFamily: F, color: c.tx, whiteSpace: "nowrap", zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.6)", borderLeft: `2px solid ${act ? accentCol : c.brH}`, pointerEvents: "none" }}>{t.label}</div>}
       </div>
     );
   };
@@ -1872,16 +7226,107 @@ const TalariaV8b = () => {
 
   const ddItems = getDdItems();
 
+  /* Same DOM shape as panel-manager.js (flag dot + single-line OHLC + change); chart.js owns ids #open … #chartChange */
+  const mainOhlcInfoEl = useMemo(
+    () => (
+      <div id="ohlcInfo" className="ohlc-info">
+        <div className="ohlc-header">
+          <div className="ohlc-symbol-block" style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
+            <span className="ohlc-symbol-dot" id="ohlcSymbolDot">●</span>
+            <span id="chartSymbol" className="ohlc-symbol-text" style={{ fontSize: 13, fontWeight: 700 }} />
+            <span className="ohlc-separator">·</span>
+            <span id="chartTimeframe" style={{ fontSize: 11 }} />
+            <div
+              onClick={(e) => { e.stopPropagation(); setRollback(!rollback); }}
+              style={{ cursor: "default", opacity: rollback ? 1 : 0.4, display: "flex", alignItems: "center", gap: 3, pointerEvents: "auto" }}
+            >
+              <I n="rollback" s={13} cl={rollback ? c.gn : c.rd} />
+              <span style={{ fontSize: 12, color: rollback ? c.gn : c.rd, fontWeight: 700 }}>{rollback ? "RB" : "LOCKED"}</span>
+            </div>
+          </div>
+          <div className="ohlc-stats">
+            <div className="ohlc-item">
+              <span className="ohlc-label">O</span>
+              <span className="ohlc-value" id="open" style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span>
+            </div>
+            <div className="ohlc-item">
+              <span className="ohlc-label">H</span>
+              <span className="ohlc-value" id="high" style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span>
+            </div>
+            <div className="ohlc-item">
+              <span className="ohlc-label">L</span>
+              <span className="ohlc-value" id="low" style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span>
+            </div>
+            <div className="ohlc-item">
+              <span className="ohlc-label">C</span>
+              <span className="ohlc-value" id="close" style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span>
+            </div>
+            <span className="ohlc-change" id="chartChange">—</span>
+          </div>
+        </div>
+        <div className="ohlc-body">
+          <div
+            id="ohlcIndicators"
+            className="ohlc-indicators"
+            style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, marginTop: 2, fontSize: 11, pointerEvents: "auto", position: "relative", zIndex: 100 }}
+          />
+        </div>
+      </div>
+    ),
+    [rollback, darkMode, c.gn, c.rd]
+  );
+
+  // Repaint indicator chips + flag dot after OHLC host exists (race vs chart init).
+  useLayoutEffect(() => {
+    const flush = () => {
+      try {
+        const ch =
+          typeof window.getActiveChart === "function"
+            ? window.getActiveChart()
+            : window.chart;
+        if (ch && typeof ch.updateOHLCIndicators === "function") ch.updateOHLCIndicators();
+        if (ch && ch.currentSymbol && typeof ch.updateChartOHLCSymbol === "function") {
+          ch.updateChartOHLCSymbol(ch.currentSymbol);
+        }
+      } catch (_) {}
+    };
+    flush();
+    const raf = requestAnimationFrame(flush);
+    const t = window.setTimeout(flush, 0);
+    const onChartReady = () => flush();
+    window.addEventListener("chartDataLoaded", onChartReady);
+    window.addEventListener("panelsCreated", onChartReady);
+    window.addEventListener("panelSelected", onChartReady);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t);
+      window.removeEventListener("chartDataLoaded", onChartReady);
+      window.removeEventListener("panelsCreated", onChartReady);
+      window.removeEventListener("panelSelected", onChartReady);
+    };
+  }, [rollback, darkMode, c.gn, c.rd]);
+
   return (
-    <div style={{ width: "100%", height: "calc(100dvh / 1.05)", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zoom: 1.05, animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
-      onClick={closeAll}>
+    <div data-v9-app="1" style={{ width: "100%", height: "100dvh", boxSizing: "border-box", paddingLeft: isFullscreen ? 0 : 14, background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
+      onClick={(e) => {
+        // Never run closeAll on bubbled clicks from children — it ran after every button/dropdown
+        // handler and cleared state in the same tick (felt like “dead clicks”, many taps needed).
+        if (e.target !== e.currentTarget) return;
+        closeAll();
+      }}>
       <style>{`
+        /* Full-button hit targets (not just SVG ink). Portals render under body — scope is page-wide in this shell. */
+        button { touch-action: manipulation; box-sizing: border-box; }
+        button svg { pointer-events: none; }
         @keyframes tlrWinIn  { from { opacity:0; transform:translate(-50%,-50%) scale(0.97) translateY(7px); } to { opacity:1; transform:translate(-50%,-50%) scale(1) translateY(0); } }
         @keyframes tlrWinOut { from { opacity:1; transform:translate(-50%,-50%) scale(1) translateY(0); } to { opacity:0; transform:translate(-50%,-50%) scale(0.97) translateY(7px); } }
         @keyframes tlrDropIn  { from { opacity:0; transform:translateY(-6px) scale(0.98); } to { opacity:1; transform:translateY(0) scale(1); } }
         @keyframes tlrDropOut { from { opacity:1; transform:translateY(0) scale(1); } to { opacity:0; transform:translateY(-6px) scale(0.98); } }
         @keyframes tlrPopIn    { from { opacity:0; transform:scale(0.97) translateY(4px); } to { opacity:1; transform:scale(1) translateY(0); } }
         @keyframes tlrPopOut   { from { opacity:1; transform:scale(1) translateY(0); } to { opacity:0; transform:scale(0.96) translateY(4px); } }
+        /* Style panel: minimal motion + ~50ms so the window reads as instant */
+        @keyframes tlrSettIn  { from { opacity:0.92; transform:scale(0.992) translateY(2px); } to { opacity:1; transform:scale(1) translateY(0); } }
+        @keyframes tlrSettOut { from { opacity:1; transform:scale(1) translateY(0); } to { opacity:0; transform:scale(0.985) translateY(3px); } }
         @keyframes tlrLinePulse { 0%,100% { opacity:0.25; box-shadow:0 0 3px rgba(0,212,161,0.2); } 50% { opacity:1; box-shadow:0 0 10px rgba(0,212,161,0.7); } }
         @keyframes tlrBlink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
         @keyframes tlrFullscreenIn { from { opacity:0.6; transform:scale(1.015); } to { opacity:1; transform:scale(1); } }
@@ -1908,14 +7353,15 @@ const TalariaV8b = () => {
 
       `}</style>
 
-      {/* ── Trend Line Settings Window ── */}
-      {(tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || isPatternTool || tool === "measure") && (tlSettOpen || closing.has("tlsett")) && (
+      {/* ── Trend Line Settings Window (portal → body: legacy drawing-toolbar is appendChild(body) @ z-index 10000, paints above #root) ── */}
+      {effectiveTlGroup && (tlSettOpen || closing.has("tlsett")) && typeof document !== "undefined" && createPortal(
         <div data-sdrop="1" onClick={e => { e.stopPropagation(); setTlStyleDrop(null); }}
-          style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:9100, width:440, fontFamily:F,
+          style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:11000, width:440, fontFamily:F,
                    background:c.sf, border:`1px solid ${c.brH}`,
                    boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                    display:"flex", flexDirection:"column",
-                   animation: closing.has("tlsett") ? "tlrPopOut 0.155s ease both" : "tlrPopIn 0.15s ease" }}>
+                   willChange: closing.has("tlsett") ? undefined : "transform, opacity",
+                   animation: closing.has("tlsett") ? "tlrSettOut 0.1s ease both" : "tlrSettIn 0.05s ease-out both" }}>
           {/* top accent */}
           <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`, flexShrink:0 }}/>
           {/* header */}
@@ -1970,7 +7416,15 @@ const TalariaV8b = () => {
                   <div style={{height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"4px 0"}}>
                     {[["Save as", ()=>{ setTlSaveAsMode(true); setTlNewTplName(""); }],
-                      ["Apply default", ()=>{ closeTlSettTplDrop(); }]].map(([lbl, action])=>{
+                      ["Apply default", ()=>{
+                        const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+                        const tb = ch?.drawingManager?.toolbar;
+                        const d = getSelectedDrawingForTemplate();
+                        if (!tb || typeof tb.applyDefaultTemplate !== "function") return;
+                        if (!d) { tb.showNotification?.("Select a drawing first"); return; }
+                        tb.applyDefaultTemplate(d);
+                        closeTlSettTplDrop();
+                      }]].map(([lbl, action])=>{
                       const isH=hov===`stpl-${lbl}`, isAct=lbl==="Save as"&&tlSaveAsMode;
                       return (
                         <div key={lbl} onClick={action}
@@ -1987,12 +7441,16 @@ const TalariaV8b = () => {
                       <div style={{padding:"4px 8px 4px 12px",display:"flex",alignItems:"center",gap:4,boxSizing:"border-box",width:"100%"}} onMouseDown={e=>e.stopPropagation()}>
                         <input autoFocus value={tlNewTplName} onChange={e=>setTlNewTplName(e.target.value)}
                           onKeyDown={e=>{
-                            if(e.key==="Enter"&&tlNewTplName.trim()){setTlTemplates(ts=>[...ts,{name:tlNewTplName.trim(),style:{...tlStyle}}]);setTlSaveAsMode(false);setTlNewTplName("");}
-                            if(e.key==="Escape"){setTlSaveAsMode(false);setTlNewTplName("");}
+                            if (e.key === "Enter" && tlNewTplName.trim()) {
+                              const d = getSelectedDrawingForTemplate();
+                              if (!d) { window.chart?.drawingManager?.toolbar?.showNotification?.("Select a drawing first"); return; }
+                              if (v9SaveDrawingTemplateToStorage(tlNewTplName, d)) { setTlSaveAsMode(false); setTlNewTplName(""); }
+                            }
+                            if (e.key === "Escape") { setTlSaveAsMode(false); setTlNewTplName(""); }
                           }}
                           placeholder="Template name…"
                           style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box",cursor:"text"}}/>
-                        <div onClick={()=>{if(tlNewTplName.trim()){setTlTemplates(ts=>[...ts,{name:tlNewTplName.trim(),style:{...tlStyle}}]);setTlSaveAsMode(false);setTlNewTplName("");}}}
+                        <div onClick={()=>{ if (!tlNewTplName.trim()) return; const d = getSelectedDrawingForTemplate(); if (!d) { window.chart?.drawingManager?.toolbar?.showNotification?.("Select a drawing first"); return; } if (v9SaveDrawingTemplateToStorage(tlNewTplName, d)) { setTlSaveAsMode(false); setTlNewTplName(""); } }}
                           onMouseEnter={()=>setHov("stpl-save-ok")} onMouseLeave={()=>setHov(null)}
                           style={{padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,position:"relative",
                                   background:hov==="stpl-save-ok"?c.hv:"transparent",transition:"background 0.12s"}}>
@@ -2001,18 +7459,31 @@ const TalariaV8b = () => {
                         </div>
                       </div>
                     )}
-                    {tlTemplates.length === 0 && !tlSaveAsMode ? (
+                    {tlSavedTemplateList.length === 0 && !tlSaveAsMode ? (
                       <div style={{padding:"6px 12px"}}>
                         <span style={{fontSize:11, color:c.tm, fontStyle:"italic"}}>No saved templates</span>
                       </div>
-                    ) : tlTemplates.map((tpl, idx)=>(
-                      <div key={idx}
+                    ) : tlSavedTemplateList.map((tpl, idx)=>(
+                      <div key={tpl.id || idx}
                         onMouseEnter={()=>setHov(`stpl-${idx}`)} onMouseLeave={()=>setHov(null)}
                         style={{ display:"flex", alignItems:"center", padding:"4px 8px 4px 12px", cursor:"default", position:"relative",
                                  background:hov===`stpl-${idx}`?c.hv2:"transparent", transition:"background 0.1s" }}>
-                        <span onClick={()=>{ setTlStyle(tpl.style); closeTlSettTplDrop(); }}
+                        <span onClick={()=>{
+                          const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+                          const tb = ch?.drawingManager?.toolbar;
+                          const d = getSelectedDrawingForTemplate();
+                          if (!tb || !d || !tpl.id) return;
+                          tb.applyTemplate(d, tpl.id);
+                          closeTlSettTplDrop();
+                        }}
                           style={{flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontSize:12, color:hov===`stpl-${idx}`?c.tx:c.ts, fontWeight:500}}>{tpl.name}</span>
-                        <div onClick={e=>{ e.stopPropagation(); setTlTemplates(ts=>ts.filter((_,i)=>i!==idx)); }}
+                        <div onClick={e=>{ e.stopPropagation();
+                          const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+                          const tb = ch?.drawingManager?.toolbar;
+                          const d = getSelectedDrawingForTemplate();
+                          const toolType = (d && d.type) || resolveLegacyTool();
+                          if (tb && toolType && tpl.id) tb.deleteTemplate(toolType, tpl.id);
+                        }}
                           onMouseEnter={()=>setHov(`stpl-del-${idx}`)} onMouseLeave={()=>setHov(`stpl-${idx}`)}
                           style={{ padding:"2px 4px", cursor:"default" }}>
                           <I n="x" s={11} cl={hov===`stpl-del-${idx}`?c.rd:c.tm}/>
@@ -2024,7 +7495,7 @@ const TalariaV8b = () => {
               )}
             </div>
             {/* close button */}
-            <div onMouseDown={e=>e.stopPropagation()} onClick={closeTlSett}
+            <div {...modalPointerActivate(closeTlSett)}
               onMouseEnter={()=>setHov("tlx")} onMouseLeave={()=>setHov(null)}
               style={{ width:30, height:30, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", position:"relative",
                        background:hov==="tlx"?"rgba(255,80,80,0.07)":"transparent", transition:"background 0.12s" }}>
@@ -2034,7 +7505,7 @@ const TalariaV8b = () => {
           <div style={{ height:1, background:c.br, flexShrink:0 }}/>
           {/* tabs */}
           {(()=>{
-            const noTextTab = isFibTool || isGannTool || isPatternTool || tool === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
+            const noTextTab = isFibTool || isGannTool || isPatternTool || effectiveTlGroup === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
             const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","curve","doubleCurve","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
             const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || (isFibTool && tlSubTool.icon !== "fibSpiral") || isGannTool;
             const tlTabs=[["style","Style"],!noTextTab&&["text","Text"],hasInputTab&&["input","Input"],!noCoordsTab&&["coordinates","Coordinates"],["visibility","Visibility"]].filter(Boolean);
@@ -2044,9 +7515,12 @@ const TalariaV8b = () => {
                 {tlTabs.map(([id,lbl])=>{
                   const isAct=tlSettTab===id;
                   return (
-                    <button key={id} onClick={e=>{e.stopPropagation();setTlSettTab(id);setTlStyleDrop(null);}}
+                    <button type="button" key={id}
+                      onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`tlTab-${id}`);setTlSettTab(id);setTlStyleDrop(null);}}
+                      onMouseDown={(e)=>e.stopPropagation()}
+                      onClick={(e)=>e.stopPropagation()}
                       onMouseEnter={()=>setHov(`tlTab-${id}`)} onMouseLeave={()=>{ setHov(null); setBtnPressed(null); }}
-                      onPointerDown={()=>setBtnPressed(`tlTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
+                      onPointerUp={()=>setBtnPressed(null)}
                       style={{ flex:1, padding:"10px 4px", border:"none", fontFamily:F, cursor:"default",
                                color:isAct?c.acL:hov===`tlTab-${id}`?c.tx:c.ts, fontSize:12, fontWeight:isAct?700:500,
                                display:"flex", alignItems:"center", justifyContent:"center",
@@ -2107,7 +7581,7 @@ const TalariaV8b = () => {
                              transition:"border-color 0.12s,box-shadow 0.12s" }}/>
                 );
                 const showEp = !isFibTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowLine","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","brush"].includes(tlSubTool.icon);
-                const hasBg = ["polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","flatChannel","disjointCh","xabcd","headShoulders","triPattern"].includes(tlSubTool.icon);
+                const hasBg = ["polyline","pathTool","curve","doubleCurve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","flatChannel","disjointCh","xabcd","headShoulders","triPattern"].includes(tlSubTool.icon);
                 const showLine = !isGannTool && !(isFibTool && tlSubTool.icon !== "fibSpiral") && !["arrowMarker","arrowUp","arrowDn","channel","regressionCh","pitchfork"].includes(tlSubTool.icon);
                 const isChannel = ["channel","regressionCh"].includes(tlSubTool.icon);
                 const isRegCh = tlSubTool.icon === "regressionCh";
@@ -2339,7 +7813,7 @@ const TalariaV8b = () => {
                   </div>
                 </>);
                 return (<>
-                  {showLine && <div style={{ display:"grid", gridTemplateColumns:`1fr auto auto auto ${(showEp||isBrushTool||(isPatternTool&&!isElliottTool))?"auto":""}`, columnGap:12, rowGap:0, alignItems:"center", marginRight:(isBrushTool&&!showEp)?65:0 }}>
+                  {showLine && <div style={{ display:"grid", gridTemplateColumns:`1fr auto auto auto ${(showEp||isBrushTool||(isPatternTool&&!isElliottTool))?"auto":""}`, columnGap:12, rowGap:0, alignItems:"start", marginRight:(isBrushTool&&!showEp)?65:0 }}>
                     {/* Column headers */}
                     <div/><div/>
                     <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
@@ -2348,9 +7822,15 @@ const TalariaV8b = () => {
                     <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
                       <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span>
                     </div>
-                    {(showEp||isBrushTool||(isPatternTool&&!isElliottTool)) && <div/>}
+                    {(showEp||isBrushTool||(isPatternTool&&!isElliottTool)) && (
+                      showEp ? (
+                        <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
+                          <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>ENDPOINTS</span>
+                        </div>
+                      ) : <div/>
+                    )}
                     {/* ── Line row ── */}
-                    <span style={{ fontSize:12, color:c.ts, padding:"8px 0", alignSelf:"center" }}>{["triangle","rect","arcShape","ellipse","circle"].includes(tlSubTool.icon)?"Borders":"Line"}</span>
+                    <span style={{ fontSize:12, color:c.ts, padding:"8px 0" }}>{["triangle","rect","arcShape","ellipse","circle"].includes(tlSubTool.icon)?"Borders":"Line"}</span>
                     <div style={{ padding:"8px 0" }}>{colorSwatch("tlLineColor", tlStyle.lineColor)}</div>
                     {/* Style */}
                     {showStyle ? <div style={{ padding:"8px 0", position:"relative" }}>
@@ -2430,9 +7910,7 @@ const TalariaV8b = () => {
                     </div>}
                     {/* Endpoints / 5th-col filler for pattern tools */}
                     {(isPatternTool&&!isElliottTool) && <div/>}
-                    {(showEp||isBrushTool) && (showEp ? <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"center", padding:"8px 0" }}>
-                      <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>ENDPOINTS</span>
-                      <div style={{ display:"flex", gap:3 }}>
+                    {(showEp||isBrushTool) && (showEp ? <div style={{ display:"flex", gap:3, alignItems:"center", justifyContent:"center", padding:"8px 0" }}>
                         {[["ep1",false],["ep2",true]].map(([k,rightAlign])=>{
                           const dk=`ep-${k}`; const val=tlStyle[k]||"normal"; const isOpen=tlStyleDrop===dk;
                           const epPrev = (open) => val==="arrow"
@@ -2469,7 +7947,6 @@ const TalariaV8b = () => {
                             </div>
                           );
                         })}
-                      </div>
                     </div> : <div/>)}
                     {/* ── LABEL row (pure pattern tools only) ── */}
                     {(isPatternTool&&!isElliottTool) && <>
@@ -2519,7 +7996,11 @@ const TalariaV8b = () => {
                       const midOp = tlStyle.midLine ? 1 : 0.38;
                       const midPE = tlStyle.midLine ? "auto" : "none";
                       return <><div style={{ padding:"8px 0", alignSelf:"center" }}>
-                        {TlChk(tlStyle.midLine,"tlchk-midLine","Middle Line",()=>setTlStyle(s=>({...s,midLine:!s.midLine})))}
+                        {TlChk(tlStyle.midLine,"tlchk-midLine","Middle Line",()=>setTlStyle(s=>{
+                          const nextOn=!s.midLine;
+                          queueMicrotask(()=>flushV9MiddleLineToChart(s,nextOn));
+                          return {...s,midLine:nextOn};
+                        }))}
                       </div>
                       <div style={{ padding:"8px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s" }}>{colorSwatch("tlMidLineColor", tlStyle.midLineColor)}</div>
                       <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"center", padding:"8px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s" }}>
@@ -2617,7 +8098,7 @@ const TalariaV8b = () => {
                                              color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                                   <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                                     {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                      <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.01).toFixed(2))).toFixed(2)}:l)}));}}
+                                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.01).toFixed(2))).toFixed(2)}:l)})))}
                                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                         style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                                  display:"flex", alignItems:"center", justifyContent:"center",
@@ -2876,7 +8357,7 @@ const TalariaV8b = () => {
                                            color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                                 <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                                   {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                    <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
+                                    <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
                                       onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                       style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                                display:"flex", alignItems:"center", justifyContent:"center",
@@ -3352,7 +8833,7 @@ const TalariaV8b = () => {
                                      color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                           <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                             {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                              <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibTzLevels: s.fibTzLevels.map((l,j)=>j===idx?{...l,value:String(Math.max(1,+l.value+delta))}:l)}));}}
+                              <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, fibTzLevels: s.fibTzLevels.map((l,j)=>j===idx?{...l,value:String(Math.max(1,+l.value+delta))}:l)})))}
                                 onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                 style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                          display:"flex", alignItems:"center", justifyContent:"center",
@@ -3457,7 +8938,7 @@ const TalariaV8b = () => {
                                        color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                             <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                               {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [stateKey]: s[stateKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
+                                <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, [stateKey]: s[stateKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
                                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                   style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                            display:"flex", alignItems:"center", justifyContent:"center",
@@ -3745,7 +9226,7 @@ const TalariaV8b = () => {
                                      color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                           <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                             {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                              <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibLevels: s.fibLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
+                              <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, fibLevels: s.fibLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
                                 onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                 style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                          display:"flex", alignItems:"center", justifyContent:"center",
@@ -3830,7 +9311,7 @@ const TalariaV8b = () => {
                                  color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                       <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                         {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                          <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [levelKey]: s[levelKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
+                          <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, [levelKey]: s[levelKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
                             onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                             style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                      display:"flex", alignItems:"center", justifyContent:"center",
@@ -3991,15 +9472,25 @@ const TalariaV8b = () => {
             })()}
             {/* ── INPUT TAB (regressionCh) ── */}
             {tlSettTab==="input" && tlSubTool.icon === "regressionCh" && <>
-              {/* Upper Deviation — checkbox + spin input */}
-              {[["regUpperDev","Upper Deviation"],["regLowerDev","Lower Deviation"]].map(([key, label])=>{
+              {/* Upper/Lower deviation (σ multipliers) — sync on-state with regLines[1]/[2] (Style tab lines) */}
+              {[["regUpperDev","Upper Deviation",1],["regLowerDev","Lower Deviation",2]].map(([key, label, lineIdx])=>{
                 const on = tlStyle[key]?.on ?? true;
                 const val = tlStyle[key]?.value ?? "2.00";
                 const op = on ? 1 : 0.38;
                 const pe = on ? "auto" : "none";
                 return (
                   <div key={key} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
-                    <div>{TlChk(on, `tlchk-${key}`, label, ()=>setTlStyle(s=>({...s, [key]:{...s[key], on:!on}})))}</div>
+                    <div>{TlChk(on, `tlchk-${key}`, label, ()=>setTlStyle(s=>{
+                      const cur = s[key] || { on: true, value: "2" };
+                      const nextOn = !cur.on;
+                      return {
+                        ...s,
+                        [key]: { ...cur, on: nextOn },
+                        regLines: (s.regLines && s.regLines.length > lineIdx
+                          ? s.regLines.map((l, i) => (i === lineIdx ? { ...l, on: nextOn } : l))
+                          : s.regLines),
+                      };
+                    }))}</div>
                     <div style={{ position:"relative", width:68, marginRight:40, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
                       <input value={val}
                         onChange={e=>{const v=e.target.value;if(/^[0-9.]*$/.test(v))setTlStyle(s=>({...s,[key]:{...s[key],value:v}}));}}
@@ -4009,7 +9500,7 @@ const TalariaV8b = () => {
                                  color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                       <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                         {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                          <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s,[key]:{...s[key],value:(Math.max(0,+(+(s[key]?.value??"2.00")+delta*0.01).toFixed(2))).toFixed(2)}}));}}
+                          <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s,[key]:{...s[key],value:(Math.max(0,+(+(s[key]?.value??"2.00")+delta*0.01).toFixed(2))).toFixed(2)}})))}
                             onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                             style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                      display:"flex", alignItems:"center", justifyContent:"center",
@@ -4023,13 +9514,15 @@ const TalariaV8b = () => {
                   </div>
                 );
               })}
-              {/* Extend Right — checkbox */}
-              <div style={{ padding:"8px 0" }}>
-                {TlChk(tlStyle.regExtendRight ?? false, "tlchk-regExtRight", "Extend Right", ()=>setTlStyle(s=>({...s, regExtendRight:!(s.regExtendRight??false)})))}
+              {/* Extend Right — uses shared tlStyle.extendRight (same as Style tab; drives chart.style.extendRight) */}
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
+                <span style={{ fontSize:12, color:c.ts }}>Extend Right</span>
+                <div style={{ marginRight:40 }}>{TlChk(!!tlStyle.extendRight, "tlchk-regExtRight", "", ()=>setTlStyle(s=>({ ...s, extendRight:!s.extendRight })))}</div>
               </div>
-              {/* Pearson's R — checkbox */}
-              <div style={{ padding:"8px 0" }}>
-                {TlChk(tlStyle.regPearsonR ?? false, "tlchk-regPearsonR", "Pearson's R", ()=>setTlStyle(s=>({...s, regPearsonR:!(s.regPearsonR??false)})))}
+              {/* Pearson's R */}
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
+                <span style={{ fontSize:12, color:c.ts }}>Pearson's R</span>
+                <div style={{ marginRight:40 }}>{TlChk(!!tlStyle.regPearsonR, "tlchk-regPearsonR", "", ()=>setTlStyle(s=>({ ...s, regPearsonR:!s.regPearsonR })))}</div>
               </div>
               {/* Source — dropdown */}
               {(()=>{
@@ -4193,7 +9686,7 @@ const TalariaV8b = () => {
                              outline:"none", boxSizing:"border-box", fontVariantNumeric:"tabular-nums" }}/>
                   <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                     {[[+1,"▲"],[- 1,"▼"]].map(([delta,chr],i)=>(
-                      <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                         style={{ flex:1, width:18, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                  display:"flex", alignItems:"center", justifyContent:"center",
@@ -4362,22 +9855,31 @@ const TalariaV8b = () => {
             })()}
           </div>
           {/* footer */}
-          <div style={{ borderTop:`1px solid ${c.brH}`, display:"flex", alignItems:"center", justifyContent:"flex-end", padding:"10px 14px 14px", gap:8 }}>
-            <B hk="tl-cancel" onClick={closeTlSett}>Cancel</B>
-            <B primary hk="tl-ok" onClick={closeTlSett}>OK</B>
+          <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+            style={{ borderTop:`1px solid ${c.brH}`, display:"flex", alignItems:"center", justifyContent:"flex-end", padding:"10px 14px 14px", gap:8 }}>
+            <B hk="tl-cancel" fireOnPointerDown onClick={closeTlSett}>Cancel</B>
+            <B primary hk="tl-ok" fireOnPointerDown onClick={closeTlSett}>OK</B>
           </div>
         </div>
-      )}
+      , document.body)}
 
-      {/* ── Text Tool mini-bar ── */}
-      {tool === "text" && (()=>{
+      {/* ── Text Tool mini-bar ──
+          Active text tool OR a text/label drawing selected on the chart (toolbar.show
+          sets tool to crosshair — tlBarDrawingGroup === "text" so we must not fall through
+          to the Trend Line bar, which only keys off tlBarSelected). */}
+      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && (()=>{
         const TxBtn = ({id, isAct, onClick, children, isDel, tip}) => {
           const isH = hov === id;
           return (
             <div
               onMouseEnter={e=>{setHov(id);if(tip)showTip(tip,e.currentTarget,"bottom");}}
               onMouseLeave={()=>{setHov(null);hideTip();}}
-              onClick={onClick}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                if (typeof onClick === "function") onClick(e);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
               style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",flexShrink:0,
                 background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",transition:"background 0.12s"}}>
               {children(isH, isAct, isDel&&isH?c.rd:isAct?c.acL:isH?c.tx:c.ts)}
@@ -4388,7 +9890,7 @@ const TalariaV8b = () => {
         };
         return (
         <div data-sdrop="1" onClick={e=>e.stopPropagation()}
-          style={{position:"fixed",top:tlBarPos.y,left:tlBarPos.x,zIndex:9050,
+          style={{position:"fixed",top:tlBarPos.y,left:tlBarPos.x,zIndex:11000,
                   background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
                   boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                   display:"flex",flexDirection:"row",alignItems:"stretch",
@@ -4432,7 +9934,7 @@ const TalariaV8b = () => {
                   ].map(([lbl,action])=>{
                     const isH=hov===`txtTpl-${lbl}`, isAct=lbl==="Save as"&&txtSaveAsMode;
                     return (
-                      <div key={lbl} onClick={action}
+                      <div key={lbl} {...modalPointerActivate(() => action())}
                         onMouseEnter={()=>setHov(`txtTpl-${lbl}`)} onMouseLeave={()=>setHov(null)}
                         style={{display:"flex",alignItems:"center",padding:"6px 12px",cursor:"default",position:"relative",
                                 background:isAct?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
@@ -4452,7 +9954,7 @@ const TalariaV8b = () => {
                         }}
                         placeholder="Template name…"
                         style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box"}}/>
-                      <div onClick={()=>{if(txtNewTplName.trim()){setTxtTemplates(ts=>[...ts,{name:txtNewTplName.trim(),style:{...txtStyle}}]);setTxtSaveAsMode(false);setTxtNewTplName("");}}}
+                      <div {...modalPointerActivate(() => { if(txtNewTplName.trim()){setTxtTemplates(ts=>[...ts,{name:txtNewTplName.trim(),style:{...txtStyle}}]);setTxtSaveAsMode(false);setTxtNewTplName("");} })}
                         onMouseEnter={()=>setHov("txt-tpl-ok")} onMouseLeave={()=>setHov(null)}
                         style={{padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,position:"relative",
                                 background:hov==="txt-tpl-ok"?c.hv:"transparent",transition:"background 0.12s"}}>
@@ -4466,9 +9968,9 @@ const TalariaV8b = () => {
                       <div key={idx} onMouseEnter={()=>setHov(`txtTpl-${idx}`)} onMouseLeave={()=>setHov(null)}
                         style={{display:"flex",alignItems:"center",padding:"4px 8px 4px 12px",cursor:"default",position:"relative",
                                 background:hov===`txtTpl-${idx}`?c.hv2:"transparent",transition:"background 0.1s"}}>
-                        <span onClick={()=>{setTxtStyle(tpl.style);setTxtBarDrop(null);}}
+                        <span {...modalPointerActivate(() => { setTxtStyle(tpl.style); setTxtBarDrop(null); })}
                           style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:12,color:hov===`txtTpl-${idx}`?c.tx:c.ts,fontWeight:500}}>{tpl.name}</span>
-                        <div onClick={e=>{e.stopPropagation();setTxtTemplates(ts=>ts.filter((_,i)=>i!==idx));}}
+                        <div {...modalPointerActivate(() => setTxtTemplates(ts=>ts.filter((_,i)=>i!==idx)))}
                           onMouseEnter={()=>setHov(`txtTpl-del-${idx}`)} onMouseLeave={()=>setHov(`txtTpl-${idx}`)}>
                           <I n="x" s={11} cl={hov===`txtTpl-del-${idx}`?c.rd:c.tm}/>
                         </div>
@@ -4507,7 +10009,9 @@ const TalariaV8b = () => {
           {/* font size dropdown — hidden for flag, emoji, note, priceNote */}
           {!["flag","emoji","note","priceNote","image"].includes(txtSubTool.icon) && <div style={{position:"relative",flexShrink:0}}>
             <div onMouseEnter={()=>setHov("txt-bar-sz")} onMouseLeave={()=>setHov(null)}
-              onClick={e=>{e.stopPropagation();setTxtBarSizeOpen(v=>!v);setTxtSizeOpen(false);}}
+              onPointerDown={(e)=>{e.stopPropagation();setTxtBarSizeOpen(v=>!v);setTxtSizeOpen(false);}}
+              onMouseDown={(e)=>e.stopPropagation()}
+              onClick={(e)=>e.stopPropagation()}
               style={{height:32,padding:"0 7px",display:"flex",alignItems:"center",gap:3,position:"relative",cursor:"default",
                       background:txtBarSizeOpen?"rgba(74,106,255,0.08)":hov==="txt-bar-sz"?c.hv:"transparent",transition:"background 0.12s"}}>
               <span style={{fontSize:12,color:txtBarSizeOpen?c.acL:c.ts,minWidth:16,textAlign:"center"}}>{txtStyle.fontSize}</span>
@@ -4526,7 +10030,7 @@ const TalariaV8b = () => {
                 {txtSizes.map(sz=>{
                   const isA=txtStyle.fontSize===sz; const isH=hov===`txtsz-bar-${sz}`;
                   return (
-                    <div key={sz} onClick={()=>{setTxtStyle(s=>({...s,fontSize:sz}));setTxtBarSizeOpen(false);}}
+                    <div key={sz} {...modalPointerActivate(() => { setTxtStyle(s=>({...s,fontSize:sz})); setTxtBarSizeOpen(false); })}
                       onMouseEnter={()=>setHov(`txtsz-bar-${sz}`)} onMouseLeave={()=>setHov(null)}
                       style={{padding:"5px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                               background:isA?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
@@ -4597,8 +10101,8 @@ const TalariaV8b = () => {
         );
       })()}
 
-      {/* ── Text Tool Settings Window ── */}
-      {tool === "text" && (txtSettOpen || closing.has("txtsett")) && (()=>{
+      {/* ── Text Tool Settings Window (portal → body: same stacking as TL settings / chart toolbar) ── */}
+      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && (txtSettOpen || closing.has("txtsett")) && typeof document !== "undefined" && createPortal((()=>{
         const txtSizes = [10,12,14,16,18,20,22,24];
         const openTxtCP = (e, key, val) => {
           const p = parseColor(val||'#ffffff'); const hsv = rgbToHsv(p.r,p.g,p.b);
@@ -4636,7 +10140,7 @@ const TalariaV8b = () => {
         const txtTabIdx=txtTabs.findIndex(([id])=>id===txtSettTab);
         return (
         <div data-sdrop="1" onClick={e=>{e.stopPropagation();setTxtSizeOpen(false);}}
-          style={{position:"fixed",left:txtSettPos.x,top:txtSettPos.y,zIndex:9100,width:420,fontFamily:F,
+          style={{position:"fixed",left:txtSettPos.x,top:txtSettPos.y,zIndex:11000,width:420,fontFamily:F,
                   background:c.sf,border:`1px solid ${c.brH}`,
                   boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                   display:"flex",flexDirection:"column",
@@ -4681,7 +10185,7 @@ const TalariaV8b = () => {
               {hov==="txt-tmpl-hdr"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
             </div>
             {/* close button — identical to TL settings */}
-            <div onMouseDown={e=>e.stopPropagation()} onClick={closeTxtSett}
+            <div {...modalPointerActivate(closeTxtSett)}
               onMouseEnter={()=>setHov("txtx")} onMouseLeave={()=>setHov(null)}
               style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
                       background:hov==="txtx"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s"}}>
@@ -4694,9 +10198,12 @@ const TalariaV8b = () => {
             {txtTabs.map(([id,lbl])=>{
               const isAct=txtSettTab===id;
               return (
-                <button key={id} onClick={e=>{e.stopPropagation();setTxtSettTab(id);setTxtSizeOpen(false);}}
+                <button type="button" key={id}
+                  onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`txtTab-${id}`);setTxtSettTab(id);setTxtSizeOpen(false);}}
+                  onMouseDown={(e)=>e.stopPropagation()}
+                  onClick={(e)=>e.stopPropagation()}
                   onMouseEnter={()=>setHov(`txtTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
-                  onPointerDown={()=>setBtnPressed(`txtTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
+                  onPointerUp={()=>setBtnPressed(null)}
                   style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                           color:isAct?c.acL:hov===`txtTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -5064,7 +10571,7 @@ const TalariaV8b = () => {
                             outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                   <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                     {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                      <button key={i} onClick={e=>{e.stopPropagation();setTxtStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                      <button type="button" key={i} {...modalPointerActivate(() => setTxtStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                         style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                 display:"flex",alignItems:"center",justifyContent:"center",
@@ -5192,13 +10699,14 @@ const TalariaV8b = () => {
             })()}
           </div>
           {/* footer */}
-          <div style={{borderTop:`1px solid ${c.brH}`,display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"10px 14px 14px",gap:8}}>
-            <B hk="txt-cancel" onClick={closeTxtSett}>Cancel</B>
-            <B primary hk="txt-ok" onClick={closeTxtSett}>OK</B>
+          <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+            style={{borderTop:`1px solid ${c.brH}`,display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"10px 14px 14px",gap:8}}>
+            <B hk="txt-cancel" fireOnPointerDown onClick={closeTxtSett}>Cancel</B>
+            <B primary hk="txt-ok" fireOnPointerDown onClick={closeTxtSett}>OK</B>
           </div>
         </div>
         );
-      })()}
+      })(), document.body)}
 
       {/* Trend line floating bar dropdowns */}
       {((tlBarDrop&&tlBarDrop!=="template")||(closing.has("tlbardrop")&&tlLastBarDropRef.current!=="template")) && (()=>{
@@ -5224,7 +10732,7 @@ const TalariaV8b = () => {
         const isClosing = closing.has("tlbardrop") && !tlBarDrop;
         return (
         <div ref={tlBarDropRef} data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
-          style={{ position:"fixed", top, left, zIndex:9150,
+          style={{ position:"fixed", top, left, zIndex:10050,
                    width: (key==="style"||key==="width") ? 88 : undefined, minWidth: (key==="style"||key==="width") ? undefined : 148,
                    background:c.sf, border:`1px solid ${c.brH}`, fontFamily:F,
                    boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,
@@ -5452,7 +10960,7 @@ const TalariaV8b = () => {
                       outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
             <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
               {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                <button key={i} onClick={e=>{e.stopPropagation();if(!disabled)setVwapStyle(s=>({...s,[valKey]:Math.max(0.1,+(+s[valKey]+delta)).toFixed(1)}));}}
+                <button type="button" key={i} {...modalPointerActivate(() => { if(!disabled)setVwapStyle(s=>({...s,[valKey]:Math.max(0.1,+(+s[valKey]+delta)).toFixed(1)})); })}
                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                   style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -5467,7 +10975,7 @@ const TalariaV8b = () => {
         const tabs=[["style","Style"],["inputs","Inputs"],["coordinates","Coordinates"],["visibility","Visibility"]];
         return (
           <div data-sdrop="1" onClick={e=>{e.stopPropagation();setVwapStyleDrop(null);}}
-            style={{position:"fixed",left:vwapSettPos.x,top:vwapSettPos.y,zIndex:9100,width:420,fontFamily:F,
+            style={{position:"fixed",left:vwapSettPos.x,top:vwapSettPos.y,zIndex:10050,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
                     animation:closing.has("vwapsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
@@ -5488,7 +10996,7 @@ const TalariaV8b = () => {
               <I n="vwap" s={17} cl={c.acL}/>
               <span style={{fontSize:14,fontWeight:700,color:c.tx,marginLeft:8}}>Anchored VWAP</span>
               <div style={{flex:1,cursor:"move"}}/>
-              <div onClick={closeVwapSett} onPointerDown={e=>e.stopPropagation()}
+              <div {...modalPointerActivate(closeVwapSett)}
                 onMouseEnter={()=>setHov("vwap-x")} onMouseLeave={()=>setHov(null)}
                 style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",
                         background:hov==="vwap-x"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",position:"relative"}}>
@@ -5501,9 +11009,12 @@ const TalariaV8b = () => {
               {tabs.map(([id,lbl])=>{
                 const isAct=vwapSettTab===id;
                 return(
-                  <button key={id} onClick={e=>{e.stopPropagation();setVwapSettTab(id);setVwapStyleDrop(null);}}
+                  <button type="button" key={id}
+                    onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`vwapTab-${id}`);setVwapSettTab(id);setVwapStyleDrop(null);}}
+                    onMouseDown={(e)=>e.stopPropagation()}
+                    onClick={(e)=>e.stopPropagation()}
                     onMouseEnter={()=>setHov(`vwapTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
-                    onPointerDown={()=>setBtnPressed(`vwapTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
+                    onPointerUp={()=>setBtnPressed(null)}
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                             color:isAct?c.acL:hov===`vwapTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                             display:"flex",alignItems:"center",justifyContent:"center",
@@ -5643,7 +11154,7 @@ const TalariaV8b = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button key={i} onClick={e=>{e.stopPropagation();setVwapStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                        <button type="button" key={i} {...modalPointerActivate(() => setVwapStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -5757,9 +11268,10 @@ const TalariaV8b = () => {
 
             </div>
             {/* footer */}
-            <div style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
-              <B hk="vwap-cancel" onClick={closeVwapSett}>Cancel</B>
-              <B primary hk="vwap-ok" onClick={closeVwapSett}>OK</B>
+            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+              style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
+              <B hk="vwap-cancel" fireOnPointerDown onClick={closeVwapSett}>Cancel</B>
+              <B primary hk="vwap-ok" fireOnPointerDown onClick={closeVwapSett}>OK</B>
             </div>
           </div>
         );
@@ -5828,7 +11340,7 @@ const TalariaV8b = () => {
                       outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
             <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
               {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                <button key={i} onClick={e=>{e.stopPropagation();setVpStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))}));}}
+                <button type="button" key={i} {...modalPointerActivate(() => setVpStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))})))}
                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                   style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -5843,7 +11355,7 @@ const TalariaV8b = () => {
         const tabs=[["style","Style"],["inputs","Inputs"],["coordinates","Coordinates"],["visibility","Visibility"]];
         return (
           <div data-sdrop="1" onClick={e=>{e.stopPropagation();setVpStyleDrop(null);}}
-            style={{position:"fixed",left:vpSettPos.x,top:vpSettPos.y,zIndex:9100,width:420,fontFamily:F,
+            style={{position:"fixed",left:vpSettPos.x,top:vpSettPos.y,zIndex:10050,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
                     animation:closing.has("vpsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
@@ -5864,7 +11376,7 @@ const TalariaV8b = () => {
               <I n="volProfile" s={17} cl={c.acL}/>
               <span style={{fontSize:14,fontWeight:700,color:c.tx,marginLeft:8}}>Fixed Range Volume Profile</span>
               <div style={{flex:1,cursor:"move"}}/>
-              <div onClick={closeVpSett} onPointerDown={e=>e.stopPropagation()}
+              <div {...modalPointerActivate(closeVpSett)}
                 onMouseEnter={()=>setHov("vp-x")} onMouseLeave={()=>setHov(null)}
                 style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",
                         background:hov==="vp-x"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",position:"relative"}}>
@@ -5877,9 +11389,12 @@ const TalariaV8b = () => {
               {tabs.map(([id,lbl])=>{
                 const isAct=vpSettTab===id;
                 return(
-                  <button key={id} onClick={e=>{e.stopPropagation();setVpSettTab(id);setVpStyleDrop(null);}}
+                  <button type="button" key={id}
+                    onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`vpTab-${id}`);setVpSettTab(id);setVpStyleDrop(null);}}
+                    onMouseDown={(e)=>e.stopPropagation()}
+                    onClick={(e)=>e.stopPropagation()}
                     onMouseEnter={()=>setHov(`vpTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
-                    onPointerDown={()=>setBtnPressed(`vpTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
+                    onPointerUp={()=>setBtnPressed(null)}
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                             color:isAct?c.acL:hov===`vpTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                             display:"flex",alignItems:"center",justifyContent:"center",
@@ -6020,7 +11535,7 @@ const TalariaV8b = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button key={i} onClick={e=>{e.stopPropagation();setVpStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                        <button type="button" key={i} {...modalPointerActivate(() => setVpStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -6138,9 +11653,10 @@ const TalariaV8b = () => {
 
             </div>
             {/* footer */}
-            <div style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
-              <B hk="vp-cancel" onClick={closeVpSett}>Cancel</B>
-              <B primary hk="vp-ok" onClick={closeVpSett}>OK</B>
+            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+              style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
+              <B hk="vp-cancel" fireOnPointerDown onClick={closeVpSett}>Cancel</B>
+              <B primary hk="vp-ok" fireOnPointerDown onClick={closeVpSett}>OK</B>
             </div>
           </div>
         );
@@ -6209,7 +11725,7 @@ const TalariaV8b = () => {
                       outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
             <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
               {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                <button key={i} onClick={e=>{e.stopPropagation();setAvStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))}));}}
+                <button type="button" key={i} {...modalPointerActivate(() => setAvStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))})))}
                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                   style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -6224,7 +11740,7 @@ const TalariaV8b = () => {
         const tabs=[["style","Style"],["inputs","Inputs"],["coordinates","Coordinates"],["visibility","Visibility"]];
         return (
           <div data-sdrop="1" onClick={e=>{e.stopPropagation();setAvStyleDrop(null);}}
-            style={{position:"fixed",left:avSettPos.x,top:avSettPos.y,zIndex:9100,width:420,fontFamily:F,
+            style={{position:"fixed",left:avSettPos.x,top:avSettPos.y,zIndex:10050,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
                     animation:closing.has("avsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
@@ -6245,7 +11761,7 @@ const TalariaV8b = () => {
               <I n="anchoredVol" s={17} cl={c.acL}/>
               <span style={{fontSize:14,fontWeight:700,color:c.tx,marginLeft:8}}>Anchored Volume Profile</span>
               <div style={{flex:1,cursor:"move"}}/>
-              <div onClick={closeAvSett} onPointerDown={e=>e.stopPropagation()}
+              <div {...modalPointerActivate(closeAvSett)}
                 onMouseEnter={()=>setHov("av-x")} onMouseLeave={()=>setHov(null)}
                 style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",
                         background:hov==="av-x"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",position:"relative"}}>
@@ -6258,9 +11774,12 @@ const TalariaV8b = () => {
               {tabs.map(([id,lbl])=>{
                 const isAct=avSettTab===id;
                 return(
-                  <button key={id} onClick={e=>{e.stopPropagation();setAvSettTab(id);setAvStyleDrop(null);}}
+                  <button type="button" key={id}
+                    onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`avTab-${id}`);setAvSettTab(id);setAvStyleDrop(null);}}
+                    onMouseDown={(e)=>e.stopPropagation()}
+                    onClick={(e)=>e.stopPropagation()}
                     onMouseEnter={()=>setHov(`avTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
-                    onPointerDown={()=>setBtnPressed(`avTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
+                    onPointerUp={()=>setBtnPressed(null)}
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                             color:isAct?c.acL:hov===`avTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                             display:"flex",alignItems:"center",justifyContent:"center",
@@ -6393,7 +11912,7 @@ const TalariaV8b = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button key={i} onClick={e=>{e.stopPropagation();setAvStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                        <button type="button" key={i} {...modalPointerActivate(() => setAvStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -6509,16 +12028,20 @@ const TalariaV8b = () => {
 
             </div>
             {/* footer */}
-            <div style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
-              <B hk="av-cancel" onClick={closeAvSett}>Cancel</B>
-              <B primary hk="av-ok" onClick={closeAvSett}>OK</B>
+            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+              style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
+              <B hk="av-cancel" fireOnPointerDown onClick={closeAvSett}>Cancel</B>
+              <B primary hk="av-ok" fireOnPointerDown onClick={closeAvSett}>OK</B>
             </div>
           </div>
         );
       })()}
 
       {/* ── Trend Line floating toolbar (fixed — can overlay any UI area except right panels) ── */}
-      {(tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || isPatternTool || tool === "measure") && (()=>{
+      {/* Visibility: chart selection AND drawing maps to a line/shape rail group.
+          Text/label drawings map to group "text" (not in TL_LINE_SHAPE_GROUPS) — without
+          this guard, effectiveTlGroup is null and tlSubTool defaulted to Trend Line. */}
+      {tlBarSelected && tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) && (()=>{
         const TlBtn = ({id, isAct, children, onClick, w, tip}) => {
           const isH = hov === id;
           const isDel = id === "tl-del";
@@ -6526,7 +12049,12 @@ const TalariaV8b = () => {
             <div
               onMouseEnter={e=>{setHov(id);if(tip)showTip(tip,e.currentTarget,"bottom");}}
               onMouseLeave={()=>{setHov(null);hideTip();}}
-              onClick={onClick}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                if (typeof onClick === "function") onClick(e);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
               style={{width:w||32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
                       cursor:"default",position:"relative",flexShrink:0,userSelect:"none",
                       background: isAct ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent",
@@ -6539,8 +12067,10 @@ const TalariaV8b = () => {
         };
         const TlSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
-        <div ref={tlBarRef} data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
-          style={{ position:"fixed", top:tlBarPos.y, left:tlBarPos.x, zIndex:9050,
+        <div ref={tlBarRef} data-sdrop="1" data-tlbar="1"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={e=>e.stopPropagation()}
+          style={{ position:"fixed", top:tlBarPos.y, left:tlBarPos.x, zIndex:11000,
                    background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                    boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                    display:"flex", flexDirection:"row", alignItems:"stretch",
@@ -6595,10 +12125,18 @@ const TalariaV8b = () => {
                 <div style={{height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                 <div style={{padding:"4px 0"}}>
                   {[["Save as", ()=>{ setTlSaveAsMode(true); setTlNewTplName(""); }],
-                    ["Apply default", ()=>{ closeTlBarDrop(); }]].map(([lbl, action])=>{
+                    ["Apply default", ()=>{
+                      const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+                      const tb = ch?.drawingManager?.toolbar;
+                      const d = getSelectedDrawingForTemplate();
+                      if (!tb || typeof tb.applyDefaultTemplate !== "function") return;
+                      if (!d) { tb.showNotification?.("Select a drawing first"); return; }
+                      tb.applyDefaultTemplate(d);
+                      closeTlBarDrop();
+                    }]].map(([lbl, action])=>{
                     const isH=hov===`tbdrop-${lbl}`, isAct=lbl==="Save as"&&tlSaveAsMode;
                     return (
-                      <div key={lbl} onClick={action}
+                      <div key={lbl} {...modalPointerActivate(() => action())}
                         onMouseEnter={()=>setHov(`tbdrop-${lbl}`)} onMouseLeave={()=>setHov(null)}
                         style={{ display:"flex", alignItems:"center", padding:"6px 12px", cursor:"default", position:"relative",
                                  background:isAct?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
@@ -6612,12 +12150,16 @@ const TalariaV8b = () => {
                     <div style={{padding:"4px 8px 4px 12px",display:"flex",alignItems:"center",gap:4,boxSizing:"border-box",width:"100%"}} onMouseDown={e=>e.stopPropagation()}>
                       <input autoFocus value={tlNewTplName} onChange={e=>setTlNewTplName(e.target.value)}
                         onKeyDown={e=>{
-                          if(e.key==="Enter"&&tlNewTplName.trim()){setTlTemplates(ts=>[...ts,{name:tlNewTplName.trim(),style:{...tlStyle}}]);setTlSaveAsMode(false);setTlNewTplName("");}
-                          if(e.key==="Escape"){setTlSaveAsMode(false);setTlNewTplName("");}
+                          if (e.key === "Enter" && tlNewTplName.trim()) {
+                            const d = getSelectedDrawingForTemplate();
+                            if (!d) { window.chart?.drawingManager?.toolbar?.showNotification?.("Select a drawing first"); return; }
+                            if (v9SaveDrawingTemplateToStorage(tlNewTplName, d)) { setTlSaveAsMode(false); setTlNewTplName(""); }
+                          }
+                          if (e.key === "Escape") { setTlSaveAsMode(false); setTlNewTplName(""); }
                         }}
                         placeholder="Template name…"
                         style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box"}}/>
-                      <div onClick={()=>{if(tlNewTplName.trim()){setTlTemplates(ts=>[...ts,{name:tlNewTplName.trim(),style:{...tlStyle}}]);setTlSaveAsMode(false);setTlNewTplName("");}}}
+                      <div {...modalPointerActivate(() => { if (!tlNewTplName.trim()) return; const d = getSelectedDrawingForTemplate(); if (!d) { window.chart?.drawingManager?.toolbar?.showNotification?.("Select a drawing first"); return; } if (v9SaveDrawingTemplateToStorage(tlNewTplName, d)) { setTlSaveAsMode(false); setTlNewTplName(""); } })}
                         onMouseEnter={()=>setHov("tpl-save-ok")} onMouseLeave={()=>setHov(null)}
                         style={{padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,position:"relative",
                                 background:hov==="tpl-save-ok"?c.hv:"transparent",transition:"background 0.12s"}}>
@@ -6626,18 +12168,31 @@ const TalariaV8b = () => {
                       </div>
                     </div>
                   )}
-                  {tlTemplates.length === 0 && !tlSaveAsMode ? (
+                  {tlSavedTemplateList.length === 0 && !tlSaveAsMode ? (
                     <div style={{padding:"6px 12px"}}>
                       <span style={{fontSize:11, color:c.tm, fontStyle:"italic"}}>No saved templates</span>
                     </div>
-                  ) : tlTemplates.map((tpl, idx)=>(
-                    <div key={idx}
+                  ) : tlSavedTemplateList.map((tpl, idx)=>(
+                    <div key={tpl.id || idx}
                       onMouseEnter={()=>setHov(`tbtpl-${idx}`)} onMouseLeave={()=>setHov(null)}
                       style={{ display:"flex", alignItems:"center", padding:"4px 8px 4px 12px", cursor:"default", position:"relative",
                                background:hov===`tbtpl-${idx}`?c.hv2:"transparent", transition:"background 0.1s" }}>
-                      <span onClick={()=>{ setTlStyle(tpl.style); closeTlBarDrop(); }}
+                      <span {...modalPointerActivate(() => {
+                        const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+                        const tb = ch?.drawingManager?.toolbar;
+                        const d = getSelectedDrawingForTemplate();
+                        if (!tb || !d || !tpl.id) return;
+                        tb.applyTemplate(d, tpl.id);
+                        closeTlBarDrop();
+                      })}
                         style={{flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontSize:12, color:hov===`tbtpl-${idx}`?c.tx:c.ts, fontWeight:500}}>{tpl.name}</span>
-                      <div onClick={e=>{ e.stopPropagation(); setTlTemplates(ts=>ts.filter((_,i)=>i!==idx)); }}
+                      <div {...modalPointerActivate(() => {
+                        const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+                        const tb = ch?.drawingManager?.toolbar;
+                        const d = getSelectedDrawingForTemplate();
+                        const toolType = (d && d.type) || resolveLegacyTool();
+                        if (tb && toolType && tpl.id) tb.deleteTemplate(toolType, tpl.id);
+                      })}
                         onMouseEnter={()=>setHov(`tbtpl-del-${idx}`)} onMouseLeave={()=>setHov(`tbtpl-${idx}`)}
                         style={{ padding:"2px 4px", cursor:"default" }}>
                         <I n="x" s={11} cl={hov===`tbtpl-del-${idx}`?c.rd:c.tm}/>
@@ -6684,7 +12239,7 @@ const TalariaV8b = () => {
                 <line x1="12.5" y1="3" x2="17.5" y2="3" stroke={c.acL} strokeWidth="2" strokeLinecap="round"/>
               </svg>}
             </TlBtn>
-          </> : tool === "measure" ? <>
+          </> : effectiveTlGroup === "measure" ? <>
             {/* range: font color */}
             <TlBtn id="tl-rng-fcol" isAct={colorPicker==="tlLabelColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlLabelColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.labelColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlLabelColor");}}}>
@@ -6728,8 +12283,10 @@ const TalariaV8b = () => {
               {(_,isAct,col)=>{
                 const fibBar = isFibTool && tlStyle.fibLevels && tlStyle.fibLevels.length > 0
                   ? `linear-gradient(90deg,${tlStyle.fibLevels.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
-                  : (["channel","regressionCh"].includes(tlSubTool.icon) && tlStyle.chLines && tlStyle.chLines.length > 0)
+                  : (tlSubTool.icon === "channel" && tlStyle.chLines && tlStyle.chLines.length > 0)
                   ? `linear-gradient(90deg,${tlStyle.chLines.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
+                  : (tlSubTool.icon === "regressionCh" && tlStyle.regLines && tlStyle.regLines.length > 0)
+                  ? `linear-gradient(90deg,${tlStyle.regLines.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
                   : (tlSubTool.icon === "pitchfork" && tlStyle.pfLevels && tlStyle.pfLevels.length > 0)
                   ? `linear-gradient(90deg,${tlStyle.pfLevels.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
                   : tlStyle.lineColor;
@@ -6763,7 +12320,7 @@ const TalariaV8b = () => {
               </div>}
             </TlBtn>}
             {/* btn 2b: bg color — for non-rect, non-pattern applicable tools */}
-            {["polyline","triangle","arcShape","arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" isAct={colorPicker==="tlBgColor"}
+            {["polyline","pathTool","curve","doubleCurve","triangle","arcShape","arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" isAct={colorPicker==="tlBgColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
               {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={tlStyle.bgColor}/></svg>}
             </TlBtn>}
@@ -6804,18 +12361,69 @@ const TalariaV8b = () => {
             </TlBtn>}
           </>}
           <TlSep/>
-          {/* btn 5: lock */}
-          <TlBtn id="tl-lock" isAct={tlLocked} tip={tlLocked?"Unlock":"Lock"} onClick={()=>{setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();setTlLocked(v=>!v);}}>
+          {/* btn 5: lock — toggle locked state on the selected drawing(s) too,
+               so V9's lock matches what the legacy toolbar's lock button does. */}
+          <TlBtn id="tl-lock" isAct={tlLocked} tip={tlLocked?"Unlock":"Lock"} onClick={()=>{
+            setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();
+            const next = !tlLocked; setTlLocked(next);
+            try {
+              enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+                const sel = dm && (dm.selectedDrawings && dm.selectedDrawings.length ? dm.selectedDrawings : (dm.selectedDrawing ? [dm.selectedDrawing] : []));
+                if (!sel || !sel.length) return;
+                sel.forEach((d) => { if (d) d.locked = next; });
+                if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
+              });
+            } catch(_){}
+          }}>
             {(_,isAct,col)=><I n="lock" s={16} cl={col}/>}
           </TlBtn>
-          {/* btn 6: delete */}
-          <TlBtn id="tl-del" isAct={false} tip="Delete" onClick={()=>{setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();}}>
+          {/* btn 6: delete — call drawingManager.deleteDrawing on the selected
+               drawing(s) so the canvas matches what the legacy toolbar does. */}
+          <TlBtn id="tl-del" isAct={false} tip="Delete" onClick={()=>{
+            setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();
+            try {
+              enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+                const hasSel = (dm.selectedDrawings && dm.selectedDrawings.length) || dm.selectedDrawing;
+                if (!hasSel) return;
+                if (dm.deleteSelected) dm.deleteSelected();
+                else {
+                  const sel = dm.selectedDrawings && dm.selectedDrawings.length ? [...dm.selectedDrawings] : (dm.selectedDrawing ? [dm.selectedDrawing] : []);
+                  sel.forEach((d) => { try { dm.deleteDrawing && dm.deleteDrawing(d); } catch(_){} });
+                }
+                if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
+              });
+            } catch(err){ console.warn('[V9 delete] failed:', err); }
+          }}>
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TlBtn>
           <TlSep/>
           {/* btn 7: settings */}
-          <TlBtn id="tl-sett" isAct={tlSettOpen||closing.has("tlsett")} tip="Style"
-            onClick={e=>{if(tlBarDrop)closeTlBarDrop();setColorPicker(null);if(tlSettOpen||closing.has("tlsett")){closeTlSett();}else{if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-498));const y=r.bottom/Z+8;setTlSettPos({x,y});setTlSettOpen(true);}}}>
+          <TlBtn id="tl-sett" isAct={tlSettOpen||closing.has("tlsett")}
+            onClick={e=>{
+              if (tlBarDrop) closeTlBarDrop();
+              setColorPicker(null);
+              if (tlSettOpen || closing.has("tlsett")) { closeTlSett(); return; }
+              if (txtSettOpen) closeTxtSett();
+              if (vwapSettOpen) closeVwapSett();
+              if (vpSettOpen) closeVpSett();
+              if (avSettOpen) closeAvSett();
+              const r = e.currentTarget.getBoundingClientRect();
+              const vpW = window.innerWidth / Z;
+              const xFallback = Math.max(8, Math.min(r.left / Z, vpW - 498));
+              const yFallback = r.bottom / Z + 8;
+              const d = getSelectedDrawingForTemplate();
+              const hook = typeof window !== "undefined" ? window.__v9OpenDrawingSettings : null;
+              if (d && typeof hook === "function") {
+                const anchorX = r.left + r.width / 2;
+                const anchorY = r.bottom + 8;
+                try {
+                  if (hook(d, anchorX, anchorY)) return;
+                } catch (_) {}
+              }
+              window.chart?.drawingManager?.toolbar?.showNotification?.(
+                d ? "Open style from the chart or pick a line/shape tool first." : "Select a drawing first."
+              );
+            }}>
             {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
           </TlBtn>
           {/* btn 8: more */}
@@ -6842,8 +12450,10 @@ const TalariaV8b = () => {
           }
         }
         return (
-          <div ref={pinnedBarRef} onClick={e=>e.stopPropagation()}
-            style={{position:"fixed",top:pinnedBarPos.y,left:pinnedBarPos.x,zIndex:9050,
+          <div ref={pinnedBarRef} data-sdrop="1"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={e=>e.stopPropagation()}
+            style={{position:"fixed",top:pinnedBarPos.y,left:pinnedBarPos.x,zIndex:11000,
                     background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
                     boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(201,168,76,0.15)`,
                     animation:"tlrPopIn 0.15s ease",userSelect:"none",display:"flex",flexDirection:"row",fontFamily:F}}>
@@ -6882,7 +12492,7 @@ const TalariaV8b = () => {
                 return (
                   <div key={pbKey}
                     onMouseEnter={()=>setHov(`pb-${i}`)} onMouseLeave={()=>setHov(null)}
-                    onClick={()=>{ setTool(t.parentId||t.id); if(t.parentId) setGroupSelected(p=>({...p,[t.parentId]:t})); }}
+                    {...modalPointerActivate(() => { setTool(t.parentId||t.id); if(t.parentId) setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [t.parentId]: t })); })}
                     style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
                       background:isAct?"rgba(74,106,255,0.10)":isH?c.hv:"transparent",
                       transition:"background 0.12s"}}>
@@ -6904,9 +12514,9 @@ const TalariaV8b = () => {
         if (!tDd?.dd) return null;
         const items = Array.isArray(tDd.dd) ? tDd.dd : [{h: tDd.label.toUpperCase()}, {icon: tDd.icon, label: tDd.label}];
         const isDdClosing = closing.has("tldrop") && !dropdown;
-        return (
+        const ddPanel = (
         <div data-sdrop="1" onClick={(e) => e.stopPropagation()} style={{
-          position: "fixed", top: ddPos.top, left: ddPos.left, zIndex: 9060,
+          position: "fixed", top: ddPos.top, left: ddPos.left, zIndex: 11000,
           background: c.sf, border: `1px solid ${c.brH}`,
           boxShadow: `0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,
           minWidth: 190, fontFamily: F,
@@ -6937,9 +12547,34 @@ const TalariaV8b = () => {
                     transform: btnPressed===`dd-${i}` ? "scale(0.97)" : "scale(1)",
                   }}>
                   {isSelected && <div style={{position:"absolute",left:0,top:"10%",bottom:"10%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 4px ${c.acG}`}}/>}
-                  <button
+                  <button type="button"
                     onClick={(e) => {
-                      setTool(activeKey); setGroupSelected(p => ({...p, [activeKey]: item})); closeDropdown();
+                      const ch =
+                        typeof window.getActiveChart === "function"
+                          ? window.getActiveChart()
+                          : window.chart;
+                      if (activeKey === "eye" && ch && typeof ch.handleVisibilityMenuAction === "function") {
+                        if (item.icon === "eyeAll") ch.handleVisibilityMenuAction("drawings");
+                        else if (item.icon === "eyeInd") ch.handleVisibilityMenuAction("indicators");
+                        else if (item.icon === "eyePos") ch.handleVisibilityMenuAction("positions");
+                        else if (item.icon === "eyeHide") ch.handleVisibilityMenuAction("all");
+                        closeDropdown();
+                        return;
+                      }
+                      if (activeKey === "magnet") {
+                        applyV9MagnetMode(item);
+                        setGroupSelected((p) => ({ ...p, magnet: item }));
+                        closeDropdown();
+                        return;
+                      }
+                      if (activeKey === "trash") {
+                        if (item.icon === "trashDraw") ch?.clearOnlyDrawings?.({ confirmPrompt: false });
+                        else if (item.icon === "trashInd") ch?.clearOnlyIndicators?.({ confirmPrompt: false });
+                        else if (item.icon === "trash") ch?.clearDrawingsAndIndicators?.({ confirmPrompt: false });
+                        closeDropdown();
+                        return;
+                      }
+                      setTool(activeKey); setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [activeKey]: item })); closeDropdown();
                       if (item.icon === "emoji") {
                         const r = e.currentTarget.getBoundingClientRect();
                         setEmojiPanelPos({ x: (r.right + 8) / Z, y: r.top / Z });
@@ -6985,6 +12620,37 @@ const TalariaV8b = () => {
                     <I n={item.icon} s={15} cl={isSelected ? c.acL : rowHov ? c.tx : c.ts}/>
                     {item.label}
                   </button>
+                  {activeKey === "text" && <div
+                    title="Settings"
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      setTool("text");
+                      setGroupSelected((p) => v9SanitizeGroupSelected({ ...p, text: item }));
+                      const r = e.currentTarget.getBoundingClientRect();
+                      const vpW = window.innerWidth / Z;
+                      const x = Math.max(8, Math.min(r.left / Z - 220, vpW - 420));
+                      const y = Math.max(60, r.top / Z);
+                      if (tlSettOpen) closeTlSett();
+                      if (vwapSettOpen) closeVwapSett();
+                      if (vpSettOpen) closeVpSett();
+                      if (avSettOpen) closeAvSett();
+                      setTxtSettPos({ x, y });
+                      setTxtSettTab(item.icon === "emoji" ? "coordinates" : "style");
+                      setTxtSettOpen(true);
+                      closeDropdown();
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onMouseEnter={() => setHov(`ddtxtsett-${item.icon}-${i}`)}
+                    onMouseLeave={() => setHov(`dd-${i}`)}
+                    style={{
+                      padding: 4, cursor: "default", marginLeft: 2, flexShrink: 0,
+                      opacity: hov === `ddtxtsett-${item.icon}-${i}` ? 1 : rowHov ? 0.75 : 0.45,
+                      transition: "opacity 0.12s",
+                    }}>
+                    <I n="settings" s={12} cl={hov === `ddtxtsett-${item.icon}-${i}` ? c.acL : c.ts}/>
+                  </div>}
                   {!["eye","magnet","trash"].includes(activeKey) && <div
                     onPointerDown={(e) => {
                       e.stopPropagation(); e.preventDefault();
@@ -7007,6 +12673,7 @@ const TalariaV8b = () => {
           </div>
         </div>
         );
+        return typeof document !== "undefined" ? createPortal(ddPanel, document.body) : ddPanel;
       })()}
 
 
@@ -7031,7 +12698,7 @@ const TalariaV8b = () => {
         const VSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
           <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
-            style={{ position:"fixed", top:vwapBarPos.y, left:vwapBarPos.x, zIndex:9050,
+            style={{ position:"fixed", top:vwapBarPos.y, left:vwapBarPos.x, zIndex:11000,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                      boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                      display:"flex", flexDirection:"row", alignItems:"stretch",
@@ -7200,7 +12867,7 @@ const TalariaV8b = () => {
         const VPSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
           <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
-            style={{ position:"fixed", top:vpBarPos.y, left:vpBarPos.x, zIndex:9050,
+            style={{ position:"fixed", top:vpBarPos.y, left:vpBarPos.x, zIndex:11000,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                      boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                      display:"flex", flexDirection:"row", alignItems:"stretch",
@@ -7293,7 +12960,7 @@ const TalariaV8b = () => {
         const AVSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
           <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
-            style={{ position:"fixed", top:avBarPos.y, left:avBarPos.x, zIndex:9050,
+            style={{ position:"fixed", top:avBarPos.y, left:avBarPos.x, zIndex:11000,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                      boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                      display:"flex", flexDirection:"row", alignItems:"stretch",
@@ -7393,7 +13060,7 @@ const TalariaV8b = () => {
         };
         return (
           <div data-sdrop="1" onClick={e=>e.stopPropagation()}
-            style={{position:"fixed",left:px,top:py,width:W,height:H,zIndex:9300,
+            style={{position:"fixed",left:px,top:py,width:W,height:H,zIndex:11000,
                     background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
                     boxShadow:"0 8px 32px rgba(0,0,0,0.6)",
                     display:"flex",flexDirection:"column",fontFamily:F}}>
@@ -7472,7 +13139,7 @@ const TalariaV8b = () => {
         const tabAccent=(id)=> id==="active"?c.gn : id==="pinned"?c.gold : c.acL;
         const tabCount=(id)=> id==="active"?indActive.length : id==="pinned"?indPinned.length : id==="all"?indicatorData.length : indicatorData.filter(i=>i.cat===id).length;
         return (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${indPos.y}px)`,left:`calc(50% + ${indPos.x}px)`,transform:"translate(-50%,-50%)",width:760,height:580,zIndex:9001,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("ind")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${indPos.y}px)`,left:`calc(50% + ${indPos.x}px)`,transform:"translate(-50%,-50%)",width:760,height:580,zIndex:9001,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("ind")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"ind",startX:e.clientX,startY:e.clientY,ox:indPos.x,oy:indPos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="indicator" s={17} cl={c.acL}/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8,color:c.tx}}>Indicators</span>
@@ -7554,7 +13221,7 @@ const TalariaV8b = () => {
                 </div>
               )}
             </div>
-            <div onMouseDown={(e)=>e.stopPropagation()} onClick={closeInd} onMouseEnter={()=>setSwHov("xInd")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xInd"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xInd"?c.rd:c.ts}/></div>
+            <div {...modalPointerActivate(closeInd)} onMouseEnter={()=>setSwHov("xInd")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xInd"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xInd"?c.rd:c.ts}/></div>
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",flexShrink:0}}>
@@ -7572,7 +13239,7 @@ const TalariaV8b = () => {
               const accent=tabAccent(id);
               const cnt=tabCount(id);
               return (
-                <button key={id} onClick={()=>setIndCat(id)}
+                <button type="button" key={id} {...modalPointerActivate(() => setIndCat(id))}
                   onMouseEnter={()=>setSwHov(`indTab-${id}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{flex:1,padding:"8px 2px",border:"none",fontFamily:F,cursor:"default",
                     color: isAct ? accent : (id==="active" ? c.gn : id==="pinned" ? c.gold : swHov===`indTab-${id}` ? c.tx : c.ts),
@@ -7661,14 +13328,14 @@ const TalariaV8b = () => {
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:4,flexShrink:0}}>
-            <div onClick={closeInd} onMouseEnter={()=>setSwHov("indCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="indCancel"?c.tx:c.ts,background:swHov==="indCancel"?c.hv:"transparent",transition:"background 0.12s,color 0.12s"}}>Cancel</div>
-            <div onClick={closeInd} onMouseEnter={()=>setSwHov("indOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="indOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,WebkitFontSmoothing:"antialiased",boxShadow:swHov==="indOk"?`0 2px 12px rgba(38,67,247,0.45)`:`0 2px 6px rgba(38,67,247,0.22)`,transition:"background 0.12s,box-shadow 0.12s"}}>Apply</div>
+            <div {...modalPointerActivate(closeInd)} onMouseEnter={()=>setSwHov("indCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="indCancel"?c.tx:c.ts,background:swHov==="indCancel"?c.hv:"transparent",transition:"background 0.12s,color 0.12s"}}>Cancel</div>
+            <div {...modalPointerActivate(closeInd)} onMouseEnter={()=>setSwHov("indOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="indOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,WebkitFontSmoothing:"antialiased",boxShadow:swHov==="indOk"?`0 2px 12px rgba(38,67,247,0.45)`:`0 2px 6px rgba(38,67,247,0.22)`,transition:"background 0.12s,box-shadow 0.12s"}}>Apply</div>
           </div>
         </div>
         );
       })()}
       {(settingsOpen || closing.has("settings")) && (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${settingsPos.y}px)`,left:`calc(50% + ${settingsPos.x}px)`,transform:"translate(-50%,-50%)",width:460,height:560,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("settings")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${settingsPos.y}px)`,left:`calc(50% + ${settingsPos.x}px)`,transform:"translate(-50%,-50%)",width:460,height:560,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("settings")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"settings",startX:e.clientX,startY:e.clientY,ox:settingsPos.x,oy:settingsPos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="settings" s={17} cl={c.acL}/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8}}>Settings</span>
@@ -7748,7 +13415,7 @@ const TalariaV8b = () => {
                 </div>
               )}
             </div>
-            <div onMouseDown={(e)=>e.stopPropagation()} onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("xSettings")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xSettings"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xSettings"?c.rd:c.ts}/></div>
+            <div {...modalPointerActivate(() => animClose(setSettingsOpen, "settings"))} onMouseEnter={()=>setSwHov("xSettings")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xSettings"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xSettings"?c.rd:c.ts}/></div>
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div className="tlr-scroll" style={{flex:1,overflowY:"auto",padding:"16px 18px"}}>
@@ -7968,8 +13635,8 @@ const TalariaV8b = () => {
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:6,flexShrink:0}}>
-            <button onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("settCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="settCancel"?c.tx:c.ts,background:swHov==="settCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="settCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="settOk"?`linear-gradient(135deg,${c.acL},${c.ac})`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="settOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button type="button" {...modalPointerActivate(() => animClose(setSettingsOpen, "settings"))} onMouseEnter={()=>setSwHov("settCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="settCancel"?c.tx:c.ts,background:swHov==="settCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="settCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
+            <button type="button" {...modalPointerActivate(() => animClose(setSettingsOpen, "settings"))} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="settOk"?`linear-gradient(135deg,${c.acL},${c.ac})`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="settOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
       )}
@@ -7979,12 +13646,12 @@ const TalariaV8b = () => {
         const pwInputSx = { width:"100%", background:c.hv, border:"1px solid rgba(140,160,255,0.22)", color:c.tx, fontSize:13, fontFamily:F, padding:"6px 9px", outline:"none", boxSizing:"border-box", transition:"border-color 0.14s" };
         const langLabels = { english:"English", arabic:"العربية" };
         return (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${profilePos.y}px)`,left:`calc(50% + ${profilePos.x}px)`,transform:"translate(-50%,-50%)",width:400,height:540,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("profile")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${profilePos.y}px)`,left:`calc(50% + ${profilePos.x}px)`,transform:"translate(-50%,-50%)",width:400,height:540,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("profile")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
           {/* Header */}
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"profile",startX:e.clientX,startY:e.clientY,ox:profilePos.x,oy:profilePos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="user" s={17} cl={c.acL}/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8,color:c.tx}}>Profile</span>
-            <div onMouseDown={(e)=>e.stopPropagation()} onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("xProfile")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xProfile"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xProfile"?c.rd:c.ts}/></div>
+            <div {...modalPointerActivate(() => animClose(setProfileOpen, "profile"))} onMouseEnter={()=>setSwHov("xProfile")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xProfile"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xProfile"?c.rd:c.ts}/></div>
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           {/* Tab bar with sliding indicator */}
@@ -7992,7 +13659,7 @@ const TalariaV8b = () => {
             {profTabs.map(([id,label])=>{
               const isA = profileTab===id;
               return (
-                <button key={id} onClick={()=>setProfileTab(id)}
+                <button type="button" key={id} {...modalPointerActivate(() => setProfileTab(id))}
                   onMouseEnter={()=>setSwHov(`profTab-${id}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{flex:1,padding:"8px 0",border:"none",fontFamily:F,cursor:"default",
                     color:isA?c.acL:swHov===`profTab-${id}`?c.tx:c.ts,
@@ -8044,7 +13711,7 @@ const TalariaV8b = () => {
                       <input autoFocus value={profileName} onChange={(e)=>setProfileName(e.target.value.slice(0,40))}
                         onKeyDown={(e)=>{if(e.key==="Enter"||e.key==="Escape"){setProfileNameEdit(false);setSwHov(null);}}}
                         style={{...pwInputSx,flex:1}}/>
-                      <button
+                      <button type="button"
                         onClick={()=>{setProfileNameEdit(false);setSwHov(null);}}
                         onMouseEnter={()=>setSwHov("pn-save")} onMouseLeave={()=>setSwHov(null)}
                         onMouseDown={()=>setSwHov("pn-save_dn")} onMouseUp={()=>setSwHov("pn-save")}
@@ -8059,7 +13726,7 @@ const TalariaV8b = () => {
                   ) : (
                     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
                       <span style={{fontSize:13,fontWeight:700,color:c.tx}}>{profileName}</span>
-                      <button
+                      <button type="button"
                         onClick={()=>setProfileNameEdit(true)}
                         onMouseEnter={()=>setSwHov("pn-edit")} onMouseLeave={()=>setSwHov(null)}
                         onMouseDown={()=>setSwHov("pn-edit_dn")} onMouseUp={()=>setSwHov("pn-edit")}
@@ -8180,7 +13847,7 @@ const TalariaV8b = () => {
                   <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 12px",borderBottom:i<arr.length-1?`1px solid ${c.br}`:"none"}}>
                     <span style={{fontSize:13,color:c.ts}}>{d}</span>
                     <span style={{fontSize:13,fontWeight:700,color:c.gn}}>{a}</span>
-                    <button onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
+                    <button type="button" onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
                       style={{height:20,padding:"0 9px",cursor:"default",fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.04em",
                         color:isH?"#fff":c.acL,
                         background:isH?`linear-gradient(135deg,${c.ac},${c.acL})`:"transparent",
@@ -8196,7 +13863,7 @@ const TalariaV8b = () => {
           {/* Footer */}
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:4,flexShrink:0}}>
-            {profileTab==="account" && <button
+            {profileTab==="account" && <button type="button"
               onMouseEnter={()=>setSwHov("prof-logout")} onMouseLeave={()=>setSwHov(null)}
               onMouseDown={()=>setSwHov("prof-logout_dn")} onMouseUp={()=>setSwHov("prof-logout")}
               style={{marginRight:"auto",height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,
@@ -8207,8 +13874,8 @@ const TalariaV8b = () => {
                 transition:"background 0.12s,border-color 0.12s,transform 0.08s"}}>
               Log Out
             </button>}
-            <button onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="profCancel"?c.tx:c.ts,background:swHov==="profCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="profCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button type="button" {...modalPointerActivate(() => animClose(setProfileOpen, "profile"))} onMouseEnter={()=>setSwHov("profCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="profCancel"?c.tx:c.ts,background:swHov==="profCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="profCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
+            <button type="button" {...modalPointerActivate(() => animClose(setProfileOpen, "profile"))} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
         );
@@ -8217,12 +13884,12 @@ const TalariaV8b = () => {
         const faqTabs = [["faq","FAQ"],["hotkeys","Hot Keys"],["education","Education"],["about","About"]];
         const faqTabIdx = faqTabs.findIndex(([id])=>id===faqCat);
         return (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${faqPos.y}px)`,left:`calc(50% + ${faqPos.x}px)`,transform:"translate(-50%,-50%)",width:440,height:540,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("faq")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${faqPos.y}px)`,left:`calc(50% + ${faqPos.x}px)`,transform:"translate(-50%,-50%)",width:440,height:540,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("faq")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
           {/* Header */}
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"faq",startX:e.clientX,startY:e.clientY,ox:faqPos.x,oy:faqPos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="help" s={17} cl="#F0A030"/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8,color:c.tx}}>Help & Support</span>
-            <div onMouseDown={(e)=>e.stopPropagation()} onClick={()=>animClose(setFaqOpen,"faq")} onMouseEnter={()=>setSwHov("xFaq")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xFaq"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xFaq"?c.rd:c.ts}/></div>
+            <div {...modalPointerActivate(() => animClose(setFaqOpen, "faq"))} onMouseEnter={()=>setSwHov("xFaq")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xFaq"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xFaq"?c.rd:c.ts}/></div>
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           {/* Sliding tab bar */}
@@ -8230,7 +13897,7 @@ const TalariaV8b = () => {
             {faqTabs.map(([id,label])=>{
               const isA=faqCat===id;
               return (
-              <button key={id} onClick={()=>{setFaqCat(id);setFaqExpand(null);}}
+              <button type="button" key={id} {...modalPointerActivate(() => { setFaqCat(id); setFaqExpand(null); })}
                 onMouseEnter={()=>setSwHov(`faqTab-${id}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{flex:1,padding:"8px 0",border:"none",fontFamily:F,cursor:"default",
                   color:isA?c.acL:swHov===`faqTab-${id}`?c.tx:c.ts,
@@ -8281,7 +13948,7 @@ const TalariaV8b = () => {
                     support@talaria.io
                   </a>
                 </div>
-                <button
+                <button type="button"
                   onMouseEnter={()=>setSwHov("faq-more")} onMouseLeave={()=>setSwHov(null)}
                   onMouseDown={()=>setSwHov("faq-more_dn")} onMouseUp={()=>setSwHov("faq-more")}
                   style={{height:28,padding:"0 4px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",gap:6,cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,background:"none",border:"none",
@@ -8358,7 +14025,7 @@ const TalariaV8b = () => {
                   </div>
                 ))}
               </div>
-              <button
+              <button type="button"
                 onMouseEnter={()=>setSwHov("edu-all")} onMouseLeave={()=>setSwHov(null)}
                 onMouseDown={()=>setSwHov("edu-all_dn")} onMouseUp={()=>setSwHov("edu-all")}
                 style={{width:"100%",height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",gap:6,cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,
@@ -8422,7 +14089,7 @@ const TalariaV8b = () => {
               </div>
               <div style={{display:"flex",gap:4}}>
                 {[["about-docs","Documentation"],["about-support","Contact Support"]].map(([hk,label])=>(
-                  <button key={hk}
+                  <button type="button" key={hk}
                     onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
                     onMouseDown={()=>setSwHov(hk+"_dn")} onMouseUp={()=>setSwHov(hk)}
                     style={{flex:1,height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,
@@ -8439,20 +14106,20 @@ const TalariaV8b = () => {
           {/* Footer */}
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",gap:4,flexShrink:0}}>
-            <button onClick={()=>animClose(setFaqOpen,"faq")} onMouseEnter={()=>setSwHov("faqClose")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="faqClose"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="faqClose"?`0 0 10px ${c.acG}`:"none"}}>Close</button>
+            <button type="button" {...modalPointerActivate(() => animClose(setFaqOpen, "faq"))} onMouseEnter={()=>setSwHov("faqClose")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="faqClose"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="faqClose"?`0 0 10px ${c.acG}`:"none"}}>Close</button>
           </div>
         </div>
         );
       })()}
       {(screenshotOpen || closing.has("screenshot")) && (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${screenshotPos.y}px)`,left:`calc(50% + ${screenshotPos.x}px)`,transform:"translate(-50%,-50%)",width:920,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("screenshot")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${screenshotPos.y}px)`,left:`calc(50% + ${screenshotPos.x}px)`,transform:"translate(-50%,-50%)",width:920,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("screenshot")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"screenshot",startX:e.clientX,startY:e.clientY,ox:screenshotPos.x,oy:screenshotPos.y});}}
             style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="screenshot" s={17} cl={c.acL}/>
             <span style={{fontSize:14,fontWeight:700,marginLeft:8,color:c.tx}}>Screenshot</span>
             <span style={{fontSize:13,color:c.tm,fontVariantNumeric:"tabular-nums",marginLeft:8,flex:1}}>{canvasDims.w} × {canvasDims.h} px</span>
-            <div onMouseDown={(e)=>e.stopPropagation()} onClick={()=>animClose(setScreenshotOpen,"screenshot")}
+            <div {...modalPointerActivate(() => animClose(setScreenshotOpen, "screenshot"))}
               onMouseEnter={()=>setSwHov("xScreenshot")} onMouseLeave={()=>setSwHov(null)}
               style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xScreenshot"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}>
               <I n="x" s={18} cl={swHov==="xScreenshot"?c.rd:c.ts}/>
@@ -8460,58 +14127,26 @@ const TalariaV8b = () => {
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
 
-          {/* chart preview */}
+          {/* chart preview — real bitmap from screenshot-manager (same pipeline as Copy/Download) */}
           <div style={{padding:"14px 16px 0",flexShrink:0}}>
-            {(()=>{
-              const candles=[[48,56,44,54,0],[54,61,52,58,0],[58,60,53,55,1],[55,59,51,57,0],[57,65,55,63,0],[63,67,58,60,1],[60,64,57,62,0],[62,69,61,68,0],[68,72,65,70,0],[70,68,63,65,1],[65,70,63,68,0],[68,74,67,72,0],[72,76,70,74,0],[74,72,68,69,1],[69,73,67,71,0],[71,76,70,75,0],[75,79,73,77,0],[77,75,71,72,1],[72,77,71,76,0],[76,82,75,80,0],[80,84,78,82,0],[82,86,80,84,0],[84,82,79,80,1],[80,83,78,82,0],[82,87,81,86,0],[86,90,84,88,0],[88,86,83,84,1],[84,88,83,87,0],[87,92,86,91,0],[91,94,89,92,0],[92,90,87,88,1],[88,92,87,91,0],[91,95,90,94,0],[94,97,92,95,0],[95,93,90,91,1],[91,95,90,94,0],[94,98,93,97,0],[97,100,95,98,0],[98,96,93,94,1],[94,98,93,97,0],[97,102,96,100,0],[100,103,98,101,0]];
-              const allClose=candles.map(d=>d[3]);
-              const allH=candles.map(d=>d[1]), allL=candles.map(d=>d[2]);
-              const minP=Math.min(...allL)-3, maxP=Math.max(...allH)+3, range=maxP-minP;
-              const W=888, H=Math.round(888*(canvasDims.h/canvasDims.w)), padR=44, padB=22, padT=10;
-              const chartW=W-padR, chartH=H-padB-padT;
-              const py=(p)=>padT+chartH*(1-(p-minP)/range);
-              const step=chartW/candles.length;
-              const candleW=Math.max(Math.floor(step)-3,4);
-              const ma=allClose.map((_,i)=>i<8?null:allClose.slice(i-8,i+1).reduce((a,b)=>a+b,0)/9);
-              const gridCount=6;
-              const gridPrices=Array.from({length:gridCount},(_,i)=>Math.round(minP+(range/(gridCount-1))*i));
-              const times=["15:30","16:00","16:30","17:00","17:30","18:00","18:30"];
-              const lastClose=allClose[allClose.length-1];
+            {(() => {
+              const W = 888;
+              const aspect = canvasDims.w > 0 ? canvasDims.h / canvasDims.w : 0.42;
+              const boxH = Math.min(420, Math.max(220, Math.round(W * aspect)));
               return (
-                <div style={{background:c.bg,border:`1px solid ${c.brH}`,position:"relative",overflow:"hidden",height:H}}>
-                  <svg width={W} height={H} style={{display:"block",position:"absolute",inset:0}}>
-                    {gridPrices.map(p=>(
-                      <g key={p}>
-                        <line x1={0} y1={py(p)} x2={chartW} y2={py(p)} stroke="rgba(140,160,255,0.06)" strokeWidth={1}/>
-                        <text x={chartW+5} y={py(p)+3.5} fontSize={8} fill={c.tm} fontFamily={F} fontVariantNumeric="tabular-nums">{p.toFixed(0)}</text>
-                      </g>
-                    ))}
-                    {times.map((t,i)=>(
-                      <text key={t} x={Math.round(i*(chartW/6))+2} y={H-6} fontSize={8} fill={c.tm} fontFamily={F} fontVariantNumeric="tabular-nums">{t}</text>
-                    ))}
-                    <polyline
-                      points={ma.map((v,i)=>v==null?null:`${Math.round(step*i+step/2)},${py(v)}`).filter(Boolean).join(" ")}
-                      fill="none" stroke={c.acL} strokeWidth={1.5} opacity={0.55}/>
-                    {candles.map(([o,h,l,cl,bear],i)=>{
-                      const x=Math.round(step*i+(step-candleW)/2);
-                      const col=bear?c.rd:c.gn;
-                      const bodyY=py(Math.max(o,cl)), bodyH=Math.max(Math.abs(py(o)-py(cl)),2);
-                      return (
-                        <g key={i}>
-                          <line x1={x+candleW/2} y1={py(h)} x2={x+candleW/2} y2={py(l)} stroke={col} strokeWidth={1} opacity={0.7}/>
-                          <rect x={x} y={bodyY} width={candleW} height={bodyH} fill={col} opacity={0.9}/>
-                        </g>
-                      );
-                    })}
-                    <line x1={0} y1={py(lastClose)} x2={chartW} y2={py(lastClose)} stroke={c.acL} strokeWidth={1} strokeDasharray="5,3" opacity={0.55}/>
-                    <rect x={chartW} y={py(lastClose)-9} width={padR} height={18} fill={c.ac} opacity={0.9}/>
-                    <text x={chartW+5} y={py(lastClose)+4} fontSize={8.5} fill="#fff" fontFamily={F} fontWeight="700" fontVariantNumeric="tabular-nums">{lastClose}.00</text>
-                  </svg>
-                  <div style={{position:"absolute",top:8,left:10,display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:15,fontWeight:800,color:c.tx,letterSpacing:"-0.02em"}}>{symbol}</span>
-                    <span style={{fontSize:10,color:c.tm,background:"rgba(140,160,255,0.08)",padding:"2px 6px",border:`1px solid ${c.br}`}}>1m · Candles</span>
-                    <span style={{fontSize:10,color:c.gn,fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{lastClose}.00</span>
-                    <span style={{fontSize:12,color:c.gn,fontWeight:600}}>+2.15%</span>
+                <div style={{ background: c.bg, border: `1px solid ${c.brH}`, position: "relative", overflow: "hidden", borderRadius: 4, minHeight: boxH }}>
+                  {!screenshotPreviewUrl ? (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: boxH, color: c.tm, fontSize: 13, fontFamily: F }}>
+                      Loading preview…
+                    </div>
+                  ) : (
+                    <img src={screenshotPreviewUrl} alt="" draggable={false} style={{ display: "block", width: W, height: "auto", maxHeight: 420, objectFit: "contain", verticalAlign: "top" }} />
+                  )}
+                  <div style={{ position: "absolute", top: 8, left: 10, display: "flex", alignItems: "center", gap: 8, pointerEvents: "none", textShadow: "0 1px 4px rgba(0,0,0,0.85)" }}>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", fontFamily: F }}>{symbol}</span>
+                    <span style={{ fontSize: 10, color: "#e8eaed", background: "rgba(0,0,0,0.5)", padding: "2px 7px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.14)", fontFamily: F }}>
+                      {tf} · {chartType}
+                    </span>
                   </div>
                 </div>
               );
@@ -8633,15 +14268,18 @@ const TalariaV8b = () => {
             {/* right buttons */}
             <div style={{display:"flex",gap:6}}>
             {[
-              {label:"Copy Link", hk:"sc-cancel", act:()=>{}, primary:false},
-              {label:"Copy",     hk:"sc-copy",   act:()=>{}, primary:false},
-              {label:"Download", hk:"sc-dl",     act:()=>{}, primary:true},
+              {label:"Copy Link", hk:"sc-cancel", act:()=>{ void copyScreenshotPageLink(); }, primary:false},
+              {label:"Copy",     hk:"sc-copy",   act:()=>runV9Screenshot("copy"), primary:false},
+              {label:"Download", hk:"sc-dl",     act:()=>runV9Screenshot("download"), primary:true},
             ].map(({label,hk,act,primary})=>{
               const isH=swHov===hk, isDn=swHov===hk+"_dn";
               return (
-                <button key={hk} onClick={act}
+                <button type="button" key={hk}
+                  onPointerDown={(e)=>{e.stopPropagation();act();}}
+                  onMouseDown={(e)=>{e.stopPropagation();setSwHov(hk+"_dn");}}
+                  onMouseUp={()=>setSwHov(hk)}
+                  onClick={(e)=>e.stopPropagation()}
                   onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
-                  onMouseDown={()=>setSwHov(hk+"_dn")} onMouseUp={()=>setSwHov(hk)}
                   style={{height:28,padding:"0 18px",display:"flex",alignItems:"center",justifyContent:"center",
                     boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:primary?700:600,
                     color:primary?"#fff":isH?c.tx:c.ts,
@@ -8663,7 +14301,7 @@ const TalariaV8b = () => {
 
 
       {(logoMenu||closing.has("logoMenu")) && (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:10,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:168,fontFamily:F,animation:closing.has("logoMenu")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:10,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:168,fontFamily:F,animation:closing.has("logoMenu")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div style={{padding:"4px 0"}}>
             <div style={{padding:"5px 14px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>MENU</div>
@@ -8692,7 +14330,29 @@ const TalariaV8b = () => {
                 const isH = swHov==="lm-dash";
                 const isP = swHov==="lm-dash_dn";
                 return (
-                  <div onClick={()=>setLogoMenu(false)}
+                  <div onClick={()=>{
+                    setLogoMenu(false);
+                    // Mirrors legacy "Go to dashboard" button (index.html ~59239):
+                    // resolve active trading session id from chart, then storage,
+                    // then URL query — and navigate to /dashboard/sessions/...
+                    let sid = null;
+                    try {
+                      const c = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || window.chart || window.mainChart;
+                      if (c && typeof c.getActiveTradingSessionId === 'function') sid = c.getActiveTradingSessionId();
+                    } catch(_){}
+                    if (!sid) {
+                      try { sid = window.userStorage?.getItem?.('active_trading_session_id') || localStorage.getItem('active_trading_session_id'); } catch(_){}
+                    }
+                    if (!sid) {
+                      try {
+                        const p = new URLSearchParams(window.location.search);
+                        sid = p.get('sessionId') || p.get('session_id') || null;
+                      } catch(_){}
+                    }
+                    window.location.href = sid
+                      ? '/dashboard/sessions/analytics/?id=' + encodeURIComponent(String(sid))
+                      : '/dashboard/sessions/';
+                  }}
                     onMouseEnter={()=>setSwHov("lm-dash")} onMouseLeave={()=>setSwHov(null)}
                     onMouseDown={()=>setSwHov("lm-dash_dn")} onMouseUp={()=>setSwHov("lm-dash")}
                     style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 10px",cursor:"default",
@@ -8711,7 +14371,7 @@ const TalariaV8b = () => {
         </div>
       )}
       {(symbolOpen||closing.has("symbol")) && (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:50,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:190,fontFamily:F,animation:closing.has("symbol")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:50,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:190,fontFamily:F,animation:closing.has("symbol")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
           <div style={{position:"sticky",top:0,height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,zIndex:1}}/>
           <div style={{padding:"5px 8px 4px",borderBottom:`1px solid ${c.br}`}}>
             <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em",marginBottom:4}}>MARKETS</div>
@@ -8722,7 +14382,48 @@ const TalariaV8b = () => {
             </div>
           </div>
           <div className="tlr-scroll" style={{maxHeight:320,overflowY:"auto",padding:"4px 0"}}>
-            {SYMBOLS_DATA.map(({cat,items})=>{
+            {(()=>{
+              // Build the dropdown list from the active backtest session's pairs.
+              // sessionPairs is populated by the polling effect from
+              // window.chart.backtestingSession (or userStorage fallback).
+              // If the session isn't loaded yet, fall back to a single entry
+              // built from the current symbol so the dropdown is never empty.
+              const known = SYMBOLS_DATA.flatMap(c=>c.items.map(it=>({...it,cat:c.cat})));
+              const normSymKey = (x) => String(x||"").toUpperCase().replace(/\s+/g,"").replace(/\//g,"");
+              const parseFxPair = (raw) => {
+                const u = String(raw||"").toUpperCase().replace(/\s+/g,"");
+                if (u.includes("/")) {
+                  const p = u.split("/").filter(Boolean);
+                  if (p.length===2 && p[0].length===3 && p[1].length===3)
+                    return { id:`${p[0]}/${p[1]}`, name:`${p[0]} / ${p[1]}`, type:"forex", base:p[0], quote:p[1], cat:"BACKTEST" };
+                }
+                if (/^[A-Z]{6}$/.test(u))
+                  return { id:`${u.slice(0,3)}/${u.slice(3)}`, name:`${u.slice(0,3)} / ${u.slice(3)}`, type:"forex", base:u.slice(0,3), quote:u.slice(3), cat:"BACKTEST" };
+                return null;
+              };
+              const buildEntry = (ticker, fileId) => {
+                let found = known.find(s=>s.id===ticker);
+                if (!found && ticker)
+                  found = known.find(s=>normSymKey(s.id)===normSymKey(ticker));
+                if (found) return {...found, fileId};
+                const parts = (ticker||"").split("/");
+                if(parts.length===2 && parts[0].length===3 && parts[1].length===3){
+                  const b = parts[0].toUpperCase(), q = parts[1].toUpperCase();
+                  return {id:`${b}/${q}`,name:`${b} / ${q}`,type:"forex",base:b,quote:q,cat:"FOREX",fileId};
+                }
+                const fx = parseFxPair(ticker);
+                if (fx) return {...fx, fileId};
+                return {id:ticker,name:ticker,type:"other",cat:"BACKTEST",fileId};
+              };
+              const items = (sessionPairs.length
+                ? sessionPairs.map(p=>buildEntry(p.ticker, p.fileId))
+                : [buildEntry(symbol, null)]
+              );
+              // Group by cat (FOREX, FUTURES, etc.) so the visual grouping is preserved.
+              const byCat = {};
+              items.forEach(it=>{ const k=it.cat||"BACKTEST"; (byCat[k] ||= []).push(it); });
+              return Object.entries(byCat).map(([cat,items])=>({cat,items}));
+            })().map(({cat,items})=>{
               const q=symbolSearch.toLowerCase();
               const filtered = items.filter(s=>!q||s.id.toLowerCase().startsWith(q)||s.name.toLowerCase().split(/[\s/\-]+/).some(w=>w.startsWith(q)));
               if(filtered.length===0) return null;
@@ -8734,14 +14435,27 @@ const TalariaV8b = () => {
                     const isH=hov===`sym-${s.id}`;
                     return (
                       <div key={s.id}
+                        onMouseDown={(e)=>e.stopPropagation()}
                         onMouseEnter={()=>setHov(`sym-${s.id}`)} onMouseLeave={()=>setHov(null)}
-                        onClick={()=>{setSymbol(s.id);setSymbolOpen(false);setSymbolSearch("");}}
+                        onClick={(e)=>{
+                          e.stopPropagation();
+                          setSymbol(s.id);
+                          setSymbolOpen(false);
+                          setSymbolSearch("");
+                          // Route load to the selected multi-panel tile (main → loadFileData,
+                          // other panels → chartInstance.loadPanelFileData). Symbol sync in
+                          // panel-manager still applies when layout sync is enabled.
+                          if (s.fileId != null) {
+                            try { routeSessionFileLoadToSelectedPanel(s.fileId); }
+                            catch (err) { console.warn("[V9 sym] session file load failed", err); }
+                          }
+                        }}
                         style={{display:"flex",alignItems:"center",gap:9,padding:"5px 14px",cursor:"default",position:"relative",
                           background:isAct?c.acD:isH?c.hv2:"transparent",
                           transition:"background 0.1s"}}>
                         {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                         <div style={{display:"flex",alignItems:"center",position:"relative",width:27,height:12,flexShrink:0}}>
-                          {s.type==="forex" ? <>
+                          {s.type==="forex" && s.base && s.quote ? <>
                             <div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 2px 4px rgba(0,0,0,0.8)",zIndex:2}}><FlagSvg code={s.base} w={18} h={12}/></div>
                             <div style={{position:"absolute",left:9,top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.6)",zIndex:1}}><FlagSvg code={s.quote} w={18} h={12}/></div>
                           </> : <SymBadge sym={s} w={27} h={12}/>}
@@ -8762,7 +14476,7 @@ const TalariaV8b = () => {
       {(chartTypeOpen||closing.has("chartType")) && (()=>{
         const ctMap={"Candles":"candle","Hollow Candles":"hollowCandle","Heikin Ashi":"heikinAshi","Bars":"tick","Line":"lineChart","Area":"area"};
         return (
-          <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:chartTypeDropL,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:136,fontFamily:F,animation:closing.has("chartType")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+          <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:chartTypeDropL,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:136,fontFamily:F,animation:closing.has("chartType")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
               <div style={{padding:"5px 14px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>CHART TYPE</div>
@@ -8771,7 +14485,7 @@ const TalariaV8b = () => {
                 return (
                   <div key={t}
                     onMouseEnter={()=>setHov(`ct-${t}`)} onMouseLeave={()=>setHov(null)}
-                    onClick={()=>{setChartType(t);setChartTypeOpen(false);}}
+                    onClick={(e)=>{e.stopPropagation();setChartType(t);setChartTypeOpen(false);}}
                     style={{display:"flex",alignItems:"center",gap:9,padding:"5px 14px",cursor:"default",position:"relative",
                       background:isAct?c.acD:isH?c.hv2:"transparent",
                       transition:"background 0.1s"}}>
@@ -8785,7 +14499,7 @@ const TalariaV8b = () => {
           </div>
         );
       })()}
-      <div style={{ height: 36, flexShrink: 0, background: c.sf, borderBottom: `1px solid rgba(140,160,255,0.22)`, display: "flex", alignItems: "center", padding: "0 10px", gap: 4 }}>
+      <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ height: 36, flexShrink: 0, background: c.sf, borderBottom: `1px solid rgba(140,160,255,0.22)`, display: "flex", alignItems: "center", padding: "0 10px", gap: 4 }}>
         {(()=>{ const logoActive = logoMenu || settingsOpen || profileOpen || faqOpen; return (
         <div onClick={(e) => { e.stopPropagation(); const was=logoMenu; closeAll(); if(!was) setLogoMenu(true); }}
           onMouseEnter={() => setHov("logo-btn")} onMouseLeave={() => setHov(null)}
@@ -8803,7 +14517,7 @@ const TalariaV8b = () => {
         </div>
         ); })()}
         <div style={{ width: 1, height: 16, margin: "0 3px 0 0", background: "rgba(140,160,255,0.18)" }}/>
-        <button onClick={(e) => { e.stopPropagation(); const was=symbolOpen; closeAll(); if(!was) setSymbolOpen(true); }} onMouseEnter={() => setHov("symbol")} onMouseLeave={() => setHov(null)}
+        <button type="button" onClick={(e) => { e.stopPropagation(); const was=symbolOpen; closeAll(); if(!was) setSymbolOpen(true); }} onMouseEnter={() => setHov("symbol")} onMouseLeave={() => setHov(null)}
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px", background: symbolOpen ? "rgba(74,106,255,0.08)" : hov==="symbol" ? c.hv : "transparent", border: "none", color: symbolOpen ? c.acL : hov==="symbol" ? c.tx : c.ts, cursor: "default", fontSize: 14, fontWeight: 700, fontFamily: F, position: "relative", width: 128, flexShrink: 0, transition: "color 0.12s, background 0.12s" }}>
           <div style={{ display: "flex", alignItems: "center", position: "relative", width: 32, height: 14, flexShrink: 0 }}>
             {currentSymbol.type==="forex" ? <>
@@ -8819,7 +14533,7 @@ const TalariaV8b = () => {
           {hov==="symbol" && !symbolOpen && <div style={{ position: "absolute", bottom: -1, left: "15%", right: "15%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "rgba(140,160,255,0.18)" }}/>
-        <button onClick={(e) => { e.stopPropagation(); const was=chartTypeOpen; closeAll(); if(!was) { const r=e.currentTarget.getBoundingClientRect(); setChartTypeDropL(r.left/Z); setChartTypeOpen(true); } }} onMouseEnter={() => setHov("chartType")} onMouseLeave={() => setHov(null)}
+        <button type="button" onClick={(e) => { e.stopPropagation(); const was=chartTypeOpen; closeAll(); if(!was) { const r=e.currentTarget.getBoundingClientRect(); setChartTypeDropL(r.left/Z); setChartTypeOpen(true); } }} onMouseEnter={() => setHov("chartType")} onMouseLeave={() => setHov(null)}
           style={{ padding: "3px 7px", display: "flex", alignItems: "center", gap: 4, position: "relative", background: chartTypeOpen ? "rgba(74,106,255,0.08)" : hov==="chartType" ? c.hv : "transparent", border: "none", fontFamily: F, color: chartTypeOpen ? c.acL : hov==="chartType" ? c.tx : c.ts, fontSize: currentChartType.label==="Hollow Candles" ? 11 : 13, fontWeight: 600, cursor: "default", width: 136, flexShrink: 0, transition: "background 0.12s, color 0.12s" }}>
           <I n={currentChartType.icon} s={18} cl={chartTypeOpen ? c.acL : hov==="chartType" ? c.tx : c.ts}/><span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentChartType.label}</span>
           <div style={{transform:chartTypeOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s ease",lineHeight:0,flexShrink:0}}>
@@ -8829,7 +14543,7 @@ const TalariaV8b = () => {
           {hov==="chartType" && !chartTypeOpen && <div style={{ position: "absolute", bottom: -1, left: "15%", right: "15%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "rgba(140,160,255,0.18)" }}/>
-        <button onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");}else{closeWindows();setSettingsOpen(false);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
+        <button type="button" onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");}else{closeWindows();setSettingsOpen(false);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
           style={{ padding: "3px 8px", display: "flex", alignItems: "center", gap: 4, background: indOpen ? "rgba(74,106,255,0.08)" : hov==="indicators" ? c.hv : "transparent", border: "none", fontFamily: F, color: indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts, fontSize: 13, fontWeight: indOpen ? 700 : 600, cursor: "default", position: "relative", transition: "background 0.12s, color 0.12s" }}>
           <I n="indicator" s={15} cl={indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts}/>Indicators
           {indOpen && <div style={{ position: "absolute", bottom: -1, left: "10%", right: "10%", height: 2, background: `linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
@@ -8838,7 +14552,7 @@ const TalariaV8b = () => {
         <div style={{ width: 1, height: 16, margin: "0 4px", background: "rgba(140,160,255,0.18)" }}/>
         <div style={{ display: "flex", gap: 0, alignItems: "center" }}>
           <div style={{ position: "relative" }}>
-            <button onClick={(e) => { e.stopPropagation(); const was=tfOpen; setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false); setSDrop(null); setSettDrop(null); if(logoMenu)closePopup(setLogoMenu,"logoMenu");if(replayOpts)closePopup(setReplayOpts,"replayOpts");if(gotoOpen)closePopup(setGotoOpen,"goto");if(symbolOpen)closePopup(setSymbolOpen,"symbol");if(chartTypeOpen)closePopup(setChartTypeOpen,"chartType"); if(was){closePopup(setTfOpen,"tf");}else{setTfOpen(true);setTfEditMode(false);} }} onMouseEnter={() => setHov("tf-more")} onMouseLeave={() => setHov(null)}
+            <button type="button" onClick={(e) => { e.stopPropagation(); const was=tfOpen; setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false); setSDrop(null); setSettDrop(null); if(logoMenu)closePopup(setLogoMenu,"logoMenu");if(replayOpts)closePopup(setReplayOpts,"replayOpts");if(gotoOpen)closePopup(setGotoOpen,"goto");if(symbolOpen)closePopup(setSymbolOpen,"symbol");if(chartTypeOpen)closePopup(setChartTypeOpen,"chartType"); if(was){closePopup(setTfOpen,"tf");}else{setTfOpen(true);setTfEditMode(false);} }} onMouseEnter={() => setHov("tf-more")} onMouseLeave={() => setHov(null)}
               style={{ padding: "4px 5px", position: "relative", background: tfOpen ? "rgba(74,106,255,0.08)" : hov==="tf-more" ? c.hv : "transparent", border: "none", fontFamily: F, cursor: "default", display: "flex", alignItems: "center", transition: "background 0.12s" }}>
               <div style={{transform:tfOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s ease",lineHeight:0}}>
                 <svg width={10} height={6} viewBox="0 0 10 6"><path d="M1,1 L5,5 L9,1" stroke={tfOpen ? c.acL : hov==="tf-more" ? c.tx : c.ts} strokeWidth={1.8} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -8857,7 +14571,7 @@ const TalariaV8b = () => {
                 setTfCustomVal("");
               };
               return (
-              <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:42,left:300,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7)`,width:200,fontFamily:F,animation:closing.has("tf")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+              <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:42,left:300,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7)`,width:200,fontFamily:F,animation:closing.has("tf")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
                 <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                 <div className="tlr-scroll" style={{maxHeight:360,overflowY:"auto",padding:"4px 0"}}>
                   {Object.entries(tfCategories).map(([catId,{label,items}],ci)=>(
@@ -8879,7 +14593,7 @@ const TalariaV8b = () => {
                               background:isAct?c.acD:isRowHov?"rgba(255,255,255,0.025)":"transparent",
                               transition:"background 0.1s"}}>
                             {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                            <button onClick={()=>{setTf(t);}}
+                            <button type="button" onClick={(e)=>{e.stopPropagation();setTf(t);}}
                               style={{flex:1,background:"transparent",border:"none",cursor:"default",
                                 color:isAct?c.acL:c.ts,fontSize:13,fontWeight:isAct?700:500,
                                 fontFamily:F,textAlign:"left",padding:0}}>
@@ -8966,7 +14680,7 @@ const TalariaV8b = () => {
                     </div>
                     );
                   })()}
-                  <button onClick={addCustomTf}
+                  <button type="button" onClick={addCustomTf}
                     onMouseEnter={()=>setSwHov("tf-add")} onMouseLeave={()=>setSwHov(null)}
                     onMouseDown={()=>setSwHov("tf-add_dn")} onMouseUp={()=>setSwHov("tf-add")}
                     style={{width:22,height:22,position:"relative",boxSizing:"border-box",cursor:"default",
@@ -8989,7 +14703,7 @@ const TalariaV8b = () => {
           </div>
           <div ref={tfBarRef} style={{ display:"flex", alignItems:"center", position:"relative" }}>
             {[...new Set([...tfPinned, tf])].sort((a,b)=>{const uO={m:0,H:1,D:2,W:3,M:4};const uA=a.replace(/[0-9]/g,""),uB=b.replace(/[0-9]/g,"");return uO[uA]!==uO[uB]?uO[uA]-uO[uB]:parseInt(a)-parseInt(b);}).map((t) => (
-              <button key={t} data-tf={t} onClick={() => setTf(t)} onMouseEnter={() => setHov(`tf-${t}`)} onMouseLeave={() => setHov(null)}
+              <button type="button" key={t} data-tf={t} onClick={(e) => { e.stopPropagation(); setTf(t); }} onMouseEnter={() => setHov(`tf-${t}`)} onMouseLeave={() => setHov(null)}
                 style={{ padding: "4px 7px", position: "relative", background: tf===t ? "rgba(74,106,255,0.08)" : hov===`tf-${t}` ? c.hv : "transparent", border: "none", fontFamily: F, color: tf===t ? c.acL : hov===`tf-${t}` ? c.tx : c.ts, fontSize: 12, fontWeight: tf===t ? 700 : 500, cursor: "default", transition: "background 0.12s, color 0.12s" }}>
                 {t}
                 {hov===`tf-${t}` && tf!==t && <div style={{ position: "absolute", bottom: -1, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
@@ -9006,7 +14720,7 @@ const TalariaV8b = () => {
           </div>
         </div>
         <div style={{ flex: 1 }}/>
-        <button onClick={(e) => { e.stopPropagation(); setRightPanel(null); setOrderPanelOpen(prev => !prev); }}
+        <button type="button" onClick={(e) => { e.stopPropagation(); setRightPanel(null); setOrderPanelOpen(prev => !prev); }}
           onMouseEnter={() => setHov("place-order")} onMouseLeave={() => setHov(null)}
           onMouseDown={() => setHov("place-order_dn")} onMouseUp={() => setHov("place-order")}
           style={{
@@ -9026,7 +14740,7 @@ const TalariaV8b = () => {
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: c.br }}/>
         {[{id:"layout",icon:"layout",label:"Layout"},{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
-          <button key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
+          <button type="button" key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
               background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
               transition: "background 0.12s" }}>
@@ -9038,8 +14752,8 @@ const TalariaV8b = () => {
           </button>
         ))}
       </div>
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, overflowY: "auto", overflowX: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
+        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, paddingLeft: 8, overflowY: "auto", overflowX: "hidden" }}>
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%" }}>
               {gi === toolGroups.length - 1 && <div style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>}
@@ -9052,7 +14766,7 @@ const TalariaV8b = () => {
           ])}
           <div style={{ flex: 1 }}/>
           {/* Dark / Light mode toggle */}
-          <div onClick={() => setDarkMode(v => !v)}
+          <div onClick={(e) => { e.stopPropagation(); setDarkMode(v => !v); }}
             onMouseEnter={() => setHov("sb-theme")} onMouseLeave={() => setHov(null)}
             style={{ width:"100%", height:32, display:"flex", alignItems:"center", justifyContent:"flex-end",
               paddingRight:10, boxSizing:"border-box", cursor:"default", position:"relative",
@@ -9074,64 +14788,94 @@ const TalariaV8b = () => {
             {hov==="sb-theme" && <div style={{ position:"absolute", left:"calc(100% + 10px)", top:"50%", transform:"translateY(-50%)",
               background:c.el, border:`1px solid ${c.brH}`, padding:"4px 10px", fontSize:12, fontWeight:600, fontFamily:F,
               color:c.tx, whiteSpace:"nowrap", zIndex:100, boxShadow:"0 4px 16px rgba(0,0,0,0.6)",
-              borderLeft:`2px solid ${c.brH}` }}>{darkMode ? "Light Mode" : "Dark Mode"}</div>}
+              borderLeft:`2px solid ${c.brH}`, pointerEvents:"none" }}>{darkMode ? "Light Mode" : "Dark Mode"}</div>}
             {hov==="sb-theme" && <div style={{ position:"absolute", left:3, top:"25%", bottom:"25%", width:1,
               background:`linear-gradient(180deg,transparent,`+c.hvLn+`,transparent)`, pointerEvents:"none", zIndex:2 }}/>}
           </div>
         </div>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative" }}>
-          <div style={{ flex: 1, position: "relative", background: c.bg, display: "flex" }}>
-            <div ref={chartCanvasRef}
-              style={{ flex: 1, position: "relative", overflow: "hidden", userSelect:"none", cursor: rollback?"none":"default" }}>
-              {/* Screenshot flash */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", minHeight: 0 }}>
+          {/* Match legacy chart/index.html #chart-container: absolutely filled slot — not flex:1 on
+              this node (Safari can disagree canvas vs overlay rects when the chart area is flex-sized). */}
+          <div style={{ flex: 1, position: "relative", background: c.bg, minHeight: 0 }}>
+            <div ref={chartCanvasRef} id="chart-container"
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                overflow: "hidden",
+                isolation: "isolate",
+                userSelect: "none",
+                cursor: rollback ? "none" : "default",
+              }}>
+              {/* Legacy probes: panel-manager + replay-system expect these IDs; V9 UI lives in React. */}
+              <button type="button" id="layout-selector-btn" data-open-mode="settings-panel" tabIndex={-1} aria-hidden="true" style={{ display: "none" }} />
+              <div id="replayToolbar" aria-hidden="true" style={{ position: "fixed", left: -9999, top: 0, width: 1, height: 1, overflow: "hidden", pointerEvents: "none", visibility: "hidden" }}>
+                <div id="replayToolbarHandle" />
+                <button type="button" id="replayModeBtn" tabIndex={-1} />
+              </div>
+              {/* ────────────────────────────────────────────────────────────────
+                   #panels-container MUST come BEFORE #chartWrapper in DOM.
+                   In multi-panel mode panelManager sets both to z-index:10 and
+                   resizes #chartWrapper to panel-0's slot. With same z-index,
+                   paint order = DOM order — the later-painted #chartWrapper
+                   covers #panels-container in panel 0's region (so main chart
+                   shows), and the rest of #panels-container shows through with
+                   panel 1+ divs. Reversing this order hides the main chart.
+                   Mirrors legacy chart/index.html lines 42838 (panels) before
+                   42848 (chartWrapper).
+                   ──────────────────────────────────────────────────────────── */}
+              <div id="panels-container" style={{ position: "absolute", inset: 0, display: "none", zIndex: 10, background: "#050028" }} />
+
+              {/* #chartWrapper holds the SINGLE-panel chart (default layout).
+                   panelManager.applyLayout() resizes / hides this when
+                   switching to a multi-panel layout and restores it when going
+                   back to '1'. */}
+              {/* Do not put layout (width/left/…) in React style here — panel-manager sets
+                  those INLINE per layout; React re-renders would reset style={{ inset:0 }} and
+                  wipe sizing, so #chartWrapper spans the full chart and stacks over other panels
+                  (ghost main OHLC / broken tiles). Default fill comes from live/index.html CSS. */}
+              <div id="chartWrapper" className="chart-wrapper">
+                <canvas id="chartCanvas" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", background: "transparent" }} />
+                <svg id="drawingSvg" />
+                {/* Axis cursor zones — chart.js reserves 60px right and 30px bottom margin.
+                     #timeAxisZone is a thin bottom strip so Chromium/Brave do not cover
+                     canvas time labels; full-height transparent siblings can mis-composite. */}
+                <div id="priceAxisZone" className="axis-cursor-zone price-axis-zone" style={{ position: "absolute", right: 0, top: 5, bottom: 30, width: 14, background: "transparent", zIndex: 10, cursor: "ns-resize", pointerEvents: "auto" }} />
+                <div id="timeAxisZone"  className="axis-cursor-zone time-axis-zone"  style={{ position: "absolute", left: 0, right: 60, bottom: 0, height: 10, background: "transparent", zIndex: 10, cursor: "ew-resize", pointerEvents: "auto" }} />
+
+                {/* Crosshair elements — chart.js positions these on mousemove */}
+                <div className="crosshair-vertical" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
+                <div className="crosshair-horizontal" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
+                <div className="price-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
+                <div className="time-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
+
+                {/* OHLC: chart.js owns #chartSymbol / #chartTimeframe + OHLC values; memoized subtree +
+                    multi-panel effect re-stamping window.chart keeps main tile vs toolbar in sync. */}
+                {mainOhlcInfoEl}
+              </div>
+
+              {/* Overlays — stay on top of both #chartWrapper and #panels-container */}
               {screenshotFlash && <div onAnimationEnd={()=>setScreenshotFlash(false)} style={{position:"absolute",inset:0,background:"white",animation:"tlrFlash 0.35s ease-out forwards",zIndex:9998,pointerEvents:"none"}}/>}
-              {/* Rollback line — IS the cursor when rollback active */}
               {rollback&&<div ref={rollbackLineRef} style={{position:"absolute",top:0,bottom:0,left:0,width:1,opacity:0,willChange:"transform",background:c.acL,boxShadow:`0 0 6px ${c.acL}, 0 0 16px ${c.acG}`,zIndex:22,pointerEvents:"none"}}/>}
-              {/* Overlay — callback ref attaches native listener immediately on mount, no React event overhead */}
               {rollback&&<div ref={(node)=>{ if(!node&&rollbackOverlayRef.current?._rbCleanup){rollbackOverlayRef.current._rbCleanup();}rollbackOverlayCallbackRef(node); }} style={{position:"absolute",inset:0,zIndex:21,cursor:"none"}}/>}
-              {priceLabels.map((_, i) => <div key={`h${i}`} style={{ position: "absolute", left: 0, right: 0, top: `${(i/(priceLabels.length-1))*100}%`, height: 1, background: c.grid }}/>)}
-              {timeLabels.map((_, i) => <div key={`v${i}`} style={{ position: "absolute", top: 0, bottom: 0, left: `${(i/(timeLabels.length-1))*100}%`, width: 1, background: c.grid }}/>)}
-              <div style={{ position: "absolute", left: 0, right: 0, top: "28%", height: 1, background: c.ac, opacity: 0.3 }}>
-                <div style={{ position: "absolute", right: 0, top: -9, background: `linear-gradient(135deg,${c.ac},${c.acL})`, color: "#fff", fontSize: 11, fontWeight: 700, fontFamily: F, padding: "2px 8px", fontVariantNumeric: "tabular-nums" }}>126.895</div>
-              </div>
-              <div style={{ position: "absolute", left: 0, right: 0, top: "58%", height: 1, borderTop: `1px dashed ${c.rd}44` }}/>
-              <div style={{ position: "absolute", top: 8, left: 10, zIndex: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700 }}>{symbol}</span>
-                  <span style={{ fontSize: 11, color: c.tm }}>? 1m</span>
-                  <div onClick={(e) => { e.stopPropagation(); setRollback(!rollback); }} style={{ cursor: "default", opacity: rollback ? 1 : 0.4, display: "flex", alignItems: "center", gap: 3 }}>
-                    <I n="rollback" s={13} cl={rollback ? c.gn : c.rd}/>
-                    <span style={{ fontSize: 12, color: rollback ? c.gn : c.rd, fontWeight: 700 }}>{rollback ? "RB" : "LOCKED"}</span>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 8, fontSize: 13 }}>
-                  {[["O","126,680",c.gn],["H","126,745",c.gn],["L","126,675",c.rd],["C","126,730",c.gn]].map(([k,v,col]) => (
-                    <span key={k} style={{ color: c.tm, fontWeight: 600 }}>{k} <span style={{ color: col, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{v}</span></span>
-                  ))}
-                </div>
-              </div>
             </div>
-            <div style={{ width: priceAxisWidth, flexShrink: 0, background: settings.background||c.bg, borderLeft: `1px solid ${c.br}`, position: "relative", overflow: "hidden" }}>
-              {priceLabels.map((p, i) => {
-                const pct = (i/(priceLabels.length-1))*100;
-                const shift = i===0 ? "0%" : i===priceLabels.length-1 ? "-100%" : "-50%";
-                return <span key={i} style={{ position:"absolute", right:8, top:`${pct}%`, transform:`translateY(${shift})`, fontSize:11, fontWeight:600, color:c.axTx, fontVariantNumeric:"tabular-nums", lineHeight:1, whiteSpace:"nowrap" }}>{p}</span>;
-              })}
-            </div>
+            {/* V9 mock price axis div removed — chart.js draws the real
+                price axis on the right edge of #chartCanvas. Adding back a
+                sibling div here would cause two axes to render side-by-side
+                (the legacy chart.js one + the V9 mock). */}
           </div>
-          <div style={{ height: 18, flexShrink: 0, background: settings.background||c.bg, borderTop: `1px solid ${c.br}`, display: "flex", alignItems: "center", paddingRight: priceAxisWidth }}>
-            <div style={{ flex: 1, display: "flex", justifyContent: "space-between", padding: "0 8px", marginLeft: 36 }}>
-              {timeLabels.map((t, i) => <span key={i} style={{ fontSize: 10, fontWeight: 600, color: c.axTx, fontVariantNumeric: "tabular-nums" }}>{t}</span>)}
-            </div>
-          </div>
+          {/* V9 mock time axis row removed — chart.js draws times at the
+              bottom of the canvas. */}
           {/* Status + Replay bar */}
-          <div style={{height:36,flexShrink:0,background:c.sf,borderTop:`1px solid rgba(140,160,255,0.22)`,display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',padding:'0 10px',position:'relative'}}>
+          <div data-v9-chrome="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{height:36,flexShrink:0,background:c.sf,borderTop:`1px solid rgba(140,160,255,0.22)`,display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',padding:'0 10px',position:'relative'}}>
             {/* Resize handle — at upper edge of replay bar, only when panel is open */}
             {btmOpen&&<div
               onPointerDown={(e)=>{
+                e.stopPropagation();
                 e.preventDefault();
                 e.currentTarget.setPointerCapture(e.pointerId);
-                const Z = 1.05;
                 const startY = e.clientY;
                 const startH = btmHeight;
                 const maxH = Math.floor(window.innerHeight / Z - 36);
@@ -9191,19 +14935,19 @@ const TalariaV8b = () => {
             <div style={{width:1,height:16,background:"rgba(140,160,255,0.18)",margin:"0 4px 0 0",flexShrink:0}}/>
             {/* Settings / Mode */}
             <div style={{position:"relative"}}>
-              <button onClick={(e)=>{e.stopPropagation();if(replayOpts){closePopup(setReplayOpts,"replayOpts");}else{if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}setReplayOpts(true);}}}
+              <button type="button" onClick={(e)=>{e.stopPropagation();if(replayOpts){closePopup(setReplayOpts,"replayOpts");}else{if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}setReplayOpts(true);}}}
                 onMouseEnter={()=>setHov("rp-mode")} onMouseLeave={()=>setHov(null)}
                 style={{padding:"4px 5px",position:"relative",background:replayOpts?"rgba(74,106,255,0.08)":hov==="rp-mode"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",color:replayOpts?c.acL:hov==="rp-mode"?c.tx:c.ts,transition:"color 0.15s ease,background 0.12s"}}>
                 <I n="config" s={18} cl="currentColor"/>
                 {replayOpts&&<div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                 {hov==="rp-mode"&&!replayOpts&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
               </button>
-              {(replayOpts||closing.has("replayOpts"))&&<div style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:9050,pointerEvents:"none"}}>
-                <div onClick={e=>e.stopPropagation()} style={{pointerEvents:"auto",background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 28px rgba(0,0,0,0.7),0 0 14px ${c.acG}`,minWidth:160,animation:closing.has("replayOpts")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both"}}>
+              {(replayOpts||closing.has("replayOpts"))&&<div style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:11000,pointerEvents:"none"}}>
+                <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{pointerEvents:"auto",background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 28px rgba(0,0,0,0.7),0 0 14px ${c.acG}`,minWidth:160,animation:closing.has("replayOpts")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both"}}>
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"6px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>MODE</div>
                   {[{id:"tick",l:"Tick by Tick"},{id:"candle",l:"Candle by Candle"}].map(({id,l})=>{const isA=replayMode===id;return(
-                    <button key={id} onClick={()=>setReplayMode(id)}
+                    <button type="button" key={id} onClick={(e)=>{e.stopPropagation();setReplayMode(id);}}
                       onMouseEnter={()=>setHov(`rm-${id}`)} onMouseLeave={()=>setHov(null)}
                       style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"5px 10px",background:isA?c.acD:hov===`rm-${id}`?c.hv2:"transparent",border:"none",cursor:"default",fontFamily:F,transition:"background 0.1s",position:"relative"}}>
                       {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -9215,7 +14959,7 @@ const TalariaV8b = () => {
                   <div style={{padding:"4px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>INTERVAL</div>
                   <div style={{padding:"4px 10px 8px",display:"flex",gap:4,flexWrap:"wrap"}}>
                     {["Auto","1m","5m","15m","30m"].map(t=>{const isA=replayInterval===t,isH=hov===`ri-${t}`;return(
-                      <div key={t} onClick={()=>setReplayInterval(t)}
+                      <div key={t} onClick={(e)=>{e.stopPropagation();setReplayInterval(t);}}
                         onMouseEnter={()=>setHov(`ri-${t}`)} onMouseLeave={()=>setHov(null)}
                         style={{padding:"3px 8px",position:"relative",background:isA?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",color:isA?c.acL:isH?c.tx:c.ts,fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
                         {t}
@@ -9227,8 +14971,25 @@ const TalariaV8b = () => {
                 </div>
               </div>}
             </div>
-            {/* Play / Pause */}
-            <button onClick={()=>setPlaying(!playing)}
+            {/* Play / Pause — wired to chart.replaySystem.
+                When replay isn't yet active, open the V9 cut-line so the
+                user picks a start point (legacy UX, V9 visuals). */}
+            <button type="button" onClick={(e)=>{
+                e.stopPropagation();
+                const rs = getReplaySystem();
+                if (rs && !rs.isActive) {
+                  closeAll();
+                  setRollback(true);
+                  return;
+                }
+                if (!rs) { setPlaying(p=>!p); return; }
+                if (rs.isPlaying) {
+                  if (typeof rs.pause === 'function') rs.pause();
+                } else {
+                  if (typeof rs.play === 'function') rs.play();
+                }
+                setPlaying(!!rs.isPlaying);
+              }}
               onMouseEnter={e=>{setHov("rp-play");showTip(playing?"Pause":"Play",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
               style={{padding:"4px 5px",position:"relative",background:hov==="rp-play"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"background 0.12s"}}>
               <I n={playing?"pause":"play"} s={18} cl={hov==="rp-play"?(playing?"#FFA060":c.gn):(playing?"#FF8C42":"rgba(0,212,161,0.7)")}/>
@@ -9257,8 +15018,20 @@ const TalariaV8b = () => {
                   style={{position:"absolute",left:-10,right:-10,width:"calc(100% + 20px)",height:"100%",opacity:0,cursor:"default",margin:0}}/>
               </div>
             </div>);})()}
-            {/* Next candle (step forward) */}
-            <button
+            {/* Next candle (step forward) — if replay isn't active, open
+                the V9 cut-line for the user to pick a start. Otherwise
+                step forward via replaySystem.requestStepForward. */}
+            <button type="button"
+              onClick={(e)=>{
+                e.stopPropagation();
+                const rs = getReplaySystem();
+                if (rs && !rs.isActive) {
+                  closeAll();
+                  setRollback(true);
+                  return;
+                }
+                if (rs && typeof rs.requestStepForward === 'function') rs.requestStepForward();
+              }}
               onPointerDown={()=>setHov("rp-next-dn")} onPointerUp={()=>setHov("rp-next")} onPointerLeave={()=>{setHov(null);hideTip();}}
               onMouseEnter={e=>{setHov(h=>h==="rp-next-dn"?h:"rp-next");showTip("Step Forward",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
               style={{padding:"4px 5px",position:"relative",background:hov==="rp-next-dn"?"rgba(74,106,255,0.08)":hov==="rp-next"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"transform 0.08s ease, color 0.15s ease, background 0.12s",transform:hov==="rp-next-dn"?"scale(0.88)":"scale(1)",color:hov==="rp-next-dn"?c.acL:hov==="rp-next"?c.tx:c.ts}}>
@@ -9266,8 +15039,15 @@ const TalariaV8b = () => {
               {hov==="rp-next-dn"&&<div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
               {hov==="rp-next"&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
             </button>
-            {/* Rollback */}
-            <button onClick={(e)=>{e.stopPropagation();const opening=!rollback;if(opening)closeAll();setRollback(opening);}}
+            {/* Rollback (cut) — always uses the V9-styled cut-line overlay.
+                The overlay's click handler computes the candle timestamp
+                and drives replaySystem.startReplayAtIndex / goToReplayTimestamp. */}
+            <button type="button" onClick={(e)=>{
+                e.stopPropagation();
+                const opening=!rollback;
+                if(opening)closeAll();
+                setRollback(opening);
+              }}
               onMouseEnter={e=>{setHov("rp-rb");showTip("Rollback",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
               style={{padding:"4px 5px",position:"relative",background:rollback?"rgba(74,106,255,0.08)":hov==="rp-rb"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"transform 0.15s ease, color 0.15s ease, background 0.12s",transform:rollback?"scale(1.18)":"scale(1)",color:rollback?c.acL:hov==="rp-rb"?c.tx:c.ts}}>
               <svg width={19} height={19} viewBox="0 0 24 24" fill="none"><line x1="15" y1="4" x2="15" y2="7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><rect x="12" y="7" width="6" height="10" rx="0.5" fill="currentColor"/><line x1="15" y1="17" x2="15" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="12" y1="12" x2="4" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><polyline points="7,9 4,12 7,15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><line x1="3" y1="4" x2="3" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
@@ -9276,7 +15056,7 @@ const TalariaV8b = () => {
             </button>
             {/* Goto */}
             <div style={{position:"relative"}}>
-              <button onClick={(e)=>{e.stopPropagation();if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}else{if(replayOpts){closePopup(setReplayOpts,"replayOpts");}setGotoOpen(true);setGotoTab("pinned");}}}
+              <button type="button" onClick={(e)=>{e.stopPropagation();if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}else{if(replayOpts){closePopup(setReplayOpts,"replayOpts");}setGotoOpen(true);setGotoTab("pinned");}}}
                 onMouseEnter={e=>{setHov("rp-goto");showTip("Go To",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
                 style={{padding:"4px 5px",position:"relative",background:gotoOpen?"rgba(74,106,255,0.08)":hov==="rp-goto"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",color:gotoOpen?c.acL:hov==="rp-goto"?c.tx:c.ts,transition:"color 0.15s ease,background 0.12s"}}>
                 <I n="goto" s={19} cl="currentColor"/>
@@ -9293,7 +15073,7 @@ const TalariaV8b = () => {
                 const addItem=(item)=>{setGotoPresets(prev=>[...prev,{...item,id:gotoNextId()}]);};
                 const iSt={background:c.well,border:`1px solid ${c.brH}`,color:c.tx,fontSize:13,padding:"6px 9px",fontFamily:F,outline:"none",width:"100%",boxSizing:"border-box",colorScheme:c.inputScheme};
                 return(
-                <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:9050,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 48px rgba(0,0,0,0.8),0 0 18px ${c.acG}`,width:300,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("goto")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both",maxHeight:480}}>
+                <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:11000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 48px rgba(0,0,0,0.8),0 0 18px ${c.acG}`,width:300,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("goto")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both",maxHeight:480}}>
                   {/* Top accent bar */}
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
                   {/* Header */}
@@ -9315,7 +15095,7 @@ const TalariaV8b = () => {
                       const accent=tabAccentGoto(id);
                       const cnt=id==="pinned"?gotoItems.filter(x=>x.pinned).length:id==="preset"?gotoPresets.length:null;
                       return(
-                        <button key={id} onClick={e=>{e.stopPropagation();setGotoTab(id);if(id==="create"){setGotoAddType("datetime");const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}else setGotoAddType(null);}}
+                        <button type="button" key={id} onClick={e=>{e.stopPropagation();setGotoTab(id);if(id==="create"){setGotoAddType("datetime");const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}else setGotoAddType(null);}}
                           style={{flex:1,padding:"9px 4px",border:"none",background:"transparent",fontFamily:F,cursor:"default",
                             color:isA?accent:id==="pinned"?c.gold:c.ts,
                             fontSize:14,fontWeight:isA?700:500,
@@ -9350,7 +15130,7 @@ const TalariaV8b = () => {
                           const isPinH=hov===`gip-${item.id}`;
                           return(
                             <div key={item.id}
-                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();closePopup(setGotoOpen,"goto");}}
+                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();executeGotoItem(item);closePopup(setGotoOpen,"goto");}}
                               onMouseEnter={()=>setHov(`gi-${item.id}`)} onMouseLeave={()=>setHov(null)}
                               style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"default",position:"relative",
                                 background:isH?`${item.color||c.gold}11`:"transparent",
@@ -9399,7 +15179,7 @@ const TalariaV8b = () => {
                           const isPinned=gotoItems.some(x=>x.label===s.label&&x.pinned);
                           return(
                             <div key={s.id}
-                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();closePopup(setGotoOpen,"goto");}}
+                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();executeGotoItem({type:"datetime",label:s.label,time:s.time,color:s.color});closePopup(setGotoOpen,"goto");}}
                               onMouseEnter={()=>setHov(`gs-${s.id}`)} onMouseLeave={()=>setHov(null)}
                               style={{display:"flex",alignItems:"center",gap:8,padding:"7px 14px",cursor:"default",position:"relative",
                                 background:isH?"rgba(0,212,161,0.06)":"transparent",
@@ -9441,8 +15221,21 @@ const TalariaV8b = () => {
                     {gotoTab==="create"&&(()=>{
                       const crTabs=[{t:"datetime",l:"Date & Time"},{t:"price",l:"Price"}];
                       const crIdx=crTabs.findIndex(x=>x.t===gotoAddType);
-                      const doAdd=(extra)=>{addItem({...extra,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");};
-                      const doAddAndGo=(extra)=>{addItem({...extra,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");closePopup(setGotoOpen,"goto");};
+                      const doAdd=(extra)=>{
+                        const payload=extra.type==="datetime"?{...extra,dateIso:gotoNewDate}:extra;
+                        addItem({...payload,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");
+                      };
+                      const doAddAndGo=(extra)=>{
+                        const payload=extra.type==="datetime"?{...extra,dateIso:gotoNewDate}:extra;
+                        addItem({...payload,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");closePopup(setGotoOpen,"goto");
+                        if(extra.type==="datetime"){
+                          const ms=buildGotoTimestampMs(gotoNewDate,gotoNewTime);
+                          if(ms!=null&&typeof window.chart?.jumpToTimestamp==="function")void window.chart.jumpToTimestamp(ms,{showLoadingOverlay:true});
+                        }else if(extra.type==="price"){
+                          const p=parseFloat(gotoNewPrice);
+                          if(Number.isFinite(p)&&typeof window.chart?.jumpToPrice==="function")window.chart.jumpToPrice(p);
+                        }
+                      };
                       const Chevron=({open})=>(
                         <svg width={8} height={8} viewBox="0 0 8 8" fill="none">
                           <path d={open?"M1,5 L4,2 L7,5":"M1,3 L4,6 L7,3"} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/>
@@ -9455,7 +15248,7 @@ const TalariaV8b = () => {
                           {crTabs.map(({t,l})=>{
                             const isA=gotoAddType===t;
                             return(
-                              <button key={t} onClick={e=>{e.stopPropagation();setGotoAddType(t);setGotoCalOpen(false);setGotoTimeOpen(false);if(t==="datetime"){const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}}}
+                              <button type="button" key={t} onClick={e=>{e.stopPropagation();setGotoAddType(t);setGotoCalOpen(false);setGotoTimeOpen(false);if(t==="datetime"){const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}}}
                                 style={{flex:1,padding:"8px 4px",border:"none",background:"transparent",fontFamily:F,cursor:"default",
                                   color:isA?c.acL:c.ts,fontSize:13,fontWeight:isA?700:500,
                                   transition:"color 0.15s",whiteSpace:"nowrap"}}>
@@ -9574,11 +15367,11 @@ const TalariaV8b = () => {
                                 </div>
                               </div>
                               <div style={{display:"flex",gap:6}}>
-                                <button onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAdd({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
+                                <button type="button" onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAdd({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
                                   style={{flex:1,padding:"7px 0",background:"transparent",border:`1px solid ${c.acL}`,color:c.acL,fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em",transition:"background 0.12s"}}>
                                   Add
                                 </button>
-                                <button onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAddAndGo({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
+                                <button type="button" onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAddAndGo({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
                                   style={{flex:1,padding:"7px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em"}}>
                                   Go
                                 </button>
@@ -9602,20 +15395,20 @@ const TalariaV8b = () => {
                                     onClick={e=>e.stopPropagation()}
                                     style={{...iSt,flex:1,width:"auto",border:"none",background:"transparent",fontVariantNumeric:"tabular-nums"}}/>
                                   <div style={{display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
-                                    <button onClick={e=>{e.stopPropagation();spinPrice(1);}} style={spinSx}
+                                    <button type="button" onClick={e=>{e.stopPropagation();spinPrice(1);}} style={spinSx}
                                       onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}>▲</button>
                                     <div style={{height:1,background:c.br}}/>
-                                    <button onClick={e=>{e.stopPropagation();spinPrice(-1);}} style={spinSx}
+                                    <button type="button" onClick={e=>{e.stopPropagation();spinPrice(-1);}} style={spinSx}
                                       onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}>▼</button>
                                   </div>
                                 </div>
                               </div>
                               <div style={{display:"flex",gap:6}}>
-                                <button onClick={e=>{e.stopPropagation();if(!gotoNewPrice)return;doAdd({type:"price",label:gotoNewName||parseFloat(gotoNewPrice).toFixed(decimals)});setGotoNewPrice("");}}
+                                <button type="button" onClick={e=>{e.stopPropagation();if(!gotoNewPrice)return;doAdd({type:"price",label:gotoNewName||parseFloat(gotoNewPrice).toFixed(decimals)});setGotoNewPrice("");}}
                                   style={{flex:1,padding:"7px 0",background:"transparent",border:`1px solid ${c.acL}`,color:c.acL,fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em",transition:"background 0.12s"}}>
                                   Add
                                 </button>
-                                <button onClick={e=>{e.stopPropagation();if(!gotoNewPrice)return;doAddAndGo({type:"price",label:gotoNewName||parseFloat(gotoNewPrice).toFixed(decimals)});setGotoNewPrice("");}}
+                                <button type="button" onClick={e=>{e.stopPropagation();if(!gotoNewPrice)return;doAddAndGo({type:"price",label:gotoNewName||parseFloat(gotoNewPrice).toFixed(decimals)});setGotoNewPrice("");}}
                                   style={{flex:1,padding:"7px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em"}}>
                                   Go
                                 </button>
@@ -9671,7 +15464,7 @@ const TalariaV8b = () => {
               </div>
             </div>
           </div>
-          <div style={{ flexShrink:0, background:c.sf, borderTop:`1px solid ${c.brH}` }}>
+          <div data-v9-chrome="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ flexShrink:0, background:c.sf, borderTop:`1px solid ${c.brH}` }}>
             {/* Tab bar — always visible outside the collapsing panel */}
             {(()=>{
               void omTradeRev;
@@ -10043,7 +15836,7 @@ const TalariaV8b = () => {
             </div>
           </div>
         </div>
-        <div style={{ width: (rightPanel || (orderPanelOpen && !panelDetached)) ? 336 : 0, flexShrink: 0, overflow: "hidden", transition: "width 0.2s ease" }}>
+        <div data-v9-chrome="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ width: (rightPanel || (orderPanelOpen && !panelDetached)) ? 336 : 0, flexShrink: 0, overflow: "hidden", transition: "width 0.2s ease" }}>
         {rightPanel ? (()=>{
           // lyLines: each variant is an array of internal {x1,y1,x2,y2} dividing lines (fractions 0-1)
           const lyLines = [
@@ -10126,55 +15919,51 @@ const TalariaV8b = () => {
           )}
           <div style={{ flex: 1, overflowY: "auto", fontSize: 11 }} className="tlr-scroll">
             {rightPanel==="news" && (()=>{
-              const ALL_COUNTRIES = ["US","EU","GB","JP","AU","CA","DE","FR","IT","CN","CH"];
+              void ecoNewsRev;
               const cntNames = {US:"United States",EU:"Euro Zone",GB:"United Kingdom",JP:"Japan",AU:"Australia",CA:"Canada",DE:"Germany",FR:"France",IT:"Italy",CN:"China",CH:"Switzerland"};
               const impCol = {high:c.rd, med:"#FF8C00", low:"#FFD700"};
-              const newsData = [
-                {id:1, time:"06:00",countdown:"in 0h 20m",country:"AU",impact:"low",  title:"RBA Meeting Minutes",                      date:"2026.04.16",actual:null,forecast:"-",    previous:"-",    tab:"upcoming"},
-                {id:2, time:"06:30",countdown:"in 0h 50m",country:"JP",impact:"med",  title:"Japan Industrial Production m/m",            date:"2026.04.16",actual:null,forecast:"1.2%", previous:"-0.6%",tab:"upcoming"},
-                {id:3, time:"07:00",countdown:"in 1h 20m", country:"DE",impact:"low",  title:"Germany Import Price Index m/m",              date:"2026.04.16",actual:null,forecast:"0.4%", previous:"0.8%", tab:"upcoming"},
-                {id:4, time:"07:45",countdown:"in 2h 05m", country:"FR",impact:"med",  title:"France CPI m/m (Final)",                      date:"2026.04.16",actual:null,forecast:"0.6%", previous:"0.1%", tab:"upcoming"},
-                {id:5, time:"08:00",countdown:"in 2h 20m", country:"CH",impact:"low",  title:"Switzerland Trade Balance",                   date:"2026.04.16",actual:null,forecast:"3.4B", previous:"4.1B", tab:"upcoming"},
-                {id:6, time:"09:00",countdown:"in 3h 20m", country:"EU",impact:"high", title:"Eurozone CPI y/y (Final)",                     date:"2026.04.16",actual:null,forecast:"2.2%", previous:"2.3%", tab:"upcoming"},
-                {id:7, time:"09:00",countdown:"in 3h 20m", country:"EU",impact:"med",  title:"Eurozone Core CPI y/y (Final)",                date:"2026.04.16",actual:null,forecast:"2.4%", previous:"2.6%", tab:"upcoming"},
-                {id:8, time:"09:30",countdown:"in 3h 50m", country:"GB",impact:"high", title:"UK CPI y/y",                                   date:"2026.04.16",actual:null,forecast:"3.0%", previous:"2.8%", tab:"upcoming"},
-                {id:9, time:"09:30",countdown:"in 3h 50m", country:"GB",impact:"med",  title:"UK Core CPI y/y",                             date:"2026.04.16",actual:null,forecast:"3.5%", previous:"3.5%", tab:"upcoming"},
-                {id:10,time:"09:30",countdown:"in 3h 50m", country:"GB",impact:"low",  title:"UK PPI Input m/m",                            date:"2026.04.16",actual:null,forecast:"0.3%", previous:"-0.2%",tab:"upcoming"},
-                {id:11,time:"10:00",countdown:"in 4h 20m", country:"DE",impact:"high", title:"Germany ZEW Economic Sentiment",              date:"2026.04.16",actual:null,forecast:"-11.4",previous:"-26.0",tab:"upcoming"},
-                {id:12,time:"10:00",countdown:"in 4h 20m", country:"EU",impact:"med",  title:"Eurozone ZEW Economic Sentiment",             date:"2026.04.16",actual:null,forecast:"3.6",  previous:"39.8", tab:"upcoming"},
-                {id:13,time:"11:30",countdown:"in 5h 50m", country:"US",impact:"low",  title:"4-Week Bill Auction",                         date:"2026.04.16",actual:null,forecast:"-",    previous:"4.23%",tab:"upcoming"},
-                {id:14,time:"12:30",countdown:"in 6h 50m", country:"CA",impact:"high", title:"Canada CPI y/y",                              date:"2026.04.16",actual:null,forecast:"2.6%", previous:"2.6%", tab:"upcoming"},
-                {id:15,time:"12:30",countdown:"in 6h 50m", country:"CA",impact:"med",  title:"Canada Core CPI m/m",                        date:"2026.04.16",actual:null,forecast:"0.4%", previous:"0.7%", tab:"upcoming"},
-                {id:16,time:"12:30",countdown:"in 6h 50m", country:"US",impact:"high", title:"Core PPI m/m",                                date:"2026.04.16",actual:null,forecast:"0.2%", previous:"0.5%", tab:"upcoming"},
-                {id:17,time:"12:30",countdown:"in 6h 50m", country:"US",impact:"med",  title:"Retail Sales m/m",                           date:"2026.04.16",actual:null,forecast:"0.8%", previous:"-1.1%",tab:"upcoming"},
-                {id:18,time:"12:30",countdown:"in 6h 50m", country:"US",impact:"med",  title:"Retail Sales ex Autos m/m",                  date:"2026.04.16",actual:null,forecast:"0.4%", previous:"-0.4%",tab:"upcoming"},
-                {id:19,time:"13:15",countdown:"in 7h 35m", country:"US",impact:"high", title:"Industrial Production m/m",                  date:"2026.04.16",actual:null,forecast:"0.4%", previous:"-0.3%",tab:"upcoming"},
-                {id:20,time:"13:15",countdown:"in 7h 35m", country:"US",impact:"med",  title:"Capacity Utilization Rate",                  date:"2026.04.16",actual:null,forecast:"77.9%",previous:"78.2%",tab:"upcoming"},
-                {id:21,time:"14:00",countdown:"in 8h 20m", country:"US",impact:"low",  title:"Business Inventories m/m",                   date:"2026.04.16",actual:null,forecast:"0.3%", previous:"0.2%", tab:"upcoming"},
-                {id:22,time:"14:00",countdown:"in 8h 20m", country:"US",impact:"low",  title:"NAHB Housing Market Index",                  date:"2026.04.16",actual:null,forecast:"37",    previous:"39",   tab:"upcoming"},
-                {id:23,time:"14:30",countdown:"in 8h 50m", country:"US",impact:"low",  title:"Crude Oil Inventories",                      date:"2026.04.16",actual:null,forecast:"-1.2M", previous:"2.6M", tab:"upcoming"},
-                {id:24,time:"16:00",countdown:"in 10h 20m",country:"CA",impact:"med",  title:"BOC Governor Macklem Speaks",                date:"2026.04.16",actual:null,forecast:"-",    previous:"-",    tab:"upcoming"},
-                {id:25,time:"17:00",countdown:"in 11h 20m",country:"US",impact:"med",  title:"Fed Chair Powell Speaks",                    date:"2026.04.16",actual:null,forecast:"-",    previous:"-",    tab:"upcoming"},
-                {id:26,time:"17:30",countdown:"in 11h 50m",country:"US",impact:"low",  title:"5-Year TIPS Auction",                        date:"2026.04.16",actual:null,forecast:"-",    previous:"1.84%",tab:"upcoming"},
-                {id:27,time:"19:00",countdown:"in 13h 20m",country:"US",impact:"low",  title:"Fed Waller Speaks",                          date:"2026.04.16",actual:null,forecast:"-",    previous:"-",    tab:"upcoming"},
-                {id:28,time:"02:00",countdown:"in 19h 20m",country:"CN",impact:"high", title:"China Retail Sales y/y",                     date:"2026.04.17",actual:null,forecast:"4.2%", previous:"4.0%", tab:"upcoming"},
-                {id:29,time:"02:00",countdown:"in 19h 20m",country:"CN",impact:"high", title:"China Industrial Production y/y",            date:"2026.04.17",actual:null,forecast:"5.7%", previous:"5.9%", tab:"upcoming"},
-                {id:30,time:"12:30",countdown:"in 30h 50m",country:"US",impact:"high", title:"Philadelphia Fed Manufacturing Index",       date:"2026.04.17",actual:null,forecast:"-10.0",previous:"-26.4",tab:"upcoming"},
-                {id:7,time:"08:30",country:"US",impact:"high",title:"CPI m/m",date:"2026.04.15",actual:"0.1%",forecast:"0.3%",previous:"0.2%",tab:"previous"},
-                {id:8,time:"08:30",country:"US",impact:"high",title:"Core CPI m/m",date:"2026.04.15",actual:"0.3%",forecast:"0.3%",previous:"0.4%",tab:"previous"},
-                {id:9,time:"03:00",country:"CN",impact:"high",title:"GDP q/y",date:"2026.04.16",actual:"5.4%",forecast:"5.2%",previous:"5.4%",tab:"previous"},
-                {id:10,time:"10:00",country:"EU",impact:"med",title:"ECB President Lagarde Speaks",date:"2026.04.15",actual:"-",forecast:"-",previous:"-",tab:"previous"},
-                {id:11,time:"09:30",country:"GB",impact:"high",title:"GDP m/m",date:"2026.04.11",actual:"0.5%",forecast:"0.1%",previous:"-0.1%",tab:"previous"},
-                {id:12,time:"14:00",country:"US",impact:"med",title:"Michigan Consumer Sentiment",date:"2026.04.11",actual:"50.8",forecast:"54.5",previous:"57.0",tab:"previous"},
-              ];
-              const q = newsSearch.toLowerCase();
-              const filtered = newsData.filter(ev =>
-                ev.tab===newsTab &&
-                newsImpact.includes(ev.impact) &&
-                newsCntSel[ev.country] &&
-                (!q || ev.title.toLowerCase().includes(q) || ev.country.toLowerCase().includes(q))
-              );
-              const allCntOn = ALL_COUNTRIES.every(co=>newsCntSel[co]);
+              const api = typeof window !== "undefined" ? window.__economicCalendarUi : null;
+              const st = api ? api.getStatus() : null;
+              const rawList = api && st && !st.loading && !st.error ? api.getFilteredEvents() : [];
+              const filtered = rawList.map((e, idx) => {
+                const d = api.displayForEvent(e);
+                const imp = e.impact === "medium" ? "med" : e.impact;
+                return {
+                  id: `${e.t}:${idx}:${(e.event || "").slice(0, 48)}`,
+                  time: d ? d.time : "",
+                  countdown: d && d.upcoming && d.countdown ? d.countdown : null,
+                  country: e.countryKey || (String(e.country || "").trim().slice(0, 2).toUpperCase() || "US"),
+                  impact: imp,
+                  title: e.event,
+                  date: d ? d.dateStr : "",
+                  actual: e.actual,
+                  forecast: e.forecast,
+                  previous: e.previous,
+                  tab: newsTab,
+                };
+              });
+              const allCntOn = ECON_CAL_COUNTRIES.every((co) => newsCntSel[co]);
+              if (st && st.loading) {
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                    <div style={{ padding: "40px 14px", textAlign: "center", color: c.tm, fontSize: 11 }}>Loading economic calendar…</div>
+                  </div>
+                );
+              }
+              if (st && st.error) {
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                    <div style={{ padding: "24px 14px", textAlign: "center", color: c.rd, fontSize: 11 }}>{st.error}</div>
+                  </div>
+                );
+              }
+              if (!api) {
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                    <div style={{ padding: "24px 14px", textAlign: "center", color: c.tm, fontSize: 11 }}>Economic calendar unavailable.</div>
+                  </div>
+                );
+              }
               return (
                 <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
                   {/* Search + Filter button */}
@@ -10201,12 +15990,71 @@ const TalariaV8b = () => {
                     {/* Search bar */}
                     <div style={{flex:1,display:"flex",alignItems:"center",gap:6,background:c.well,border:`1px solid ${c.brH}`,padding:"5px 8px"}}>
                       <I n="search" s={13} cl={c.tm}/>
-                      <input type="text" placeholder="Search events…" value={newsSearch} onChange={e=>setNewsSearch(e.target.value)}
+                      <input type="text" placeholder="Search events…" value={newsSearch} onChange={(e) => {
+                        const v = e.target.value;
+                        setNewsSearch(v);
+                        if (newsSearchToModuleDebounceRef.current) clearTimeout(newsSearchToModuleDebounceRef.current);
+                        newsSearchToModuleDebounceRef.current = setTimeout(() => {
+                          window.__economicCalendarUi?.setQuery(v);
+                        }, 200);
+                      }}
                         style={{flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:0}}/>
-                      {newsSearch && <div onClick={()=>setNewsSearch("")} style={{cursor:"default"}}><I n="x" s={12} cl={c.ts}/></div>}
+                      {newsSearch && (
+                        <div
+                          onClick={() => {
+                            setNewsSearch("");
+                            window.__economicCalendarUi?.setQuery("");
+                          }}
+                          style={{ cursor: "default" }}
+                        >
+                          <I n="x" s={12} cl={c.ts} />
+                        </div>
+                      )}
                     </div>
                   </div>
-                  {/* Filters */}
+                  {/* Always visible: pair filter (was inside collapsed panel — 0fr height hid controls). */}
+                  <div
+                    onClick={() => {
+                      setNewsSymbolOnly((p) => {
+                        const next = !p;
+                        queueMicrotask(() => pushEconNewsFiltersToModule(newsImpact, next, newsCntSel));
+                        return next;
+                      });
+                    }}
+                    onMouseEnter={() => setSwHov("news-pair-row")}
+                    onMouseLeave={() => setSwHov(null)}
+                    style={{
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "6px 10px",
+                      cursor: "default",
+                      background: swHov === "news-pair-row" ? "rgba(255,255,255,0.03)" : "transparent",
+                      transition: "background 0.12s",
+                      borderBottom: `1px solid ${c.br}`,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: newsSymbolOnly ? c.acL : c.ts,
+                        fontWeight: newsSymbolOnly ? 600 : 400,
+                        transition: "color 0.15s",
+                      }}
+                    >
+                      Chart symbol only
+                    </span>
+                    <Toggle
+                      on={newsSymbolOnly}
+                      color={c.acL}
+                      c={c}
+                      hk="news-pair"
+                      swHov={swHov}
+                      setSwHov={setSwHov}
+                    />
+                  </div>
+                  {/* Filters: impact + countries (collapsible) */}
                   <div style={{flexShrink:0,display:"grid",gridTemplateRows:newsFilterOpen?"1fr":"0fr",transition:"grid-template-rows 0.28s cubic-bezier(0.4,0,0.2,1)",overflow:"hidden"}}>
                     <div style={{overflow:"hidden",opacity:newsFilterOpen?1:0,transition:"opacity 0.22s ease"}}>
                       <div style={{padding:"0 10px 10px",display:"flex",flexDirection:"column",gap:8}}>
@@ -10220,7 +16068,16 @@ const TalariaV8b = () => {
                               const isH=swHov===`ni-${lv}`;
                               return (
                                 <div key={lv}
-                                  onClick={()=>setNewsImpact(prev=>on?prev.filter(x=>x!==lv):[...prev,lv])}
+                                  onClick={()=>{
+                                    setNewsImpact((prev) => {
+                                      const next = on ? prev.filter((x) => x !== lv) : [...prev, lv];
+                                      const effective = next.length === 0 ? ["high", "med", "low"] : next;
+                                      queueMicrotask(() =>
+                                        pushEconNewsFiltersToModule(effective, newsSymbolOnly, newsCntSel)
+                                      );
+                                      return effective;
+                                    });
+                                  }}
                                   onMouseEnter={()=>setSwHov(`ni-${lv}`)} onMouseLeave={()=>setSwHov(null)}
                                   style={{padding:"3px 8px",fontSize:12,fontWeight:on?700:500,cursor:"default",
                                     letterSpacing:"0.03em",position:"relative",
@@ -10238,16 +16095,18 @@ const TalariaV8b = () => {
                             })}
                           </div>
                         </div>
-                        {/* Symbol only */}
-                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                          <span style={{fontSize:12,color:newsSymbolOnly?c.acL:c.ts,fontWeight:newsSymbolOnly?600:400,transition:"color 0.15s"}}>Chart symbol only</span>
-                          <Toggle on={newsSymbolOnly} onClick={()=>setNewsSymbolOnly(p=>!p)} color={c.acL} c={c} swHov={swHov} setSwHov={setSwHov}/>
-                        </div>
                         {/* Countries */}
                         <div>
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
                             <span style={{fontSize:11,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>COUNTRIES</span>
-                            <div onClick={()=>setNewsCntSel(ALL_COUNTRIES.reduce((a,co)=>({...a,[co]:allCntOn?0:1}),{}))}
+                            <div onClick={()=>{
+                              setNewsCntSel((prev) => {
+                                const allOn = ECON_CAL_COUNTRIES.every((x) => prev[x]);
+                                const next = ECON_CAL_COUNTRIES.reduce((a, co) => ({ ...a, [co]: allOn ? 0 : 1 }), {});
+                                queueMicrotask(() => pushEconNewsFiltersToModule(newsImpact, newsSymbolOnly, next));
+                                return next;
+                              });
+                            }}
                               onMouseEnter={()=>setSwHov("ncAll")} onMouseLeave={()=>setSwHov(null)}
                               style={{width:28,textAlign:"center",fontSize:11,fontWeight:700,cursor:"default",letterSpacing:"0.04em",
                                 color:allCntOn?c.ts:c.acL,
@@ -10258,12 +16117,16 @@ const TalariaV8b = () => {
                             </div>
                           </div>
                           <div className="tlr-scroll" style={{maxHeight:130,overflowY:"auto",display:"flex",flexDirection:"column",gap:1}}>
-                            {ALL_COUNTRIES.map(co=>{
+                            {ECON_CAL_COUNTRIES.map(co=>{
                               const on=!!newsCntSel[co];
                               const isH=swHov===`nc-${co}`;
                               return (
                                 <div key={co}
-                                  onClick={()=>setNewsCntSel(prev=>({...prev,[co]:prev[co]?0:1}))}
+                                  onClick={()=>setNewsCntSel((prev)=>{
+                                    const next={...prev,[co]:prev[co]?0:1};
+                                    queueMicrotask(()=>pushEconNewsFiltersToModule(newsImpact,newsSymbolOnly,next));
+                                    return next;
+                                  })}
                                   onMouseEnter={()=>setSwHov(`nc-${co}`)} onMouseLeave={()=>setSwHov(null)}
                                   style={{display:"flex",alignItems:"center",gap:7,padding:"4px 8px",cursor:"default",position:"relative",
                                     background:on?c.acD:isH?"rgba(255,255,255,0.022)":"transparent",
@@ -10304,7 +16167,10 @@ const TalariaV8b = () => {
                       const isAct=newsTab===tab;
                       const isH=swHov===`ntab-${tab}`;
                       return (
-                        <div key={tab} onClick={()=>setNewsTab(tab)}
+                        <div key={tab} onClick={()=>{
+                          setNewsTab(tab);
+                          window.__economicCalendarUi?.setTab(tab);
+                        }}
                           onMouseEnter={()=>setSwHov(`ntab-${tab}`)} onMouseLeave={()=>setSwHov(null)}
                           style={{flex:1,padding:"7px 0",textAlign:"center",cursor:"default",
                             color:isAct?c.acL:isH?c.tx:c.ts,fontSize:11,fontWeight:isAct?700:500,
@@ -10417,7 +16283,7 @@ const TalariaV8b = () => {
                                   <span style={{fontSize:13,fontWeight:700,color:c.ts,
                                     fontVariantNumeric:"tabular-nums",textAlign:"center",lineHeight:1.35,
                                     whiteSpace:"nowrap",marginRight:16}}>
-                                    {ev.countdown.replace("in ","")}
+                                    {String(ev.countdown).replace(/^-\s*/, "")}
                                   </span>
                                 ) : hasAct && fcVal!=null ? (
                                   <>
@@ -10455,9 +16321,38 @@ const TalariaV8b = () => {
                   const isDelH = swHov===`lyrD-${item.id}`;
                   const isDelDn = swHov===`lyrD-${item.id}_dn`;
                   const anyHov = isH||isJumpH||isVisH||isDelH||isDelDn;
-                  const isVis = layersVis[item.id] !== false;
+                  // _visible reflects the actual chart.js drawing.visible flag
+                  // (rebuilt on every drawingsChanged event).
+                  const isVis = item._visible !== false;
+                  // Helper: get the chart.js drawingManager + the live drawing
+                  // (item._drawing reference can become stale after undo/redo;
+                  // fall back to id lookup).
+                  const findDm = () => (window.chart && window.chart.drawingManager) || null;
+                  const findDrawing = (dm) => {
+                    if (!dm || !Array.isArray(dm.drawings)) return null;
+                    if (item._drawing && dm.drawings.includes(item._drawing)) return item._drawing;
+                    return dm.drawings.find(x => x && x.id === item.id) || null;
+                  };
+                  const _logAct = (kind) => {
+                    const dm = findDm();
+                    const d = findDrawing(dm);
+                    console.log('[V9 ObjectsTree]', kind, {
+                      itemId: item.id,
+                      itemName: item.name,
+                      hasDm: !!dm,
+                      hasDrawing: !!d,
+                      dmDrawingsCount: dm && dm.drawings ? dm.drawings.length : 'N/A',
+                      hasObjectTreeManager: !!(dm && dm.objectTreeManager),
+                    });
+                  };
                   return (
                     <div key={item.id}
+                      onClick={()=>{
+                        // Legacy parity (object-tree.js:364-366): item click → selectDrawing(d).
+                        const dm = findDm(); const d = findDrawing(dm);
+                        if (!dm || !d) return;
+                        if (typeof dm.selectDrawing === 'function') dm.selectDrawing(d);
+                      }}
                       onMouseEnter={()=>setSwHov(`lyr-${item.id}`)}
                       onMouseLeave={()=>setSwHov(null)}
                       style={{display:"flex",alignItems:"center",gap:7,padding:"6px 10px",
@@ -10473,24 +16368,53 @@ const TalariaV8b = () => {
                         userSelect:"none",cursor:"default",
                         transition:"color 0.04s"}}>{item.name}</span>
                       {/* action buttons — appear on row hover */}
-                      {/* jump to */}
+                      {/* jump to: center chart viewport on the drawing + select it */}
                       <div data-layeraction="1"
-                        onClick={(e)=>{e.stopPropagation();}}
+                        onClick={(e)=>{
+                          // Legacy parity (object-tree.js:316-319): jumpBtn click →
+                          // stopPropagation + jumpToDrawing(d).
+                          e.stopPropagation();
+                          _logAct('jump');
+                          const dm = findDm(); const d = findDrawing(dm);
+                          if (!dm || !d) return;
+                          if (dm.objectTreeManager && typeof dm.objectTreeManager.jumpToDrawing === 'function') {
+                            dm.objectTreeManager.jumpToDrawing(d);
+                          } else if (typeof dm.selectDrawing === 'function') {
+                            dm.selectDrawing(d);
+                          }
+                        }}
                         onMouseEnter={()=>setSwHov(`lyrJ-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
-                        style={{width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:"default",flexShrink:0,opacity:isJumpH?1:anyHov?0.55:0,
-                          transition:"opacity 0.04s"}}>
+                        onMouseDown={(e)=>e.stopPropagation()}
+                        style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",
+                          cursor:"pointer",flexShrink:0,opacity:isJumpH?1:anyHov?0.55:0,
+                          pointerEvents:"auto",transition:"opacity 0.04s"}}>
                         <I n="locate" s={15} cl={isJumpH?c.acL:c.ts}/>
                       </div>
-                      {/* visibility */}
+                      {/* visibility: flips drawing.visible and re-renders */}
                       <div data-layeraction="1"
-                        onClick={(e)=>{e.stopPropagation();setLayersVis(prev=>({...prev,[item.id]:!isVis}));}}
+                        onClick={(e)=>{
+                          // Legacy parity (object-tree.js:339-342, 526-538):
+                          // visibility click → toggle drawing.visible, renderDrawing,
+                          // saveDrawings (which fires drawingsChanged → V9 rebuilds).
+                          e.stopPropagation();
+                          _logAct('toggleVisibility');
+                          const dm = findDm(); const d = findDrawing(dm);
+                          if (!dm || !d) return;
+                          if (dm.objectTreeManager && typeof dm.objectTreeManager.toggleDrawingVisibility === 'function') {
+                            dm.objectTreeManager.toggleDrawingVisibility(d);
+                          } else {
+                            d.visible = d.visible === false ? true : false;
+                            if (typeof dm.renderDrawing === 'function') dm.renderDrawing(d);
+                            if (typeof dm.saveDrawings === 'function') dm.saveDrawings();
+                          }
+                        }}
                         onMouseEnter={()=>setSwHov(`lyrV-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
-                        style={{width:16,height:16,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:"default",flexShrink:0,opacity:isVisH?1:!isVis?1:anyHov?0.55:0,
-                          transition:"opacity 0.04s"}}>
+                        onMouseDown={(e)=>e.stopPropagation()}
+                        style={{width:22,height:22,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",
+                          cursor:"pointer",flexShrink:0,opacity:isVisH?1:!isVis?1:anyHov?0.55:0,
+                          pointerEvents:"auto",transition:"opacity 0.04s"}}>
                         <I n="eye" s={14} cl={isVisH?c.acL:isVis?c.ts:"#F5A020"}/>
                         {!isVis && (
                           <svg width={16} height={16} viewBox="0 0 16 16" style={{position:"absolute",top:0,left:0,pointerEvents:"none"}}>
@@ -10498,16 +16422,26 @@ const TalariaV8b = () => {
                           </svg>
                         )}
                       </div>
-                      {/* delete */}
+                      {/* delete: removes the drawing from chart.js */}
                       <div data-layeraction="1"
-                        onClick={(e)=>{e.stopPropagation();setLayersItems(prev=>prev.filter(x=>x.id!==item.id));}}
+                        onClick={(e)=>{
+                          // Legacy parity (object-tree.js:355-358, 543-549):
+                          // delete click → stopPropagation + dm.deleteDrawing(d).
+                          // dm.deleteDrawing calls saveDrawings → dispatches
+                          // drawingsChanged → V9 rebuilds the tree automatically.
+                          e.stopPropagation();
+                          _logAct('delete');
+                          const dm = findDm(); const d = findDrawing(dm);
+                          if (!dm || !d) return;
+                          if (typeof dm.deleteDrawing === 'function') dm.deleteDrawing(d);
+                        }}
                         onMouseEnter={()=>setSwHov(`lyrD-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
                         onMouseDown={(e)=>{e.stopPropagation();setSwHov(`lyrD-${item.id}_dn`);}}
                         onMouseUp={()=>setSwHov(`lyrD-${item.id}`)}
-                        style={{width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:"default",flexShrink:0,opacity:isDelH||isDelDn?1:anyHov?0.55:0,
-                          transform:isDelDn?"scale(0.86)":"scale(1)",
+                        style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",
+                          cursor:"pointer",flexShrink:0,opacity:isDelH||isDelDn?1:anyHov?0.55:0,
+                          pointerEvents:"auto",transform:isDelDn?"scale(0.86)":"scale(1)",
                           transition:"opacity 0.04s,transform 0.08s"}}>
                         <I n="trash" s={14} cl={isDelH||isDelDn?c.rd:c.ts}/>
                       </div>
@@ -10655,7 +16589,7 @@ const TalariaV8b = () => {
           );
         })() : orderPanelOpen ? (
         <div ref={panelRef} key={panelDetached?"order-float":"order-dock"} style={panelDetached
-          ? { position:"fixed", top:detachPos.y, left:detachPos.x, width:detachSize.w, height:detachSize.h, background:c.sf, border:`1px solid rgba(140,160,255,0.28)`, display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:F, zIndex:9100, boxShadow:"0 12px 40px rgba(0,0,0,0.75), 0 0 0 1px rgba(140,160,255,0.18)", animation:"tlrPanelIn 0.18s ease forwards" }
+          ? { position:"fixed", top:detachPos.y, left:detachPos.x, width:detachSize.w, height:detachSize.h, background:c.sf, border:`1px solid rgba(140,160,255,0.28)`, display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:F, zIndex:10050, boxShadow:"0 12px 40px rgba(0,0,0,0.75), 0 0 0 1px rgba(140,160,255,0.18)", animation:"tlrPanelIn 0.18s ease forwards" }
           : { width:"100%", background:c.sf, borderLeft:`2px solid rgba(140,160,255,0.3)`, display:"flex", flexDirection:"column", height:"100%", animation:"tlrPanelIn 0.18s ease forwards", overflow:"hidden", fontFamily:F }
         }>
 
@@ -10747,7 +16681,7 @@ const TalariaV8b = () => {
           {/* 3 — BUY / SELL */}
           <div style={{ display:"flex", flexShrink:0, position:"relative" }}>
             {["BUY","SELL"].map((s,i) => { const a=buySell===s.toLowerCase(); const col=s==="BUY"?c.gn:c.rd; const isH=swHov===`bs-${s}`; return (
-              <button key={s} onClick={()=>setBuySell(s.toLowerCase())}
+              <button type="button" key={s} onClick={()=>setBuySell(s.toLowerCase())}
                 onMouseEnter={()=>setSwHov(`bs-${s}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{ flex:1, height:34, border:"none", borderRight:i===0?"1px solid rgba(140,160,255,0.08)":"none", position:"relative",
                          background:a?(s==="BUY"?c.gnD:c.rdD):isH?(s==="BUY"?"rgba(0,212,161,0.06)":"rgba(255,80,104,0.06)"):"transparent",
@@ -10768,7 +16702,7 @@ const TalariaV8b = () => {
           {/* 4 — Order type */}
           <div style={{ borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", position:"relative", flexShrink:0 }}>
             {["Market","Limit","Stop"].map((t) => { const a=orderType===t.toLowerCase(); const isH=swHov===`ot-${t}`; return (
-              <button key={t} onClick={()=>setOrderType(t.toLowerCase())}
+              <button type="button" key={t} onClick={()=>setOrderType(t.toLowerCase())}
                 onMouseEnter={()=>setSwHov(`ot-${t}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{ flex:1, height:26, background:isH&&!a?c.hv2:"transparent", border:"none", color:a?c.acL:isH?c.tx:c.ts, fontSize:10, fontWeight:a?700:600, fontFamily:F, cursor:"default", transition:"color 0.12s, background 0.12s", letterSpacing:"0.01em" }}>
                 {t}
@@ -10886,13 +16820,152 @@ const TalariaV8b = () => {
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
             const totalRisk = entryRows.reduce((s,r) => s + (parseFloat(r.risk)||0), 0);
-            const avgPrice = entryRows.length ? (entryRows.reduce((s,r) => s + (parseFloat(r.price)||0), 0) / entryRows.length).toFixed(2) : "0.00";
+            const sortEntryRowsBySide = (rows, side) => {
+              if (!rows || rows.length < 2) return rows;
+              return [...rows].sort((a, b) => {
+                const pa = parseFloat(a.price) || 0;
+                const pb = parseFloat(b.price) || 0;
+                return side === "sell" ? pb - pa : pa - pb;
+              });
+            };
+            const sortedEntryRows = sortEntryRowsBySide(entryRows, buySell);
+            const pricedEntryRows = entryRows.filter((r) => parseFloat(r.price) > 0);
+            const omFmt = typeof window !== "undefined" ? window.chart?.orderManager : null;
+            let entryAvgDisplay = "";
+            if (entryRows.length > 1) {
+              entryAvgDisplay = omEntryAvgPriceTxt;
+              if (
+                !entryAvgDisplay &&
+                omFmt &&
+                typeof omFmt._calcMultiEntryAvgPrice === "function" &&
+                typeof omFmt.formatPrice === "function"
+              ) {
+                try {
+                  const w = omFmt._calcMultiEntryAvgPrice();
+                  if (Number.isFinite(w) && w > 0) entryAvgDisplay = omFmt.formatPrice(w);
+                } catch (_) {}
+              }
+              if (!entryAvgDisplay && pricedEntryRows.length) {
+                const mean =
+                  pricedEntryRows.reduce((s, r) => s + (parseFloat(r.price) || 0), 0) / pricedEntryRows.length;
+                entryAvgDisplay =
+                  omFmt && typeof omFmt.formatPrice === "function"
+                    ? omFmt.formatPrice(mean)
+                    : String(mean);
+              }
+              if (!entryAvgDisplay) entryAvgDisplay = "0.00";
+            }
             const updRow = (id, field, val) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
             const stepRow = (id, field, dir, step=1) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
-            const delRow = (id) => setEntryRows(rows => rows.length > 1 ? rows.filter(r => r.id!==id) : rows);
-            const addRow = () => { setEntryRows(rows => [...rows, {id:Date.now(), price:"0", risk:"0"}]); setTimeout(()=>{ if(entryScrollRef.current) entryScrollRef.current.scrollTop = entryScrollRef.current.scrollHeight; }, 0); };
+            const delRow = (id) => {
+              omPanelBridgeRef.current.entryDel = Date.now();
+              const om = window.chart?.orderManager;
+              if (om && typeof om.removeMultiEntryLevel === "function" && Array.isArray(om.multiEntryLevels)) {
+                const row = entryRows.find((r) => r.id === id);
+                let lev = om.multiEntryLevels.find((l) => l && l.id === id);
+                if (!lev && row) {
+                  const rp = parseFloat(row.price);
+                  if (Number.isFinite(rp) && rp > 0) {
+                    lev = om.multiEntryLevels.find((l) => l && Math.abs(parseFloat(l.price) - rp) < 1e-7);
+                  }
+                }
+                const rid = lev?.id != null ? lev.id : id;
+                try {
+                  om.removeMultiEntryLevel(rid);
+                } catch (_) {
+                  try {
+                    om.removeMultiEntryLevel(id);
+                  } catch (_) {}
+                }
+              }
+              setEntryRows((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
+            };
+            const addRow = () => {
+              omPanelBridgeRef.current.entryAdd = Date.now();
+              const om = window.chart?.orderManager;
+              setEntryRows((rows) => {
+                if (!om || typeof om.addMultiEntryLevel !== "function") {
+                  const n = rows.length + 1;
+                  const next = [...rows, { id: Date.now(), price: "0", risk: "0" }];
+                  const prevSum = rows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0);
+                  if (sizeMode === "%") {
+                    const base = Math.floor(100 / n);
+                    const last = 100 - base * (n - 1);
+                    return next.map((r, i) => ({ ...r, risk: String(i < n - 1 ? base : last) }));
+                  }
+                  if (sizeMode === "$") {
+                    let total = prevSum;
+                    if (total <= 0) total = Math.max(1, parseFloat(riskVal) || 100);
+                    const share = Math.max(1, Math.round(total / n));
+                    const lastAmt = Math.max(0, total - share * (n - 1));
+                    return next.map((r, i) => ({ ...r, risk: String(i < n - 1 ? share : lastAmt) }));
+                  }
+                  let total = prevSum;
+                  if (total <= 0) total = Math.max(0.01, parseFloat(riskVal) || 1);
+                  const each = (total / n).toFixed(2);
+                  return next.map((r) => ({ ...r, risk: each }));
+                }
+
+                const want = rows.map((r, i) => {
+                  let pid = r.id;
+                  if (typeof pid !== "number" || !Number.isFinite(pid)) {
+                    pid = om.multiEntryLevels?.[i]?.id ?? i + 1;
+                  }
+                  return {
+                    id: pid,
+                    price: parseFloat(r.price) || 0,
+                    amount: parseFloat(r.risk) || 0,
+                  };
+                });
+
+                if (!om.isMultiEntryMode) {
+                  om.multiEntryLevels = want.map((w) => ({ id: w.id, price: w.price, amount: w.amount }));
+                  om.setEntryMode(true);
+                } else {
+                  om.multiEntryLevels = want.map((w) => ({ ...w }));
+                  om.renderMultiEntryRows?.();
+                }
+
+                om.addMultiEntryLevel();
+
+                return (om.multiEntryLevels || []).map((l) => ({
+                  id: l.id,
+                  price: String(l.price ?? "0"),
+                  risk: String(l.amount ?? "0"),
+                }));
+              });
+              setTimeout(() => {
+                if (entryScrollRef.current) entryScrollRef.current.scrollTop = entryScrollRef.current.scrollHeight;
+              }, 0);
+              requestAnimationFrame(() => {
+                try {
+                  window.chart?.orderManager?.updatePreviewLines?.();
+                } catch (_) {}
+              });
+            };
             const clearRows = () => { setEntryRows([{id:Date.now(), price:"0", risk:"0"}]); };
-            const equalizeRisk = () => { const each = (100/entryRows.length).toFixed(0); setEntryRows(rows => rows.map(r => ({...r, risk:each}))); };
+            const equalizeRisk = () => {
+              setEntryRows((rows) => {
+                const n = rows.length;
+                if (n === 0) return rows;
+                if (sizeMode === "%") {
+                  const base = Math.floor(100 / n);
+                  const last = 100 - base * (n - 1);
+                  return rows.map((r, i) => ({ ...r, risk: String(i < n - 1 ? base : last) }));
+                }
+                if (sizeMode === "$") {
+                  const total = rows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0);
+                  const t = total > 0 ? total : Math.max(1, parseFloat(riskVal) || 100);
+                  const share = Math.max(1, Math.round(t / n));
+                  const lastAmt = Math.max(0, t - share * (n - 1));
+                  return rows.map((r, i) => ({ ...r, risk: String(i < n - 1 ? share : lastAmt) }));
+                }
+                const total = rows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0);
+                const t = total > 0 ? total : Math.max(0.01, parseFloat(riskVal) || 1);
+                const each = (t / n).toFixed(2);
+                return rows.map((r) => ({ ...r, risk: each }));
+              });
+            };
             const arw = (onClick, up, hk) => {
               const isH = swHov === hk;
               return (
@@ -10970,7 +17043,7 @@ const TalariaV8b = () => {
                   </div>
                   {/* Rows — scrollable after 5 */}
                   <div ref={entryScrollRef} className="tlr-scroll" style={{ padding:"3px 6px", maxHeight:52, overflowY:"auto" }}>
-                    {entryRows.map((row, i) => {
+                    {sortedEntryRows.map((row, i) => {
                       const pct = totalRisk > 0 ? ((parseFloat(row.risk)||0)/totalRisk*100).toFixed(0) : "0";
                       return (
                         <div key={row.id} style={{ display:"flex", alignItems:"center", gap:3, height:22, marginBottom:1 }}>
@@ -11001,19 +17074,21 @@ const TalariaV8b = () => {
                               {arw(()=>stepRow(row.id,"risk",-1), false, `er-${row.id}-dn`)}
                             </div>
                           </div>
-                          {/* Pct · lots inline */}
+                          {/* Pct · lots inline — prefer OM-rendered line from hidden #multiEntryRows when present */}
                           <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", flexShrink:0 }}>
-                            {sizeMode==="$"
-                              ? <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
-                              : sizeMode==="%"
-                              ? <><span style={{ color:c.ts }}>${(parseFloat(row.risk||"0")/100*(riskBasis==="balance"?accountBalance:accountEquity)).toFixed(0)}</span>{" · "}0.00 {sizeUnit}</>
-                              : <>0.00 {sizeUnit}</>
+                            {omEntryRowStatLines[i]
+                              ? omEntryRowStatLines[i]
+                              : sizeMode==="$"
+                                ? <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
+                                : sizeMode==="%"
+                                  ? <><span style={{ color:c.ts }}>${(parseFloat(row.risk||"0")/100*(riskBasis==="balance"?accountBalance:accountEquity)).toFixed(0)}</span>{" · "}0.00 {sizeUnit}</>
+                                  : <>0.00 {sizeUnit}</>
                             }
                           </span>
                           <div style={{ flex:1 }}/>
                           {/* Delete — far right, hidden when only 1 row */}
                           {entryRows.length > 1 ? (
-                            <div onClick={()=>delRow(row.id)}
+                            <div onClick={(e) => { e.stopPropagation(); delRow(row.id); }}
                               onMouseEnter={()=>setSwHov(`ed-${row.id}`)} onMouseLeave={()=>setSwHov(null)}
                               style={{ width:16, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0, color:swHov===`ed-${row.id}`?c.rd:c.ts, transition:"color 0.1s" }}>
                               <I n="x" s={9} cl={swHov===`ed-${row.id}`?c.rd:c.ts}/>
@@ -11028,10 +17103,10 @@ const TalariaV8b = () => {
                     <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(74,106,255,0.1)" }}>
                       <div style={{ flex:1 }}/>
                       <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                        Avg <span style={{ color:c.ts, fontWeight:700 }}>{avgPrice}</span>
+                        Avg <span style={{ color:c.ts, fontWeight:700 }}>{entryAvgDisplay}</span>
                       </span>
                       <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                        Qty <span style={{ color:c.ts, fontWeight:700 }}>0.00 {sizeUnit}</span>
+                        Qty <span style={{ color:c.ts, fontWeight:700 }}>{omMultiEntryTotalQtyTxt || `0.00 ${sizeUnit}`}</span>
                       </span>
                     </div>
                   )}
@@ -11165,11 +17240,11 @@ const TalariaV8b = () => {
                   {/* Footer: Loss · Dist */}
                   <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", borderTop:"1px solid rgba(255,80,104,0.1)" }}>
                     <span style={{ fontSize:9, fontWeight:700, color:c.rd, fontVariantNumeric:"tabular-nums" }}>
-                      Loss <span style={{ fontWeight:800 }}>-$0.00</span>
+                      Loss <span style={{ fontWeight:800 }}>{omRiskSummaryTxt}</span>
                     </span>
                     <div style={{ flex:1 }}/>
                     <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                      Dist <span style={{ color:c.ts, fontWeight:700 }}>0.00</span>{" "}{currentSymbol.type==="futures"?"ticks":"pips"}
+                      Dist <span style={{ color:c.ts, fontWeight:700 }}>{omSlDistTxt}</span>{" "}{currentSymbol.type==="futures"?"ticks":"pips"}
                     </span>
                   </div>
                   {/* Advanced order content */}
@@ -11382,13 +17457,142 @@ const TalariaV8b = () => {
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
             const totalQty = tpRows.reduce((s,r) => s + (parseFloat(r.qty)||0), 0);
-            const avgTpPrice = tpRows.length ? (tpRows.reduce((s,r) => s + (parseFloat(r.price)||0), 0) / tpRows.length).toFixed(2) : "0.00";
+            const sortTpRowsBySide = (rows, side) => {
+              if (!rows || rows.length < 2) return rows;
+              return [...rows].sort((a, b) => {
+                const pa = parseFloat(a.price) || 0;
+                const pb = parseFloat(b.price) || 0;
+                return side === "sell" ? pb - pa : pa - pb;
+              });
+            };
+            const sortedTpRows = sortTpRowsBySide(tpRows, buySell);
             const updTp  = (id, field, val) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
             const stepTp = (id, field, dir, step=1) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
-            const delTp  = (id) => setTpRows(rows => rows.length > 1 ? rows.filter(r => r.id!==id) : rows);
-            const addTp  = () => { setTpRows(rows => [...rows, {id:Date.now(), price:"0", qty:"0", enabled:true}]); setTimeout(()=>{ if(tpScrollRef.current) tpScrollRef.current.scrollTop = tpScrollRef.current.scrollHeight; }, 0); };
-            const clearTp = () => setTpRows([{id:Date.now(), price:"0", qty:"100", enabled:true}]);
-            const equalizeTp = () => { const each = (100/tpRows.length).toFixed(0); setTpRows(rows => rows.map(r => ({...r, qty:each}))); };
+            const delTp = (id) => {
+              omPanelBridgeRef.current.tpDel = Date.now();
+              const om = window.chart?.orderManager;
+              if (om && typeof om.removeTPTarget === "function" && Array.isArray(om.tpTargets) && om.tpTargets.length) {
+                const row = tpRows.find((r) => r.id === id);
+                let tRm = om.tpTargets.find((t) => t && t.id === id);
+                if (!tRm && row) {
+                  const rp = parseFloat(row.price);
+                  if (Number.isFinite(rp) && rp > 0) {
+                    tRm = om.tpTargets.find((t) => t && Math.abs(parseFloat(t.price) - rp) < 1e-7);
+                  }
+                }
+                const rid = tRm?.id != null ? tRm.id : id;
+                try {
+                  om.removeTPTarget(rid);
+                } catch (_) {
+                  try {
+                    om.removeTPTarget(id);
+                  } catch (_) {}
+                }
+              }
+              setTpRows((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
+            };
+            /** Stack new TP above furthest priced TP (buy) / below (sell) — matches order-manager _ensureUnsetMultiTPPreviewPrices. */
+            const defaultPriceForNewTp = (prevTpRows) => {
+              const om = window.chart?.orderManager;
+              const isBuy = buySell === "buy";
+              const pip = om?.pipSize > 0 ? om.pipSize : 0.0001;
+              let refEntry = parseFloat(document.getElementById("orderEntryPrice")?.value || "0");
+              if (om?.isMultiEntryMode && typeof om._calcMultiEntryAvgPrice === "function") {
+                const avg = om._calcMultiEntryAvgPrice();
+                if (avg > 0) refEntry = avg;
+              }
+              const pricedPrev = prevTpRows.filter((r) => parseFloat(r.price) > 0);
+              const prec =
+                typeof om?.getPricePrecision === "function" ? om.getPricePrecision() : 5;
+              if (pricedPrev.length > 0) {
+                const px = pricedPrev.map((r) => parseFloat(r.price));
+                const band = isBuy ? Math.max(...px) : Math.min(...px);
+                const dist = Math.abs(band - refEntry);
+                const step = Math.max(pip * 5, dist * 0.12, pip);
+                const raw = isBuy ? band + step : band - step;
+                if (!Number.isFinite(raw) || !(raw > 0)) return "";
+                const rounded = parseFloat(raw.toFixed(prec));
+                return om?.formatPrice ? om.formatPrice(rounded) : String(rounded);
+              }
+              const tpd = parseFloat(document.getElementById("tpPrice")?.value || "0");
+              if (tpd > 0 && refEntry > 0) {
+                const dist = Math.abs(tpd - refEntry);
+                const step = Math.max(pip * 5, dist * 0.12, pip);
+                const raw = isBuy ? tpd + step : tpd - step;
+                const rounded = parseFloat(raw.toFixed(prec));
+                if (!(rounded > 0)) return "";
+                return om?.formatPrice ? om.formatPrice(rounded) : String(rounded);
+              }
+              return "";
+            };
+            const addTp = () => {
+              omPanelBridgeRef.current.tpAdd = Date.now();
+              setTpRows((rows) => {
+                const initPx = defaultPriceForNewTp(rows);
+                const n = rows.length + 1;
+                const next = [
+                  ...rows,
+                  { id: Date.now(), price: initPx || "0", qty: "0", enabled: true },
+                ];
+                const prevSum = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
+                if (sizeMode === "%") {
+                  const base = Math.floor(100 / n);
+                  const last = 100 - base * (n - 1);
+                  return next.map((r, i) => ({ ...r, qty: String(i < n - 1 ? base : last) }));
+                }
+                if (sizeMode === "$") {
+                  let total = prevSum;
+                  if (total <= 0) total = Math.max(1, parseFloat(riskVal) || 100);
+                  const share = Math.max(1, Math.round(total / n));
+                  const lastAmt = Math.max(0, total - share * (n - 1));
+                  return next.map((r, i) => ({ ...r, qty: String(i < n - 1 ? share : lastAmt) }));
+                }
+                let total = prevSum;
+                if (total <= 0) total = Math.max(0.01, parseFloat(riskVal) || 1);
+                const each = (total / n).toFixed(2);
+                return next.map((r) => ({ ...r, qty: each }));
+              });
+              setTimeout(() => {
+                if (tpScrollRef.current) tpScrollRef.current.scrollTop = tpScrollRef.current.scrollHeight;
+              }, 0);
+            };
+            const clearTp = () => {
+              omPanelBridgeRef.current.tpDel = Date.now();
+              const om = window.chart?.orderManager;
+              if (om && typeof om.removeTPTarget === "function" && Array.isArray(om.tpTargets)) {
+                while (om.tpTargets.length > 0) {
+                  const last = om.tpTargets[om.tpTargets.length - 1];
+                  try {
+                    om.removeTPTarget(last?.id != null ? last.id : om.tpTargets.length - 1);
+                  } catch (_) {
+                    break;
+                  }
+                }
+              }
+              setTpRows([{ id: Date.now(), price: "0", qty: "100", enabled: true }]);
+            };
+            const equalizeTp = () => {
+              setTpRows((rows) => {
+                const n = rows.length;
+                if (n === 0) return rows;
+                if (sizeMode === "%") {
+                  const base = Math.floor(100 / n);
+                  const last = 100 - base * (n - 1);
+                  return rows.map((r, i) => ({ ...r, qty: String(i < n - 1 ? base : last) }));
+                }
+                if (sizeMode === "$") {
+                  const total = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
+                  const t = total > 0 ? total : Math.max(1, parseFloat(riskVal) || 100);
+                  const share = Math.max(1, Math.round(t / n));
+                  const lastAmt = Math.max(0, t - share * (n - 1));
+                  return rows.map((r, i) => ({ ...r, qty: String(i < n - 1 ? share : lastAmt) }));
+                }
+                const total = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
+                const t = total > 0 ? total : Math.max(0.01, parseFloat(riskVal) || 1);
+                const each = (t / n).toFixed(2);
+                return rows.map((r) => ({ ...r, qty: each }));
+              });
+            };
             const arw = (onClick, up, hk) => {
               const isH = swHov===hk;
               return (
@@ -11463,7 +17667,7 @@ const TalariaV8b = () => {
                   </div>
                   {/* Rows — scrollable after 5 */}
                   <div ref={tpScrollRef} className="tlr-scroll" style={{ padding:"3px 6px", maxHeight:52, overflowY:"auto" }}>
-                    {tpRows.map((row, i) => {
+                    {sortedTpRows.map((row, i) => {
                       const pct = totalQty > 0 ? ((parseFloat(row.qty)||0)/totalQty*100).toFixed(0) : "0";
                       return (
                         <div key={row.id} style={{ display:"flex", alignItems:"center", gap:3, height:22, marginBottom:1, opacity:row.enabled?1:0.38, transition:"opacity 0.15s" }}>
@@ -11518,16 +17722,18 @@ const TalariaV8b = () => {
                               {arw(()=>stepTp(row.id,"qty",-1), false, `tq-${row.id}-dn`)}
                             </div>
                           </div>
-                          {/* Pct · lots inline */}
+                          {/* Pct · lots / RR+profit — prefer OM multi-TP row from hidden #multipleTPList */}
                           <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", flexShrink:0 }}>
-                            {sizeMode==="#"
-                              ? <>0.00 {sizeUnit}</>
-                              : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
+                            {omTpRowStatLines[i]
+                              ? omTpRowStatLines[i]
+                              : sizeMode==="#"
+                                ? <>0.00 {sizeUnit}</>
+                                : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
                             }
                           </span>
                           <div style={{ flex:1 }}/>
                           {tpRows.length > 1 ? (
-                            <div onClick={()=>delTp(row.id)}
+                            <div onClick={(e) => { e.stopPropagation(); delTp(row.id); }}
                               onMouseEnter={()=>setSwHov(`tpd-${row.id}`)} onMouseLeave={()=>setSwHov(null)}
                               style={{ width:16, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0, color:swHov===`tpd-${row.id}`?c.rd:c.ts, transition:"color 0.1s" }}>
                               <I n="x" s={9} cl={swHov===`tpd-${row.id}`?c.rd:c.ts}/>
@@ -11540,16 +17746,24 @@ const TalariaV8b = () => {
                   {/* Footer — always visible */}
                   <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(0,212,161,0.1)" }}>
                     <span style={{ fontSize:9, fontWeight:700, color:c.gn, fontVariantNumeric:"tabular-nums" }}>
-                      Profit <span style={{ fontWeight:800 }}>+$0.00</span>
+                      Profit <span style={{ fontWeight:800 }}>{omRewardSummaryTxt}</span>
                     </span>
                     <div style={{ flex:1 }}/>
                     {tpRows.length > 1 && (
-                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                        Avg <span style={{ color:c.ts, fontWeight:700 }}>{avgTpPrice}</span>
+                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", textAlign:"right", lineHeight:1.25, maxWidth:160 }}>
+                        Avg TP{" "}
+                        <span style={{ color:c.ts, fontWeight:700 }}>{omTpAvgLotsTxt || "—"}</span>
+                        {" lots"}
+                        {omTpWapPriceTxt ? (
+                          <>
+                            {" · "}
+                            <span style={{ color:c.ts, fontWeight:600 }}>{omTpWapPriceTxt}</span>
+                          </>
+                        ) : null}
                       </span>
                     )}
                     <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                      Dist <span style={{ color:c.ts, fontWeight:700 }}>0.00</span>
+                      Dist <span style={{ color:c.ts, fontWeight:700 }}>{omTpDistTxt}</span>
                       {" "}{currentSymbol.type==="futures" ? "ticks" : "pips"}
                     </span>
                   </div>
@@ -11577,7 +17791,8 @@ const TalariaV8b = () => {
               e.target.value = "";
             }}/>
 
-          {/* Pre-Trade Tags */}
+          {/* Pre-Trade Tags — labels/options from Strategies Lab (same as order-manager pre-trade variables) */}
+          {tagDefs.length > 0 && (
           <div style={{ flexShrink:0, padding:"4px 8px 6px" }}>
             <div style={{ border:"1px solid rgba(255,140,66,0.22)", background:"rgba(255,140,66,0.02)" }}>
               {/* Header */}
@@ -11587,8 +17802,15 @@ const TalariaV8b = () => {
                          background:swHov==="tags-hdr"?"rgba(255,140,66,0.03)":"transparent", transition:"background 0.12s" }}>
                 <div style={{ width:5, height:5, background:"#FF8C42", transform:"rotate(45deg)", flexShrink:0 }}/>
                 <span style={{ fontSize:10, fontWeight:800, color:"#FF8C42", letterSpacing:"0.06em" }}>PRE-TRADE TAGS</span>
-                {(() => { const done = Object.keys(tagSels).filter(k=>tagSels[k]!==undefined&&tagSels[k]!=="").length;
-                  return done > 0 && <span style={{ padding:"0 4px", fontSize:9, fontWeight:800, color:"#FF8C42", background:"rgba(255,140,66,0.15)" }}>{done}</span>; })()}
+                {(() => {
+                  const done = Object.keys(tagSels).filter((k) => {
+                    const v = tagSels[k];
+                    if (v === undefined || v === "") return false;
+                    if (v === "—") return false;
+                    return true;
+                  }).length;
+                  return done > 0 && <span style={{ padding:"0 4px", fontSize:9, fontWeight:800, color:"#FF8C42", background:"rgba(255,140,66,0.15)" }}>{done}</span>;
+                })()}
                 <div style={{ flex:1 }}/>
                 <svg width={7} height={4} viewBox="0 0 8 5" fill="none" style={{ color:"#FF8C42", opacity:0.6, transition:"transform 0.15s", transform:tagsOpen?"rotate(180deg)":"rotate(0deg)" }}>
                   <polyline points="0.5,0.5 4,4.5 7.5,0.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -11669,6 +17891,7 @@ const TalariaV8b = () => {
               )}
             </div>
           </div>
+          )}
 
           {/* Screenshots */}
           <div style={{ flexShrink:0, padding:"4px 8px 5px", gridColumn:isWide?"1 / -1":undefined }}>
@@ -11804,7 +18027,13 @@ const TalariaV8b = () => {
             const isPr   = swHov==="exec-btn_dn";
             return (
               <div style={{ padding:"0 8px 6px", flexShrink:0 }}>
-                <div onClick={()=>{}} data-nodrag="1"
+                <div onClick={() => {
+                    const list = screenshots.map((s) => ({ dataUrl: s.dataUrl, name: s.name || "" }));
+                    if (typeof window !== "undefined") {
+                      window.__talariaV9RailScreenshots = list.length ? list : null;
+                    }
+                    document.getElementById("placeOrderButton")?.click();
+                  }} data-nodrag="1"
                   onMouseEnter={()=>setSwHov("exec-btn")} onMouseLeave={()=>setSwHov(null)}
                   onMouseDown={()=>setSwHov("exec-btn_dn")} onMouseUp={()=>setSwHov("exec-btn")}
                   style={{ width:"100%", height:36, cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
@@ -11821,6 +18050,7 @@ const TalariaV8b = () => {
               </div>
             );
           })()}
+
 
           {/* Resize handles — only when detached */}
           {panelDetached && <>
@@ -11990,7 +18220,7 @@ const TalariaV8b = () => {
         const tplOpts = [...(customTemplates.length>0?[{divider:"SAVED"},...customTemplates,{divider:"DEFAULT"}]:[]),...defaultTplOpts];
         const cfgMap = { gridStyle:{key:"gridLineStyle",type:"style"}, gridThick:{key:"gridLineThickness",type:"thick"}, priceStyle:{key:"priceLineStyle",type:"style"}, priceThick:{key:"priceLineThickness",type:"thick"}, chartTimeFormat:{key:"timeFormat",type:"select",opts:["24h","12h"]}, chartTimezone:{key:"timezone",type:"select",opts:["UTC","UTC+3 (Riyadh)","UTC+4 (Dubai)","UTC+5:30 (IST)","UTC+8 (Asia)","UTC-5 (EST)","UTC-8 (PST)"]}, chartPrecision:{key:"precision",type:"select",opts:["0.00000","0.0000","0.000","0.00","0.0"]}, chartTemplate:{key:"chartTemplate",type:"template",opts:tplOpts} };
         if (settDrop==="profLang") return <>
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:9250,width:settDropPos.w||140,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
+          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||140,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
               <div style={{padding:"5px 12px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>LANGUAGE</div>
@@ -12011,7 +18241,7 @@ const TalariaV8b = () => {
           </div>
         </>;
         if (settDrop==="loadTemplate") return <>
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:9250,width:settDropPos.w||150,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
+          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||150,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
               <div style={{padding:"5px 12px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>SAVED TEMPLATES</div>
@@ -12044,7 +18274,7 @@ const TalariaV8b = () => {
         const styleOpts = [{val:"solid",dash:"none"},{val:"dashed",dash:"5,4"},{val:"dotted",dash:"1.5,4"},{val:"longDash",dash:"10,5"}];
         const thickOpts = [0.5,1,1.5,2,2.5,3];
         return <>
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:9250,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease",...(settDropPos.w?{width:settDropPos.w}:{minWidth:80})}}>
+          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease",...(settDropPos.w?{width:settDropPos.w}:{minWidth:80})}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
               {cfg.type==="select" && cfg.opts.map(opt=>{
@@ -12115,26 +18345,6 @@ const TalariaV8b = () => {
           </div>
         </>;
       })()}
-      {cpDragging && (
-        <div
-          onMouseMove={(e)=>{
-            if(!cpDragRect) return;
-            if(cpDragging==='sv'){
-              const ns=Math.max(0,Math.min(1,(e.clientX-cpDragRect.left)/cpDragRect.width));
-              const nv=1-Math.max(0,Math.min(1,(e.clientY-cpDragRect.top)/cpDragRect.height));
-              setCpS(ns); setCpV(nv); cpApply(cpH,ns,nv,cpA);
-            } else if(cpDragging==='hue'){
-              const nh=Math.max(0,Math.min(360,((e.clientX-cpDragRect.left)/cpDragRect.width)*360));
-              setCpH(nh); cpApply(nh,cpS,cpV,cpA);
-            } else if(cpDragging==='alpha'){
-              const na=Math.max(0,Math.min(1,(e.clientX-cpDragRect.left)/cpDragRect.width));
-              setCpA(na); cpApply(cpH,cpS,cpV,na);
-            }
-          }}
-          onMouseUp={()=>setCpDragging(null)}
-          style={{position:"fixed",inset:0,zIndex:9300,cursor:cpDragging==='sv'?'crosshair':'ew-resize'}}
-        />
-      )}
       {/* ── Go To Calendar sub-window ── */}
       {gotoCalOpen&&(()=>{
         const selDate=new Date(gotoNewDate+"T00:00:00");
@@ -12147,10 +18357,10 @@ const TalariaV8b = () => {
           color:isSel?"#fff":isH?c.acL:c.ts,
           transition:"background 0.08s,color 0.08s"});
         const NavBtn=({onClick,label})=>(
-          <button onClick={e=>{e.stopPropagation();onClick();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"0 7px",fontSize:16,fontFamily:F,lineHeight:1}}>{label}</button>
+          <button type="button" onClick={e=>{e.stopPropagation();onClick();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"0 7px",fontSize:16,fontFamily:F,lineHeight:1}}>{label}</button>
         );
         return(
-        <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:gotoCalPos.top,left:gotoCalPos.left,zIndex:9200,width:224,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 40px rgba(0,0,0,0.8),0 0 14px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.12s ease both"}}>
+        <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:gotoCalPos.top,left:gotoCalPos.left,zIndex:9200,width:224,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 40px rgba(0,0,0,0.8),0 0 14px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.12s ease both"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div style={{display:"flex",alignItems:"center",padding:"7px 10px 6px"}}>
             <span style={{fontSize:13,fontWeight:700,color:c.tx,flex:1}}>Date</span>
@@ -12260,22 +18470,22 @@ const TalariaV8b = () => {
         const setMn=v=>{setGotoNewTime(String(tH).padStart(2,"0")+":"+String(v).padStart(2,"0"));setGotoTimeInput(fmtTI(tH,v));};
         const SpinCol=({val,onUp,onDn})=>(
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
-            <button onClick={e=>{e.stopPropagation();onUp();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"1px 7px",fontFamily:F,fontSize:11,lineHeight:1,transition:"color 0.1s"}}
+            <button type="button" onClick={e=>{e.stopPropagation();onUp();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"1px 7px",fontFamily:F,fontSize:11,lineHeight:1,transition:"color 0.1s"}}
               onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}>▲</button>
             <div style={{fontSize:14,fontWeight:700,color:c.tx,fontVariantNumeric:"tabular-nums",minWidth:22,textAlign:"center"}}>{val}</div>
-            <button onClick={e=>{e.stopPropagation();onDn();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"1px 7px",fontFamily:F,fontSize:11,lineHeight:1,transition:"color 0.1s"}}
+            <button type="button" onClick={e=>{e.stopPropagation();onDn();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"1px 7px",fontFamily:F,fontSize:11,lineHeight:1,transition:"color 0.1s"}}
               onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}>▼</button>
           </div>
         );
         return(
-        <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:gotoTimePos.top,left:gotoTimePos.left,zIndex:9200,width:use12?122:100,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 28px rgba(0,0,0,0.75),0 0 10px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.12s ease both"}}>
+        <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:gotoTimePos.top,left:gotoTimePos.left,zIndex:9200,width:use12?122:100,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 28px rgba(0,0,0,0.75),0 0 10px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.12s ease both"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,padding:"7px 8px 4px"}}>
             <SpinCol val={use12?String(disp12H).padStart(2,"0"):String(tH).padStart(2,"0")} onUp={()=>setH((tH+1)%24)} onDn={()=>setH((tH-1+24)%24)}/>
             <span style={{fontSize:14,fontWeight:700,color:c.ts,marginBottom:2}}>:</span>
             <SpinCol val={String(tMn).padStart(2,"0")} onUp={()=>setMn((tMn+1)%60)} onDn={()=>setMn((tMn-1+60)%60)}/>
             {use12&&(
-              <button onClick={e=>{e.stopPropagation();setH(isPM?tH-12:tH+12);}}
+              <button type="button" onClick={e=>{e.stopPropagation();setH(isPM?tH-12:tH+12);}}
                 style={{marginLeft:1,padding:"3px 5px",background:isPM?"rgba(74,106,255,0.15)":"rgba(140,160,255,0.06)",
                   border:`1px solid ${isPM?c.acL:c.br}`,color:isPM?c.acL:c.ts,cursor:"default",
                   fontSize:10,fontWeight:700,fontFamily:F,letterSpacing:"0.04em",lineHeight:1,transition:"all 0.12s"}}>
@@ -12284,13 +18494,13 @@ const TalariaV8b = () => {
             )}
           </div>
           <div style={{padding:"3px 8px 7px"}}>
-            <button onClick={e=>{e.stopPropagation();setGotoTimeOpen(false);}} style={{width:"100%",padding:"4px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.04em"}}>Done</button>
+            <button type="button" onClick={e=>{e.stopPropagation();setGotoTimeOpen(false);}} style={{width:"100%",padding:"4px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.04em"}}>Done</button>
           </div>
         </div>
         );
       })()}
 
-      {(colorPicker || closing.has("cp")) && <>
+      {(colorPicker || closing.has("cp")) && typeof document !== "undefined" && createPortal(
         <ColorPickerPopup
           pos={cpPos} h={cpH} s={cpS} v={cpV} a={cpA} hexStr={cpHex} c={c} F={F}
           onSVChange={(ns,nv)=>{ setCpS(ns); setCpV(nv); cpApply(cpH,ns,nv,cpA); }}
@@ -12303,9 +18513,10 @@ const TalariaV8b = () => {
           hideAlpha={colorPicker==="tlTextColor"||colorPicker==="tlLineColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"}
           animation={closing.has("cp")?"tlrPopOut 0.15s ease both":"tlrPopIn 0.15s ease"}
         />
-      </>}
+      , document.body)}
       {dragging && (
         <div
+          data-sdrop="1"
           onMouseMove={(e) => {
             const dx = e.clientX - dragging.startX;
             const dy = e.clientY - dragging.startY;
@@ -12649,8 +18860,8 @@ const TalariaV8b = () => {
             </div>
             {/* Footer */}
             <div style={{padding:"7px 12px",borderTop:`1px solid ${c.br}`,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0,background:"rgba(255,255,255,0.01)"}}>
-              <B hk="tc-cancel" onClick={()=>setTradeCard(null)}>Cancel</B>
-              <B primary hk="tc-save" onClick={saveCard}>Save</B>
+              <B hk="tc-cancel" fireOnPointerDown onClick={()=>setTradeCard(null)}>Cancel</B>
+              <B primary hk="tc-save" fireOnPointerDown onClick={saveCard}>Save</B>
             </div>
             <input ref={tcFileRef} type="file" accept="image/*" style={{display:"none"}}
               onChange={e=>{const f=e.target.files[0];if(!f)return;const reader=new FileReader();reader.onload=ev=>setTradeScreenshots(prev=>{const n={...prev};const cur={...(n[r.id]||{})};cur[tcSsSlot]=[...(cur[tcSsSlot]||[]),ev.target.result];n[r.id]=cur;return n;});reader.readAsDataURL(f);e.target.value="";}}/>
@@ -12917,4 +19128,4 @@ const TalariaV8b = () => {
   );
 };
 
-export default TalariaV8b;
+export default TalariaV8bLive;
