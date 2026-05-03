@@ -1,4 +1,12 @@
 {
+  "name": "talaria-workspace",
+  "private": true,
+  "description": "Root convenience scripts; V9 live UI is built only from chart v 1.4/talaria-design (npm run build:chart-v9).",
+  "scripts": {
+    "build:chart-v9": "npm run build:live --prefix \"chart v 1.4/talaria-design\"",
+    "build:homepage": "npm run build --prefix homepage",
+    "build:web": "npm run build:chart-v9 && npm run build:homepage"
+  },
   "dependencies": {
     "dukascopy-node": "^1.46.3",
     "framer-motion": "^12.38.0"

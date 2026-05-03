@@ -1,8 +1,12 @@
 /**
  * After `vite build --config vite.config.live.js`, chart output lives at
- * `chart v 1.4/chart/dist-v9/`. The Next.js design iframe loads the same
- * tree from `homepage/public/chart/dist-v9/` — if it drifts, users see an
- * old bundle (e.g. stale mock trades) while FastAPI `/chart/index.html` is fine.
+ * `chart v 1.4/chart/dist-v9/`. This copies it to `homepage/public/chart/dist-v9/`
+ * so `next build` ships the same files in `out/`.
+ *
+ * Single workflow for V9 + TalariaV8bLive.jsx:
+ *   — Edit only `talaria-design/src/` and `talaria-design/live/`.
+ *   — Run `npm run build:live` here (or `npm run build:chart-v9` from repo root).
+ *   — Do not maintain a second Vite live tree under `chart/` (removed to prevent drift).
  */
 import fs from "fs";
 import path from "path";
