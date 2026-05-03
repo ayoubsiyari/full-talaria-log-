@@ -7109,8 +7109,8 @@ const TalariaV8bLive = () => {
     const hArr = hov === t.id + "-arr";
     const arrCol = act ? accentCol : hArr ? c.tx : c.tm;
     return (
-      <div key={t.id} style={{ position: "relative", width: "100%", display: "flex", flexDirection: "row", alignItems: "stretch", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
-        {/* Icon button — selects the tool (split from chevron so arrow opens menu only) */}
+      <div key={t.id} style={{ position: "relative", width: "100%", display: "flex", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
+        {/* Full-width hit target — matches TalariaV8b.jsx; chevron overlays right edge (does not shrink icon row). Live uses Z=1 (no root zoom); icon s≈18 offsets the mock’s zoom:1.05. */}
         <button
           type="button"
           ref={ref}
@@ -7166,24 +7166,23 @@ const TalariaV8bLive = () => {
             else { setTool(t.id); setDropdown(null); }
           }}
           style={{
-            flex: 1, minWidth: 0, height: 32, display: "flex", alignItems: "center", justifyContent: "flex-end",
+            width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "flex-end",
             background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
             border: "none", cursor: "default", color: pressCol,
-            padding: 0, paddingLeft: 2, paddingRight: 4,
+            padding: 0, paddingRight: 10,
             boxSizing: "border-box", touchAction: "manipulation",
             transition: "color 0.15s ease, background 0.12s", position: "relative", fontFamily: F,
           }}>
           {/* pointer-events:none on icon so the whole <button type="button"> hit box counts — SVG paths alone miss gaps between strokes */}
           {t.id === "pinbar"
-            ? <span style={{ display: "flex", flex: 1, width: "100%", minHeight: 32, alignItems: "center", justifyContent: "flex-end", pointerEvents: "none", transform: h && !act ? "rotate(-25deg) scale(1.15)" : "scale(1)", transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
-            : <span style={{ display: "flex", flex: 1, width: "100%", minHeight: 32, alignItems: "center", justifyContent: "flex-end", pointerEvents: "none" }}><I n={railIcon} s={17} cl={pressCol}/></span>
+            ? <span style={{ display: "flex", pointerEvents: "none", transform: h && !act ? "rotate(-25deg) scale(1.15)" : "scale(1)", transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={18} cl={pressCol}/></span>
+            : <span style={{ display: "flex", pointerEvents: "none" }}><I n={railIcon} s={18} cl={pressCol}/></span>
           }
         </button>
         {act && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 6px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
         {h && !act && !isPressed && <div style={{ position: "absolute", left: 3, top: "25%", bottom: "25%", width: 1, background: `linear-gradient(180deg, transparent, `+c.hvLn+`, transparent)`, pointerEvents: "none", zIndex: 2 }}/>}
         {isPressed && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}`, pointerEvents: "none", zIndex: 2 }}/>}
-        {/* Chevron or same-width spacer so Lock / Pinned / Undo / Redo align with split rows */}
-        {t.dd ? (
+        {t.dd && (
           <button
             type="button"
             aria-label="Open tool menu"
@@ -7196,19 +7195,18 @@ const TalariaV8bLive = () => {
               openDd(e.currentTarget.parentElement);
             }}
             style={{
-              width: 14, minWidth: 14, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+              position: "absolute", right: 0, top: 0,
+              width: 8, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
               background: hArr ? "rgba(255,255,255,0.06)" : "transparent",
               border: "none", cursor: "default",
-              padding: "0 2px", boxSizing: "border-box", touchAction: "manipulation",
+              padding: 0, flexShrink: 0,
               transition: "background 0.12s", fontFamily: F,
-              zIndex: 2,
+              zIndex: 3, touchAction: "manipulation",
             }}>
             <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{ transition: "fill 0.12s", pointerEvents: "none", display: "block" }}>
               <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
             </svg>
           </button>
-        ) : (
-          <div style={{ width: 14, height: 32, flexShrink: 0, pointerEvents: "none" }} aria-hidden />
         )}
         {h && !ddOpen && !t.dd && <div style={{ position: "absolute", left: "calc(100% + 10px)", top: "50%", transform: "translateY(-50%)", background: c.el, border: `1px solid ${c.brH}`, padding: "4px 10px", fontSize: 12, fontWeight: 600, fontFamily: F, color: c.tx, whiteSpace: "nowrap", zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.6)", borderLeft: `2px solid ${act ? accentCol : c.brH}`, pointerEvents: "none" }}>{t.label}</div>}
       </div>
@@ -14753,7 +14751,7 @@ const TalariaV8bLive = () => {
         ))}
       </div>
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
-        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, paddingLeft: 8, overflowY: "auto", overflowX: "hidden" }}>
+        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 38, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, paddingLeft: 8, overflowY: "auto", overflowX: "hidden" }}>
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%" }}>
               {gi === toolGroups.length - 1 && <div style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>}
