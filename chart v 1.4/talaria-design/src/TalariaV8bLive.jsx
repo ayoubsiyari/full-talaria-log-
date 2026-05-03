@@ -2645,6 +2645,8 @@ const TalariaV8bLive = () => {
 
   // Journal analytics: session-saved trades (`tradeJournal` / `closedPositions`) + balance/equity from orderManager;
   // merges with `/api/journal` when the backend responds.
+  // IMPORTANT: do not depend on `omTradeRev` here — it bumps every ~800ms for the trades table and would cancel
+  // every in-flight fetch, leaving `loading` stuck true and flashing the panel (issue reported May 2026).
   useEffect(() => {
     if (btmTab !== "analytics") return undefined;
     let cancelled = false;
@@ -2705,6 +2707,19 @@ const TalariaV8bLive = () => {
     return () => {
       cancelled = true;
     };
+  }, [btmTab]);
+
+  // Live session stats on Analytics tab: merge fresh orderManager balances / closed trades into the last-loaded
+  // journal list without restarting the remote fetch (see note on `omTradeRev` above).
+  useEffect(() => {
+    if (btmTab !== "analytics") return undefined;
+    setJournalAnalytics((prev) => {
+      const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+      const freshLocal = buildJournalAnalyticsFromOrderManager(om);
+      if (!prev || !Array.isArray(prev.list)) return freshLocal;
+      return mergeJournalAnalyticsRemoteLocal({ list: prev.list }, freshLocal);
+    });
+    return undefined;
   }, [btmTab, omTradeRev]);
 
   // Ctrl+S — open V9 screenshot panel (same as camera), not the legacy DOM modal
