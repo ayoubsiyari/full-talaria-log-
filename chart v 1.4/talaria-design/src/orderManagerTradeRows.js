@@ -119,6 +119,84 @@ function attachJournalTagsToRow(om, row, order) {
   row.postTags = extractPostTagsFromSources(j);
 }
 
+function coalesceTimeMs(...vals) {
+  for (const v of vals) {
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string" && v.trim()) {
+      const n = Date.parse(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return NaN;
+}
+
+/** Closed trades that exist only in session-persisted `tradeJournal` (DB blob) still appear in History. */
+function appendJournalOnlyClosedRows(om, rows, theme, ctx) {
+  const seenIds = new Set(rows.map((r) => r.omId).filter((id) => id != null));
+  const journal = Array.isArray(om?.tradeJournal) ? om.tradeJournal : [];
+  const { fmtPx, fmtQty, sideStr, typeLabel, rowNowMs } = ctx;
+
+  journal.forEach((j) => {
+    const tidRaw = j.tradeId ?? j.id;
+    if (tidRaw == null || tidRaw === "") return;
+    const tid = typeof tidRaw === "number" ? tidRaw : Number.parseInt(String(tidRaw), 10);
+    if (!Number.isFinite(tid)) return;
+    if (seenIds.has(tid)) return;
+
+    const tClose = coalesceTimeMs(j.closeTime, j.exitTime);
+    const tOpen = coalesceTimeMs(j.openTime, j.entryTime, j.entryDate);
+    const exitPx = j.closePrice ?? j.exitPrice;
+    const entryPx = j.openPrice ?? j.entryPrice;
+
+    const hasExit =
+      (exitPx != null && Number.isFinite(Number.parseFloat(exitPx))) || Number.isFinite(tClose);
+    if (!hasExit) return;
+
+    seenIds.add(tid);
+
+    const sortMs = Number.isFinite(tClose) ? tClose : Number.isFinite(tOpen) ? tOpen : 0;
+    const pnlN = Number.parseFloat(j.netPnL ?? j.realizedPnL ?? j.pnl ?? 0);
+    const { text: pnlText, pc } = v9UsdPnLParts(pnlN);
+
+    const tpTxt =
+      j.takeProfit != null && Number.isFinite(Number.parseFloat(j.takeProfit))
+        ? fmtPx(j.takeProfit)
+        : "—";
+    const slTxt =
+      j.stopLoss != null && Number.isFinite(Number.parseFloat(j.stopLoss)) ? fmtPx(j.stopLoss) : "—";
+    const ot = j.orderType ? typeLabel(j.orderType) : "Market";
+
+    rows.push({
+      id: `#${tid}`,
+      omId: tid,
+      _sortMs: sortMs,
+      time: v9FormatTradeTime(Number.isFinite(tOpen) ? tOpen : Number.isFinite(tClose) ? tClose : sortMs),
+      status: "closed",
+      sym: v9DisplaySymbol(j.ticker || j.symbol),
+      side: sideStr(j.type || j.direction),
+      sz: fmtQty(j.quantity),
+      type: ot,
+      entry: fmtPx(entryPx),
+      exit: fmtPx(exitPx),
+      pnl: pnlText,
+      pc: pc ? theme[pc] : theme.tm,
+      tp: tpTxt,
+      sl: slTxt,
+      dur: v9TradeDuration(tOpen, tClose, rowNowMs),
+      preTags: extractPreTagsFromSources(j, null),
+      postTags: extractPostTagsFromSources(j),
+      mae:
+        j.mae != null && Number.isFinite(Number.parseFloat(j.mae))
+          ? fmtPx(j.mae)
+          : undefined,
+      mfe:
+        j.mfe != null && Number.isFinite(Number.parseFloat(j.mfe))
+          ? fmtPx(j.mfe)
+          : undefined,
+    });
+  });
+}
+
 /**
  * @param {object|null} om - window.chart.orderManager
  * @param {{ gn: string, rd: string, tm: string }} theme - palette fragment `c`
@@ -256,6 +334,8 @@ export function buildLiveTradeRowsFromOrderManager(om, theme) {
     attachJournalTagsToRow(om, row, o);
     rows.push(row);
   });
+
+  appendJournalOnlyClosedRows(om, rows, theme, { fmtPx, fmtQty, sideStr, typeLabel, rowNowMs });
 
   rows.sort((a, b) => (b._sortMs || 0) - (a._sortMs || 0));
   return rows;
