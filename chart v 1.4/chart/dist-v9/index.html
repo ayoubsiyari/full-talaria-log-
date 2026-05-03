@@ -286,12 +286,13 @@
             pointer-events: none;
             max-width: min(560px, 92%);
         }
+        /* Stack symbol row above OHLC row (V8-style); row flex put O H L C beside “ES · 1m”. */
         #chart-container #chartWrapper .ohlc-header,
         #panels-container .ohlc-header {
             display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 8px;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 6px;
         }
         #chart-container #chartWrapper .ohlc-stats,
         #panels-container .ohlc-stats {
@@ -299,6 +300,7 @@
             align-items: center;
             flex-wrap: wrap;
             gap: 6px;
+            max-width: 100%;
         }
         #chart-container #chartWrapper .ohlc-item,
         #panels-container .ohlc-item {
