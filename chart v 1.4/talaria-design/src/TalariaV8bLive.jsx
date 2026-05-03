@@ -15418,6 +15418,14 @@ const TalariaV8bLive = () => {
                 <div id="priceAxisZone" className="axis-cursor-zone price-axis-zone" style={{ position: "absolute", right: 0, top: 5, bottom: 30, width: 14, background: "transparent", zIndex: 10, cursor: "ns-resize", pointerEvents: "auto" }} />
                 <div id="timeAxisZone"  className="axis-cursor-zone time-axis-zone"  style={{ position: "absolute", left: 0, right: 60, bottom: 0, height: 10, background: "transparent", zIndex: 10, cursor: "ew-resize", pointerEvents: "auto" }} />
 
+                {/* Replay “follow latest candle” — same `#replayFollow` id as legacy-index.html; replay-system shows this when replay is on and the last bar is off-screen after panning. */}
+                <button type="button" id="replayFollow" className="replay-follow-float-btn" title="Follow Latest Candle" aria-label="Follow latest candle">
+                  <svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth={0.5} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 4v16" fill="none" strokeWidth={2} />
+                    <path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z" />
+                  </svg>
+                </button>
+
                 {/* Crosshair elements — chart.js positions these on mousemove */}
                 <div className="crosshair-vertical" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
                 <div className="crosshair-horizontal" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />

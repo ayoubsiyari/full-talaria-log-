@@ -361,6 +361,55 @@
            two duplicate toolbars on every drawing select. */
         #drawing-toolbar { display: none !important; }
 
+        /* Replay follow-latest — matches legacy `#replayFollow` (chart/legacy-index.html ~42867).
+           replay-system.js sets inline display:flex/none; avoid putting display in React inline styles
+           so re-renders don’t reset visibility after replay attaches handlers on DOMContentLoaded. */
+        #chart-container #chartWrapper #replayFollow.replay-follow-float-btn,
+        #chart-container #chartWrapper button#replayFollow,
+        #panels-container .panel-chart-container .panel-follow-btn {
+            position: absolute;
+            bottom: 70px;
+            right: 120px;
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            background: rgba(45, 55, 72, 0.45);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1.5px solid rgba(160, 174, 192, 0.2);
+            border-radius: 50%;
+            color: rgba(160, 174, 192, 0.7);
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+            transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+            animation: tlrReplayFollowPulse 2.5s ease-in-out infinite;
+            pointer-events: auto;
+        }
+        #chart-container #chartWrapper #replayFollow svg,
+        #panels-container .panel-chart-container .panel-follow-btn svg {
+            width: 20px;
+            height: 20px;
+            display: block;
+            flex-shrink: 0;
+        }
+        #chart-container #chartWrapper #replayFollow:hover,
+        #panels-container .panel-chart-container .panel-follow-btn:hover {
+            background: rgba(45, 55, 72, 0.7);
+            border-color: rgba(160, 174, 192, 0.4);
+            color: #e2e8f0;
+            transform: scale(1.1);
+            animation: none;
+            opacity: 1;
+        }
+        @keyframes tlrReplayFollowPulse {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+
         /* Backtesting / replay loading overlay (same role as chart/legacy-index.html) */
         #backtestingLoader {
             position: fixed; inset: 0; z-index: 100000;

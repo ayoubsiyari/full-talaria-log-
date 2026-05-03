@@ -266,8 +266,29 @@ class ReplaySystem {
             });
         }
 
-        if (this.followBtn) {
+        if (this.followBtn && !this.followBtn.dataset.replayFollowBound) {
+            this.followBtn.dataset.replayFollowBound = '1';
             this.followBtn.addEventListener('click', () => this.enableAutoScroll());
+        }
+
+        // V9 mounts `#replayFollow` inside React `#chartWrapper` — can appear after ReplaySystem.setup().
+        if (!this.followBtn) {
+            let tries = 0;
+            const iv = setInterval(() => {
+                tries++;
+                const btn = document.getElementById('replayFollow');
+                if (btn && !btn.dataset.replayFollowBound) {
+                    btn.dataset.replayFollowBound = '1';
+                    btn.addEventListener('click', () => this.enableAutoScroll());
+                    this.followBtn = btn;
+                    clearInterval(iv);
+                    try {
+                        this.updateAutoScrollIndicator();
+                    } catch (_) {}
+                } else if (tries >= 60) {
+                    clearInterval(iv);
+                }
+            }, 50);
         }
     }
 
