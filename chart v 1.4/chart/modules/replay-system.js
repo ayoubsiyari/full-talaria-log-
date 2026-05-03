@@ -4324,7 +4324,16 @@ class ReplaySystem {
             document.querySelector('.chart-wrapper') ||
             this.chart?.canvas?.closest('#chartWrapper') ||
             this.chart?.canvas?.parentElement;
-        if (!btn || !wrap) return;
+        if (!btn) return;
+        if (!wrap) {
+            btn.style.position = 'fixed';
+            btn.style.right = '24px';
+            btn.style.bottom = 'calc(120px + env(safe-area-inset-bottom, 0px))';
+            btn.style.left = 'auto';
+            btn.style.top = 'auto';
+            btn.style.zIndex = '2147483646';
+            return;
+        }
         const r = wrap.getBoundingClientRect();
         const padR = 120;
         const padB = 70;
