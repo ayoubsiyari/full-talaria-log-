@@ -3890,7 +3890,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429w-curve-bg";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260505-rail-52-ic24";
   }, []);
 
   useEffect(() => {
@@ -7100,7 +7100,7 @@ const TalariaV8bLive = () => {
 
     const openDd = (el) => {
       const rect = el.getBoundingClientRect();
-      setDdPos({ top: rect.top / Z, left: 42 });
+      setDdPos({ top: rect.top / Z, left: 52 });
       if(logoMenu)closePopup(setLogoMenu,"logoMenu");if(replayOpts)closePopup(setReplayOpts,"replayOpts");if(gotoOpen)closePopup(setGotoOpen,"goto");if(symbolOpen)closePopup(setSymbolOpen,"symbol");if(chartTypeOpen)closePopup(setChartTypeOpen,"chartType");if(tfOpen)closePopup(setTfOpen,"tf");setTfUnitOpen(false);
       if (dropdown === t.id) { closeDropdown(); } else { setDropdown(t.id); }
     };
@@ -7110,7 +7110,7 @@ const TalariaV8bLive = () => {
     const arrCol = act ? accentCol : hArr ? c.tx : c.tm;
     return (
       <div key={t.id} style={{ position: "relative", width: "100%", display: "flex", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
-        {/* Full-width hit target — matches TalariaV8b.jsx (effective ~zoom 1.05 via taller/wider rail + s=20 icons). */}
+        {/* Left rail: sized to match TalariaV8b.jsx appearance (no root zoom); icons centered so the column looks filled. */}
         <button
           type="button"
           ref={ref}
@@ -7166,17 +7166,17 @@ const TalariaV8bLive = () => {
             else { setTool(t.id); setDropdown(null); }
           }}
           style={{
-            width: "100%", height: 34, display: "flex", alignItems: "center", justifyContent: "flex-end",
+            width: "100%", height: 38, display: "flex", alignItems: "center", justifyContent: "center",
             background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
             border: "none", cursor: "default", color: pressCol,
-            padding: 0, paddingRight: 10,
+            padding: 0, paddingRight: t.dd ? 14 : 10,
             boxSizing: "border-box", touchAction: "manipulation",
             transition: "color 0.15s ease, background 0.12s", position: "relative", fontFamily: F,
           }}>
           {/* pointer-events:none on icon so the whole <button type="button"> hit box counts — SVG paths alone miss gaps between strokes */}
           {t.id === "pinbar"
-            ? <span style={{ display: "flex", pointerEvents: "none", transform: h && !act ? "rotate(-25deg) scale(1.15)" : "scale(1)", transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={20} cl={pressCol}/></span>
-            : <span style={{ display: "flex", pointerEvents: "none" }}><I n={railIcon} s={20} cl={pressCol}/></span>
+            ? <span style={{ display: "flex", pointerEvents: "none", transform: h && !act ? "rotate(-25deg) scale(1.15)" : "scale(1)", transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={24} cl={pressCol}/></span>
+            : <span style={{ display: "flex", pointerEvents: "none" }}><I n={railIcon} s={24} cl={pressCol}/></span>
           }
         </button>
         {act && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 6px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
@@ -7196,14 +7196,14 @@ const TalariaV8bLive = () => {
             }}
             style={{
               position: "absolute", right: 0, top: 0,
-              width: 8, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
+              width: 11, height: 38, display: "flex", alignItems: "center", justifyContent: "center",
               background: hArr ? "rgba(255,255,255,0.06)" : "transparent",
               border: "none", cursor: "default",
               padding: 0, flexShrink: 0,
               transition: "background 0.12s", fontFamily: F,
               zIndex: 3, touchAction: "manipulation",
             }}>
-            <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{ transition: "fill 0.12s", pointerEvents: "none", display: "block" }}>
+            <svg width={6} height={6} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{ transition: "fill 0.12s", pointerEvents: "none", display: "block" }}>
               <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
             </svg>
           </button>
@@ -12491,10 +12491,10 @@ const TalariaV8bLive = () => {
                   <div key={pbKey}
                     onMouseEnter={()=>setHov(`pb-${i}`)} onMouseLeave={()=>setHov(null)}
                     {...modalPointerActivate(() => { setTool(t.parentId||t.id); if(t.parentId) setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [t.parentId]: t })); })}
-                    style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
+                    style={{width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
                       background:isAct?"rgba(74,106,255,0.10)":isH?c.hv:"transparent",
                       transition:"background 0.12s"}}>
-                    <I n={t.icon} s={16} cl={col}/>
+                    <I n={t.icon} s={20} cl={col}/>
                     {isAct && <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                     {isH && !isAct && <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
                   </div>
@@ -14751,7 +14751,7 @@ const TalariaV8bLive = () => {
         ))}
       </div>
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
-        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 42, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, paddingLeft: 8, overflowY: "auto", overflowX: "hidden" }}>
+        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 52, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 4, paddingLeft: 4, overflowY: "auto", overflowX: "hidden" }}>
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%" }}>
               {gi === toolGroups.length - 1 && <div style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>}
@@ -14766,12 +14766,12 @@ const TalariaV8bLive = () => {
           {/* Dark / Light mode toggle */}
           <div onClick={(e) => { e.stopPropagation(); setDarkMode(v => !v); }}
             onMouseEnter={() => setHov("sb-theme")} onMouseLeave={() => setHov(null)}
-            style={{ width:"100%", height:34, display:"flex", alignItems:"center", justifyContent:"flex-end",
+            style={{ width:"100%", height:38, display:"flex", alignItems:"center", justifyContent:"center",
               paddingRight:10, boxSizing:"border-box", cursor:"default", position:"relative",
               background: hov==="sb-theme" ? c.hv : "transparent",
               transition:"background 0.12s" }}>
             {darkMode ? (
-              <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={hov==="sb-theme"?c.tx:c.ts} strokeWidth="1.8" strokeLinecap="round">
+              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={hov==="sb-theme"?c.tx:c.ts} strokeWidth="1.8" strokeLinecap="round">
                 <circle cx="12" cy="12" r="4.5"/>
                 <line x1="12" y1="2" x2="12" y2="4.5"/><line x1="12" y1="19.5" x2="12" y2="22"/>
                 <line x1="2" y1="12" x2="4.5" y2="12"/><line x1="19.5" y1="12" x2="22" y2="12"/>
@@ -14779,7 +14779,7 @@ const TalariaV8bLive = () => {
                 <line x1="4.93" y1="19.07" x2="6.64" y2="17.36"/><line x1="17.36" y1="6.64" x2="19.07" y2="4.93"/>
               </svg>
             ) : (
-              <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={hov==="sb-theme"?c.tx:c.ts} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={hov==="sb-theme"?c.tx:c.ts} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
               </svg>
             )}
