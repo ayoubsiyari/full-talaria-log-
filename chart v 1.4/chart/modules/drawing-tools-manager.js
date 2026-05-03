@@ -47,9 +47,11 @@ class DrawingToolsManager {
         this.dragFirstTwoStartScreen = null;
         this._liveSyncDrawingId = null;
         this._liveSyncBroadcasted = false;
-        /** Coalesce cross-panel live previews to one broadcast per animation frame (rectangle drag was freezing UI). */
+        /** Coalesce cross-panel live previews: rAF + min interval (rectangle drag was freezing UI). */
         this._liveSyncPreviewRaf = null;
+        this._liveSyncPreviewTimer = null;
         this._pendingLiveSyncDrawing = null;
+        this._lastLiveSyncFlushAt = 0;
 
         /** Remote sync (session PATCH + cloud API) lags localStorage; drives toolbar save indicator */
         this._drawingsPendingTargets = { session: false, api: false };
@@ -1565,6 +1567,10 @@ class DrawingToolsManager {
             cancelAnimationFrame(this._liveSyncPreviewRaf);
             this._liveSyncPreviewRaf = null;
         }
+        if (this._liveSyncPreviewTimer) {
+            clearTimeout(this._liveSyncPreviewTimer);
+            this._liveSyncPreviewTimer = null;
+        }
         this._pendingLiveSyncDrawing = null;
     }
 
@@ -1577,6 +1583,7 @@ class DrawingToolsManager {
 
         const flush = () => {
             this._liveSyncPreviewRaf = null;
+            this._liveSyncPreviewTimer = null;
             const td = this._pendingLiveSyncDrawing;
             if (!td || !this.chart || !this.chart.broadcastDrawingChange) return;
 
@@ -1590,10 +1597,24 @@ class DrawingToolsManager {
 
             this.chart.broadcastDrawingChange(this._liveSyncBroadcasted ? 'update' : 'add', payload);
             this._liveSyncBroadcasted = true;
+            this._lastLiveSyncFlushAt = performance.now();
         };
 
-        if (this._liveSyncPreviewRaf) return;
-        this._liveSyncPreviewRaf = requestAnimationFrame(flush);
+        const MIN_MS = 56;
+        const now = performance.now();
+        const sinceLast = this._lastLiveSyncFlushAt ? now - this._lastLiveSyncFlushAt : MIN_MS;
+
+        if (this._liveSyncPreviewTimer || this._liveSyncPreviewRaf) return;
+
+        if (sinceLast >= MIN_MS) {
+            this._liveSyncPreviewRaf = requestAnimationFrame(flush);
+        } else {
+            const wait = MIN_MS - sinceLast;
+            this._liveSyncPreviewTimer = setTimeout(() => {
+                this._liveSyncPreviewTimer = null;
+                this._liveSyncPreviewRaf = requestAnimationFrame(flush);
+            }, wait);
+        }
     }
 
     _clearLiveSyncPreview() {
