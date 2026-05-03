@@ -2069,7 +2069,8 @@ class ReplaySystem {
         
         // Filter data and render
         this.updateChartData();
-        
+
+        requestAnimationFrame(() => this.updateAutoScrollIndicator());
     }
 
     /**
@@ -2109,7 +2110,8 @@ class ReplaySystem {
         
         // Hide control bar
         this.hideToolbar();
-        
+
+        this.updateAutoScrollIndicator();
     }
 
     getReplayAutoScrollState(chartInstance = this.chart) {
@@ -4265,19 +4267,29 @@ class ReplaySystem {
     enableAutoScroll() {
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
-        
-        // Immediately hide the follow button
-        if (this.followBtn) {
-            this.followBtn.style.display = 'none';
-        }
-        
-        // Scroll to latest position
+
+        // Scroll to latest position (keep `#replayFollow` visible — it stays on-chart during replay)
         this.updateChartData(true);
-        
-        // Update visual indicator after render completes
+
         requestAnimationFrame(() => {
             this.updateAutoScrollIndicator();
         });
+    }
+
+    /**
+     * Resolve `#replayFollow` after React mounts / remounts V9 chrome (stale refs otherwise).
+     */
+    ensureReplayFollowButton() {
+        let btn = this.followBtn;
+        if (btn && document.body.contains(btn)) return btn;
+        btn = document.getElementById('replayFollow');
+        if (!btn) return null;
+        if (!btn.dataset.replayFollowBound) {
+            btn.dataset.replayFollowBound = '1';
+            btn.addEventListener('click', () => this.enableAutoScroll());
+        }
+        this.followBtn = btn;
+        return btn;
     }
 
     /**
@@ -4308,16 +4320,23 @@ class ReplaySystem {
      * Update visual indicator for auto-scroll status
      */
     updateAutoScrollIndicator() {
-        const showFollow = this.isActive && !this.isLastCandleVisible();
+        const btn = this.ensureReplayFollowButton();
+        const hideChrome = !this.isActive || this.isPickingPoint;
+        const needsAttention =
+            this.isActive &&
+            !hideChrome &&
+            (!this.autoScrollEnabled || !this.isLastCandleVisible());
 
-        if (this.followBtn) {
-            if (!this.isActive) {
-                this.followBtn.style.display = 'none';
-            } else if (showFollow) {
-                this.followBtn.style.display = 'flex';
-                this.followBtn.style.opacity = '1';
+        if (btn) {
+            if (hideChrome) {
+                btn.style.display = 'none';
+                btn.classList.remove('replay-follow--attention');
             } else {
-                this.followBtn.style.display = 'none';
+                btn.style.display = 'flex';
+                btn.style.opacity = '1';
+                btn.style.visibility = 'visible';
+                if (needsAttention) btn.classList.add('replay-follow--attention');
+                else btn.classList.remove('replay-follow--attention');
             }
         }
 

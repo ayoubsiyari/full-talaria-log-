@@ -370,7 +370,7 @@
             position: absolute;
             bottom: 70px;
             right: 120px;
-            z-index: 100;
+            z-index: 320;
             display: none;
             align-items: center;
             justify-content: center;
@@ -386,8 +386,14 @@
             cursor: pointer;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
             transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
-            animation: tlrReplayFollowPulse 2.5s ease-in-out infinite;
+            animation: tlrReplayFollowIdle 3s ease-in-out infinite;
             pointer-events: auto;
+        }
+        #chart-container #chartWrapper #replayFollow.replay-follow--attention {
+            animation: tlrReplayFollowAttention 1s ease-in-out infinite;
+            box-shadow: 0 0 16px rgba(41, 98, 255, 0.42), 0 2px 10px rgba(0, 0, 0, 0.18);
+            border-color: rgba(140, 160, 255, 0.5);
+            color: #e8ecff;
         }
         #chart-container #chartWrapper #replayFollow svg,
         #panels-container .panel-chart-container .panel-follow-btn svg {
@@ -405,9 +411,13 @@
             animation: none;
             opacity: 1;
         }
-        @keyframes tlrReplayFollowPulse {
-            0%, 100% { opacity: 0.7; }
+        @keyframes tlrReplayFollowIdle {
+            0%, 100% { opacity: 0.82; }
             50% { opacity: 1; }
+        }
+        @keyframes tlrReplayFollowAttention {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.07); opacity: 0.88; }
         }
 
         /* Backtesting / replay loading overlay (same role as chart/legacy-index.html) */
@@ -595,7 +605,7 @@
     <script defer src="/chart/modules/v9-theme-bridge.js?v=20260503g_replay_hud_v9"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
-    <script defer src="/chart/modules/replay-system.js?v=20260503g_replay_hud_v9"></script>
+    <script defer src="/chart/modules/replay-system.js?v=20260503h_replay_follow_fix"></script>
 
     <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->
     <script defer src="/chart/modules/order-event-bus.js?v=20260503g_replay_hud_v9"></script>
