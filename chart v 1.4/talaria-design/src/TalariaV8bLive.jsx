@@ -60,6 +60,78 @@ function v9ActiveChartInstance() {
   }
 }
 
+/** Bar / replay time (ms) for V9 bottom HUD — matches trade-row “now” semantics. */
+function getV9ChartBarTimeMs(chart) {
+  if (!chart) return Date.now();
+  try {
+    const rs = chart.replaySystem;
+    if (rs && Number.isFinite(rs.replayTimestamp)) return rs.replayTimestamp;
+  } catch (_) {}
+  try {
+    const data = Array.isArray(chart.data) && chart.data.length ? chart.data : chart.rawData;
+    if (Array.isArray(data) && data.length) {
+      const last = data[data.length - 1];
+      if (last && Number.isFinite(last.t)) return last.t;
+    }
+  } catch (_) {}
+  return Date.now();
+}
+
+function formatV9HudDateLine(ms) {
+  if (!Number.isFinite(ms)) return "—";
+  const tm = typeof window !== "undefined" ? window.timezoneManager : null;
+  const useUtc = !tm || typeof tm.convertToTimezone !== "function";
+  const d = useUtc ? new Date(ms) : tm.convertToTimezone(ms);
+  const days = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+  const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  const day = useUtc ? d.getUTCDate() : d.getDate();
+  const month = useUtc ? d.getUTCMonth() : d.getMonth();
+  const dow = useUtc ? d.getUTCDay() : d.getDay();
+  const year = useUtc ? d.getUTCFullYear() : d.getFullYear();
+  return `${days[dow]} ${String(day).padStart(2, "0")} ${months[month]} '${String(year % 100).padStart(2, "0")}`;
+}
+
+function formatV9HudClock(ms, use12h) {
+  if (!Number.isFinite(ms)) return "—";
+  const tm = typeof window !== "undefined" ? window.timezoneManager : null;
+  const useUtc = !tm || typeof tm.convertToTimezone !== "function";
+  const d = useUtc ? new Date(ms) : tm.convertToTimezone(ms);
+  const hh = useUtc ? d.getUTCHours() : d.getHours();
+  const mm = useUtc ? d.getUTCMinutes() : d.getMinutes();
+  const ss = useUtc ? d.getUTCSeconds() : d.getSeconds();
+  const pad = (n) => String(n).padStart(2, "0");
+  const raw = `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+  if (!use12h) return raw;
+  const h12 = hh % 12 || 12;
+  const ampm = hh >= 12 ? "PM" : "AM";
+  return `${String(h12).padStart(2, "0")}:${pad(mm)} ${ampm}`;
+}
+
+function formatV9AccountNum(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "—";
+  return x.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function formatV9HudSessionPnl(om) {
+  if (!om) return { text: "—", nonNeg: true };
+  const init = Number(om.initialBalance);
+  const eq = Number(om.equity);
+  if (Number.isFinite(init) && Number.isFinite(eq)) {
+    const x = eq - init;
+    return { text: `${x >= 0 ? "+" : ""}${x.toFixed(2)}`, nonNeg: x >= 0 };
+  }
+  const r = Number(om.realizedPnL);
+  if (Number.isFinite(r)) return { text: `${r >= 0 ? "+" : ""}${r.toFixed(2)}`, nonNeg: r >= 0 };
+  return { text: "—", nonNeg: true };
+}
+
+function v9HudTzShortLabel(fallbackSettingsTz) {
+  const tm = typeof window !== "undefined" ? window.timezoneManager : null;
+  if (tm && typeof tm.getShortLabel === "function") return tm.getShortLabel();
+  return String(fallbackSettingsTz || "UTC").split(" ")[0];
+}
+
 /** V9 drawing panel uses `tlStyle.showInfo` + `showInfoTypes` (labels); chart.js reads `drawing.style.infoSettings` booleans. */
 const V9_INFO_LABEL_TO_PROP = {
   "Price range": "priceRange",
@@ -1641,6 +1713,78 @@ function sessionPostTradeVarsToTagDefs(chart) {
   });
 }
 
+/** Match journal `symbol` strings to V9-style pair labels (e.g. EURUSD → EUR/USD). */
+function fmtJournalPair(sym) {
+  const t = String(sym || "").toUpperCase().replace(/\//g, "");
+  if (t.length === 6 && /^[A-Z]{6}$/.test(t)) return `${t.slice(0, 3)}/${t.slice(3)}`;
+  return sym ? String(sym) : "—";
+}
+
+function fmtUsdAnalytics(n, decimals = 0) {
+  if (n == null || !Number.isFinite(Number(n))) return "—";
+  const x = Number(n);
+  const sign = x >= 0 ? "+" : "-";
+  return `${sign}$${Math.abs(x).toFixed(decimals)}`;
+}
+
+function cumulativePnLFromJournalEntries(entries) {
+  if (!Array.isArray(entries) || !entries.length) return [];
+  const sorted = [...entries]
+    .filter((e) => e && e.pnl != null && Number.isFinite(Number(e.pnl)))
+    .sort((a, b) => {
+      const da = a.date ? Date.parse(a.date) : a.close_time ? Date.parse(a.close_time) : 0;
+      const db = b.date ? Date.parse(b.date) : b.close_time ? Date.parse(b.close_time) : 0;
+      return da - db;
+    });
+  let cum = 0;
+  return sorted.map((e, idx) => {
+    cum += Number(e.pnl);
+    return { idx: idx + 1, cum, tradePnl: Number(e.pnl) };
+  });
+}
+
+function bestWorstJournalTrades(entries) {
+  const valid = [...(entries || [])].filter((e) => e && e.pnl != null && Number.isFinite(Number(e.pnl)));
+  if (!valid.length) return { best: null, worst: null };
+  let best = valid[0];
+  let worst = valid[0];
+  for (const e of valid) {
+    if (Number(e.pnl) > Number(best.pnl)) best = e;
+    if (Number(e.pnl) < Number(worst.pnl)) worst = e;
+  }
+  return {
+    best: { sym: fmtJournalPair(best.symbol), pnl: best.pnl },
+    worst: { sym: fmtJournalPair(worst.symbol), pnl: worst.pnl },
+  };
+}
+
+function journalAuthHeaders() {
+  const h = { Accept: "application/json" };
+  try {
+    const token = typeof localStorage !== "undefined" ? localStorage.getItem("token") : null;
+    if (token) h.Authorization = `Bearer ${token}`;
+  } catch (_) {}
+  return h;
+}
+
+const JOURNAL_API_PREFIXES = ["/api/journal", "/journal/api/journal"];
+
+async function fetchJournalEndpoint(path, init = {}) {
+  const headers = { ...journalAuthHeaders(), ...(init.headers || {}) };
+  const req = { credentials: "include", cache: "no-store", ...init, headers };
+  let last = null;
+  for (const prefix of JOURNAL_API_PREFIXES) {
+    try {
+      const res = await fetch(`${prefix}${path}`, req);
+      last = res;
+      if (res.ok || res.status === 401 || res.status === 403) return res;
+    } catch (_) {
+      last = null;
+    }
+  }
+  return last || new Response(null, { status: 503 });
+}
+
 // ── Color Picker Popup ───────────────────────────────────────────────────────
 const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange, onAChange, onHexChange, onClose, onDragStart, dragging, animation, hideAlpha }) => {
   const rgb = hsvToRgb(h, s, v);
@@ -1925,6 +2069,9 @@ const TalariaV8bLive = () => {
   const [tblSort, setTblSort] = useState(null); // {col, dir:'asc'|'desc'}
   /** Bumps when chart orderManager trades / P&L change so the trades table stays live. */
   const [omTradeRev, setOmTradeRev] = useState(0);
+  /** Loaded when bottom tab === analytics — `/api/journal` stats, symbols, strategies, list. */
+  const [journalAnalytics, setJournalAnalytics] = useState(null);
+  const [journalAnalyticsMeta, setJournalAnalyticsMeta] = useState({ loading: false, error: null });
   const btmTabBarRef = useRef(null);
   const [tradeCard, setTradeCard] = useState(null);
   const [tradeCardPreTags, setTradeCardPreTags] = useState([]);
@@ -2010,8 +2157,17 @@ const TalariaV8bLive = () => {
   const tapFileRef = useRef(null);
   const tcFileRef = useRef(null);
   const [tcSsSlot, setTcSsSlot] = useState("pre");
-  const [accountBalance] = useState(10000);
-  const [accountEquity] = useState(10000);
+  const [accountBalance, setAccountBalance] = useState(10000);
+  const [accountEquity, setAccountEquity] = useState(10000);
+  const [replayHud, setReplayHud] = useState({
+    dateLine: "—",
+    clock: "—",
+    tzLabel: "UTC",
+    balanceStr: "—",
+    equityStr: "—",
+    pnlStr: "—",
+    pnlNonNeg: true,
+  });
   const [slAdvMode, setSlAdvMode] = useState("none"); // "none" | "breakeven" | "trailing"
   const [slAdvDrop, setSlAdvDrop] = useState(false);
   const [slBeUnit, setSlBeUnit] = useState("rr"); // "rr" | "pips" | "dollar"
@@ -2235,6 +2391,56 @@ const TalariaV8bLive = () => {
       });
     };
   }, []);
+
+  // Journal backend analytics (same `/api/journal` routes as journal-frontend).
+  useEffect(() => {
+    if (btmTab !== "analytics") return undefined;
+    let cancelled = false;
+    (async () => {
+      setJournalAnalyticsMeta({ loading: true, error: null });
+      try {
+        const [statsRes, symRes, stratRes, listRes] = await Promise.all([
+          fetchJournalEndpoint("/stats"),
+          fetchJournalEndpoint("/symbol-analysis"),
+          fetchJournalEndpoint("/strategy-analysis"),
+          fetchJournalEndpoint("/list"),
+        ]);
+        if (cancelled) return;
+        if (!statsRes.ok && !listRes.ok) {
+          const code = statsRes.status || listRes.status;
+          setJournalAnalytics(null);
+          setJournalAnalyticsMeta({
+            loading: false,
+            error:
+              code === 401 || code === 403
+                ? "Journal analytics requires sign-in (Bearer token in localStorage)."
+                : `Analytics unavailable (${code || "network"}).`,
+          });
+          return;
+        }
+        const stats = statsRes.ok ? await statsRes.json().catch(() => null) : null;
+        const symbols = symRes.ok ? await symRes.json().catch(() => []) : [];
+        const strategies = stratRes.ok ? await stratRes.json().catch(() => []) : [];
+        const list = listRes.ok ? await listRes.json().catch(() => []) : [];
+        if (cancelled) return;
+        setJournalAnalytics({
+          stats: stats && typeof stats === "object" ? stats : null,
+          symbols: Array.isArray(symbols) ? symbols : [],
+          strategies: Array.isArray(strategies) ? strategies : [],
+          list: Array.isArray(list) ? list : [],
+        });
+        setJournalAnalyticsMeta({ loading: false, error: null });
+      } catch (e) {
+        if (!cancelled) {
+          setJournalAnalytics(null);
+          setJournalAnalyticsMeta({ loading: false, error: String(e?.message || e) });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [btmTab]);
 
   // Ctrl+S — open V9 screenshot panel (same as camera), not the legacy DOM modal
   useEffect(() => {
@@ -3523,6 +3729,42 @@ const TalariaV8bLive = () => {
     settingsRef.current = settings;
   }, [settings]);
 
+  useEffect(() => {
+    const tick = () => {
+      const chart = v9ActiveChartInstance();
+      const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+      const ms = getV9ChartBarTimeMs(chart);
+      const s = settingsRef.current;
+      const use12 = s?.timeFormat === "12h";
+      const { text: pnlStr, nonNeg: pnlNonNeg } = formatV9HudSessionPnl(om);
+      setReplayHud({
+        dateLine: formatV9HudDateLine(ms),
+        clock: formatV9HudClock(ms, use12),
+        tzLabel: v9HudTzShortLabel(s?.timezone),
+        balanceStr: formatV9AccountNum(om?.balance),
+        equityStr: formatV9AccountNum(om?.equity),
+        pnlStr,
+        pnlNonNeg,
+      });
+      const bal = Number(om?.balance);
+      const eq = Number(om?.equity);
+      setAccountBalance((prev) => (Number.isFinite(bal) ? bal : prev));
+      setAccountEquity((prev) => (Number.isFinite(eq) ? eq : prev));
+    };
+    tick();
+    const id = window.setInterval(tick, 500);
+    const onTz = () => tick();
+    try {
+      window.timezoneManager?.addListener?.(onTz);
+    } catch (_) {}
+    return () => {
+      window.clearInterval(id);
+      try {
+        window.timezoneManager?.removeListener?.(onTz);
+      } catch (_) {}
+    };
+  }, []);
+
   const [indOpen, setIndOpen] = useState(false);
   const [indPinned, setIndPinned] = useState([]);
   const [indActive, setIndActive] = useState([]);
@@ -3939,7 +4181,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260509-root-pl0-sidebar-flush";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260503-replay-hud-live-metrics";
   }, []);
 
   useEffect(() => {
@@ -14978,23 +15220,14 @@ const TalariaV8bLive = () => {
                 {[0,1,2,3,4].map(i=><div key={i} style={{width:3,height:3,borderRadius:'50%',background:hov==="btm-hdl"?"rgba(140,160,255,0.65)":"rgba(140,160,255,0.28)",transition:"background 0.15s"}}/>)}
               </div>
             </div>}
-            {/* Date/clock left — fixed-width so the separator never shifts */}
-            {(()=>{
-              const tz=(settings.timezone||'UTC').split(' ')[0];
-              const use12=settings.timeFormat==='12h';
-              const rawTime='02:21:00';
-              const [hh,mm,ss]=rawTime.split(':').map(Number);
-              const displayTime=use12?`${String(hh%12||12).padStart(2,'0')}:${String(mm).padStart(2,'0')} ${hh>=12?'PM':'AM'}`:rawTime;
-              return(
-                <div style={{display:'flex',flexDirection:'column',alignItems:'flex-start',justifyContent:'center',gap:7,boxSizing:'border-box',width:172,padding:'0 12px',height:'100%',flexShrink:0,overflow:'hidden'}}>
-                  <span style={{fontSize:9,fontWeight:600,color:c.tm,letterSpacing:'0.08em',textTransform:'uppercase',lineHeight:1,fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap'}}>FRI 09 JAN '09</span>
-                  <div style={{display:'flex',alignItems:'baseline',gap:8,whiteSpace:'nowrap'}}>
-                    <span style={{fontSize:14,fontWeight:700,color:c.tx,fontVariantNumeric:'tabular-nums',letterSpacing:'0.04em',lineHeight:1}}>{displayTime}</span>
-                    <span style={{fontSize:10,fontWeight:600,color:c.tm,letterSpacing:'0.06em',lineHeight:1}}>{tz}</span>
-                  </div>
-                </div>
-              );
-            })()}
+            {/* Date/clock left — bar/replay time + tz; fixed-width so the separator never shifts */}
+            <div style={{display:'flex',flexDirection:'column',alignItems:'flex-start',justifyContent:'center',gap:7,boxSizing:'border-box',width:172,padding:'0 12px',height:'100%',flexShrink:0,overflow:'hidden'}}>
+              <span style={{fontSize:9,fontWeight:600,color:c.tm,letterSpacing:'0.08em',textTransform:'uppercase',lineHeight:1,fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap'}}>{replayHud.dateLine}</span>
+              <div style={{display:'flex',alignItems:'baseline',gap:8,whiteSpace:'nowrap'}}>
+                <span style={{fontSize:14,fontWeight:700,color:c.tx,fontVariantNumeric:'tabular-nums',letterSpacing:'0.04em',lineHeight:1}}>{replayHud.clock}</span>
+                <span style={{fontSize:10,fontWeight:600,color:c.tm,letterSpacing:'0.06em',lineHeight:1}}>{replayHud.tzLabel}</span>
+              </div>
+            </div>
             {/* Replay controls — grid column 2, auto-width, truly centered */}
             <div style={{display:"flex",alignItems:"center",height:"100%",justifyContent:"center"}}>
             {/* Left separator */}
@@ -15512,7 +15745,11 @@ const TalariaV8bLive = () => {
                   {['BALANCE','EQUITY','P&L'].map(l=>(
                     <span key={l} style={{fontSize:9,fontWeight:600,color:c.tm,letterSpacing:'0.07em',lineHeight:1}}>{l}</span>
                   ))}
-                  {[{v:'10,000',col:c.tx},{v:'10,000',col:c.tx},{v:'+0.00',col:c.gn}].map(({v,col},i)=>(
+                  {[
+                    { v: replayHud.balanceStr, col: c.tx },
+                    { v: replayHud.equityStr, col: c.tx },
+                    { v: replayHud.pnlStr, col: replayHud.pnlNonNeg ? c.gn : c.rd },
+                  ].map(({ v, col }, i) => (
                     <span key={i} style={{fontSize:12,fontWeight:700,color:col,fontVariantNumeric:'tabular-nums',lineHeight:1}}>{balVis?v:'•••'}</span>
                   ))}
                 </div>
@@ -15583,24 +15820,48 @@ const TalariaV8bLive = () => {
                   btmTab==="open"?r.status==="open":
                   btmTab==="history"?r.status==="closed":false
                 );
+                const ja = journalAnalytics;
+                const jMeta = journalAnalyticsMeta;
+                const jSt = ja?.stats || {};
+                const jTotalTrades = jSt.total_trades != null ? String(jSt.total_trades) : "—";
+                const jWinRate = jSt.win_rate != null ? `${Number(jSt.win_rate).toFixed(1)}%` : "—";
+                const jPf = jSt.profit_factor != null && Number.isFinite(Number(jSt.profit_factor)) ? Number(jSt.profit_factor).toFixed(2) : "—";
+                const jNet = fmtUsdAnalytics(jSt.total_pnl, 0);
+                const jAvgWin = fmtUsdAnalytics(jSt.avg_win, 0);
+                const jAvgLoss = jSt.avg_loss != null && Number(jSt.avg_loss) > 0 ? `-$${Number(jSt.avg_loss).toFixed(0)}` : "—";
+                const jNWins = Number(jSt.winning_trades) || 0;
+                const jNLoss = Number(jSt.losing_trades) || 0;
+                const jNTot = Math.max(1, jNWins + jNLoss);
+                const jBw = bestWorstJournalTrades(ja?.list || []);
+                const jSymRows = (ja?.symbols || []).slice(0, 12);
+                const jMaxSymT = Math.max(1, ...jSymRows.map((s) => Number(s.total_trades) || 0));
+                const jCum = cumulativePnLFromJournalEntries(ja?.list || []);
+                const jMaxAbsCum = Math.max(1, ...jCum.map((x) => Math.abs(x.cum)));
+                const jStrats = (ja?.strategies || []).slice(0, 12);
                 const cols="minmax(0,0.7fr) minmax(0,0.9fr) minmax(0,1.1fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,0.6fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,0.9fr) minmax(0,1fr)";
                 if(btmTab==="analytics") return(
                   <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
-                    {/* Summary cards */}
+                    {jMeta.loading&&(
+                      <div style={{fontSize:11,color:c.ts,padding:"8px 0"}}>Loading journal analytics…</div>
+                    )}
+                    {jMeta.error&&!jMeta.loading&&(
+                      <div style={{fontSize:11,color:c.rd,padding:"8px 10px",background:"rgba(255,80,104,0.08)",border:`1px solid ${c.br}`}}>{jMeta.error}</div>
+                    )}
+                    {!jMeta.loading&&(
+                    <>
+                    {/* Summary cards — `/api/journal/stats` */}
                     <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:8}}>
-                      {[{l:"Total Trades",v:"14",sub:null},{l:"Win Rate",v:"64.3%",sub:null,col:c.gn},{l:"Profit Factor",v:"1.84",sub:null,col:c.gn},{l:"Net P&L",v:"+$1,533",sub:null,col:c.gn},{l:"Avg Win",v:"+$316",sub:null,col:c.gn},{l:"Avg Loss",v:"-$267",sub:null,col:c.rd}].map(({l,v,col},i)=>(
+                      {[{l:"Total Trades",v:jTotalTrades,col:c.tx},{l:"Win Rate",v:jWinRate,col:jSt.win_rate==null||!Number.isFinite(Number(jSt.win_rate))?c.tx:Number(jSt.win_rate)>=50?c.gn:c.rd},{l:"Profit Factor",v:jPf,col:jPf==="—"?c.tx:Number(jSt.profit_factor)>=1?c.gn:c.rd},{l:"Net P&L",v:jNet,col:jSt.total_pnl==null||!Number.isFinite(Number(jSt.total_pnl))?c.tx:Number(jSt.total_pnl)>=0?c.gn:c.rd},{l:"Avg Win",v:jAvgWin,col:c.gn},{l:"Avg Loss",v:jAvgLoss,col:c.rd}].map(({l,v,col},i)=>(
                         <div key={i} style={{background:c.bg,border:`1px solid ${c.br}`,padding:"10px 12px",display:"flex",flexDirection:"column",gap:5}}>
                           <span style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em"}}>{l}</span>
                           <span style={{fontSize:18,fontWeight:700,color:col||c.tx,fontVariantNumeric:"tabular-nums"}}>{v}</span>
                         </div>
                       ))}
                     </div>
-                    {/* Win/Loss breakdown + pair breakdown */}
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                      {/* Win/Loss bar */}
                       <div style={{background:c.bg,border:`1px solid ${c.br}`,padding:"12px 14px"}}>
                         <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em",marginBottom:10}}>WIN / LOSS BREAKDOWN</div>
-                        {[{l:"Wins",n:9,tot:14,col:c.gn},{l:"Losses",n:5,tot:14,col:c.rd}].map(({l,n,tot,col})=>(
+                        {[{l:"Wins",n:jNWins,tot:jNTot,col:c.gn},{l:"Losses",n:jNLoss,tot:jNTot,col:c.rd}].map(({l,n,tot,col})=>(
                           <div key={l} style={{marginBottom:8}}>
                             <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
                               <span style={{fontSize:10,fontWeight:600,color:c.ts}}>{l}</span>
@@ -15612,60 +15873,70 @@ const TalariaV8bLive = () => {
                           </div>
                         ))}
                         <div style={{height:1,background:c.br,margin:"10px 0"}}/>
-                        {[{l:"Best Trade",v:"+$1,090",sym:"EUR/JPY",col:c.gn},{l:"Worst Trade",v:"-$500",sym:"EUR/USD",col:c.rd}].map(({l,v,sym,col})=>(
+                        {[{l:"Best Trade",row:jBw.best,col:c.gn},{l:"Worst Trade",row:jBw.worst,col:c.rd}].map(({l,row,col})=>(
                           <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
                             <span style={{fontSize:10,color:c.tm}}>{l}</span>
                             <div style={{display:"flex",alignItems:"center",gap:6}}>
-                              <span style={{fontSize:10,color:c.ts}}>{sym}</span>
-                              <span style={{fontSize:11,fontWeight:700,color:col,fontVariantNumeric:"tabular-nums"}}>{v}</span>
+                              <span style={{fontSize:10,color:c.ts}}>{row?.sym ?? "—"}</span>
+                              <span style={{fontSize:11,fontWeight:700,color:col,fontVariantNumeric:"tabular-nums"}}>{row!=null&&row.pnl!=null?fmtUsdAnalytics(row.pnl,0):"—"}</span>
                             </div>
                           </div>
                         ))}
                       </div>
-                      {/* Pair breakdown */}
                       <div style={{background:c.bg,border:`1px solid ${c.br}`,padding:"12px 14px"}}>
                         <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em",marginBottom:10}}>TRADES BY PAIR</div>
-                        {[{sym:"EUR/JPY",n:2,pnl:"+$827",col:c.gn},{sym:"GBP/USD",n:2,pnl:"+$415",col:c.gn},{sym:"USD/JPY",n:1,pnl:"-$263",col:c.rd},{sym:"AUD/USD",n:1,pnl:"+$96",col:c.gn},{sym:"NZD/USD",n:1,pnl:"+$140",col:c.gn},{sym:"GBP/JPY",n:1,pnl:"+$420",col:c.gn},{sym:"Others",n:6,pnl:"-$102",col:c.rd}].map(({sym,n,pnl,col})=>(
-                          <div key={sym} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
-                            <span style={{fontSize:10,fontWeight:600,color:c.ts,width:60,flexShrink:0}}>{sym}</span>
+                        {jSymRows.length===0&&<div style={{fontSize:10,color:c.tm}}>No journal trades with symbols.</div>}
+                        {jSymRows.map((row,i)=>{
+                          const sym=fmtJournalPair(row.symbol);
+                          const n=Number(row.total_trades)||0;
+                          const pnlN=Number(row.total_pnl);
+                          const col=!Number.isFinite(pnlN)?c.tm:pnlN>=0?c.gn:c.rd;
+                          const pnlStr=fmtUsdAnalytics(row.total_pnl,0);
+                          return(
+                          <div key={`${String(row.symbol)}-${i}`} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                            <span style={{fontSize:10,fontWeight:600,color:c.ts,width:72,flexShrink:0}}>{sym}</span>
                             <div style={{flex:1,height:4,background:"rgba(140,160,255,0.07)"}}>
-                              <div style={{width:`${Math.min((n/4)*100,100)}%`,height:"100%",background:col,opacity:0.6}}/>
+                              <div style={{width:`${Math.min((n/jMaxSymT)*100,100)}%`,height:"100%",background:col,opacity:0.6}}/>
                             </div>
-                            <span style={{fontSize:10,color:c.tm,width:16,textAlign:"center",flexShrink:0}}>{n}</span>
-                            <span style={{fontSize:10,fontWeight:700,color:col,fontVariantNumeric:"tabular-nums",width:52,textAlign:"right",flexShrink:0}}>{pnl}</span>
+                            <span style={{fontSize:10,color:c.tm,width:20,textAlign:"center",flexShrink:0}}>{n}</span>
+                            <span style={{fontSize:10,fontWeight:700,color:col,fontVariantNumeric:"tabular-nums",width:56,textAlign:"right",flexShrink:0}}>{pnlStr}</span>
+                          </div>);
+                        })}
+                      </div>
+                    </div>
+                    <div style={{background:c.bg,border:`1px solid ${c.br}`,padding:"12px 14px"}}>
+                      <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em",marginBottom:10}}>CUMULATIVE P&L (journal, time order)</div>
+                      {jCum.length===0&&<div style={{fontSize:10,color:c.tm}}>No closed P&amp;L series — add trades to the journal.</div>}
+                      <div style={{display:"flex",alignItems:"flex-end",gap:2,minHeight:52,overflowX:jCum.length>40?"auto":"visible"}}>
+                        {jCum.map((pt)=>(
+                          <div key={pt.idx} style={{flex:jCum.length>60?"0 0 3px":1,minWidth:jCum.length>60?3:0,maxWidth:jCum.length>60?4:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                            <div style={{width:"100%",height:`${Math.max((Math.abs(pt.cum)/jMaxAbsCum)*48,3)}px`,background:pt.tradePnl>=0?c.gn:c.rd,opacity:0.72,marginTop:"auto"}} title={`#${pt.idx} · trade ${fmtUsdAnalytics(pt.tradePnl,2)} · cum ${fmtUsdAnalytics(pt.cum,2)}`}/>
+                            {jCum.length<=24&&<span style={{fontSize:8,color:c.tm,fontVariantNumeric:"tabular-nums"}}>{pt.idx}</span>}
                           </div>
                         ))}
                       </div>
                     </div>
-                    {/* Cumulative P&L bar chart */}
                     <div style={{background:c.bg,border:`1px solid ${c.br}`,padding:"12px 14px"}}>
-                      <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em",marginBottom:10}}>CUMULATIVE P&L</div>
-                      <div style={{display:"flex",alignItems:"flex-end",gap:3,height:52}}>
-                        {[120,260,110,350,240,590,490,910,610,1090,990,1330,1225,1533].map((v,i)=>{
-                          const prev=i>0?[120,260,110,350,240,590,490,910,610,1090,990,1330,1225,1533][i-1]:0;
-                          const gain=v>prev;
-                          const pct=Math.abs(v)/1533;
-                          return <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                            <div style={{width:"100%",height:`${Math.max(pct*48,3)}px`,background:gain?c.gn:c.rd,opacity:0.7,marginTop:"auto"}}/>
-                            <span style={{fontSize:8,color:c.tm,fontVariantNumeric:"tabular-nums"}}>{i+1}</span>
-                          </div>;
-                        })}
-                      </div>
-                    </div>
-                    {/* Tag performance */}
-                    <div style={{background:c.bg,border:`1px solid ${c.br}`,padding:"12px 14px"}}>
-                      <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em",marginBottom:8}}>TAG PERFORMANCE</div>
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
-                        {[{tag:"scalp",trades:5,wr:"80%",pnl:"+$727"},{tag:"swing",trades:4,wr:"50%",pnl:"+$667"},{tag:"trend",trades:3,wr:"100%",pnl:"+$853"},{tag:"news",trades:2,wr:"0%",pnl:"-$605"}].map(({tag,trades,wr,pnl})=>{
-                          const pos=!pnl.startsWith("-");
-                          return <div key={tag} style={{background:"rgba(140,160,255,0.04)",border:`1px solid ${c.br}`,padding:"8px 10px"}}>
+                      <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em",marginBottom:8}}>STRATEGY / TAG PERFORMANCE</div>
+                      {jStrats.length===0&&<div style={{fontSize:10,color:c.tm}}>No strategy breakdown — assign a strategy on journal entries.</div>}
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",gap:6}}>
+                        {jStrats.map((row,i)=>{
+                          const tag=String(row.strategy||"Other").trim()||"Other";
+                          const trades=row.total_trades??0;
+                          const wr=row.win_rate!=null?`${Number(row.win_rate).toFixed(0)}%`:"—";
+                          const pnlStr=fmtUsdAnalytics(row.total_pnl,0);
+                          const pos=Number(row.total_pnl)>=0;
+                          return(
+                          <div key={`${tag}-${i}`} style={{background:"rgba(140,160,255,0.04)",border:`1px solid ${c.br}`,padding:"8px 10px"}}>
                             <div style={{fontSize:9,fontWeight:700,color:c.acL,letterSpacing:"0.05em",marginBottom:5}}>{tag.toUpperCase()}</div>
                             <div style={{fontSize:10,color:c.tm,marginBottom:2}}>{trades} trades · WR {wr}</div>
-                            <div style={{fontSize:12,fontWeight:700,color:pos?c.gn:c.rd,fontVariantNumeric:"tabular-nums"}}>{pnl}</div>
-                          </div>;
+                            <div style={{fontSize:12,fontWeight:700,color:pos?c.gn:c.rd,fontVariantNumeric:"tabular-nums"}}>{pnlStr}</div>
+                          </div>);
                         })}
                       </div>
                     </div>
+                    </>
+                    )}
                   </div>
                 );
                 const hdrs=[
