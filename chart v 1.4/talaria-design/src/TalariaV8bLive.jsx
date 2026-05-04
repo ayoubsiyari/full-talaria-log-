@@ -2819,6 +2819,8 @@ const TalariaV8bLive = () => {
   const [replayMode, setReplayMode] = useState("candle");
   const [replayInterval, setReplayInterval] = useState("Auto");
   const [rollback, setRollback] = useState(false);
+  /** Replay active + session forbids rewind — disables Rollback on the bar (synced in nav-integrity effect). */
+  const [replayRollbackBlocked, setReplayRollbackBlocked] = useState(false);
   const [rollbackLineX, setRollbackLineX] = useState(60);
   const [rbDragging, setRbDragging] = useState(false);
   const [rbPressed, setRbPressed] = useState(false);
@@ -3646,17 +3648,17 @@ const TalariaV8bLive = () => {
     let cancelled = false;
     const sync = () => {
       if (cancelled) return;
+      const rs = getReplaySystem();
+      const replayOn = !!(rs && rs.isActive);
+      const allowBack =
+        rs && typeof rs.isBackNavigationAllowed === "function"
+          ? rs.isBackNavigationAllowed()
+          : true;
+      const rbBlocked = !!(rs && rs.isActive && typeof rs.isBackNavigationAllowed === "function" && !rs.isBackNavigationAllowed());
+      setReplayRollbackBlocked((prev) => (prev === rbBlocked ? prev : rbBlocked));
       const badge = document.getElementById("navIntegrityBadge");
       const tooltip = document.getElementById("navBadgeTooltip");
       if (!badge) return;
-      const rs = getReplaySystem();
-      const replayOn = !!(rs && rs.isActive);
-      let allowBack = true;
-      try {
-        if (typeof window !== "undefined" && window.backtestingSettings) {
-          allowBack = window.backtestingSettings.allowBackNavigation !== false;
-        }
-      } catch (_) {}
       badge.style.display = replayOn ? "inline-flex" : "none";
       badge.classList.toggle("enabled", allowBack);
       badge.classList.toggle("disabled", !allowBack);
@@ -16519,17 +16521,22 @@ const TalariaV8bLive = () => {
               {hov==="rp-next-dn"&&<div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
               {hov==="rp-next"&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
             </button>
-            {/* Rollback (cut) — always uses the V9-styled cut-line overlay.
-                The overlay's click handler computes the candle timestamp
-                and drives replaySystem.startReplayAtIndex / goToReplayTimestamp. */}
+            {/* Rollback (cut) — V9 cut-line overlay. While replay is active, disabled when session forbids back navigation (same as legacy Go Back). */}
             <button type="button" onClick={(e)=>{
                 e.stopPropagation();
                 const opening=!rollback;
+                const rsRb = getReplaySystem();
+                if (opening && rsRb && rsRb.isActive && typeof rsRb.isBackNavigationAllowed === "function" && !rsRb.isBackNavigationAllowed()) {
+                  return;
+                }
                 if(opening)closeAll();
                 setRollback(opening);
               }}
-              onMouseEnter={e=>{setHov("rp-rb");showTip("Rollback",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
-              style={{padding:"4px 5px",position:"relative",background:rollback?"rgba(74,106,255,0.08)":hov==="rp-rb"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"transform 0.15s ease, color 0.15s ease, background 0.12s",transform:rollback?"scale(1.18)":"scale(1)",color:rollback?c.acL:hov==="rp-rb"?c.tx:c.ts}}>
+              onMouseEnter={e=>{
+                setHov("rp-rb");
+                showTip(replayRollbackBlocked ? "Back navigation disabled for this session" : "Rollback", e.currentTarget, "top");
+              }} onMouseLeave={()=>{setHov(null);hideTip();}}
+              style={{padding:"4px 5px",position:"relative",background:rollback?"rgba(74,106,255,0.08)":hov==="rp-rb"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"transform 0.15s ease, color 0.15s ease, background 0.12s,opacity 0.15s",transform:rollback?"scale(1.18)":"scale(1)",color:rollback?c.acL:hov==="rp-rb"?c.tx:c.ts,opacity:replayRollbackBlocked?0.35:1}}>
               <svg width={19} height={19} viewBox="0 0 24 24" fill="none"><line x1="15" y1="4" x2="15" y2="7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><rect x="12" y="7" width="6" height="10" rx="0.5" fill="currentColor"/><line x1="15" y1="17" x2="15" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="12" y1="12" x2="4" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><polyline points="7,9 4,12 7,15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><line x1="3" y1="4" x2="3" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
               {rollback&&<div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 8px ${c.acG}`}}/>}
               {!rollback&&hov==="rp-rb"&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}

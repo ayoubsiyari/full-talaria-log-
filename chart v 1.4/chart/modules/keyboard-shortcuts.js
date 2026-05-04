@@ -699,11 +699,16 @@ class KeyboardShortcutsManager {
      */
     replayStepBackward() {
         if (this.isReplayActive()) {
-            // Pause if playing
-            if (this.chart.replaySystem.isPlaying) {
-                this.chart.replaySystem.pause();
+            const rs = this.chart.replaySystem;
+            if (rs && typeof rs.isBackNavigationAllowed === 'function' && !rs.isBackNavigationAllowed()) {
+                this.showNotification('Back navigation disabled');
+                return;
             }
-            this.chart.replaySystem.stepBackward();
+            // Pause if playing
+            if (rs && rs.isPlaying) {
+                rs.pause();
+            }
+            if (rs) rs.stepBackward();
             this.showNotification('⏮ Step Backward');
         } else {
             this.showNotification('Replay not active');

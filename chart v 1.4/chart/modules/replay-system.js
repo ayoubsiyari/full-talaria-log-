@@ -1589,7 +1589,26 @@ class ReplaySystem {
      * Go back to pick a new start point (within current visible data)
      */
     isBackNavigationAllowed() {
-        return !((typeof window !== 'undefined' && window.backtestingSettings) && window.backtestingSettings.allowBackNavigation === false);
+        if (typeof window === 'undefined') return true;
+        // Legacy index.html sets a frozen global from the session modal; V9 often only has chart/storage session.
+        if (window.backtestingSettings && window.backtestingSettings.allowBackNavigation === false) {
+            return false;
+        }
+        let sess = null;
+        try {
+            if (window.chart && window.chart.backtestingSession) {
+                sess = window.chart.backtestingSession;
+            } else if (window.userStorage && typeof window.userStorage.getItem === 'function') {
+                sess = JSON.parse(window.userStorage.getItem('backtestingSession') || '{}');
+            } else {
+                sess = JSON.parse(localStorage.getItem('backtestingSession') || '{}');
+            }
+        } catch (_) {
+            sess = {};
+        }
+        if (sess && sess.type === 'propfirm') return false;
+        if (sess && sess.allowBackNavigation === false) return false;
+        return true;
     }
 
     goBackToPickPoint() {
