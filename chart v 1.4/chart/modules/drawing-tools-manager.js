@@ -52,6 +52,10 @@ class DrawingToolsManager {
         this._liveSyncPreviewTimer = null;
         this._pendingLiveSyncDrawing = null;
         this._lastLiveSyncFlushAt = 0;
+        /** One temp preview per frame while drawing brush/highlighter; coalesces high-rate mousemove. */
+        this._freehandPreviewRaf = null;
+        /** Throttle crosshair work during freehand stroke (updateCrosshair is heavy on main chart). */
+        this._lastCrosshairBrushAt = 0;
 
         /** Remote sync (session PATCH + cloud API) lags localStorage; drives toolbar save indicator */
         this._drawingsPendingTargets = { session: false, api: false };
@@ -1463,6 +1467,7 @@ class DrawingToolsManager {
             this.cancelRectangularSelection();
         }
         this._clearLiveSyncPreview();
+        this._cancelFreehandPreviewRaf();
         this.currentTool = null;
         this.drawingState.reset();
         this.svg.style('cursor', 'default');
@@ -1546,6 +1551,47 @@ class DrawingToolsManager {
         }
     }
 
+    _cancelFreehandPreviewRaf() {
+        if (this._freehandPreviewRaf) {
+            cancelAnimationFrame(this._freehandPreviewRaf);
+            this._freehandPreviewRaf = null;
+        }
+    }
+
+    /**
+     * Pixel distance between two data-space points (for stroke sampling / deduping).
+     */
+    _pixelDistFreehand(a, b) {
+        if (!this.chart || !a || !b) return Infinity;
+        try {
+            const ax = typeof this.chart.dataIndexToPixel === 'function'
+                ? this.chart.dataIndexToPixel(a.x)
+                : (typeof this.chart.xScale === 'function' ? this.chart.xScale(a.x) : NaN);
+            const ay = typeof this.chart.yScale === 'function' ? this.chart.yScale(a.y) : NaN;
+            const bx = typeof this.chart.dataIndexToPixel === 'function'
+                ? this.chart.dataIndexToPixel(b.x)
+                : (typeof this.chart.xScale === 'function' ? this.chart.xScale(b.x) : NaN);
+            const by = typeof this.chart.yScale === 'function' ? this.chart.yScale(b.y) : NaN;
+            if (![ax, ay, bx, by].every(Number.isFinite)) return Infinity;
+            return Math.hypot(bx - ax, by - ay);
+        } catch (_) {
+            return Infinity;
+        }
+    }
+
+    /** Schedule at most one brush/highlighter preview rebuild per animation frame. */
+    _scheduleFreehandPreviewRedraw() {
+        if (this._freehandPreviewRaf) return;
+        this._freehandPreviewRaf = requestAnimationFrame(() => {
+            this._freehandPreviewRaf = null;
+            try {
+                if (this.isDrawingPath && this.drawingState.isDrawing) {
+                    this.updateTempDrawing();
+                }
+            } catch (_) {}
+        });
+    }
+
     _nextLiveSyncId() {
         return `live_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     }
@@ -1576,6 +1622,8 @@ class DrawingToolsManager {
 
     _syncLivePreviewDrawing(tempDrawing) {
         if (!tempDrawing || !this.chart || !this.chart.broadcastDrawingChange) return;
+        // Multi-panel live preview is expensive (JSON + broadcast every ~56ms). Final stroke still syncs on mouseup.
+        if (this.currentTool === 'brush' || this.currentTool === 'highlighter') return;
         if (!window.panelManager || !window.panelManager.syncSettings || !window.panelManager.syncSettings.drawings) return;
         if (window.panelManager.currentLayout === '1') return;
 
@@ -2552,10 +2600,20 @@ class DrawingToolsManager {
             this._lastMouseEvent = event;
         }
 
-        // Always keep crosshair visible when a tool is active, drawing is selected, or dragging
+        // Always keep crosshair visible when a tool is active, drawing is selected, or dragging.
+        // During brush/highlighter strokes, updateCrosshair + full chart work every mousemove causes jank.
         if (this.chart && typeof this.chart.updateCrosshair === 'function' &&
             (this.currentTool || this.selectedDrawing || this.isDragging || this.isDrawing || this.isResizing)) {
-            this.chart.updateCrosshair(event);
+            const freehandStroke = this.isDrawingPath && this.drawingState.isDrawing;
+            if (freehandStroke) {
+                const now = performance.now();
+                if (!this._lastCrosshairBrushAt || now - this._lastCrosshairBrushAt >= 28) {
+                    this._lastCrosshairBrushAt = now;
+                    this.chart.updateCrosshair(event);
+                }
+            } else {
+                this.chart.updateCrosshair(event);
+            }
         }
 
         if (this.currentTool && this.isRectSelecting) {
@@ -2568,11 +2626,23 @@ class DrawingToolsManager {
             return;
         }
         
-        // Handle path tool continuous drawing
+        // Handle brush/highlighter continuous drawing: sample in pixel space + one preview per rAF.
         if (this.isDrawingPath && this.drawingState.isDrawing) {
             const point = this.getDataPoint(event);
-            this.drawingState.addPoint(point);
-            this.updateTempDrawing();
+            const pts = this.drawingState.tempPoints;
+            const MIN_SAMPLE_PX = 1.35;
+            if (pts.length === 0) {
+                this.drawingState.addPoint(point);
+            } else {
+                const last = pts[pts.length - 1];
+                const d = this._pixelDistFreehand(last, point);
+                if (d >= MIN_SAMPLE_PX) {
+                    this.drawingState.addPoint(point);
+                } else {
+                    pts[pts.length - 1] = point;
+                }
+            }
+            this._scheduleFreehandPreviewRedraw();
             return;
         }
         
@@ -2768,6 +2838,7 @@ class DrawingToolsManager {
         
         // Handle path tool completion
         if (this.isDrawingPath) {
+            this._cancelFreehandPreviewRaf();
             this.isDrawingPath = false;
             this.hidePathTooltip();
             if (this.drawingState.tempPoints.length > 1) {
