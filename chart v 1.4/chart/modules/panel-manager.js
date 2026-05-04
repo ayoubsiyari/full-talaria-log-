@@ -1803,7 +1803,7 @@ class PanelManager {
             <div class="ohlc-header">
                 <div class="ohlc-symbol-block" style="position: relative; display: flex; align-items: center; gap: 4px;">
                     <span class="ohlc-symbol-text" id="chartSymbol${index}">CHART</span>
-                    <span class="ohlc-separator">·</span>
+                    <span class="ohlc-separator"> · </span>
                     <span id="chartTimeframe${index}">${panelTimeframe}</span>
                 </div>
                 <div class="ohlc-stats">

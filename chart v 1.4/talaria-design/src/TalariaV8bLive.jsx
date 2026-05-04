@@ -8480,26 +8480,26 @@ const TalariaV8bLive = () => {
       <div id="ohlcInfo" className="ohlc-info">
         <div className="ohlc-header">
           <div className="ohlc-symbol-block" style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
-            <span id="chartSymbol" className="ohlc-symbol-text" style={{ fontSize: 13, fontWeight: 700 }} />
-            <span className="ohlc-separator">·</span>
-            <span id="chartTimeframe" style={{ fontSize: 11 }} />
+            <span id="chartSymbol" className="ohlc-symbol-text" />
+            <span className="ohlc-separator">{" · "}</span>
+            <span id="chartTimeframe" />
           </div>
           <div className="ohlc-stats">
             <div className="ohlc-item">
               <span className="ohlc-label">O</span>
-              <span className="ohlc-value" id="open" style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span>
+              <span className="ohlc-value" id="open">—</span>
             </div>
             <div className="ohlc-item">
               <span className="ohlc-label">H</span>
-              <span className="ohlc-value" id="high" style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span>
+              <span className="ohlc-value" id="high">—</span>
             </div>
             <div className="ohlc-item">
               <span className="ohlc-label">L</span>
-              <span className="ohlc-value" id="low" style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span>
+              <span className="ohlc-value" id="low">—</span>
             </div>
             <div className="ohlc-item">
               <span className="ohlc-label">C</span>
-              <span className="ohlc-value" id="close" style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span>
+              <span className="ohlc-value" id="close">—</span>
             </div>
             <span className="ohlc-change" id="chartChange">—</span>
           </div>
