@@ -4900,7 +4900,6 @@ const TalariaV8bLive = () => {
     };
   }, [indActive]);
 
-  const [indSelected, setIndSelected] = useState(null);
   const [indSearch, setIndSearch] = useState("");
   const [indPos, setIndPos] = useState({ x: 0, y: 0 });
   const [indCat, setIndCat] = useState("all");
@@ -8252,7 +8251,7 @@ const TalariaV8bLive = () => {
     groupSelected,
   ]);
 
-  const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelected(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
+  const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   closeWindowsRef.current = closeWindows;
   // closeAll is triggered by backdrop/outside clicks — intentionally does NOT close the indicators window
   const closeAll = () => {
@@ -14429,7 +14428,7 @@ const TalariaV8bLive = () => {
       {(indOpen || closing.has("ind")) && (()=>{
         const indTabs=[["active","Active"],["pinned","Pinned"],["all","All"],["trend","Trend"],["momentum","Momentum"],["volatility","Volatility"],["volume","Volume"],["sessions","Sessions"],["others","Others"]];
         const indTabIdx=indTabs.findIndex(([id])=>id===indCat);
-        const closeInd=()=>{animClose(setIndOpen,"ind");setIndSearch("");setIndSelected(null);};
+        const closeInd=()=>{animClose(setIndOpen,"ind");setIndSearch("");};
         const tabAccent=(id)=> id==="active"?c.gn : id==="pinned"?c.gold : c.acL;
         const tabCount=(id)=> id==="active"?indActive.length : id==="pinned"?indPinned.length : id==="all"?indicatorData.length : indicatorData.filter(i=>i.cat===id).length;
         return (
@@ -14562,26 +14561,25 @@ const TalariaV8bLive = () => {
             {indFiltered.map(ind=>{
               const isAct=indActive.includes(ind.id);
               const isPinned=indPinned.includes(ind.id);
-              const isSel=indSelected===ind.id;
               const isH=swHov===`ind-${ind.id}`;
               const isPinHov=swHov===`pin-${ind.id}`;
               const isAddHov=swHov===`add-${ind.id}`;
               const isAddDn=swHov===`add-${ind.id}_dn`;
               const indRowHov=isH||isPinHov||isAddHov||isAddDn;
+              const toggleIndActive=()=>setIndActive(prev=>isAct?prev.filter(x=>x!==ind.id):[...prev,ind.id]);
               return (
                 <div key={ind.id}
-                  onClick={(e)=>{if(!(e.target.closest('[data-indaction]')))setIndSelected(prev=>prev===ind.id?null:ind.id);}}
+                  onClick={(e)=>{if(e.target.closest('[data-indaction]'))return;toggleIndActive();}}
                   onMouseEnter={()=>setSwHov(`ind-${ind.id}`)} onMouseLeave={()=>setSwHov(null)}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"default",position:"relative",
-                    background:isAct?"rgba(38,67,247,0.07)":isSel?"rgba(255,255,255,0.045)":indRowHov?"rgba(255,255,255,0.022)":"transparent",
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"pointer",position:"relative",
+                    background:isAct?"rgba(38,67,247,0.07)":indRowHov?"rgba(255,255,255,0.022)":"transparent",
                     transition:"background 0.1s"}}>
                   {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                  {!isAct&&isSel&&<div style={{position:"absolute",left:0,top:"20%",bottom:"20%",width:2,background:`linear-gradient(180deg,transparent,rgba(140,160,255,0.4),transparent)`}}/>}
                   {/* abbr */}
-                  <span style={{minWidth:44,flexShrink:0,fontSize:14,fontWeight:800,color:isAct?c.acL:isSel?c.tx:c.ts,fontFamily:F,letterSpacing:"0.02em"}}>{ind.abbr}</span>
+                  <span style={{minWidth:44,flexShrink:0,fontSize:14,fontWeight:800,color:isAct?c.acL:c.ts,fontFamily:F,letterSpacing:"0.02em"}}>{ind.abbr}</span>
                   {/* name + desc */}
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,fontWeight:isAct?700:isSel?600:500,color:isAct?c.acL:isSel?c.tx:isH?c.tx:c.ts,lineHeight:1.3,transition:"color 0.1s"}}>{ind.name}</div>
+                    <div style={{fontSize:12,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,lineHeight:1.3,transition:"color 0.1s"}}>{ind.name}</div>
                     <div style={{fontSize:12,color:c.tm,lineHeight:1.3,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ind.desc}</div>
                   </div>
                   {/* pin */}
@@ -14591,17 +14589,17 @@ const TalariaV8bLive = () => {
                     style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,
                       transform:isPinHov&&!isPinned?"rotate(-25deg) scale(1.15)":"none",
                       transition:"transform 0.15s,opacity 0.15s",
-                      opacity:isPinned?1:isPinHov?1:indRowHov||isSel?0.6:0}}>
+                      opacity:isPinned?1:isPinHov?1:indRowHov?0.6:0}}>
                     <I n={isPinned?"pinFill":"pin"} s={16} cl={isPinned?c.gold:isPinHov?c.gold:c.ts}/>
                   </div>
                   {/* add/remove button */}
                   <div data-indaction="1"
-                    onClick={(e)=>{e.stopPropagation();setIndActive(prev=>isAct?prev.filter(x=>x!==ind.id):[...prev,ind.id]);}}
+                    onClick={(e)=>{e.stopPropagation();toggleIndActive();}}
                     onMouseEnter={()=>setSwHov(`add-${ind.id}`)} onMouseLeave={()=>setSwHov(`ind-${ind.id}`)}
                     onMouseDown={(e)=>{e.stopPropagation();setSwHov(`add-${ind.id}_dn`);}} onMouseUp={()=>setSwHov(`add-${ind.id}`)}
                     style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
                       cursor:"default",position:"relative",
-                      opacity:isAct?1:indRowHov||isSel?0.7:0,
+                      opacity:isAct?1:indRowHov?0.7:0,
                       background: isAct
                         ? isAddHov ? "rgba(255,80,104,0.10)" : "rgba(255,80,104,0.05)"
                         : isAddHov ? "rgba(74,106,255,0.10)" : "transparent",
