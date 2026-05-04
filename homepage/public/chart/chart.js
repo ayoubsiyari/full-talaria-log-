@@ -11945,10 +11945,7 @@ class Chart {
             for (let i = 0; i < this._timeTicks.length; i++) {
                 const tick = this._timeTicks[i];
                 const xLine = tick.x;
-                const segLeft = i > 0 ? this._timeTicks[i - 1].x : m.l;
-                const segRight = xLine;
-                const rawLabelX = (segLeft + segRight) / 2;
-                const labelX = Math.max(m.l + 4, Math.min(this.w - m.r - 4, rawLabelX));
+                const labelX = xLine;
                 applyScaleLineStyle();
                 this.ctx.beginPath();
                 this.ctx.moveTo(xLine, this.h - m.b);
