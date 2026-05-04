@@ -8610,6 +8610,10 @@ const TalariaV8bLive = () => {
         .ohlc-info.collapsed .ohlc-body{display:none !important}
         .ohlc-indicators{min-width:0}
         .ohlc-indicators > div{max-width:100%}
+        @media (hover:hover) and (pointer:fine){
+          .talaria-ind-legend-row .talaria-ind-actions{opacity:0;transition:opacity .12s ease;pointer-events:none}
+          .talaria-ind-legend-row:hover .talaria-ind-actions{opacity:1;pointer-events:auto}
+        }
 
       `}</style>
 

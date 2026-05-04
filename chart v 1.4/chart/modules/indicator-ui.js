@@ -761,6 +761,27 @@ if (typeof window !== 'undefined') {
     window.TALARIA_INDICATOR_COLOR_STRIP = TALARIA_INDICATOR_COLOR_STRIP;
 }
 
+/** TradingView-style: hide eye/settings/remove on legend rows until hover (fine pointer only). */
+function ensureTalariaIndLegendHoverCss() {
+    if (typeof document === 'undefined') return;
+    if (document.getElementById('talaria-ind-legend-hover-css')) return;
+    const s = document.createElement('style');
+    s.id = 'talaria-ind-legend-hover-css';
+    s.textContent = `
+@media (hover: hover) and (pointer: fine) {
+  .talaria-ind-legend-row .talaria-ind-actions {
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    pointer-events: none;
+  }
+  .talaria-ind-legend-row:hover .talaria-ind-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}`;
+    document.head.appendChild(s);
+}
+
 function ensureIndicatorColorStyles(panel) {
     if (panel.querySelector('#indicator-color-picker-styles')) {
         return;
@@ -2063,6 +2084,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 // 3. Integration with Chart
 
 function setupIndicatorUI(chartInstance) {
+    ensureTalariaIndLegendHoverCss();
     const indicatorsBtn = document.getElementById('indicatorsBtn');
     if (!indicatorsBtn) return;
 
@@ -2133,6 +2155,7 @@ function setupIndicatorUI(chartInstance) {
         for (let i = 0; i < overlayIndicators.length; i++) {
             const indicator = overlayIndicators[i];
             const item = document.createElement('div');
+            item.className = 'talaria-ind-legend-row';
             item.style.cssText = TALARIA_INDICATOR_CHIP_CSS;
 
             item.onmouseenter = function() {
@@ -2158,6 +2181,7 @@ function setupIndicatorUI(chartInstance) {
             item.appendChild(nameSpan);
 
             const actions = document.createElement('span');
+            actions.className = 'talaria-ind-actions';
             actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;';
 
             const self = this;
@@ -2531,6 +2555,7 @@ if (typeof Chart !== 'undefined' && !Chart.prototype.updateIndicator) {
 if (typeof Chart !== 'undefined') {
     const originalUpdateOHLC = Chart.prototype.updateOHLCIndicators;
     Chart.prototype.updateOHLCIndicators = function() {
+        ensureTalariaIndLegendHoverCss();
         const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
         const div = document.getElementById('ohlcIndicators' + idSuffix);
         
@@ -2550,6 +2575,7 @@ if (typeof Chart !== 'undefined') {
         for (let i = 0; i < overlayIndicators.length; i++) {
             const indicator = overlayIndicators[i];
             const item = document.createElement('div');
+            item.className = 'talaria-ind-legend-row';
             item.style.cssText = TALARIA_INDICATOR_CHIP_CSS;
 
             item.onmouseenter = function() {
@@ -2575,6 +2601,7 @@ if (typeof Chart !== 'undefined') {
             item.appendChild(nameSpan);
 
             const actions = document.createElement('span');
+            actions.className = 'talaria-ind-actions';
             actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;';
 
             const self = this;

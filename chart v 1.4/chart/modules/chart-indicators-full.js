@@ -13,6 +13,26 @@
     function attachIndicatorMethods() {
         const Chart = global.Chart;
 
+        (function ensureIndLegendHoverCss() {
+            if (typeof document === 'undefined' || document.getElementById('talaria-ind-legend-hover-css')) return;
+            const s = document.createElement('style');
+            s.id = 'talaria-ind-legend-hover-css';
+            s.textContent = [
+                '@media (hover: hover) and (pointer: fine) {',
+                '  .talaria-ind-legend-row .talaria-ind-actions {',
+                '    opacity: 0;',
+                '    transition: opacity 0.12s ease;',
+                '    pointer-events: none;',
+                '  }',
+                '  .talaria-ind-legend-row:hover .talaria-ind-actions {',
+                '    opacity: 1;',
+                '    pointer-events: auto;',
+                '  }',
+                '}'
+            ].join('\n');
+            document.head.appendChild(s);
+        })();
+
     /** TradingView-style legend chips — matches indicator-ui.js TALARIA_* (window set when indicator-ui loads) */
     function getTalariaChipStyles() {
         const w = global;
@@ -5713,6 +5733,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const indicator = overlayIndicators[i];
             const chip = getTalariaChipStyles();
             const item = document.createElement('div');
+            item.className = 'talaria-ind-legend-row';
             item.style.cssText = chip.chipCss + 'pointer-events:auto;';
 
             item.onmouseenter = function() {
@@ -5737,6 +5758,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             item.appendChild(nameSpan);
 
             const actions = document.createElement('span');
+            actions.className = 'talaria-ind-actions';
             actions.style.cssText = 'display:inline-flex;align-items:center;gap:0;margin-left:2px;flex-shrink:0;';
 
             const self = this;
@@ -6738,6 +6760,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             // Full plot-width row so action icons stay pinned to the right (TradingView-style).
             const bar = document.createElement('div');
+            bar.className = 'talaria-ind-legend-row';
             bar.style.cssText = [
                 'position:absolute',
                 'top:' + (slotTop + 5) + 'px',
@@ -6781,6 +6804,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             bar.appendChild(valEl);
 
             const actions = document.createElement('span');
+            actions.className = 'talaria-ind-actions';
             actions.style.cssText = 'display:inline-flex;align-items:center;gap:0;margin-left:auto;flex-shrink:0;';
 
             const eyeBtn = document.createElement('span');
