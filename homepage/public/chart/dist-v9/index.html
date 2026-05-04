@@ -717,7 +717,6 @@
                     pcChart.panel = panel;
                     pcChart.panelIndex = panel.index;
                     pcChart.isPanel = true;
-                    pcChart.syncCrosshair = true;
                     if (panel.timeframe) pcChart.currentTimeframe = panel.timeframe;
 
                     var main = window.chart;
@@ -761,8 +760,10 @@
                     if (main) {
                         pcChart.cursorType = main.cursorType || 'cross';
                         pcChart.showCrosshairLines = main.showCrosshairLines !== false;
-                        pcChart.syncCrosshair = main.syncCrosshair !== false;
-                        pcChart.syncDrawings = main.syncDrawings !== false;
+                        var pm0 = window.panelManager;
+                        var ss0 = pm0 && pm0.syncSettings;
+                        pcChart.syncCrosshair = ss0 ? !!ss0.crosshair : (main.syncCrosshair !== false);
+                        pcChart.syncDrawings = ss0 ? !!ss0.drawings : (main.syncDrawings !== false);
                         var mMode = main.magnetMode || window.magnetMode || 'off';
                         pcChart.magnetMode = mMode;
                         if (pcChart.drawingManager) pcChart.drawingManager.magnetMode = mMode;

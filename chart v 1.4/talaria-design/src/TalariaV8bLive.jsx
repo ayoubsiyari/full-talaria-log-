@@ -4009,6 +4009,21 @@ const TalariaV8bLive = () => {
           return next;
         });
       } catch (_) {}
+      try {
+        const ss = pm.syncSettings;
+        if (ss) {
+          window.crosshairSyncEnabled = !!ss.crosshair;
+          if (window.chart) {
+            window.chart.syncCrosshair = !!ss.crosshair;
+            window.chart.syncDrawings = !!ss.drawings;
+          }
+          (pm.panels || []).forEach((p) => {
+            if (!p.chartInstance) return;
+            p.chartInstance.syncCrosshair = !!ss.crosshair;
+            p.chartInstance.syncDrawings = !!ss.drawings;
+          });
+        }
+      } catch (_) {}
     };
     tryHydrate();
     return () => { cancelled = true; };
@@ -4071,12 +4086,9 @@ const TalariaV8bLive = () => {
     return () => { cancelAnimationFrame(r1); clearTimeout(r2); };
   }, [layoutPanels]);
 
-  // V9 sync toggles → panelManager.syncSettings + saveSyncSettings + the
-  // same one-shot side-effects legacy fires when toggles flip on:
-  //   - crosshair: window.crosshairSyncEnabled mirror
-  //   - drawings:  every panel.chartInstance.syncDrawings = bool
-  //   - indicators: syncIndicatorsNow()
-  //   - chartType:  syncChartTypeNow()
+  // V9 sync toggles → panelManager.syncSettings + saveSyncSettings + legacy-parity side-effects
+  // (panel-manager setupSyncToggles): crosshair flags + hide/show, time/date-range/interval bootstrap,
+  // drawings on instances, indicators/chartType snapshot sync when enabling.
   const layoutSyncFirstRef = useRef(true);
   useEffect(() => {
     if (layoutSyncFirstRef.current) { layoutSyncFirstRef.current = false; return; }
@@ -4093,18 +4105,77 @@ const TalariaV8bLive = () => {
     }
     if (!changed) return;
     try { pm.saveSyncSettings?.(); } catch (_) {}
+
     if ("crosshair" in fired) {
-      try { window.crosshairSyncEnabled = layoutSync.crosshair; } catch (_) {}
+      try {
+        window.crosshairSyncEnabled = layoutSync.crosshair;
+        if (window.chart) window.chart.syncCrosshair = layoutSync.crosshair;
+        (pm.panels || []).forEach((p) => {
+          if (p?.chartInstance) p.chartInstance.syncCrosshair = layoutSync.crosshair;
+        });
+        if (!layoutSync.crosshair && typeof pm.hideAllSyncedCrosshairs === "function") {
+          pm.hideAllSyncedCrosshairs();
+        } else if (
+          layoutSync.crosshair &&
+          window.chart?.cursorType &&
+          typeof window.chart.syncCursorTypeToAllCharts === "function"
+        ) {
+          window.chart.syncCursorTypeToAllCharts(window.chart.cursorType);
+        }
+      } catch (_) {}
     }
     if ("drawings" in fired) {
       try {
+        if (window.chart) window.chart.syncDrawings = layoutSync.drawings;
         (pm.panels || []).forEach((p) => {
           if (p?.chartInstance) p.chartInstance.syncDrawings = layoutSync.drawings;
         });
       } catch (_) {}
     }
-    if (fired.indicators) { try { pm.syncIndicatorsNow?.(); } catch (_) {} }
-    if (fired.chartType)  { try { pm.syncChartTypeNow?.();  } catch (_) {} }
+    if ("time" in fired) {
+      try {
+        pm._timeSyncLastTargetBar = {};
+        if (layoutSync.time && (pm.panels || []).length > 1) {
+          const sp = pm.panels[pm.selectedPanelIndex];
+          if (sp && typeof pm.syncTimeToPanel === "function") pm.syncTimeToPanel(sp);
+        }
+      } catch (_) {}
+    }
+    if ("dateRange" in fired) {
+      try {
+        if (layoutSync.dateRange && (pm.panels || []).length > 1) {
+          const selectedPanel = pm.panels[pm.selectedPanelIndex];
+          const chart = selectedPanel?.chartInstance;
+          if (chart?.data?.length) {
+            const startIndex = chart.getVisibleStartIndex ? chart.getVisibleStartIndex() : 0;
+            const endIndex = chart.getVisibleEndIndex ? chart.getVisibleEndIndex() : chart.data.length - 1;
+            const startTimestamp = chart.data[Math.max(0, startIndex)]?.t;
+            const endTimestamp = chart.data[Math.min(chart.data.length - 1, endIndex)]?.t;
+            if (startTimestamp && endTimestamp && typeof pm.syncDateRange === "function") {
+              pm.syncDateRange(selectedPanel, startTimestamp, endTimestamp);
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    if ("interval" in fired) {
+      try {
+        if (layoutSync.interval && (pm.panels || []).length > 1) {
+          const selectedPanel = pm.panels[pm.selectedPanelIndex];
+          if (selectedPanel?.chartInstance && typeof pm.syncInterval === "function") {
+            const timeframe =
+              selectedPanel.timeframe || selectedPanel.chartInstance.currentTimeframe || "1m";
+            pm.syncInterval(selectedPanel, timeframe);
+          }
+        }
+      } catch (_) {}
+    }
+    if ("indicators" in fired && layoutSync.indicators) {
+      try { pm.syncIndicatorsNow?.(); } catch (_) {}
+    }
+    if ("chartType" in fired && layoutSync.chartType) {
+      try { pm.syncChartTypeNow?.(); } catch (_) {}
+    }
   }, [layoutSync]);
 
   const [sessionDemoName, setSessionDemoName] = useState("Talaria V8b");
