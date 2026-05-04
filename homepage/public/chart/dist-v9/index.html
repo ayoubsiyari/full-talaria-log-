@@ -598,9 +598,9 @@
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=20260503_axis_time_center_scale"></script>
+    <script defer src="/chart/chart.js?v=20260504_axis_time_pad"></script>
     <!-- V9 React theme panel → chart.chartSettings (shared with legacy-index.html). Must load after chart.js. -->
-    <script defer src="/chart/modules/v9-theme-bridge.js?v=20260503_axis_tpl_bridge"></script>
+    <script defer src="/chart/modules/v9-theme-bridge.js?v=20260504_axis_time_pad"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
     <script defer src="/chart/modules/replay-system.js?v=20260503_follow_all_panels"></script>
@@ -956,3 +956,4 @@
     </script>
 </body>
 </html>
+

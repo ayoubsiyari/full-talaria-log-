@@ -11935,7 +11935,10 @@ class Chart {
         // that hides fillText in the margin; keep labels in the band above the strip.
         const timeAxisGrabStripPx = 10;
         const stripUsed = Math.min(timeAxisGrabStripPx, m.b);
-        const timeLabelY = this.h - m.b + (m.b - stripUsed) / 2;
+        const axisBandTop = this.h - m.b;
+        const axisBandHeight = Math.max(0, m.b - stripUsed);
+        const timeAxisTopPad = Math.max(4, Math.round(this.chartSettings.scaleTextSize * 0.35));
+        const timeLabelY = axisBandTop + timeAxisTopPad + (axisBandHeight - timeAxisTopPad) / 2 + 1;
         if (this._timeTicks && this._timeTicks.length > 0) {
             const prevBaseline = this.ctx.textBaseline;
             this.ctx.textBaseline = 'middle';
