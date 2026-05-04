@@ -3853,33 +3853,43 @@ class DrawingToolsManager {
             this.objectTreeManager.refresh();
         }
         
+        // Brush / highlighter: keep tool armed for the next stroke (finalizeDrawing skips clearTool).
+        // Do not auto-select the stroke — selection enables handles / hit-targets and breaks continuous draw.
+        const continuousFreehand = drawing.type === 'brush' || drawing.type === 'highlighter';
+
         // Auto-select the newly drawn shape to show resize handles immediately
         // Deselect all other drawings without triggering full redraw
         this.drawings.forEach(d => {
             if (d !== drawing) d.deselect();
         });
         this.toolbar.hide();
-        
-        // Select the new drawing and re-render to show handles
-        drawing.select();
-        this.selectedDrawing = drawing;
-        this.selectedDrawings = [drawing];  // Update selectedDrawings array for deselect to work
-        this.renderDrawing(drawing);
 
-        // Show toolbar immediately after drawing is completed
-        if (drawing.group && this.toolbar) {
-            try {
-                const node = drawing.group.node();
-                const bbox = node ? node.getBBox() : null;
-                if (bbox && bbox.width > 0) {
-                    const svgRect = this.svg.node().getBoundingClientRect();
-                    const x = svgRect.left + bbox.x + (bbox.width / 2);
-                    const y = svgRect.top + bbox.y;
-                    this.toolbar.show(drawing, x, y);
-                }
-            } catch (e) {}
+        if (continuousFreehand) {
+            if (typeof drawing.deselect === 'function') drawing.deselect();
+            this.selectedDrawing = null;
+            this.selectedDrawings = [];
+        } else {
+            // Select the new drawing and re-render to show handles
+            drawing.select();
+            this.selectedDrawing = drawing;
+            this.selectedDrawings = [drawing];  // Update selectedDrawings array for deselect to work
+            this.renderDrawing(drawing);
+
+            // Show toolbar immediately after drawing is completed
+            if (drawing.group && this.toolbar) {
+                try {
+                    const node = drawing.group.node();
+                    const bbox = node ? node.getBBox() : null;
+                    if (bbox && bbox.width > 0) {
+                        const svgRect = this.svg.node().getBoundingClientRect();
+                        const x = svgRect.left + bbox.x + (bbox.width / 2);
+                        const y = svgRect.top + bbox.y;
+                        this.toolbar.show(drawing, x, y);
+                    }
+                } catch (e) {}
+            }
+            this._notifyV9SelectionSync(drawing);
         }
-        this._notifyV9SelectionSync(drawing);
         
         // [debug removed]
     }
