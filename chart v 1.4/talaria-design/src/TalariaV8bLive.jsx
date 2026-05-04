@@ -2157,6 +2157,14 @@ function journalAuthHeaders() {
 
 const JOURNAL_API_PREFIXES = ["/api/journal", "/journal/api/journal"];
 
+/** PRE / POST screenshot slots in trade card & grid — journal API still stores one URL per side on PUT; UI keeps up to four per side locally. */
+const MAX_SCREENSHOTS_PRE_POST = 4;
+
+function clampScreenshotSlot(arr, maxN = MAX_SCREENSHOTS_PRE_POST) {
+  if (!Array.isArray(arr)) return [];
+  return arr.slice(0, maxN);
+}
+
 async function fetchJournalEndpoint(path, init = {}) {
   const headers = { ...journalAuthHeaders(), ...(init.headers || {}) };
   const req = { credentials: "include", cache: "no-store", ...init, headers };
@@ -15304,7 +15312,7 @@ const TalariaV8bLive = () => {
         );
       })()}
       {(screenshotOpen || closing.has("screenshot")) && (
-        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${screenshotPos.y}px)`,left:`calc(50% + ${screenshotPos.x}px)`,transform:"translate(-50%,-50%)",width:920,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("screenshot")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${screenshotPos.y}px)`,left:`calc(50% + ${screenshotPos.x}px)`,transform:"translate(-50%,-50%)",width:Math.min(1180,typeof window!=="undefined"?window.innerWidth-32:1180),maxWidth:"calc(100vw - 32px)",zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("screenshot")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"screenshot",startX:e.clientX,startY:e.clientY,ox:screenshotPos.x,oy:screenshotPos.y});}}
             style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
@@ -15322,9 +15330,13 @@ const TalariaV8bLive = () => {
           {/* chart preview — real bitmap from screenshot-manager (same pipeline as Copy/Download) */}
           <div style={{padding:"14px 16px 0",flexShrink:0}}>
             {(() => {
-              const W = 888;
+              const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+              const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+              const modalInner = Math.min(1180, vw - 32) - 32;
+              const W = Math.max(560, Math.min(modalInner, 1140));
+              const maxPrev = Math.min(860, Math.round(vh * 0.78));
               const aspect = canvasDims.w > 0 ? canvasDims.h / canvasDims.w : 0.42;
-              const boxH = Math.min(420, Math.max(220, Math.round(W * aspect)));
+              const boxH = Math.min(maxPrev, Math.max(340, Math.round(W * aspect)));
               return (
                 <div style={{ background: c.bg, border: `1px solid ${c.brH}`, position: "relative", overflow: "hidden", borderRadius: 4, minHeight: boxH }}>
                   {!screenshotPreviewUrl ? (
@@ -15332,7 +15344,7 @@ const TalariaV8bLive = () => {
                       Loading preview…
                     </div>
                   ) : (
-                    <img src={screenshotPreviewUrl} alt="" draggable={false} style={{ display: "block", width: W, height: "auto", maxHeight: 420, objectFit: "contain", verticalAlign: "top" }} />
+                    <img src={screenshotPreviewUrl} alt="" draggable={false} style={{ display: "block", width: W, height: "auto", maxHeight: maxPrev, objectFit: "contain", verticalAlign: "top", margin: "0 auto" }} />
                   )}
                   <div style={{ position: "absolute", top: 8, left: 10, display: "flex", alignItems: "center", gap: 8, pointerEvents: "none", textShadow: "0 1px 4px rgba(0,0,0,0.85)" }}>
                     <span style={{ fontSize: 15, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", fontFamily: F }}>{symbol}</span>
@@ -15459,9 +15471,27 @@ const TalariaV8bLive = () => {
                                               const sk = ph === "Pre" ? "pre" : "post";
                                               setTradeScreenshots((prev) => {
                                                 const cur = { ...(prev[rowId] || {}) };
-                                                const arr = [...(cur[sk] || [])];
-                                                if (!arr.includes(imageUrl)) arr.push(imageUrl);
-                                                return { ...prev, [rowId]: { ...cur, [sk]: arr } };
+                                                const arr = clampScreenshotSlot([...(cur[sk] || [])]);
+                                                if (
+                                                  arr.length >= MAX_SCREENSHOTS_PRE_POST &&
+                                                  !arr.includes(imageUrl)
+                                                ) {
+                                                  try {
+                                                    window.alert(
+                                                      `Maximum ${MAX_SCREENSHOTS_PRE_POST} screenshots per ${sk === "pre" ? "Pre-trade" : "Post-trade"} slot. Remove one in the trade card first.`,
+                                                    );
+                                                  } catch (_) {}
+                                                  return prev;
+                                                }
+                                                const next = [...arr];
+                                                if (!next.includes(imageUrl)) next.push(imageUrl);
+                                                return {
+                                                  ...prev,
+                                                  [rowId]: {
+                                                    ...cur,
+                                                    [sk]: clampScreenshotSlot(next),
+                                                  },
+                                                };
                                               });
                                             }
                                             setOmTradeRev((n) => n + 1);
@@ -17023,11 +17053,11 @@ const TalariaV8bLive = () => {
                       if(j&&(j.entryScreenshot||j.exitScreenshot)){
                         setTradeScreenshots((prev)=>{
                           const ex=prev[r.id]||{};
-                          const pre=[...(ex.pre||[])];
-                          const post=[...(ex.post||[])];
+                          const pre=clampScreenshotSlot([...(ex.pre||[])]);
+                          const post=clampScreenshotSlot([...(ex.post||[])]);
                           if(j.entryScreenshot&&!pre.includes(j.entryScreenshot))pre.push(j.entryScreenshot);
                           if(j.exitScreenshot&&!post.includes(j.exitScreenshot))post.push(j.exitScreenshot);
-                          return {...prev,[r.id]:{...ex,pre,post}};
+                          return {...prev,[r.id]:{...ex,pre:clampScreenshotSlot(pre),post:clampScreenshotSlot(post)}};
                         });
                       }
                     };
@@ -17176,19 +17206,19 @@ const TalariaV8bLive = () => {
                           const tid=r.omId;
                           const jRow=tid!=null&&Array.isArray(omRow?.tradeJournal)?omRow.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
                           const fromSt=tradeScreenshots[r.id]||{};
-                          const pre=[...(fromSt.pre||[])];
-                          const post=[...(fromSt.post||[])];
+                          const pre=clampScreenshotSlot([...(fromSt.pre||[])]);
+                          const post=clampScreenshotSlot([...(fromSt.post||[])]);
                           if(jRow?.entryScreenshot&&!pre.includes(jRow.entryScreenshot))pre.push(jRow.entryScreenshot);
                           if(jRow?.exitScreenshot&&!post.includes(jRow.exitScreenshot))post.push(jRow.exitScreenshot);
-                          const allSs=[...pre,...post];
+                          const allSs=[...clampScreenshotSlot(pre),...clampScreenshotSlot(post)];
                           return allSs.length>0?(
-                          <div style={{display:"flex",alignItems:"center",gap:3}}>
-                            {allSs.slice(0,3).map((src,si)=>(
-                              <div key={si} style={{width:22,height:16,border:"1px solid rgba(140,160,255,0.3)",overflow:"hidden",flexShrink:0}}>
+                          <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap",maxWidth:148}}>
+                            {allSs.slice(0,4).map((src,si)=>(
+                              <div key={si} style={{width:30,height:22,border:"1px solid rgba(140,160,255,0.3)",overflow:"hidden",flexShrink:0,borderRadius:2}}>
                                 <img src={src} alt="" onError={journalScreenshotImgOnError} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
                               </div>
                             ))}
-                            {allSs.length>3&&<span style={{fontSize:8,color:c.ts}}>+{allSs.length-3}</span>}
+                            {allSs.length>4&&<span style={{fontSize:8,color:c.ts}}>+{allSs.length-4}</span>}
                           </div>
                         ) : (
                           <span style={{fontSize:9,color:c.tm,fontStyle:"italic"}}>—</span>
@@ -19912,7 +19942,7 @@ const TalariaV8bLive = () => {
             else if (dragging.target === "profile") setProfilePos(cc(dragging.ox+dx, dragging.oy+dy, 400, 540));
             else if (dragging.target === "faq") setFaqPos(cc(dragging.ox+dx, dragging.oy+dy, 440, 540));
             else if (dragging.target === "news") setNewsPos({ x: dragging.ox + dx, y: dragging.oy + dy });
-            else if (dragging.target === "screenshot") setScreenshotPos(cc(dragging.ox+dx, dragging.oy+dy, 920, 580));
+            else if (dragging.target === "screenshot") setScreenshotPos(cc(dragging.ox+dx, dragging.oy+dy, Math.min(1180,(typeof window!=="undefined"?window.innerWidth:1200)-24), Math.min(760,(typeof window!=="undefined"?window.innerHeight:900)-24)));
             else if (dragging.target === "layers") setLayersPos({ x: dragging.ox + dx, y: dragging.oy + dy });
             else if (dragging.target === "layout") setLayoutPos({ x: dragging.ox + dx, y: dragging.oy + dy });
           }}
@@ -20237,39 +20267,45 @@ const TalariaV8bLive = () => {
                   onFocus={e=>e.target.style.borderColor=c.acB} onBlur={e=>e.target.style.borderColor=c.br}/>
               </div>
 
-              {/* ── SCREENSHOTS — PRE and POST side by side ── */}
+              {/* ── SCREENSHOTS — PRE and POST side by side (max 4 each, 2×2 grid) ── */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr"}}>
                 {["pre","post"].map((slot,si)=>{
-                  const imgs=(tradeScreenshots[r.id]||{})[slot]||[];
+                  const imgs=clampScreenshotSlot((tradeScreenshots[r.id]||{})[slot]||[]);
                   const canEditSs=slot==="pre"?canEditPre:canEditPost;
+                  const atCap=imgs.length>=MAX_SCREENSHOTS_PRE_POST;
+                  const TC_SW=118;
+                  const TC_SH=80;
                   return(
                   <div key={slot} style={{padding:"10px 14px",borderRight:si===0?`1px solid ${c.br}`:"none"}}>
-                    <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.1em",marginBottom:6}}>
-                      {slot==="pre"?"PRE TRADE":"POST TRADE"} SCREENSHOTS
+                    <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+                      <span style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.1em"}}>
+                        {slot==="pre"?"PRE TRADE":"POST TRADE"} SCREENSHOTS
+                      </span>
+                      <span style={{fontSize:8,color:c.ts,letterSpacing:"0.04em"}}>{imgs.length}/{MAX_SCREENSHOTS_PRE_POST}</span>
                     </div>
-                    <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"flex-start"}}>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(2, minmax(0, 1fr))",gap:8,maxWidth:TC_SW*2+8}}>
                       {imgs.map((src,ssi)=>(
-                        <div key={ssi} className="tc-ss-wrap" style={{width:64,height:44,border:"1px solid rgba(140,160,255,0.25)",overflow:"hidden",flexShrink:0,position:"relative"}}>
+                        <div key={ssi} className="tc-ss-wrap" style={{width:TC_SW,height:TC_SH,border:"1px solid rgba(140,160,255,0.25)",borderRadius:2,overflow:"hidden",flexShrink:0,position:"relative"}}>
                           <img src={src} alt="" onError={journalScreenshotImgOnError} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
                           <div className="tc-ss-overlay"
                             style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",gap:5,opacity:0,transition:"opacity 0.12s"}}>
                             <div className="ss-view-btn" onClick={()=>setViewingScreenshot(src)}
-                              style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.1)",cursor:"default",transition:"background 0.1s"}}>
-                              <I n="eye" s={10} cl="rgba(255,255,255,0.85)"/>
+                              style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.1)",cursor:"default",transition:"background 0.1s"}}>
+                              <I n="eye" s={11} cl="rgba(255,255,255,0.85)"/>
                             </div>
                             {canEditSs&&(
-                            <div className="ss-del-btn" onClick={()=>setTradeScreenshots(prev=>{const n={...prev};const cur={...(n[r.id]||{})};cur[slot]=(cur[slot]||[]).filter((_,j)=>j!==ssi);n[r.id]=cur;return n;})}
-                              style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.1)",cursor:"default",transition:"background 0.1s"}}>
-                              <I n="x" s={10} cl="rgba(255,100,100,0.85)"/>
+                            <div className="ss-del-btn" onClick={()=>setTradeScreenshots(prev=>{const n={...prev};const cur={...(n[r.id]||{})};cur[slot]=clampScreenshotSlot((cur[slot]||[]).filter((_,j)=>j!==ssi));n[r.id]=cur;return n;})}
+                              style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.1)",cursor:"default",transition:"background 0.1s"}}>
+                              <I n="x" s={11} cl="rgba(255,100,100,0.85)"/>
                             </div>
                             )}
                           </div>
                         </div>
                       ))}
-                      {canEditSs&&(
+                      {canEditSs&&!atCap&&(
                       <div className="tc-ss-add" onClick={()=>{setTcSsSlot(slot);tcFileRef.current?.click();}}
-                        style={{width:64,height:44,border:`1px dashed rgba(140,160,255,0.2)`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,cursor:"default",flexShrink:0,transition:"background 0.12s"}}>
-                        <svg width={10} height={10} viewBox="0 0 14 14" fill="none">
+                        style={{width:TC_SW,height:TC_SH,border:`1px dashed rgba(140,160,255,0.28)`,borderRadius:2,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,cursor:"default",flexShrink:0,transition:"background 0.12s"}}>
+                        <svg width={11} height={11} viewBox="0 0 14 14" fill="none">
                           <line x1="7" y1="2" x2="7" y2="12" className="tc-ss-plus" stroke={c.trk} strokeWidth="1.5" strokeLinecap="round"/>
                           <line x1="2" y1="7" x2="12" y2="7" className="tc-ss-plus" stroke={c.trk} strokeWidth="1.5" strokeLinecap="round"/>
                         </svg>
@@ -20289,7 +20325,28 @@ const TalariaV8bLive = () => {
               <B primary hk="tc-save" fireOnPointerDown onClick={saveCard}>Save</B>
             </div>
             <input ref={tcFileRef} type="file" accept="image/*" style={{display:"none"}}
-              onChange={e=>{const f=e.target.files[0];if(!f)return;const reader=new FileReader();reader.onload=ev=>setTradeScreenshots(prev=>{const n={...prev};const cur={...(n[r.id]||{})};cur[tcSsSlot]=[...(cur[tcSsSlot]||[]),ev.target.result];n[r.id]=cur;return n;});reader.readAsDataURL(f);e.target.value="";}}/>
+              onChange={e=>{
+                const f=e.target.files[0];
+                if(!f)return;
+                const reader=new FileReader();
+                reader.onload=ev=>{
+                  setTradeScreenshots(prev=>{
+                    const n={...prev};
+                    const cur={...(n[r.id]||{})};
+                    const slotKey=tcSsSlot;
+                    const slotArr=clampScreenshotSlot([...(cur[slotKey]||[])]);
+                    if(slotArr.length>=MAX_SCREENSHOTS_PRE_POST){
+                      try{window.alert(`Maximum ${MAX_SCREENSHOTS_PRE_POST} screenshots per ${slotKey==="pre"?"Pre-trade":"Post-trade"} slot.`);}catch(_){}
+                      return prev;
+                    }
+                    cur[slotKey]=clampScreenshotSlot([...slotArr,ev.target.result]);
+                    n[r.id]=cur;
+                    return n;
+                  });
+                };
+                reader.readAsDataURL(f);
+                e.target.value="";
+              }}/>
           </div>
         </div>
         );
@@ -20538,9 +20595,25 @@ const TalariaV8bLive = () => {
 
       {viewingScreenshot&&(
         <div onClick={()=>setViewingScreenshot(null)}
-          style={{position:"fixed",inset:0,zIndex:100001,background:"rgba(0,0,0,0.93)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default"}}>
-          <img src={viewingScreenshot} alt="" onClick={e=>e.stopPropagation()} onError={journalScreenshotImgOnError}
-            style={{maxWidth:"92vw",maxHeight:"92vh",objectFit:"contain",boxShadow:"0 8px 48px rgba(0,0,0,0.9)"}}/>
+          style={{position:"fixed",inset:0,zIndex:100001,background:"rgba(0,0,0,0.93)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",padding:16,boxSizing:"border-box"}}>
+          <div onClick={e=>e.stopPropagation()} style={{
+            width:"min(96vw, 1600px)",
+            height:"min(90vh, 1000px)",
+            display:"flex",
+            alignItems:"center",
+            justifyContent:"center",
+            boxSizing:"border-box",
+          }}>
+            <img src={viewingScreenshot} alt="" onError={journalScreenshotImgOnError}
+              style={{
+                maxWidth:"100%",
+                maxHeight:"100%",
+                width:"auto",
+                height:"auto",
+                objectFit:"contain",
+                boxShadow:"0 8px 48px rgba(0,0,0,0.9)",
+              }}/>
+          </div>
           <div onClick={()=>setViewingScreenshot(null)} onMouseEnter={()=>setHov("ss-lb-x")} onMouseLeave={()=>setHov(null)}
             style={{position:"absolute",top:16,right:16,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
               background:hov==="ss-lb-x"?"rgba(255,80,80,0.15)":"rgba(255,255,255,0.06)",border:`1px solid ${hov==="ss-lb-x"?"rgba(255,80,80,0.4)":"rgba(255,255,255,0.12)"}`,
