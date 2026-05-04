@@ -8558,9 +8558,9 @@ const TalariaV8bLive = () => {
               <div className="nav-badge-icon">
                 {/* Same glyph as legacy #replayGoBack (replay toolbar) */}
                 <svg className="nav-badge-go-back" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="m9 6-6 6 6 6" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M3 12h14" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M21 19V5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="m9 6-6 6 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M3 12h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M21 19V5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
               <div className="nav-badge-tooltip" id="navBadgeTooltip">
