@@ -340,6 +340,82 @@
            two duplicate toolbars on every drawing select. */
         #drawing-toolbar { display: none !important; }
 
+        /* Replay follow — V9 chrome (matches dist-v9); resets native button so it isn’t white on Windows/Chrome. */
+        body > button.replay-follow-float-btn[data-talaria-replay-follow="injected"],
+        #chart-container #replayFollow.replay-follow-float-btn,
+        #chart-container button#replayFollow,
+        #chart-container #chartWrapper #replayFollow.replay-follow-float-btn,
+        #panels-container .panel-chart-container .panel-follow-btn {
+            -webkit-appearance: none;
+            appearance: none;
+            font: inherit;
+            outline: none;
+            position: absolute;
+            bottom: 70px;
+            right: 120px;
+            z-index: 500;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            margin: 0;
+            box-sizing: border-box;
+            background: rgba(14, 17, 28, 0.92);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(140, 160, 255, 0.28);
+            border-radius: 10px;
+            color: rgba(210, 218, 255, 0.9);
+            cursor: pointer;
+            box-shadow:
+                0 4px 20px rgba(0, 0, 0, 0.45),
+                inset 0 1px 0 rgba(255, 255, 255, 0.045);
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease;
+            animation: tlrReplayFollowIdle 3s ease-in-out infinite;
+            pointer-events: auto;
+        }
+        body > button.replay-follow-float-btn[data-talaria-replay-follow="injected"].replay-follow--attention,
+        #chart-container #replayFollow.replay-follow--attention,
+        #chart-container #chartWrapper #replayFollow.replay-follow--attention {
+            animation: tlrReplayFollowAttention 1s ease-in-out infinite;
+            border-color: rgba(99, 132, 255, 0.55);
+            color: #e8ecff;
+            box-shadow:
+                0 0 22px rgba(41, 98, 255, 0.38),
+                0 4px 18px rgba(0, 0, 0, 0.5),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+        body > button.replay-follow-float-btn[data-talaria-replay-follow="injected"] svg,
+        #chart-container #replayFollow svg,
+        #chart-container #chartWrapper #replayFollow svg,
+        #panels-container .panel-chart-container .panel-follow-btn svg {
+            width: 20px;
+            height: 20px;
+            display: block;
+            flex-shrink: 0;
+        }
+        body > button.replay-follow-float-btn[data-talaria-replay-follow="injected"]:hover,
+        #chart-container #replayFollow:hover,
+        #chart-container #chartWrapper #replayFollow:hover,
+        #panels-container .panel-chart-container .panel-follow-btn:hover {
+            background: rgba(22, 27, 44, 0.96);
+            border-color: rgba(160, 176, 255, 0.42);
+            color: #f0f3ff;
+            transform: scale(1.06);
+            animation: none;
+            opacity: 1;
+        }
+        @keyframes tlrReplayFollowIdle {
+            0%, 100% { opacity: 0.88; }
+            50% { opacity: 1; }
+        }
+        @keyframes tlrReplayFollowAttention {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.92; }
+        }
+
         /* Backtesting / replay loading overlay (same role as chart/legacy-index.html) */
         #backtestingLoader {
             position: fixed; inset: 0; z-index: 100000;
@@ -525,7 +601,7 @@
     <script defer src="/chart/modules/v9-theme-bridge.js?v=20260428_v9_theme_bridge"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
-    <script defer src="/chart/modules/replay-system.js?v=20260503_follow_btn_fixed_overlay"></script>
+    <script defer src="/chart/modules/replay-system.js?v=20260503_follow_btn_theme"></script>
 
     <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->
     <script defer src="/chart/modules/order-event-bus.js?v=20260428_place_order_v9"></script>

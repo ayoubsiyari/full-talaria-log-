@@ -17839,10 +17839,14 @@
 
 
 
-        /* Floating follow button — main chart (#replayFollow) and panel charts (.panel-follow-btn) share one spec */
+        /* Floating follow button — V9-aligned dark chrome (appearance:none kills OS white button). */
 
         #replayFollow,
         .panel-follow-btn {
+            -webkit-appearance: none;
+            appearance: none;
+            font: inherit;
+            outline: none;
             position: absolute;
             bottom: 70px;
             right: 120px;
@@ -17853,21 +17857,25 @@
             width: 44px;
             height: 44px;
             padding: 0;
-            background: rgba(45, 55, 72, 0.45);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1.5px solid rgba(160, 174, 192, 0.2);
-            border-radius: 50%;
-            color: rgba(160, 174, 192, 0.7);
+            margin: 0;
+            box-sizing: border-box;
+            background: rgba(14, 17, 28, 0.92);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(140, 160, 255, 0.28);
+            border-radius: 10px;
+            color: rgba(210, 218, 255, 0.9);
             cursor: pointer;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
-            transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
-            animation: followPulse 2.5s ease-in-out infinite;
+            box-shadow:
+                0 4px 20px rgba(0, 0, 0, 0.45),
+                inset 0 1px 0 rgba(255, 255, 255, 0.045);
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease;
+            animation: followPulse 3s ease-in-out infinite;
         }
 
         @keyframes followPulse {
             0%, 100% {
-                opacity: 0.7;
+                opacity: 0.88;
             }
             50% {
                 opacity: 1;
@@ -17876,10 +17884,10 @@
 
         #replayFollow:hover,
         .panel-follow-btn:hover {
-            background: rgba(45, 55, 72, 0.7);
-            border-color: rgba(160, 174, 192, 0.4);
-            color: #e2e8f0;
-            transform: scale(1.1);
+            background: rgba(22, 27, 44, 0.96);
+            border-color: rgba(160, 176, 255, 0.42);
+            color: #f0f3ff;
+            transform: scale(1.06);
             animation: none;
             opacity: 1;
         }
@@ -43952,7 +43960,7 @@
     <script defer src="chart.js?v=20260503_axis_cursor_brush"></script>
     <script defer src="modules/v9-theme-bridge.js?v=20260428_v9_theme_bridge"></script>
 
-    <script defer src="modules/replay-system.js?v=20260503_follow_btn_fixed_overlay"></script>
+    <script defer src="modules/replay-system.js?v=20260503_follow_btn_theme"></script>
     <script defer src="modules/chart-env.defaults.js?v=20260464"></script>
     <script defer src="modules/chart-env.generated.js?v=20260464"></script>
     <script defer src="modules/economic-news-sidebar.js?v=20260464"></script>
