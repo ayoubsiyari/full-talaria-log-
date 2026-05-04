@@ -15466,6 +15466,9 @@ const TalariaV8bLive = () => {
                         ) : filtered.map(t=>{
                           const rowKey=`${t.sessionTradeId}`;
                           const isAct=scLinkedSessionTradeId===t.sessionTradeId;
+                          const lk=t.linkKind??"closed";
+                          const preLinkAllowed=lk==="pending"||lk==="open";
+                          const postLinkAllowed=lk==="closed";
                           const isH=swHov===`sc-trade-${rowKey}`||swHov===`sc-ph-${rowKey}-Pre`||swHov===`sc-ph-${rowKey}-Post`;
                           return (
                             <div key={rowKey}
@@ -15490,12 +15493,21 @@ const TalariaV8bLive = () => {
                               {(isH||isAct) && (
                                 <div style={{display:"flex",gap:1,flexShrink:0}}>
                                   {["Pre","Post"].map(ph=>{
+                                    const allowed=ph==="Pre"?preLinkAllowed:postLinkAllowed;
                                     const isPh=isAct&&scLinkPhase===ph;
                                     const isPhH=swHov===`sc-ph-${rowKey}-${ph}`;
                                     return (
                                       <div key={ph}
+                                        title={
+                                          allowed
+                                            ? ""
+                                            : ph === "Pre"
+                                              ? "Pre-trade screenshots only while the order is pending or open."
+                                              : "Post-trade screenshots only after the trade is closed."
+                                        }
                                         onClick={async (e)=>{
                                           e.stopPropagation();
+                                          if (!allowed) return;
                                           if (scLinkSaving) return;
                                           if (!screenshotPreviewUrl || String(screenshotPreviewUrl).startsWith("data:image/svg")) {
                                             try {
@@ -15579,16 +15591,26 @@ const TalariaV8bLive = () => {
                                             setScLinkSaving(false);
                                           }
                                         }}
-                                        onMouseEnter={e=>{e.stopPropagation();setSwHov(`sc-ph-${rowKey}-${ph}`);}}
-                                        onMouseLeave={e=>{e.stopPropagation();setSwHov(`sc-trade-${rowKey}`);}}
-                                        style={{fontSize:10,fontWeight:700,padding:"3px 7px",cursor:scLinkSaving?"wait":"default",
-                                          position:"relative",opacity:scLinkSaving?0.45:1,
-                                          color:isPh?c.acL:isPhH?c.tx:c.ts,
-                                          background:isPh?"rgba(74,106,255,0.08)":isPhH?c.hv:"transparent",
-                                          transition:"background 0.1s,color 0.1s"}}>
+                                        onMouseEnter={e=>{
+                                          if (!allowed) return;
+                                          e.stopPropagation();
+                                          setSwHov(`sc-ph-${rowKey}-${ph}`);
+                                        }}
+                                        onMouseLeave={e=>{
+                                          if (!allowed) return;
+                                          e.stopPropagation();
+                                          setSwHov(`sc-trade-${rowKey}`);
+                                        }}
+                                        style={{fontSize:10,fontWeight:700,padding:"3px 7px",
+                                          cursor:!allowed?"not-allowed":scLinkSaving?"wait":"default",
+                                          position:"relative",
+                                          opacity:!allowed?0.38:scLinkSaving?0.45:1,
+                                          color:!allowed?c.tm:isPh?c.acL:isPhH?c.tx:c.ts,
+                                          background:isPh?"rgba(74,106,255,0.08)":isPhH&&allowed?c.hv:"transparent",
+                                          transition:"background 0.1s,color 0.1s,opacity 0.1s"}}>
                                         {ph}
-                                        {isPh&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
-                                        {!isPh&&isPhH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
+                                        {allowed&&isPh&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
+                                        {allowed&&!isPh&&isPhH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
                                       </div>
                                     );
                                   })}
