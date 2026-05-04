@@ -2343,9 +2343,9 @@ function buildJournalAddPayloadFromSessionTrade(tr) {
   const pnl = Number.parseFloat(tr.netPnL ?? tr.pnl ?? 0) || 0;
   const rr = Number.parseFloat(String(tr.rMultiple ?? "0").replace(/[^0-9.-]/g, "")) || 0;
   let openMs = 0;
-  if (tr.entryTime != null) {
-    openMs =
-      typeof tr.entryTime === "number" ? tr.entryTime : Date.parse(String(tr.entryTime));
+  const entryCand = tr.entryTime ?? tr.placedTime ?? tr.openTime;
+  if (entryCand != null) {
+    openMs = typeof entryCand === "number" ? entryCand : Date.parse(String(entryCand));
     if (!Number.isFinite(openMs)) openMs = 0;
   }
   const closeMs = sessionTradeCloseMs(tr);
@@ -2366,12 +2366,26 @@ function buildJournalAddPayloadFromSessionTrade(tr) {
   return payload;
 }
 
+function resolveOrderManagerTradeLikeForJournal(om, sessionTradeId) {
+  const id = Number(sessionTradeId);
+  if (!Number.isFinite(id)) return null;
+  const tj = Array.isArray(om?.tradeJournal) ? om.tradeJournal : [];
+  const fromJournal = tj.find((x) => Number(x.tradeId ?? x.id) === id);
+  if (fromJournal) return fromJournal;
+  const pend = om?.pendingOrders?.find((o) => Number(o.id) === id);
+  if (pend) return pend;
+  const open = om?.openPositions?.find((o) => Number(o.id) === id);
+  if (open) return open;
+  const closed = om?.closedPositions?.find((o) => Number(o.id) === id);
+  if (closed) return closed;
+  return null;
+}
+
 async function createJournalEntryFromSessionTrade(sessionTradeId) {
   const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
-  const tj = Array.isArray(om?.tradeJournal) ? om.tradeJournal : null;
-  if (!tj) throw new Error("Chart journal is not available.");
-  const tr = tj.find((x) => (x.tradeId ?? x.id) === sessionTradeId);
-  if (!tr) throw new Error("That trade is no longer in the session journal.");
+  if (!om || !Array.isArray(om.tradeJournal)) throw new Error("Chart journal is not available.");
+  const tr = resolveOrderManagerTradeLikeForJournal(om, sessionTradeId);
+  if (!tr) throw new Error("That trade is no longer available.");
   const payload = buildJournalAddPayloadFromSessionTrade(tr);
   const res = await fetchJournalEndpoint("/add", {
     method: "POST",
@@ -3777,15 +3791,66 @@ const TalariaV8bLive = () => {
 
     const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
     const tj = Array.isArray(om?.tradeJournal) ? om.tradeJournal : [];
-    const reversed = [...tj].reverse();
-    const baseRows = reversed.map((tr) => {
-      const sessionTradeId = tr.tradeId ?? tr.id;
+    const pend = Array.isArray(om?.pendingOrders) ? om.pendingOrders : [];
+    const openPos = Array.isArray(om?.openPositions) ? om.openPositions : [];
+
+    const journalSortMs = (tr) => {
+      const c = sessionTradeCloseMs(tr);
+      if (c > 0) return c;
+      const v = tr?.openTime ?? tr?.entryTime ?? tr?.entryDate;
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string") {
+        const p = Date.parse(v);
+        if (Number.isFinite(p)) return p;
+      }
+      return 0;
+    };
+
+    /** Pending / open overwrite journal rows with the same order id so the list matches the trades grid. */
+    const byId = new Map();
+    for (const tr of tj) {
+      const sid = Number(tr.tradeId ?? tr.id);
+      if (!Number.isFinite(sid)) continue;
+      byId.set(sid, {
+        sessionTradeId: sid,
+        journalTrade: tr,
+        sortMs: journalSortMs(tr),
+        linkKind: "closed",
+      });
+    }
+    for (const o of pend) {
+      const sid = Number(o.id);
+      if (!Number.isFinite(sid)) continue;
+      byId.set(sid, {
+        sessionTradeId: sid,
+        journalTrade: null,
+        orderRef: o,
+        sortMs: o.placedTime || o.openTime || 0,
+        linkKind: "pending",
+      });
+    }
+    for (const o of openPos) {
+      const sid = Number(o.id);
+      if (!Number.isFinite(sid)) continue;
+      byId.set(sid, {
+        sessionTradeId: sid,
+        journalTrade: null,
+        orderRef: o,
+        sortMs: o.openTime || o.placedTime || 0,
+        linkKind: "open",
+      });
+    }
+
+    const mergedSort = [...byId.values()].sort((a, b) => (b.sortMs || 0) - (a.sortMs || 0));
+    const baseRows = mergedSort.map((m) => {
+      const tr = m.journalTrade || m.orderRef;
       return {
-        sessionTradeId,
+        sessionTradeId: m.sessionTradeId,
         journalId: null,
-        id: `#${sessionTradeId}`,
+        id: `#${m.sessionTradeId}`,
         sym: formatJournalSymbolForDisplay(tr.ticker || tr.symbol || ""),
         side: sideLabelFromSessionTrade(tr),
+        linkKind: m.linkKind,
       };
     });
 
@@ -3822,7 +3887,7 @@ const TalariaV8bLive = () => {
         if (!Array.isArray(arr) || cancelled) return;
         const used = new Set();
         const merged = baseRows.map((row) => {
-          const tr = tj.find((x) => (x.tradeId ?? x.id) === row.sessionTradeId);
+          const tr = tj.find((x) => Number(x.tradeId ?? x.id) === Number(row.sessionTradeId));
           if (!tr) return row;
           const jid = matchApiJournalIdForSessionTrade(tr, arr, used);
           return jid != null ? { ...row, journalId: jid } : row;
@@ -15396,7 +15461,7 @@ const TalariaV8bLive = () => {
                           <div style={{padding:"8px 12px",fontSize:12,color:c.tm,textAlign:"center"}}>Loading…</div>
                         ) : filtered.length===0 ? (
                           <div style={{padding:"8px 12px",fontSize:12,color:c.tm,textAlign:"center"}}>
-                            {scJournalListErr ? "" : scJournalRows.length === 0 ? "No closed trades yet" : "No trades found"}
+                            {scJournalListErr ? "" : scJournalRows.length === 0 ? "No trades in session yet" : "No trades found"}
                           </div>
                         ) : filtered.map(t=>{
                           const rowKey=`${t.sessionTradeId}`;
@@ -15414,6 +15479,12 @@ const TalariaV8bLive = () => {
                                 boxShadow:`0 0 6px ${c.acG}`}}/>}
                               <span style={{fontSize:12,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,minWidth:42,fontVariantNumeric:"tabular-nums"}}>{t.id}</span>
                               <span style={{fontSize:12,color:isAct?c.tx:isH?c.tx:c.ts,flex:1}}>{t.sym}</span>
+                              {t.linkKind === "pending" && (
+                                <span style={{fontSize:8,fontWeight:800,color:c.tm,letterSpacing:"0.08em",flexShrink:0}}>PENDING</span>
+                              )}
+                              {t.linkKind === "open" && (
+                                <span style={{fontSize:8,fontWeight:800,color:c.tm,letterSpacing:"0.08em",flexShrink:0}}>OPEN</span>
+                              )}
                               <span style={{fontSize:11,fontWeight:600,color:t.side==="LONG"?c.gn:c.rd,marginRight:4}}>{t.side}</span>
                               {/* Pre / Post — upload + PUT journal entry */}
                               {(isH||isAct) && (
