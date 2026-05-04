@@ -80,6 +80,7 @@ export function applyV9ThemeSettingsToChart(settings) {
     showPriceLine: settings.priceLine,
     scaleTextColor: settings.textColor,
     symbolTextColor: settings.textColor,
+    scaleLinesColor: settings.scaleLineColor,
   };
   let changed = false;
   for (const k of Object.keys(map)) {

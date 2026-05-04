@@ -6165,16 +6165,16 @@ const TalariaV8bLive = () => {
     return next;
   });
   const defaultTemplateMap = {
-    "Dark Classic":   {bullBody:"#00D4A1",bullBorder:"#00D4A1",bullWick:"#00D4A1",bearBody:"#FF5068",bearBorder:"#FF5068",bearWick:"#FF5068",background:"#07080E",gridColor:"rgba(140,160,255,0.15)"},
-    "Professional":   {bullBody:"#26A69A",bullBorder:"#26A69A",bullWick:"#26A69A",bearBody:"#EF5350",bearBorder:"#EF5350",bearWick:"#EF5350",background:"#131722",gridColor:"rgba(100,140,200,0.15)"},
-    "Ocean Night":    {bullBody:"#00BCD4",bullBorder:"#00BCD4",bullWick:"#00BCD4",bearBody:"#FF4081",bearBorder:"#FF4081",bearWick:"#FF4081",background:"#050D18",gridColor:"rgba(0,188,212,0.12)"},
-    "Amber Dusk":     {bullBody:"#FF9800",bullBorder:"#FF9800",bullWick:"#FF9800",bearBody:"#F44336",bearBorder:"#F44336",bearWick:"#F44336",background:"#0E0A05",gridColor:"rgba(255,152,0,0.12)"},
-    "Forest Deep":    {bullBody:"#66BB6A",bullBorder:"#66BB6A",bullWick:"#66BB6A",bearBody:"#81C784",bearBorder:"#81C784",bearWick:"#81C784",background:"#060E06",gridColor:"rgba(102,187,106,0.12)"},
-    "Midnight":       {bullBody:"#42A5F5",bullBorder:"#42A5F5",bullWick:"#42A5F5",bearBody:"#EF5350",bearBorder:"#EF5350",bearWick:"#EF5350",background:"#040812",gridColor:"rgba(66,165,245,0.12)"},
-    "Crimson":        {bullBody:"#F44336",bullBorder:"#F44336",bullWick:"#F44336",bearBody:"#9C27B0",bearBorder:"#9C27B0",bearWick:"#9C27B0",background:"#0C0308",gridColor:"rgba(244,67,54,0.12)"},
-    "Arctic Frost":   {bullBody:"#80DEEA",bullBorder:"#80DEEA",bullWick:"#80DEEA",bearBody:"#FFAB40",bearBorder:"#FFAB40",bearWick:"#FFAB40",background:"#05080F",gridColor:"rgba(128,222,234,0.12)"},
-    "Cyber Green":    {bullBody:"#00E676",bullBorder:"#00E676",bullWick:"#00E676",bearBody:"#FF1744",bearBorder:"#FF1744",bearWick:"#FF1744",background:"#020A02",gridColor:"rgba(0,230,118,0.12)"},
-    "Rose Gold":      {bullBody:"#F48FB1",bullBorder:"#F48FB1",bullWick:"#F48FB1",bearBody:"#FFB74D",bearBorder:"#FFB74D",bearWick:"#FFB74D",background:"#0E0608",gridColor:"rgba(244,143,177,0.12)"},
+    "Dark Classic":   {bullBody:"#00D4A1",bullBorder:"#00D4A1",bullWick:"#00D4A1",bearBody:"#FF5068",bearBorder:"#FF5068",bearWick:"#FF5068",background:"#07080E",gridColor:"rgba(140,160,255,0.15)",textColor:"#B4C0E8",scaleLineColor:"rgba(140,160,255,0.42)"},
+    "Professional":   {bullBody:"#26A69A",bullBorder:"#26A69A",bullWick:"#26A69A",bearBody:"#EF5350",bearBorder:"#EF5350",bearWick:"#EF5350",background:"#131722",gridColor:"rgba(100,140,200,0.15)",textColor:"#C9D4E5",scaleLineColor:"rgba(120,145,190,0.45)"},
+    "Ocean Night":    {bullBody:"#00BCD4",bullBorder:"#00BCD4",bullWick:"#00BCD4",bearBody:"#FF4081",bearBorder:"#FF4081",bearWick:"#FF4081",background:"#050D18",gridColor:"rgba(0,188,212,0.12)",textColor:"#9FE8F2",scaleLineColor:"rgba(0,188,212,0.45)"},
+    "Amber Dusk":     {bullBody:"#FF9800",bullBorder:"#FF9800",bullWick:"#FF9800",bearBody:"#F44336",bearBorder:"#F44336",bearWick:"#F44336",background:"#0E0A05",gridColor:"rgba(255,152,0,0.12)",textColor:"#FFD9A3",scaleLineColor:"rgba(255,180,100,0.5)"},
+    "Forest Deep":    {bullBody:"#66BB6A",bullBorder:"#66BB6A",bullWick:"#66BB6A",bearBody:"#81C784",bearBorder:"#81C784",bearWick:"#81C784",background:"#060E06",gridColor:"rgba(102,187,106,0.12)",textColor:"#C8E6C9",scaleLineColor:"rgba(120,200,130,0.45)"},
+    "Midnight":       {bullBody:"#42A5F5",bullBorder:"#42A5F5",bullWick:"#42A5F5",bearBody:"#EF5350",bearBorder:"#EF5350",bearWick:"#EF5350",background:"#040812",gridColor:"rgba(66,165,245,0.12)",textColor:"#B3D7FF",scaleLineColor:"rgba(90,170,245,0.45)"},
+    "Crimson":        {bullBody:"#F44336",bullBorder:"#F44336",bullWick:"#F44336",bearBody:"#9C27B0",bearBorder:"#9C27B0",bearWick:"#9C27B0",background:"#0C0308",gridColor:"rgba(244,67,54,0.12)",textColor:"#FFCDD2",scaleLineColor:"rgba(244,120,140,0.45)"},
+    "Arctic Frost":   {bullBody:"#80DEEA",bullBorder:"#80DEEA",bullWick:"#80DEEA",bearBody:"#FFAB40",bearBorder:"#FFAB40",bearWick:"#FFAB40",background:"#05080F",gridColor:"rgba(128,222,234,0.12)",textColor:"#D7F7FB",scaleLineColor:"rgba(128,210,230,0.45)"},
+    "Cyber Green":    {bullBody:"#00E676",bullBorder:"#00E676",bullWick:"#00E676",bearBody:"#FF1744",bearBorder:"#FF1744",bearWick:"#FF1744",background:"#020A02",gridColor:"rgba(0,230,118,0.12)",textColor:"#A8FFD4",scaleLineColor:"rgba(0,220,130,0.5)"},
+    "Rose Gold":      {bullBody:"#F48FB1",bullBorder:"#F48FB1",bullWick:"#F48FB1",bearBody:"#FFB74D",bearBorder:"#FFB74D",bearWick:"#FFB74D",background:"#0E0608",gridColor:"rgba(244,143,177,0.12)",textColor:"#FFE0EC",scaleLineColor:"rgba(244,170,195,0.45)"},
   };
   const applyTemplate = (name, overrideSettings) => {
     const base = overrideSettings || defaultTemplateMap[name] || {};

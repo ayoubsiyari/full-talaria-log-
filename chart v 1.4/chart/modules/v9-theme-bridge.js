@@ -81,7 +81,8 @@
       priceLineColor: settings.priceLineColor,
       showPriceLine: settings.priceLine,
       scaleTextColor: settings.textColor,
-      symbolTextColor: settings.textColor
+      symbolTextColor: settings.textColor,
+      scaleLinesColor: settings.scaleLineColor
     };
     var changed = false;
     var k;

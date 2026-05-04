@@ -11852,13 +11852,15 @@ class Chart {
      * Draw axis labels and ticks
      */
     drawAxes() {
+        if (!this.xScale || !this.yScale) return;
+
+        this._syncAdaptivePriceAxisMargin();
+
         const m = this.margin;
         const ch = this.h - m.t - m.b;
         const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
         const volumeAreaHeight = ch * effectiveVolumeHeight;
-        
-        if (!this.xScale || !this.yScale) return;
-        
+
         const axisLeft = !!this.priceAxisLeft;
         const axisW = axisLeft ? m.l : m.r;
         const axisX = axisLeft ? 0 : this.w - m.r;
@@ -11939,15 +11941,19 @@ class Chart {
             this.ctx.textBaseline = 'middle';
             for (let i = 0; i < this._timeTicks.length; i++) {
                 const tick = this._timeTicks[i];
-                const x = tick.x;
+                const xLine = tick.x;
+                const segLeft = i > 0 ? this._timeTicks[i - 1].x : m.l;
+                const segRight = xLine;
+                const rawLabelX = (segLeft + segRight) / 2;
+                const labelX = Math.max(m.l + 4, Math.min(this.w - m.r - 4, rawLabelX));
                 applyScaleLineStyle();
                 this.ctx.beginPath();
-                this.ctx.moveTo(x, this.h - m.b);
-                this.ctx.lineTo(x, this.h - m.b + 5);
+                this.ctx.moveTo(xLine, this.h - m.b);
+                this.ctx.lineTo(xLine, this.h - m.b + 5);
                 this.ctx.stroke();
                 this.ctx.fillStyle = this.chartSettings.scaleTextColor;
                 this.ctx.font = scaleFont;
-                this.ctx.fillText(tick.label, x, timeLabelY);
+                this.ctx.fillText(tick.label, labelX, timeLabelY);
             }
             this.ctx.textBaseline = prevBaseline;
         }
@@ -12230,6 +12236,60 @@ class Chart {
     }
 
     /**
+     * Widen the price axis (left or right) so long formatted prices (high precision) stay inside the margin.
+     * Called from drawAxes() each frame; uses the same font and decimals as the axis labels.
+     */
+    _syncAdaptivePriceAxisMargin() {
+        if (!this.yScale || !this.ctx) return;
+        const axisLeft = !!this.priceAxisLeft;
+        const ch = this.h - this.margin.t - this.margin.b;
+        if (ch <= 0) return;
+        const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
+        const volumeAreaHeight = ch * effectiveVolumeHeight;
+        const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+        const decimals = this.getPriceDecimals(Math.abs(priceRange));
+        const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
+        const yTicks = this.yScale.ticks(numYTicks);
+        const fs = this.chartSettings.scaleTextSize || 12;
+
+        let maxW = 0;
+        const measure = (weightPrefix) => {
+            this.ctx.font = weightPrefix ? `${weightPrefix} ${fs}px Roboto` : `${fs}px Roboto`;
+            return (num) => {
+                const t = Number(num).toFixed(decimals);
+                const w = this.ctx.measureText(t).width;
+                if (w > maxW) maxW = w;
+            };
+        };
+        const mTick = measure(false);
+        yTicks.forEach((price) => {
+            const y = this.yScale(price);
+            if (y > this.margin.t + 8 && y < this.h - this.margin.b - volumeAreaHeight - 8) {
+                mTick(price);
+            }
+        });
+        const d0 = this.yScale.domain()[0];
+        const d1 = this.yScale.domain()[1];
+        mTick(d0);
+        mTick(d1);
+        const mLive = measure('500');
+        mLive(d0);
+        mLive(d1);
+
+        const padding = 16;
+        const minW = 48;
+        const maxWCap = 340;
+        const target = Math.ceil(maxW + padding);
+        const newW = Math.max(minW, Math.min(maxWCap, target));
+
+        if (axisLeft) {
+            this.margin.l = newW;
+        } else {
+            this.margin.r = newW;
+        }
+    }
+
+    /**
      * Resolve the instrument's tick size (minimum price increment) from the registry.
      * Used by the axis, crosshair, order drag-snap, and SL/TP input step. Falls back
      * to `10^-precision` when the registry only carries precision.
@@ -12285,7 +12345,8 @@ class Chart {
             if (zone.type === 'price') {
                 // Price axis zone (Y-axis on right)
                 this.ctx.globalAlpha = priceZoneAlpha;
-                this.ctx.fillRect(this.w - m.r + 2, zone.y, 58, zone.height);
+                const zr = Math.max(24, m.r - 4);
+                this.ctx.fillRect(this.w - m.r + 2, zone.y, zr, zone.height);
             } else if (zone.type === 'time') {
                 // Time axis zone (X-axis on bottom)
                 this.ctx.globalAlpha = timeZoneAlpha;
