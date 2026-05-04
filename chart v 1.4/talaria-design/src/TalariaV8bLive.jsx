@@ -2196,6 +2196,126 @@ function getJournalProfileIdFromStorage() {
   }
 }
 
+function symKeyForJournalMatch(s) {
+  return String(s ?? "")
+    .replace(/[^A-Za-z]/g, "")
+    .toUpperCase();
+}
+
+function normJournalDirection(d) {
+  const x = String(d ?? "")
+    .trim()
+    .toLowerCase();
+  if (x === "long" || x === "buy") return "long";
+  if (x === "short" || x === "sell") return "short";
+  return x;
+}
+
+function sessionTradeCloseMs(t) {
+  const v = t?.closeTime ?? t?.exitTime;
+  if (v == null) return 0;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  const p = Date.parse(String(v));
+  return Number.isFinite(p) ? p : 0;
+}
+
+function apiJournalCloseMs(e) {
+  const tv = e?.close_time || e?.date;
+  if (!tv) return 0;
+  const p = Date.parse(String(tv));
+  return Number.isFinite(p) ? p : 0;
+}
+
+function sideLabelFromSessionTrade(tr) {
+  const d = String(tr?.direction || tr?.type || "").toUpperCase();
+  if (d === "BUY" || d === "LONG") return "LONG";
+  if (d === "SELL" || d === "SHORT") return "SHORT";
+  return d || "—";
+}
+
+function matchApiJournalIdForSessionTrade(trade, apiEntries, usedIds) {
+  const tSym = symKeyForJournalMatch(trade.ticker || trade.symbol);
+  const tDir = normJournalDirection(trade.direction || trade.type);
+  const tMs = sessionTradeCloseMs(trade);
+  let best = null;
+  let bestD = Infinity;
+  for (const e of apiEntries) {
+    if (!e || e.id == null || usedIds.has(e.id)) continue;
+    if (symKeyForJournalMatch(e.symbol) !== tSym) continue;
+    if (normJournalDirection(e.direction) !== tDir) continue;
+    const dlt = Math.abs(apiJournalCloseMs(e) - tMs);
+    if (dlt < bestD && dlt < 4 * 60 * 1000) {
+      bestD = dlt;
+      best = e;
+    }
+  }
+  if (best) {
+    usedIds.add(best.id);
+    return best.id;
+  }
+  return null;
+}
+
+function isoLocalMinuteFromMs(ms) {
+  if (ms == null || !Number.isFinite(ms) || ms <= 0) return undefined;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return undefined;
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function buildJournalAddPayloadFromSessionTrade(tr) {
+  const symbol = String(tr.ticker || tr.symbol || "UNKNOWN").replace(/\s+/g, "");
+  const d = String(tr.direction || tr.type || "").toUpperCase();
+  const direction = d === "BUY" || d === "LONG" ? "long" : "short";
+  const entry_price = Number.parseFloat(tr.entryPrice ?? tr.openPrice ?? 0) || 0;
+  const exit_price = Number.parseFloat(tr.exitPrice ?? tr.closePrice ?? tr.exitPrice ?? 0) || 0;
+  const quantity = Number.parseFloat(tr.quantity ?? 1) || 1;
+  const pnl = Number.parseFloat(tr.netPnL ?? tr.pnl ?? 0) || 0;
+  const rr = Number.parseFloat(String(tr.rMultiple ?? "0").replace(/[^0-9.-]/g, "")) || 0;
+  let openMs = 0;
+  if (tr.entryTime != null) {
+    openMs =
+      typeof tr.entryTime === "number" ? tr.entryTime : Date.parse(String(tr.entryTime));
+    if (!Number.isFinite(openMs)) openMs = 0;
+  }
+  const closeMs = sessionTradeCloseMs(tr);
+  const payload = {
+    symbol,
+    direction,
+    entry_price,
+    exit_price,
+    quantity,
+    pnl,
+    rr,
+  };
+  const ot = openMs > 0 ? isoLocalMinuteFromMs(openMs) : undefined;
+  const ct = closeMs > 0 ? isoLocalMinuteFromMs(closeMs) : undefined;
+  if (ot) payload.open_time = ot;
+  if (ct) payload.close_time = ct;
+  if (ct) payload.entry_datetime = ct;
+  return payload;
+}
+
+async function createJournalEntryFromSessionTrade(sessionTradeId) {
+  const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+  const tj = Array.isArray(om?.tradeJournal) ? om.tradeJournal : null;
+  if (!tj) throw new Error("Chart journal is not available.");
+  const tr = tj.find((x) => (x.tradeId ?? x.id) === sessionTradeId);
+  if (!tr) throw new Error("That trade is no longer in the session journal.");
+  const payload = buildJournalAddPayloadFromSessionTrade(tr);
+  const res = await fetchJournalEndpoint("/add", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Could not create journal entry (${res.status})`);
+  const id = body.trade?.id;
+  if (id == null) throw new Error("Journal did not return an entry id.");
+  return Number(id);
+}
+
 // ── Color Picker Popup ───────────────────────────────────────────────────────
 const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange, onAChange, onHexChange, onClose, onDragStart, dragging, animation, hideAlpha }) => {
   const rgb = hsvToRgb(h, s, v);
@@ -3551,7 +3671,9 @@ const TalariaV8bLive = () => {
   const [screenshotOpen, setScreenshotOpen] = useState(false);
   const [scLinkOpen, setScLinkOpen] = useState(false);
   const [scLinkSearch, setScLinkSearch] = useState("");
-  /** Numeric journal entry id from GET /api/journal/list */
+  /** Order-manager trade id (# shown in session journal) */
+  const [scLinkedSessionTradeId, setScLinkedSessionTradeId] = useState(null);
+  /** Numeric journal entry id (API) after match or POST /add */
   const [scLinkedJournalId, setScLinkedJournalId] = useState(null);
   const [scLinkPhase, setScLinkPhase] = useState(null);
   const [scJournalRows, setScJournalRows] = useState([]);
@@ -3562,9 +3684,32 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     if (!screenshotOpen || !scLinkOpen) return;
     let cancelled = false;
+
+    const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+    const tj = Array.isArray(om?.tradeJournal) ? om.tradeJournal : [];
+    const reversed = [...tj].reverse();
+    const baseRows = reversed.map((tr) => {
+      const sessionTradeId = tr.tradeId ?? tr.id;
+      return {
+        sessionTradeId,
+        journalId: null,
+        id: `#${sessionTradeId}`,
+        sym: formatJournalSymbolForDisplay(tr.ticker || tr.symbol || ""),
+        side: sideLabelFromSessionTrade(tr),
+      };
+    });
+
+    setScJournalListErr(null);
+    setScJournalRows(baseRows);
+    if (baseRows.length === 0) {
+      setScJournalLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setScJournalLoading(true);
     (async () => {
-      setScJournalLoading(true);
-      setScJournalListErr(null);
       try {
         const pid = getJournalProfileIdFromStorage();
         const qs = pid != null ? `?profile_id=${encodeURIComponent(String(pid))}` : "";
@@ -3572,16 +3717,11 @@ const TalariaV8bLive = () => {
         if (cancelled) return;
         if (res.status === 401 || res.status === 403) {
           setScJournalListErr(
-            res.status === 401 ? "Sign in to load journal trades." : "Journal access denied.",
+            res.status === 401 ? "Sign in to save screenshots to the journal." : "Journal access denied.",
           );
-          setScJournalRows([]);
           return;
         }
-        if (!res.ok) {
-          setScJournalListErr("Could not load journal trades.");
-          setScJournalRows([]);
-          return;
-        }
+        if (!res.ok) return;
         let raw;
         try {
           raw = await res.json();
@@ -3589,29 +3729,22 @@ const TalariaV8bLive = () => {
           raw = null;
         }
         const arr = Array.isArray(raw) ? raw : raw?.trades || raw?.data || [];
-        if (!Array.isArray(arr)) {
-          setScJournalRows([]);
-          return;
-        }
-        setScJournalRows(
-          arr
-            .filter((e) => e && e.id != null)
-            .map((e) => ({
-              journalId: e.id,
-              id: `#${e.id}`,
-              sym: formatJournalSymbolForDisplay(e.symbol),
-              side: String(e.direction || "").toUpperCase(),
-            })),
-        );
+        if (!Array.isArray(arr) || cancelled) return;
+        const used = new Set();
+        const merged = baseRows.map((row) => {
+          const tr = tj.find((x) => (x.tradeId ?? x.id) === row.sessionTradeId);
+          if (!tr) return row;
+          const jid = matchApiJournalIdForSessionTrade(tr, arr, used);
+          return jid != null ? { ...row, journalId: jid } : row;
+        });
+        if (!cancelled) setScJournalRows(merged);
       } catch {
-        if (!cancelled) {
-          setScJournalListErr("Could not load journal trades.");
-          setScJournalRows([]);
-        }
+        /* keep session rows */
       } finally {
         if (!cancelled) setScJournalLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -3622,6 +3755,7 @@ const TalariaV8bLive = () => {
       setScreenshotPreviewUrl(null);
       setScLinkOpen(false);
       setScLinkSearch("");
+      setScLinkedSessionTradeId(null);
       setScLinkedJournalId(null);
       setScLinkPhase(null);
       setScJournalRows([]);
@@ -15136,7 +15270,7 @@ const TalariaV8bLive = () => {
               const q=scLinkSearch.toLowerCase().trim();
               const filtered=scJournalRows.filter(t=>t.id.toLowerCase().includes(q)||t.sym.toLowerCase().includes(q)||t.side.toLowerCase().includes(q));
               const isLH=swHov==="sc-link";
-              const isLinked=scLinkedJournalId!=null;
+              const isLinked=scLinkedSessionTradeId!=null;
               return (
                 <div style={{position:"relative"}}>
                   {scLinkOpen && (
@@ -15164,47 +15298,15 @@ const TalariaV8bLive = () => {
                       </div>
                       {/* list */}
                       <div className="tlr-scroll" style={{maxHeight:180,overflowY:"auto",padding:"3px 0"}}>
-                        {scJournalLoading ? (
-                          <div style={{padding:"8px 12px",fontSize:12,color:c.tm,textAlign:"center"}}>Loading journal…</div>
+                        {scJournalLoading && scJournalRows.length === 0 ? (
+                          <div style={{padding:"8px 12px",fontSize:12,color:c.tm,textAlign:"center"}}>Loading…</div>
                         ) : filtered.length===0 ? (
-                          (() => {
-                            let sessionN = 0;
-                            try {
-                              sessionN = Array.isArray(window.chart?.orderManager?.tradeJournal)
-                                ? window.chart.orderManager.tradeJournal.length
-                                : 0;
-                            } catch (_) {}
-                            const showSessionHint =
-                              !scJournalListErr && scJournalRows.length === 0 && sessionN > 0;
-                            return (
-                              <div style={{ padding: "8px 12px", textAlign: "center" }}>
-                                <div style={{ fontSize: 12, color: c.tm }}>
-                                  {scJournalListErr
-                                    ? ""
-                                    : scJournalRows.length === 0
-                                      ? "No trades in journal"
-                                      : "No trades found"}
-                                </div>
-                                {showSessionHint && (
-                                  <div
-                                    style={{
-                                      fontSize: 10,
-                                      color: c.tm,
-                                      marginTop: 6,
-                                      lineHeight: 1.35,
-                                    }}
-                                  >
-                                    Chart bottom bar shows session history. This list is the Trading Journal — set
-                                    the same active profile in the web Journal (or sign in) so your DB trades appear
-                                    here.
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()
+                          <div style={{padding:"8px 12px",fontSize:12,color:c.tm,textAlign:"center"}}>
+                            {scJournalListErr ? "" : scJournalRows.length === 0 ? "No closed trades yet" : "No trades found"}
+                          </div>
                         ) : filtered.map(t=>{
-                          const rowKey=`${t.journalId}`;
-                          const isAct=scLinkedJournalId===t.journalId;
+                          const rowKey=`${t.sessionTradeId}`;
+                          const isAct=scLinkedSessionTradeId===t.sessionTradeId;
                           const isH=swHov===`sc-trade-${rowKey}`||swHov===`sc-ph-${rowKey}-Pre`||swHov===`sc-ph-${rowKey}-Post`;
                           return (
                             <div key={rowKey}
@@ -15238,6 +15340,15 @@ const TalariaV8bLive = () => {
                                           }
                                           setScLinkSaving(true);
                                           try {
+                                            let journalId = t.journalId;
+                                            if (journalId == null) {
+                                              journalId = await createJournalEntryFromSessionTrade(t.sessionTradeId);
+                                              setScJournalRows((prev) =>
+                                                prev.map((r) =>
+                                                  r.sessionTradeId === t.sessionTradeId ? { ...r, journalId } : r,
+                                                ),
+                                              );
+                                            }
                                             const up = await fetchJournalEndpoint("/upload-screenshot", {
                                               method: "POST",
                                               headers: { "Content-Type": "application/json" },
@@ -15250,7 +15361,7 @@ const TalariaV8bLive = () => {
                                             const imageUrl = upBody.url || upBody.path;
                                             if (!imageUrl) throw new Error("No image URL returned");
                                             const field = ph === "Pre" ? "entry_screenshot" : "exit_screenshot";
-                                            const put = await fetchJournalEndpoint(`/${t.journalId}`, {
+                                            const put = await fetchJournalEndpoint(`/${journalId}`, {
                                               method: "PUT",
                                               headers: { "Content-Type": "application/json" },
                                               body: JSON.stringify({ [field]: imageUrl }),
@@ -15259,7 +15370,8 @@ const TalariaV8bLive = () => {
                                             if (!put.ok) {
                                               throw new Error(putBody.error || `Save failed (${put.status})`);
                                             }
-                                            setScLinkedJournalId(t.journalId);
+                                            setScLinkedSessionTradeId(t.sessionTradeId);
+                                            setScLinkedJournalId(journalId);
                                             setScLinkPhase(ph);
                                             setScLinkOpen(false);
                                             setScLinkSearch("");
@@ -15302,10 +15414,10 @@ const TalariaV8bLive = () => {
                       <path d="M440 726 296 582l56-56 88 88 168-168 56 56-224 224ZM200 976q-33 0-56.5-23.5T120 896V296q0-33 23.5-56.5T200 216h360l200 200v480q0 33-23.5 56.5T680 976H200Zm0-80h480V456H520V296H200v600Zm0 0V296v600Z"/>
                     </svg>
                     <span style={{fontSize:13,fontWeight:600,color:isLinked?c.acL:isLH?c.tx:c.ts,whiteSpace:"nowrap"}}>
-                      {isLinked ? `#${scLinkedJournalId}${scLinkPhase?` · ${scLinkPhase}`:""}` : "Link to Trade"}
+                      {isLinked ? `#${scLinkedSessionTradeId}${scLinkPhase?` · ${scLinkPhase}`:""}` : "Link to Trade"}
                     </span>
                     {isLinked && (
-                      <div onClick={e=>{e.stopPropagation();setScLinkedJournalId(null);setScLinkPhase(null);}}
+                      <div onClick={e=>{e.stopPropagation();setScLinkedSessionTradeId(null);setScLinkedJournalId(null);setScLinkPhase(null);}}
                         style={{marginLeft:2,color:c.tm,fontSize:14,lineHeight:1,cursor:"default"}}
                         onMouseEnter={e=>{e.currentTarget.style.color=c.rd;}} onMouseLeave={e=>{e.currentTarget.style.color=c.tm;}}>×</div>
                     )}
