@@ -735,7 +735,7 @@ const INDICATOR_COLOR_RECENTS = ['#131722', '#2962FF', '#1E3A5F', '#262B3E'];
 const TALARIA_IND_CHIP_BORDER = 'transparent';
 const TALARIA_IND_CHIP_BG = 'transparent';
 const TALARIA_INDICATOR_CHIP_CSS =
-    'display:flex;align-items:center;gap:5px;width:100%;max-width:100%;min-width:0;min-height:18px;box-sizing:border-box;' +
+    'display:flex;align-items:center;gap:6px;width:100%;max-width:100%;min-width:0;min-height:20px;box-sizing:border-box;' +
     'padding:1px 2px 1px 0;margin:0;border-radius:2px;line-height:1.2;' +
     'border:none;background:' + TALARIA_IND_CHIP_BG + ';' +
     'transform:translateZ(0);-webkit-transform:translateZ(0);' +
@@ -746,6 +746,63 @@ const TALARIA_INDICATOR_CHIP_BG_HOVER = 'rgba(255, 255, 255, 0.06)';
 const TALARIA_INDICATOR_CHIP_BORDER_HOVER = 'transparent';
 const TALARIA_INDICATOR_COLOR_STRIP = (color) =>
     'display:inline-block;width:2px;height:12px;border-radius:1px;background:' + color + ';flex-shrink:0;';
+
+/** Sidebar-style framed swatch (same chrome as V9 tool rail: border + rounded tile + inner color bar). */
+function ensureTalariaIndSwatchCss() {
+    if (typeof document === 'undefined') return;
+    if (document.getElementById('talaria-ind-swatch-css')) return;
+    const s = document.createElement('style');
+    s.id = 'talaria-ind-swatch-css';
+    s.textContent = `
+.talaria-ind-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  border: 1px solid rgba(140, 160, 255, 0.22);
+  border-radius: 4px;
+  background: rgba(18, 22, 34, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.talaria-ind-legend-row:hover .talaria-ind-swatch {
+  border-color: rgba(140, 160, 255, 0.38);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 0 0 1px rgba(74, 106, 255, 0.12);
+}
+.talaria-ind-swatch-fill {
+  display: block;
+  width: 4px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+body.light-mode .talaria-ind-swatch {
+  background: rgba(248, 249, 252, 0.96);
+  border-color: rgba(100, 110, 140, 0.28);
+}
+body.light-mode .talaria-ind-legend-row:hover .talaria-ind-swatch {
+  border-color: rgba(74, 106, 255, 0.42);
+}
+`;
+    document.head.appendChild(s);
+}
+
+function createIndicatorLegendSwatch(displayColor) {
+    ensureTalariaIndSwatchCss();
+    const wrap = document.createElement('span');
+    wrap.className = 'talaria-ind-swatch';
+    const fill = document.createElement('span');
+    fill.className = 'talaria-ind-swatch-fill';
+    fill.style.background = displayColor || '#2962ff';
+    wrap.appendChild(fill);
+    return wrap;
+}
+
 function setTalariaIndChipNameEl(el, visible) {
     el.className = 'talaria-ind-chip-name' + (visible ? '' : ' talaria-ind-chip-name--hidden');
 }
@@ -759,6 +816,7 @@ if (typeof window !== 'undefined') {
     window.TALARIA_INDICATOR_CHIP_BORDER_HOVER = TALARIA_INDICATOR_CHIP_BORDER_HOVER;
     window.TALARIA_IND_CHIP_BORDER = TALARIA_IND_CHIP_BORDER;
     window.TALARIA_INDICATOR_COLOR_STRIP = TALARIA_INDICATOR_COLOR_STRIP;
+    window.createIndicatorLegendSwatch = createIndicatorLegendSwatch;
 }
 
 /** TradingView-style: hide eye/settings/remove on legend rows until hover (fine pointer only). */
@@ -2085,6 +2143,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
 function setupIndicatorUI(chartInstance) {
     ensureTalariaIndLegendHoverCss();
+    ensureTalariaIndSwatchCss();
     const indicatorsBtn = document.getElementById('indicatorsBtn');
     if (!indicatorsBtn) return;
 
@@ -2167,11 +2226,9 @@ function setupIndicatorUI(chartInstance) {
                 item.style.borderColor = TALARIA_IND_CHIP_BORDER;
             };
 
-            // Color indicator
-            const colorBox = document.createElement('span');
+            // Color swatch (sidebar-style tile)
             const displayColor = indicator.style.color || indicator.style.middleColor || '#2962ff';
-            colorBox.style.cssText = TALARIA_INDICATOR_COLOR_STRIP(displayColor);
-            item.appendChild(colorBox);
+            item.appendChild(createIndicatorLegendSwatch(displayColor));
 
             // Name (dimmed when hidden)
             const nameSpan = document.createElement('span');
@@ -2556,6 +2613,7 @@ if (typeof Chart !== 'undefined') {
     const originalUpdateOHLC = Chart.prototype.updateOHLCIndicators;
     Chart.prototype.updateOHLCIndicators = function() {
         ensureTalariaIndLegendHoverCss();
+        ensureTalariaIndSwatchCss();
         const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
         const div = document.getElementById('ohlcIndicators' + idSuffix);
         
@@ -2587,11 +2645,8 @@ if (typeof Chart !== 'undefined') {
                 item.style.borderColor = TALARIA_IND_CHIP_BORDER;
             };
 
-            // Color indicator
-            const colorBox = document.createElement('span');
             const displayColor = indicator.style.color || indicator.style.middleColor || '#2962ff';
-            colorBox.style.cssText = TALARIA_INDICATOR_COLOR_STRIP(displayColor);
-            item.appendChild(colorBox);
+            item.appendChild(createIndicatorLegendSwatch(displayColor));
 
             // Name (dimmed when hidden)
             const nameSpan = document.createElement('span');

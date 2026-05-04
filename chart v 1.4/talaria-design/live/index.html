@@ -263,7 +263,9 @@
             font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             color: #d1d4dc;
             pointer-events: none;
-            max-width: min(560px, 92%);
+            box-sizing: border-box;
+            /* max-width set per-frame in chart.js (_syncOhlcLegendMaxWidth) so legend stays left of price axis */
+            max-width: min(560px, calc(100% - 96px));
         }
         #chart-container #chartWrapper .ohlc-header,
         #panels-container .ohlc-header {

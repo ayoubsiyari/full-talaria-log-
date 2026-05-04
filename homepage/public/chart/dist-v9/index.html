@@ -262,7 +262,8 @@
             font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             color: #d1d4dc;
             pointer-events: none;
-            max-width: min(560px, 92%);
+            box-sizing: border-box;
+            max-width: min(560px, calc(100% - 96px));
         }
         /* Stack symbol row above OHLC row (V8-style); row flex put O H L C beside “ES · 1m”. */
         #chart-container #chartWrapper .ohlc-header,

@@ -37,7 +37,7 @@
     function getTalariaChipStyles() {
         const w = global;
         const fallbackChip =
-            'display:flex;align-items:center;gap:5px;width:100%;max-width:100%;min-width:0;min-height:18px;box-sizing:border-box;' +
+            'display:flex;align-items:center;gap:6px;width:100%;max-width:100%;min-width:0;min-height:20px;box-sizing:border-box;' +
             'padding:1px 2px 1px 0;margin:0;border-radius:2px;line-height:1.2;' +
             'border:none;background:transparent;' +
             'transform:translateZ(0);-webkit-transform:translateZ(0);' +
@@ -53,6 +53,50 @@
                 return 'display:inline-block;width:2px;height:12px;border-radius:1px;background:' + c + ';flex-shrink:0;';
             }
         };
+    }
+
+    /** Framed color tile — matches V9 sidebar buttons; prefers indicator-ui factory when loaded. */
+    function createIndLegendSwatch(displayColor) {
+        const w = global;
+        if (typeof w.createIndicatorLegendSwatch === 'function') {
+            return w.createIndicatorLegendSwatch(displayColor);
+        }
+        if (typeof document !== 'undefined' && !document.getElementById('talaria-ind-swatch-css')) {
+            const st = document.createElement('style');
+            st.id = 'talaria-ind-swatch-css';
+            st.textContent = [
+                '.talaria-ind-swatch {',
+                '  display: inline-flex; align-items: center; justify-content: center;',
+                '  width: 20px; height: 20px; min-width: 20px; min-height: 20px;',
+                '  box-sizing: border-box; flex-shrink: 0;',
+                '  border: 1px solid rgba(140, 160, 255, 0.22); border-radius: 4px;',
+                '  background: rgba(18, 22, 34, 0.92);',
+                '  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);',
+                '  transition: border-color 0.12s ease, box-shadow 0.12s ease;',
+                '}',
+                '.talaria-ind-legend-row:hover .talaria-ind-swatch {',
+                '  border-color: rgba(140, 160, 255, 0.38);',
+                '  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 0 0 1px rgba(74, 106, 255, 0.12);',
+                '}',
+                '.talaria-ind-swatch-fill {',
+                '  display: block; width: 4px; height: 12px; border-radius: 2px; flex-shrink: 0;',
+                '}',
+                'body.light-mode .talaria-ind-swatch {',
+                '  background: rgba(248, 249, 252, 0.96); border-color: rgba(100, 110, 140, 0.28);',
+                '}',
+                'body.light-mode .talaria-ind-legend-row:hover .talaria-ind-swatch {',
+                '  border-color: rgba(74, 106, 255, 0.42);',
+                '}'
+            ].join('\n');
+            document.head.appendChild(st);
+        }
+        const wrap = document.createElement('span');
+        wrap.className = 'talaria-ind-swatch';
+        const fill = document.createElement('span');
+        fill.className = 'talaria-ind-swatch-fill';
+        fill.style.background = displayColor || '#2962ff';
+        wrap.appendChild(fill);
+        return wrap;
     }
     
     // ===== Calculation Functions =====
@@ -5745,10 +5789,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 if (chip.borderDefault !== 'transparent') item.style.borderColor = chip.borderDefault;
             };
 
-            const colorBox = document.createElement('span');
             const displayColor = indicator.style.color || indicator.style.middleColor || indicator.style.highColor || '#2962ff';
-            colorBox.style.cssText = chip.colorStrip(displayColor);
-            item.appendChild(colorBox);
+            item.appendChild(createIndLegendSwatch(displayColor));
 
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
@@ -6786,8 +6828,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 if (chip.borderDefault !== 'transparent') bar.style.borderColor = chip.borderDefault;
             };
 
-            const strip = document.createElement('span');
-            strip.style.cssText = chip.colorStrip(color) + 'opacity:' + (visible ? '1' : '0.4') + ';flex-shrink:0;';
+            const strip = createIndLegendSwatch(color);
+            strip.style.opacity = visible ? '1' : '0.4';
             bar.appendChild(strip);
 
             const nameEl = document.createElement('span');

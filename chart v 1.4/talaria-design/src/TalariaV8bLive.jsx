@@ -8509,7 +8509,7 @@ const TalariaV8bLive = () => {
           <div
             id="ohlcIndicators"
             className="ohlc-indicators"
-            style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 1, marginTop: 2, width: "100%", maxWidth: 420, fontSize: 11, pointerEvents: "auto", position: "relative", zIndex: 100 }}
+            style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 1, marginTop: 2, width: "100%", maxWidth: "100%", fontSize: 11, pointerEvents: "auto", position: "relative", zIndex: 100 }}
           />
         </div>
         <div className="ohlc-legend-footer">

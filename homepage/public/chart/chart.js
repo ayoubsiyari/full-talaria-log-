@@ -5835,6 +5835,10 @@ class Chart {
             const volumeValue = ohlcInfo.querySelector('.volume-value');
             if (volumeValue) volumeValue.style.color = targetChart.chartSettings.symbolTextColor;
         }
+
+        if (typeof targetChart._syncOhlcLegendMaxWidth === 'function') {
+            targetChart._syncOhlcLegendMaxWidth();
+        }
         
         // Re-render target chart to apply all settings
         targetChart.scheduleRender();
@@ -12297,6 +12301,33 @@ class Chart {
         } else {
             this.margin.r = newW;
         }
+
+        this._syncOhlcLegendMaxWidth();
+    }
+
+    /**
+     * Keep the OHLC / indicator legend from overlapping the price scale (main + multi-panel).
+     * Uses the same `w`, `margin`, and `priceAxisLeft` as the canvas layout.
+     */
+    _syncOhlcLegendMaxWidth() {
+        if (!this.ctx || !Number.isFinite(this.w) || this.w <= 0) return;
+        const m = this.margin;
+        if (!m) return;
+        const leftInset = 10;
+        const gap = 8;
+        const axisLeft = !!this.priceAxisLeft;
+        let maxPx = this.w - leftInset - m.r - gap;
+        if (axisLeft) {
+            maxPx = Math.min(maxPx, m.l - leftInset - gap);
+        }
+        maxPx = Math.max(96, Math.floor(maxPx));
+        const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? String(this.panelIndex) : '';
+        const el =
+            (typeof document !== 'undefined' && document.getElementById('ohlcInfo' + idSuffix)) ||
+            this.ctx.canvas?.parentElement?.querySelector('.ohlc-info');
+        if (!el) return;
+        el.style.maxWidth = maxPx + 'px';
+        el.style.boxSizing = 'border-box';
     }
 
     /**
