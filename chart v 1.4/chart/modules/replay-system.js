@@ -2068,6 +2068,8 @@ class ReplaySystem {
         // Show replay controls
         this.showToolbar();
         this.updateSliderRange();
+
+        this._attachReplayFollowViewportListeners();
         
         // Filter data and render
         this.updateChartData();
@@ -2118,12 +2120,7 @@ class ReplaySystem {
             if (injected && injected.parentElement) injected.remove();
         } catch (_) {}
 
-        if (this._replayFollowResizeBound) {
-            try {
-                window.removeEventListener('resize', this._replayFollowResizeBound);
-            } catch (_) {}
-            this._replayFollowResizeBound = null;
-        }
+        this._detachReplayFollowViewportListeners();
 
         this.followBtn = null;
         this.updateAutoScrollIndicator();
@@ -4397,16 +4394,6 @@ class ReplaySystem {
                 pointerEvents: 'auto',
             });
             document.body.appendChild(btn);
-
-            if (!this._replayFollowResizeBound) {
-                this._replayFollowResizeBound = () => {
-                    try {
-                        const b = this.followBtn || document.getElementById('replayFollow');
-                        if (b && b.style.display !== 'none') this.positionReplayFollowChrome(b);
-                    } catch (_) {}
-                };
-                window.addEventListener('resize', this._replayFollowResizeBound);
-            }
         }
 
         if (!btn) return null;
@@ -4417,6 +4404,28 @@ class ReplaySystem {
         }
         this.followBtn = btn;
         return btn;
+    }
+
+    /** While replay is active, refresh follow-button visibility when the page scrolls or the chart is clipped/hidden. */
+    _attachReplayFollowViewportListeners() {
+        if (this._replayFollowViewportBound || typeof window === 'undefined') return;
+        this._replayFollowViewportBound = () => {
+            try {
+                if (!this.isActive) return;
+                this.updateAutoScrollIndicator();
+            } catch (_) {}
+        };
+        window.addEventListener('scroll', this._replayFollowViewportBound, true);
+        window.addEventListener('resize', this._replayFollowViewportBound);
+    }
+
+    _detachReplayFollowViewportListeners() {
+        if (!this._replayFollowViewportBound || typeof window === 'undefined') return;
+        try {
+            window.removeEventListener('scroll', this._replayFollowViewportBound, true);
+            window.removeEventListener('resize', this._replayFollowViewportBound);
+        } catch (_) {}
+        this._replayFollowViewportBound = null;
     }
 
     /**
@@ -4440,9 +4449,74 @@ class ReplaySystem {
         }
 
         const lastIdx = chart.data.length - 1;
-        const lastX = m.l + lastIdx * spacing + (chart.offsetX || 0);
-        const plotRight = chart.w || 0;
-        return lastX >= 0 && lastX <= plotRight + spacing * 2;
+        const lastX = typeof chart.dataIndexToPixel === 'function'
+            ? chart.dataIndexToPixel(lastIdx)
+            : (m.l + lastIdx * spacing + (chart.offsetX || 0));
+        const plotLeft = m.l;
+        const plotRight = chart.w - (m.r || 0);
+        const slack = spacing * 1.75;
+        return lastX >= plotLeft - slack && lastX <= plotRight + slack;
+    }
+
+    /**
+     * True when the main chart tile has measurable on-screen area (hide overlay when chart is collapsed/off-screen).
+     */
+    _isReplayFollowChartSurfaceVisible() {
+        try {
+            const wrap =
+                document.getElementById('chartWrapper') ||
+                document.querySelector('#chart-container .chart-wrapper') ||
+                document.querySelector('.chart-wrapper');
+            const el = wrap || this.chart?.canvas?.closest('#chart-container');
+            if (!el || typeof el.getBoundingClientRect !== 'function') return false;
+
+            // Ancestor `display:none` does not always appear on the wrapper’s own computed style — check the whole chain.
+            if (typeof el.checkVisibility === 'function') {
+                if (
+                    !el.checkVisibility({
+                        checkOpacity: true,
+                        checkVisibilityCSS: true,
+                    })
+                ) {
+                    return false;
+                }
+            } else {
+                let node = el;
+                while (node && node !== document.documentElement) {
+                    const pcs =
+                        typeof window !== 'undefined' && window.getComputedStyle
+                            ? window.getComputedStyle(node)
+                            : null;
+                    if (pcs) {
+                        if (pcs.display === 'none' || pcs.visibility === 'hidden') return false;
+                        if (Number.parseFloat(pcs.opacity || '1') === 0) return false;
+                    }
+                    node = node.parentElement;
+                }
+            }
+
+            const cs =
+                typeof window !== 'undefined' && window.getComputedStyle ? window.getComputedStyle(el) : null;
+            if (
+                cs &&
+                (cs.display === 'none' ||
+                    cs.visibility === 'hidden' ||
+                    Number.parseFloat(cs.opacity || '1') === 0)
+            ) {
+                return false;
+            }
+            const r = el.getBoundingClientRect();
+            if (!Number.isFinite(r.width) || !Number.isFinite(r.height) || r.width < 12 || r.height < 12) {
+                return false;
+            }
+            if (typeof window !== 'undefined') {
+                if (r.bottom < -80 || r.top > window.innerHeight + 80) return false;
+                if (r.right < -80 || r.left > window.innerWidth + 80) return false;
+            }
+            return true;
+        } catch (_) {
+            return false;
+        }
     }
 
     /**
@@ -4452,22 +4526,21 @@ class ReplaySystem {
         const btn = this.ensureReplayFollowButton();
         const hideChrome = !this.isActive || this.isPickingPoint;
         const needsCatchUp = !this.autoScrollEnabled || !this.isLastCandleVisible();
-        // Always show during replay (many users run from a stale V9 bundle with no `#replayFollow` in React —
-        // injection still creates the node; hiding unless `isPlaying` looked like "nothing works").
-        const showFollow = !hideChrome;
+        const chartSurfaceOk = this._isReplayFollowChartSurfaceVisible();
+        // TradingView-style: only show when user left the live edge or disabled auto-follow — not for entire replay session.
+        const showFollow = !hideChrome && needsCatchUp && chartSurfaceOk;
 
         if (btn) {
             if (!showFollow) {
                 btn.style.display = 'none';
                 btn.classList.remove('replay-follow--attention');
             } else {
-                // Main follow chrome: anchor to latest bar every tick (React + injected).
+                // Fixed overlay — reposition when wrapper moves/resizes.
                 this.positionReplayFollowChrome(btn);
                 btn.style.display = 'flex';
                 btn.style.opacity = '1';
                 btn.style.visibility = 'visible';
-                if (needsCatchUp) btn.classList.add('replay-follow--attention');
-                else btn.classList.remove('replay-follow--attention');
+                btn.classList.add('replay-follow--attention');
             }
         }
 
