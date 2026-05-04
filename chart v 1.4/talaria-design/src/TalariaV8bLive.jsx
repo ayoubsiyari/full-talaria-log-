@@ -3643,7 +3643,7 @@ const TalariaV8bLive = () => {
     }
   }, [speed]);
 
-  // Navigation integrity badge (#navIntegrityBadge) — legacy chart UX: radio icon next to symbol during replay.
+  // Navigation integrity badge (#navIntegrityBadge) — after OHLC + change in .ohlc-stats during replay.
   useEffect(() => {
     let cancelled = false;
     const sync = () => {
@@ -8526,7 +8526,26 @@ const TalariaV8bLive = () => {
             <span id="chartSymbol" className="ohlc-symbol-text" />
             <span className="ohlc-separator">{" · "}</span>
             <span id="chartTimeframe" />
-            {/* Legacy chart: nav integrity badge — visible during replay; color reflects back/forward policy */}
+          </div>
+          <div className="ohlc-stats">
+            <div className="ohlc-item">
+              <span className="ohlc-label">O</span>
+              <span className="ohlc-value" id="open">—</span>
+            </div>
+            <div className="ohlc-item">
+              <span className="ohlc-label">H</span>
+              <span className="ohlc-value" id="high">—</span>
+            </div>
+            <div className="ohlc-item">
+              <span className="ohlc-label">L</span>
+              <span className="ohlc-value" id="low">—</span>
+            </div>
+            <div className="ohlc-item">
+              <span className="ohlc-label">C</span>
+              <span className="ohlc-value" id="close">—</span>
+            </div>
+            <span className="ohlc-change" id="chartChange">—</span>
+            {/* After OHL C + change so the symbol row stays clean; visible during replay */}
             <div
               id="navIntegrityBadge"
               className="nav-integrity-badge"
@@ -8551,25 +8570,6 @@ const TalariaV8bLive = () => {
                 Ensures integrity — no going back in time
               </div>
             </div>
-          </div>
-          <div className="ohlc-stats">
-            <div className="ohlc-item">
-              <span className="ohlc-label">O</span>
-              <span className="ohlc-value" id="open">—</span>
-            </div>
-            <div className="ohlc-item">
-              <span className="ohlc-label">H</span>
-              <span className="ohlc-value" id="high">—</span>
-            </div>
-            <div className="ohlc-item">
-              <span className="ohlc-label">L</span>
-              <span className="ohlc-value" id="low">—</span>
-            </div>
-            <div className="ohlc-item">
-              <span className="ohlc-label">C</span>
-              <span className="ohlc-value" id="close">—</span>
-            </div>
-            <span className="ohlc-change" id="chartChange">—</span>
           </div>
         </div>
         <div className="ohlc-body">
