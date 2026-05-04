@@ -6676,6 +6676,22 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         indicator._displayLabel = last !== null ? last.toFixed(2) : '';
     };
 
+    /** Update crosshair-driven values on separate-panel legend rows without rebuilding DOM. */
+    Chart.prototype._syncSeparatePanelOverlayValues = function(overlay, indicators) {
+        if (!overlay || !Array.isArray(indicators)) return;
+        const byId = {};
+        overlay.querySelectorAll('[data-talaria-sp-val]').forEach(function(n) {
+            byId[n.getAttribute('data-talaria-sp-val')] = n;
+        });
+        indicators.forEach(function(ind) {
+            if (ind.type === 'volume' || ind.isVolume) return;
+            const el = byId[String(ind.id)];
+            if (!el) return;
+            const t = (ind._displayLabel !== undefined && ind._displayLabel !== '') ? String(ind._displayLabel) : '—';
+            if (el.textContent !== t) el.textContent = t;
+        });
+    };
+
     // Build/refresh indicator label pills for each separate panel slot (matches OHLC panel style)
     Chart.prototype._updateSeparatePanelLabels = function(panelSlots, indicators, m) {
         const canvas = this.ctx && this.ctx.canvas;
@@ -6683,16 +6699,19 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (!wrapper) return;
         if (!Array.isArray(panelSlots) || panelSlots.length === 0) return;
 
-        // State-key caching: only rebuild DOM when something actually changed.
-        // Rebuilding innerHTML on every render() is a major perf bottleneck.
-        const stateKey = panelSlots.map(function(slot) {
+        // Structure key only — do NOT include _displayLabel (it updates every crosshair move and caused
+        // full DOM rebuilds + shifting icon columns when value string width changed).
+        const structureKey = panelSlots.map(function(slot) {
             return slot.indicator.id + ':' + Math.round(slot.top) + ':' + Math.round(slot.height);
         }).join('|') + '|' + indicators.map(function(ind) {
-            return ind.id + ':' + (ind.visible !== false ? '1' : '0') + ':' + (ind._displayLabel || '') + ':' + (ind._displayColor || '');
+            return ind.id + ':' + (ind.visible !== false ? '1' : '0') + ':' + (ind._displayColor || '');
         }).join('|');
 
         let overlay = wrapper.querySelector('#separatePanelsOverlay');
-        if (overlay && overlay._stateKey === stateKey) return;
+        if (overlay && overlay._structureKey === structureKey) {
+            this._syncSeparatePanelOverlayValues(overlay, indicators);
+            return;
+        }
 
         if (!overlay) {
             overlay = document.createElement('div');
@@ -6701,7 +6720,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             wrapper.appendChild(overlay);
         }
         overlay.innerHTML = '';
-        overlay._stateKey = stateKey;
+        overlay._structureKey = structureKey;
 
         const self = this;
         // Use accent color cached by applyChartSettings — avoids getComputedStyle in the hot render path
@@ -6717,45 +6736,52 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const label   = indicator._displayLabel  || '';
             const visible = indicator.visible !== false;
 
-            // Pill container — same size & chrome as OHLC / ADX bar
+            // Full plot-width row so action icons stay pinned to the right (TradingView-style).
             const bar = document.createElement('div');
             bar.style.cssText = [
                 'position:absolute',
                 'top:' + (slotTop + 5) + 'px',
                 'left:' + (m.l + 6) + 'px',
+                'right:' + (m.r + 6) + 'px',
+                'width:auto',
+                'box-sizing:border-box',
+                'display:flex',
+                'align-items:center',
+                'gap:6px',
+                'min-width:0',
                 'z-index:10',
                 'pointer-events:auto',
-                'white-space:nowrap',
                 'user-select:none',
                 'font-family:Roboto,sans-serif'
-            ].join(';') + ';' + chip.chipCss + ';margin:0;';
+            ].join(';') + ';' + chip.chipCss + ';margin:0;width:auto;max-width:none;';
             bar.onmouseenter = function() {
                 bar.style.background = chip.bgHover;
-                bar.style.borderColor = chip.borderHover;
+                if (chip.borderDefault !== 'transparent') bar.style.borderColor = chip.borderHover;
             };
             bar.onmouseleave = function() {
                 bar.style.background = chip.bg;
-                bar.style.borderColor = 'transparent';
+                if (chip.borderDefault !== 'transparent') bar.style.borderColor = chip.borderDefault;
             };
 
             const strip = document.createElement('span');
-            strip.style.cssText = chip.colorStrip(color) + 'opacity:' + (visible ? '1' : '0.4') + ';';
+            strip.style.cssText = chip.colorStrip(color) + 'opacity:' + (visible ? '1' : '0.4') + ';flex-shrink:0;';
             bar.appendChild(strip);
 
             const nameEl = document.createElement('span');
             nameEl.textContent = indicator.name;
-            nameEl.style.cssText = 'color:#d1d4dc;font-size:11px;font-weight:500;user-select:none;opacity:' + (visible ? '1' : '0.4') + ';';
+            nameEl.style.cssText = 'color:#d1d4dc;font-size:11px;font-weight:500;user-select:none;opacity:' + (visible ? '1' : '0.4') +
+                ';flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
             bar.appendChild(nameEl);
 
-            if (label) {
-                const valEl = document.createElement('span');
-                valEl.style.cssText = 'color:#d1d4dc;font-size:11px;margin-left:2px;';
-                valEl.textContent = label;
-                bar.appendChild(valEl);
-            }
+            const valEl = document.createElement('span');
+            valEl.setAttribute('data-talaria-sp-val', String(indicator.id));
+            valEl.style.cssText = 'color:#d1d4dc;font-size:11px;font-variant-numeric:tabular-nums;text-align:right;' +
+                'min-width:11ch;flex-shrink:0;';
+            valEl.textContent = label || '—';
+            bar.appendChild(valEl);
 
             const actions = document.createElement('span');
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:0;margin-left:2px;flex-shrink:0;';
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:0;margin-left:auto;flex-shrink:0;';
 
             const eyeBtn = document.createElement('span');
             eyeBtn.title = visible ? 'Hide' : 'Show';
