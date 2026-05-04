@@ -27,6 +27,19 @@ def get_active_profile_id(user_id):
     return active_profile.id
 
 
+def resolve_journal_list_profile_id(user_id):
+    """
+    Honor ?profile_id= when that profile belongs to this user (same contract as journal-frontend GET …/list).
+    Otherwise use the profile marked is_active in the DB.
+    """
+    requested = request.args.get('profile_id', type=int)
+    if requested is not None:
+        prof = Profile.query.filter_by(id=requested, user_id=user_id).first()
+        if prof:
+            return requested
+    return get_active_profile_id(user_id)
+
+
 def build_group_aware_query(user_id, profile_id=None):
     """
     Build a query that handles both individual and group accounts.

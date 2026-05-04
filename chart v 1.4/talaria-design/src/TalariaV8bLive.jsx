@@ -2183,6 +2183,19 @@ function formatJournalSymbolForDisplay(raw) {
   return s;
 }
 
+/** Same profile the Journal / Trades web app uses (localStorage), so /api/journal/list returns the same rows. */
+function getJournalProfileIdFromStorage() {
+  try {
+    const raw = localStorage.getItem("talaria_activeProfile");
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    const id = Number(p?.id);
+    return Number.isFinite(id) ? id : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 // ── Color Picker Popup ───────────────────────────────────────────────────────
 const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange, onAChange, onHexChange, onClose, onDragStart, dragging, animation, hideAlpha }) => {
   const rgb = hsvToRgb(h, s, v);
@@ -2805,11 +2818,13 @@ const TalariaV8bLive = () => {
 
     (async () => {
       try {
+        const listPid = getJournalProfileIdFromStorage();
+        const listQs = listPid != null ? `?profile_id=${encodeURIComponent(String(listPid))}` : "";
         const [statsRes, symRes, stratRes, listRes] = await Promise.all([
           fetchJournalEndpoint("/stats"),
           fetchJournalEndpoint("/symbol-analysis"),
           fetchJournalEndpoint("/strategy-analysis"),
-          fetchJournalEndpoint("/list"),
+          fetchJournalEndpoint(`/list${listQs}`),
         ]);
         if (cancelled) return;
 
@@ -2817,7 +2832,8 @@ const TalariaV8bLive = () => {
         const stats = statsRes.ok ? await statsRes.json().catch(() => null) : null;
         const symbols = symRes.ok ? await symRes.json().catch(() => []) : [];
         const strategies = stratRes.ok ? await stratRes.json().catch(() => []) : [];
-        const list = listRes.ok ? await listRes.json().catch(() => []) : [];
+        const rawList = listRes.ok ? await listRes.json().catch(() => null) : null;
+        const list = Array.isArray(rawList) ? rawList : rawList?.trades || rawList?.data || [];
 
         const remotePayload = {
           stats: stats && typeof stats === "object" ? stats : null,
@@ -3550,7 +3566,9 @@ const TalariaV8bLive = () => {
       setScJournalLoading(true);
       setScJournalListErr(null);
       try {
-        const res = await fetchJournalEndpoint("/list");
+        const pid = getJournalProfileIdFromStorage();
+        const qs = pid != null ? `?profile_id=${encodeURIComponent(String(pid))}` : "";
+        const res = await fetchJournalEndpoint(`/list${qs}`);
         if (cancelled) return;
         if (res.status === 401 || res.status === 403) {
           setScJournalListErr(
@@ -3564,18 +3582,26 @@ const TalariaV8bLive = () => {
           setScJournalRows([]);
           return;
         }
-        const arr = await res.json();
+        let raw;
+        try {
+          raw = await res.json();
+        } catch {
+          raw = null;
+        }
+        const arr = Array.isArray(raw) ? raw : raw?.trades || raw?.data || [];
         if (!Array.isArray(arr)) {
           setScJournalRows([]);
           return;
         }
         setScJournalRows(
-          arr.map((e) => ({
-            journalId: e.id,
-            id: `#${e.id}`,
-            sym: formatJournalSymbolForDisplay(e.symbol),
-            side: String(e.direction || "").toUpperCase(),
-          })),
+          arr
+            .filter((e) => e && e.id != null)
+            .map((e) => ({
+              journalId: e.id,
+              id: `#${e.id}`,
+              sym: formatJournalSymbolForDisplay(e.symbol),
+              side: String(e.direction || "").toUpperCase(),
+            })),
         );
       } catch {
         if (!cancelled) {
@@ -15141,9 +15167,41 @@ const TalariaV8bLive = () => {
                         {scJournalLoading ? (
                           <div style={{padding:"8px 12px",fontSize:12,color:c.tm,textAlign:"center"}}>Loading journal…</div>
                         ) : filtered.length===0 ? (
-                          <div style={{padding:"8px 12px",fontSize:12,color:c.tm,textAlign:"center"}}>
-                            {scJournalListErr ? "" : scJournalRows.length === 0 ? "No trades in journal" : "No trades found"}
-                          </div>
+                          (() => {
+                            let sessionN = 0;
+                            try {
+                              sessionN = Array.isArray(window.chart?.orderManager?.tradeJournal)
+                                ? window.chart.orderManager.tradeJournal.length
+                                : 0;
+                            } catch (_) {}
+                            const showSessionHint =
+                              !scJournalListErr && scJournalRows.length === 0 && sessionN > 0;
+                            return (
+                              <div style={{ padding: "8px 12px", textAlign: "center" }}>
+                                <div style={{ fontSize: 12, color: c.tm }}>
+                                  {scJournalListErr
+                                    ? ""
+                                    : scJournalRows.length === 0
+                                      ? "No trades in journal"
+                                      : "No trades found"}
+                                </div>
+                                {showSessionHint && (
+                                  <div
+                                    style={{
+                                      fontSize: 10,
+                                      color: c.tm,
+                                      marginTop: 6,
+                                      lineHeight: 1.35,
+                                    }}
+                                  >
+                                    Chart bottom bar shows session history. This list is the Trading Journal — set
+                                    the same active profile in the web Journal (or sign in) so your DB trades appear
+                                    here.
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()
                         ) : filtered.map(t=>{
                           const rowKey=`${t.journalId}`;
                           const isAct=scLinkedJournalId===t.journalId;

@@ -10,8 +10,9 @@ from models import db, JournalEntry, User
 from datetime import datetime, timezone
 from . import journal_bp
 from .filters import (
-    get_active_profile_id, 
-    apply_standard_filters, 
+    get_active_profile_id,
+    resolve_journal_list_profile_id,
+    apply_standard_filters,
     apply_variables_filter,
     serialize_entry
 )
@@ -200,7 +201,7 @@ def add_entry():
 def list_entries():
     try:
         user_id = int(get_jwt_identity())
-        profile_id = get_active_profile_id(user_id)
+        profile_id = resolve_journal_list_profile_id(user_id)
         
         current_user = User.query.get(user_id)
         if not current_user:
