@@ -2316,6 +2316,27 @@ async function createJournalEntryFromSessionTrade(sessionTradeId) {
   return Number(id);
 }
 
+/**
+ * Mirror API screenshot URL into session `tradeJournal` (orderManager) so legacy panels persist it;
+ * callers must also update React `tradeScreenshots` + bump `omTradeRev` for the V9 grid/card.
+ */
+function patchOrderManagerJournalScreenshot(sessionTradeId, phasePreOrPost, imageUrl) {
+  const field = phasePreOrPost === "Pre" ? "entryScreenshot" : "exitScreenshot";
+  try {
+    const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+    if (!om || !Array.isArray(om.tradeJournal)) return;
+    const idx = om.tradeJournal.findIndex((x) => Number(x.tradeId ?? x.id) === Number(sessionTradeId));
+    if (idx < 0) return;
+    const j = { ...om.tradeJournal[idx], [field]: imageUrl };
+    om.tradeJournal[idx] = j;
+    if (typeof om.persistJournal === "function") om.persistJournal();
+    if (typeof om.updateJournalTab === "function") om.updateJournalTab();
+    if (typeof om.updatePositionsPanel === "function") om.updatePositionsPanel();
+  } catch (e) {
+    console.warn("[V9] patchOrderManagerJournalScreenshot", e);
+  }
+}
+
 // ── Color Picker Popup ───────────────────────────────────────────────────────
 const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange, onAChange, onHexChange, onClose, onDragStart, dragging, animation, hideAlpha }) => {
   const rgb = hsvToRgb(h, s, v);
@@ -15370,6 +15391,18 @@ const TalariaV8bLive = () => {
                                             if (!put.ok) {
                                               throw new Error(putBody.error || `Save failed (${put.status})`);
                                             }
+                                            patchOrderManagerJournalScreenshot(t.sessionTradeId, ph, imageUrl);
+                                            {
+                                              const rowId = `#${t.sessionTradeId}`;
+                                              const sk = ph === "Pre" ? "pre" : "post";
+                                              setTradeScreenshots((prev) => {
+                                                const cur = { ...(prev[rowId] || {}) };
+                                                const arr = [...(cur[sk] || [])];
+                                                if (!arr.includes(imageUrl)) arr.push(imageUrl);
+                                                return { ...prev, [rowId]: { ...cur, [sk]: arr } };
+                                              });
+                                            }
+                                            setOmTradeRev((n) => n + 1);
                                             setScLinkedSessionTradeId(t.sessionTradeId);
                                             setScLinkedJournalId(journalId);
                                             setScLinkPhase(ph);
@@ -16915,8 +16948,9 @@ const TalariaV8bLive = () => {
                       const om=typeof window!=="undefined"?window.chart?.orderManager:null;
                       const tid=r.omId;
                       let noteFallback="";
+                      let j=null;
                       if(om&&tid!=null){
-                        const j=Array.isArray(om.tradeJournal)?om.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
+                        j=Array.isArray(om.tradeJournal)?om.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
                         const order=om.pendingOrders?.find(o=>o.id===tid)||om.openPositions?.find(o=>o.id===tid)||om.closedPositions?.find(o=>o.id===tid);
                         noteFallback=j?.v9TradeNotes||order?.journalEntry?.v9TradeNotes||"";
                       }
@@ -16924,6 +16958,16 @@ const TalariaV8bLive = () => {
                       setTradeCardPreTags([...r.preTags]);
                       setTradeCardPostTags([...r.postTags]);
                       setTradeCardNotes(tradeNotes[r.id]||noteFallback||"");
+                      if(j&&(j.entryScreenshot||j.exitScreenshot)){
+                        setTradeScreenshots((prev)=>{
+                          const ex=prev[r.id]||{};
+                          const pre=[...(ex.pre||[])];
+                          const post=[...(ex.post||[])];
+                          if(j.entryScreenshot&&!pre.includes(j.entryScreenshot))pre.push(j.entryScreenshot);
+                          if(j.exitScreenshot&&!post.includes(j.exitScreenshot))post.push(j.exitScreenshot);
+                          return {...prev,[r.id]:{...ex,pre,post}};
+                        });
+                      }
                     };
                     const isActive=r.status==="open"||r.status==="pending";
                     return(
@@ -17063,13 +17107,23 @@ const TalariaV8bLive = () => {
                           <span style={{fontSize:9,color:c.tm,fontStyle:"italic"}}>—</span>
                         )}
                       </div>
-                      {/* Screenshots cell */}
+                      {/* Screenshots cell — merge React state with persisted session journal URLs */}
                       <div style={{overflow:"hidden",minWidth:0}} onClick={e=>e.stopPropagation()}>
-                        {(()=>{const allSs=[...((tradeScreenshots[r.id]||{}).pre||[]),...((tradeScreenshots[r.id]||{}).post||[])];return allSs.length>0?(
+                        {(()=>{
+                          const omRow=typeof window!=="undefined"?window.chart?.orderManager:null;
+                          const tid=r.omId;
+                          const jRow=tid!=null&&Array.isArray(omRow?.tradeJournal)?omRow.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
+                          const fromSt=tradeScreenshots[r.id]||{};
+                          const pre=[...(fromSt.pre||[])];
+                          const post=[...(fromSt.post||[])];
+                          if(jRow?.entryScreenshot&&!pre.includes(jRow.entryScreenshot))pre.push(jRow.entryScreenshot);
+                          if(jRow?.exitScreenshot&&!post.includes(jRow.exitScreenshot))post.push(jRow.exitScreenshot);
+                          const allSs=[...pre,...post];
+                          return allSs.length>0?(
                           <div style={{display:"flex",alignItems:"center",gap:3}}>
                             {allSs.slice(0,3).map((src,si)=>(
                               <div key={si} style={{width:22,height:16,border:"1px solid rgba(140,160,255,0.3)",overflow:"hidden",flexShrink:0}}>
-                                <img src={src} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                                <img src={src} alt="" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
                               </div>
                             ))}
                             {allSs.length>3&&<span style={{fontSize:8,color:c.ts}}>+{allSs.length-3}</span>}
@@ -19859,6 +19913,9 @@ const TalariaV8bLive = () => {
                 }
                 const sym=order?.ticker||order?.symbol||existing.ticker||existing.symbol;
                 if(sym){patch.ticker=sym;patch.symbol=sym;}
+                const tsShots=tradeScreenshots[r.id];
+                if(tsShots?.pre?.length)patch.entryScreenshot=tsShots.pre[tsShots.pre.length-1];
+                if(tsShots?.post?.length)patch.exitScreenshot=tsShots.post[tsShots.post.length-1];
                 om.upsertJournalEntry({...existing,...patch});
                 if(typeof om.persistJournal==="function")om.persistJournal();
               }
