@@ -776,10 +776,12 @@ function ensureTalariaIndSwatchCss() {
 }
 .talaria-ind-swatch-fill {
   display: block;
-  width: 4px;
-  height: 12px;
+  width: 3px;
+  height: 14px;
   border-radius: 2px;
   flex-shrink: 0;
+  position: relative;
+  /* Glow + gradient applied inline per indicator color (matches V9 sidebar rail strip) */
 }
 body.light-mode .talaria-ind-swatch {
   background: rgba(248, 249, 252, 0.96);
@@ -792,13 +794,21 @@ body.light-mode .talaria-ind-legend-row:hover .talaria-ind-swatch {
     document.head.appendChild(s);
 }
 
+/** Same visual recipe as TalariaV8bLive renderTB active rail: gradient strip + soft glow (accentGlow-style). */
+function applyIndicatorSwatchRailGlow(fillEl, displayColor) {
+    const c = displayColor || '#2962ff';
+    fillEl.style.background = 'linear-gradient(180deg, transparent, ' + c + ', transparent)';
+    fillEl.style.boxShadow = '0 0 4px ' + c;
+    fillEl.style.filter = 'drop-shadow(0 0 5px ' + c + ')';
+}
+
 function createIndicatorLegendSwatch(displayColor) {
     ensureTalariaIndSwatchCss();
     const wrap = document.createElement('span');
     wrap.className = 'talaria-ind-swatch';
     const fill = document.createElement('span');
     fill.className = 'talaria-ind-swatch-fill';
-    fill.style.background = displayColor || '#2962ff';
+    applyIndicatorSwatchRailGlow(fill, displayColor);
     wrap.appendChild(fill);
     return wrap;
 }
@@ -817,6 +827,7 @@ if (typeof window !== 'undefined') {
     window.TALARIA_IND_CHIP_BORDER = TALARIA_IND_CHIP_BORDER;
     window.TALARIA_INDICATOR_COLOR_STRIP = TALARIA_INDICATOR_COLOR_STRIP;
     window.createIndicatorLegendSwatch = createIndicatorLegendSwatch;
+    window.applyIndicatorSwatchRailGlow = applyIndicatorSwatchRailGlow;
 }
 
 /** TradingView-style: hide eye/settings/remove on legend rows until hover (fine pointer only). */

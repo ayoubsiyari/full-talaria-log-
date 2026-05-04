@@ -79,7 +79,7 @@
                 '  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 0 0 1px rgba(74, 106, 255, 0.12);',
                 '}',
                 '.talaria-ind-swatch-fill {',
-                '  display: block; width: 4px; height: 12px; border-radius: 2px; flex-shrink: 0;',
+                '  display: block; width: 3px; height: 14px; border-radius: 2px; flex-shrink: 0; position: relative;',
                 '}',
                 'body.light-mode .talaria-ind-swatch {',
                 '  background: rgba(248, 249, 252, 0.96); border-color: rgba(100, 110, 140, 0.28);',
@@ -94,7 +94,14 @@
         wrap.className = 'talaria-ind-swatch';
         const fill = document.createElement('span');
         fill.className = 'talaria-ind-swatch-fill';
-        fill.style.background = displayColor || '#2962ff';
+        if (typeof w.applyIndicatorSwatchRailGlow === 'function') {
+            w.applyIndicatorSwatchRailGlow(fill, displayColor);
+        } else {
+            const c = displayColor || '#2962ff';
+            fill.style.background = 'linear-gradient(180deg, transparent, ' + c + ', transparent)';
+            fill.style.boxShadow = '0 0 4px ' + c;
+            fill.style.filter = 'drop-shadow(0 0 5px ' + c + ')';
+        }
         wrap.appendChild(fill);
         return wrap;
     }
