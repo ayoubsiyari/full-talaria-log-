@@ -2173,6 +2173,16 @@ async function fetchJournalEndpoint(path, init = {}) {
   return last || new Response(null, { status: 503 });
 }
 
+/** Pretty-print journal symbols (e.g. EURUSD → EUR/USD) for the screenshot linker. */
+function formatJournalSymbolForDisplay(raw) {
+  if (raw == null || raw === "") return "";
+  const s = String(raw).trim();
+  if (s.includes("/")) return s;
+  const u = s.toUpperCase().replace(/[^A-Z]/g, "");
+  if (u.length === 6 && /^[A-Z]{6}$/.test(u)) return `${u.slice(0, 3)}/${u.slice(3)}`;
+  return s;
+}
+
 // ── Color Picker Popup ───────────────────────────────────────────────────────
 const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange, onAChange, onHexChange, onClose, onDragStart, dragging, animation, hideAlpha }) => {
   const rgb = hsvToRgb(h, s, v);
@@ -3525,12 +3535,72 @@ const TalariaV8bLive = () => {
   const [screenshotOpen, setScreenshotOpen] = useState(false);
   const [scLinkOpen, setScLinkOpen] = useState(false);
   const [scLinkSearch, setScLinkSearch] = useState("");
-  const [scLinkedTrade, setScLinkedTrade] = useState(null);
+  /** Numeric journal entry id from GET /api/journal/list */
+  const [scLinkedJournalId, setScLinkedJournalId] = useState(null);
   const [scLinkPhase, setScLinkPhase] = useState(null);
+  const [scJournalRows, setScJournalRows] = useState([]);
+  const [scJournalLoading, setScJournalLoading] = useState(false);
+  const [scJournalListErr, setScJournalListErr] = useState(null);
+  const [scLinkSaving, setScLinkSaving] = useState(false);
+
+  useEffect(() => {
+    if (!screenshotOpen || !scLinkOpen) return;
+    let cancelled = false;
+    (async () => {
+      setScJournalLoading(true);
+      setScJournalListErr(null);
+      try {
+        const res = await fetchJournalEndpoint("/list");
+        if (cancelled) return;
+        if (res.status === 401 || res.status === 403) {
+          setScJournalListErr(
+            res.status === 401 ? "Sign in to load journal trades." : "Journal access denied.",
+          );
+          setScJournalRows([]);
+          return;
+        }
+        if (!res.ok) {
+          setScJournalListErr("Could not load journal trades.");
+          setScJournalRows([]);
+          return;
+        }
+        const arr = await res.json();
+        if (!Array.isArray(arr)) {
+          setScJournalRows([]);
+          return;
+        }
+        setScJournalRows(
+          arr.map((e) => ({
+            journalId: e.id,
+            id: `#${e.id}`,
+            sym: formatJournalSymbolForDisplay(e.symbol),
+            side: String(e.direction || "").toUpperCase(),
+          })),
+        );
+      } catch {
+        if (!cancelled) {
+          setScJournalListErr("Could not load journal trades.");
+          setScJournalRows([]);
+        }
+      } finally {
+        if (!cancelled) setScJournalLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [screenshotOpen, scLinkOpen]);
 
   useEffect(() => {
     if (!screenshotOpen) {
       setScreenshotPreviewUrl(null);
+      setScLinkOpen(false);
+      setScLinkSearch("");
+      setScLinkedJournalId(null);
+      setScLinkPhase(null);
+      setScJournalRows([]);
+      setScJournalListErr(null);
+      setScLinkSaving(false);
       return;
     }
     let cancelled = false;
@@ -15037,21 +15107,10 @@ const TalariaV8bLive = () => {
           <div style={{padding:"10px 16px 12px",borderTop:`1px solid ${c.br}`,marginTop:14,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             {/* Link to Trade — left side */}
             {(()=>{
-              const scTrades=[
-                {id:"#1001",sym:"EUR/JPY",side:"LONG"},
-                {id:"#1002",sym:"GBP/USD",side:"SHORT"},
-                {id:"#1003",sym:"USD/JPY",side:"LONG"},
-                {id:"#1004",sym:"EUR/USD",side:"SHORT"},
-                {id:"#1005",sym:"AUD/USD",side:"LONG"},
-                {id:"#1006",sym:"USD/CAD",side:"SHORT"},
-                {id:"#1007",sym:"NZD/USD",side:"LONG"},
-                {id:"#1008",sym:"EUR/GBP",side:"SHORT"},
-                {id:"#1009",sym:"USD/CHF",side:"LONG"},
-              ];
               const q=scLinkSearch.toLowerCase().trim();
-              const filtered=scTrades.filter(t=>t.id.toLowerCase().includes(q)||t.sym.toLowerCase().includes(q)||t.side.toLowerCase().includes(q));
+              const filtered=scJournalRows.filter(t=>t.id.toLowerCase().includes(q)||t.sym.toLowerCase().includes(q)||t.side.toLowerCase().includes(q));
               const isLH=swHov==="sc-link";
-              const isLinked=!!scLinkedTrade;
+              const isLinked=scLinkedJournalId!=null;
               return (
                 <div style={{position:"relative"}}>
                   {scLinkOpen && (
@@ -15059,6 +15118,9 @@ const TalariaV8bLive = () => {
                       background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,boxShadow:"0 4px 16px rgba(0,0,0,0.5)",
                       width:260,fontFamily:F}}>
                       <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
+                      {scJournalListErr && (
+                        <div style={{padding:"6px 10px",fontSize:11,color:c.rd,borderBottom:`1px solid ${c.br}`}}>{scJournalListErr}</div>
+                      )}
                       {/* search */}
                       <div style={{padding:"7px 10px 5px",borderBottom:`1px solid ${c.br}`}}>
                         <div style={{display:"flex",alignItems:"center",gap:5,background:"rgba(255,255,255,0.04)",border:`1px solid ${c.br}`,padding:"3px 8px"}}>
@@ -15076,14 +15138,19 @@ const TalariaV8bLive = () => {
                       </div>
                       {/* list */}
                       <div className="tlr-scroll" style={{maxHeight:180,overflowY:"auto",padding:"3px 0"}}>
-                        {filtered.length===0 ? (
-                          <div style={{padding:"8px 12px",fontSize:12,color:c.tm,textAlign:"center"}}>No trades found</div>
+                        {scJournalLoading ? (
+                          <div style={{padding:"8px 12px",fontSize:12,color:c.tm,textAlign:"center"}}>Loading journal…</div>
+                        ) : filtered.length===0 ? (
+                          <div style={{padding:"8px 12px",fontSize:12,color:c.tm,textAlign:"center"}}>
+                            {scJournalListErr ? "" : scJournalRows.length === 0 ? "No trades in journal" : "No trades found"}
+                          </div>
                         ) : filtered.map(t=>{
-                          const isAct=scLinkedTrade===t.id;
-                          const isH=swHov===`sc-trade-${t.id}`||swHov===`sc-ph-${t.id}-Pre`||swHov===`sc-ph-${t.id}-Post`;
+                          const rowKey=`${t.journalId}`;
+                          const isAct=scLinkedJournalId===t.journalId;
+                          const isH=swHov===`sc-trade-${rowKey}`||swHov===`sc-ph-${rowKey}-Pre`||swHov===`sc-ph-${rowKey}-Post`;
                           return (
-                            <div key={t.id}
-                              onMouseEnter={()=>setSwHov(`sc-trade-${t.id}`)} onMouseLeave={()=>setSwHov(null)}
+                            <div key={rowKey}
+                              onMouseEnter={()=>setSwHov(`sc-trade-${rowKey}`)} onMouseLeave={()=>setSwHov(null)}
                               style={{display:"flex",alignItems:"center",padding:"5px 10px",cursor:"default",
                                 position:"relative",gap:6,minHeight:28,
                                 background:isAct?c.acD:isH?c.hv2:"transparent",
@@ -15094,19 +15161,62 @@ const TalariaV8bLive = () => {
                               <span style={{fontSize:12,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,minWidth:42,fontVariantNumeric:"tabular-nums"}}>{t.id}</span>
                               <span style={{fontSize:12,color:isAct?c.tx:isH?c.tx:c.ts,flex:1}}>{t.sym}</span>
                               <span style={{fontSize:11,fontWeight:600,color:t.side==="LONG"?c.gn:c.rd,marginRight:4}}>{t.side}</span>
-                              {/* Pre / Post inline buttons — visible on hover or when this trade is selected */}
+                              {/* Pre / Post — upload + PUT journal entry */}
                               {(isH||isAct) && (
                                 <div style={{display:"flex",gap:1,flexShrink:0}}>
                                   {["Pre","Post"].map(ph=>{
                                     const isPh=isAct&&scLinkPhase===ph;
-                                    const isPhH=swHov===`sc-ph-${t.id}-${ph}`;
+                                    const isPhH=swHov===`sc-ph-${rowKey}-${ph}`;
                                     return (
                                       <div key={ph}
-                                        onClick={e=>{e.stopPropagation();setScLinkedTrade(t.id);setScLinkPhase(ph);setScLinkOpen(false);setScLinkSearch("");}}
-                                        onMouseEnter={e=>{e.stopPropagation();setSwHov(`sc-ph-${t.id}-${ph}`);}}
-                                        onMouseLeave={e=>{e.stopPropagation();setSwHov(`sc-trade-${t.id}`);}}
-                                        style={{fontSize:10,fontWeight:700,padding:"3px 7px",cursor:"default",
-                                          position:"relative",
+                                        onClick={async (e)=>{
+                                          e.stopPropagation();
+                                          if (scLinkSaving) return;
+                                          if (!screenshotPreviewUrl || String(screenshotPreviewUrl).startsWith("data:image/svg")) {
+                                            try {
+                                              window.alert("Screenshot must be a captured image. Reload the page if the preview shows an export-blocked message.");
+                                            } catch (_) {}
+                                            return;
+                                          }
+                                          setScLinkSaving(true);
+                                          try {
+                                            const up = await fetchJournalEndpoint("/upload-screenshot", {
+                                              method: "POST",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({ data_url: screenshotPreviewUrl }),
+                                            });
+                                            const upBody = await up.json().catch(() => ({}));
+                                            if (!up.ok) {
+                                              throw new Error(upBody.error || `Upload failed (${up.status})`);
+                                            }
+                                            const imageUrl = upBody.url || upBody.path;
+                                            if (!imageUrl) throw new Error("No image URL returned");
+                                            const field = ph === "Pre" ? "entry_screenshot" : "exit_screenshot";
+                                            const put = await fetchJournalEndpoint(`/${t.journalId}`, {
+                                              method: "PUT",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({ [field]: imageUrl }),
+                                            });
+                                            const putBody = await put.json().catch(() => ({}));
+                                            if (!put.ok) {
+                                              throw new Error(putBody.error || `Save failed (${put.status})`);
+                                            }
+                                            setScLinkedJournalId(t.journalId);
+                                            setScLinkPhase(ph);
+                                            setScLinkOpen(false);
+                                            setScLinkSearch("");
+                                          } catch (err) {
+                                            try {
+                                              window.alert(String(err?.message || err));
+                                            } catch (_) {}
+                                          } finally {
+                                            setScLinkSaving(false);
+                                          }
+                                        }}
+                                        onMouseEnter={e=>{e.stopPropagation();setSwHov(`sc-ph-${rowKey}-${ph}`);}}
+                                        onMouseLeave={e=>{e.stopPropagation();setSwHov(`sc-trade-${rowKey}`);}}
+                                        style={{fontSize:10,fontWeight:700,padding:"3px 7px",cursor:scLinkSaving?"wait":"default",
+                                          position:"relative",opacity:scLinkSaving?0.45:1,
                                           color:isPh?c.acL:isPhH?c.tx:c.ts,
                                           background:isPh?"rgba(74,106,255,0.08)":isPhH?c.hv:"transparent",
                                           transition:"background 0.1s,color 0.1s"}}>
@@ -15134,10 +15244,10 @@ const TalariaV8bLive = () => {
                       <path d="M440 726 296 582l56-56 88 88 168-168 56 56-224 224ZM200 976q-33 0-56.5-23.5T120 896V296q0-33 23.5-56.5T200 216h360l200 200v480q0 33-23.5 56.5T680 976H200Zm0-80h480V456H520V296H200v600Zm0 0V296v600Z"/>
                     </svg>
                     <span style={{fontSize:13,fontWeight:600,color:isLinked?c.acL:isLH?c.tx:c.ts,whiteSpace:"nowrap"}}>
-                      {isLinked ? `${scLinkedTrade}${scLinkPhase?` · ${scLinkPhase}`:""}` : "Link to Trade"}
+                      {isLinked ? `#${scLinkedJournalId}${scLinkPhase?` · ${scLinkPhase}`:""}` : "Link to Trade"}
                     </span>
                     {isLinked && (
-                      <div onClick={e=>{e.stopPropagation();setScLinkedTrade(null);setScLinkPhase(null);}}
+                      <div onClick={e=>{e.stopPropagation();setScLinkedJournalId(null);setScLinkPhase(null);}}
                         style={{marginLeft:2,color:c.tm,fontSize:14,lineHeight:1,cursor:"default"}}
                         onMouseEnter={e=>{e.currentTarget.style.color=c.rd;}} onMouseLeave={e=>{e.currentTarget.style.color=c.tm;}}>×</div>
                     )}

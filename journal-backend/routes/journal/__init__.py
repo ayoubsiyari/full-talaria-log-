@@ -49,7 +49,11 @@ def enforce_journal_access():
         return None
 
     # Public endpoints
-    if request.endpoint in {'journal.health_check', 'journal.market_benchmark'}:
+    if request.endpoint in {
+        'journal.health_check',
+        'journal.market_benchmark',
+        'journal.serve_journal_screenshot',
+    }:
         return None
 
     verify_jwt_in_request(optional=True)

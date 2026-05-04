@@ -9,6 +9,8 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, JournalEntry, User, ImportBatch
 from datetime import datetime
 import os
+import re
+import base64
 import uuid
 import io
 import pandas as pd
@@ -26,6 +28,76 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', '
 SCREENSHOTS_FOLDER = os.path.join(UPLOAD_FOLDER, 'screenshots')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(SCREENSHOTS_FOLDER, exist_ok=True)
+
+# Filenames: <user_id>_<uuid32>.<ext> — used for unguessable public GET URLs
+SCREENSHOT_FILENAME_RE = re.compile(r'^(\d+)_[a-f0-9]{32}\.(png|jpg|jpeg)$')
+MAX_SCREENSHOT_BYTES = 12 * 1024 * 1024
+
+
+@journal_bp.route('/upload-screenshot', methods=['POST'])
+@jwt_required()
+def upload_journal_screenshot():
+    """
+    Accept a chart/screenshot image as data URL or raw base64; save under uploads/screenshots
+    and return a short /api/journal/screenshots/... path for entry_screenshot / exit_screenshot.
+    """
+    try:
+        user_id = int(get_jwt_identity())
+        data = request.get_json(silent=True) or {}
+        data_url = data.get('data_url') or data.get('dataUrl')
+        raw_b64 = data.get('image_base64')
+
+        binary = None
+        ext = 'png'
+        if data_url and isinstance(data_url, str) and data_url.startswith('data:'):
+            if ',' not in data_url:
+                return jsonify({'error': 'Invalid data URL'}), 400
+            try:
+                header, b64 = data_url.split(',', 1)
+                lower_h = header.lower()
+                if 'jpeg' in lower_h or 'jpg' in lower_h:
+                    ext = 'jpg'
+                elif 'png' in lower_h:
+                    ext = 'png'
+                else:
+                    return jsonify({'error': 'Only PNG or JPEG images are supported'}), 400
+                binary = base64.b64decode(b64)
+            except Exception:
+                return jsonify({'error': 'Invalid image data'}), 400
+        elif raw_b64 and isinstance(raw_b64, str):
+            try:
+                binary = base64.b64decode(raw_b64)
+            except Exception:
+                return jsonify({'error': 'Invalid base64'}), 400
+        else:
+            return jsonify({'error': 'Missing data_url or image_base64'}), 400
+
+        if not binary or len(binary) > MAX_SCREENSHOT_BYTES:
+            return jsonify({'error': 'Image too large or empty'}), 400
+
+        fname = f'{user_id}_{uuid.uuid4().hex}.{ext}'
+        path = os.path.join(SCREENSHOTS_FOLDER, fname)
+        with open(path, 'wb') as f:
+            f.write(binary)
+
+        url = f'/api/journal/screenshots/{fname}'
+        return jsonify({'url': url, 'path': url}), 201
+
+    except Exception as e:
+        print(' upload_journal_screenshot error:', e)
+        return jsonify({'error': str(e)}), 500
+
+
+@journal_bp.route('/screenshots/<filename>', methods=['GET'])
+def serve_journal_screenshot(filename):
+    """Serve uploaded journal screenshots (opaque filename = security)."""
+    safe = os.path.basename(filename)
+    if not SCREENSHOT_FILENAME_RE.match(safe):
+        return jsonify({'error': 'Not found'}), 404
+    full = os.path.join(SCREENSHOTS_FOLDER, safe)
+    if not os.path.isfile(full):
+        return jsonify({'error': 'Not found'}), 404
+    return send_from_directory(SCREENSHOTS_FOLDER, safe)
 
 
 @journal_bp.route('/export', methods=['GET'])
