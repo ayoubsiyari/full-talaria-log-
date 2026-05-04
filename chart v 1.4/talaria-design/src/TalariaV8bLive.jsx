@@ -8481,17 +8481,9 @@ const TalariaV8bLive = () => {
       <div id="ohlcInfo" className="ohlc-info">
         <div className="ohlc-header">
           <div className="ohlc-symbol-block" style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
-            <span className="ohlc-symbol-dot" id="ohlcSymbolDot">●</span>
             <span id="chartSymbol" className="ohlc-symbol-text" style={{ fontSize: 13, fontWeight: 700 }} />
             <span className="ohlc-separator">·</span>
             <span id="chartTimeframe" style={{ fontSize: 11 }} />
-            <div
-              onClick={(e) => { e.stopPropagation(); setRollback(!rollback); }}
-              style={{ cursor: "default", opacity: rollback ? 1 : 0.4, display: "flex", alignItems: "center", gap: 3, pointerEvents: "auto" }}
-            >
-              <I n="rollback" s={13} cl={rollback ? c.gn : c.rd} />
-              <span style={{ fontSize: 12, color: rollback ? c.gn : c.rd, fontWeight: 700 }}>{rollback ? "RB" : "LOCKED"}</span>
-            </div>
           </div>
           <div className="ohlc-stats">
             <div className="ohlc-item">
@@ -8522,10 +8514,10 @@ const TalariaV8bLive = () => {
         </div>
       </div>
     ),
-    [rollback, darkMode, c.gn, c.rd]
+    []
   );
 
-  // Repaint indicator chips + flag dot after OHLC host exists (race vs chart init).
+  // Repaint indicator chips after OHLC host exists (race vs chart init).
   useLayoutEffect(() => {
     const flush = () => {
       try {
