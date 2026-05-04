@@ -2173,6 +2173,67 @@ async function fetchJournalEndpoint(path, init = {}) {
   return last || new Response(null, { status: 503 });
 }
 
+/**
+ * Uploaded screenshot URLs are often `/api/journal/screenshots/...` but some deployments only proxy
+ * `/journal/api/journal/...`. Probe which path returns 200 so `<img src>` does not break.
+ */
+function alternateJournalScreenshotPath(urlPath) {
+  if (!urlPath || typeof urlPath !== "string") return "";
+  if (urlPath.startsWith("/api/journal/")) {
+    return `/journal/api/journal/${urlPath.slice("/api/journal/".length)}`;
+  }
+  if (urlPath.startsWith("/journal/api/journal/")) {
+    return `/api/journal/${urlPath.slice("/journal/api/journal/".length)}`;
+  }
+  return "";
+}
+
+async function resolveJournalScreenshotUrlForStorage(apiReturnedPath) {
+  if (!apiReturnedPath || typeof apiReturnedPath !== "string") return apiReturnedPath;
+  if (
+    apiReturnedPath.startsWith("data:") ||
+    apiReturnedPath.startsWith("http://") ||
+    apiReturnedPath.startsWith("https://")
+  ) {
+    return apiReturnedPath;
+  }
+  const primary = apiReturnedPath.startsWith("/") ? apiReturnedPath : `/${apiReturnedPath}`;
+  const alt = alternateJournalScreenshotPath(primary);
+  const candidates = alt ? [primary, alt] : [primary];
+  for (const p of candidates) {
+    try {
+      let res = await fetch(p, { method: "HEAD", credentials: "include", cache: "no-store" });
+      if (!res.ok && (res.status === 405 || res.status === 501)) {
+        res = await fetch(p, { method: "GET", credentials: "include", cache: "no-store" });
+      }
+      if (res.ok) return p;
+    } catch (_) {
+      /* try next */
+    }
+  }
+  return primary;
+}
+
+/** `<img onError={journalScreenshotImgOnError}` — tries the other journal API prefix once. */
+function journalScreenshotImgOnError(ev) {
+  const el = ev?.currentTarget;
+  if (!el || el.dataset.journalFbApplied === "1") return;
+  let pathname = "";
+  try {
+    pathname = new URL(el.src, typeof window !== "undefined" ? window.location.href : "http://localhost/").pathname;
+  } catch (_) {
+    return;
+  }
+  const fbPath = alternateJournalScreenshotPath(pathname);
+  if (!fbPath) return;
+  el.dataset.journalFbApplied = "1";
+  if (typeof window !== "undefined" && window.location?.origin) {
+    el.src = `${window.location.origin}${fbPath}`;
+  } else {
+    el.src = fbPath;
+  }
+}
+
 /** Pretty-print journal symbols (e.g. EURUSD → EUR/USD) for the screenshot linker. */
 function formatJournalSymbolForDisplay(raw) {
   if (raw == null || raw === "") return "";
@@ -15379,8 +15440,9 @@ const TalariaV8bLive = () => {
                                             if (!up.ok) {
                                               throw new Error(upBody.error || `Upload failed (${up.status})`);
                                             }
-                                            const imageUrl = upBody.url || upBody.path;
-                                            if (!imageUrl) throw new Error("No image URL returned");
+                                            const rawImgUrl = upBody.url || upBody.path;
+                                            if (!rawImgUrl) throw new Error("No image URL returned");
+                                            const imageUrl = await resolveJournalScreenshotUrlForStorage(rawImgUrl);
                                             const field = ph === "Pre" ? "entry_screenshot" : "exit_screenshot";
                                             const put = await fetchJournalEndpoint(`/${journalId}`, {
                                               method: "PUT",
@@ -17123,7 +17185,7 @@ const TalariaV8bLive = () => {
                           <div style={{display:"flex",alignItems:"center",gap:3}}>
                             {allSs.slice(0,3).map((src,si)=>(
                               <div key={si} style={{width:22,height:16,border:"1px solid rgba(140,160,255,0.3)",overflow:"hidden",flexShrink:0}}>
-                                <img src={src} alt="" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                                <img src={src} alt="" onError={journalScreenshotImgOnError} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
                               </div>
                             ))}
                             {allSs.length>3&&<span style={{fontSize:8,color:c.ts}}>+{allSs.length-3}</span>}
@@ -20188,7 +20250,7 @@ const TalariaV8bLive = () => {
                     <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"flex-start"}}>
                       {imgs.map((src,ssi)=>(
                         <div key={ssi} className="tc-ss-wrap" style={{width:64,height:44,border:"1px solid rgba(140,160,255,0.25)",overflow:"hidden",flexShrink:0,position:"relative"}}>
-                          <img src={src} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                          <img src={src} alt="" onError={journalScreenshotImgOnError} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
                           <div className="tc-ss-overlay"
                             style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",gap:5,opacity:0,transition:"opacity 0.12s"}}>
                             <div className="ss-view-btn" onClick={()=>setViewingScreenshot(src)}
@@ -20390,7 +20452,7 @@ const TalariaV8bLive = () => {
                           cursor:"default",overflow:"hidden",background:img?"transparent":isH?"rgba(140,160,255,0.04)":"transparent",transition:"border-color 0.15s,background 0.15s"}}>
                         {img?(
                           <>
-                            <img src={img} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                            <img src={img} alt="" onError={journalScreenshotImgOnError} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
                             <div className="tap-ss-overlay"
                               style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:0,transition:"opacity 0.12s"}}>
                               <div className="ss-view-btn" onClick={()=>setViewingScreenshot(img)}
@@ -20477,7 +20539,7 @@ const TalariaV8bLive = () => {
       {viewingScreenshot&&(
         <div onClick={()=>setViewingScreenshot(null)}
           style={{position:"fixed",inset:0,zIndex:100001,background:"rgba(0,0,0,0.93)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default"}}>
-          <img src={viewingScreenshot} onClick={e=>e.stopPropagation()}
+          <img src={viewingScreenshot} alt="" onClick={e=>e.stopPropagation()} onError={journalScreenshotImgOnError}
             style={{maxWidth:"92vw",maxHeight:"92vh",objectFit:"contain",boxShadow:"0 8px 48px rgba(0,0,0,0.9)"}}/>
           <div onClick={()=>setViewingScreenshot(null)} onMouseEnter={()=>setHov("ss-lb-x")} onMouseLeave={()=>setHov(null)}
             style={{position:"absolute",top:16,right:16,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
