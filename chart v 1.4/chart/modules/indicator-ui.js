@@ -732,25 +732,20 @@ const INDICATOR_COLOR_ROWS = [
 const INDICATOR_COLOR_RECENTS = ['#131722', '#2962FF', '#1E3A5F', '#262B3E'];
 
 /** Indicator legend chips — flat tint + blur (no gradient); text color via .talaria-ind-chip-name (matches OHLC labels in CSS) */
-const TALARIA_IND_CHIP_BORDER = 'rgba(255, 255, 255, 0.2)';
-const TALARIA_IND_CHIP_BG = 'rgba(19, 23, 34, 0.32)';
-const TALARIA_INDICATOR_GLASS =
-    'backdrop-filter:saturate(1.5) blur(20px);-webkit-backdrop-filter:saturate(1.5) blur(20px);';
+const TALARIA_IND_CHIP_BORDER = 'transparent';
+const TALARIA_IND_CHIP_BG = 'transparent';
 const TALARIA_INDICATOR_CHIP_CSS =
-    'display:inline-flex;align-items:center;gap:6px;min-height:22px;box-sizing:border-box;' +
-    'padding:3px 8px 3px 6px;margin:0;border-radius:4px;line-height:1.25;' +
-    'border:1px solid ' + TALARIA_IND_CHIP_BORDER + ';' +
-    'background:' + TALARIA_IND_CHIP_BG + ';' +
-    TALARIA_INDICATOR_GLASS +
-    'box-shadow:inset 0 1px 0 rgba(255,255,255,0.18),0 2px 8px rgba(0,0,0,0.06);' +
+    'display:flex;align-items:center;gap:5px;width:100%;max-width:100%;min-width:0;min-height:18px;box-sizing:border-box;' +
+    'padding:1px 2px 1px 0;margin:0;border-radius:2px;line-height:1.2;' +
+    'border:none;background:' + TALARIA_IND_CHIP_BG + ';' +
     'transform:translateZ(0);-webkit-transform:translateZ(0);' +
     'cursor:pointer;vertical-align:middle;' +
     'font-family:-apple-system,BlinkMacSystemFont,Trebuchet MS,Roboto,Ubuntu,sans-serif;';
 const TALARIA_INDICATOR_CHIP_BG = TALARIA_IND_CHIP_BG;
-const TALARIA_INDICATOR_CHIP_BG_HOVER = 'rgba(30, 34, 44, 0.48)';
-const TALARIA_INDICATOR_CHIP_BORDER_HOVER = 'rgba(255, 255, 255, 0.3)';
+const TALARIA_INDICATOR_CHIP_BG_HOVER = 'rgba(255, 255, 255, 0.06)';
+const TALARIA_INDICATOR_CHIP_BORDER_HOVER = 'transparent';
 const TALARIA_INDICATOR_COLOR_STRIP = (color) =>
-    'display:inline-block;width:3px;height:14px;border-radius:1px;background:' + color + ';flex-shrink:0;';
+    'display:inline-block;width:2px;height:12px;border-radius:1px;background:' + color + ';flex-shrink:0;';
 function setTalariaIndChipNameEl(el, visible) {
     el.className = 'talaria-ind-chip-name' + (visible ? '' : ' talaria-ind-chip-name--hidden');
 }
@@ -2158,6 +2153,7 @@ function setupIndicatorUI(chartInstance) {
             // Name (dimmed when hidden)
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
+            nameSpan.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
             setTalariaIndChipNameEl(nameSpan, indicator.visible !== false);
             item.appendChild(nameSpan);
 
@@ -2574,6 +2570,7 @@ if (typeof Chart !== 'undefined') {
             // Name (dimmed when hidden)
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
+            nameSpan.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
             setTalariaIndChipNameEl(nameSpan, indicator.visible !== false);
             item.appendChild(nameSpan);
 

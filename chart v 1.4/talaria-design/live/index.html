@@ -286,6 +286,50 @@
             gap: 2px;
         }
 
+        /* TradingView-style legend: chevron before symbol; collapse hides ohlc-body (studies) */
+        #chart-container #chartWrapper .ohlc-legend-chevron,
+        #panels-container .ohlc-legend-chevron {
+            appearance: none;
+            -webkit-appearance: none;
+            border: none;
+            margin: 0;
+            padding: 0 1px 0 0;
+            background: transparent;
+            color: #787b86;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 2px;
+            line-height: 0;
+            flex-shrink: 0;
+            pointer-events: auto;
+            opacity: 0.88;
+            transition: color 0.12s, background 0.12s, opacity 0.12s;
+        }
+        #chart-container #chartWrapper .ohlc-legend-chevron:hover,
+        #panels-container .ohlc-legend-chevron:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: #b2b5be;
+            opacity: 1;
+        }
+        #chart-container #chartWrapper .ohlc-legend-chevron svg,
+        #panels-container .ohlc-legend-chevron svg {
+            width: 10px;
+            height: 10px;
+            transform: rotate(0deg);
+            transition: transform 0.15s ease;
+            flex-shrink: 0;
+        }
+        #chart-container #chartWrapper .ohlc-info.collapsed .ohlc-legend-chevron svg,
+        #panels-container .ohlc-info.collapsed .ohlc-legend-chevron svg {
+            transform: rotate(-90deg);
+        }
+        #chart-container #chartWrapper .ohlc-info.collapsed .ohlc-body,
+        #panels-container .ohlc-info.collapsed .ohlc-body {
+            display: none !important;
+        }
+
         /* chart.js loads FlagCDN `w80` PNGs into #ohlcSymbolDot / #ohlcSymbolDot1 … */
         #chart-container #chartWrapper .ohlc-symbol-dot,
         #panels-container .ohlc-symbol-dot {

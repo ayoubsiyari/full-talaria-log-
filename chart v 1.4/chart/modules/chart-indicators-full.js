@@ -17,23 +17,20 @@
     function getTalariaChipStyles() {
         const w = global;
         const fallbackChip =
-            'display:inline-flex;align-items:center;gap:6px;min-height:22px;box-sizing:border-box;' +
-            'padding:3px 8px 3px 6px;margin:0;border-radius:4px;line-height:1.25;' +
-            'border:1px solid rgba(255,255,255,0.2);' +
-            'background:rgba(19,23,34,0.32);' +
-            'backdrop-filter:saturate(1.5) blur(20px);-webkit-backdrop-filter:saturate(1.5) blur(20px);' +
-            'box-shadow:inset 0 1px 0 rgba(255,255,255,0.18),0 2px 8px rgba(0,0,0,0.06);' +
+            'display:flex;align-items:center;gap:5px;width:100%;max-width:100%;min-width:0;min-height:18px;box-sizing:border-box;' +
+            'padding:1px 2px 1px 0;margin:0;border-radius:2px;line-height:1.2;' +
+            'border:none;background:transparent;' +
             'transform:translateZ(0);-webkit-transform:translateZ(0);' +
             'cursor:pointer;vertical-align:middle;' +
             'font-family:-apple-system,BlinkMacSystemFont,Trebuchet MS,Roboto,Ubuntu,sans-serif;';
         return {
             chipCss: w.TALARIA_INDICATOR_CHIP_CSS || fallbackChip,
-            bg: w.TALARIA_INDICATOR_CHIP_BG || 'rgba(19, 23, 34, 0.32)',
-            bgHover: w.TALARIA_INDICATOR_CHIP_BG_HOVER || 'rgba(30, 34, 44, 0.48)',
-            borderHover: w.TALARIA_INDICATOR_CHIP_BORDER_HOVER || 'rgba(255, 255, 255, 0.3)',
-            borderDefault: w.TALARIA_IND_CHIP_BORDER || 'rgba(255, 255, 255, 0.2)',
+            bg: w.TALARIA_INDICATOR_CHIP_BG || 'transparent',
+            bgHover: w.TALARIA_INDICATOR_CHIP_BG_HOVER || 'rgba(255, 255, 255, 0.06)',
+            borderHover: w.TALARIA_INDICATOR_CHIP_BORDER_HOVER || 'transparent',
+            borderDefault: w.TALARIA_IND_CHIP_BORDER || 'transparent',
             colorStrip: w.TALARIA_INDICATOR_COLOR_STRIP || function(c) {
-                return 'display:inline-block;width:3px;height:14px;border-radius:1px;background:' + c + ';flex-shrink:0;';
+                return 'display:inline-block;width:2px;height:12px;border-radius:1px;background:' + c + ';flex-shrink:0;';
             }
         };
     }
@@ -5720,11 +5717,11 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             item.onmouseenter = function() {
                 item.style.background = chip.bgHover;
-                item.style.borderColor = chip.borderHover;
+                if (chip.borderDefault !== 'transparent') item.style.borderColor = chip.borderHover;
             };
             item.onmouseleave = function() {
                 item.style.background = chip.bg;
-                item.style.borderColor = chip.borderDefault;
+                if (chip.borderDefault !== 'transparent') item.style.borderColor = chip.borderDefault;
             };
 
             const colorBox = document.createElement('span');
@@ -5734,6 +5731,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
+            nameSpan.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
             nameSpan.className = 'talaria-ind-chip-name' + (indicator.visible === false ? ' talaria-ind-chip-name--hidden' : '');
             nameSpan.title = indicator.name;
             item.appendChild(nameSpan);

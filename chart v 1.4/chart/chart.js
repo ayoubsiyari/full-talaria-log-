@@ -10551,16 +10551,26 @@ class Chart {
         
         if (!collapseBtn || !ohlcInfo) return;
         
-        collapseBtn.addEventListener('click', () => {
-            ohlcInfo.classList.toggle('collapsed');
-            
-            // Rotate arrow icon
-            const svg = collapseBtn.querySelector('svg');
-            if (ohlcInfo.classList.contains('collapsed')) {
-                svg.style.transform = 'rotate(-90deg)';
-            } else {
-                svg.style.transform = 'rotate(0deg)';
+        const useCssChevron = collapseBtn.classList.contains('ohlc-legend-chevron');
+        const sync = () => {
+            const collapsed = ohlcInfo.classList.contains('collapsed');
+            if (typeof collapseBtn.setAttribute === 'function') {
+                collapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
             }
+            const svg = collapseBtn.querySelector('svg');
+            if (!svg) return;
+            if (useCssChevron) {
+                svg.style.transform = '';
+            } else {
+                svg.style.transform = collapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+            }
+        };
+        sync();
+        
+        collapseBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            ohlcInfo.classList.toggle('collapsed');
+            sync();
         });
     }
     

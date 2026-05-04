@@ -1802,6 +1802,11 @@ class PanelManager {
         ohlcInfo.innerHTML = `
             <div class="ohlc-header">
                 <div class="ohlc-symbol-block" style="position: relative; display: flex; align-items: center; gap: 4px;">
+                    <button type="button" class="ohlc-legend-chevron" id="ohlcCollapseBtn${index}" aria-label="Toggle legend details" aria-expanded="true" style="pointer-events: auto;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <polyline points="6 9 12 15 18 9" stroke-linecap="round" stroke-linejoin="round"></polyline>
+                        </svg>
+                    </button>
                     <span class="ohlc-symbol-text" id="chartSymbol${index}">CHART</span>
                     <span class="ohlc-separator">·</span>
                     <span id="chartTimeframe${index}">${panelTimeframe}</span>
@@ -1817,25 +1822,17 @@ class PanelManager {
             <div class="ohlc-body">
                 <div class="ohlc-indicators" id="ohlcIndicators${index}"></div>
             </div>
-            <button class="ohlc-collapse-btn" id="ohlcCollapseBtn${index}" style="margin-top: 4px; align-self: flex-start;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"/>
-                </svg>
-            </button>
         `;
         chartContainer.appendChild(ohlcInfo);
         
         // Setup collapse button for this panel's OHLC
         const collapseBtn = ohlcInfo.querySelector(`#ohlcCollapseBtn${index}`);
         if (collapseBtn) {
-            collapseBtn.addEventListener('click', () => {
+            collapseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 ohlcInfo.classList.toggle('collapsed');
-                const svg = collapseBtn.querySelector('svg polyline');
-                if (ohlcInfo.classList.contains('collapsed')) {
-                    svg.setAttribute('points', '18 15 12 9 6 15');
-                } else {
-                    svg.setAttribute('points', '6 9 12 15 18 9');
-                }
+                const collapsed = ohlcInfo.classList.contains('collapsed');
+                collapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
             });
         }
         
