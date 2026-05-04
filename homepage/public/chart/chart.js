@@ -11937,8 +11937,8 @@ class Chart {
         const stripUsed = Math.min(timeAxisGrabStripPx, m.b);
         const axisBandTop = this.h - m.b;
         const axisBandHeight = Math.max(0, m.b - stripUsed);
-        const timeAxisTopPad = Math.max(4, Math.round(this.chartSettings.scaleTextSize * 0.35));
-        const timeLabelY = axisBandTop + timeAxisTopPad + (axisBandHeight - timeAxisTopPad) / 2 + 1;
+        const timeAxisTopPad = Math.max(6, Math.round(this.chartSettings.scaleTextSize * 0.5));
+        const timeLabelY = axisBandTop + timeAxisTopPad + (axisBandHeight - timeAxisTopPad) / 2 + 2;
         if (this._timeTicks && this._timeTicks.length > 0) {
             const prevBaseline = this.ctx.textBaseline;
             this.ctx.textBaseline = 'middle';
