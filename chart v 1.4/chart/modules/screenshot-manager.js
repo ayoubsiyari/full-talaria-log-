@@ -801,22 +801,30 @@ class ScreenshotManager {
      * Download image
      */
     downloadImage(canvas) {
-        canvas.toBlob((blob) => {
-            if (!blob) {
-                this.showNotification('Failed to create image', 'error');
-                return;
-            }
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-            a.href = url;
-            a.download = `Talaria-Chart-${timestamp}.png`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-        }, 'image/png');
+        try {
+            canvas.toBlob((blob) => {
+                if (!blob) {
+                    this.showNotification('Failed to create image', 'error');
+                    return;
+                }
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                a.href = url;
+                a.download = `Talaria-Chart-${timestamp}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 'image/png');
+        } catch (e) {
+            this.showNotification(
+                e && e.name === 'SecurityError'
+                    ? 'Screenshot blocked: chart canvas contains cross-origin pixels. Reload the page after updating.'
+                    : 'Failed to create image',
+                'error'
+            );
+        }
     }
     
     /**
@@ -825,7 +833,24 @@ class ScreenshotManager {
      * (clipboard image API requires HTTPS / secure context).
      */
     async copyToClipboard(canvas) {
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        let blob;
+        try {
+            blob = await new Promise((resolve, reject) => {
+                try {
+                    canvas.toBlob((b) => resolve(b), 'image/png');
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        } catch (e) {
+            this.showNotification(
+                e && e.name === 'SecurityError'
+                    ? 'Screenshot blocked: cross-origin chart pixels. Reload after updating.'
+                    : 'Failed to create image',
+                'error'
+            );
+            return;
+        }
         if (!blob) { this.showNotification('Failed to create image', 'error'); return; }
 
         // Try modern clipboard API (requires HTTPS)
@@ -1179,13 +1204,20 @@ class ScreenshotManager {
             const imageQuality = format === 'jpg' ? quality : undefined;
             
             if (action === 'download') {
-                // Download
-                canvas.toBlob((blob) => {
-                    if (!blob) {
-                        this.showNotification('Failed to create image', 'error');
-                        return;
+                const blob = await new Promise((resolve, reject) => {
+                    try {
+                        canvas.toBlob(
+                            (b) => resolve(b),
+                            imageType,
+                            imageQuality
+                        );
+                    } catch (e) {
+                        reject(e);
                     }
-                    
+                });
+                if (!blob) {
+                    this.showNotification('Failed to create image', 'error');
+                } else {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
@@ -1195,25 +1227,25 @@ class ScreenshotManager {
                     a.click();
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
-                    
                     this.showNotification('Screenshot saved!', 'success');
-                }, imageType, imageQuality);
-                
+                }
             } else if (action === 'copy') {
-                // Copy to clipboard
-                canvas.toBlob(async (blob) => {
-                    if (!blob) {
-                        this.showNotification('Failed to create image', 'error');
-                        return;
+                const blob = await new Promise((resolve, reject) => {
+                    try {
+                        canvas.toBlob((b) => resolve(b), 'image/png');
+                    } catch (e) {
+                        reject(e);
                     }
-                    
+                });
+                if (!blob) {
+                    this.showNotification('Failed to create image', 'error');
+                } else {
                     try {
                         const clipboardItem = new ClipboardItem({ 'image/png': blob });
                         await navigator.clipboard.write([clipboardItem]);
                         this.showNotification('Screenshot copied to clipboard!', 'success');
                     } catch (err) {
                         console.error('Failed to copy:', err);
-                        // Fallback: try to download instead
                         this.showNotification('Clipboard not supported, downloading instead...', 'warning');
                         setTimeout(() => {
                             const url = URL.createObjectURL(blob);
@@ -1224,12 +1256,19 @@ class ScreenshotManager {
                             URL.revokeObjectURL(url);
                         }, 500);
                     }
-                }, 'image/png'); // Clipboard only supports PNG
+                }
             }
-            
         } catch (error) {
             console.error('❌ Screenshot error:', error);
-            this.showNotification('Screenshot failed: ' + error.message, 'error');
+            const isTaint =
+                (error && error.name === 'SecurityError') ||
+                (error && /taint|insecure|not read|not export/i.test(String(error.message || '')));
+            this.showNotification(
+                isTaint
+                    ? 'Screenshot blocked: the chart had cross-origin pixels (often economic-calendar flag images). Reload the page to load flags in CORS-safe mode, or use the chart without those markers.'
+                    : 'Screenshot failed: ' + (error && error.message ? error.message : String(error)),
+                'error'
+            );
         }
     }
 

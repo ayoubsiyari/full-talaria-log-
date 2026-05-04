@@ -598,7 +598,7 @@
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=20260503_tf_toolbar_sync"></script>
+    <script defer src="/chart/chart.js?v=20260504_econ_flag_cors"></script>
     <!-- V9 React theme panel → chart.chartSettings (shared with legacy-index.html). Must load after chart.js. -->
     <script defer src="/chart/modules/v9-theme-bridge.js?v=20260503g_replay_hud_v9"></script>
 
@@ -609,7 +609,7 @@
     <script defer src="/chart/modules/order-event-bus.js?v=20260503g_replay_hud_v9"></script>
     <script defer src="/chart/modules/order-service.js?v=20260503g_replay_hud_v9"></script>
     <script defer src="/chart/modules/order-manager.js?v=20260503g_replay_hud_v9"></script>
-    <script defer src="/chart/modules/screenshot-manager.js?v=20260503g_replay_hud_v9"></script>
+    <script defer src="/chart/modules/screenshot-manager.js?v=20260504_screenshot_taint"></script>
 
     <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
     <script defer src="/chart/modules/chart-indicators-full.js?v=20260503g_replay_hud_v9"></script>

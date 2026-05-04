@@ -3544,7 +3544,20 @@ const TalariaV8bLive = () => {
             if (cancelled || !canvas) return;
             setScreenshotPreviewUrl(canvas.toDataURL("image/jpeg", 0.78));
             return;
-          } catch (_) {
+          } catch (err) {
+            if (err && err.name === "SecurityError") {
+              if (!cancelled) {
+                const svg =
+                  '<svg xmlns="http://www.w3.org/2000/svg" width="560" height="72">' +
+                  '<rect fill="#07080e" width="100%" height="100%"/>' +
+                  '<text x="14" y="40" fill="#9aa3c0" font-family="system-ui,sans-serif" font-size="13">' +
+                  "Preview unavailable (browser blocked export — cross-origin pixels on the chart). " +
+                  "Fully reload the page; calendar flags now load in export-safe mode." +
+                  "</text></svg>";
+                setScreenshotPreviewUrl("data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg));
+              }
+              return;
+            }
             /* wait for manager / next frame */
           }
         }

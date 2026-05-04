@@ -13883,8 +13883,11 @@ class Chart {
             entry.failed = true;
             bump();
         };
-        // Do not set crossOrigin: flagcdn allows hotlinking but CORS mode can block loads,
-        // leaving empty badges until decode — canvas display works without tainting for typical use.
+        // CORS is required: drawing a cross-origin bitmap without CORS taints the chart canvas and
+        // breaks screenshot export (toBlob / toDataURL). With `anonymous`, CDNs that send
+        // Access-Control-Allow-Origin load cleanly; if a host blocks CORS, onerror runs and we
+        // fall back to emoji / ISO code (see drawEconomicCalendarAxisMarkers).
+        img.crossOrigin = 'anonymous';
         img.src = url;
         this._econCalFlagImgCache.set(url, entry);
         return entry;
