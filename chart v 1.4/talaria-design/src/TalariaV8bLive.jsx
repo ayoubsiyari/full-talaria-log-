@@ -8481,17 +8481,6 @@ const TalariaV8bLive = () => {
       <div id="ohlcInfo" className="ohlc-info">
         <div className="ohlc-header">
           <div className="ohlc-symbol-block" style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
-            <button
-              type="button"
-              className="ohlc-legend-chevron"
-              id="ohlcCollapseBtn"
-              aria-label="Toggle legend details"
-              aria-expanded="true"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
             <span id="chartSymbol" className="ohlc-symbol-text" style={{ fontSize: 13, fontWeight: 700 }} />
             <span className="ohlc-separator">·</span>
             <span id="chartTimeframe" style={{ fontSize: 11 }} />
@@ -8522,6 +8511,19 @@ const TalariaV8bLive = () => {
             className="ohlc-indicators"
             style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 1, marginTop: 2, width: "100%", maxWidth: 420, fontSize: 11, pointerEvents: "auto", position: "relative", zIndex: 100 }}
           />
+        </div>
+        <div className="ohlc-legend-footer">
+          <button
+            type="button"
+            className="ohlc-legend-chevron"
+            id="ohlcCollapseBtn"
+            aria-label="Toggle indicator list"
+            aria-expanded="true"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
         </div>
       </div>
     ),
@@ -8602,11 +8604,13 @@ const TalariaV8bLive = () => {
         .ss-view-btn:hover{background:rgba(255,255,255,0.18)!important}
         .ss-del-btn:hover{background:rgba(255,80,80,0.25)!important}
         .tl-drag,.tl-drag *{cursor:move!important}
-        /* TradingView-style: legend chevron on symbol row; collapse hides study list only */
-        .ohlc-legend-chevron{appearance:none;-webkit-appearance:none;border:none;margin:0;padding:0 1px 0 0;background:transparent;color:#787b86;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;border-radius:2px;line-height:0;flex-shrink:0;pointer-events:auto;opacity:0.88;transition:color .12s,background .12s,opacity .12s}
+        /* Legend collapse: control below indicator list (TradingView-like); expanded = ^ collapse, collapsed = v expand */
+        .ohlc-legend-footer{display:flex;align-items:center;justify-content:flex-start;margin-top:3px;padding:0;pointer-events:auto}
+        .ohlc-legend-chevron{appearance:none;-webkit-appearance:none;border:none;margin:0;padding:2px 4px;background:transparent;color:#787b86;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;line-height:0;flex-shrink:0;pointer-events:auto;opacity:0.88;transition:color .12s,background .12s,opacity .12s}
         .ohlc-legend-chevron:hover{background:rgba(255,255,255,0.06);color:#b2b5be;opacity:1}
-        .ohlc-legend-chevron svg{width:10px;height:10px;transform:rotate(0deg);transition:transform .15s ease;flex-shrink:0}
-        .ohlc-info.collapsed .ohlc-legend-chevron svg{transform:rotate(-90deg)}
+        .ohlc-legend-chevron svg{width:13px;height:13px;transition:transform .15s ease;flex-shrink:0}
+        .ohlc-info:not(.collapsed) .ohlc-legend-chevron svg{transform:rotate(180deg)}
+        .ohlc-info.collapsed .ohlc-legend-chevron svg{transform:rotate(0deg)}
         .ohlc-info.collapsed .ohlc-body{display:none !important}
         .ohlc-indicators{min-width:0}
         .ohlc-indicators > div{max-width:100%}

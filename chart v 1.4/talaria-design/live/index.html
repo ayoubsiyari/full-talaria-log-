@@ -286,21 +286,30 @@
             gap: 2px;
         }
 
-        /* TradingView-style legend: chevron before symbol; collapse hides ohlc-body (studies) */
+        /* Legend collapse control below studies; expanded chevron ^ , collapsed v */
+        #chart-container #chartWrapper .ohlc-legend-footer,
+        #panels-container .ohlc-legend-footer {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            margin-top: 3px;
+            padding: 0;
+            pointer-events: auto;
+        }
         #chart-container #chartWrapper .ohlc-legend-chevron,
         #panels-container .ohlc-legend-chevron {
             appearance: none;
             -webkit-appearance: none;
             border: none;
             margin: 0;
-            padding: 0 1px 0 0;
+            padding: 2px 4px;
             background: transparent;
             color: #787b86;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            border-radius: 2px;
+            border-radius: 3px;
             line-height: 0;
             flex-shrink: 0;
             pointer-events: auto;
@@ -315,15 +324,18 @@
         }
         #chart-container #chartWrapper .ohlc-legend-chevron svg,
         #panels-container .ohlc-legend-chevron svg {
-            width: 10px;
-            height: 10px;
-            transform: rotate(0deg);
+            width: 13px;
+            height: 13px;
             transition: transform 0.15s ease;
             flex-shrink: 0;
         }
+        #chart-container #chartWrapper .ohlc-info:not(.collapsed) .ohlc-legend-chevron svg,
+        #panels-container .ohlc-info:not(.collapsed) .ohlc-legend-chevron svg {
+            transform: rotate(180deg);
+        }
         #chart-container #chartWrapper .ohlc-info.collapsed .ohlc-legend-chevron svg,
         #panels-container .ohlc-info.collapsed .ohlc-legend-chevron svg {
-            transform: rotate(-90deg);
+            transform: rotate(0deg);
         }
         #chart-container #chartWrapper .ohlc-info.collapsed .ohlc-body,
         #panels-container .ohlc-info.collapsed .ohlc-body {

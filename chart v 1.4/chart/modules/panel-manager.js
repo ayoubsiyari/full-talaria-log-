@@ -1802,11 +1802,6 @@ class PanelManager {
         ohlcInfo.innerHTML = `
             <div class="ohlc-header">
                 <div class="ohlc-symbol-block" style="position: relative; display: flex; align-items: center; gap: 4px;">
-                    <button type="button" class="ohlc-legend-chevron" id="ohlcCollapseBtn${index}" aria-label="Toggle legend details" aria-expanded="true" style="pointer-events: auto;">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                            <polyline points="6 9 12 15 18 9" stroke-linecap="round" stroke-linejoin="round"></polyline>
-                        </svg>
-                    </button>
                     <span class="ohlc-symbol-text" id="chartSymbol${index}">CHART</span>
                     <span class="ohlc-separator">·</span>
                     <span id="chartTimeframe${index}">${panelTimeframe}</span>
@@ -1821,6 +1816,13 @@ class PanelManager {
             </div>
             <div class="ohlc-body">
                 <div class="ohlc-indicators" id="ohlcIndicators${index}"></div>
+            </div>
+            <div class="ohlc-legend-footer">
+                <button type="button" class="ohlc-legend-chevron" id="ohlcCollapseBtn${index}" aria-label="Toggle indicator list" aria-expanded="true" style="pointer-events: auto;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <polyline points="6 9 12 15 18 9" stroke-linecap="round" stroke-linejoin="round"></polyline>
+                    </svg>
+                </button>
             </div>
         `;
         chartContainer.appendChild(ohlcInfo);
