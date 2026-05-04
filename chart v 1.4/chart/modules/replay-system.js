@@ -4429,12 +4429,12 @@ class ReplaySystem {
     }
 
     /**
-     * Check if the replay head (last rendered candle) lies inside the drawable viewport.
-     * Uses the same pixel test as panel `.panel-follow-btn` — `getVisibleEndIndex()` overshoots
-     * because it maps the full canvas width, so the floating follow rarely appeared on V9.
+     * Check if the replay head (last rendered candle) lies inside the drawable viewport for a chart instance.
+     * Uses plot margins + `dataIndexToPixel` when available — avoids `getVisibleEndIndex()` overshoot on V9.
+     * @param {*} [chartInstance] — defaults to main `this.chart`
      */
-    isLastCandleVisible() {
-        const chart = this.chart;
+    isLastCandleVisible(chartInstance) {
+        const chart = chartInstance !== undefined && chartInstance !== null ? chartInstance : this.chart;
         if (!chart || !chart.data || chart.data.length === 0) {
             return true;
         }
@@ -4459,18 +4459,12 @@ class ReplaySystem {
     }
 
     /**
-     * True when the main chart tile has measurable on-screen area (hide overlay when chart is collapsed/off-screen).
+     * True when `el` has real on-screen area and no hidden ancestor (collapse / display:none / scrolled away).
      */
-    _isReplayFollowChartSurfaceVisible() {
+    _isReplayFollowDomSurfaceVisible(el) {
         try {
-            const wrap =
-                document.getElementById('chartWrapper') ||
-                document.querySelector('#chart-container .chart-wrapper') ||
-                document.querySelector('.chart-wrapper');
-            const el = wrap || this.chart?.canvas?.closest('#chart-container');
             if (!el || typeof el.getBoundingClientRect !== 'function') return false;
 
-            // Ancestor `display:none` does not always appear on the wrapper’s own computed style — check the whole chain.
             if (typeof el.checkVisibility === 'function') {
                 if (
                     !el.checkVisibility({
@@ -4520,6 +4514,24 @@ class ReplaySystem {
     }
 
     /**
+     * True when the main chart tile has measurable on-screen area (hide overlay when chart is collapsed/off-screen).
+     */
+    _isReplayFollowChartSurfaceVisible() {
+        const wrap =
+            document.getElementById('chartWrapper') ||
+            document.querySelector('#chart-container .chart-wrapper') ||
+            document.querySelector('.chart-wrapper');
+        const el = wrap || this.chart?.canvas?.closest('#chart-container');
+        return this._isReplayFollowDomSurfaceVisible(el);
+    }
+
+    /** Per-panel chart tile: same visibility rules as the main follow overlay. */
+    _isReplayFollowPanelSurfaceVisible(panel) {
+        const el = panel?.chartContainer || panel?.element;
+        return this._isReplayFollowDomSurfaceVisible(el);
+    }
+
+    /**
      * Update visual indicator for auto-scroll status
      */
     updateAutoScrollIndicator() {
@@ -4544,21 +4556,40 @@ class ReplaySystem {
             }
         }
 
-        // Update panel follow buttons
+        // Panel follow buttons — same rules as `#replayFollow`: replay on, not picking, catch-up needed, tile visible.
         const pm = window.panelManager;
         if (pm && pm.panels) {
             pm.panels.forEach((panel, idx) => {
-                const btn = document.getElementById(`panelFollow${idx}`);
-                if (!btn) return;
-                if (!this.isActive) { btn.style.display = 'none'; return; }
+                const pBtn = document.getElementById(`panelFollow${idx}`);
+                if (!pBtn) return;
+
+                if (hideChrome) {
+                    pBtn.style.display = 'none';
+                    pBtn.classList.remove('replay-follow--attention');
+                    return;
+                }
+
                 const pc = panel.chartInstance;
-                if (!pc || !pc.data || pc.data.length === 0) { btn.style.display = 'none'; return; }
-                const m = pc.margin || { l: 0, r: 0 };
-                const spacing = typeof pc.getCandleSpacing === 'function' ? pc.getCandleSpacing() : (pc.candleWidth + 2);
-                const lastX = m.l + (pc.data.length - 1) * spacing + (pc.offsetX || 0);
-                const visible = lastX >= 0 && lastX <= (pc.w || 0) + spacing * 2;
-                btn.style.display = visible ? 'none' : 'flex';
-                if (!visible) btn.style.opacity = '1';
+                if (!pc || !pc.data || pc.data.length === 0) {
+                    pBtn.style.display = 'none';
+                    pBtn.classList.remove('replay-follow--attention');
+                    return;
+                }
+
+                const panelNeedsCatchUp =
+                    !this.autoScrollEnabled || !this.isLastCandleVisible(pc);
+                const panelSurfaceOk = this._isReplayFollowPanelSurfaceVisible(panel);
+                const showPanelFollow = panelNeedsCatchUp && panelSurfaceOk;
+
+                if (!showPanelFollow) {
+                    pBtn.style.display = 'none';
+                    pBtn.classList.remove('replay-follow--attention');
+                } else {
+                    pBtn.style.display = 'flex';
+                    pBtn.style.opacity = '1';
+                    pBtn.style.visibility = 'visible';
+                    pBtn.classList.add('replay-follow--attention');
+                }
             });
         }
     }

@@ -379,7 +379,8 @@
         }
         body > button.replay-follow-float-btn[data-talaria-replay-follow="injected"].replay-follow--attention,
         #chart-container #replayFollow.replay-follow--attention,
-        #chart-container #chartWrapper #replayFollow.replay-follow--attention {
+        #chart-container #chartWrapper #replayFollow.replay-follow--attention,
+        #panels-container .panel-chart-container .panel-follow-btn.replay-follow--attention {
             animation: tlrReplayFollowAttention 1s ease-in-out infinite;
             border-color: rgba(99, 132, 255, 0.55);
             color: #e8ecff;
@@ -602,7 +603,7 @@
     <script defer src="/chart/modules/v9-theme-bridge.js?v=20260503g_replay_hud_v9"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
-    <script defer src="/chart/modules/replay-system.js?v=20260503_follow_viewport"></script>
+    <script defer src="/chart/modules/replay-system.js?v=20260503_follow_all_panels"></script>
 
     <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->
     <script defer src="/chart/modules/order-event-bus.js?v=20260503g_replay_hud_v9"></script>
