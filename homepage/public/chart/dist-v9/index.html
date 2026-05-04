@@ -336,6 +336,97 @@
             z-index: 1;
         }
 
+        /* Back/forward (navigation integrity) badge — same as legacy index next to symbol during replay */
+        #chart-container #chartWrapper .nav-integrity-badge,
+        #panels-container .nav-integrity-badge {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 4px;
+            cursor: default;
+            pointer-events: auto;
+        }
+        #chart-container #chartWrapper .nav-badge-icon,
+        #panels-container .nav-badge-icon {
+            position: relative;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+        #chart-container #chartWrapper .nav-badge-radio,
+        #panels-container .nav-badge-radio {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        #chart-container #chartWrapper .nav-integrity-badge.enabled .nav-badge-radio,
+        #panels-container .nav-integrity-badge.enabled .nav-badge-radio {
+            color: #f87171;
+        }
+        #chart-container #chartWrapper .nav-integrity-badge.disabled .nav-badge-radio,
+        #panels-container .nav-integrity-badge.disabled .nav-badge-radio {
+            color: #4ade80;
+        }
+        #chart-container #chartWrapper .nav-badge-tooltip,
+        #panels-container .nav-badge-tooltip {
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-top: 8px;
+            padding: 10px 14px;
+            background: rgba(5, 0, 40, 0.98);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            font-size: 11px;
+            line-height: 1.5;
+            color: #ffffff;
+            white-space: nowrap;
+            z-index: 10000;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.2s, visibility 0.2s;
+        }
+        #chart-container #chartWrapper .nav-badge-tooltip::before,
+        #panels-container .nav-badge-tooltip::before {
+            content: "";
+            position: absolute;
+            top: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-bottom: 6px solid rgba(5, 0, 40, 0.98);
+        }
+        #chart-container #chartWrapper .nav-integrity-badge:hover .nav-badge-tooltip,
+        #chart-container #chartWrapper .nav-integrity-badge.show-tooltip .nav-badge-tooltip,
+        #panels-container .nav-integrity-badge:hover .nav-badge-tooltip,
+        #panels-container .nav-integrity-badge.show-tooltip .nav-badge-tooltip {
+            opacity: 1;
+            visibility: visible;
+        }
+        #chart-container #chartWrapper .nav-badge-tooltip strong,
+        #panels-container .nav-badge-tooltip strong {
+            color: #ffffff;
+        }
+        #chart-container #chartWrapper .nav-badge-tooltip.enabled-tip strong,
+        #panels-container .nav-badge-tooltip.enabled-tip strong {
+            color: #f87171;
+        }
+        #chart-container #chartWrapper .nav-badge-tooltip.disabled-tip strong,
+        #panels-container .nav-badge-tooltip.disabled-tip strong {
+            color: #4ade80;
+        }
+
         /* Hide legacy chart.js floating drawing toolbar — V9 renders its own
            tlBar/txtBar floating toolbar (TalariaV8bLive.jsx) which is wired
            via the V9 tool bridge. Keeping the legacy one visible would show

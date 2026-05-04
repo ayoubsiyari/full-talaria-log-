@@ -3641,6 +3641,47 @@ const TalariaV8bLive = () => {
     }
   }, [speed]);
 
+  // Navigation integrity badge (#navIntegrityBadge) — legacy chart UX: radio icon next to symbol during replay.
+  useEffect(() => {
+    let cancelled = false;
+    const sync = () => {
+      if (cancelled) return;
+      const badge = document.getElementById("navIntegrityBadge");
+      const tooltip = document.getElementById("navBadgeTooltip");
+      if (!badge) return;
+      const rs = getReplaySystem();
+      const replayOn = !!(rs && rs.isActive);
+      let allowBack = true;
+      try {
+        if (typeof window !== "undefined" && window.backtestingSettings) {
+          allowBack = window.backtestingSettings.allowBackNavigation !== false;
+        }
+      } catch (_) {}
+      badge.style.display = replayOn ? "inline-flex" : "none";
+      badge.classList.toggle("enabled", allowBack);
+      badge.classList.toggle("disabled", !allowBack);
+      if (tooltip) {
+        tooltip.classList.toggle("enabled-tip", allowBack);
+        tooltip.classList.toggle("disabled-tip", !allowBack);
+        tooltip.innerHTML = allowBack
+          ? "<strong>You can navigate</strong>"
+          : "<strong>You can not navigate</strong>";
+      }
+    };
+    sync();
+    const id = setInterval(sync, 300);
+    const onDocClick = () => {
+      const b = document.getElementById("navIntegrityBadge");
+      if (b) b.classList.remove("show-tooltip");
+    };
+    document.addEventListener("click", onDocClick);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      document.removeEventListener("click", onDocClick);
+    };
+  }, []);
+
   // ────────────────────────────────────────────────────────────────────────
 
   const rollbackLineRef = useRef(null);
@@ -8483,6 +8524,31 @@ const TalariaV8bLive = () => {
             <span id="chartSymbol" className="ohlc-symbol-text" />
             <span className="ohlc-separator">{" · "}</span>
             <span id="chartTimeframe" />
+            {/* Legacy chart: nav integrity badge — visible during replay; color reflects back/forward policy */}
+            <div
+              id="navIntegrityBadge"
+              className="nav-integrity-badge"
+              style={{ display: "none" }}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.currentTarget.classList.toggle("show-tooltip");
+              }}
+            >
+              <div className="nav-badge-icon">
+                <svg className="nav-badge-radio" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M16.247 7.761a6 6 0 0 1 0 8.478" />
+                  <path d="M19.075 4.933a10 10 0 0 1 0 14.134" />
+                  <path d="M4.925 19.067a10 10 0 0 1 0-14.134" />
+                  <path d="M7.753 16.239a6 6 0 0 1 0-8.478" />
+                  <circle cx="12" cy="12" r="2" />
+                </svg>
+              </div>
+              <div className="nav-badge-tooltip" id="navBadgeTooltip">
+                <strong>Back Navigation Disabled</strong>
+                <br />
+                Ensures integrity — no going back in time
+              </div>
+            </div>
           </div>
           <div className="ohlc-stats">
             <div className="ohlc-item">
