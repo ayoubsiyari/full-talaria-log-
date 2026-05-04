@@ -3925,9 +3925,19 @@ const TalariaV8bLive = () => {
         const el = document.getElementById("chart-container");
         if (sm && typeof sm.captureCanvasDirect === "function" && el) {
           try {
-            const canvas = await sm.captureCanvasDirect(el, 0.34);
+            const rect = el.getBoundingClientRect();
+            const rw = rect.width || 1;
+            const rh = rect.height || 1;
+            const dpr =
+              typeof window !== "undefined"
+                ? Math.min(2.25, Math.max(1, window.devicePixelRatio || 1))
+                : 2;
+            const maxLongEdge = 4096;
+            const captureScale = Math.max(1, Math.min(dpr, maxLongEdge / Math.max(rw, rh)));
+            const canvas = await sm.captureCanvasDirect(el, captureScale);
             if (cancelled || !canvas) return;
-            setScreenshotPreviewUrl(canvas.toDataURL("image/jpeg", 0.78));
+            setCanvasDims({ w: canvas.width, h: canvas.height });
+            setScreenshotPreviewUrl(canvas.toDataURL("image/jpeg", 0.92));
             return;
           } catch (err) {
             if (err && err.name === "SecurityError") {
