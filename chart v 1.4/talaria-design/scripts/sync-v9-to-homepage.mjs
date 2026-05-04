@@ -28,3 +28,16 @@ if (fs.existsSync(dest)) {
 }
 fs.cpSync(src, dest, { recursive: true });
 console.log("[sync-v9-to-homepage] Copied", src, "→", dest);
+
+// Vite only bundles React; `/chart/chart.js` is loaded at runtime. Copy the engine
+// from source so `homepage/public` self-hosts the same file the chart server would
+// serve (avoids "nothing changed" when only dist-v9/ was updated).
+const chartJsSrc = path.resolve(__dirname, "../../chart/chart.js");
+const chartJsDest = path.resolve(__dirname, "../../../homepage/public/chart/chart.js");
+if (fs.existsSync(chartJsSrc)) {
+  fs.mkdirSync(path.dirname(chartJsDest), { recursive: true });
+  fs.copyFileSync(chartJsSrc, chartJsDest);
+  console.log("[sync-v9-to-homepage] Copied chart engine", chartJsSrc, "→", chartJsDest);
+} else {
+  console.warn("[sync-v9-to-homepage] chart.js not found, skip:", chartJsSrc);
+}
