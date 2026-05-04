@@ -4316,7 +4316,9 @@ class ReplaySystem {
     }
 
     /**
-     * Place `#replayFollow` relative to the chart wrapper viewport (fixed coords survive React reconciler).
+     * Place `#replayFollow` at the latest bar’s X (TradingView-style: tracks scroll + live ticks).
+     * Uses chart layout px → viewport via `_pointerLayoutRect` / `_v9LayoutZoom` (matches crosshair).
+     * Falls back to bottom-right of `#chartWrapper` when metrics are unavailable.
      */
     positionReplayFollowChrome(btn) {
         const wrap =
@@ -4324,7 +4326,46 @@ class ReplaySystem {
             document.querySelector('.chart-wrapper') ||
             this.chart?.canvas?.closest('#chartWrapper') ||
             this.chart?.canvas?.parentElement;
+
         if (!btn) return;
+
+        const chart = this.chart;
+        const btnSize = Math.max(32, (btn.getBoundingClientRect && btn.getBoundingClientRect().width) || btn.offsetWidth || 44);
+
+        if (chart && Array.isArray(chart.data) && chart.data.length > 0
+            && typeof chart.dataIndexToPixel === 'function'
+            && chart.w > 0 && chart.h > 0 && chart.canvas) {
+            try {
+                const m = chart.margin || { l: 0, r: 60, t: 0, b: 30 };
+                const lastIdx = chart.data.length - 1;
+                let xLayout = chart.dataIndexToPixel(lastIdx);
+                const plotL = m.l;
+                const plotR = chart.w - m.r;
+                xLayout = Math.max(plotL + 8, Math.min(plotR - 8, xLayout));
+
+                const layoutRect = typeof chart._pointerLayoutRect === 'function'
+                    ? chart._pointerLayoutRect()
+                    : chart.canvas.parentElement && chart.canvas.parentElement.getBoundingClientRect
+                        ? chart.canvas.parentElement.getBoundingClientRect()
+                        : chart.canvas.getBoundingClientRect();
+                const z = typeof chart._v9LayoutZoom === 'function' ? chart._v9LayoutZoom() : 1;
+
+                if (layoutRect && Number.isFinite(layoutRect.left) && Number.isFinite(layoutRect.top)) {
+                    const clientX = layoutRect.left + xLayout * z;
+                    const yLayout = chart.h - m.b - 12;
+                    const clientY = layoutRect.top + yLayout * z;
+
+                    btn.style.position = 'fixed';
+                    btn.style.left = `${Math.round(clientX - btnSize / 2)}px`;
+                    btn.style.top = `${Math.round(clientY - btnSize)}px`;
+                    btn.style.right = 'auto';
+                    btn.style.bottom = 'auto';
+                    btn.style.zIndex = '2147483646';
+                    return;
+                }
+            } catch (_) { /* fall through */ }
+        }
+
         if (!wrap) {
             btn.style.position = 'fixed';
             btn.style.right = '24px';
@@ -4396,7 +4437,8 @@ class ReplaySystem {
             if (!this._replayFollowResizeBound) {
                 this._replayFollowResizeBound = () => {
                     try {
-                        this.positionReplayFollowChrome(this.followBtn);
+                        const b = this.followBtn || document.getElementById('replayFollow');
+                        if (b && b.style.display !== 'none') this.positionReplayFollowChrome(b);
                     } catch (_) {}
                 };
                 window.addEventListener('resize', this._replayFollowResizeBound);
@@ -4455,9 +4497,8 @@ class ReplaySystem {
                 btn.style.display = 'none';
                 btn.classList.remove('replay-follow--attention');
             } else {
-                if (btn.dataset.talariaReplayFollow === 'injected') {
-                    this.positionReplayFollowChrome(btn);
-                }
+                // Main follow chrome: anchor to latest bar every tick (React + injected).
+                this.positionReplayFollowChrome(btn);
                 btn.style.display = 'flex';
                 btn.style.opacity = '1';
                 btn.style.visibility = 'visible';
