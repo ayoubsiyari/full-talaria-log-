@@ -3031,6 +3031,15 @@ const TalariaV8bLive = () => {
     };
     tick();
 
+    const chartTfDetailToV9 = (cTf) => {
+      if (!cTf) return null;
+      const s = String(cTf).toLowerCase().trim();
+      if (s === "1mo") return "1M";
+      if (/^\d+h$/.test(s)) return s.toUpperCase();
+      if (/^\d+d$/.test(s) || /^\d+w$/.test(s)) return s.toUpperCase();
+      return s;
+    };
+
     const handleDataLoaded = (e) => {
       const d = e?.detail || {};
       const src = d.chart;
@@ -3039,6 +3048,8 @@ const TalariaV8bLive = () => {
         if (src && active && src !== active) return;
       }
       apply(d.symbol, "event");
+      const mappedTf = chartTfDetailToV9(d.timeframe);
+      if (mappedTf) setTf(mappedTf);
       refreshSessionPairs();
     };
     window.addEventListener('chartDataLoaded', handleDataLoaded);
@@ -3235,7 +3246,13 @@ const TalariaV8bLive = () => {
   // panel sync) and reflect them back into V9 state so the UI stays in sync.
   useEffect(() => {
     const handleTfChanged = (e) => {
-      let cTf = e?.detail?.timeframe;
+      const d = e?.detail || {};
+      const srcChart = d.chart;
+      if (v9IsMultiPanelLayoutActive()) {
+        const active = v9ActiveChartInstance();
+        if (srcChart && active && srcChart !== active) return;
+      }
+      let cTf = d.timeframe;
       if (!cTf) {
         const active = v9ActiveChartInstance();
         cTf = active?.currentTimeframe ?? window.chart?.currentTimeframe;

@@ -1293,6 +1293,7 @@ class Chart {
                 timeframe: this.currentTimeframe
             }
         }));
+        this._emitTimeframeChanged();
     }
 
     _smartResponseHasPayload(result) {
@@ -2319,6 +2320,7 @@ class Chart {
                     document.querySelectorAll('.timeframe-btn, .sidebar-timeframe-btn, .sidebar-current-timeframe').forEach(b => {
                         b.classList.toggle('active', b.dataset.timeframe === v.timeframe);
                     });
+                    this._emitTimeframeChanged();
                 }
                 // Set flag to prevent fitToView() from overriding the restored position
                 this._chartViewRestored = true;
@@ -8658,6 +8660,7 @@ class Chart {
 	                            timeframe: this.currentTimeframe
 	                        }
 	                    }));
+	                    this._emitTimeframeChanged();
 	                } catch (error) {
 	                    console.error('Local CSV processing error:', error);
 	                    console.error('Stack trace:', error.stack);
@@ -10577,6 +10580,7 @@ class Chart {
         this.currentTimeframe = String(timeframe || '1m').toLowerCase().trim();
         timeframe = this.currentTimeframe;
         this.scheduleChartViewSave();
+        this._emitTimeframeChanged();
         if (this.currentSymbol) {
             this.updateChartTitle(this.currentSymbol);
         } else {
@@ -10743,7 +10747,7 @@ class Chart {
      */
     _fireChartDataLoaded() {
         window.dispatchEvent(new CustomEvent('chartDataLoaded', {
-            detail: { 
+            detail: {
                 chart: this,
                 data: this.data,
                 rawData: this.rawData,
@@ -10751,6 +10755,20 @@ class Chart {
                 timeframe: this.currentTimeframe
             }
         }));
+    }
+
+    /** Notify hosts (e.g. V9 React toolbar) when `currentTimeframe` has been applied. */
+    _emitTimeframeChanged() {
+        try {
+            window.dispatchEvent(new CustomEvent('timeframeChanged', {
+                detail: {
+                    timeframe: this.currentTimeframe,
+                    chart: this,
+                },
+            }));
+        } catch (e) {
+            /* ignore */
+        }
     }
     
     /**
