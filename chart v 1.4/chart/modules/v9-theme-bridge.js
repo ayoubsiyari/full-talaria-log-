@@ -57,6 +57,19 @@
     return c;
   }
 
+  function mapV9TimezoneToId(tzLabel) {
+    var map = {
+      'UTC': 'UTC',
+      'UTC+3 (Riyadh)': 'Europe/Moscow',
+      'UTC+4 (Dubai)': 'Asia/Dubai',
+      'UTC+5:30 (IST)': 'Asia/Kolkata',
+      'UTC+8 (Asia)': 'Asia/Singapore',
+      'UTC-5 (EST)': 'America/New_York',
+      'UTC-8 (PST)': 'America/Los_Angeles'
+    };
+    return map[tzLabel] || 'UTC';
+  }
+
   /**
    * @param {object} settings V9 settings state (same shape as TalariaV8bLive useState)
    * @returns {boolean} true if chart was ready and sync ran; false if window.chart not ready
@@ -82,7 +95,9 @@
       showPriceLine: settings.priceLine,
       scaleTextColor: settings.textColor,
       symbolTextColor: settings.textColor,
-      scaleLinesColor: settings.scaleLineColor
+      scaleLinesColor: settings.scaleLineColor,
+      timeFormat: settings.timeFormat,
+      timezone: settings.timezone
     };
     var changed = false;
     var k;
@@ -105,6 +120,17 @@
       changed = true;
     }
     if (applyCanvasTheme(cs, settings)) changed = true;
+    try {
+      var tm = typeof window !== 'undefined' ? window.timezoneManager : null;
+      var tzId = mapV9TimezoneToId(settings.timezone);
+      if (tm && typeof tm.setTimezone === 'function') {
+        var cur = tm.getTimezone && tm.getTimezone();
+        if (!cur || cur.id !== tzId) {
+          tm.setTimezone(tzId);
+          changed = true;
+        }
+      }
+    } catch (e0) {}
 
     if (!changed) return true;
 

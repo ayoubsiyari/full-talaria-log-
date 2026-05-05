@@ -12695,6 +12695,21 @@ class Chart {
         // Convert to selected timezone
         const tzDate = this.convertToTimezone(date.getTime());
         const timeframe = this.currentTimeframe || '1m';
+        const use12h = this.chartSettings && this.chartSettings.timeFormat === '12h';
+        const formatHourMinute = (d) => {
+            if (use12h) {
+                return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+            }
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            return `${hours}:${minutes}`;
+        };
+        const formatHourOnly = (d) => {
+            if (use12h) {
+                return d.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+            }
+            return String(d.getHours()).padStart(2, '0');
+        };
         
         // Format based on timeframe first, then adjust for zoom level
         if (timeframe === '1m') {
@@ -12703,13 +12718,10 @@ class Chart {
                 // Very zoomed out: show date and hour
                 const month = tzDate.toLocaleString('en-US', { month: 'short' });
                 const day = tzDate.getDate();
-                const hours = String(tzDate.getHours()).padStart(2, '0');
-                return `${month} ${day}, ${hours}`;
+                return `${month} ${day}, ${formatHourOnly(tzDate)}`;
             } else {
                 // Normal/zoomed in: show hour and minute (HH:MM format)
-                const hours = String(tzDate.getHours()).padStart(2, '0');
-                const minutes = String(tzDate.getMinutes()).padStart(2, '0');
-                return `${hours}:${minutes}`;
+                return formatHourMinute(tzDate);
             }
         } else if (timeframe === '5m') {
             // 5-minute timeframe: show time
@@ -12717,19 +12729,14 @@ class Chart {
                 // Zoomed out: show date and hour
                 const month = tzDate.toLocaleString('en-US', { month: 'short' });
                 const day = tzDate.getDate();
-                const hours = String(tzDate.getHours()).padStart(2, '0');
-                return `${month} ${day}, ${hours}`;
+                return `${month} ${day}, ${formatHourOnly(tzDate)}`;
             } else {
                 // Normal/zoomed in: show hour and minute
-                const hours = String(tzDate.getHours()).padStart(2, '0');
-                const minutes = String(tzDate.getMinutes()).padStart(2, '0');
-                return `${hours}:${minutes}`;
+                return formatHourMinute(tzDate);
             }
         } else if (timeframe === '15m' || timeframe === '30m') {
             // 15/30 minute timeframes - TradingView style
-            const hours = String(tzDate.getHours()).padStart(2, '0');
-            const minutes = String(tzDate.getMinutes()).padStart(2, '0');
-            return `${hours}:${minutes}`;
+            return formatHourMinute(tzDate);
         } else if (timeframe === '1h') {
             // 1-hour timeframe: show hours
             if (visibleBarsCount > 200) {
@@ -12741,10 +12748,10 @@ class Chart {
                 // Zoomed out: show date and hour
                 const month = tzDate.toLocaleString('en-US', { month: 'short' });
                 const day = tzDate.getDate();
-                const hours = String(tzDate.getHours()).padStart(2, '0');
-                return `${month} ${day}, ${hours}`;
+                return `${month} ${day}, ${formatHourOnly(tzDate)}`;
             } else {
                 // Normal/zoomed in: show hour only (HH:00 format)
+                if (use12h) return formatHourOnly(tzDate);
                 const hours = String(tzDate.getHours()).padStart(2, '0');
                 return `${hours}:00`;
             }
@@ -12759,8 +12766,7 @@ class Chart {
                 // Normal/zoomed in: show day and hour
                 const month = tzDate.toLocaleString('en-US', { month: 'short' });
                 const day = tzDate.getDate();
-                const hours = String(tzDate.getHours()).padStart(2, '0');
-                return `${month} ${day}, ${hours}`;
+                return `${month} ${day}, ${formatHourOnly(tzDate)}`;
             }
         } else if (timeframe === '1d') {
             // Daily timeframe

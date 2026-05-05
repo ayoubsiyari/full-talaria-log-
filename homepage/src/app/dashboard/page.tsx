@@ -282,42 +282,27 @@ export default function GlobalDashboard() {
   const winPct = (winCount / totalWL) * 100;
 
   return (
-    <div className="db-page">
-      <div className="db-hero">
-        <div className="min-w-0 flex-1">
-          <h1 className="db-hero-greeting">
-            {greeting}, <span>{user.name || "Trader"}</span>
+    <div style={{ padding: "24px 28px 48px", display: "flex", flexDirection: "column", gap: 24, minHeight: "100%", boxSizing: "border-box" } as React.CSSProperties}>
+
+      {/* Compact greeting + actions */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,255,255,0.92)", margin: 0, marginBottom: 3 }}>
+            {greeting}, <span style={{ color: "#4A6AFF" }}>{user.name || "Trader"}</span>
           </h1>
-          <p className="db-hero-date">{todayStr}</p>
-          <div className="db-hero-meta">
-            {planName ? (
-              <span className="db-plan-badge">
-                <Crown className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
-                {planName}
-              </span>
-            ) : hasSub ? (
-              <span className="db-plan-badge">
-                <Shield className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
-                Active
-              </span>
-            ) : null}
-            {memberSince ? <span className="db-plan-member">Member since {memberSince}</span> : null}
-          </div>
+          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", margin: 0 }}>
+            {todayStr}{memberSince ? ` · Member since ${memberSince}` : ""}{planName ? ` · ${planName}` : ""}
+          </p>
         </div>
-        <div className="db-hero-actions">
-          <a href="/journal/settings" className="db-btn-sm">
-            <Settings className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
-            Settings
-          </a>
-          <a href="/journal/pricing" className="db-btn-sm">
-            <CreditCard className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
-            Plans
-          </a>
+        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <a href="/journal/settings" style={{ display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.50)", textDecoration: "none", padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(140,160,255,0.10)", background: "rgba(140,160,255,0.04)" }}>Settings</a>
+          {!hasSub && <a href="/journal/pricing" style={{ display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 700, color: "#4A6AFF", textDecoration: "none", padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(74,106,255,0.22)", background: "rgba(74,106,255,0.08)" }}>Upgrade</a>}
         </div>
       </div>
 
-      <div className="db-shortcuts-wrap">
-        <h2 className={SECTION}>Shortcuts</h2>
+      {/* Shortcuts */}
+      <div>
+        <div className="db-section-label">Quick access</div>
         <div className="db-shortcuts">
           {[
             { icon: BarChart3, title: "Backtesting", desc: "Historical strategy practice", href: "/backtest/" },
@@ -347,18 +332,18 @@ export default function GlobalDashboard() {
             <h2 className={SECTION}>Performance overview</h2>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
               <MetricCard icon={Activity} label="Total Trades" value={String(stats.total_trades ?? 0)} sub={`${stats.winning_trades ?? 0}W / ${stats.losing_trades ?? 0}L`} />
-              <MetricCard icon={DollarSign} label="Net P&L" value={fmt(stats.total_pnl)} valueColor={(stats.total_pnl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"} sub={`Avg ${fmt(stats.avg_pnl)}/trade`} trend={(stats.total_pnl ?? 0) >= 0 ? "up" : "down"} />
-              <MetricCard icon={Target} label="Win Rate" value={pct(stats.win_rate)} valueColor={(stats.win_rate ?? 0) >= 50 ? "text-emerald-400" : "text-amber-400"} sub={stats.breakeven_trades ? `${stats.breakeven_trades} breakeven` : undefined} />
-              <MetricCard icon={Scale} label="Profit Factor" value={stats.profit_factor != null ? (stats.profit_factor === Infinity ? "∞" : parseFloat(String(stats.profit_factor)).toFixed(2)) : "N/A"} valueColor={(stats.profit_factor ?? 0) >= 1.5 ? "text-emerald-400" : (stats.profit_factor ?? 0) >= 1 ? "text-amber-400" : "text-red-400"} sub="Gross win / Gross loss" />
+              <MetricCard icon={DollarSign} label="Net P&L" value={fmt(stats.total_pnl)} valueColor={(stats.total_pnl ?? 0) >= 0 ? "text-[#00D4A1]" : "text-[#FF5068]"} sub={`Avg ${fmt(stats.avg_pnl)}/trade`} trend={(stats.total_pnl ?? 0) >= 0 ? "up" : "down"} />
+              <MetricCard icon={Target} label="Win Rate" value={pct(stats.win_rate)} valueColor={(stats.win_rate ?? 0) >= 50 ? "text-[#00D4A1]" : "text-[#C9A84C]"} sub={stats.breakeven_trades ? `${stats.breakeven_trades} breakeven` : undefined} />
+              <MetricCard icon={Scale} label="Profit Factor" value={stats.profit_factor != null ? (stats.profit_factor === Infinity ? "∞" : parseFloat(String(stats.profit_factor)).toFixed(2)) : "N/A"} valueColor={(stats.profit_factor ?? 0) >= 1.5 ? "text-[#00D4A1]" : (stats.profit_factor ?? 0) >= 1 ? "text-[#C9A84C]" : "text-[#FF5068]"} sub="Gross win / Gross loss" />
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <MiniMetric icon={Trophy} label="Best Trade" value={fmt(stats.largest_win)} color="text-emerald-400" />
-            <MiniMetric icon={TriangleAlert} label="Worst Trade" value={fmt(stats.largest_loss)} color="text-red-400" />
-            <MiniMetric icon={TrendingUp} label="Avg Win" value={fmt(stats.avg_win)} color="text-emerald-400" />
-            <MiniMetric icon={TrendingDown} label="Avg Loss" value={fmt(stats.avg_loss)} color="text-red-400" />
+            <MiniMetric icon={Trophy} label="Best Trade" value={fmt(stats.largest_win)} color="text-[#00D4A1]" />
+            <MiniMetric icon={TriangleAlert} label="Worst Trade" value={fmt(stats.largest_loss)} color="text-[#FF5068]" />
+            <MiniMetric icon={TrendingUp} label="Avg Win" value={fmt(stats.avg_win)} color="text-[#00D4A1]" />
+            <MiniMetric icon={TrendingDown} label="Avg Loss" value={fmt(stats.avg_loss)} color="text-[#FF5068]" />
             <MiniMetric icon={Percent} label="Avg R:R" value={stats.avg_rr != null ? parseFloat(String(stats.avg_rr)).toFixed(2) : "N/A"} color="text-cyan-400" />
-            <MiniMetric icon={Flame} label="Streak" value={streakData?.current_streak?.type ? `${streakData.current_streak.count} ${streakData.current_streak.type === "win" ? "W" : "L"}` : "—"} color={streakData?.current_streak?.type === "win" ? "text-emerald-400" : "text-red-400"} />
+            <MiniMetric icon={Flame} label="Streak" value={streakData?.current_streak?.type ? `${streakData.current_streak.count} ${streakData.current_streak.type === "win" ? "W" : "L"}` : "—"} color={streakData?.current_streak?.type === "win" ? "text-[#00D4A1]" : "text-[#FF5068]"} />
           </div>
         </>
       ) : (
@@ -391,9 +376,9 @@ export default function GlobalDashboard() {
                 <h3 className={SECTION}>Equity curve</h3>
                 {equity && (
                   <div className="flex items-center gap-3 mt-1">
-                    <span className="text-lg font-bold text-slate-100">{fmt(equity.final_balance)}</span>
+                    <span className="text-lg font-bold text-[rgba(255,255,255,0.92)]">{fmt(equity.final_balance)}</span>
                     {totalReturn != null && (
-                      <span className={cn("inline-flex items-center gap-0.5 text-[12px] font-semibold px-2 py-0.5 rounded-full", totalReturn >= 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400")}>
+                      <span className={cn("inline-flex items-center gap-0.5 text-[12px] font-semibold px-2 py-0.5 rounded-full", totalReturn >= 0 ? "bg-[rgba(0,212,161,0.07)] text-[#00D4A1]" : "bg-[rgba(255,80,104,0.07)] text-[#FF5068]")}>
                         {totalReturn >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
                         {Math.abs(totalReturn).toFixed(1)}%
                       </span>
@@ -403,9 +388,9 @@ export default function GlobalDashboard() {
               </div>
               {equity && (
                 <div className="text-right">
-                  <div className="text-[11px] text-cyan-200/40">Max Drawdown</div>
-                  <div className="text-sm font-semibold text-red-400/80">
-                    {fmt(equity.max_drawdown)} <span className="text-[11px] text-red-400/50">({pct(equity.max_drawdown_pct)})</span>
+                  <div className="text-[11px] text-[rgba(255,255,255,0.28)]">Max Drawdown</div>
+                  <div className="text-sm font-semibold text-[#FF5068]/80">
+                    {fmt(equity.max_drawdown)} <span className="text-[11px] text-[#FF5068]/50">({pct(equity.max_drawdown_pct)})</span>
                   </div>
                 </div>
               )}
@@ -413,7 +398,7 @@ export default function GlobalDashboard() {
             {equity?.equity_curve?.length ? (
               <SVGSparkline data={equity.equity_curve.map((p) => p.balance)} height={180} />
             ) : (
-              <div className="h-[180px] flex items-center justify-center text-cyan-200/35 text-sm">No equity data yet</div>
+              <div className="h-[180px] flex items-center justify-center text-[rgba(255,255,255,0.22)] text-sm">No equity data yet</div>
             )}
           </div>
 
@@ -425,30 +410,30 @@ export default function GlobalDashboard() {
                 {/* CSS donut */}
                 <div className="relative w-[90px] h-[90px] flex-shrink-0">
                   <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                    <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(34,211,238,0.1)" strokeWidth="5" />
-                    <circle cx="18" cy="18" r="14" fill="none" stroke="#22c55e" strokeWidth="5" strokeDasharray={`${winPct * 0.88} ${88 - winPct * 0.88}`} strokeLinecap="round" />
-                    <circle cx="18" cy="18" r="14" fill="none" stroke="#ef4444" strokeWidth="5" strokeDasharray={`${(100 - winPct) * 0.88} ${88 - (100 - winPct) * 0.88}`} strokeDashoffset={`-${winPct * 0.88}`} strokeLinecap="round" />
+                    <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(140,160,255,0.10)" strokeWidth="5" />
+                    <circle cx="18" cy="18" r="14" fill="none" stroke="#00D4A1" strokeWidth="5" strokeDasharray={`${winPct * 0.88} ${88 - winPct * 0.88}`} strokeLinecap="round" />
+                    <circle cx="18" cy="18" r="14" fill="none" stroke="#FF5068" strokeWidth="5" strokeDasharray={`${(100 - winPct) * 0.88} ${88 - (100 - winPct) * 0.88}`} strokeDashoffset={`-${winPct * 0.88}`} strokeLinecap="round" />
                   </svg>
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-[13px] font-bold text-cyan-100/70">{pct(stats?.win_rate)}</span>
+                    <span className="text-[13px] font-bold text-[rgba(255,255,255,0.70)]">{pct(stats?.win_rate)}</span>
                   </div>
                 </div>
                 <div className="space-y-2 flex-1">
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500 flex-shrink-0" />
-                    <span className="text-[12px] text-cyan-100/45 flex-1">Wins</span>
-                    <span className="text-[13px] font-semibold text-slate-200">{winCount}</span>
+                    <span className="text-[12px] text-[rgba(255,255,255,0.45)] flex-1">Wins</span>
+                    <span className="text-[13px] font-semibold text-[rgba(255,255,255,0.85)]">{winCount}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-sm bg-red-500 flex-shrink-0" />
-                    <span className="text-[12px] text-cyan-100/45 flex-1">Losses</span>
-                    <span className="text-[13px] font-semibold text-slate-200">{lossCount}</span>
+                    <span className="text-[12px] text-[rgba(255,255,255,0.45)] flex-1">Losses</span>
+                    <span className="text-[13px] font-semibold text-[rgba(255,255,255,0.85)]">{lossCount}</span>
                   </div>
                   {(stats?.breakeven_trades ?? 0) > 0 && (
                     <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-sm bg-slate-500 flex-shrink-0" />
-                      <span className="text-[12px] text-cyan-100/45 flex-1">Breakeven</span>
-                      <span className="text-[13px] font-semibold text-slate-200">{stats?.breakeven_trades}</span>
+                      <div className="w-2.5 h-2.5 rounded-sm bg-[rgba(255,255,255,0.25)] flex-shrink-0" />
+                      <span className="text-[12px] text-[rgba(255,255,255,0.45)] flex-1">Breakeven</span>
+                      <span className="text-[13px] font-semibold text-[rgba(255,255,255,0.85)]">{stats?.breakeven_trades}</span>
                     </div>
                   )}
                 </div>
@@ -459,14 +444,14 @@ export default function GlobalDashboard() {
                 <h3 className={cn(SECTION, "mb-3")}>Streaks</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className="text-[11px] text-cyan-200/40 mb-0.5">Current</div>
-                    <div className={cn("text-lg font-bold", streakData.current_streak.type === "win" ? "text-emerald-400" : streakData.current_streak.type === "loss" ? "text-red-400" : "text-cyan-200/35")}>
+                    <div className="text-[11px] text-[rgba(255,255,255,0.28)] mb-0.5">Current</div>
+                    <div className={cn("text-lg font-bold", streakData.current_streak.type === "win" ? "text-[#00D4A1]" : streakData.current_streak.type === "loss" ? "text-[#FF5068]" : "text-[rgba(255,255,255,0.22)]")}>
                       {streakData.current_streak.count > 0 ? `${streakData.current_streak.count}${streakData.current_streak.type === "win" ? "W" : "L"}` : "—"}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-cyan-200/40 mb-0.5">Best Streak</div>
-                    <div className="text-lg font-bold text-emerald-400">{streakData.max_winning_streak}W</div>
+                    <div className="text-[11px] text-[rgba(255,255,255,0.28)] mb-0.5">Best Streak</div>
+                    <div className="text-lg font-bold text-[#00D4A1]">{streakData.max_winning_streak}W</div>
                   </div>
                 </div>
               </div>
@@ -481,7 +466,7 @@ export default function GlobalDashboard() {
           <div className="flex items-center justify-between mb-4">
             <h3 className={SECTION}>
               Daily P&amp;L{" "}
-              <span className="text-cyan-200/45 normal-case font-normal tracking-normal">· last 30 days</span>
+              <span className="text-[rgba(255,255,255,0.40)] normal-case font-normal tracking-normal">· last 30 days</span>
             </h3>
             <a href="/journal/analytics/calendar" className={LINK_MUTED}>
               Calendar →
@@ -505,35 +490,35 @@ export default function GlobalDashboard() {
               <div className="overflow-x-auto">
                 <table className="w-full text-[12px]">
                   <thead>
-                    <tr className="border-b border-cyan-500/15">
-                      <th className="text-left py-2 px-2 text-cyan-400/70 font-medium">Symbol</th>
-                      <th className="text-left py-2 px-2 text-cyan-400/70 font-medium">Side</th>
-                      <th className="text-right py-2 px-2 text-cyan-400/70 font-medium">P&L</th>
-                      <th className="text-right py-2 px-2 text-cyan-400/70 font-medium">R:R</th>
-                      <th className="text-left py-2 px-2 text-cyan-400/70 font-medium hidden sm:table-cell">Strategy</th>
-                      <th className="text-right py-2 px-2 text-cyan-400/70 font-medium">Date</th>
+                    <tr className="border-b border-[rgba(140,160,255,0.15)]">
+                      <th className="text-left py-2 px-2 text-[rgba(140,160,255,0.70)] font-medium">Symbol</th>
+                      <th className="text-left py-2 px-2 text-[rgba(140,160,255,0.70)] font-medium">Side</th>
+                      <th className="text-right py-2 px-2 text-[rgba(140,160,255,0.70)] font-medium">P&L</th>
+                      <th className="text-right py-2 px-2 text-[rgba(140,160,255,0.70)] font-medium">R:R</th>
+                      <th className="text-left py-2 px-2 text-[rgba(140,160,255,0.70)] font-medium hidden sm:table-cell">Strategy</th>
+                      <th className="text-right py-2 px-2 text-[rgba(140,160,255,0.70)] font-medium">Date</th>
                     </tr>
                   </thead>
                   <tbody>
                     {recentTrades.map((t) => (
-                      <tr key={t.id} className="border-b border-cyan-500/10 hover:bg-cyan-500/[0.06] transition-colors">
-                        <td className="py-2.5 px-2 font-semibold text-slate-200">{t.symbol || "—"}</td>
+                      <tr key={t.id} className="border-b border-[rgba(140,160,255,0.10)] hover:bg-[rgba(74,106,255,0.06)] transition-colors">
+                        <td className="py-2.5 px-2 font-semibold text-[rgba(255,255,255,0.85)]">{t.symbol || "—"}</td>
                         <td className="py-2.5 px-2">
-                          <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase", t.direction?.toLowerCase() === "long" || t.direction?.toLowerCase() === "buy" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400")}>
+                          <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase", t.direction?.toLowerCase() === "long" || t.direction?.toLowerCase() === "buy" ? "bg-[rgba(0,212,161,0.07)] text-[#00D4A1]" : "bg-[rgba(255,80,104,0.07)] text-[#FF5068]")}>
                             {t.direction?.toLowerCase() === "long" || t.direction?.toLowerCase() === "buy" ? "Long" : "Short"}
                           </span>
                         </td>
-                        <td className={cn("py-2.5 px-2 text-right font-semibold", (t.pnl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400")}>{t.pnl != null ? fmt(t.pnl) : "—"}</td>
-                        <td className="py-2.5 px-2 text-right text-cyan-100/55">{t.rr != null ? parseFloat(String(t.rr)).toFixed(2) : "—"}</td>
-                        <td className="py-2.5 px-2 text-cyan-100/40 hidden sm:table-cell truncate max-w-[120px]">{t.strategy || "—"}</td>
-                        <td className="py-2.5 px-2 text-right text-cyan-200/45">{fmtDate(t.date)}</td>
+                        <td className={cn("py-2.5 px-2 text-right font-semibold", (t.pnl ?? 0) >= 0 ? "text-[#00D4A1]" : "text-[#FF5068]")}>{t.pnl != null ? fmt(t.pnl) : "—"}</td>
+                        <td className="py-2.5 px-2 text-right text-[rgba(255,255,255,0.55)]">{t.rr != null ? parseFloat(String(t.rr)).toFixed(2) : "—"}</td>
+                        <td className="py-2.5 px-2 text-[rgba(255,255,255,0.40)] hidden sm:table-cell truncate max-w-[120px]">{t.strategy || "—"}</td>
+                        <td className="py-2.5 px-2 text-right text-[rgba(255,255,255,0.40)]">{fmtDate(t.date)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <div className="py-8 text-center text-cyan-200/35 text-sm">No recent trades</div>
+              <div className="py-8 text-center text-[rgba(255,255,255,0.22)] text-sm">No recent trades</div>
             )}
           </div>
 
@@ -553,22 +538,22 @@ export default function GlobalDashboard() {
                   return (
                     <div key={s.strategy}>
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-[12px] text-cyan-100/55 truncate max-w-[140px]">{s.strategy}</span>
-                        <span className={cn("text-[12px] font-semibold", s.total_pnl >= 0 ? "text-emerald-400" : "text-red-400")}>{fmt(s.total_pnl)}</span>
+                        <span className="text-[12px] text-[rgba(255,255,255,0.55)] truncate max-w-[140px]">{s.strategy}</span>
+                        <span className={cn("text-[12px] font-semibold", s.total_pnl >= 0 ? "text-[#00D4A1]" : "text-[#FF5068]")}>{fmt(s.total_pnl)}</span>
                       </div>
-                      <div className="h-1.5 bg-cyan-950/50 rounded-full overflow-hidden ring-1 ring-cyan-500/10">
-                        <div className={cn("h-full rounded-full", s.total_pnl >= 0 ? "bg-emerald-500/50" : "bg-red-500/50")} style={{ width: `${w}%` }} />
+                      <div className="h-1.5 bg-[rgba(74,106,255,0.06)] rounded-full overflow-hidden ring-1 ring-[rgba(140,160,255,0.10)]">
+                        <div className={cn("h-full rounded-full", s.total_pnl >= 0 ? "bg-[rgba(0,212,161,0.40)]" : "bg-[rgba(255,80,104,0.40)]")} style={{ width: `${w}%` }} />
                       </div>
                       <div className="flex items-center gap-3 mt-0.5">
-                        <span className="text-[10px] text-cyan-200/40">{s.total_trades} trades</span>
-                        <span className="text-[10px] text-cyan-200/40">{pct(s.win_rate)} WR</span>
+                        <span className="text-[10px] text-[rgba(255,255,255,0.28)]">{s.total_trades} trades</span>
+                        <span className="text-[10px] text-[rgba(255,255,255,0.28)]">{pct(s.win_rate)} WR</span>
                       </div>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <div className="py-8 text-center text-cyan-200/35 text-sm">No strategies found</div>
+              <div className="py-8 text-center text-[rgba(255,255,255,0.22)] text-sm">No strategies found</div>
             )}
           </div>
         </div>
@@ -584,14 +569,14 @@ export default function GlobalDashboard() {
           </div>
           <div className="grid grid-cols-2 gap-2">
             {symbols.map((s) => (
-              <div key={s.symbol} className="rounded-lg border border-white/[0.06] bg-[#111318] p-3">
+              <div key={s.symbol} className="rounded-lg border border-[rgba(140,160,255,0.10)] bg-[#0A0C14] p-3">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[12px] font-semibold text-[#e8e4dc]">{s.symbol}</span>
-                  <span className={cn("text-[11px] font-bold", s.total_pnl >= 0 ? "text-emerald-400" : "text-red-400")}>{fmt(s.total_pnl)}</span>
+                  <span className="text-[12px] font-semibold text-[rgba(255,255,255,0.92)]">{s.symbol}</span>
+                  <span className={cn("text-[11px] font-bold", s.total_pnl >= 0 ? "text-[#00D4A1]" : "text-[#FF5068]")}>{fmt(s.total_pnl)}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#4a4850]">{s.total_trades} trades</span>
-                  <span className="text-[10px] text-[#4a4850]">{pct(s.win_rate)}</span>
+                  <span className="text-[10px] text-[rgba(255,255,255,0.40)]">{s.total_trades} trades</span>
+                  <span className="text-[10px] text-[rgba(255,255,255,0.40)]">{pct(s.win_rate)}</span>
                 </div>
               </div>
             ))}
@@ -648,7 +633,7 @@ export default function GlobalDashboard() {
             ))
           ) : (
             <div className="px-5 py-8 text-center">
-              <p className="text-sm text-[#4a4850] mb-3">No sessions yet</p>
+              <p className="text-sm text-[rgba(255,255,255,0.40)] mb-3">No sessions yet</p>
               <a href="/backtest/" className={LINK_MUTED}>
                 Start your first backtest →
               </a>
@@ -671,10 +656,10 @@ export default function GlobalDashboard() {
                 value={`${sub.subscription.status}${sub.subscription.cancel_at_period_end ? " (canceling)" : ""}`}
                 valueColor={
                   sub.subscription.status === "active"
-                    ? "text-emerald-400/90"
+                    ? "text-[#00D4A1]/90"
                     : sub.subscription.status === "trialing"
-                      ? "text-[#93c5fd]"
-                      : "text-amber-400/90"
+                      ? "text-[#4A6AFF]"
+                      : "text-[#C9A84C]/90"
                 }
               />
             ) : null}
@@ -694,11 +679,11 @@ function MetricCard({ icon: Icon, label, value, valueColor, sub, trend }: { icon
         <div className="db-icon-box">
           <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
         </div>
-        <span className="text-[10px] font-semibold text-[#35333a] uppercase tracking-[0.08em]">{label}</span>
-        {trend && <span className="ml-auto">{trend === "up" ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400/60" /> : <ArrowDownRight className="w-3.5 h-3.5 text-red-400/60" />}</span>}
+        <span className="text-[10px] font-semibold text-[rgba(255,255,255,0.28)] uppercase tracking-[0.08em]">{label}</span>
+        {trend && <span className="ml-auto">{trend === "up" ? <ArrowUpRight className="w-3.5 h-3.5 text-[#00D4A1]/60" /> : <ArrowDownRight className="w-3.5 h-3.5 text-[#FF5068]/60" />}</span>}
       </div>
-      <div className={cn("text-lg font-semibold tracking-tight", valueColor || "text-[#e8e4dc]")}>{value}</div>
-      {sub && <div className="text-[11px] text-[#4a4850] mt-1">{sub}</div>}
+      <div className={cn("text-lg font-semibold tracking-tight", valueColor || "text-[rgba(255,255,255,0.92)]")}>{value}</div>
+      {sub && <div className="text-[11px] text-[rgba(255,255,255,0.40)] mt-1">{sub}</div>}
     </div>
   );
 }
@@ -707,10 +692,10 @@ function MiniMetric({ icon: Icon, label, value, color }: { icon: React.ElementTy
   return (
     <div className={cn(CARD, "p-3")}>
       <div className="flex items-center gap-1.5 mb-1.5">
-        <Icon className="h-3 w-3 text-[#60a5fa]/70" strokeWidth={1.75} />
-        <span className="text-[10px] text-[#35333a] uppercase tracking-[0.06em] font-semibold">{label}</span>
+        <Icon className="h-3 w-3 text-[#4A6AFF]/70" strokeWidth={1.75} />
+        <span className="text-[10px] text-[rgba(255,255,255,0.28)] uppercase tracking-[0.06em] font-semibold">{label}</span>
       </div>
-      <div className={cn("text-[15px] font-semibold tracking-tight", color || "text-[#e8e4dc]")}>{value}</div>
+      <div className={cn("text-[15px] font-semibold tracking-tight", color || "text-[rgba(255,255,255,0.92)]")}>{value}</div>
     </div>
   );
 }
@@ -726,7 +711,7 @@ function AccountField({ icon: Icon, label, value, valueColor }: { icon: React.El
         <div
           className={cn(
             "text-[12px] font-semibold truncate max-w-[200px] tabular-nums",
-            valueColor || "text-[#9b97a0]",
+            valueColor || "text-[rgba(255,255,255,0.60)]",
           )}
         >
           {value}
@@ -753,8 +738,8 @@ function SVGSparkline({ data, height = 160 }: { data: number[]; height?: number 
   const line = points.join(" ");
   const areaPath = `M${points[0]} L${line} L${w - pad},${h} L${pad},${h} Z`;
   const isUp = data[data.length - 1] >= data[0];
-  const stroke = isUp ? "#60a5fa" : "#f87171";
-  const fill = isUp ? "rgba(59, 130, 246, 0.14)" : "rgba(248, 113, 113, 0.1)";
+  const stroke = isUp ? "#4A6AFF" : "#FF5068";
+  const fill = isUp ? "rgba(74,106,255,0.14)" : "rgba(255,80,104,0.10)";
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height }} preserveAspectRatio="none">
@@ -774,11 +759,11 @@ function CSSBarChart({ data }: { data: { date: string; pnl: number }[] }) {
         const isPos = d.pnl >= 0;
         return (
           <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group relative">
-            <div className="absolute bottom-full mb-1 hidden group-hover:block z-10 px-2 py-1 rounded-md bg-slate-950 border border-cyan-500/25 text-[10px] text-cyan-100/90 whitespace-nowrap shadow-[0_0_16px_-4px_rgba(34,211,238,0.25)]">
+            <div className="absolute bottom-full mb-1 hidden group-hover:block z-10 px-2 py-1 rounded-md bg-[#07080E] border border-[rgba(140,160,255,0.25)] text-[10px] text-[rgba(255,255,255,0.90)] whitespace-nowrap shadow-[0_0_16px_-4px_rgba(74,106,255,0.25)]">
               {new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}: {fmt(d.pnl)}
             </div>
             <div
-              className={cn("w-full min-w-[4px] rounded-t transition-all", isPos ? "bg-emerald-500/60" : "bg-red-500/60")}
+              className={cn("w-full min-w-[4px] rounded-t transition-all", isPos ? "bg-[rgba(0,212,161,0.55)]" : "bg-[rgba(255,80,104,0.55)]")}
               style={{ height: `${Math.max(pct, 3)}%` }}
             />
           </div>

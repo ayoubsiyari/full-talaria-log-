@@ -223,6 +223,18 @@ function DashboardNotificationBell({ isArabic }: { isArabic: boolean }) {
   );
 }
 
+const F = "'Exo 2', sans-serif";
+
+function getPageTitle(pathname: string): string {
+  if (pathname.startsWith("/journal")) return "Journal";
+  if (pathname.startsWith("/backtest") || pathname.startsWith("/chart")) return "Backtest";
+  if (pathname.startsWith("/strategies")) return "Strategies Lab";
+  if (pathname.startsWith("/dashboard/cot")) return "COT Analysis";
+  if (pathname.startsWith("/dashboard/support")) return "Support";
+  if (pathname.startsWith("/bootcamp")) return "Resources";
+  return "Dashboard";
+}
+
 export default function DashboardLayout({
   children,
 }: {
@@ -230,6 +242,7 @@ export default function DashboardLayout({
 }) {
   const { isArabic } = useLanguage();
   const [user, setUser] = React.useState<User | null>(null);
+  const pathname = usePathname() || "";
 
   React.useEffect(() => {
     fetchMe()
@@ -240,107 +253,97 @@ export default function DashboardLayout({
       });
   }, []);
 
-  const nav = isArabic
-    ? {
-        sessions: "الجلسات",
-        journal: "سجل التداول",
-        backtest: "باكتيست",
-        strategiesLab: "المختبر",
-        cot: "COT",
-        support: "الدعم",
-        admin: "لوحة الإدارة",
-        logout: "تسجيل الخروج",
-      }
-    : {
-        sessions: "Sessions",
-        journal: "Journal",
-        backtest: "Backtest",
-        strategiesLab: "Strategies Lab",
-        cot: "COT",
-        support: "Support",
-        admin: "Admin",
-        logout: "Logout",
-      };
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    } catch { /* ignore */ }
+    localStorage.removeItem("token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("talaria_current_user");
+    localStorage.removeItem("is_admin");
+    window.location.href = "/login/";
+  };
 
-  const pathname = usePathname() || "";
-  const navClass = "db-nav " + (isArabic ? "flex-row-reverse" : "");
-
-  function navLinkClass(href: string): string {
+  const isActive = (href: string) => {
     const p = pathname.replace(/\/$/, "") || "/";
     const h = href.replace(/\/$/, "");
-    const active =
-      p === h ||
-      (h === "/journal/dashboard" && p.startsWith("/journal/dashboard")) ||
-      (h === "/dashboard/cot" && p.startsWith("/dashboard/cot")) ||
-      (h === "/dashboard/support" && p.startsWith("/dashboard/support"));
-    return "db-nav-link" + (active ? " db-nav-link--active" : "");
-  }
+    return p === h || (h.length > 1 && p.startsWith(h));
+  };
+
+  const pageTitle = getPageTitle(pathname);
+
+  const NAV_ITEMS: { id: string; label: string; href: string; icon: React.ReactNode }[] = [
+    { id: "dashboard", label: "Dashboard", href: "/dashboard/", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="3" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/></svg> },
+    { id: "journal",   label: "Journal",   href: "/journal/dashboard", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="15" height="18" rx="1" stroke="currentColor" strokeWidth="1.5"/><line x1="7" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="7" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="7" y1="16" x2="11" y2="16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
+    { id: "backtest",  label: "Backtest",  href: "/backtest/", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><polyline points="3,20 3,4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="3,15 8,11 12,14 18,7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><polygon points="20,10 23,13 20,16" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg> },
+    { id: "strategies",label: "Strategies",href: "/strategies-lab/", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="2" width="14" height="20" rx="1" stroke="currentColor" strokeWidth="1.4"/><rect x="8" y="1" width="4" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.3"/><circle cx="7" cy="9" r="1.2" fill="currentColor" opacity="0.8"/><circle cx="13" cy="9" r="1.2" fill="currentColor" opacity="0.8"/><circle cx="10" cy="14" r="1.2" fill="currentColor" opacity="0.8"/><path d="M7 9c0 3 3 3 3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><path d="M13 9c-1 2-1 3-3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="8.5" y1="19" x2="11.5" y2="19" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
+    { id: "resources", label: "Resources", href: "/bootcamp/", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="2" y="16.5" width="20" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="5.5" y1="16.5" x2="5.5" y2="20" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="3.5" y="12" width="17" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="7" y1="12" x2="7" y2="15.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="5" y="7.5" width="14" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="8.5" y1="7.5" x2="8.5" y2="11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg> },
+    { id: "support",   label: "Support",   href: "/dashboard/support/", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="currentColor" strokeWidth="1"/></svg> },
+  ];
 
   return (
-    <div className={`db-layout min-h-screen ${isArabic ? "rtl" : "ltr"}`} dir={isArabic ? "rtl" : "ltr"}>
-      <header className="db-topbar">
-        <a href="/" className="db-brand">
-          <div className="db-brand-mark">
-            <img src="/logo-08.png" alt="" width={22} height={22} />
-          </div>
-          <div className="min-w-0">
-            <div className="db-brand-title">Talaria Log</div>
-            <div className="db-brand-email">{user ? user.email : " "}</div>
-          </div>
-        </a>
+    <div style={{ position: "fixed", inset: 0, background: "#07080E", fontFamily: F, color: "rgba(255,255,255,0.92)", display: "flex", flexDirection: "column", overflow: "hidden" }}
+      dir={isArabic ? "rtl" : "ltr"}>
 
-        <nav className={navClass}>
-          {[
-            { label: nav.sessions, href: "/backtest/" },
-            { label: nav.backtest, href: "/chart/index.html" },
-            { label: nav.strategiesLab, href: "/strategies-lab/" },
-            { label: nav.cot, href: "/dashboard/cot/" },
-            { label: nav.journal, href: "/journal/dashboard" },
-            { label: nav.support, href: "/dashboard/support/" },
-          ].map((item) => (
-            <a key={item.href} href={item.href} className={navLinkClass(item.href)}>
-              {item.label}
-            </a>
-          ))}
+      {/* ── Top Header ── */}
+      <header style={{ height: 64, flexShrink: 0, display: "flex", alignItems: "center", background: "#0F1119", boxShadow: "0 2px 18px rgba(0,0,0,0.5)", zIndex: 2 }}>
+        {/* Logo slot */}
+        <div style={{ width: 64, flexShrink: 0, height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <img src="/logo-08.png" style={{ width: 36, height: 36, objectFit: "contain" }} alt="" />
+        </div>
+        {/* Brand + Page title */}
+        <a href="/" style={{ display: "flex", alignItems: "center", textDecoration: "none", flexShrink: 0 }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: "rgba(255,255,255,0.92)", letterSpacing: "0.02em", fontFamily: F }}>Talaria-Log</span>
+        </a>
+        <div style={{ width: 1, height: 20, background: "rgba(140,160,255,0.18)", margin: "0 12px", flexShrink: 0 }} />
+        <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.92)", flexShrink: 0 }}>{pageTitle}</span>
+        {/* Right side */}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, paddingRight: 16 }}>
           <DashboardNotificationBell isArabic={isArabic} />
           {user?.role === "admin" && (
-            <a href="/dashboard/admin/" className={navLinkClass("/dashboard/admin/")}>
-              {nav.admin}
+            <a href="/dashboard/admin/" style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.50)", textDecoration: "none", padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(140,160,255,0.12)", fontFamily: F }}>
+              Admin
             </a>
           )}
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                await fetch("/api/auth/logout", {
-                  method: "POST",
-                  credentials: "include",
-                });
-              } catch {
-                /* ignore */
-              }
-              localStorage.removeItem("token");
-              localStorage.removeItem("refresh_token");
-              localStorage.removeItem("talaria_current_user");
-              localStorage.removeItem("is_admin");
-              window.location.href = "/login/";
-            }}
-            className="db-nav-link db-nav-link--logout"
-          >
-            {nav.logout}
+          {user && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.28)" }}>{user.email}</span>}
+          <button type="button" onClick={handleLogout}
+            style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,80,104,0.75)", background: "transparent", border: "1px solid rgba(255,80,104,0.15)", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: F }}>
+            {isArabic ? "تسجيل الخروج" : "Logout"}
           </button>
-        </nav>
+        </div>
       </header>
 
-      <main
-        className={
-          pathname.startsWith("/dashboard/cot")
-            ? "db-main-wrap db-main-wrap--full"
-            : "db-main-wrap"
-        }
-      >
-        {children}
-      </main>
+      {/* ── Body ── */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+
+        {/* Left Sidebar */}
+        <nav style={{ width: 64, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 0 6px", background: "#0F1119", gap: 1, boxShadow: "4px 0 20px rgba(0,0,0,0.45)", zIndex: 1 }}>
+          {NAV_ITEMS.map(({ id, label, href, icon }) => {
+            const active = isActive(href);
+            return (
+              <a key={id} href={href}
+                style={{ width: "100%", height: 56, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textDecoration: "none", position: "relative", background: active ? "rgba(38,67,247,0.08)" : "transparent", color: active ? "#4A6AFF" : "rgba(255,255,255,0.55)", transition: "background 0.12s,color 0.12s" }}>
+                {active && <div style={{ position: "absolute", left: 0, top: "20%", bottom: "20%", width: 2, background: "linear-gradient(180deg,transparent,#4A6AFF,transparent)", boxShadow: "0 0 6px rgba(38,67,247,0.35)" }} />}
+                {icon}
+                <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase" as const, fontFamily: F }}>{label}</span>
+              </a>
+            );
+          })}
+          <div style={{ flex: 1 }} />
+          {/* Profile at bottom */}
+          <a href="/journal/settings"
+            style={{ width: "100%", height: 56, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textDecoration: "none", color: "rgba(255,255,255,0.40)", transition: "color 0.12s" }}>
+            <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+            <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase" as const, fontFamily: F }}>Profile</span>
+          </a>
+        </nav>
+
+        {/* Main content area */}
+        <main style={{ flex: 1, overflowY: "auto", background: "#07080E" }}
+          className={pathname.startsWith("/dashboard/cot") ? "db-main-wrap--full" : ""}>
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

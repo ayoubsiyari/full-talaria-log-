@@ -1,8741 +1,23 @@
-import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
-import { createPortal, flushSync } from "react-dom";
-import { applyV9ThemeSettingsToChart } from "./v9ThemeSync.js";
-import { buildLiveTradeRowsFromOrderManager } from "./orderManagerTradeRows.js";
-
-// ── Color utilities ──────────────────────────────────────────────────────────
-function parseColor(str) {
-  if (!str) return { r:255, g:255, b:255, a:1 };
-  if (str.startsWith('#')) {
-    const h = str.length===4 ? '#'+str[1]+str[1]+str[2]+str[2]+str[3]+str[3] : str;
-    return { r:parseInt(h.slice(1,3),16), g:parseInt(h.slice(3,5),16), b:parseInt(h.slice(5,7),16), a:1 };
-  }
-  const m = str.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)/);
-  if (m) return { r:+m[1], g:+m[2], b:+m[3], a: m[4]!=null ? +m[4] : 1 };
-  return { r:255, g:255, b:255, a:1 };
-}
-function rgbToHsv(r, g, b) {
-  r/=255; g/=255; b/=255;
-  const max=Math.max(r,g,b), min=Math.min(r,g,b), d=max-min;
-  let h=0, s=max===0?0:d/max, v=max;
-  if (d) { if(max===r) h=(g-b)/d+(g<b?6:0); else if(max===g) h=(b-r)/d+2; else h=(r-g)/d+4; h/=6; }
-  return { h:h*360, s, v };
-}
-function hsvToRgb(h, s, v) {
-  h/=360;
-  const i=Math.floor(h*6), f=h*6-i, p=v*(1-s), q=v*(1-f*s), t=v*(1-(1-f)*s);
-  let r,g,b;
-  switch(i%6){case 0:r=v;g=t;b=p;break;case 1:r=q;g=v;b=p;break;case 2:r=p;g=v;b=t;break;case 3:r=p;g=q;b=v;break;case 4:r=t;g=p;b=v;break;default:r=v;g=p;b=q;}
-  return { r:Math.round(r*255), g:Math.round(g*255), b:Math.round(b*255) };
-}
-const toHex2 = n => Math.max(0,Math.min(255,Math.round(n))).toString(16).padStart(2,'0');
-function cpBuildColor(r, g, b, a) {
-  return a>=1 ? `#${toHex2(r)}${toHex2(g)}${toHex2(b)}` : `rgba(${r},${g},${b},${+a.toFixed(2)})`;
-}
-
-/** Multi-panel layouts (≠ single tile): V9 header symbol/TF follows `panelManager` selection. */
-function v9IsMultiPanelLayoutActive() {
-  try {
-    const pm = typeof window !== "undefined" ? window.panelManager : null;
-    if (!pm) return false;
-    const lay = pm.getCurrentLayout?.() || pm.currentLayout || "1";
-    if (lay !== "1") return true;
-    return Array.isArray(pm.panels) && pm.panels.length > 1;
-  } catch (_) {
-    return false;
-  }
-}
-
-/** Chart instance that should drive the V9 pair + timeframe display. */
-function v9ActiveChartInstance() {
-  try {
-    const pm = typeof window !== "undefined" ? window.panelManager : null;
-    if (!pm || !v9IsMultiPanelLayoutActive()) {
-      return typeof window !== "undefined" ? window.chart : null;
-    }
-    return pm.getSelectedPanel?.()?.chartInstance
-      || (typeof window !== "undefined" ? window.chart : null);
-  } catch (_) {
-    return typeof window !== "undefined" ? window.chart : null;
-  }
-}
-
-/** Bar / replay time (ms) for V9 bottom HUD — matches trade-row “now” semantics. */
-function getV9ChartBarTimeMs(chart) {
-  if (!chart) return Date.now();
-  try {
-    const rs = chart.replaySystem;
-    if (rs && Number.isFinite(rs.replayTimestamp)) return rs.replayTimestamp;
-  } catch (_) {}
-  try {
-    const data = Array.isArray(chart.data) && chart.data.length ? chart.data : chart.rawData;
-    if (Array.isArray(data) && data.length) {
-      const last = data[data.length - 1];
-      if (last && Number.isFinite(last.t)) return last.t;
-    }
-  } catch (_) {}
-  return Date.now();
-}
-
-function formatV9HudDateLine(ms) {
-  if (!Number.isFinite(ms)) return "—";
-  const tm = typeof window !== "undefined" ? window.timezoneManager : null;
-  const useUtc = !tm || typeof tm.convertToTimezone !== "function";
-  const d = useUtc ? new Date(ms) : tm.convertToTimezone(ms);
-  const days = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-  const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-  const day = useUtc ? d.getUTCDate() : d.getDate();
-  const month = useUtc ? d.getUTCMonth() : d.getMonth();
-  const dow = useUtc ? d.getUTCDay() : d.getDay();
-  const year = useUtc ? d.getUTCFullYear() : d.getFullYear();
-  return `${days[dow]} ${String(day).padStart(2, "0")} ${months[month]} '${String(year % 100).padStart(2, "0")}`;
-}
-
-function formatV9HudClock(ms, use12h) {
-  if (!Number.isFinite(ms)) return "—";
-  const tm = typeof window !== "undefined" ? window.timezoneManager : null;
-  const useUtc = !tm || typeof tm.convertToTimezone !== "function";
-  const d = useUtc ? new Date(ms) : tm.convertToTimezone(ms);
-  const hh = useUtc ? d.getUTCHours() : d.getHours();
-  const mm = useUtc ? d.getUTCMinutes() : d.getMinutes();
-  const ss = useUtc ? d.getUTCSeconds() : d.getSeconds();
-  const pad = (n) => String(n).padStart(2, "0");
-  const raw = `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
-  if (!use12h) return raw;
-  const h12 = hh % 12 || 12;
-  const ampm = hh >= 12 ? "PM" : "AM";
-  return `${String(h12).padStart(2, "0")}:${pad(mm)} ${ampm}`;
-}
-
-function formatV9AccountNum(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return "—";
-  return x.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
-
-function formatV9HudSessionPnl(om) {
-  if (!om) return { text: "—", nonNeg: true };
-  const init = Number(om.initialBalance);
-  const eq = Number(om.equity);
-  if (Number.isFinite(init) && Number.isFinite(eq)) {
-    const x = eq - init;
-    return { text: `${x >= 0 ? "+" : ""}${x.toFixed(2)}`, nonNeg: x >= 0 };
-  }
-  const r = Number(om.realizedPnL);
-  if (Number.isFinite(r)) return { text: `${r >= 0 ? "+" : ""}${r.toFixed(2)}`, nonNeg: r >= 0 };
-  return { text: "—", nonNeg: true };
-}
-
-function v9HudTzShortLabel(fallbackSettingsTz) {
-  const tm = typeof window !== "undefined" ? window.timezoneManager : null;
-  if (tm && typeof tm.getShortLabel === "function") return tm.getShortLabel();
-  return String(fallbackSettingsTz || "UTC").split(" ")[0];
-}
-
-/** V9 drawing panel uses `tlStyle.showInfo` + `showInfoTypes` (labels); chart.js reads `drawing.style.infoSettings` booleans. */
-const V9_INFO_LABEL_TO_PROP = {
-  "Price range": "priceRange",
-  "Percent change": "percentChange",
-  "Change in pips": "changeInPips",
-  "Bars range": "barsRange",
-  "Date/time range": "dateTimeRange",
-  "Volume": "volume",
-  "Distance": "distance",
-  "Angle": "angle",
-};
-const V9_INFO_PROP_TO_LABEL = Object.fromEntries(
-  Object.entries(V9_INFO_LABEL_TO_PROP).map(([label, prop]) => [prop, label])
-);
-
-/** Sub-tool icon ids per left-rail group (matches `toolGroups` dd). Used to clamp stale `groupSelected` so the Shapes rail cannot show a Lines icon.
- * Arrow tools (`arrowMarker` … `arrowDn`) belong to group `rect` only (Shapes dropdown); chart arrow drawings map there so the Lines rail is not overwritten. */
-const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
-  trendline: new Set([
-    "trendline", "hray", "hline", "vline", "ray", "extendedLine", "crossLine", "polyline", "pathTool", "curve", "doubleCurve",
-  ]),
-  rect: new Set(["rect", "triangle", "arcShape", "ellipse", "circle", "arrowMarker", "arrowLine", "arrowUp", "arrowDn"]),
-  channel: new Set(["channel", "regressionCh", "flatChannel", "disjointCh", "pitchfork"]),
-  brush2: new Set(["draw", "brush"]),
-  fib: new Set(["fib", "fibExtension", "fibChannel", "fibTimeZone", "fibFan", "fibTime", "fibCircles", "fibSpiral", "fibArcs", "fibWedge", "gannBox", "gannSquare", "gannFan"]),
-  // Include Gann icons so v9SanitizeGroupSelected never strips them if a stale mapping still uses `pattern`.
-  pattern: new Set(["elliott5", "elliottABC", "elliottTri", "elliottWXY", "elliottWXYXZ", "xabcd", "headShoulders", "abcdPattern", "triPattern", "threeDrives", "gannBox", "gannSquare", "gannFan"]),
-  measure: new Set(["shortPos", "longPos", "measure"]),
-  text: new Set(["text", "note", "priceNote", "callout", "comment", "pin", "priceLabel", "signpost", "flag", "image", "emoji"]),
-  crosshair: new Set(["crosshair", "cursorDot", "cursorArrow", "eraser"]),
-  brush: new Set(["vwap", "volProfile", "anchoredVol"]),
-});
-
-function v9RailSubtoolOrFallback(groupId, sel, fallback) {
-  const allowed = V9_RAIL_ICONS_BY_GROUP[groupId];
-  if (!allowed) return sel || fallback;
-  if (sel && sel.icon && allowed.has(sel.icon)) return sel;
-  return fallback;
-}
-
-/** Single source for left-rail `<I n={…} />` so Lines vs Shapes never share an icon from stale state. */
-function v9LeftRailIconForButton(t, groupSelected) {
-  if (!t || !t.id) return t && t.icon;
-  const firstDdIcon = t.dd && t.dd.find((x) => !x.h)?.icon;
-  const sel = groupSelected && groupSelected[t.id];
-  const candidate =
-    (t.dd &&
-      (sel?.icon ||
-        (t.id === "brush"
-          ? firstDdIcon || "vwap"
-          : t.icon || firstDdIcon))) ||
-    t.icon;
-  const allowed = V9_RAIL_ICONS_BY_GROUP[t.id];
-  if (!allowed) return candidate;
-  if (candidate && allowed.has(candidate)) return candidate;
-  return t.icon || firstDdIcon || allowed.values().next().value;
-}
-
-/** Drop rail entries whose icon belongs to another group (prevents mirrored selection UI). */
-function v9SanitizeGroupSelected(prev) {
-  if (!prev || typeof prev !== "object") return prev;
-  let next = null;
-  for (const gid of Object.keys(prev)) {
-    const allowed = V9_RAIL_ICONS_BY_GROUP[gid];
-    if (!allowed) continue;
-    const sel = prev[gid];
-    if (sel && sel.icon && !allowed.has(sel.icon)) {
-      if (!next) next = { ...prev };
-      delete next[gid];
-    }
-  }
-  return next || prev;
-}
-
-function v9ChartInfoSettingsFromTlStyle(tlStyle) {
-  const show = !!tlStyle?.showInfo;
-  const types = Array.isArray(tlStyle?.showInfoTypes) ? tlStyle.showInfoTypes : [];
-  const info = {
-    showInfo: show,
-    priceRange: false,
-    percentChange: false,
-    changeInPips: false,
-    barsRange: false,
-    dateTimeRange: false,
-    volume: false,
-    distance: false,
-    angle: false,
-  };
-  types.forEach((label) => {
-    const prop = V9_INFO_LABEL_TO_PROP[label];
-    if (prop) info[prop] = true;
-  });
-  if (show && types.length === 0) {
-    info.priceRange = true;
-  }
-  return info;
-}
-
-function v9ShowInfoTypesFromChartInfoSettings(info) {
-  if (!info || typeof info !== "object") return [];
-  const out = [];
-  Object.keys(V9_INFO_PROP_TO_LABEL).forEach((prop) => {
-    if (info[prop] === true) out.push(V9_INFO_PROP_TO_LABEL[prop]);
-  });
-  return out;
-}
-
-/** V9 Text tab uses `vertAlign` "center"; chart line tools use `textVAlign` / `textPosition` "middle". */
-function v9UiVertToChartVert(ui) {
-  const v = ui || "top";
-  return v === "center" ? "middle" : v;
-}
-function v9ChartVertToUi(chartVert) {
-  const v = chartVert || "top";
-  return v === "middle" ? "center" : v;
-}
-
-/** drawing.points[] — x = bar index, y = price → V9 Coordinates tab (`pt{n}Price` / `pt{n}Bar`). */
-function v9CoordPatchFromDrawing(d) {
-  const pts = d && d.points;
-  if (!Array.isArray(pts) || pts.length === 0) return {};
-  const patch = {};
-  const fmtPrice = (y) => {
-    if (typeof y !== "number" || !Number.isFinite(y)) return "";
-    const s = String(y);
-    return s.length > 14 ? y.toFixed(8).replace(/\.?0+$/, "") : s;
-  };
-  for (let i = 0; i < Math.min(pts.length, 7); i++) {
-    const p = pts[i];
-    if (!p) continue;
-    const n = i + 1;
-    patch[`pt${n}Price`] = fmtPrice(p.y);
-    patch[`pt${n}Bar`] = Number.isFinite(p.x) ? String(Math.round(p.x)) : "";
-  }
-  return patch;
-}
-
-/** drawing.visibility._ranges — keys m/h/d/w/M (chart.js) ↔ V9 Visibility tab. */
-function v9VisibilityPatchFromDrawing(d) {
-  const rng = d && d.visibility && d.visibility._ranges;
-  if (!rng || typeof rng !== "object") return {};
-  const row = (r) => {
-    if (!r || typeof r !== "object") return null;
-    return {
-      checked: r.enabled !== false,
-      min: Number.isFinite(+r.min) ? +r.min : 1,
-      max: Number.isFinite(+r.max) ? +r.max : 1,
-    };
-  };
-  const patch = {};
-  const vm = row(rng.m);
-  if (vm) patch.visMinutes = vm;
-  const vh = row(rng.h);
-  if (vh) patch.visHours = vh;
-  const vd = row(rng.d);
-  if (vd) patch.visDays = vd;
-  const vw = row(rng.w);
-  if (vw) patch.visWeeks = vw;
-  const vmo = row(rng.M || rng.mo);
-  if (vmo) patch.visMonths = vmo;
-  return patch;
-}
-
-function v9ApplyPointsFromTlStyle(d, tlStyle) {
-  if (!d || !Array.isArray(d.points) || d.points.length === 0 || !tlStyle) return false;
-  const next = d.points.map((p, i) => {
-    const n = i + 1;
-    const pk = `pt${n}Price`;
-    const bk = `pt${n}Bar`;
-    let x = p.x;
-    let y = p.y;
-    const rawP = tlStyle[pk];
-    if (rawP !== undefined && rawP !== null && String(rawP).trim() !== "") {
-      const py = parseFloat(String(rawP).replace(/,/g, ""));
-      if (Number.isFinite(py)) y = py;
-    }
-    const rawB = tlStyle[bk];
-    if (rawB !== undefined && rawB !== null && String(rawB).trim() !== "") {
-      const px = parseInt(String(rawB), 10);
-      if (Number.isFinite(px)) x = px;
-    }
-    return { ...p, x, y };
-  });
-  const same =
-    next.length === d.points.length &&
-    next.every((np, i) => {
-      const op = d.points[i];
-      return op && np.x === op.x && np.y === op.y;
-    });
-  if (same) return false;
-  if (typeof d.update === "function") {
-    d.update(next);
-  } else {
-    d.points = next;
-    if (d.meta) d.meta.updatedAt = Date.now();
-    if (typeof d.recalculateTimestamps === "function") d.recalculateTimestamps();
-  }
-  return true;
-}
-
-/** Writes tlStyle.vis* → drawing.visibility._ranges (units m/h/d/w/M; mo mirrors M). */
-function v9ApplyVisibilityFromTlStyle(d, tlStyle) {
-  if (!d || !tlStyle) return false;
-  const pairs = [
-    ["m", "visMinutes"],
-    ["h", "visHours"],
-    ["d", "visDays"],
-    ["w", "visWeeks"],
-    ["M", "visMonths"],
-  ];
-  let changed = false;
-  for (const [unit, key] of pairs) {
-    const v = tlStyle[key];
-    if (!v || typeof v !== "object") continue;
-    if (!d.visibility) d.visibility = {};
-    if (!d.visibility._ranges) d.visibility._ranges = {};
-    const prev = d.visibility._ranges[unit];
-    const next = {
-      enabled: v.checked !== false,
-      min: Number(v.min) || 1,
-      max: Number(v.max) || 1,
-    };
-    const prevEq =
-      prev &&
-      prev.enabled === next.enabled &&
-      Number(prev.min) === next.min &&
-      Number(prev.max) === next.max;
-    if (!prevEq) changed = true;
-    d.visibility._ranges[unit] = next;
-  }
-  if (tlStyle.visMonths && d.visibility && d.visibility._ranges && d.visibility._ranges.M) {
-    d.visibility._ranges.mo = { ...d.visibility._ranges.M };
-  }
-  return changed;
-}
-
-// ─── Multi-chart: every panel tile has its own drawingManager. Never assume getActiveChart()
-// or window.chart alone — focus can point at one surface while the selection lives on another.
-function enumerateV9DrawingManagersFromWindow() {
-  const out = [];
-  const seen = new Set();
-  const add = (chart) => {
-    const dm = chart && chart.drawingManager;
-    if (!dm || seen.has(dm)) return;
-    seen.add(dm);
-    out.push(dm);
-  };
-  if (typeof window === "undefined") return out;
-  try {
-    add(window.chart);
-    if (typeof window.getActiveChart === "function") add(window.getActiveChart());
-    const pm = window.panelManager;
-    if (pm && Array.isArray(pm.panels)) {
-      pm.panels.forEach((p) => add(p && p.chartInstance));
-    }
-  } catch (_) {}
-  return out;
-}
-
-/** Same set as enumerateV9DrawingManagersFromWindow but the focused tile's manager is first.
- * Selection scans must prefer the chart the user is interacting with; otherwise `window.chart`
- * can still have a selected trend line while the active panel shows newly placed text — V9 then
- * picks the wrong drawing type and shows the line/shape floating bar (diagonal line + dash + “A”
- * for line labels) instead of the Text mini-bar. */
-function enumerateV9DrawingManagersActiveFirst() {
-  const all = enumerateV9DrawingManagersFromWindow();
-  if (typeof window === "undefined" || all.length <= 1) return all;
-  try {
-    const ac = typeof window.getActiveChart === "function" ? window.getActiveChart() : null;
-    const dmActive = ac && ac.drawingManager;
-    if (!dmActive) return all;
-    const rest = all.filter((dm) => dm !== dmActive);
-    return [dmActive, ...rest];
-  } catch (_) {
-    return all;
-  }
-}
-
-function resolveLiveDrawingInDm(dm, d) {
-  if (!d || !dm || !Array.isArray(dm.drawings)) return null;
-  if (d.id != null) {
-    const found = dm.drawings.find((x) => x && x.id === d.id);
-    if (found) return found;
-  }
-  return dm.drawings.find((x) => x === d) || null;
-}
-
-/** Which shape is selected for templates / gear — scan chart instances; prefer the focused panel first. */
-function getSelectedDrawingAcrossCharts(editingRefDrawing) {
-  if (editingRefDrawing) {
-    for (const dm of enumerateV9DrawingManagersActiveFirst()) {
-      const live = resolveLiveDrawingInDm(dm, editingRefDrawing);
-      if (live) return live;
-    }
-    return editingRefDrawing;
-  }
-  const managers = enumerateV9DrawingManagersActiveFirst();
-  // Prefer real drawingManager selection first. `toolbar.currentDrawing` can lag or belong to
-  // another toolbar instance — returning it before dm.selectedDrawing made the V9 bar keep
-  // Trend Line after placing Text (stale trend line still in drawings[] matched by id).
-  for (const dm of managers) {
-    if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
-      const live = resolveLiveDrawingInDm(dm, dm.selectedDrawings[0]);
-      if (live) return live;
-    }
-    if (dm.selectedDrawing) {
-      const live = resolveLiveDrawingInDm(dm, dm.selectedDrawing);
-      if (live) return live;
-    }
-  }
-  for (const dm of managers) {
-    if (!Array.isArray(dm.drawings)) continue;
-    const selected = dm.drawings.filter((x) => x && x.selected);
-    if (selected.length) return selected[0];
-  }
-  for (const dm of managers) {
-    const tb = dm.toolbar;
-    if (tb && tb.currentDrawing) {
-      const live = resolveLiveDrawingInDm(dm, tb.currentDrawing);
-      if (live && live.selected) return live;
-    }
-  }
-  return null;
-}
-
-/** Prefer the focused panel's selection so the floating bar matches the tile being edited.
- * Falls back to cross-chart scan when the active chart has no primary selection yet. */
-function getPrimarySelectedDrawingForActiveChart(editingRefDrawing) {
-  if (editingRefDrawing) {
-    for (const dm of enumerateV9DrawingManagersFromWindow()) {
-      const live = resolveLiveDrawingInDm(dm, editingRefDrawing);
-      if (live) return live;
-    }
-    return editingRefDrawing;
-  }
-  if (typeof window === "undefined") return null;
-  try {
-    const ac = typeof window.getActiveChart === "function" ? window.getActiveChart() : null;
-    const dm = ac && ac.drawingManager;
-    if (dm) {
-      if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
-        const live = resolveLiveDrawingInDm(dm, dm.selectedDrawings[0]);
-        if (live) return live;
-      }
-      if (dm.selectedDrawing) {
-        const live = resolveLiveDrawingInDm(dm, dm.selectedDrawing);
-        if (live) return live;
-      }
-      if (Array.isArray(dm.drawings)) {
-        const sel = dm.drawings.filter((x) => x && x.selected);
-        if (sel.length) return sel[0];
-      }
-    }
-  } catch (_) {}
-  return getSelectedDrawingAcrossCharts(null);
-}
-
-/** Merge fragment for `txtStyle` state from a legacy text/callout drawing (toolbar hydrate). */
-function v9TxtStylePatchFromDrawing(d) {
-  if (!d || !d.style) return null;
-  const s = d.style;
-  const t = d.type;
-  const out = {};
-  const fs = parseInt(String(s.fontSize), 10);
-  out.fontSize = Number.isFinite(fs) && fs > 0 ? fs : 14;
-  out.textColor = s.textColor ?? "#ffffff";
-  out.bold = s.fontWeight === "bold" || String(s.fontWeight) === "700";
-  out.italic = s.fontStyle === "italic";
-  out.borderColor = s.borderColor ?? "#787B86";
-  out.bgColor = s.backgroundColor ?? "#000000";
-  out.borderOn = s.borderColor != null && s.borderColor !== "transparent" && s.borderColor !== "none";
-  const bg = s.backgroundColor;
-  out.bgOn = !!(bg && bg !== "transparent");
-
-  if (t === "text") {
-    const fill = s.fill;
-    out.bgColor = fill && fill !== "none" ? fill : out.bgColor;
-    out.bgOn = !!(fill && fill !== "none");
-    const stroke = s.stroke;
-    out.borderColor = stroke && stroke !== "none" ? stroke : out.borderColor;
-    out.borderOn = !!(stroke && stroke !== "none");
-  } else if (t === "notebox") {
-    out.bgColor = s.backgroundColor ?? out.bgColor;
-    out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
-    const sw = s.strokeWidth != null ? Number(s.strokeWidth) : 0;
-    out.borderOn = !!(s.stroke && s.stroke !== "none" && sw > 0);
-    if (out.borderOn) out.borderColor = s.stroke;
-  } else if (t === "anchored-text") {
-    out.bgColor = s.backgroundColor ?? out.bgColor;
-    out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
-    out.borderColor = s.borderColor ?? out.borderColor;
-    out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
-  } else if (t === "note") {
-    const fill = s.fill;
-    out.bgColor = fill ?? out.bgColor;
-    out.bgOn = !!(fill && fill !== "transparent" && fill !== "none");
-  } else if (t === "price-note") {
-    const fill = s.fill;
-    out.bgColor = fill ?? out.bgColor;
-    out.bgOn = !!(fill && fill !== "transparent" && fill !== "none");
-    out.borderColor = s.borderColor ?? out.borderColor;
-    out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
-  } else if (t === "callout") {
-    out.bgColor = s.backgroundColor ?? out.bgColor;
-    out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
-    out.borderColor = s.borderColor ?? out.borderColor;
-    out.borderOn = !!(s.borderColor && s.borderColor !== "none" && s.borderColor !== "transparent");
-  } else if (t === "comment") {
-    out.bgColor = s.backgroundColor ?? out.bgColor;
-    out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
-    out.borderColor = s.borderColor ?? out.borderColor;
-    out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
-  }
-
-  if (s.textAlign) out.horizAlign = s.textAlign;
-  if (typeof d.text === "string") out.content = d.text;
-  return out;
-}
-
-/** Push V9 text floating-bar state into chart.js drawing.style (+ text) for the selected annotation. */
-function v9ApplyTxtStyleToDrawing(d, txt) {
-  if (!d || !d.style || !txt) return;
-  const s = d.style;
-  const t = d.type;
-  const applyCommon = () => {
-    if (txt.textColor != null) s.textColor = txt.textColor;
-    const fs = parseInt(String(txt.fontSize), 10);
-    if (Number.isFinite(fs) && fs > 0) s.fontSize = fs;
-    s.fontWeight = txt.bold ? "bold" : "normal";
-    s.fontStyle = txt.italic ? "italic" : "normal";
-  };
-  const applyTextBlock = () => {
-    if (txt.horizAlign != null) s.textAlign = txt.horizAlign;
-    if (txt.content != null) {
-      d.text = String(txt.content);
-      if (typeof d.setText === "function") {
-        try {
-          d.setText(d.text);
-        } catch (_) {}
-      }
-    }
-  };
-  if (t === "callout") {
-    applyCommon();
-    applyTextBlock();
-    s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
-    s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "none";
-    return;
-  }
-  if (t === "comment") {
-    applyCommon();
-    applyTextBlock();
-    s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
-    s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "transparent";
-    return;
-  }
-  if (t === "text") {
-    applyCommon();
-    applyTextBlock();
-    s.fill = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.fill) : "none";
-    s.stroke = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.stroke) : "none";
-    return;
-  }
-  if (t === "notebox") {
-    applyCommon();
-    applyTextBlock();
-    s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
-    if (txt.borderOn) {
-      s.stroke = txt.borderColor != null ? txt.borderColor : s.stroke || "#787b86";
-      s.strokeWidth = Math.max(Number(s.strokeWidth) || 0, 1) || 1;
-    } else {
-      s.stroke = "none";
-      s.strokeWidth = 0;
-    }
-    return;
-  }
-  if (t === "anchored-text") {
-    applyCommon();
-    applyTextBlock();
-    s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
-    s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "transparent";
-    return;
-  }
-  if (t === "note") {
-    applyCommon();
-    applyTextBlock();
-    s.fill = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.fill) : "transparent";
-    return;
-  }
-  if (t === "price-note") {
-    applyCommon();
-    applyTextBlock();
-    s.fill = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.fill) : "transparent";
-    s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor || "#787b86") : "none";
-    return;
-  }
-  if (t === "label") {
-    applyCommon();
-    applyTextBlock();
-    if (txt.bgOn && txt.bgColor != null) s.fill = txt.bgColor;
-    else if (!txt.bgOn) s.fill = "#787b86";
-    return;
-  }
-  applyCommon();
-  if (txt.content != null) {
-    d.text = String(txt.content);
-    try {
-      if (typeof d.setText === "function") d.setText(d.text);
-    } catch (_) {}
-  }
-}
-
-/** chart.js `drawing.type` → V9 Text rail icon id (see `toolGroups` text row + V9_ICON_TO_LEGACY). */
-function legacyChartTextTypeToV9Icon(type) {
-  if (!type) return "text";
-  const map = {
-    text: "text",
-    notebox: "note",
-    label: "text",
-    "anchored-text": "text",
-    note: "note",
-    "price-note": "priceNote",
-    callout: "callout",
-    comment: "comment",
-    "price-label": "priceLabel",
-    "price-label-2": "priceLabel",
-    "signpost-2": "signpost",
-    signpost: "signpost",
-    "flag-mark": "flag",
-    image: "image",
-    emoji: "emoji",
-    pin: "pin",
-    table: "text",
-  };
-  return map[type] || "text";
-}
-
-function collectV9BridgeTargetPairs(editingRefDrawing) {
-  const targets = [];
-  const seenIds = new Set();
-  const pushPair = (dm, raw) => {
-    const live = resolveLiveDrawingInDm(dm, raw);
-    if (!live || !live.style) return;
-    const id = live.id;
-    if (id != null) {
-      if (seenIds.has(id)) return;
-      seenIds.add(id);
-    }
-    targets.push({ dm, d: live });
-  };
-  if (editingRefDrawing) {
-    enumerateV9DrawingManagersFromWindow().forEach((dm) => pushPair(dm, editingRefDrawing));
-  }
-  enumerateV9DrawingManagersFromWindow().forEach((dm) => {
-    const tb = dm.toolbar;
-    if (tb && tb.currentDrawing) pushPair(dm, tb.currentDrawing);
-    if (Array.isArray(dm.selectedDrawings)) {
-      dm.selectedDrawings.forEach((x) => pushPair(dm, x));
-    }
-    if (dm.selectedDrawing) pushPair(dm, dm.selectedDrawing);
-    if (Array.isArray(dm.drawings)) {
-      dm.drawings.forEach((x) => {
-        if (x && x.selected) pushPair(dm, x);
-      });
-    }
-  });
-  return targets;
-}
-
-const V9_LEGACY_DASH_STRING_TO_LINE_TYPE = (() => {
-  const map = {};
-  Object.entries({ solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' }).forEach(([k, v]) => { map[v] = k; });
-  map['7,4'] = 'dashed'; map['4,4'] = 'dashed'; map['1,3'] = 'dotted';
-  return map;
-})();
-
-/** V9 line type → chart.js `stroke-dasharray` for parallel-channel level lines. */
-const V9_LINE_TYPE_TO_LEGACY_DASH = { solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4', bold: '' };
-
-/** `drawing.levels` (parallel-channel) ↔ Settings panel `tlStyle.chLines`. */
-function v9ParallelLevelsToChLines(levels) {
-  if (!Array.isArray(levels) || !levels.length) return undefined;
-  return levels.map((lv) => {
-    const raw = (lv.lineType != null && lv.lineType !== '') ? String(lv.lineType).replace(/\s+/g, '') : '';
-    let lineType = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[raw];
-    if (lineType == null) {
-      if (raw === '0' || raw === 'none') lineType = 'solid';
-      else lineType = raw ? 'dashed' : 'solid';
-    }
-    const w = lv.lineWidth != null ? String(parseInt(lv.lineWidth, 10) || 2) : '2';
-    const numVal = typeof lv.value === 'number' ? lv.value : parseFloat(lv.value);
-    const valueStr = Number.isFinite(numVal)
-      ? (Number.isInteger(numVal) ? String(numVal) : numVal.toFixed(4).replace(/\.?0+$/, '') || '0')
-      : String(lv.value ?? '0');
-    return {
-      on: lv.enabled !== false,
-      value: valueStr,
-      color: lv.color || '#2962FF',
-      type: lineType,
-      width: w,
-    };
-  });
-}
-
-function v9ChLinesToParallelLevels(chLines) {
-  if (!Array.isArray(chLines)) return [];
-  return chLines.map((ln, idx) => {
-    const t = parseFloat(ln.value);
-    const value = Number.isFinite(t) ? t : 0;
-    const baseW = parseInt(ln.width, 10) || 2;
-    const isBold = ln.type === 'bold';
-    const dashStr = isBold ? '' : (V9_LINE_TYPE_TO_LEGACY_DASH[ln.type] !== undefined
-      ? V9_LINE_TYPE_TO_LEGACY_DASH[ln.type]
-      : '');
-    const uiOn = !!(ln.on || (chLines.length === 5 && idx === 2));
-    return {
-      value,
-      color: ln.color || '#2962FF',
-      enabled: uiOn,
-      lineType: dashStr,
-      lineWidth: isBold ? Math.max(baseW, 3) : baseW,
-    };
-  });
-}
-
-/** Regression channel: `d.style` (middle / upper / lower strokes) ↔ `tlStyle.regLines`. */
-function v9RegDashStringToType(dashRaw) {
-  const raw = (dashRaw ?? "").toString().replace(/\s+/g, "");
-  if (!raw || raw === "0" || raw === "none") return "solid";
-  return V9_LEGACY_DASH_STRING_TO_LINE_TYPE[raw] ?? "dashed";
-}
-
-function v9RegLinesFromRegressionStyle(s) {
-  if (!s || typeof s !== "object") return undefined;
-  const sw = String(parseInt(s.strokeWidth, 10) || 2);
-  const uw = String(parseInt(s.upperStrokeWidth, 10) || 2);
-  const lw = String(parseInt(s.lowerStrokeWidth, 10) || 2);
-  const stroke = s.stroke || "#9c27b0";
-  return [
-    { on: true, label: "Middle Line", color: stroke, type: v9RegDashStringToType(s.strokeDasharray), width: sw },
-    {
-      on: s.useUpperDeviation !== false,
-      label: "Upper Line",
-      color: s.upperStroke || stroke,
-      type: v9RegDashStringToType(s.upperStrokeDasharray),
-      width: uw,
-    },
-    {
-      on: s.useLowerDeviation !== false,
-      label: "Lower Line",
-      color: s.lowerStroke || stroke,
-      type: v9RegDashStringToType(s.lowerStrokeDasharray),
-      width: lw,
-    },
-  ];
-}
-
-function v9ChartSourceToUiSource(src) {
-  const x = (src == null ? "close" : String(src)).toLowerCase();
-  if (x === "open") return "Open";
-  if (x === "high") return "High";
-  if (x === "low") return "Low";
-  return "Close";
-}
-
-function v9UiSourceToChartSource(label) {
-  const m = { Open: "open", High: "high", Low: "low", Close: "close" };
-  if (label != null && m[label] != null) return m[label];
-  return String(label || "close").toLowerCase();
-}
-
-function v9ApplyRegLinesToRegressionStyle(style, regLines) {
-  if (!style || !Array.isArray(regLines) || regLines.length < 3) return;
-  const [mid, up, lo] = regLines;
-  const midW = parseInt(mid.width, 10) || 2;
-  const upW = parseInt(up.width, 10) || 2;
-  const loW = parseInt(lo.width, 10) || 2;
-  const dashStr = (ln) => {
-    if (ln.type === "bold") return "0";
-    const d = V9_LINE_TYPE_TO_LEGACY_DASH[ln.type];
-    return d === "" || d === undefined ? "0" : d;
-  };
-  style.stroke = mid.color;
-  style.strokeWidth = mid.type === "bold" ? Math.max(midW, 3) : midW;
-  style.strokeDasharray = dashStr(mid);
-  style.upperStroke = up.color;
-  style.upperStrokeWidth = up.type === "bold" ? Math.max(upW, 3) : upW;
-  style.upperStrokeDasharray = dashStr(up);
-  style.useUpperDeviation = up.on !== false;
-  style.lowerStroke = lo.color;
-  style.lowerStrokeWidth = lo.type === "bold" ? Math.max(loW, 3) : loW;
-  style.lowerStrokeDasharray = dashStr(lo);
-  style.useLowerDeviation = lo.on !== false;
-}
-
-/** Pitchfork: chart `d.levels` + style ↔ V9 `pfLevels` / `pitchforkStyle` / median color / background. */
-const V9_PF_UI_TO_CHART = {
-  Original: "original",
-  Schiff: "schiff",
-  "Modified Schiff": "modified-schiff",
-  Inside: "inside",
-};
-const V9_PF_CHART_TO_UI = {
-  original: "Original",
-  schiff: "Schiff",
-  "modified-schiff": "Modified Schiff",
-  inside: "Inside",
-};
-
-function v9UiPitchforkStyleToChart(label) {
-  if (label != null && V9_PF_UI_TO_CHART[label] != null) return V9_PF_UI_TO_CHART[label];
-  const t = String(label || "original").trim().toLowerCase();
-  if (t === "modified schiff") return "modified-schiff";
-  if (["original", "schiff", "modified-schiff", "inside"].includes(t)) return t;
-  return "original";
-}
-
-function v9ChartPitchforkStyleToUi(v) {
-  if (v == null || v === "") return "Original";
-  const k = String(v).trim().toLowerCase();
-  if (V9_PF_CHART_TO_UI[k] != null) return V9_PF_CHART_TO_UI[k];
-  if (k === "modified schiff") return "Modified Schiff";
-  return "Original";
-}
-
-function v9PitchforkLevelsToPf(levels) {
-  if (!Array.isArray(levels) || !levels.length) return undefined;
-  return levels.map((lv) => {
-    const raw = lv.value != null ? lv.value : lv.label;
-    const valueStr =
-      raw !== undefined && raw !== null && raw !== ""
-        ? String(raw).trim()
-        : "0";
-    return {
-      on: lv.enabled !== false,
-      value: valueStr,
-      color: lv.color || "#2962FF",
-    };
-  });
-}
-
-function v9PfToPitchforkLevels(pfLevels) {
-  if (!Array.isArray(pfLevels)) return [];
-  return pfLevels.map((ln) => {
-    const t = parseFloat(ln.value);
-    const value = Number.isFinite(t) ? t : 0;
-    const vs = String(ln.value != null ? ln.value : "").trim() || String(value);
-    return {
-      value,
-      label: vs,
-      color: ln.color || "#2962FF",
-      enabled: ln.on !== false,
-    };
-  });
-}
-
-/** Fib Retracement / Extension (`drawing-tools-fibonacci.js`) share `tlStyle.fibLevels` + fib* toggles. */
-function v9IsClassicFibRetracementType(t) {
-  return t === "fibonacci-retracement" || t === "fibonacci-extension";
-}
-
-function v9FibLevelsModeUiToChart(mode) {
-  const m = String(mode || "Value");
-  if (m === "Percent") return "percent";
-  return "values";
-}
-
-function v9FibLevelsModeChartToUi(ch) {
-  if (ch === "percent") return "Percent";
-  return "Value";
-}
-
-function v9FibLevelsChartToTl(levels) {
-  if (!Array.isArray(levels) || !levels.length) return undefined;
-  return levels.map((lv) => ({
-    on: lv.visible !== false,
-    value:
-      lv.label != null && String(lv.label).trim() !== ""
-        ? String(lv.label).trim()
-        : String(lv.value != null ? lv.value : "").trim() || "0",
-    color: lv.color || "#787B86",
-  }));
-}
-
-function v9TlFibLevelsToChart(levels, fibLineType, fibLineWidth) {
-  if (!Array.isArray(levels)) return [];
-  const isBold = fibLineType === "bold";
-  const dashStr = isBold
-    ? ""
-    : (V9_LINE_TYPE_TO_LEGACY_DASH[fibLineType] !== undefined
-      ? V9_LINE_TYPE_TO_LEGACY_DASH[fibLineType]
-      : "");
-  const baseW = parseInt(String(fibLineWidth), 10) || 2;
-  const w = isBold ? Math.max(baseW, 3) : baseW;
-  return levels.map((ln) => {
-    const v = parseFloat(ln.value);
-    const value = Number.isFinite(v) ? v : 0;
-    const vs = String(ln.value != null ? ln.value : "").trim() || String(value);
-    return {
-      value,
-      label: vs,
-      color: ln.color || "#787b86",
-      visible: ln.on !== false,
-      lineType: dashStr,
-      lineWidth: w,
-    };
-  });
-}
-
-/** Fib Speed Resistance Fan (`fib-speed-fan`): price levels on `d.levels`; time levels stored on `style.v9FanTimeLevels` for persistence (chart render uses price levels only). */
-function v9IsFibSpeedFanType(t) {
-  return t === "fib-speed-fan";
-}
-
-function v9FibSpeedFanLevelsChartToTl(levels) {
-  if (!Array.isArray(levels) || !levels.length) return undefined;
-  return levels.map((lv) => ({
-    on: lv.enabled !== false,
-    value: String(lv.value != null ? lv.value : "").trim() || "0",
-    color: lv.color || "#787B86",
-  }));
-}
-
-function v9FanTimeLevelsChartToTl(raw) {
-  if (!Array.isArray(raw) || !raw.length) return undefined;
-  return raw.map((lv) => ({
-    on: lv.on !== false && lv.enabled !== false,
-    value:
-      lv.value != null && String(lv.value).trim() !== ""
-        ? String(lv.value).trim()
-        : "0",
-    color: lv.color || "#787B86",
-  }));
-}
-
-function v9TlFibSpeedFanLevelsToChart(levels, fibLineType, fibLineWidth) {
-  const rows = v9TlFibLevelsToChart(levels, fibLineType, fibLineWidth);
-  return rows.map((row) => ({
-    value: row.value,
-    enabled: row.visible,
-    color: row.color,
-    lineType: row.lineType,
-    lineWidth: row.lineWidth,
-  }));
-}
-
-function v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthFallback) {
-  if (!d || !d.style || !v9IsFibSpeedFanType(d.type)) return;
-  const fibDashStr =
-    tlStyle.fibLineType === "bold"
-      ? ""
-      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
-        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
-        : "");
-  const gridDashStr =
-    tlStyle.fibGridType === "bold"
-      ? ""
-      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibGridType] !== undefined
-        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibGridType]
-        : "");
-  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
-  const strokeW =
-    parseInt(String(tlStyle.lineWidth), 10) ||
-    (typeof widthFallback === "number" ? widthFallback : levelsW) ||
-    1;
-
-  d.levels = v9TlFibSpeedFanLevelsToChart(
-    tlStyle.fibLevels,
-    tlStyle.fibLineType,
-    tlStyle.fibLineWidth,
-  );
-  if (d.style) d.style.levels = d.levels;
-  const st = d.style;
-  st.stroke = tlStyle.lineColor;
-  st.strokeWidth = strokeW;
-  st.levelsLineWidth = levelsW;
-  st.levelsLineDasharray = fibDashStr;
-
-  st.backgroundEnabled = tlStyle.fibBackground !== false;
-  st.backgroundOpacity =
-    tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
-      ? +tlStyle.fibBgOpacity
-      : 0.12;
-  st.reverse = !!tlStyle.fibReverse;
-
-  st.gridEnabled = tlStyle.fibGrid !== false;
-  st.gridColor = tlStyle.fibGridColor || "#787b86";
-  st.gridLineWidth = parseInt(String(tlStyle.fibGridWidth), 10) || 1;
-  st.gridLineDasharray = gridDashStr;
-
-  if (Array.isArray(tlStyle.fibFanTimeLevels)) {
-    st.v9FanTimeLevels = tlStyle.fibFanTimeLevels.map((ln) => ({
-      on: ln.on !== false,
-      value: ln.value != null ? String(ln.value) : "0",
-      color: ln.color || "#787B86",
-    }));
-  }
-}
-
-function v9IsTrendFibTimeType(t) {
-  return t === "trend-fib-time";
-}
-
-/** Trend-Based Fib Time: vertical time levels + zones + styled anchor legs (`trendLine*` + `levelsLine*`). */
-function v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthFallback) {
-  if (!d || !d.style || !v9IsTrendFibTimeType(d.type)) return;
-  const fibDashStr =
-    tlStyle.fibLineType === "bold"
-      ? ""
-      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
-        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
-        : "");
-  const trendDashStr =
-    tlStyle.fibTimeTrendType === "bold"
-      ? ""
-      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibTimeTrendType] !== undefined
-        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibTimeTrendType]
-        : "");
-  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
-  const trendW =
-    parseInt(String(tlStyle.fibTimeTrendWidth), 10) ||
-    (typeof widthFallback === "number" ? widthFallback : 1) ||
-    1;
-
-  d.levels = v9TlFibSpeedFanLevelsToChart(
-    tlStyle.fibLevels,
-    tlStyle.fibLineType,
-    tlStyle.fibLineWidth,
-  );
-  if (d.style) d.style.levels = d.levels;
-  const st = d.style;
-  st.stroke = tlStyle.lineColor;
-  st.trendLineEnabled = tlStyle.fibTrendLine !== false;
-  st.trendLineColor = tlStyle.lineColor;
-  st.trendLineWidth = trendW;
-  st.trendLineDasharray = trendDashStr;
-  st.levelsLineWidth = levelsW;
-  st.levelsLineDasharray = fibDashStr;
-  st.showZones = tlStyle.fibBackground !== false;
-  st.backgroundOpacity =
-    tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
-      ? +tlStyle.fibBgOpacity
-      : 0.12;
-}
-
-function v9IsFibCirclesType(t) {
-  return t === "fib-circles";
-}
-
-function v9IsFibArcsType(t) {
-  return t === "fib-arcs";
-}
-
-/** Fib Speed Resistance Arcs (`fib-arcs`): ratio arcs + zones + optional anchor trend line + full/half circle. */
-function v9ApplyFibArcsFromTlStyle(d, tlStyle, widthFallback) {
-  if (!d || !d.style || !v9IsFibArcsType(d.type)) return;
-  const fibDashStr =
-    tlStyle.fibLineType === "bold"
-      ? ""
-      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
-        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
-        : "");
-  const trendDashStr =
-    tlStyle.fibArcsTrendType === "bold"
-      ? ""
-      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibArcsTrendType] !== undefined
-        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibArcsTrendType]
-        : "");
-  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
-  const strokeW =
-    parseInt(String(tlStyle.lineWidth), 10) ||
-    (typeof widthFallback === "number" ? widthFallback : levelsW) ||
-    1;
-  const trendW =
-    parseInt(String(tlStyle.fibArcsTrendWidth), 10) ||
-    (typeof widthFallback === "number" ? widthFallback : 1) ||
-    1;
-
-  d.levels = v9TlFibSpeedFanLevelsToChart(
-    tlStyle.fibLevels,
-    tlStyle.fibLineType,
-    tlStyle.fibLineWidth,
-  );
-  if (d.style) d.style.levels = d.levels;
-  const st = d.style;
-  st.stroke = tlStyle.lineColor;
-  st.strokeWidth = strokeW;
-  st.levelsLineWidth = levelsW;
-  st.levelsLineDasharray = fibDashStr;
-
-  st.showZones = tlStyle.fibBackground !== false;
-  st.backgroundOpacity =
-    tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
-      ? +tlStyle.fibBgOpacity
-      : 0.12;
-
-  st.trendLineEnabled = tlStyle.fibArcsTrendLine !== false;
-  st.trendLineColor = tlStyle.lineColor;
-  st.trendLineWidth = trendW;
-  st.trendLineDasharray = trendDashStr;
-
-  st.v9FibArcsFullCircle = !!tlStyle.fibArcsFullCircle;
-}
-
-/** Fib Circles: `d.levels` ratio rings + global line dash/width; background UI persisted on style (chart does not fill zones yet). */
-function v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthFallback) {
-  if (!d || !d.style || !v9IsFibCirclesType(d.type)) return;
-  const fibDashStr =
-    tlStyle.fibLineType === "bold"
-      ? ""
-      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
-        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
-        : "");
-  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
-  const strokeW =
-    parseInt(String(tlStyle.lineWidth), 10) ||
-    (typeof widthFallback === "number" ? widthFallback : levelsW) ||
-    1;
-
-  d.levels = v9TlFibSpeedFanLevelsToChart(
-    tlStyle.fibLevels,
-    tlStyle.fibLineType,
-    tlStyle.fibLineWidth,
-  );
-  if (d.style) d.style.levels = d.levels;
-  const st = d.style;
-  st.stroke = tlStyle.lineColor;
-  st.strokeWidth = strokeW;
-  st.levelsLineWidth = levelsW;
-  st.levelsLineDasharray = fibDashStr;
-  st.v9FibCirclesBackground = !!tlStyle.fibBackground;
-  st.v9FibCirclesBgOpacity =
-    tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
-      ? +tlStyle.fibBgOpacity
-      : 0.5;
-}
-
-function v9ApplyClassicFibFromTlStyle(d, tlStyle, trendWidthFallback) {
-  if (!d || !d.style || !v9IsClassicFibRetracementType(d.type)) return;
-  const fibDashStr =
-    tlStyle.fibLineType === "bold"
-      ? ""
-      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
-        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
-        : "");
-  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
-  const trendW =
-    parseInt(String(tlStyle.lineWidth), 10) ||
-    (typeof trendWidthFallback === "number" ? trendWidthFallback : 1) ||
-    1;
-  d.levels = v9TlFibLevelsToChart(
-    tlStyle.fibLevels,
-    tlStyle.fibLineType,
-    tlStyle.fibLineWidth,
-  );
-  if (d.style) d.style.levels = d.levels;
-  const st = d.style;
-  st.trendLineColor = tlStyle.lineColor;
-  st.trendLineEnabled = tlStyle.fibTrendLine !== false;
-  st.trendLineWidth = trendW;
-  st.levelsLineWidth = levelsW;
-  st.levelsLineDasharray = fibDashStr;
-  st.showZones = !!tlStyle.fibBackground;
-  st.backgroundOpacity =
-    tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
-      ? +tlStyle.fibBgOpacity
-      : 0.08;
-  st.reverse = !!tlStyle.fibReverse;
-  st.showPrices = tlStyle.fibPrices !== false;
-  st.levelsEnabled = tlStyle.fibLevelsOn !== false;
-  st.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
-  st.extendLines = !!tlStyle.fibExtendLines;
-}
-
-/** Chart Gann level rows ↔ V9 Input tab (`on` / string `value` / `color`). */
-function v9ChartRatioLevelsToGannTl(arr) {
-  if (!Array.isArray(arr) || !arr.length) return null;
-  return arr.map((l) => ({
-    on: l && l.enabled !== false,
-    value: l && l.value != null ? String(l.value) : "0",
-    color: l && l.color ? l.color : "#787B86",
-  }));
-}
-
-function v9GannTlLevelsToChartRatioLevels(arr) {
-  if (!Array.isArray(arr)) return [];
-  return arr.map((l) => ({
-    enabled: l && l.on !== false,
-    value: parseFloat(String(l && l.value != null ? l.value : "0")) || 0,
-    color: l && l.color ? l.color : "#787b86",
-  }));
-}
-
-/** Map chart `levelsLineDasharray` → V9 gann line type (bold / dotted / dashed / dashdot). */
-function v9GannDashArrayToLineType(dashRaw) {
-  const raw = String(dashRaw ?? "").replace(/\s+/g, "");
-  if (!raw) return "bold";
-  const lt = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[raw];
-  if (lt === "dotted" || lt === "dashed" || lt === "dashdot") return lt;
-  if (raw === "2,2") return "dotted";
-  if (raw === "5,5" || raw === "7,4") return "dashed";
-  if (raw === "8,4,2,4") return "dashdot";
-  return raw ? "dashed" : "bold";
-}
-
-function v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle) {
-  if (!d || !d.style) return;
-  const st = d.style;
-  const dashStr =
-    tlStyle.gannLineType === "bold"
-      ? ""
-      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.gannLineType] !== undefined
-        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.gannLineType]
-        : "");
-  st.levelsLineDasharray = dashStr;
-  st.levelsLineWidth = parseInt(String(tlStyle.gannLineWidth), 10) || 2;
-  st.showZones =
-    d.type === "gann-square-fixed" || d.type === "gann-fan"
-      ? tlStyle.gannBackground !== false
-      : !!tlStyle.gannBackground;
-  st.backgroundOpacity =
-    tlStyle.gannBgOpacity != null && !Number.isNaN(+tlStyle.gannBgOpacity)
-      ? Math.max(0, Math.min(1, +tlStyle.gannBgOpacity))
-      : 0.12;
-}
-
-function v9ApplyGannBoxFromTlStyle(d, tlStyle) {
-  if (!d || d.type !== "gann-box" || !d.style) return;
-  v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
-  d.style.priceLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannPriceLevels);
-  d.style.timeLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannTimeLevels);
-}
-
-function v9ApplyGannSquareFixedFromTlStyle(d, tlStyle) {
-  if (!d || d.type !== "gann-square-fixed" || !d.style) return;
-  v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
-  d.style.gridLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannGridLevels);
-  d.style.fanLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannFanLevels);
-  d.style.arcLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannArcLevels);
-}
-
-function v9ApplyGannFanFromTlStyle(d, tlStyle) {
-  if (!d || d.type !== "gann-fan" || !d.style) return;
-  v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
-  const prev = Array.isArray(d.style.fanLevels) ? d.style.fanLevels : [];
-  const tl = tlStyle.gannFanLevels;
-  if (!Array.isArray(tl)) return;
-  d.style.fanLevels = tl.map((l, i) => {
-    const value = parseFloat(String(l && l.value != null ? l.value : "0")) || 0;
-    const p = prev[i];
-    return {
-      value,
-      enabled: l && l.on !== false,
-      color: (l && l.color) ? l.color : (d.style.stroke || "#4caf50"),
-      ...(p && p.label != null ? { label: p.label } : {}),
-    };
-  });
-}
-
-/** Full chart.js drawing → V9 `tlStyle` patch (toolbar selection + settings read-back). */
-function v9TlStylePatchFromDrawing(d) {
-  if (!d) return null;
-  const s = d.style || {};
-  const chVert = s.textVAlign || s.textPosition;
-  const bold =
-    s.fontWeight === "bold" ||
-    (typeof s.fontWeight === "number" && s.fontWeight >= 600);
-  const isClassicFib = v9IsClassicFibRetracementType(d.type);
-  const isFibFan = v9IsFibSpeedFanType(d.type);
-  const isTrendFibTime = v9IsTrendFibTimeType(d.type);
-  const isFibCircles = v9IsFibCirclesType(d.type);
-  const isFibArcs = v9IsFibArcsType(d.type);
-  const stroke =
-    d.type === "pitchfork"
-      ? (s.medianColor || s.stroke || s.color || s.lineColor)
-      : isClassicFib || isTrendFibTime
-        ? (s.trendLineColor || s.stroke || s.color || s.lineColor)
-        : (s.stroke || s.color || s.lineColor);
-  const widthRaw = isClassicFib
-    ? (s.trendLineWidth ?? s.strokeWidth ?? s.lineWidth)
-    : isFibFan || isFibCircles || isFibArcs
-      ? (s.strokeWidth ?? s.levelsLineWidth ?? s.lineWidth)
-      : isTrendFibTime
-        ? (s.trendLineWidth ?? s.strokeWidth ?? s.lineWidth)
-        : (s.strokeWidth ?? s.lineWidth);
-  const widthStr = widthRaw != null
-    ? String(parseInt(widthRaw, 10) || (isClassicFib || isTrendFibTime ? 1 : 2))
-    : undefined;
-  const dashRaw = isClassicFib
-    ? String(s.trendLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
-    : isFibFan || isFibCircles || isFibArcs
-      ? String(s.levelsLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
-      : isTrendFibTime
-        ? String(s.trendLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
-        : String(s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "");
-  const lineType = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[dashRaw] ?? (dashRaw ? "dashed" : "solid");
-  return {
-    ...(stroke ? { lineColor: stroke } : {}),
-    ...(widthStr ? { lineWidth: widthStr } : {}),
-    lineType,
-    ...(s.fill ? { bgColor: s.fill } : (s.backgroundColor ? { bgColor: s.backgroundColor } : {})),
-    ...(s.startStyle ? { ep1: s.startStyle } : {}),
-    ...(s.endStyle ? { ep2: s.endStyle } : {}),
-    ...(typeof s.extendLeft === 'boolean' ? { extendLeft: s.extendLeft } : {}),
-    ...(typeof s.extendRight === 'boolean' ? { extendRight: s.extendRight } : {}),
-    ...(typeof s.showPriceLabel === 'boolean' ? { priceLabels: s.showPriceLabel } : {}),
-    ...(typeof s.showTimeLabel === 'boolean' ? { timeLabels: s.showTimeLabel } : {}),
-    ...(s.labelColor ? { labelColor: s.labelColor } : {}),
-    ...(s.labelFontSize != null ? { labelFontSize: String(s.labelFontSize) } : {}),
-    ...(typeof s.labelBackground === 'boolean' ? { labelBg: s.labelBackground } : {}),
-    ...(s.labelBackgroundColor ? { labelBgColor: s.labelBackgroundColor } : {}),
-    ...(s.infoSettings && typeof s.infoSettings === 'object'
-      ? (() => {
-          const types = v9ShowInfoTypesFromChartInfoSettings(s.infoSettings);
-          const show =
-            s.infoSettings.showInfo === true ||
-            (types.length > 0 && s.infoSettings.showInfo !== false);
-          return {
-            showInfo: show,
-            showInfoTypes: types.length > 0 ? types : ['Price range'],
-          };
-        })()
-      : {}),
-    ...(typeof d.text === 'string' ? { textContent: d.text } : {}),
-    ...(s.textColor ? { textColor: s.textColor } : {}),
-    ...(s.fontSize != null ? { textSize: String(s.fontSize) } : {}),
-    ...(s.fontWeight != null && s.fontWeight !== '' ? { textBold: bold } : {}),
-    ...(s.fontStyle ? { textItalic: s.fontStyle === 'italic' } : {}),
-    ...(chVert ? { vertAlign: v9ChartVertToUi(chVert) } : {}),
-    ...((s.textHAlign || s.textAlign) ? { horizAlign: s.textHAlign || s.textAlign } : {}),
-    // Must always sync midLine for rect/ellipse/circle: if showMiddleLine is missing (undefined),
-    // omitting midLine leaves a stale true in tlStyle while the canvas sees falsy — "checkbox on, no line".
-    ...(d.type === "rectangle" || d.type === "rotated-rectangle" || d.type === "ellipse" || d.type === "circle"
-      ? { midLine: !!s.showMiddleLine }
-      : (typeof s.showMiddleLine === "boolean" ? { midLine: s.showMiddleLine } : {})),
-    ...(s.middleLineColor ? { midLineColor: s.middleLineColor } : {}),
-    ...(s.middleLineWidth != null && s.middleLineWidth !== ""
-      ? { midLineWidth: String(parseInt(s.middleLineWidth, 10) || 1) }
-      : {}),
-    ...(s.middleLineDash !== undefined && s.middleLineDash !== null
-      ? (() => {
-          const md = String(s.middleLineDash).replace(/\s+/g, "");
-          const mt = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[md] ?? (md ? "dashed" : "solid");
-          return { midLineType: mt };
-        })()
-      : {}),
-    ...(d.type === "parallel-channel" && Array.isArray(d.levels) && d.levels.length
-      ? (() => {
-          const ch = v9ParallelLevelsToChLines(d.levels);
-          return ch ? { chLines: ch } : {};
-        })()
-      : {}),
-    ...(d.type === "regression-trend"
-      ? (() => {
-          const rl = v9RegLinesFromRegressionStyle(s);
-          const base = rl ? { regLines: rl } : {};
-          return {
-            ...base,
-            regUpperDev: {
-              on: s.useUpperDeviation !== false,
-              value: String(s.upperDeviation != null && s.upperDeviation !== "" ? s.upperDeviation : 2),
-            },
-            regLowerDev: {
-              on: s.useLowerDeviation !== false,
-              value: String(
-                Math.abs(s.lowerDeviation != null && s.lowerDeviation !== "" ? Number(s.lowerDeviation) : -2),
-              ),
-            },
-            regPearsonR: !!s.showPearsonsR,
-            source: v9ChartSourceToUiSource(s.source),
-          };
-        })()
-      : {}),
-    ...(d.type === "pitchfork"
-      ? (() => {
-          const pf = v9PitchforkLevelsToPf(d.levels);
-          return {
-            ...(pf ? { pfLevels: pf } : {}),
-            pitchforkStyle: v9ChartPitchforkStyleToUi(s.pitchforkStyle),
-            pfBackground: s.backgroundEnabled !== false,
-            pfBgOpacity:
-              s.backgroundOpacity != null && !Number.isNaN(Number(s.backgroundOpacity))
-                ? Number(s.backgroundOpacity)
-                : 0.2,
-          };
-        })()
-      : {}),
-    ...(d.type === "fib-speed-fan"
-      ? (() => {
-          const fl = v9FibSpeedFanLevelsChartToTl(d.levels);
-          const ftRaw = v9FanTimeLevelsChartToTl(s.v9FanTimeLevels);
-          const ft =
-            ftRaw && ftRaw.length
-              ? ftRaw
-              : [
-                  { on: true, value: "0", color: "#787B86" },
-                  { on: true, value: "0.25", color: "#F44336" },
-                  { on: true, value: "0.5", color: "#FF9800" },
-                  { on: true, value: "0.75", color: "#FFEB3B" },
-                  { on: true, value: "1", color: "#4CAF50" },
-                ];
-          const fibDashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
-          const fibLineType =
-            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
-          const gridDashRaw = String(s.gridLineDasharray ?? "").replace(/\s+/g, "");
-          const fibGridType =
-            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[gridDashRaw] ?? (!gridDashRaw ? "solid" : "dashed");
-          return {
-            ...(fl ? { fibLevels: fl } : {}),
-            fibFanTimeLevels: ft,
-            fibBackground: s.backgroundEnabled !== false,
-            fibBgOpacity:
-              s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
-                ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
-                : 0.12,
-            fibReverse: !!s.reverse,
-            fibGrid: s.gridEnabled !== false,
-            fibGridColor: s.gridColor || "#787B86",
-            fibGridType,
-            fibGridWidth: String(parseInt(s.gridLineWidth, 10) || 1),
-            fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
-            fibLineType,
-          };
-        })()
-      : {}),
-    ...(v9IsClassicFibRetracementType(d.type)
-      ? (() => {
-          const fl = v9FibLevelsChartToTl(d.levels);
-          const fibDashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
-          const fibLineType =
-            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
-          return {
-            ...(fl ? { fibLevels: fl } : {}),
-            fibTrendLine: s.trendLineEnabled !== false,
-            fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
-            fibLineType,
-            fibBackground: !!s.showZones,
-            fibBgOpacity:
-              s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
-                ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
-                : 0.08,
-            fibReverse: !!s.reverse,
-            fibPrices: s.showPrices !== false,
-            fibLevelsOn: s.levelsEnabled !== false,
-            fibLevelsMode: v9FibLevelsModeChartToUi(s.levelsLabelMode),
-            fibExtendLines: !!s.extendLines,
-          };
-        })()
-      : {}),
-    ...(d.type === "trend-fib-time"
-      ? (() => {
-          const fl = v9FibSpeedFanLevelsChartToTl(d.levels);
-          const fibDashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
-          const fibLineType =
-            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
-          const trendDashRaw = String(s.trendLineDasharray ?? "").replace(/\s+/g, "");
-          const fibTimeTrendType =
-            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[trendDashRaw] ?? (!trendDashRaw ? "solid" : "dashed");
-          return {
-            ...(fl ? { fibLevels: fl } : {}),
-            fibTrendLine: s.trendLineEnabled !== false,
-            fibTimeTrendType,
-            fibTimeTrendWidth: String(parseInt(s.trendLineWidth, 10) || 1),
-            fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
-            fibLineType,
-            fibBackground: s.showZones !== false,
-            fibBgOpacity:
-              s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
-                ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
-                : 0.12,
-          };
-        })()
-      : {}),
-    ...(d.type === "fib-circles"
-      ? (() => {
-          const fl = v9FibSpeedFanLevelsChartToTl(d.levels);
-          const fibDashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
-          const fibLineType =
-            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
-          const bgOp =
-            s.v9FibCirclesBgOpacity != null && !Number.isNaN(parseFloat(s.v9FibCirclesBgOpacity))
-              ? Math.max(0, Math.min(1, parseFloat(s.v9FibCirclesBgOpacity)))
-              : 0.5;
-          return {
-            ...(fl ? { fibLevels: fl } : {}),
-            fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
-            fibLineType,
-            fibBackground: s.v9FibCirclesBackground === true,
-            fibBgOpacity: bgOp,
-          };
-        })()
-      : {}),
-    ...(d.type === "fib-arcs"
-      ? (() => {
-          const fl = v9FibSpeedFanLevelsChartToTl(d.levels);
-          const fibDashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
-          const fibLineType =
-            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
-          const trendDashRaw = String(s.trendLineDasharray ?? "").replace(/\s+/g, "");
-          const fibArcsTrendType =
-            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[trendDashRaw] ?? (!trendDashRaw ? "solid" : "dashed");
-          return {
-            ...(fl ? { fibLevels: fl } : {}),
-            fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
-            fibLineType,
-            fibBackground: s.showZones !== false,
-            fibBgOpacity:
-              s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
-                ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
-                : 0.12,
-            fibArcsTrendLine: s.trendLineEnabled !== false,
-            fibArcsTrendType,
-            fibArcsTrendWidth: String(parseInt(s.trendLineWidth, 10) || 1),
-            fibArcsFullCircle: !!s.v9FibArcsFullCircle,
-          };
-        })()
-      : {}),
-    ...(d.type === "gann-box"
-      ? (() => {
-          const dashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
-          const price = v9ChartRatioLevelsToGannTl(s.priceLevels);
-          const time = v9ChartRatioLevelsToGannTl(s.timeLevels);
-          const bgOp =
-            s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
-              ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
-              : 0.12;
-          return {
-            ...(price ? { gannPriceLevels: price } : {}),
-            ...(time ? { gannTimeLevels: time } : {}),
-            gannLineType: v9GannDashArrayToLineType(dashRaw),
-            gannLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
-            gannBackground: !!s.showZones,
-            gannBgOpacity: bgOp,
-            lineColor: s.stroke || s.color || stroke,
-            lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
-          };
-        })()
-      : {}),
-    ...(d.type === "gann-square-fixed"
-      ? (() => {
-          const dashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
-          const grid = v9ChartRatioLevelsToGannTl(s.gridLevels);
-          const fan = v9ChartRatioLevelsToGannTl(s.fanLevels);
-          const arc = v9ChartRatioLevelsToGannTl(s.arcLevels);
-          const bgOp =
-            s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
-              ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
-              : 0.12;
-          return {
-            ...(grid ? { gannGridLevels: grid } : {}),
-            ...(fan ? { gannFanLevels: fan } : {}),
-            ...(arc ? { gannArcLevels: arc } : {}),
-            gannLineType: v9GannDashArrayToLineType(dashRaw),
-            gannLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
-            gannBackground: s.showZones !== false,
-            gannBgOpacity: bgOp,
-            lineColor: s.stroke || stroke,
-            lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
-          };
-        })()
-      : {}),
-    ...(d.type === "gann-fan"
-      ? (() => {
-          const dashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
-          const fanArr = Array.isArray(s.fanLevels) ? s.fanLevels : [];
-          const fan = fanArr.map((l) => ({
-            on: l && l.enabled !== false,
-            value: l && l.value != null ? String(l.value) : "1",
-            color: l && l.color ? l.color : "#787B86",
-          }));
-          const bgOp =
-            s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
-              ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
-              : 0.12;
-          return {
-            ...(fan.length ? { gannFanLevels: fan } : {}),
-            gannLineType: v9GannDashArrayToLineType(dashRaw),
-            gannLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
-            gannBackground: s.showZones !== false,
-            gannBgOpacity: bgOp,
-            lineColor: s.stroke || stroke,
-            lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
-          };
-        })()
-      : {}),
-    ...v9CoordPatchFromDrawing(d),
-    ...v9VisibilityPatchFromDrawing(d),
-  };
-}
-
-const V9_DEFAULT_TL_LINE_COLOR = "#8C8C8C";
-const V9_DEFAULT_TL_SHAPE_FILL = "rgba(74,106,255,0.15)";
-
-/** When the user switches armed drawing tools, merge chart.js saved defaults into V9 `tlStyle` so the next stroke does not inherit the previous tool's colors/fill. */
-function v9MergeHydratePatchFromLegacy(dm, legacy) {
-  const saved =
-    dm && typeof dm.getSavedToolStyle === "function"
-      ? dm.getSavedToolStyle(legacy) || {}
-      : {};
-  const strokeFallback =
-    saved.stroke || saved.color || saved.lineColor || V9_DEFAULT_TL_LINE_COLOR;
-  const styleForPatch = {
-    ...saved,
-    stroke: saved.stroke || strokeFallback,
-    color: saved.color || saved.stroke || strokeFallback,
-  };
-  const basePatch = v9TlStylePatchFromDrawing({ type: legacy, style: styleForPatch }) || {};
-  const fillRaw =
-    saved.fill !== undefined && saved.fill !== ""
-      ? saved.fill
-      : saved.backgroundColor !== undefined && saved.backgroundColor !== ""
-        ? saved.backgroundColor
-        : null;
-  const bgResolved =
-    basePatch.bgColor !== undefined
-      ? basePatch.bgColor
-      : fillRaw !== null && fillRaw !== ""
-        ? fillRaw
-        : V9_DEFAULT_TL_SHAPE_FILL;
-  return {
-    ...basePatch,
-    lineColor: basePatch.lineColor ?? strokeFallback,
-    bgColor: bgResolved,
-  };
-}
-
-function v9DeepCloneJson(obj) {
-  if (obj === undefined) return undefined;
-  return JSON.parse(JSON.stringify(obj));
-}
-
-/** Persists a drawing template like `drawing-toolbar.js` showSaveTemplateDialog (per drawing.type). */
-function v9SaveDrawingTemplateToStorage(name, drawing) {
-  if (typeof window === 'undefined' || !name || !drawing || !drawing.type) return false;
-  const ch = typeof window.getActiveChart === 'function' ? window.getActiveChart() : window.chart;
-  const dm = ch && ch.drawingManager;
-  const tb = dm && dm.toolbar;
-  const us = window.userStorage;
-  if (!tb || typeof tb.getSavedTemplates !== 'function' || typeof tb.getTemplatesKey !== 'function' || !us) return false;
-  const actualDrawing = (dm && dm.drawings && dm.drawings.find((x) => x.id === drawing.id)) || drawing;
-  const templates = tb.getSavedTemplates(actualDrawing.type);
-  const styleSnapshot = v9DeepCloneJson(actualDrawing.style || {}) || {};
-  const newTemplate = {
-    id: Date.now().toString(),
-    name: name.trim(),
-    style: styleSnapshot,
-    text: actualDrawing.text,
-    levels: v9DeepCloneJson(actualDrawing.levels),
-    stroke: styleSnapshot.stroke || (actualDrawing.style && actualDrawing.style.stroke),
-    strokeWidth: styleSnapshot.strokeWidth ?? (actualDrawing.style && actualDrawing.style.strokeWidth),
-    fill: styleSnapshot.fill,
-    opacity: styleSnapshot.opacity !== undefined ? styleSnapshot.opacity : (actualDrawing.style && actualDrawing.style.opacity),
-  };
-  templates.push(newTemplate);
-  us.setItem(tb.getTemplatesKey(actualDrawing.type), JSON.stringify(templates));
-  window.dispatchEvent(new CustomEvent('drawingTemplatesUpdated', { detail: { toolType: actualDrawing.type } }));
-  if (typeof tb.showNotification === 'function') tb.showNotification(`Template "${name.trim()}" saved!`);
-  return true;
-}
-
-/** PRE variables from `chart.backtestingSession` — same filter as order-manager.js `_getPreTradeVariableDefs`. */
-function getPreTradeVariablesFromSession(chart) {
-  try {
-    const sess = chart?.backtestingSession || {};
-    const raw = sess.strategy_variables;
-    const list = Array.isArray(raw) ? raw : (sess.strategy_definition?.variables || []);
-    return list.filter((v) => v && v.type === 'variable' && v.timing === 'pre');
-  } catch (_) {
-    return [];
-  }
-}
-
-function snapshotPreTradeStrategySig(chart) {
-  try {
-    const pre = getPreTradeVariablesFromSession(chart);
-    return JSON.stringify(
-      pre.map((v) => ({
-        id: v.id,
-        name: v.name,
-        vtype: v.vtype,
-        timing: v.timing,
-        options: v.options,
-      }))
-    );
-  } catch (_) {
-    return '';
-  }
-}
-
-/** Maps Strategies Lab PRE vars to the rail tag shape (labels / bool vs multi — UI unchanged). */
-function sessionPreTradeVarsToTagDefs(chart) {
-  const pre = getPreTradeVariablesFromSession(chart);
-  return pre.map((v, idx) => {
-    const id = String(v.id || v.name || '').trim() || `pre_var_${idx}`;
-    const isMulti = v.vtype === 'multi';
-    const options =
-      isMulti && Array.isArray(v.options) && v.options.length
-        ? v.options.map(String)
-        : isMulti
-          ? ['—']
-          : [];
-    return {
-      id,
-      label: v.name || 'Variable',
-      type: isMulti ? 'multi' : 'bool',
-      options,
-    };
-  });
-}
-
-/** POST variables from session — same filter as order-manager `_getPostTradeVariableDefs`. */
-function getPostTradeVariablesFromSession(chart) {
-  try {
-    const sess = chart?.backtestingSession || {};
-    const raw = sess.strategy_variables;
-    const list = Array.isArray(raw) ? raw : (sess.strategy_definition?.variables || []);
-    return list.filter((v) => v && v.type === 'variable' && v.timing === 'post');
-  } catch (_) {
-    return [];
-  }
-}
-
-function snapshotPostTradeStrategySig(chart) {
-  try {
-    const post = getPostTradeVariablesFromSession(chart);
-    return JSON.stringify(
-      post.map((v) => ({
-        id: v.id,
-        name: v.name,
-        vtype: v.vtype,
-        timing: v.timing,
-        options: v.options,
-      }))
-    );
-  } catch (_) {
-    return '';
-  }
-}
-
-/** Maps Strategies Lab POST vars (filled at exit / trade card) to the same pill shape as PRE. */
-function sessionPostTradeVarsToTagDefs(chart) {
-  const post = getPostTradeVariablesFromSession(chart);
-  return post.map((v, idx) => {
-    const id = String(v.id || v.name || '').trim() || `post_var_${idx}`;
-    const isMulti = v.vtype === 'multi';
-    const options =
-      isMulti && Array.isArray(v.options) && v.options.length
-        ? v.options.map(String)
-        : isMulti
-          ? ['—']
-          : [];
-    return {
-      id,
-      label: v.name || 'Variable',
-      type: isMulti ? 'multi' : 'bool',
-      options,
-    };
-  });
-}
-
-/** Match journal `symbol` strings to V9-style pair labels (e.g. EURUSD → EUR/USD). */
-function fmtJournalPair(sym) {
-  const t = String(sym || "").toUpperCase().replace(/\//g, "");
-  if (t.length === 6 && /^[A-Z]{6}$/.test(t)) return `${t.slice(0, 3)}/${t.slice(3)}`;
-  return sym ? String(sym) : "—";
-}
-
-function fmtUsdAnalytics(n, decimals = 0) {
-  if (n == null || !Number.isFinite(Number(n))) return "—";
-  const x = Number(n);
-  const sign = x >= 0 ? "+" : "-";
-  return `${sign}$${Math.abs(x).toFixed(decimals)}`;
-}
-
-function cumulativePnLFromJournalEntries(entries) {
-  if (!Array.isArray(entries) || !entries.length) return [];
-  const sorted = [...entries]
-    .filter((e) => e && e.pnl != null && Number.isFinite(Number(e.pnl)))
-    .sort((a, b) => {
-      const parseT = (e) => {
-        const raw = e.date || e.close_time;
-        const n = raw ? Date.parse(raw) : NaN;
-        return Number.isFinite(n) ? n : Number(e.trade_id ?? e.tradeId ?? e.id) || 0;
-      };
-      return parseT(a) - parseT(b);
-    });
-  let cum = 0;
-  return sorted.map((e, idx) => {
-    cum += Number(e.pnl);
-    return { idx: idx + 1, cum, tradePnl: Number(e.pnl) };
-  });
-}
-
-function bestWorstJournalTrades(entries) {
-  const valid = [...(entries || [])].filter((e) => e && e.pnl != null && Number.isFinite(Number(e.pnl)));
-  if (!valid.length) return { best: null, worst: null };
-  let best = valid[0];
-  let worst = valid[0];
-  for (const e of valid) {
-    if (Number(e.pnl) > Number(best.pnl)) best = e;
-    if (Number(e.pnl) < Number(worst.pnl)) worst = e;
-  }
-  return {
-    best: { sym: fmtJournalPair(best.symbol), pnl: best.pnl },
-    worst: { sym: fmtJournalPair(worst.symbol), pnl: worst.pnl },
-  };
-}
-
-function coalesceAnalyticsTimeMs(...vals) {
-  for (const v of vals) {
-    if (typeof v === "number" && Number.isFinite(v)) return v;
-    if (typeof v === "string" && v.trim()) {
-      const n = Date.parse(v);
-      if (Number.isFinite(n)) return n;
-    }
-  }
-  return NaN;
-}
-
-function inferStrategyLabelFromJournal(j) {
-  const s = String(j?.strategy || j?.setupName || "").trim();
-  if (s) return s;
-  const vars = j?.strategy_variables ?? j?.strategyVariables;
-  if (Array.isArray(vars) && vars.length) {
-    const named = vars.find((v) => v && String(v.name || "").trim());
-    if (named) return String(named.name).trim();
-  }
-  return "Other";
-}
-
-function normalizeRemoteJournalListEntry(e) {
-  if (!e || typeof e !== "object") return null;
-  const pnl = Number(e.pnl ?? e.net_pnl ?? e.netPnL ?? NaN);
-  if (!Number.isFinite(pnl)) return null;
-  const symbol = e.symbol ?? e.pair ?? e.ticker ?? "";
-  const tid = e.trade_id ?? e.tradeId ?? e.id;
-  const idNum = tid != null ? Number(tid) : NaN;
-  const d = e.date ?? e.close_time ?? e.closed_at;
-  const ds =
-    typeof d === "string"
-      ? d
-      : d != null && Number.isFinite(Number(d))
-        ? new Date(Number(d)).toISOString()
-        : Number.isFinite(Date.parse(String(d)))
-          ? new Date(Date.parse(String(d))).toISOString()
-          : "";
-  const strategy = String(e.strategy ?? e.setup ?? "").trim() || "Other";
-  return {
-    trade_id: Number.isFinite(idNum) ? idNum : undefined,
-    symbol,
-    pnl,
-    date: ds || undefined,
-    close_time: ds || undefined,
-    strategy,
-  };
-}
-
-function analyticsEntryKey(e) {
-  const id = e?.trade_id ?? e?.tradeId ?? e?.id;
-  if (id != null && Number.isFinite(Number(id))) return `id:${Number(id)}`;
-  const sym = String(e?.symbol || "").replace(/\//g, "").toUpperCase();
-  const t = e?.date || e?.close_time || "";
-  const p = Number(e?.pnl);
-  return `h:${sym}_${t}_${Number.isFinite(p) ? p.toFixed(4) : "x"}`;
-}
-
-/**
- * Align Balance / Equity with closed-trade Net P&L for journal analytics.
- * Replay / session paths often populate `tradeJournal` + realized totals while `orderManager.balance`
- * still sits on `initialBalance` — then Net P&L matches the list but Balance/Equity look wrong.
- * When flat (no open positions), prefer initial + sum(closed pnl) unless OM already matches that.
- */
-function reconcileJournalBalanceEquityStats(stats, mergedList, om) {
-  if (!stats || !Array.isArray(mergedList)) return;
-
-  const totalPnl = Number(stats.total_pnl);
-  const ini = Number(stats.initial_balance ?? om?.initialBalance);
-  const omBal = om != null ? Number(om.balance) : NaN;
-  const omEq = om != null ? Number(om.equity) : NaN;
-  let openN = 0;
-  try {
-    openN = Array.isArray(om?.openPositions) ? om.openPositions.length : 0;
-  } catch (_) {}
-
-  if (!Number.isFinite(totalPnl) || mergedList.length === 0) {
-    if (Number.isFinite(omBal)) stats.balance = omBal;
-    if (Number.isFinite(omEq)) stats.equity = omEq;
-    return;
-  }
-
-  if (!Number.isFinite(ini)) {
-    if (Number.isFinite(omBal)) stats.balance = omBal;
-    if (Number.isFinite(omEq)) stats.equity = omEq;
-    return;
-  }
-
-  const derivedBal = ini + totalPnl;
-  const tol = Math.max(0.05, Math.abs(totalPnl) * 1e-9 + 1e-6);
-
-  if (openN > 0 && Number.isFinite(omBal)) {
-    stats.balance = omBal;
-    stats.equity = Number.isFinite(omEq) ? omEq : omBal;
-    stats.initial_balance = ini;
-    return;
-  }
-
-  const omTracksClosed =
-    Number.isFinite(omBal) && Math.abs(omBal - derivedBal) <= tol;
-
-  if (omTracksClosed && Number.isFinite(omBal)) {
-    stats.balance = omBal;
-    stats.equity = Number.isFinite(omEq) ? omEq : omBal;
-  } else {
-    stats.balance = derivedBal;
-    stats.equity = derivedBal;
-  }
-  stats.initial_balance = ini;
-}
-
-function computeJournalStatsFromNormalizedList(list) {
-  const pnls = list.map((e) => Number(e.pnl)).filter(Number.isFinite);
-  const n = pnls.length;
-  const wins = pnls.filter((p) => p > 0);
-  const losses = pnls.filter((p) => p < 0);
-  const winning_trades = wins.length;
-  const losing_trades = losses.length;
-  const denom = winning_trades + losing_trades;
-  const total_pnl = pnls.reduce((s, p) => s + p, 0);
-  const avg_win = wins.length ? wins.reduce((s, p) => s + p, 0) / wins.length : null;
-  const avg_loss = losses.length ? Math.abs(losses.reduce((s, p) => s + p, 0) / losses.length) : null;
-  const win_rate = denom > 0 ? (winning_trades / denom) * 100 : null;
-  const grossProfit = wins.reduce((s, p) => s + p, 0);
-  const grossLossAbs = Math.abs(losses.reduce((s, p) => s + p, 0));
-  let profit_factor = null;
-  if (grossLossAbs > 0) profit_factor = grossProfit / grossLossAbs;
-  else if (grossProfit > 0) profit_factor = Infinity;
-  return {
-    total_trades: n,
-    winning_trades,
-    losing_trades,
-    total_pnl,
-    avg_win,
-    avg_loss,
-    win_rate,
-    profit_factor,
-  };
-}
-
-function symbolBucketsFromNormalizedList(list) {
-  const m = new Map();
-  for (const e of list) {
-    const raw = String(e.symbol || "UNKNOWN").replace(/\//g, "").toUpperCase();
-    if (!m.has(raw)) m.set(raw, { symbol: raw, total_trades: 0, total_pnl: 0 });
-    const b = m.get(raw);
-    b.total_trades += 1;
-    b.total_pnl += Number(e.pnl) || 0;
-  }
-  return [...m.values()].sort((a, b) => Math.abs(b.total_pnl) - Math.abs(a.total_pnl));
-}
-
-function strategyBucketsFromNormalizedList(list) {
-  const mm = new Map();
-  for (const e of list) {
-    const tag = String(e.strategy || "Other").trim() || "Other";
-    if (!mm.has(tag)) mm.set(tag, { strategy: tag, pnls: [] });
-    mm.get(tag).pnls.push(Number(e.pnl) || 0);
-  }
-  return [...mm.values()]
-    .map((b) => {
-      const pnls = b.pnls;
-      const n = pnls.length;
-      const w = pnls.filter((p) => p > 0).length;
-      const l = pnls.filter((p) => p < 0).length;
-      const d = w + l;
-      return {
-        strategy: b.strategy,
-        total_trades: n,
-        win_rate: d > 0 ? (w / d) * 100 : null,
-        total_pnl: pnls.reduce((s, p) => s + p, 0),
-      };
-    })
-    .sort((a, b) => Math.abs(b.total_pnl) - Math.abs(a.total_pnl));
-}
-
-/** Closed P&amp;L from persisted `tradeJournal` + in-memory `closedPositions` (saved session trades). */
-function buildJournalAnalyticsFromOrderManager(om) {
-  if (!om) {
-    return {
-      stats: {
-        total_trades: 0,
-        winning_trades: 0,
-        losing_trades: 0,
-        total_pnl: 0,
-        avg_win: null,
-        avg_loss: null,
-        win_rate: null,
-        profit_factor: null,
-      },
-      symbols: [],
-      strategies: [],
-      list: [],
-      source: "session",
-    };
-  }
-
-  const normalized = [];
-  const seenIds = new Set();
-
-  for (const j of Array.isArray(om.tradeJournal) ? om.tradeJournal : []) {
-    const tidRaw = j.tradeId ?? j.id;
-    const idNum = tidRaw != null ? Number(tidRaw) : NaN;
-    const pnl = Number.parseFloat(j.netPnL ?? j.realizedPnL ?? j.pnl ?? NaN);
-    if (!Number.isFinite(pnl)) continue;
-    if (Number.isFinite(idNum)) seenIds.add(idNum);
-    const sym = j.ticker || j.symbol || "UNKNOWN";
-    const closeMs = coalesceAnalyticsTimeMs(j.closeTime, j.exitTime, j.closedAt);
-    const iso = Number.isFinite(closeMs) ? new Date(closeMs).toISOString() : "";
-    normalized.push({
-      trade_id: Number.isFinite(idNum) ? idNum : undefined,
-      symbol: sym,
-      pnl,
-      date: iso || undefined,
-      close_time: iso || undefined,
-      strategy: inferStrategyLabelFromJournal(j),
-    });
-  }
-
-  for (const p of Array.isArray(om.closedPositions) ? om.closedPositions : []) {
-    const idNum = Number(p.id);
-    if (Number.isFinite(idNum) && seenIds.has(idNum)) continue;
-    const pnl = Number.parseFloat(p.netPnL ?? p.realizedPnL ?? p.pnl ?? NaN);
-    if (!Number.isFinite(pnl)) continue;
-    if (Number.isFinite(idNum)) seenIds.add(idNum);
-    const sym = p.ticker || p.symbol || "UNKNOWN";
-    const closeMs = coalesceAnalyticsTimeMs(p.closeTime, p.closedAt);
-    const iso = Number.isFinite(closeMs) ? new Date(closeMs).toISOString() : "";
-    normalized.push({
-      trade_id: Number.isFinite(idNum) ? idNum : undefined,
-      symbol: sym,
-      pnl,
-      date: iso || undefined,
-      close_time: iso || undefined,
-      strategy: String(p.strategy || "").trim() || "Other",
-    });
-  }
-
-  const list = normalized;
-  const stats = computeJournalStatsFromNormalizedList(list);
-  const bal = Number(om.balance);
-  const eq = Number(om.equity);
-  const ini = Number(om.initialBalance);
-  if (Number.isFinite(bal)) stats.balance = bal;
-  if (Number.isFinite(eq)) stats.equity = eq;
-  if (Number.isFinite(ini)) stats.initial_balance = ini;
-
-  reconcileJournalBalanceEquityStats(stats, list, om);
-
-  return {
-    stats,
-    symbols: symbolBucketsFromNormalizedList(list),
-    strategies: strategyBucketsFromNormalizedList(list),
-    list,
-    source: "session",
-  };
-}
-
-function mergeJournalAnalyticsRemoteLocal(remote, local) {
-  const loc = local || { stats: {}, symbols: [], strategies: [], list: [] };
-  const locList = Array.isArray(loc.list) ? loc.list : [];
-  const remNorm = (Array.isArray(remote?.list) ? remote.list : [])
-    .map(normalizeRemoteJournalListEntry)
-    .filter(Boolean);
-
-  const byKey = new Map();
-  for (const e of remNorm) {
-    byKey.set(analyticsEntryKey(e), { ...e });
-  }
-  for (const e of locList) {
-    const k = analyticsEntryKey(e);
-    const prev = byKey.get(k);
-    if (prev) {
-      byKey.set(k, {
-        ...prev,
-        ...e,
-        pnl: Number.isFinite(Number(e.pnl)) ? Number(e.pnl) : Number(prev.pnl),
-        symbol: e.symbol || prev.symbol,
-        strategy: e.strategy || prev.strategy,
-      });
-    } else {
-      byKey.set(k, { ...e });
-    }
-  }
-
-  const mergedList = [...byKey.values()].filter((x) => Number.isFinite(Number(x.pnl)));
-  const stats = computeJournalStatsFromNormalizedList(mergedList);
-  const bal = Number(loc.stats?.balance);
-  const eq = Number(loc.stats?.equity);
-  const ini = Number(loc.stats?.initial_balance);
-  if (Number.isFinite(bal)) stats.balance = bal;
-  if (Number.isFinite(eq)) stats.equity = eq;
-  if (Number.isFinite(ini)) stats.initial_balance = ini;
-
-  const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
-  reconcileJournalBalanceEquityStats(stats, mergedList, om);
-
-  return {
-    stats,
-    symbols: symbolBucketsFromNormalizedList(mergedList),
-    strategies: strategyBucketsFromNormalizedList(mergedList),
-    list: mergedList,
-    source: remNorm.length ? "merged" : "session",
-  };
-}
-
-function journalAuthHeaders() {
-  const h = { Accept: "application/json" };
-  try {
-    const token = typeof localStorage !== "undefined" ? localStorage.getItem("token") : null;
-    if (token) h.Authorization = `Bearer ${token}`;
-  } catch (_) {}
-  return h;
-}
-
-const JOURNAL_API_PREFIXES = ["/api/journal", "/journal/api/journal"];
-
-/** PRE / POST screenshot slots in trade card & grid — journal API still stores one URL per side on PUT; UI keeps up to four per side locally. */
-const MAX_SCREENSHOTS_PRE_POST = 4;
-
-function clampScreenshotSlot(arr, maxN = MAX_SCREENSHOTS_PRE_POST) {
-  if (!Array.isArray(arr)) return [];
-  return arr.slice(0, maxN);
-}
-
-async function fetchJournalEndpoint(path, init = {}) {
-  const headers = { ...journalAuthHeaders(), ...(init.headers || {}) };
-  const req = { credentials: "include", cache: "no-store", ...init, headers };
-  let last = null;
-  for (const prefix of JOURNAL_API_PREFIXES) {
-    try {
-      const res = await fetch(`${prefix}${path}`, req);
-      last = res;
-      if (res.ok || res.status === 401 || res.status === 403) return res;
-    } catch (_) {
-      last = null;
-    }
-  }
-  return last || new Response(null, { status: 503 });
-}
-
-/**
- * Uploaded screenshot URLs are often `/api/journal/screenshots/...` but some deployments only proxy
- * `/journal/api/journal/...`. Probe which path returns 200 so `<img src>` does not break.
- */
-function alternateJournalScreenshotPath(urlPath) {
-  if (!urlPath || typeof urlPath !== "string") return "";
-  if (urlPath.startsWith("/api/journal/")) {
-    return `/journal/api/journal/${urlPath.slice("/api/journal/".length)}`;
-  }
-  if (urlPath.startsWith("/journal/api/journal/")) {
-    return `/api/journal/${urlPath.slice("/journal/api/journal/".length)}`;
-  }
-  return "";
-}
-
-async function resolveJournalScreenshotUrlForStorage(apiReturnedPath) {
-  if (!apiReturnedPath || typeof apiReturnedPath !== "string") return apiReturnedPath;
-  if (
-    apiReturnedPath.startsWith("data:") ||
-    apiReturnedPath.startsWith("http://") ||
-    apiReturnedPath.startsWith("https://")
-  ) {
-    return apiReturnedPath;
-  }
-  const primary = apiReturnedPath.startsWith("/") ? apiReturnedPath : `/${apiReturnedPath}`;
-  const alt = alternateJournalScreenshotPath(primary);
-  const candidates = alt ? [primary, alt] : [primary];
-  for (const p of candidates) {
-    try {
-      let res = await fetch(p, { method: "HEAD", credentials: "include", cache: "no-store" });
-      if (!res.ok && (res.status === 405 || res.status === 501)) {
-        res = await fetch(p, { method: "GET", credentials: "include", cache: "no-store" });
-      }
-      if (res.ok) return p;
-    } catch (_) {
-      /* try next */
-    }
-  }
-  return primary;
-}
-
-/** `<img onError={journalScreenshotImgOnError}` — tries the other journal API prefix once. */
-function journalScreenshotImgOnError(ev) {
-  const el = ev?.currentTarget;
-  if (!el || el.dataset.journalFbApplied === "1") return;
-  let pathname = "";
-  try {
-    pathname = new URL(el.src, typeof window !== "undefined" ? window.location.href : "http://localhost/").pathname;
-  } catch (_) {
-    return;
-  }
-  const fbPath = alternateJournalScreenshotPath(pathname);
-  if (!fbPath) return;
-  el.dataset.journalFbApplied = "1";
-  if (typeof window !== "undefined" && window.location?.origin) {
-    el.src = `${window.location.origin}${fbPath}`;
-  } else {
-    el.src = fbPath;
-  }
-}
-
-/** Pretty-print journal symbols (e.g. EURUSD → EUR/USD) for the screenshot linker. */
-function formatJournalSymbolForDisplay(raw) {
-  if (raw == null || raw === "") return "";
-  const s = String(raw).trim();
-  if (s.includes("/")) return s;
-  const u = s.toUpperCase().replace(/[^A-Z]/g, "");
-  if (u.length === 6 && /^[A-Z]{6}$/.test(u)) return `${u.slice(0, 3)}/${u.slice(3)}`;
-  return s;
-}
-
-/** Same profile the Journal / Trades web app uses (localStorage), so /api/journal/list returns the same rows. */
-function getJournalProfileIdFromStorage() {
-  try {
-    const raw = localStorage.getItem("talaria_activeProfile");
-    if (!raw) return null;
-    const p = JSON.parse(raw);
-    const id = Number(p?.id);
-    return Number.isFinite(id) ? id : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-function symKeyForJournalMatch(s) {
-  return String(s ?? "")
-    .replace(/[^A-Za-z]/g, "")
-    .toUpperCase();
-}
-
-function normJournalDirection(d) {
-  const x = String(d ?? "")
-    .trim()
-    .toLowerCase();
-  if (x === "long" || x === "buy") return "long";
-  if (x === "short" || x === "sell") return "short";
-  return x;
-}
-
-function sessionTradeCloseMs(t) {
-  const v = t?.closeTime ?? t?.exitTime;
-  if (v == null) return 0;
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  const p = Date.parse(String(v));
-  return Number.isFinite(p) ? p : 0;
-}
-
-function apiJournalCloseMs(e) {
-  const tv = e?.close_time || e?.date;
-  if (!tv) return 0;
-  const p = Date.parse(String(tv));
-  return Number.isFinite(p) ? p : 0;
-}
-
-function sideLabelFromSessionTrade(tr) {
-  const d = String(tr?.direction || tr?.type || "").toUpperCase();
-  if (d === "BUY" || d === "LONG") return "LONG";
-  if (d === "SELL" || d === "SHORT") return "SHORT";
-  return d || "—";
-}
-
-function matchApiJournalIdForSessionTrade(trade, apiEntries, usedIds) {
-  const tSym = symKeyForJournalMatch(trade.ticker || trade.symbol);
-  const tDir = normJournalDirection(trade.direction || trade.type);
-  const tMs = sessionTradeCloseMs(trade);
-  let best = null;
-  let bestD = Infinity;
-  for (const e of apiEntries) {
-    if (!e || e.id == null || usedIds.has(e.id)) continue;
-    if (symKeyForJournalMatch(e.symbol) !== tSym) continue;
-    if (normJournalDirection(e.direction) !== tDir) continue;
-    const dlt = Math.abs(apiJournalCloseMs(e) - tMs);
-    if (dlt < bestD && dlt < 4 * 60 * 1000) {
-      bestD = dlt;
-      best = e;
-    }
-  }
-  if (best) {
-    usedIds.add(best.id);
-    return best.id;
-  }
-  return null;
-}
-
-function isoLocalMinuteFromMs(ms) {
-  if (ms == null || !Number.isFinite(ms) || ms <= 0) return undefined;
-  const d = new Date(ms);
-  if (Number.isNaN(d.getTime())) return undefined;
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-function buildJournalAddPayloadFromSessionTrade(tr) {
-  const symbol = String(tr.ticker || tr.symbol || "UNKNOWN").replace(/\s+/g, "");
-  const d = String(tr.direction || tr.type || "").toUpperCase();
-  const direction = d === "BUY" || d === "LONG" ? "long" : "short";
-  const entry_price = Number.parseFloat(tr.entryPrice ?? tr.openPrice ?? 0) || 0;
-  const exit_price = Number.parseFloat(tr.exitPrice ?? tr.closePrice ?? tr.exitPrice ?? 0) || 0;
-  const quantity = Number.parseFloat(tr.quantity ?? 1) || 1;
-  const pnl = Number.parseFloat(tr.netPnL ?? tr.pnl ?? 0) || 0;
-  const rr = Number.parseFloat(String(tr.rMultiple ?? "0").replace(/[^0-9.-]/g, "")) || 0;
-  let openMs = 0;
-  const entryCand = tr.entryTime ?? tr.placedTime ?? tr.openTime;
-  if (entryCand != null) {
-    openMs = typeof entryCand === "number" ? entryCand : Date.parse(String(entryCand));
-    if (!Number.isFinite(openMs)) openMs = 0;
-  }
-  const closeMs = sessionTradeCloseMs(tr);
-  const payload = {
-    symbol,
-    direction,
-    entry_price,
-    exit_price,
-    quantity,
-    pnl,
-    rr,
-  };
-  const ot = openMs > 0 ? isoLocalMinuteFromMs(openMs) : undefined;
-  const ct = closeMs > 0 ? isoLocalMinuteFromMs(closeMs) : undefined;
-  if (ot) payload.open_time = ot;
-  if (ct) payload.close_time = ct;
-  if (ct) payload.entry_datetime = ct;
-  return payload;
-}
-
-function resolveOrderManagerTradeLikeForJournal(om, sessionTradeId) {
-  const id = Number(sessionTradeId);
-  if (!Number.isFinite(id)) return null;
-  const tj = Array.isArray(om?.tradeJournal) ? om.tradeJournal : [];
-  const fromJournal = tj.find((x) => Number(x.tradeId ?? x.id) === id);
-  if (fromJournal) return fromJournal;
-  const pend = om?.pendingOrders?.find((o) => Number(o.id) === id);
-  if (pend) return pend;
-  const open = om?.openPositions?.find((o) => Number(o.id) === id);
-  if (open) return open;
-  const closed = om?.closedPositions?.find((o) => Number(o.id) === id);
-  if (closed) return closed;
-  return null;
-}
-
-async function createJournalEntryFromSessionTrade(sessionTradeId) {
-  const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
-  if (!om || !Array.isArray(om.tradeJournal)) throw new Error("Chart journal is not available.");
-  const tr = resolveOrderManagerTradeLikeForJournal(om, sessionTradeId);
-  if (!tr) throw new Error("That trade is no longer available.");
-  const payload = buildJournalAddPayloadFromSessionTrade(tr);
-  const res = await fetchJournalEndpoint("/add", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `Could not create journal entry (${res.status})`);
-  const id = body.trade?.id;
-  if (id == null) throw new Error("Journal did not return an entry id.");
-  return Number(id);
-}
-
-/**
- * Mirror API screenshot URL into session `tradeJournal` (orderManager) so legacy panels persist it;
- * callers must also update React `tradeScreenshots` + bump `omTradeRev` for the V9 grid/card.
- */
-function patchOrderManagerJournalScreenshot(sessionTradeId, phasePreOrPost, imageUrl) {
-  const field = phasePreOrPost === "Pre" ? "entryScreenshot" : "exitScreenshot";
-  try {
-    const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
-    if (!om || !Array.isArray(om.tradeJournal)) return;
-    const idx = om.tradeJournal.findIndex((x) => Number(x.tradeId ?? x.id) === Number(sessionTradeId));
-    if (idx < 0) return;
-    const j = { ...om.tradeJournal[idx], [field]: imageUrl };
-    om.tradeJournal[idx] = j;
-    if (typeof om.persistJournal === "function") om.persistJournal();
-    if (typeof om.updateJournalTab === "function") om.updateJournalTab();
-    if (typeof om.updatePositionsPanel === "function") om.updatePositionsPanel();
-  } catch (e) {
-    console.warn("[V9] patchOrderManagerJournalScreenshot", e);
-  }
-}
-
-// ── Color Picker Popup ───────────────────────────────────────────────────────
-const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange, onAChange, onHexChange, onClose, onDragStart, dragging, animation, hideAlpha }) => {
-  const rgb = hsvToRgb(h, s, v);
-  const solidColor = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
-  const hueColor = `hsl(${h},100%,50%)`;
-  const outColor = cpBuildColor(rgb.r, rgb.g, rgb.b, a);
-  return (
-    <div className="tlr-cp tlr-gloss" data-tlr-cp="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex:11100,width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(38,67,247,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
-      <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-      <div style={{padding:10}}>
-        {/* SV square */}
-        <div
-          onMouseDown={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); const ns=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)), nv=1-Math.max(0,Math.min(1,(e.clientY-r.top)/r.height)); onSVChange(ns,nv); onDragStart('sv',r); }}
-          style={{width:"100%",height:130,position:"relative",marginBottom:9,cursor:"crosshair",userSelect:"none",
-            background:`linear-gradient(to bottom, rgba(0,0,0,0) 0%, #000 100%), linear-gradient(to right, #fff 0%, ${hueColor} 100%)`}}>
-          <div style={{position:"absolute",left:`calc(${s*100}% - 5px)`,top:`calc(${(1-v)*100}% - 5px)`,width:10,height:10,borderRadius:"50%",border:"2px solid #fff",background:solidColor,boxShadow:"0 0 4px rgba(0,0,0,0.9), 0 0 0 1px rgba(0,0,0,0.4)",pointerEvents:"none"}}/>
-        </div>
-        {/* Hue slider */}
-        <div style={{marginBottom:7}}>
-          <div style={{fontSize:9,color:c.tm,marginBottom:3,letterSpacing:"0.07em",fontWeight:700}}>HUE</div>
-          <div
-            onMouseDown={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); onHChange(Math.max(0,Math.min(360,((e.clientX-r.left)/r.width)*360))); onDragStart('hue',r); }}
-            style={{position:"relative",height:11,background:"linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)",border:`1px solid ${c.brH}`,cursor:"ew-resize",userSelect:"none"}}>
-            <div style={{position:"absolute",top:-1,bottom:-1,left:`calc(${(h/360)*100}% - 5px)`,width:10,background:hueColor,border:"2px solid #fff",boxShadow:"0 0 4px rgba(0,0,0,0.8)",pointerEvents:"none"}}/>
-          </div>
-        </div>
-        {/* Alpha slider */}
-        {!hideAlpha && <div style={{marginBottom:9}}>
-          <div style={{fontSize:9,color:c.tm,marginBottom:3,letterSpacing:"0.07em",fontWeight:700}}>OPACITY</div>
-          <div
-            onMouseDown={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); onAChange(Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))); onDragStart('alpha',r); }}
-            style={{position:"relative",height:11,background:`linear-gradient(to right, rgba(${rgb.r},${rgb.g},${rgb.b},0), ${solidColor}), repeating-conic-gradient(rgba(140,160,255,0.08) 0% 25%, transparent 0% 50%) 0 0 / 8px 8px`,border:`1px solid ${c.brH}`,cursor:"ew-resize",userSelect:"none"}}>
-            <div style={{position:"absolute",top:-1,bottom:-1,left:`calc(${a*100}% - 5px)`,width:10,background:solidColor,border:"2px solid #fff",boxShadow:"0 0 4px rgba(0,0,0,0.8)",pointerEvents:"none"}}/>
-          </div>
-        </div>}
-        {/* Preview + hex + alpha% */}
-        <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          <div style={{width:22,height:22,background:outColor,border:`1px solid ${c.brH}`,flexShrink:0}}/>
-          <div style={{flex:1,display:"flex",alignItems:"center",background:c.well,border:`1px solid ${c.br}`,padding:"3px 6px"}}>
-            <span style={{fontSize:10,color:c.tm,marginRight:2,fontFamily:F}}>#</span>
-            <input value={hexStr} onChange={e=>onHexChange(e.target.value.replace(/[^0-9a-fA-F]/g,'').slice(0,6))}
-              style={{background:"transparent",border:"none",color:c.tx,fontSize:11,fontFamily:F,width:"100%",outline:"none",fontVariantNumeric:"tabular-nums"}}/>
-          </div>
-          {!hideAlpha && <span style={{fontSize:11,color:c.ts,minWidth:30,textAlign:"right",fontFamily:F,fontVariantNumeric:"tabular-nums",fontWeight:600}}>{Math.round(a*100)}%</span>}
-        </div>
-      </div>
-      <div style={{padding:"5px 10px",borderTop:`1px solid ${c.br}`,display:"flex",justifyContent:"flex-end"}}>
-        <button
-          type="button"
-          onPointerDown={(e)=>{ e.stopPropagation(); onClose(e); }}
-          onMouseDown={(e)=>e.stopPropagation()}
-          onClick={(e)=>{ e.stopPropagation(); onClose(e); }}
-          style={{
-            fontSize:10,color:c.acL,cursor:"default",fontWeight:800,fontFamily:F,padding:"2px 6px",letterSpacing:"0.05em",
-            background:"transparent",border:"none",margin:0,lineHeight:1.2
-          }}
-        >DONE</button>
-      </div>
-    </div>
-  );
-};
-
-const Toggle = ({ on, onClick, color, hk, c, swHov, setSwHov }) => {
-  const tC = color || c.acL;
-  const isH = hk ? swHov === hk : false;
-  return (
-    <div onClick={onClick}
-      onMouseEnter={hk ? ()=>setSwHov(hk) : undefined}
-      onMouseLeave={hk ? ()=>setSwHov(null) : undefined}
-      style={{ width: 28, height: 14, borderRadius: 7, background: on ? `${tC}33` : isH ? "rgba(140,160,255,0.10)" : "rgba(140,160,255,0.06)", border: `1px solid ${on ? tC+"66" : isH ? "rgba(140,160,255,0.35)" : "rgba(140,160,255,0.22)"}`, position: "relative", cursor: "default", transition: "background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease", boxShadow: isH ? `0 0 8px ${on ? tC+"55" : "rgba(140,160,255,0.08)"}` : "none" }}>
-      <div style={{ width: 10, height: 10, borderRadius: 5, background: on ? tC : isH ? c.tx : "rgba(140,160,255,0.55)", position: "absolute", top: 1, left: on ? 14 : 2, transition: "left 0.22s cubic-bezier(0.34,1.56,0.64,1), background 0.18s ease", boxShadow: on && isH ? `0 0 6px ${tC}` : "none" }}/>
-    </div>
-  );
-};
-
-const currencyCountry = { EUR: "EU", JPY: "JP", USD: "US", GBP: "GB", AUD: "AU", CAD: "CA", CHF: "CH", NZD: "NZ" };
-
-const SYMBOLS_DATA = [
-  { cat:"FOREX", items:[
-    {id:"EUR/JPY",name:"Euro / Yen",type:"forex",base:"EUR",quote:"JPY"},
-    {id:"EUR/USD",name:"Euro / Dollar",type:"forex",base:"EUR",quote:"USD"},
-    {id:"GBP/USD",name:"Pound / Dollar",type:"forex",base:"GBP",quote:"USD"},
-    {id:"USD/JPY",name:"Dollar / Yen",type:"forex",base:"USD",quote:"JPY"},
-    {id:"AUD/USD",name:"Aussie / Dollar",type:"forex",base:"AUD",quote:"USD"},
-    {id:"USD/CAD",name:"Dollar / CAD",type:"forex",base:"USD",quote:"CAD"},
-    {id:"GBP/JPY",name:"Pound / Yen",type:"forex",base:"GBP",quote:"JPY"},
-    {id:"AUD/JPY",name:"Aussie / Yen",type:"forex",base:"AUD",quote:"JPY"},
-    {id:"NZD/USD",name:"Kiwi / Dollar",type:"forex",base:"NZD",quote:"USD"},
-    {id:"USD/CHF",name:"Dollar / Franc",type:"forex",base:"USD",quote:"CHF"},
-    {id:"EUR/GBP",name:"Euro / Pound",type:"forex",base:"EUR",quote:"GBP"},
-  ]},
-  { cat:"FUTURES", items:[
-    {id:"ES",name:"S&P 500 Futures",type:"futures",col:"#5B8CFF",bg:"rgba(74,106,255,0.28)"},
-    {id:"NQ",name:"Nasdaq 100 Futures",type:"futures",col:"#26C6DA",bg:"rgba(38,198,218,0.22)"},
-    {id:"GC",name:"Gold Futures",type:"futures",col:"#FFD54F",bg:"rgba(255,213,79,0.22)"},
-  ]},
-  { cat:"COMMODITIES", items:[
-    {id:"XAUUSD",name:"Gold Spot",type:"commodity",col:"#FFD700",bg:"rgba(255,215,0,0.20)"},
-  ]},
-  { cat:"STOCKS", items:[
-    {id:"AAPL",name:"Apple Inc.",type:"stock",col:"#C8C9CA",bg:"rgba(200,201,202,0.18)"},
-    {id:"TSLA",name:"Tesla Inc.",type:"stock",col:"#E82127",bg:"rgba(232,33,39,0.22)"},
-  ]},
-  { cat:"CRYPTO", items:[
-    {id:"BTCUSDT",name:"Bitcoin / Tether",type:"crypto",col:"#F7931A",bg:"rgba(247,147,26,0.22)"},
-    {id:"ETHUSDT",name:"Ethereum / Tether",type:"crypto",col:"#627EEA",bg:"rgba(98,126,234,0.22)"},
-  ]},
-];
-
-const SymBadge = ({ sym, w=18, h=12 }) => {
-  const cx=w/2, cy=h/2, uid=`${sym.id}-${w}`;
-  /* ── Bitcoin ── */
-  if (sym.id==="BTCUSDT") return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-      <defs><radialGradient id={`bg-${uid}`} cx="40%" cy="35%"><stop offset="0%" stopColor="#FFAC33"/><stop offset="100%" stopColor="#E8820C"/></radialGradient></defs>
-      <circle cx={cx} cy={cy} r={Math.min(cx,cy)-0.3} fill={`url(#bg-${uid})`}/>
-      <text x={cx+w*0.02} y={cy+h*0.24} textAnchor="middle" fill="#fff" fontSize={h*0.62} fontWeight="900" fontFamily="Arial,sans-serif" letterSpacing="-0.5">₿</text>
-    </svg>
-  );
-  /* ── Ethereum ── */
-  if (sym.id==="ETHUSDT") return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-      <defs><linearGradient id={`bg-${uid}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#1A1E3C"/><stop offset="100%" stopColor="#111628"/></linearGradient></defs>
-      <rect width={w} height={h} rx={2} fill={`url(#bg-${uid})`}/>
-      <polygon points={`${cx},${h*0.08} ${cx+w*0.3},${cy-h*0.04} ${cx},${h*0.63} ${cx-w*0.3},${cy-h*0.04}`} fill="#627EEA"/>
-      <polygon points={`${cx},${h*0.63} ${cx+w*0.3},${cy-h*0.04} ${cx},${h*0.92}`} fill="#B0C0F5" opacity={0.75}/>
-      <polygon points={`${cx},${h*0.63} ${cx-w*0.3},${cy-h*0.04} ${cx},${h*0.92}`} fill="#4A62D8" opacity={0.85}/>
-    </svg>
-  );
-  /* ── Apple ── */
-  if (sym.id==="AAPL") {
-    const bx=cx, by=cy+h*0.06, br=h*0.44;
-    return (
-      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-        <rect width={w} height={h} rx={2} fill="#2A2B2E"/>
-        <clipPath id={`cp-${uid}`}><rect width={w} height={h} rx={2}/></clipPath>
-        <g clipPath={`url(#cp-${uid})`}>
-          {/* apple body */}
-          <ellipse cx={bx} cy={by} rx={br*0.85} ry={br} fill="#C8C9CA"/>
-          {/* bite out of upper right */}
-          <circle cx={bx+br*0.72} cy={by-br*0.55} r={br*0.52} fill="#2A2B2E"/>
-          {/* top indent between lobes */}
-          <circle cx={bx} cy={by-br*0.96} r={br*0.28} fill="#2A2B2E"/>
-          {/* stem */}
-          <path d={`M${bx+br*0.08},${by-br} C${bx+br*0.15},${by-br*1.4} ${bx+br*0.5},${by-br*1.35} ${bx+br*0.4},${by-br*0.9}`}
-            stroke="#C8C9CA" strokeWidth={br*0.22} fill="none" strokeLinecap="round"/>
-        </g>
-      </svg>
-    );
-  }
-  /* ── Tesla ── */
-  if (sym.id==="TSLA") return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-      <defs><linearGradient id={`bg-${uid}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2A0608"/><stop offset="100%" stopColor="#1A0305"/></linearGradient></defs>
-      <rect width={w} height={h} rx={2} fill={`url(#bg-${uid})`}/>
-      {/* Tesla T — horizontal bar + vertical stem + side arcs */}
-      <path d={`M${cx-w*0.36},${h*0.2} L${cx+w*0.36},${h*0.2} L${cx+w*0.22},${h*0.34} C${cx+w*0.22},${h*0.34} ${cx+w*0.08},${h*0.33} ${cx+w*0.06},${h*0.34} L${cx+w*0.06},${h*0.84} L${cx-w*0.06},${h*0.84} L${cx-w*0.06},${h*0.34} C${cx-w*0.08},${h*0.33} ${cx-w*0.22},${h*0.34} ${cx-w*0.22},${h*0.34} Z`}
-        fill="#E82127"/>
-    </svg>
-  );
-  /* ── Gold Futures / XAUUSD ── gold bar ── */
-  if (sym.id==="GC"||sym.id==="XAUUSD") return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-      <defs><linearGradient id={`bg-${uid}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2B2200"/><stop offset="100%" stopColor="#1A1500"/></linearGradient>
-      <linearGradient id={`bar-${uid}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#FFE566"/><stop offset="50%" stopColor="#FFD700"/><stop offset="100%" stopColor="#C8A600"/></linearGradient></defs>
-      <rect width={w} height={h} rx={2} fill={`url(#bg-${uid})`}/>
-      {/* gold bar shape */}
-      <path d={`M${cx-w*0.3},${h*0.28} L${cx+w*0.3},${h*0.28} L${cx+w*0.38},${h*0.72} L${cx-w*0.38},${h*0.72} Z`} fill={`url(#bar-${uid})`}/>
-      <line x1={cx-w*0.22} y1={h*0.45} x2={cx+w*0.22} y2={h*0.45} stroke="rgba(0,0,0,0.25)" strokeWidth={0.6}/>
-      <text x={cx} y={h*0.64} textAnchor="middle" fill="rgba(0,0,0,0.55)" fontSize={h*0.28} fontWeight="800" fontFamily="'Exo 2',sans-serif">{sym.id==="XAUUSD"?"XAU":"GC"}</text>
-    </svg>
-  );
-  /* ── ES — S&P 500 mini bar chart ── */
-  if (sym.id==="ES") return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-      <defs><linearGradient id={`bg-${uid}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#0D1640"/><stop offset="100%" stopColor="#080E28"/></linearGradient></defs>
-      <rect width={w} height={h} rx={2} fill={`url(#bg-${uid})`}/>
-      {[[w*0.18,h*0.72,h*0.48],[w*0.32,h*0.72,h*0.32],[w*0.46,h*0.72,h*0.55],[w*0.60,h*0.72,h*0.22],[w*0.74,h*0.72,h*0.38]].map(([x,bot,ht],i)=>(
-        <rect key={i} x={x-w*0.05} y={bot-ht} width={w*0.09} height={ht} rx={1} fill={i===3||i===1?"#FF5068":"#5B8CFF"} opacity={0.9}/>
-      ))}
-      <text x={w*0.86} y={h*0.42} textAnchor="middle" fill="#5B8CFF" fontSize={h*0.28} fontWeight="900" fontFamily="'Exo 2',sans-serif">ES</text>
-    </svg>
-  );
-  /* ── NQ — Nasdaq mini chart ── */
-  if (sym.id==="NQ") return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-      <defs><linearGradient id={`bg-${uid}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#001830"/><stop offset="100%" stopColor="#000D1E"/></linearGradient></defs>
-      <rect width={w} height={h} rx={2} fill={`url(#bg-${uid})`}/>
-      <polyline points={`${w*0.1},${h*0.72} ${w*0.28},${h*0.55} ${w*0.44},${h*0.62} ${w*0.6},${h*0.35} ${w*0.76},${h*0.28} ${w*0.9},${h*0.22}`}
-        fill="none" stroke="#26C6DA" strokeWidth={1.1} strokeLinejoin="round" strokeLinecap="round"/>
-      <text x={w*0.5} y={h*0.88} textAnchor="middle" fill="#26C6DA" fontSize={h*0.26} fontWeight="900" fontFamily="'Exo 2',sans-serif">NQ</text>
-    </svg>
-  );
-  /* ── default fallback ── */
-  const label = sym.id.slice(0,3);
-  const fs = h<=12 ? 5 : 6.5;
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-      <rect width={w} height={h} rx={2} fill={sym.bg||"rgba(255,255,255,0.10)"}/>
-      <text x={cx} y={cy+fs*0.38} textAnchor="middle" fill={sym.col||"#fff"} fontSize={fs} fontWeight="800" fontFamily="'Exo 2',sans-serif" letterSpacing="-0.3">{label}</text>
-    </svg>
-  );
-};
-const FlagSvg = ({ code, w = 22, h = 14 }) => {
-  const sw = { width: w, height: h, viewBox: "0 0 22 14", style: { display: "block", flexShrink: 0 } };
-  const cc = currencyCountry[code] || code;
-  const f = {
-    EU: <svg {...sw}><rect width={22} height={14} fill="#003399"/>{Array.from({length:12},(_,i)=>{const a=(i/12)*Math.PI*2-Math.PI/2;return<circle key={i} cx={11+4.8*Math.cos(a)} cy={7+4.8*Math.sin(a)} r={0.85} fill="#FFCC00"/>})}</svg>,
-    JP: <svg {...sw}><rect width={22} height={14} fill="#fff"/><circle cx={11} cy={7} r={4} fill="#BC002D"/></svg>,
-    US: <svg {...sw}>
-      {[0,1,2,3,4,5,6,7,8,9,10,11,12].map(i=><rect key={i} y={i*14/13} width={22} height={14/13+0.2} fill={i%2===0?"#B22234":"#fff"}/>)}
-      <rect width={9} height={7.5} fill="#3C3B6E"/>
-      {Array.from({length:18},(_,i)=>{const col=i%6,row=Math.floor(i/6);return<circle key={i} cx={0.9+col*1.45+(row%2===0?0:0.72)} cy={0.9+row*2.4} r={0.42} fill="#fff"/>;})}
-    </svg>,
-    GB: <svg {...sw}>
-      <rect width={22} height={14} fill="#012169"/>
-      <line x1={0} y1={0} x2={22} y2={14} stroke="#fff" strokeWidth={4}/><line x1={22} y1={0} x2={0} y2={14} stroke="#fff" strokeWidth={4}/>
-      <line x1={0} y1={0} x2={22} y2={14} stroke="#C8102E" strokeWidth={2}/><line x1={22} y1={0} x2={0} y2={14} stroke="#C8102E" strokeWidth={2}/>
-      <rect x={9.5} y={0} width={3} height={14} fill="#fff"/><rect x={0} y={5.5} width={22} height={3} fill="#fff"/>
-      <rect x={10} y={0} width={2} height={14} fill="#C8102E"/><rect x={0} y={6} width={22} height={2} fill="#C8102E"/>
-    </svg>,
-    AU: <svg {...sw}>
-      <rect width={22} height={14} fill="#00008B"/>
-      <line x1={0} y1={0} x2={9} y2={7} stroke="#fff" strokeWidth={2.5}/><line x1={9} y1={0} x2={0} y2={7} stroke="#fff" strokeWidth={2.5}/>
-      <line x1={0} y1={0} x2={9} y2={7} stroke="#C8102E" strokeWidth={1.2}/><line x1={9} y1={0} x2={0} y2={7} stroke="#C8102E" strokeWidth={1.2}/>
-      <rect x={3.8} y={0} width={1.4} height={7} fill="#fff"/><rect x={0} y={2.8} width={9} height={1.4} fill="#fff"/>
-      <rect x={4.1} y={0} width={0.8} height={7} fill="#C8102E"/><rect x={0} y={3.1} width={9} height={0.8} fill="#C8102E"/>
-      <circle cx={4.5} cy={10.5} r={1.6} fill="#fff" opacity={0.9}/>
-      <circle cx={15} cy={3.5} r={1.1} fill="#fff"/><circle cx={13} cy={8} r={0.9} fill="#fff"/><circle cx={18} cy={7.5} r={0.9} fill="#fff"/><circle cx={19} cy={4.5} r={0.8} fill="#fff"/>
-    </svg>,
-    CA: <svg {...sw}>
-      <rect width={22} height={14} fill="#fff"/>
-      <rect width={5.5} height={14} fill="#FF0000"/><rect x={16.5} width={5.5} height={14} fill="#FF0000"/>
-      <path d="M11,2 L12,5 L14.5,4.5 L13,6 L15,7 L11.5,8.5 L12,11 L11,10 L10,11 L10.5,8.5 L7,7 L9,6 L7.5,4.5 L10,5 Z" fill="#FF0000"/>
-    </svg>,
-    CH: <svg {...sw}><rect width={22} height={14} fill="#FF0000"/><rect x={9.5} y={2.5} width={3} height={9} fill="#fff"/><rect x={5.5} y={5.5} width={11} height={3} fill="#fff"/></svg>,
-    DE: <svg {...sw}><rect width={22} height={14} fill="#000"/><rect y={4.67} width={22} height={4.66} fill="#DD0000"/><rect y={9.33} width={22} height={4.67} fill="#FFCE00"/></svg>,
-    FR: <svg {...sw}><rect width={22} height={14} fill="#002395"/><rect x={7.33} width={7.34} height={14} fill="#fff"/><rect x={14.67} width={7.33} height={14} fill="#ED2939"/></svg>,
-    IT: <svg {...sw}><rect width={22} height={14} fill="#009246"/><rect x={7.33} width={7.34} height={14} fill="#fff"/><rect x={14.67} width={7.33} height={14} fill="#CE2B37"/></svg>,
-    CN: <svg {...sw}><rect width={22} height={14} fill="#DE2910"/><polygon points="3.5,1.5 4.2,3.6 6.2,3.6 4.6,4.8 5.3,6.9 3.5,5.6 1.7,6.9 2.4,4.8 0.8,3.6 2.8,3.6" fill="#FFDE00"/><polygon points="7,0.5 7.5,1.5 8.5,1.3 7.9,2.1 8.4,3 7.4,2.6 6.7,3.3 6.8,2.2 5.9,1.8 6.9,1.5" fill="#FFDE00"/><polygon points="9,2.5 9.3,3.5 10.3,3.5 9.5,4.1 9.8,5.1 9,4.5 8.2,5.1 8.5,4.1 7.7,3.5 8.7,3.5" fill="#FFDE00"/><polygon points="9,5.5 9.3,6.5 10.3,6.5 9.5,7.1 9.8,8.1 9,7.5 8.2,8.1 8.5,7.1 7.7,6.5 8.7,6.5" fill="#FFDE00"/><polygon points="7,8 7.5,9 8.5,8.8 7.9,9.6 8.4,10.5 7.4,10.1 6.7,10.8 6.8,9.7 5.9,9.3 6.9,9" fill="#FFDE00"/></svg>,
-    NZ: <svg {...sw}>
-      <rect width={22} height={14} fill="#00247D"/>
-      <line x1={0} y1={0} x2={9} y2={7} stroke="#fff" strokeWidth={2.5}/><line x1={9} y1={0} x2={0} y2={7} stroke="#fff" strokeWidth={2.5}/>
-      <line x1={0} y1={0} x2={9} y2={7} stroke="#C8102E" strokeWidth={1.2}/><line x1={9} y1={0} x2={0} y2={7} stroke="#C8102E" strokeWidth={1.2}/>
-      <rect x={3.8} y={0} width={1.4} height={7} fill="#fff"/><rect x={0} y={2.8} width={9} height={1.4} fill="#fff"/>
-      <rect x={4.1} y={0} width={0.8} height={7} fill="#C8102E"/><rect x={0} y={3.1} width={9} height={0.8} fill="#C8102E"/>
-      <circle cx={14} cy={3} r={1.2} fill="#CC142B" stroke="#fff" strokeWidth={0.4}/>
-      <circle cx={18} cy={5.5} r={1} fill="#CC142B" stroke="#fff" strokeWidth={0.4}/>
-      <circle cx={17} cy={9.5} r={1} fill="#CC142B" stroke="#fff" strokeWidth={0.4}/>
-      <circle cx={13.5} cy={7.5} r={0.8} fill="#CC142B" stroke="#fff" strokeWidth={0.3}/>
-    </svg>,
-  };
-  return f[cc] || <svg {...sw}><rect width={22} height={14} fill="#1a2030"/><text x={11} y={10} textAnchor="middle" fontSize={6} fontWeight="bold" fill="#8CA0FF" fontFamily="sans-serif">{cc}</text></svg>;
-};
-
-const EMOJI_CATS = [
-  { id:"smileys",  icon:"😀", label:"Smileys",  emojis:["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🥴","😌","😔","😪","😴","😷","🤒","🤕","🤢","🤧","🥵","🥶","😵","🤯","🤠","🥳","😎","🤓","🧐","😢","😭","😤","😠","😡","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","🤖","😺","😸","😹","😻","😼","😽","🙀","😿","😾"] },
-  { id:"people",   icon:"👶", label:"People",   emojis:["👋","🤚","🖐","✋","🖖","👌","🤌","🤏","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","🙏","✍️","💅","🤳","💪","🦵","🦶","👂","🦻","👃","👀","👁","👅","🫀","🧠","🦷","🦴","👶","🧒","👦","👧","🧑","👱","👩","🧔","👴","👵","👲","👳","🧕","💂","👮","👷","🤴","👸","🧙","🧚","🧛","🧟","🧞","🧜","🧝"] },
-  { id:"animals",  icon:"🐶", label:"Animals",  emojis:["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋","🐌","🐞","🐜","🐢","🐍","🦎","🐙","🦑","🦀","🐠","🐟","🐬","🐳","🦈","🐊","🦒","🦓","🦏","🐘","🦛","🦘","🐆","🐅","🐃","🐂","🐄","🦌","🐑","🐐","🦙","🐕","🐈","🐓","🦃","🦤","🦚","🦜","🦩","🦢","🕊","🐇","🦝","🦨","🦡","🦦","🦥","🐁","🐀","🐿","🦔","🐾","🐉","🌵","🎄","🌲","🌳","🌴","🌱","🌿","☘️","🍀","🎍","🎋","🍃","🍂","🍁","🍄","🌾","💐","🌷","🌹","🥀","🌺","🌸","🌼","🌻","🌞","🌝","🌛","🌜","🌚","🌕","🌖","🌗","🌘","🌑","🌒","🌓","🌔","🌙","🌟","⭐","🌠","☁️","⛅","🌤","⛈","🌩","🌨","❄️","☃️","⛄","🌬","💨","🌪","🌫","🌊","🌈","☔","⚡","🌍","🌎","🌏","🗺"] },
-  { id:"food",     icon:"🍎", label:"Food",     emojis:["🍎","🍊","🍋","🍇","🍓","🍒","🍑","🥭","🍍","🥝","🍅","🫐","🥑","🍆","🌽","🥕","🥔","🥦","🥒","🌶","🧄","🍔","🍟","🍕","🌭","🌮","🌯","🥙","🥚","🍳","🥞","🧇","🥓","🍜","🍝","🍛","🍣","🍤","🍦","🍰","🎂","🍭","🍬","🍫","🍩","🍪","☕","🍵","🧃","🧋","🍺","🍻","🥂","🍷","🥤","🍼","🫖","🍶","🥃","🍸","🍹","🍾","🥄","🍴","🍽","🥢","🧂"] },
-  { id:"activity", icon:"⚽", label:"Activity", emojis:["⚽","🏀","🏈","⚾","🎾","🏐","🏉","🥏","🎱","🏓","🏸","🥊","🥋","🎯","🥅","⛳","🏹","🎣","🤿","🛹","🛷","⛸","🎿","🏋️","🤼","🤸","🤺","🏇","⛷","🏂","🪂","🏌️","🧘","🏄","🏊","🤽","🚣","🧗","🚵","🚴","🏆","🥇","🥈","🥉","🏅","🎖","🎗","🎫","🎟","🎪","🤹","🎭","🩺","🎨","🎬","🎤","🎧","🎼","🎹","🥁","🎷","🎺","🎸","🪕","🎻","🎮","🕹","🎲","♟","🎯","🎳","🪀","🪁","🎰","🧩"] },
-  { id:"travel",   icon:"✈️", label:"Travel",   emojis:["🚗","🚕","🚙","🚌","🏎","🚓","🚑","🚒","🚚","🚛","🚜","🛻","🏍","🚲","🛴","🛺","🚁","🛸","🚀","✈️","🛩","🛳","🚢","⛵","🚤","🛥","🚂","🚆","🚇","🚊","🚞","🚋","🚝","🏔","🌋","🗻","🏕","🏖","🏜","🏝","🏞","🌅","🌆","🌇","🌃","🌉","🏙","🌌","🌠","🗽","🗼","🏰","🏯","🗾","🎌","⛩","🛕","🕌","🕍","⛪","🌁","⛲","🎠","🎡","🎢","🎪","🏟","🛣","🛤","⛽","🚧","🚦","🚥","♨️","🌐","🗺","🧭"] },
-  { id:"objects",  icon:"💡", label:"Objects",  emojis:["💡","🔦","🕯","📱","💻","⌨️","🖥","🖨","🖱","💾","💿","📀","📷","📸","📹","🎥","📞","☎️","📺","📻","🎙","⏱","⏰","⌚","📡","🔋","🔌","💰","💳","💎","🔑","🗝","🔒","🔓","🔨","🔧","🔩","⚙️","⚒","🛠","🗡","⚔️","🛡","🪚","🔗","📎","🖇","📏","📐","✂️","🗃","📦","📫","📬","📭","📮","🗑","🚽","🛁","🧴","🧹","🧺","🧻","🪣","🧼","🪥","🪒","🛒","🚪","🪟","🛏","🛋","🪑","🚿","🪞","🧲","🪜","🧯","🛒","💈","⚗️","🔭","🔬","🩺","🩻","💊","🩹","🩼","🩺","🩻","🧪","🧫","🧬","🏺","🧿","💎"] },
-  { id:"symbols",  icon:"❤️", label:"Symbols",  emojis:["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☪️","🕉","✡️","🔯","🕎","☯️","🛐","⛔","🚫","💯","✅","❌","❎","🔴","🟠","🟡","🟢","🔵","🟣","⚫","⚪","🟤","🔺","🔻","💠","🔶","🔷","🔸","🔹","▪️","▫️","◾","◽","⬛","⬜","🔱","⚜️","🏵","🔰","♻️","✔️","☑️","🔘","🔲","🔳","⬜","⬛","🏁","🚩","🎌","🏴","🏳","🏴‍☠️","💢","💥","💫","💦","💨","🕳","💬","💭","💤","♠️","♥️","♦️","♣️","🃏","🎴","🀄"] },
-];
-
-const TalariaV8bLive = () => {
-  const [tool, setTool] = useState("crosshair");
-  const [hov, setHov] = useState(null);
-  const [btnPressed, setBtnPressed] = useState(null);
-  const [dropdown, setDropdown] = useState(null);
-  const [toolPinned, setToolPinned] = useState(["Trend Line","Horizontal Line","Fib Retracement","Rectangle","Text"]); // start open so user can see it
-  const [dialog, setDialog] = useState(false);
-  const [dlgTab, setDlgTab] = useState("style");
-  const [tickCandle, setTickCandle] = useState("candle");
-  const [playing, setPlaying] = useState(true);
-  const [speed, setSpeed] = useState(30);
-  const [buySell, setBuySell] = useState("buy");
-  const [orderType, setOrderType] = useState("market");
-  const [btmTab, setBtmTab] = useState("all");
-  const [btmIndPos, setBtmIndPos] = useState(null);
-  const [tblSort, setTblSort] = useState(null); // {col, dir:'asc'|'desc'}
-  /** Bumps when chart orderManager trades / P&L change so the trades table stays live. */
-  const [omTradeRev, setOmTradeRev] = useState(0);
-  /** Loaded when bottom tab === analytics — `/api/journal` stats, symbols, strategies, list. */
-  const [journalAnalytics, setJournalAnalytics] = useState(null);
-  const [journalAnalyticsMeta, setJournalAnalyticsMeta] = useState({ loading: false, error: null });
-  const btmTabBarRef = useRef(null);
-  const [tradeCard, setTradeCard] = useState(null);
-  const [tradeCardPreTags, setTradeCardPreTags] = useState([]);
-  const [tradeCardPostTags, setTradeCardPostTags] = useState([]);
-  const [tradeCardNotes, setTradeCardNotes] = useState("");
-  const [tradeActPopup, setTradeActPopup] = useState(null);
-  const [tapJournal, setTapJournal] = useState("");
-  const [tapStrategy, setTapStrategy] = useState("");
-  const [tapTags, setTapTags] = useState({});
-  const [tapScreenshots, setTapScreenshots] = useState([null, null]);
-  const [viewingScreenshot, setViewingScreenshot] = useState(null);
-  const [tapFileSlot, setTapFileSlot] = useState(null);
-  const [tapTagInput, setTapTagInput] = useState("");
-  const [tradeTagOverrides, setTradeTagOverrides] = useState({});
-  const [tagEditInput, setTagEditInput] = useState("");
-  const [selRow, setSelRow] = useState(null);
-  const [tagDrop, setTagDrop] = useState(null); // {id, type:'pre'|'post'}
-  const [tagDropPos, setTagDropPos] = useState({top:0, left:0});
-  const [btmOpen, setBtmOpen] = useState(false);
-  const [btmHeight, setBtmHeight] = useState(()=>Math.round((window.innerHeight/1.05-92)*0.25));
-  const [btmResizing, setBtmResizing] = useState(false);
-  const btmDragRef = useRef({startY:0, startH:0, curH:Math.round((window.innerHeight/1.05-92)*0.25)});
-  const btmPanelRef = useRef(null);
-  const [tf, setTf] = useState("1m");
-  const [sizeMode, setSizeMode] = useState("$");
-  const [riskVal, setRiskVal] = useState("100");
-  const [riskBasis, setRiskBasis] = useState("balance");
-  const [slEnabled, setSlEnabled] = useState(false);
-  const [entryRows, setEntryRows] = useState([{ id:0, price:"0", risk:"100" }]);
-  const entryScrollRef = useRef(null);
-  const [slRows, setSlRows] = useState([{ id:0, price:"0" }]);
-  const slScrollRef = useRef(null);
-  const [tpRows, setTpRows] = useState([{ id:0, price:"0", qty:"100", enabled:true }]);
-  const tpScrollRef = useRef(null);
-  /** Mirrors #riskAmount / #rewardAmount / pip distance from hidden order panel (order-manager). */
-  const [omRiskSummaryTxt, setOmRiskSummaryTxt] = useState("$0");
-  const [omRewardSummaryTxt, setOmRewardSummaryTxt] = useState("$0");
-  const [omSlDistTxt, setOmSlDistTxt] = useState("—");
-  const [omTpDistTxt, setOmTpDistTxt] = useState("—");
-  /** Per-row strings scraped from hidden #orderPanel (order-manager) — matches chart/preview math. */
-  const [omEntryRowStatLines, setOmEntryRowStatLines] = useState([]);
-  const [omTpRowStatLines, setOmTpRowStatLines] = useState([]);
-  const [omMultiEntryTotalQtyTxt, setOmMultiEntryTotalQtyTxt] = useState("");
-  /** Multi-entry footer: same weighted Avg Entry as chart / #multiEntryAvgPrice — not unweighted mean of row prices. */
-  const [omEntryAvgPriceTxt, setOmEntryAvgPriceTxt] = useState("");
-  /** Multi-TP footer: total size (#orderQuantity) + WAP — matches chart "Avg TP … lots" + weighted price. */
-  const [omTpAvgLotsTxt, setOmTpAvgLotsTxt] = useState("");
-  const [omTpWapPriceTxt, setOmTpWapPriceTxt] = useState("");
-  /** Strategies Lab PRE/POST playbook revision — bumps when session strategy_variables change. */
-  const [preTradeDefRevision, setPreTradeDefRevision] = useState(0);
-  const preTradeStrategySigRef = useRef("");
-  const postTradeStrategySigRef = useRef("");
-  const preTradeDomHydratedRef = useRef(false);
-  const tagDefs = useMemo(
-    () => sessionPreTradeVarsToTagDefs(typeof window !== "undefined" ? window.chart : null),
-    [preTradeDefRevision]
-  );
-  const postTagDefs = useMemo(
-    () => sessionPostTradeVarsToTagDefs(typeof window !== "undefined" ? window.chart : null),
-    [preTradeDefRevision]
-  );
-  const [tagSels, setTagSels] = useState({});
-  const [tagDropOpen, setTagDropOpen] = useState(null);
-  const [tagsOpen, setTagsOpen] = useState(true);
-  const [notesText, setNotesText] = useState("");
-  const [notesOpen, setNotesOpen] = useState(false);
-  const [tradeNotes, setTradeNotes] = useState({});
-  const [tradeScreenshots, setTradeScreenshots] = useState({});
-  const [screenshots, setScreenshots] = useState([]);
-  const [ssOpen, setSsOpen] = useState(true);
-  const [replaceTargetId, setReplaceTargetId] = useState(null);
-  const fileInputRef = useRef(null);
-
-  useEffect(() => {
-    const onClearDraft = () => setScreenshots([]);
-    window.addEventListener("talaria:order-rail-clear-draft", onClearDraft);
-    return () => window.removeEventListener("talaria:order-rail-clear-draft", onClearDraft);
-  }, []);
-  const replaceInputRef = useRef(null);
-  const tipTimerRef = useRef(null);
-  const [tipData, setTipData] = useState(null);
-  const panelRef = useRef(null);
-  const tapFileRef = useRef(null);
-  const tcFileRef = useRef(null);
-  const [tcSsSlot, setTcSsSlot] = useState("pre");
-  const [accountBalance, setAccountBalance] = useState(10000);
-  const [accountEquity, setAccountEquity] = useState(10000);
-  const [replayHud, setReplayHud] = useState({
-    dateLine: "—",
-    clock: "—",
-    tzLabel: "UTC",
-    balanceStr: "—",
-    equityStr: "—",
-    pnlStr: "—",
-    pnlNonNeg: true,
-  });
-  const [slAdvMode, setSlAdvMode] = useState("none"); // "none" | "breakeven" | "trailing"
-  const [slAdvDrop, setSlAdvDrop] = useState(false);
-  const [slBeUnit, setSlBeUnit] = useState("rr"); // "rr" | "pips" | "dollar"
-  const [slBeUnitDrop, setSlBeUnitDrop] = useState(false);
-  const [slBeTrigger, setSlBeTrigger] = useState("1.5");
-  const [slBeOffset, setSlBeOffset] = useState("5");
-  const [slTslUnit, setSlTslUnit] = useState("rr"); // "rr" | "pips" | "dollar"
-  const [slTslUnitDrop, setSlTslUnitDrop] = useState(false);
-  const [slTslActivation, setSlTslActivation] = useState("1");
-  const [slTslTrail, setSlTslTrail] = useState("0.5");
-  const [slTslStep, setSlTslStep] = useState("0.25");
-  const [logoMenu, setLogoMenu] = useState(false);
-  const [replayOpts, setReplayOpts] = useState(false);
-  const [replayMode, setReplayMode] = useState("candle");
-  const [replayInterval, setReplayInterval] = useState("Auto");
-  const [rollback, setRollback] = useState(false);
-  /** Replay active + session forbids rewind — disables Rollback on the bar (synced in nav-integrity effect). */
-  const [replayRollbackBlocked, setReplayRollbackBlocked] = useState(false);
-  const [rollbackLineX, setRollbackLineX] = useState(60);
-  const [rbDragging, setRbDragging] = useState(false);
-  const [rbPressed, setRbPressed] = useState(false);
-  const rbPressTimer = useRef(null);
-  const [gotoOpen, setGotoOpen] = useState(false);
-  const [gotoItems, setGotoItems] = useState([
-    {id:1,type:"datetime",label:"09 Jan 2009",time:"07:00",repeat:"none",pinned:true,dateIso:"2009-01-09"},
-    {id:2,type:"session",label:"NY Open",time:"13:30",pinned:true},
-    {id:4,type:"price",label:"126.500",pinned:true},
-  ]);
-  const [gotoAddType, setGotoAddType] = useState("datetime");
-  const [gotoTab, setGotoTab] = useState("pinned");
-  const [gotoNewDate, setGotoNewDate] = useState("2009-01-09");
-  const [gotoNewTime, setGotoNewTime] = useState("07:00");
-  const [gotoNewRepeat, setGotoNewRepeat] = useState("none");
-  const [gotoNewPrice, setGotoNewPrice] = useState("");
-  const [gotoNewName, setGotoNewName] = useState("");
-  const [gotoNewColor, setGotoNewColor] = useState("#4A6AFF");
-  const [gotoCalOpen, setGotoCalOpen] = useState(false);
-  const [gotoCalPos,  setGotoCalPos]  = useState({top:0,left:0});
-  const [gotoTimeOpen, setGotoTimeOpen] = useState(false);
-  const [gotoTimePos,  setGotoTimePos]  = useState({top:0,left:0});
-  const [gotoCalViewY, setGotoCalViewY] = useState(2009);
-  const [gotoCalViewM, setGotoCalViewM] = useState(0);
-  const [gotoCalMode,  setGotoCalMode]  = useState("days"); // "days" | "months" | "years"
-  const [gotoCalYearBase, setGotoCalYearBase] = useState(2004); // start of 12-year grid
-  const [gotoDateInput, setGotoDateInput] = useState("09-Jan-2009");
-  const [gotoTimeInput, setGotoTimeInput] = useState("07:00");
-  const [gotoPresets, setGotoPresets] = useState([
-    {id:"ny",  label:"New York Open",  time:"13:30 UTC", color:"#4A6AFF"},
-    {id:"lon", label:"London Open",    time:"08:00 UTC", color:"#00D4A1"},
-    {id:"tok", label:"Tokyo Open",     time:"00:00 UTC", color:"#FF8C42"},
-    {id:"syd", label:"Sydney Open",    time:"22:00 UTC", color:"#B06AFF"},
-    {id:"fra", label:"Frankfurt Open", time:"07:00 UTC", color:"#C9A84C"},
-  ]);
-  const [ddPos, setDdPos] = useState({ top: 60, left: 40 }); // position for dropdown
-  const [symbolOpen, setSymbolOpen] = useState(false);
-  const [symbol, setSymbol] = useState("EUR/JPY");
-  // Pairs available in the active backtest session (read from chart.js / userStorage).
-  // Each entry: { ticker: 'EUR/JPY', fileId: 12 }. Empty until session loads.
-  const [sessionPairs, setSessionPairs] = useState([]);
-  const [symbolSearch, setSymbolSearch] = useState("");
-  const [chartTypeOpen, setChartTypeOpen] = useState(false);
-  const [chartType, setChartType] = useState("Candles");
-  const [chartTypeDropL, setChartTypeDropL] = useState(185);
-  const [tfOpen, setTfOpen] = useState(false);
-  const [tfCat, setTfCat] = useState(null);
-  const [tfPinned, setTfPinned] = useState(["1m","5m","15m","1H","4H","1D"]);
-  const [tfCustomVal, setTfCustomVal] = useState("");
-  const [tfEditMode, setTfEditMode] = useState(false);
-
-  const tfDefaults = {
-    minutes: ["1m","5m","15m","30m"],
-    hours: ["1H","4H","12H"],
-    days: ["1D"],
-    weeks: ["1W"],
-    months: ["1M"],
-  };
-  const [tfCustomItems, setTfCustomItems] = useState([]);
-  const tfSortItems = (items) => [...items].sort((a, b) => {
-    const numA = parseInt(a) || 0;
-    const numB = parseInt(b) || 0;
-    return numA - numB;
-  });
-  const tfCategories = {
-    minutes: { label: "Minutes", items: tfSortItems([...tfDefaults.minutes, ...tfCustomItems.filter(x => x.endsWith("m"))]) },
-    hours: { label: "Hours", items: tfSortItems([...tfDefaults.hours, ...tfCustomItems.filter(x => x.endsWith("H"))]) },
-    days: { label: "Days", items: tfSortItems([...tfDefaults.days, ...tfCustomItems.filter(x => x.endsWith("D"))]) },
-    weeks: { label: "Weeks", items: tfSortItems([...tfDefaults.weeks, ...tfCustomItems.filter(x => x.endsWith("W"))]) },
-    months: { label: "Months", items: tfSortItems([...tfDefaults.months, ...tfCustomItems.filter(x => x.endsWith("M") && !x.endsWith("m"))]) },
-  };
-  const [tfCustomUnit, setTfCustomUnit] = useState("m");
-  const [tfUnitOpen, setTfUnitOpen] = useState(false);
-  const [tfIndPos, setTfIndPos] = useState(null);
-  const tfBarRef = useRef(null);
-  const chartCanvasRef = useRef(null);
-
-  // ─── LIVE CHART INITIALIZATION ──────────────────────────────────────────
-  // Wire chart.js (loaded as <script> in live/index.html) to the React-rendered
-  // <canvas id="chartCanvas"> + <svg id="drawingSvg">. chart.js exposes its
-  // init function as window.initializeChart, which is idempotent and bails
-  // safely if the canvas isn't in the DOM yet. We poll briefly because:
-  //   - chart.js may finish loading after React mounts (script defer order),
-  //   - or React may mount after chart.js's auto-init bailed (no canvas yet),
-  //   - or D3 may still be loading from the CDN.
-  // Once window.chart exists, we trigger an initial resize so the canvas
-  // sizes correctly to its parent container.
-  useEffect(() => {
-    let cancelled = false;
-    let attempts = 0;
-    const MAX_ATTEMPTS = 100; // ~10s at 100ms
-
-    const tryInit = async () => {
-      if (cancelled) return;
-      attempts += 1;
-
-      // chart.js not loaded yet — keep polling.
-      if (typeof window.initializeChart !== 'function') {
-        if (attempts < MAX_ATTEMPTS) setTimeout(tryInit, 100);
-        else console.error('[TalariaV8bLive] chart.js never exposed window.initializeChart');
-        return;
-      }
-
-      // Already initialized? Just notify resize + push latest V9 theme (StrictMode / HMR).
-      if (window.chart) {
-        window.dispatchEvent(new Event('resize'));
-        try {
-          applyV9ThemeSettingsToChart(settingsRef.current);
-        } catch (_) {}
-        return;
-      }
-
-      try {
-        const instance = await window.initializeChart();
-        if (cancelled) return;
-
-        if (!instance) {
-          // Init bailed (canvas not ready, D3 not ready, etc.) — retry.
-          if (attempts < MAX_ATTEMPTS) setTimeout(tryInit, 100);
-          return;
-        }
-
-        // Force a layout pass so the canvas matches its container size.
-        // Brave/Chromium can finish chart.js init BEFORE V9's flex layout has
-        // assigned a real size to #chart-container, which leaves the canvas
-        // at 0×0 and pushes axes off-screen. Safari happens to time this
-        // differently, so the same code looks fine there. Resetting
-        // _lastResizeDpr is the same escape-hatch panel-manager.js uses
-        // (line 1672) to bypass chart.resize()'s DPR-equal early-bail and
-        // make it ACTUALLY recalculate based on current clientWidth/Height.
-        const forceResize = () => {
-          try {
-            window.dispatchEvent(new Event('resize'));
-            if (window.chart && window.chart.resize) {
-              window.chart._lastResizeDpr = 0;
-              window.chart.resize();
-              window.chart._chartViewRestored = false;
-              window.chart.fitToView && window.chart.fitToView();
-              window.chart.render && window.chart.render();
-            }
-          } catch (_) {}
-        };
-        forceResize();
-        try {
-          applyV9ThemeSettingsToChart(settingsRef.current);
-        } catch (_) {}
-        try {
-          const om = window.chart?.orderManager;
-          om?.syncOrderPanelMountTarget?.();
-          const p = document.getElementById("orderPanel");
-          if (typeof window !== "undefined" && window.__talariaV9OrderRailOpen && p && !p.classList.contains("visible") && typeof om?.toggleOrderPanel === "function") {
-            om.toggleOrderPanel();
-          }
-        } catch (_) {}
-        // Two extra passes catch the case where layout reports real dims a
-        // frame or two later.
-        requestAnimationFrame(forceResize);
-        setTimeout(forceResize, 200);
-        setTimeout(forceResize, 600);
-        console.log('[TalariaV8bLive] chart.js initialized', instance);
-      } catch (err) {
-        console.error('[TalariaV8bLive] chart.js init failed:', err);
-      }
-    };
-
-    tryInit();
-
-    // ResizeObserver on the chart container — any future size change
-    // (sidebar toggle, settings drawer, browser zoom, fullscreen, OS
-    // window resize) triggers a real chart.resize() that bypasses the
-    // DPR-equal early-bail in chart.js. Keeps axes glued to the right
-    // edge / bottom regardless of how the container is reflowed.
-    let ro = null;
-    if (typeof ResizeObserver !== 'undefined' && chartCanvasRef.current) {
-      ro = new ResizeObserver(() => {
-        if (!window.chart || !window.chart.resize) return;
-        try {
-          window.chart._lastResizeDpr = 0;
-          window.chart.resize();
-          window.chart.render && window.chart.render();
-        } catch (_) {}
-      });
-      ro.observe(chartCanvasRef.current);
-    }
-
-    return () => { cancelled = true; if (ro) ro.disconnect(); };
-  }, []);
-
-  // Keep bottom trades panel in sync with chart orderManager (sim / session orders).
-  useEffect(() => {
-    const bump = () => setOmTradeRev((n) => n + 1);
-    const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
-    const bus = om?.eventBus;
-    const unsubs = [];
-    if (bus && typeof bus.on === "function") {
-      ["order:pending", "order:opened", "order:closed", "order:pending-removed", "order:update-tick", "account:updated"].forEach((ev) => {
-        unsubs.push(bus.on(ev, bump));
-      });
-    }
-    const id = setInterval(bump, 800);
-    return () => {
-      clearInterval(id);
-      unsubs.forEach((fn) => {
-        try { fn(); } catch (_) { /* noop */ }
-      });
-    };
-  }, []);
-
-  // Journal analytics: session-saved trades (`tradeJournal` / `closedPositions`) + balance/equity from orderManager;
-  // merges with `/api/journal` when the backend responds.
-  // IMPORTANT: do not depend on `omTradeRev` here — it bumps every ~800ms for the trades table and would cancel
-  // every in-flight fetch, leaving `loading` stuck true and flashing the panel (issue reported May 2026).
-  useEffect(() => {
-    if (btmTab !== "analytics") return undefined;
-    let cancelled = false;
-
-    const snapshotOm = () => (typeof window !== "undefined" ? window.chart?.orderManager : null);
-
-    setJournalAnalytics(buildJournalAnalyticsFromOrderManager(snapshotOm()));
-    setJournalAnalyticsMeta({ loading: true, error: null });
-
-    (async () => {
-      try {
-        const listPid = getJournalProfileIdFromStorage();
-        const listQs = listPid != null ? `?profile_id=${encodeURIComponent(String(listPid))}` : "";
-        const [statsRes, symRes, stratRes, listRes] = await Promise.all([
-          fetchJournalEndpoint("/stats"),
-          fetchJournalEndpoint("/symbol-analysis"),
-          fetchJournalEndpoint("/strategy-analysis"),
-          fetchJournalEndpoint(`/list${listQs}`),
-        ]);
-        if (cancelled) return;
-
-        const okEnough = statsRes.ok || listRes.ok;
-        const stats = statsRes.ok ? await statsRes.json().catch(() => null) : null;
-        const symbols = symRes.ok ? await symRes.json().catch(() => []) : [];
-        const strategies = stratRes.ok ? await stratRes.json().catch(() => []) : [];
-        const rawList = listRes.ok ? await listRes.json().catch(() => null) : null;
-        const list = Array.isArray(rawList) ? rawList : rawList?.trades || rawList?.data || [];
-
-        const remotePayload = {
-          stats: stats && typeof stats === "object" ? stats : null,
-          symbols: Array.isArray(symbols) ? symbols : [],
-          strategies: Array.isArray(strategies) ? strategies : [],
-          list: Array.isArray(list) ? list : [],
-        };
-        const merged = mergeJournalAnalyticsRemoteLocal(remotePayload, buildJournalAnalyticsFromOrderManager(snapshotOm()));
-        const hasTrades = (merged.list?.length || 0) > 0;
-        const code = statsRes.status || listRes.status;
-
-        if (!cancelled) {
-          setJournalAnalytics(merged);
-          setJournalAnalyticsMeta({
-            loading: false,
-            error:
-              !okEnough && !hasTrades
-                ? code === 401 || code === 403
-                  ? "Journal analytics requires sign-in (Bearer token in localStorage)."
-                  : `Analytics unavailable (${code || "network"}).`
-                : null,
-          });
-        }
-      } catch (e) {
-        if (!cancelled) {
-          const merged = mergeJournalAnalyticsRemoteLocal(null, buildJournalAnalyticsFromOrderManager(snapshotOm()));
-          setJournalAnalytics(merged);
-          const hasTrades = (merged.list?.length || 0) > 0;
-          setJournalAnalyticsMeta({ loading: false, error: hasTrades ? null : String(e?.message || e) });
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [btmTab]);
-
-  // Live session stats on Analytics tab: merge fresh orderManager balances / closed trades into the last-loaded
-  // journal list without restarting the remote fetch (see note on `omTradeRev` above).
-  useEffect(() => {
-    if (btmTab !== "analytics") return undefined;
-    setJournalAnalytics((prev) => {
-      const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
-      const freshLocal = buildJournalAnalyticsFromOrderManager(om);
-      if (!prev || !Array.isArray(prev.list)) return freshLocal;
-      return mergeJournalAnalyticsRemoteLocal({ list: prev.list }, freshLocal);
-    });
-    return undefined;
-  }, [btmTab, omTradeRev]);
-
-  // Ctrl+S — open V9 screenshot panel (same as camera), not the legacy DOM modal
-  useEffect(() => {
-    const onOpen = () => {
-      try {
-        const el = chartCanvasRef.current;
-        if (el) {
-          const r = el.getBoundingClientRect();
-          setCanvasDims({ w: Math.round(r.width), h: Math.round(r.height) });
-        }
-      } catch (_) {}
-      setScreenshotFlash(true);
-      setTimeout(() => setScreenshotOpen(true), 260);
-    };
-    window.addEventListener("talaria-v9-open-screenshot", onOpen);
-    return () => window.removeEventListener("talaria-v9-open-screenshot", onOpen);
-  }, []);
-
-  // ─── SYNC SYMBOL FROM CHART.JS ───────────────────────────────────────────
-  // chart.js fires 'chartDataLoaded' (with detail.symbol, detail.timeframe)
-  // whenever a new backtest session / pair is loaded. chart.js stores the
-  // symbol in compact form ('EURJPY'); V9's pair list uses 'EUR/JPY'.
-  // Normalize 6-char FX pairs to slash-separated form so V9 finds the entry.
-  useEffect(() => {
-    const normalizeSymbol = (s) => {
-      if (!s || typeof s !== 'string') return s;
-      const u = s.toUpperCase().replace(/\s+/g, '');
-      if (u.includes('/')) return u;
-      // 6-letter FX (EURJPY → EUR/JPY)
-      if (/^[A-Z]{6}$/.test(u)) return u.slice(0, 3) + '/' + u.slice(3);
-      return u;
-    };
-
-    let lastSeen = null;
-    const apply = (raw, source) => {
-      const sym = normalizeSymbol(raw);
-      if (!sym || sym === lastSeen) return;
-      lastSeen = sym;
-      console.log("[V9 sym] from", source, "->", sym);
-      setSymbol(sym);
-    };
-
-    // Read all pairs from the active backtest session and populate the
-    // V9 dropdown list. Each entry: { ticker, fileId } so we can call
-    // chart.loadFileData(fileId) when the user picks one in V9.
-    const refreshSessionPairs = () => {
-      try {
-        let session = window.chart?.backtestingSession;
-        if (!session) {
-          const raw = window.userStorage?.getItem?.('backtestingSession')
-            ?? localStorage.getItem('backtestingSession');
-          session = raw ? JSON.parse(raw) : null;
-        }
-        if (!session) return;
-
-        const chart = window.chart;
-        /** Prefer chart.js pair resolver (parses EURUSD from filename when map key is wrong). */
-        const resolveTickerForInstrument = (tickerKey, info, fileId) => {
-          const fid = fileId ?? info?.fileId ?? info?.datasetId ?? null;
-          let resolved = null;
-          try {
-            if (chart?.resolveSessionTickerForFileId && fid != null)
-              resolved = chart.resolveSessionTickerForFileId(session, fid);
-          } catch (_) {}
-          if (resolved && String(resolved).trim())
-            return normalizeSymbol(String(resolved).trim());
-          const rawLabel =
-            (info && (info.symbolName || info.symbol || info.displaySymbol || info.display_symbol || info.name))
-            || info?.ticker
-            || tickerKey;
-          let attempt = String(rawLabel || "").trim();
-          try {
-            if (chart?._formatPairTicker && (attempt || info?.fileName || info?.name))
-              attempt = chart._formatPairTicker(attempt, info?.fileName || info?.name || "") || attempt;
-          } catch (_) {}
-          let out = normalizeSymbol(attempt);
-          // Quote-only keys (CHF, USD, …) — only substitute session/chart symbol when there is a single instrument.
-          const instCount =
-            session.instruments && typeof session.instruments === "object"
-              ? Object.keys(session.instruments).length
-              : 0;
-          const looksBroken = !out.includes("/") && /^[A-Z]{3}$/.test(out);
-          if (looksBroken && instCount <= 1) {
-            const fb =
-              session.symbol || session.pair || session.symbolName
-              || chart?.currentSymbol
-              || null;
-            if (fb) out = normalizeSymbol(String(fb).trim());
-          }
-          return out;
-        };
-
-        const pairs = [];
-        const seen = new Set();
-        const pushPair = (ticker, fileId) => {
-          if (!ticker) return;
-          const fid = fileId != null ? fileId : null;
-          const dedupeKey = fid != null ? `id:${fid}` : `sym:${ticker}`;
-          if (seen.has(dedupeKey)) return;
-          seen.add(dedupeKey);
-          pairs.push({ ticker: normalizeSymbol(String(ticker).trim()), fileId: fid });
-        };
-
-        // Same source as chart.js multi-file picker: session.files + resolveSessionTickerForFileId.
-        // Instruments map keys are often quote currencies only (CHF, CAD, …) — listing from files fixes labels + flags.
-        if (Array.isArray(session.files) && session.files.length > 0) {
-          for (const f of session.files) {
-            if (!f) continue;
-            const fileId = f.id != null ? f.id : f.fileId;
-            if (fileId == null) continue;
-            let display = null;
-            try {
-              if (chart?.resolveSessionTickerForFileId)
-                display = chart.resolveSessionTickerForFileId(session, fileId);
-            } catch (_) {}
-            if (!display || !String(display).trim()) {
-              const rawName = String(f.name || f.fileName || "");
-              try {
-                if (chart?._formatPairTicker)
-                  display =
-                    chart._formatPairTicker(rawName, "") ||
-                    rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
-                else display = rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
-              } catch (_) {
-                display = rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
-              }
-            }
-            if (display && String(display).trim()) pushPair(String(display).trim(), fileId);
-          }
-        }
-
-        if (pairs.length === 0 && session.instruments && typeof session.instruments === "object") {
-          for (const [ticker, info] of Object.entries(session.instruments)) {
-            const fid = info?.fileId ?? info?.datasetId ?? null;
-            const sym = resolveTickerForInstrument(ticker, info, fid);
-            if (sym) pushPair(sym, fid);
-          }
-        }
-        if (pairs.length === 0 && Array.isArray(session.symbols)) {
-          for (const s of session.symbols) {
-            const nm = s?.symbolName || s?.symbol || s?.ticker;
-            if (nm) pushPair(normalizeSymbol(String(nm).trim()), s.fileId ?? null);
-          }
-        }
-        if (pairs.length === 0 && Array.isArray(session.instrumentTickers)) {
-          for (const t of session.instrumentTickers) {
-            pushPair(normalizeSymbol(t), null);
-          }
-        }
-        if (pairs.length) setSessionPairs(pairs);
-      } catch (err) {
-        console.warn('[V9 sym] refreshSessionPairs failed', err);
-      }
-    };
-
-    // Poll window.chart.currentSymbol until it stabilizes. Two reasons we can't
-    // rely on chartDataLoaded alone:
-    //   1. The event may have fired before V9 mounted.
-    //   2. Some chart.js code paths set currentSymbol without firing the event
-    //      (e.g. session restore from replay/backtest).
-    let cancelled = false;
-    let attempts = 0;
-    const tick = () => {
-      if (cancelled) return;
-      const activeChart = v9ActiveChartInstance();
-      const s = activeChart?.currentSymbol;
-      if (s) apply(s, "poll");
-      refreshSessionPairs();
-      // Keep polling for ~30s in case the user navigates between sessions.
-      if (attempts++ < 150) setTimeout(tick, 200);
-    };
-    tick();
-
-    const chartTfDetailToV9 = (cTf) => {
-      if (!cTf) return null;
-      const s = String(cTf).toLowerCase().trim();
-      if (s === "1mo") return "1M";
-      if (/^\d+h$/.test(s)) return s.toUpperCase();
-      if (/^\d+d$/.test(s) || /^\d+w$/.test(s)) return s.toUpperCase();
-      return s;
-    };
-
-    const handleDataLoaded = (e) => {
-      const d = e?.detail || {};
-      const src = d.chart;
-      if (v9IsMultiPanelLayoutActive()) {
-        const active = v9ActiveChartInstance();
-        if (src && active && src !== active) return;
-      }
-      apply(d.symbol, "event");
-      const mappedTf = chartTfDetailToV9(d.timeframe);
-      if (mappedTf) setTf(mappedTf);
-      refreshSessionPairs();
-    };
-    window.addEventListener('chartDataLoaded', handleDataLoaded);
-    window.__v9RefreshSessionPairs = refreshSessionPairs;
-    return () => {
-      cancelled = true;
-      try {
-        delete window.__v9RefreshSessionPairs;
-      } catch (_) {}
-      window.removeEventListener('chartDataLoaded', handleDataLoaded);
-    };
-  }, []);
-
-  // Refresh BACKTEST pair list when opening the picker so chart.js session resolvers are available.
-  useEffect(() => {
-    if (!symbolOpen) return;
-    try {
-      if (typeof window.__v9RefreshSessionPairs === "function") window.__v9RefreshSessionPairs();
-    } catch (_) {}
-  }, [symbolOpen]);
-
-  // Finnhub economic calendar pair-filter reads window.chart.currentSymbol; V9 can show
-  // the correct pair before chart.js finishes resolving tickers. Mirror compact ticker here.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const compact = String(symbol || "")
-      .toUpperCase()
-      .replace(/[^A-Z]/g, "");
-    try {
-      window.__v9ChartSymbol = compact || undefined;
-    } catch (_) {}
-    try {
-      if (window.chart && typeof window.chart.scheduleRender === "function") {
-        window.chart.scheduleRender();
-      }
-    } catch (_) {}
-    try {
-      window.dispatchEvent(new CustomEvent("economicCalendarUpdated"));
-    } catch (_) {}
-  }, [symbol]);
-
-  // ─── SYNC CHART TYPE → chart.js ──────────────────────────────────────────
-  // V9 React state (chartType) drives chart.js's chartSettings.chartType.
-  // chart.js value vocabulary is lowercase / no spaces; map V9 labels here.
-  // Mirrors what legacy index.html's chart-type dropdown handler does:
-  //     activeChart.chartSettings.chartType = chartType;
-  //     activeChart.render();
-  // Plus _syncChartTypeUI keeps the legacy toolbar icon in sync if it's around.
-  useEffect(() => {
-    const CHART_TYPE_MAP = {
-      "Candles": "candles",
-      "Hollow Candles": "hollow",
-      "Heikin Ashi": "heikinashi",
-      "Bars": "bars",
-      "Line": "line",
-      "Area": "area",
-    };
-    const mapped = CHART_TYPE_MAP[chartType] || "candles";
-
-    let cancelled = false;
-    let attempts = 0;
-
-    const apply = () => {
-      if (cancelled) return;
-      const chart = window.chart;
-      if (!chart || !chart.chartSettings || typeof chart.render !== "function") {
-        // chart.js not ready yet — retry briefly. Once ready it stays ready.
-        if (attempts++ < 60) setTimeout(apply, 100);
-        return;
-      }
-      if (chart.chartSettings.chartType === mapped) return;
-      chart.chartSettings.chartType = mapped;
-      try { chart.render(); } catch (err) { console.warn("[V9] chart.render failed after chartType change:", err); }
-      // Apply to other panels too (multi-panel sync, mirrors legacy behavior).
-      try {
-        const panels = window.panelManager?.getPanels?.() || [];
-        for (const p of panels) {
-          const pc = p?.chartInstance;
-          if (pc && pc !== chart && pc.chartSettings) {
-            pc.chartSettings.chartType = mapped;
-            if (typeof pc.render === "function") pc.render();
-          }
-        }
-      } catch (_) {}
-      // Sync legacy toolbar UI if it exists in the DOM.
-      if (typeof window._syncChartTypeUI === "function") {
-        try { window._syncChartTypeUI(mapped); } catch (_) {}
-      }
-    };
-
-    apply();
-    return () => { cancelled = true; };
-  }, [chartType]);
-
-  // Per Chart instance (main + panel tiles): V9 id (e.g. "SMA") → chart.js runtime id.
-  // WeakMap so each focused tile keeps its own mapping (multi-panel).
-  const indicatorMapsByChartRef = useRef(null); // WeakMap<object, Record<string, string>> | null
-
-  const chartTfToV9 = (cTf) => {
-    if (!cTf) return null;
-    const s = String(cTf).toLowerCase().trim();
-    if (s === "1mo") return "1M";
-    if (/^\d+h$/.test(s)) return s.toUpperCase();
-    if (/^\d+d$/.test(s) || /^\d+w$/.test(s)) return s.toUpperCase();
-    return s;
-  };
-
-  const routeSessionFileLoadToSelectedPanel = (fileId) => {
-    if (fileId == null) return;
-    const fid = typeof fileId === "string" ? fileId : String(fileId);
-    try {
-      const pm = window.panelManager;
-      if (!pm || !v9IsMultiPanelLayoutActive()) {
-        if (window.chart && typeof window.chart.loadFileData === "function") {
-          window.chart.loadFileData(fid);
-        }
-        return;
-      }
-      const panel = pm.panels?.[pm.selectedPanelIndex ?? 0];
-      const pc = panel?.chartInstance;
-      const isMain = !!(panel && (panel.isMainChart || pc === window.chart));
-      if (isMain && window.chart && typeof window.chart.loadFileData === "function") {
-        window.chart.loadFileData(fid);
-      } else if (pc && typeof pc.loadPanelFileData === "function") {
-        void pc.loadPanelFileData(fid);
-      } else if (window.chart && typeof window.chart.loadFileData === "function") {
-        window.chart.loadFileData(fid);
-      }
-    } catch (err) {
-      console.warn("[V9 sym] routeSessionFileLoadToSelectedPanel failed", err);
-    }
-  };
-
-  // ─── SYNC TIMEFRAME → chart.js ───────────────────────────────────────────
-  // V9 'tf' state ("1m", "5m", "15m", "30m", "1H", "4H", "1D", "1W", "1M")
-  // drives chart.js's setTimeframe().
-  //
-  // CRITICAL: chart.js's vocabulary uses lowercase AND uses "1mo" for month
-  // (because "1m" already means 1 minute). V9 uses capital "1M" for month,
-  // which would be misread as "1m" minute if naively lowercased. Map carefully.
-  useEffect(() => {
-    // Convert V9 tf → chart.js timeframe string.
-    const v9ToChartTf = (v9) => {
-      if (!v9 || typeof v9 !== "string") return "1m";
-      const trimmed = v9.trim();
-      // Month: V9 capital "1M" → chart.js "1mo".
-      if (/^\d+M$/.test(trimmed)) return trimmed.replace("M", "mo").toLowerCase();
-      // Everything else: simple lowercase. "1H" → "1h", "1D" → "1d", "1W" → "1w".
-      return trimmed.toLowerCase();
-    };
-
-    const target = v9ToChartTf(tf);
-    let cancelled = false;
-    let attempts = 0;
-
-    const apply = () => {
-      if (cancelled) return;
-      const chart = window.chart;
-      if (!chart || typeof chart.setTimeframe !== "function") {
-        if (attempts++ < 60) setTimeout(apply, 200);
-        return;
-      }
-      const pm = window.panelManager;
-      if (
-        pm &&
-        typeof pm.updateSelectedPanelTimeframe === "function" &&
-        v9IsMultiPanelLayoutActive()
-      ) {
-        const sel = pm.getSelectedPanel?.();
-        const pci = sel?.chartInstance;
-        const curTf = pci?.currentTimeframe ?? chart.currentTimeframe;
-        if (curTf === target) return;
-        try {
-          pm.updateSelectedPanelTimeframe(target);
-        } catch (err) {
-          console.warn("[V9] updateSelectedPanelTimeframe failed for", tf, "->", target, err);
-        }
-        return;
-      }
-      // setTimeframe early-returns if rawData empty AND no currentFileId; that's fine.
-      if (chart.currentTimeframe === target) return;
-      try {
-        chart.setTimeframe(target);
-      } catch (err) {
-        console.warn("[V9] setTimeframe failed for", tf, "->", target, err);
-      }
-    };
-
-    apply();
-    return () => { cancelled = true; };
-  }, [tf]);
-
-  // Listen for chart.js timeframe changes (e.g. legacy hotkey, replay system,
-  // panel sync) and reflect them back into V9 state so the UI stays in sync.
-  useEffect(() => {
-    const handleTfChanged = (e) => {
-      const d = e?.detail || {};
-      const srcChart = d.chart;
-      if (v9IsMultiPanelLayoutActive()) {
-        const active = v9ActiveChartInstance();
-        if (srcChart && active && srcChart !== active) return;
-      }
-      let cTf = d.timeframe;
-      if (!cTf) {
-        const active = v9ActiveChartInstance();
-        cTf = active?.currentTimeframe ?? window.chart?.currentTimeframe;
-      }
-      const mapped = chartTfToV9(cTf);
-      if (mapped) setTf(mapped);
-    };
-
-    window.addEventListener("timeframeChanged", handleTfChanged);
-    return () => window.removeEventListener("timeframeChanged", handleTfChanged);
-  }, []);
-
-  // Multi-panel: keep toolbar pair/TF in sync with the focused panel (see also the effect
-  // below that re-stamps main-tile OHLC from window.chart).
-  useEffect(() => {
-    const normalizeSymbol = (s) => {
-      if (!s || typeof s !== "string") return s;
-      const u = s.toUpperCase().replace(/\s+/g, "");
-      if (u.includes("/")) return u;
-      if (/^[A-Z]{6}$/.test(u)) return u.slice(0, 3) + "/" + u.slice(3);
-      return u;
-    };
-
-    const onPanelSelected = (e) => {
-      const d = e?.detail || {};
-      const panel = d.panel;
-      const ci = panel?.chartInstance;
-      if (ci) {
-        const raw = ci.currentSymbol ?? ci.symbol;
-        if (raw) {
-          const sym = normalizeSymbol(String(raw).trim());
-          if (sym) setSymbol(sym);
-        }
-      }
-      const cTf = (ci && ci.currentTimeframe) || d.timeframe;
-      const mapped = chartTfToV9(cTf);
-      if (mapped) setTf(mapped);
-    };
-
-    const onPanelTimeframeChanged = (e) => {
-      const cTf = e?.detail?.timeframe;
-      const mapped = chartTfToV9(cTf);
-      if (mapped) setTf(mapped);
-    };
-
-    window.addEventListener("panelSelected", onPanelSelected);
-    window.addEventListener("panelTimeframeChanged", onPanelTimeframeChanged);
-    return () => {
-      window.removeEventListener("panelSelected", onPanelSelected);
-      window.removeEventListener("panelTimeframeChanged", onPanelTimeframeChanged);
-    };
-  }, []);
-
-  // Multi-panel: top toolbar `symbol` / `tf` track the focused tile; the main tile's
-  // #chartSymbol / #chartTimeframe must stay `window.chart`'s pair. Re-stamp from chart.js
-  // whenever toolbar state changes so nothing leaves the unsuffixed OHLC nodes stale or wrong.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!v9IsMultiPanelLayoutActive()) return;
-    const main = window.chart;
-    if (!main || typeof main.updateChartOHLCSymbol !== "function") return;
-    const sym = main.currentSymbol;
-    if (!sym) return;
-    requestAnimationFrame(() => {
-      try {
-        main.updateChartOHLCSymbol(sym);
-      } catch (_) {}
-    });
-  }, [symbol, tf]);
-
-  // ──────────────────────────────────────────────────────────────────────
-  // Replay bridge — wires V9 replay-bar UI to window.chart.replaySystem
-  // (defined in chart/modules/replay-system.js). Mirrors the legacy toolbar
-  // exactly: same play()/pause(), setSpeed(), setPlaybackMode(),
-  // requestStepForward(), enterReplayMode()/exitReplayMode() calls.
-  //
-  // Ensures user actions on V9 buttons reach the chart, and that legacy
-  // hotkeys (Space=play, →=step) are reflected back into V9 state.
-  // ──────────────────────────────────────────────────────────────────────
-  const getReplaySystem = () => {
-    return (window.chart && window.chart.replaySystem) || null;
-  };
-
-  // Helper: ensure replay is active before play/step. Returns the rs or null.
-  // When replay isn't yet active, callers should typically open the V9
-  // rollback (cut-line) overlay so the user can pick a start point with the
-  // V9 styling — NOT the legacy DOM overlay from goBackToPickPoint(). This
-  // helper is a fallback used only when the cut-line UI isn't available.
-  const ensureReplayActive = () => {
-    const rs = getReplaySystem();
-    if (!rs) return null;
-    if (rs.isActive) return rs;
-    if (typeof rs.enterReplayMode === 'function') {
-      try { rs.enterReplayMode(); } catch(e) { console.warn('[V9 Replay] enter failed', e); }
-    }
-    return rs;
-  };
-
-  // Poll replaySystem state and reflect into V9 (legacy hotkeys / clone toolbar
-  // can change isPlaying/playbackMode/speed without going through V9 buttons).
-  useEffect(() => {
-    let cancelled = false;
-    const sync = () => {
-      if (cancelled) return;
-      const rs = getReplaySystem();
-      if (rs) {
-        if (typeof rs.isPlaying === 'boolean' && rs.isPlaying !== playing) {
-          setPlaying(rs.isPlaying);
-        }
-        const mode = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : rs.playbackMode;
-        if (mode && mode !== replayMode) setReplayMode(mode);
-        if (Number.isFinite(rs.speed) && rs.speed !== speed) setSpeed(rs.speed);
-      }
-    };
-    const id = setInterval(sync, 250);
-    return () => { cancelled = true; clearInterval(id); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, replayMode, speed]);
-
-  // Push V9 mode changes into the replaySystem (skip if user just synced from rs).
-  useEffect(() => {
-    const rs = getReplaySystem();
-    if (!rs || typeof rs.setPlaybackMode !== 'function') return;
-    const current = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : rs.playbackMode;
-    if (current !== replayMode) {
-      try { rs.setPlaybackMode(replayMode); } catch(e) { console.warn('[V9 Replay] setPlaybackMode failed', e); }
-    }
-  }, [replayMode]);
-
-  // Push V9 speed changes into the replaySystem.
-  useEffect(() => {
-    const rs = getReplaySystem();
-    if (!rs || typeof rs.setSpeed !== 'function') return;
-    if (rs.speed !== speed) {
-      try { rs.setSpeed(speed); } catch(e) { console.warn('[V9 Replay] setSpeed failed', e); }
-    }
-  }, [speed]);
-
-  // Navigation integrity badge (#navIntegrityBadge) — after OHLC + change in .ohlc-stats during replay.
-  useEffect(() => {
-    let cancelled = false;
-    const sync = () => {
-      if (cancelled) return;
-      const rs = getReplaySystem();
-      const replayOn = !!(rs && rs.isActive);
-      const allowBack =
-        rs && typeof rs.isBackNavigationAllowed === "function"
-          ? rs.isBackNavigationAllowed()
-          : true;
-      const rbBlocked = !!(rs && rs.isActive && typeof rs.isBackNavigationAllowed === "function" && !rs.isBackNavigationAllowed());
-      setReplayRollbackBlocked((prev) => (prev === rbBlocked ? prev : rbBlocked));
-      const badge = document.getElementById("navIntegrityBadge");
-      const tooltip = document.getElementById("navBadgeTooltip");
-      if (!badge) return;
-      badge.style.display = replayOn ? "inline-flex" : "none";
-      badge.classList.toggle("enabled", allowBack);
-      badge.classList.toggle("disabled", !allowBack);
-      if (tooltip) {
-        tooltip.classList.toggle("enabled-tip", allowBack);
-        tooltip.classList.toggle("disabled-tip", !allowBack);
-        tooltip.innerHTML = allowBack
-          ? "<strong>You can navigate</strong>"
-          : "<strong>You can not navigate</strong>";
-      }
-    };
-    sync();
-    const id = setInterval(sync, 300);
-    const onDocClick = () => {
-      const b = document.getElementById("navIntegrityBadge");
-      if (b) b.classList.remove("show-tooltip");
-    };
-    document.addEventListener("click", onDocClick);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-      document.removeEventListener("click", onDocClick);
-    };
-  }, []);
-
-  // ────────────────────────────────────────────────────────────────────────
-
-  const rollbackLineRef = useRef(null);
-  const rollbackOverlayRef = useRef(null);
-  const tlBarRef = useRef(null);
-  const tlBarDropRef = useRef(null);
-  const pinnedBarRef = useRef(null);
-  const cpBarAnchorRef = useRef(null); // set when color picker is opened from the tl bar
-  /** Latest cpApply + drag inputs for window-level pointer listeners (avoids fullscreen overlay above picker). */
-  const cpApplyRef = useRef(() => {});
-  const cpPickerDragRef = useRef({});
-  const closingDropdownKey = useRef(null);
-  /** Keeps latest closeWindows for chart.js → `talaria-v9-open-settings` without stale closures */
-  const closeWindowsRef = useRef(() => {});
-  /** Latest closeAll for document mousedown (must not be inlined before closeAll exists below). */
-  const closeAllRef = useRef(() => {});
-  const [canvasDims, setCanvasDims] = useState({w:888,h:360});
-  /** Data URL from real #chart-container capture — matches Copy/Download output (not SVG mock). */
-  const [screenshotPreviewUrl, setScreenshotPreviewUrl] = useState(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [profileTab, setProfileTab] = useState("account");
-  const [profileLang, setProfileLang] = useState("english");
-  const [profileCat, setProfileCat] = useState("account");
-  const [profilePos, setProfilePos] = useState({ x: 0, y: 0 });
-  const [profileName, setProfileName] = useState("Trader");
-  const [profileAvatar, setProfileAvatar] = useState(null);
-  const [profileNameEdit, setProfileNameEdit] = useState(false);
-  const [profilePwOpen, setProfilePwOpen] = useState(false);
-  const [profileCurPw, setProfileCurPw] = useState("");
-  const [profileNewPw, setProfileNewPw] = useState("");
-  const [profileConfirmPw, setProfileConfirmPw] = useState("");
-
-  // ─── PROFILE ↔ LEGACY USER STORAGE ──────────────────────────────────────
-  // Mirror V9's profile UI to the same sources legacy index.html uses:
-  //   - localStorage 'talaria_current_user' (cached user from /api/auth/me)
-  //   - userStorage 'chartLanguage'  ('en' | 'ar')
-  //   - userStorage 'talaria_avatar' (base64 dataURL, V9-specific persistence)
-  //
-  // V9's profileLang vocabulary is "english"/"arabic"; legacy uses "en"/"ar".
-  // Map both directions.
-  const v9LangToLegacy = (l) => (l === "arabic" ? "ar" : "en");
-  const legacyLangToV9 = (l) => (l === "ar" ? "arabic" : "english");
-
-  useEffect(() => {
-    try {
-      window.__V9_LIVE_SHELL_BUILD = "20260504_v9_selection_sync";
-    } catch (_) {}
-  }, []);
-
-  // Mount: hydrate name/avatar/language from the same sources legacy reads.
-  useEffect(() => {
-    // Cached user (synchronous).
-    try {
-      const cached = JSON.parse(localStorage.getItem("talaria_current_user") || "{}");
-      if (cached && cached.name) setProfileName(cached.name);
-    } catch (_) {}
-    // Language (userStorage shim with localStorage fallback).
-    try {
-      const lang =
-        (window.userStorage?.getItem?.("chartLanguage")) ||
-        localStorage.getItem("chartLanguage") ||
-        "en";
-      setProfileLang(legacyLangToV9(lang));
-    } catch (_) {}
-    // Avatar (V9-only key — legacy uses initial letter, no avatar storage).
-    try {
-      const av =
-        (window.userStorage?.getItem?.("talaria_avatar")) ||
-        localStorage.getItem("talaria_avatar");
-      if (av) setProfileAvatar(av);
-    } catch (_) {}
-    // Live fetch (same call legacy makes ~index.html:59205).
-    fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!d || !d.user) return;
-        if (d.user.name) setProfileName(d.user.name);
-        try { localStorage.setItem("talaria_current_user", JSON.stringify(d.user)); } catch (_) {}
-      })
-      .catch(() => {});
-  }, []);
-
-  // Persist name edits back to the cached user blob so legacy & V9 stay in sync.
-  useEffect(() => {
-    if (!profileName) return;
-    try {
-      const cached = JSON.parse(localStorage.getItem("talaria_current_user") || "{}");
-      if (cached.name === profileName) return;
-      cached.name = profileName;
-      localStorage.setItem("talaria_current_user", JSON.stringify(cached));
-    } catch (_) {}
-  }, [profileName]);
-
-  // Persist avatar to both userStorage (per-user) and localStorage (fallback).
-  useEffect(() => {
-    try {
-      if (profileAvatar) {
-        window.userStorage?.setItem?.("talaria_avatar", profileAvatar);
-        localStorage.setItem("talaria_avatar", profileAvatar);
-      } else {
-        window.userStorage?.removeItem?.("talaria_avatar");
-        localStorage.removeItem("talaria_avatar");
-      }
-    } catch (_) {}
-  }, [profileAvatar]);
-
-  // Language: write to userStorage 'chartLanguage' and trigger legacy
-  // window._applyLanguage so any DOM the chart owns gets retranslated.
-  useEffect(() => {
-    const code = v9LangToLegacy(profileLang);
-    try {
-      const cur = window.userStorage?.getItem?.("chartLanguage") || localStorage.getItem("chartLanguage");
-      if (cur === code) return;
-      window.userStorage?.setItem?.("chartLanguage", code);
-      try { localStorage.setItem("chartLanguage", code); } catch (_) {}
-      if (typeof window._applyLanguage === "function") {
-        try { window._applyLanguage(code); } catch (_) {}
-      }
-    } catch (_) {}
-  }, [profileLang]);
-
-  const [darkMode, setDarkMode] = useState(true);
-  const [faqOpen, setFaqOpen] = useState(false);
-  const [faqCat, setFaqCat] = useState("faq");
-  const [faqPos, setFaqPos] = useState({ x: 0, y: 0 });
-  const [emojiPanelOpen, setEmojiPanelOpen] = useState(false);
-  const [emojiPanelPos, setEmojiPanelPos] = useState({ x: 80, y: 120 });
-  const [emojiCat, setEmojiCat] = useState("smileys");
-  const [emojiSearch, setEmojiSearch] = useState("");
-  const [faqExpand, setFaqExpand] = useState(null);
-  const [screenshotOpen, setScreenshotOpen] = useState(false);
-  const [scLinkOpen, setScLinkOpen] = useState(false);
-  const [scLinkSearch, setScLinkSearch] = useState("");
-  /** Order-manager trade id (# shown in session journal) */
-  const [scLinkedSessionTradeId, setScLinkedSessionTradeId] = useState(null);
-  /** Numeric journal entry id (API) after match or POST /add */
-  const [scLinkedJournalId, setScLinkedJournalId] = useState(null);
-  const [scLinkPhase, setScLinkPhase] = useState(null);
-  const [scJournalRows, setScJournalRows] = useState([]);
-  const [scJournalLoading, setScJournalLoading] = useState(false);
-  const [scJournalListErr, setScJournalListErr] = useState(null);
-  const [scLinkSaving, setScLinkSaving] = useState(false);
-
-  useEffect(() => {
-    if (!screenshotOpen || !scLinkOpen) return;
-    let cancelled = false;
-
-    const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
-    const tj = Array.isArray(om?.tradeJournal) ? om.tradeJournal : [];
-    const pend = Array.isArray(om?.pendingOrders) ? om.pendingOrders : [];
-    const openPos = Array.isArray(om?.openPositions) ? om.openPositions : [];
-
-    const journalSortMs = (tr) => {
-      const c = sessionTradeCloseMs(tr);
-      if (c > 0) return c;
-      const v = tr?.openTime ?? tr?.entryTime ?? tr?.entryDate;
-      if (typeof v === "number" && Number.isFinite(v)) return v;
-      if (typeof v === "string") {
-        const p = Date.parse(v);
-        if (Number.isFinite(p)) return p;
-      }
-      return 0;
-    };
-
-    /** Pending / open overwrite journal rows with the same order id so the list matches the trades grid. */
-    const byId = new Map();
-    for (const tr of tj) {
-      const sid = Number(tr.tradeId ?? tr.id);
-      if (!Number.isFinite(sid)) continue;
-      byId.set(sid, {
-        sessionTradeId: sid,
-        journalTrade: tr,
-        sortMs: journalSortMs(tr),
-        linkKind: "closed",
-      });
-    }
-    for (const o of pend) {
-      const sid = Number(o.id);
-      if (!Number.isFinite(sid)) continue;
-      byId.set(sid, {
-        sessionTradeId: sid,
-        journalTrade: null,
-        orderRef: o,
-        sortMs: o.placedTime || o.openTime || 0,
-        linkKind: "pending",
-      });
-    }
-    for (const o of openPos) {
-      const sid = Number(o.id);
-      if (!Number.isFinite(sid)) continue;
-      byId.set(sid, {
-        sessionTradeId: sid,
-        journalTrade: null,
-        orderRef: o,
-        sortMs: o.openTime || o.placedTime || 0,
-        linkKind: "open",
-      });
-    }
-
-    const mergedSort = [...byId.values()].sort((a, b) => (b.sortMs || 0) - (a.sortMs || 0));
-    const baseRows = mergedSort.map((m) => {
-      const tr = m.journalTrade || m.orderRef;
-      return {
-        sessionTradeId: m.sessionTradeId,
-        journalId: null,
-        id: `#${m.sessionTradeId}`,
-        sym: formatJournalSymbolForDisplay(tr.ticker || tr.symbol || ""),
-        side: sideLabelFromSessionTrade(tr),
-        linkKind: m.linkKind,
-      };
-    });
-
-    setScJournalListErr(null);
-    setScJournalRows(baseRows);
-    if (baseRows.length === 0) {
-      setScJournalLoading(false);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    setScJournalLoading(true);
-    (async () => {
-      try {
-        const pid = getJournalProfileIdFromStorage();
-        const qs = pid != null ? `?profile_id=${encodeURIComponent(String(pid))}` : "";
-        const res = await fetchJournalEndpoint(`/list${qs}`);
-        if (cancelled) return;
-        if (res.status === 401 || res.status === 403) {
-          setScJournalListErr(
-            res.status === 401 ? "Sign in to save screenshots to the journal." : "Journal access denied.",
-          );
-          return;
-        }
-        if (!res.ok) return;
-        let raw;
-        try {
-          raw = await res.json();
-        } catch {
-          raw = null;
-        }
-        const arr = Array.isArray(raw) ? raw : raw?.trades || raw?.data || [];
-        if (!Array.isArray(arr) || cancelled) return;
-        const used = new Set();
-        const merged = baseRows.map((row) => {
-          const tr = tj.find((x) => Number(x.tradeId ?? x.id) === Number(row.sessionTradeId));
-          if (!tr) return row;
-          const jid = matchApiJournalIdForSessionTrade(tr, arr, used);
-          return jid != null ? { ...row, journalId: jid } : row;
-        });
-        if (!cancelled) setScJournalRows(merged);
-      } catch {
-        /* keep session rows */
-      } finally {
-        if (!cancelled) setScJournalLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [screenshotOpen, scLinkOpen]);
-
-  useEffect(() => {
-    if (!screenshotOpen) {
-      setScreenshotPreviewUrl(null);
-      setScLinkOpen(false);
-      setScLinkSearch("");
-      setScLinkedSessionTradeId(null);
-      setScLinkedJournalId(null);
-      setScLinkPhase(null);
-      setScJournalRows([]);
-      setScJournalListErr(null);
-      setScLinkSaving(false);
-      return;
-    }
-    let cancelled = false;
-    const run = async () => {
-      for (let i = 0; i < 35 && !cancelled; i++) {
-        const sm = window.screenshotManager;
-        const el = document.getElementById("chart-container");
-        if (sm && typeof sm.captureCanvasDirect === "function" && el) {
-          try {
-            const rect = el.getBoundingClientRect();
-            const rw = rect.width || 1;
-            const rh = rect.height || 1;
-            const dpr =
-              typeof window !== "undefined"
-                ? Math.min(2.25, Math.max(1, window.devicePixelRatio || 1))
-                : 2;
-            const maxLongEdge = 4096;
-            const captureScale = Math.max(1, Math.min(dpr, maxLongEdge / Math.max(rw, rh)));
-            const canvas = await sm.captureCanvasDirect(el, captureScale);
-            if (cancelled || !canvas) return;
-            setCanvasDims({ w: canvas.width, h: canvas.height });
-            setScreenshotPreviewUrl(canvas.toDataURL("image/jpeg", 0.92));
-            return;
-          } catch (err) {
-            if (err && err.name === "SecurityError") {
-              if (!cancelled) {
-                const svg =
-                  '<svg xmlns="http://www.w3.org/2000/svg" width="560" height="72">' +
-                  '<rect fill="#07080e" width="100%" height="100%"/>' +
-                  '<text x="14" y="40" fill="#9aa3c0" font-family="system-ui,sans-serif" font-size="13">' +
-                  "Preview unavailable (browser blocked export — cross-origin pixels on the chart). " +
-                  "Fully reload the page; calendar flags now load in export-safe mode." +
-                  "</text></svg>";
-                setScreenshotPreviewUrl("data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg));
-              }
-              return;
-            }
-            /* wait for manager / next frame */
-          }
-        }
-        await new Promise((r) => setTimeout(r, 100));
-      }
-      if (!cancelled) setScreenshotPreviewUrl(null);
-    };
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [screenshotOpen, symbol, tf, chartType]);
-
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [pinnedBarOpen, setPinnedBarOpen] = useState(false);
-  const [pinnedBarPos, setPinnedBarPos] = useState({ x: 50, y: 80 });
-  const [groupSelected, setGroupSelected] = useState({});
-  const [tlBarPos, setTlBarPos] = useState({ x: 130, y: 200 });
-  // True only when a drawing is currently selected (set by hooking the
-  // legacy drawing-toolbar's show/hide via drawingManager.toolbar in the
-  // useEffect below). Drives the visibility of the V9 floating toolbar so
-  // it only appears when the user actually has a shape selected.
-  const [tlBarSelected, setTlBarSelected] = useState(false);
-  const [tlBarSelectedType, setTlBarSelectedType] = useState(null);
-  const [tlSettOpen, setTlSettOpen] = useState(false);
-  const [tlSettPos, setTlSettPos] = useState({ x: 200, y: 90 });
-  const [tlName, setTlName] = useState("Trend Line");
-  const [tlNameEditing, setTlNameEditing] = useState(false);
-  const [tlSettTab, setTlSettTab] = useState("style");
-  const [tlLocked, setTlLocked] = useState(false);
-  const [rrStyle, setRrStyle] = useState({
-    profitColor:"rgba(0,180,100,0.25)", lossColor:"rgba(220,50,50,0.25)", entryColor:"rgba(180,180,180,0.9)",
-    labelFontSize:"11", labelColor:"#ffffff", showPriceLabels:true, showTimeLabels:false,
-  });
-  const [rrInputs, setRrInputs] = useState({ riskAmount:"100", qty:"1" });
-  const [vwapLocked, setVwapLocked] = useState(false);
-  const [vpLocked, setVpLocked] = useState(false);
-  const [avLocked, setAvLocked] = useState(false);
-  const [txtLocked, setTxtLocked] = useState(false);
-  const [tlStyleDrop, setTlStyleDrop] = useState(null);
-  const [tlInfoDropUp, setTlInfoDropUp] = useState(false);
-  const [tlInfoDropAnchor, setTlInfoDropAnchor] = useState(null);
-  const [tlStyleDropUp, setTlStyleDropUp] = useState(false);
-  const [tlBarDrop, setTlBarDrop] = useState(null);
-  const [tlTemplatesRev, setTlTemplatesRev] = useState(0);
-  const [tlBarDropAnchor, setTlBarDropAnchor] = useState({ btnTop: 0, btnBottom: 0, left: 0, right: 0, barX: 0, barY: 0 });
-  const tlLastBarDropRef = useRef("style");
-  const [tlSaveAsMode, setTlSaveAsMode] = useState(false);
-  const [tlNewTplName, setTlNewTplName] = useState("");
-  const [tlSettTplDrop, setTlSettTplDrop] = useState(false);
-  const [tlStyle, setTlStyle] = useState({
-    lineColor: "#8C8C8C", bgColor: "rgba(74,106,255,0.15)", lineType: "solid", lineWidth: "2", ep1: "normal", ep2: "normal",
-    extendLeft: false, extendRight: false, priceLabels: true, timeLabels: true, flatChPrices: true,
-    rangeType: "Date & Price", showInfo: false, showInfoTypes: ["Price range"],
-    showBorder: true, borderColor: "#8C8C8C", borderType: "dashed", borderWidth: "1",
-    showBg: false, labelColor: "#ffffff", labelFontSize: "12", labelBg: true, labelBgColor: "rgba(0,0,0,0.6)",
-    textSize: 14, textColor: "#ffffff", textItalic: false, textBold: false, textContent: "",
-    labelLineType: "solid", labelLineWidth: "1",
-    vertAlign: "top", horizAlign: "center",
-    pt1Price: "126.96273", pt1Bar: "3775", pt2Price: "126.86393", pt2Bar: "3795", pt3Price: "126.76393", pt3Bar: "3815",
-    pt4Price: "126.66393", pt4Bar: "3835", pt5Price: "126.56393", pt5Bar: "3855", pt6Price: "126.46393", pt6Bar: "3875",
-    pt7Price: "126.36393", pt7Bar: "3895",
-    visMinutes: { checked: true, min: 1, max: 60 }, visHours: { checked: true, min: 1, max: 24 },
-    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
-    visMonths: { checked: true, min: 1, max: 120 },
-    midLine: false, midLineColor: "#8C8C8C", midLineType: "dashed", midLineWidth: "1",
-    chLines: [
-      { on: true, value: "1.00", color: "#2962FF", type: "solid", width: "2" },
-      { on: true, value: "0.75", color: "#2962FF", type: "dashed", width: "1" },
-      { on: true, value: "0.50", color: "#8C8C8C", type: "dashed", width: "1" },
-      { on: true, value: "0.25", color: "#2962FF", type: "dashed", width: "1" },
-      { on: true, value: "0.00", color: "#2962FF", type: "solid", width: "2" },
-    ],
-    regLines: [
-      { on: true, label: "Middle Line", color: "#9c27b0", type: "dashed", width: "2" },
-      { on: true, label: "Upper Line", color: "#9c27b0", type: "dashed", width: "2" },
-      { on: true, label: "Lower Line", color: "#9c27b0", type: "dashed", width: "2" },
-    ],
-    regUpperBg: "rgba(74,106,255,0.15)", regLowerBg: "rgba(255,82,82,0.15)",
-    source: "Close", regressionType: "Linear",
-    regUpperDev: { on: true, value: "2" },
-    regLowerDev: { on: true, value: "2" },
-    regPearsonR: false,
-    fibTzLevels: [
-      { on: true, value: "1",  color: "#787B86", type: "solid",  width: "1" },
-      { on: true, value: "2",  color: "#F44336", type: "solid",  width: "1" },
-      { on: true, value: "3",  color: "#FF9800", type: "solid",  width: "1" },
-      { on: true, value: "5",  color: "#FFEB3B", type: "solid",  width: "1" },
-      { on: true, value: "8",  color: "#4CAF50", type: "solid",  width: "1" },
-      { on: true, value: "13", color: "#2196F3", type: "solid",  width: "1" },
-      { on: true, value: "21", color: "#9C27B0", type: "solid",  width: "1" },
-      { on: false, value: "34", color: "#787B86", type: "dashed", width: "1" },
-      { on: false, value: "55", color: "#787B86", type: "dashed", width: "1" },
-      { on: false, value: "89", color: "#787B86", type: "dashed", width: "1" },
-    ],
-    fibTrendLine: true, fibTimeTrendType: "solid", fibTimeTrendWidth: "1", fibPriceLabels: false, fibTimeLabels: false,
-    fibArcsTrendLine: true, fibArcsTrendType: "solid", fibArcsTrendWidth: "1", fibArcsFullCircle: false,
-    fibWedgeTrendLine: true, fibWedgeTrendType: "solid", fibWedgeTrendWidth: "1",
-    fibBackground: false, fibBgOpacity: 0.5, fibReverse: false, fibPrices: true, fibSpiralCCW: false,
-    fibFanTimeLevels: [
-      { on: true, value: "0", color: "#787B86" },
-      { on: true, value: "0.25", color: "#F44336" },
-      { on: true, value: "0.5", color: "#FF9800" },
-      { on: true, value: "0.75", color: "#FFEB3B" },
-      { on: true, value: "1", color: "#4CAF50" },
-    ],
-    fibLevelsOn: true, fibLevelsMode: "Value", fibExtendLines: false, fibGrid: false,
-    fibGridColor: "#787B86", fibGridType: "solid", fibGridWidth: "1",
-    fibLineType: "solid", fibLineWidth: "2",
-    fibLevels: [
-      { on: true, value: "0", color: "#787B86" },
-      { on: true, value: "0.236", color: "#F44336" },
-      { on: true, value: "0.382", color: "#FF9800" },
-      { on: true, value: "0.5", color: "#FFEB3B" },
-      { on: true, value: "0.618", color: "#4CAF50" },
-      { on: true, value: "0.786", color: "#2196F3" },
-      { on: true, value: "1", color: "#787B86" },
-    ],
-    gannLineType: "solid", gannLineWidth: "2",
-    gannBackground: false, gannBgOpacity: 0.5,
-    gannPriceLevels: [
-      { on: true, value: "0", color: "#787B86" },
-      { on: true, value: "0.25", color: "#2196F3" },
-      { on: true, value: "0.5", color: "#4CAF50" },
-      { on: true, value: "0.75", color: "#FF9800" },
-      { on: true, value: "1", color: "#787B86" },
-    ],
-    gannTimeLevels: [
-      { on: true, value: "0", color: "#787B86" },
-      { on: true, value: "0.25", color: "#2196F3" },
-      { on: true, value: "0.382", color: "#FF9800" },
-      { on: true, value: "0.5", color: "#4CAF50" },
-      { on: true, value: "0.618", color: "#F44336" },
-      { on: true, value: "0.75", color: "#9C27B0" },
-      { on: true, value: "1", color: "#787B86" },
-    ],
-    gannGridLevels: [
-      { on: true, value: "0", color: "#787B86" },
-      { on: true, value: "0.125", color: "#2196F3" },
-      { on: true, value: "0.25", color: "#4CAF50" },
-      { on: true, value: "0.375", color: "#FF9800" },
-      { on: true, value: "0.5", color: "#FFEB3B" },
-      { on: true, value: "0.625", color: "#FF9800" },
-      { on: true, value: "0.75", color: "#4CAF50" },
-      { on: true, value: "0.875", color: "#2196F3" },
-      { on: true, value: "1", color: "#787B86" },
-    ],
-    gannFanLevels: [
-      { on: true, value: "1", color: "#F44336" },
-      { on: true, value: "2", color: "#FF9800" },
-      { on: true, value: "3", color: "#FFEB3B" },
-      { on: true, value: "4", color: "#4CAF50" },
-      { on: true, value: "8", color: "#2196F3" },
-    ],
-    gannArcLevels: [
-      { on: true, value: "0", color: "#787B86" },
-      { on: true, value: "0.25", color: "#2196F3" },
-      { on: true, value: "0.5", color: "#4CAF50" },
-      { on: true, value: "0.75", color: "#FF9800" },
-      { on: true, value: "1", color: "#787B86" },
-    ],
-    pitchforkStyle: "Original", pfBgOpacity: 0.5,
-    pfLevels: [
-      { on: false, value: "0.25", color: "#FF4081" },
-      { on: true, value: "0.5", color: "#2962FF" },
-      { on: true, value: "0.75", color: "#00BFA5" },
-      { on: false, value: "1.5", color: "#AA00FF" },
-      { on: false, value: "0.382", color: "#FF6D00" },
-      { on: false, value: "0.618", color: "#00BFA5" },
-      { on: true, value: "1", color: "#2962FF" },
-      { on: false, value: "1.75", color: "#FF4081" },
-    ],
-  });
-  const [txtSettOpen, setTxtSettOpen] = useState(false);
-  const [txtSettPos, setTxtSettPos] = useState({ x: 200, y: 90 });
-  const [txtSettTab, setTxtSettTab] = useState("style");
-  const [txtName, setTxtName] = useState("Text");
-  const [txtNameEditing, setTxtNameEditing] = useState(false);
-  const [txtSizeOpen, setTxtSizeOpen] = useState(false);
-  const [txtBarSizeOpen, setTxtBarSizeOpen] = useState(false);
-  const [txtBarDrop, setTxtBarDrop] = useState(null);
-  const [txtTemplates, setTxtTemplates] = useState([]);
-  const [txtSaveAsMode, setTxtSaveAsMode] = useState(false);
-  const [txtNewTplName, setTxtNewTplName] = useState("");
-  const [txtStyle, setTxtStyle] = useState({
-    fontSize: 14, textColor: "#ffffff", italic: false, bold: false, content: "",
-    horizAlign: "left",
-    bgOn: false, bgColor: "#000000",
-    borderOn: true, borderColor: "#787B86",
-    wrapText: false, anchored: false,
-    notePt1Price: "0.00000", notePt1Bar: "0", notePt2Price: "0.00000", notePt2Bar: "0",
-    priceNotePt1Price: "0.00000", priceNotePt1Bar: "0", priceNotePt2Price: "0.00000", priceNotePt2Bar: "0",
-    calloutPt1Price: "0.00000", calloutPt1Bar: "0", calloutPt2Price: "0.00000", calloutPt2Bar: "0",
-    commentPt1Price: "0.00000", commentPt1Bar: "0",
-    pinLabelColor: "#4A6AFF", pinPt1Price: "0.00000", pinPt1Bar: "0",
-    priceLabelPt1Price: "0.00000", priceLabelPt1Bar: "0",
-    signpostPt1Price: "0.00000", signpostPt1Bar: "0",
-    flagPt1Price: "0.00000", flagPt1Bar: "0",
-    imageDataUrl: "", imageTransparency: 0, imagePt1Price: "0.00000", imagePt1Bar: "0",
-    emojiPt1Price: "0.00000", emojiPt1Bar: "0",
-    visMinutes: { checked: true, min: 1, max: 60 }, visHours: { checked: true, min: 1, max: 24 },
-    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
-    visMonths: { checked: true, min: 1, max: 120 },
-  });
-  const [vwapSettOpen, setVwapSettOpen] = useState(false);
-  const [vwapSettPos, setVwapSettPos] = useState({ x: 200, y: 90 });
-  const [vwapSettTab, setVwapSettTab] = useState("style");
-  const [vwapStyleDrop, setVwapStyleDrop] = useState(null);
-  const [vwapBarPos, setVwapBarPos] = useState({ x: 130, y: 200 });
-  const [vwapBarDrop, setVwapBarDrop] = useState(null);
-  const [vwapStyle, setVwapStyle] = useState({
-    vwapColor: "#9E9EA2", vwapLineType: "solid", vwapLineWidth: "2",
-    band1On: true,  band1Color: "#26A69A", band1LineType: "dotted", band1LineWidth: "1",
-    bg1On: false,   bg1Color: "rgba(38,166,154,0.15)",
-    band2On: false, band2Color: "#F2C10F", band2LineType: "dotted", band2LineWidth: "1",
-    bg2On: false,   bg2Color: "rgba(242,193,15,0.15)",
-    band3On: false, band3Color: "#26C6DA", band3LineType: "dotted", band3LineWidth: "1",
-    bg3On: false,   bg3Color: "rgba(38,198,218,0.15)",
-    priceLabels: true, timeLabels: true,
-    bandsCalcMode: "Std Deviation",
-    mult1On: true,  mult1Val: "1.0",
-    mult2On: false, mult2Val: "2.0",
-    mult3On: false, mult3Val: "3.0",
-    source: "(H+L+C)/3",
-    anchorPrice: "0.00000", anchorBar: "0",
-    visMinutes: { checked: true, min: 1, max: 60 }, visHours: { checked: true, min: 1, max: 24 },
-    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
-    visMonths: { checked: true, min: 1, max: 120 },
-  });
-  const [vpSettOpen, setVpSettOpen] = useState(false);
-  const [vpSettPos, setVpSettPos] = useState({ x: 200, y: 90 });
-  const [vpSettTab, setVpSettTab] = useState("style");
-  const [vpStyleDrop, setVpStyleDrop] = useState(null);
-  const [vpBarPos, setVpBarPos] = useState({ x: 130, y: 240 });
-  const [vpBarDrop, setVpBarDrop] = useState(null);
-  const [vpStyle, setVpStyle] = useState({
-    valuesOn: true, valuesColor: "#9E9EA2",
-    widthPct: "30",
-    placement: "Left",
-    zoneBgOn: true, zoneBgColor: "#1A1A2E", zoneBgAlpha: 85,
-    upVolColor: "#26A69A",
-    downVolColor: "#FF5068",
-    valueAreaUpColor: "#26A69A",
-    valueAreaDownColor: "#FF5068",
-    pocOn: true, pocColor: "#E0E0E0",
-    vahOn: true, vahColor: "#26A69A",
-    valOn: true, valColor: "#FF5068",
-    devPocOn: false, devPocColor: "#9E9EA2",
-    devVAOn: false, devVAColor: "#9E9EA2",
-    rowsLayout: "Number of Rows",
-    rowSize: "24",
-    volumeOn: true, volumeType: "Up/Down",
-    valueAreaVol: "70",
-    extendRight: false,
-    pt1Price: "0.00000", pt1Bar: "0",
-    pt2Price: "0.00000", pt2Bar: "0",
-    visMinutes: { checked: true, min: 1, max: 60 }, visHours: { checked: true, min: 1, max: 24 },
-    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
-    visMonths: { checked: true, min: 1, max: 120 },
-  });
-  const [avSettOpen, setAvSettOpen] = useState(false);
-  const [avSettPos, setAvSettPos] = useState({ x: 200, y: 90 });
-  const [avSettTab, setAvSettTab] = useState("style");
-  const [avStyleDrop, setAvStyleDrop] = useState(null);
-  const [avBarPos, setAvBarPos] = useState({ x: 130, y: 280 });
-  const [avBarDrop, setAvBarDrop] = useState(null);
-  const [avStyle, setAvStyle] = useState({
-    valuesOn: true, valuesColor: "#9E9EA2",
-    widthPct: "30", placement: "Left",
-    zoneBgOn: true, zoneBgColor: "#1A1A2E", zoneBgAlpha: 85,
-    upVolColor: "#26A69A", downVolColor: "#FF5068",
-    valueAreaUpColor: "#26A69A", valueAreaDownColor: "#FF5068",
-    pocOn: true, pocColor: "#E0E0E0",
-    vahOn: true, vahColor: "#26A69A",
-    valOn: true, valColor: "#FF5068",
-    devPocOn: false, devPocColor: "#9E9EA2",
-    devVAOn: false, devVAColor: "#9E9EA2",
-    rowsLayout: "Number of Rows", rowSize: "24",
-    volumeOn: true, volumeType: "Up/Down",
-    valueAreaVol: "70", extendRight: false,
-    anchorPrice: "0.00000", anchorBar: "0",
-    visMinutes: { checked: true, min: 1, max: 60 }, visHours: { checked: true, min: 1, max: 24 },
-    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
-    visMonths: { checked: true, min: 1, max: 120 },
-  });
-  const [screenshotFlash, setScreenshotFlash] = useState(false);
-  const [orderPanelOpen, setOrderPanelOpen] = useState(false);
-  const [opSymOpen, setOpSymOpen] = useState(false);
-  const [opSymSearch, setOpSymSearch] = useState("");
-  const [opSymPos, setOpSymPos] = useState({ top: 0, left: 0 });
-  const [opSizeOpen, setOpSizeOpen] = useState(false);
-  const [opSizePos, setOpSizePos] = useState({ top: 0, left: 0 });
-  const [opTplOpen, setOpTplOpen] = useState(false);
-  const [opTplPos, setOpTplPos] = useState({ top: 0, left: 0 });
-  const [activeTemplate, setActiveTemplate] = useState(null);
-  const [opSaveAsMode, setOpSaveAsMode] = useState(false);
-  const [opNewTplName, setOpNewTplName] = useState("");
-  const [opSavedTemplates, setOpSavedTemplates] = useState([]);
-  const [opDotsOpen, setOpDotsOpen] = useState(false);
-  const [opDotsPos, setOpDotsPos] = useState({ top: 0, left: 0 });
-  const [panelDetached, setPanelDetached] = useState(false);
-  const [detachPos, setDetachPos] = useState({ x: 900, y: 80 });
-  const [detachSize, setDetachSize] = useState({ w: 336, h: 560 });
-  const [panelMode, setPanelMode] = useState("advanced");
-  /** Short windows where React row counts intentionally lead OM (panel add/delete) so reverse poll must not fight the forward bridge. */
-  const omPanelBridgeRef = useRef({ entryAdd: 0, entryDel: 0, tpAdd: 0, tpDel: 0 });
-  const OM_PANEL_BRIDGE_LEAD_MS = 750;
-  const isOmBridgeLead = (ts) => !!(ts && Date.now() - ts < OM_PANEL_BRIDGE_LEAD_MS);
-  const isWide = panelDetached && detachSize.w >= 520;
-  const opTemplates = ["Default","Scalp — Trend","Swing Trade","Breakout","Reversal"];
-  const [rightPanel, setRightPanel] = useState(null);
-  const [screenshotPos, setScreenshotPos] = useState({ x: 0, y: 0 });
-  const [layersOpen, setLayersOpen] = useState(false);
-  const [layersPos, setLayersPos] = useState({ x: 0, y: 0 });
-  const [layersCat, setLayersCat] = useState("drawings");
-  // Populated from chart.js drawingManager.drawings — see the
-  // "Objects Tree sync" effect below. Initially empty until chart.js loads.
-  const [layersItems, setLayersItems] = useState([]);
-  const [layersVis, setLayersVis] = useState({});
-  const [layersSearch, setLayersSearch] = useState("");
-  const [newsOpen, setNewsOpen] = useState(false);
-  const [newsPos, setNewsPos] = useState({ x: 0, y: 0 });
-  const [newsTab, setNewsTab] = useState("upcoming");
-  const [newsSearch, setNewsSearch] = useState("");
-  const [newsImpact, setNewsImpact] = useState(["high","med","low"]);
-  const [newsSymbolOnly, setNewsSymbolOnly] = useState(false);
-  const [newsFilterOpen, setNewsFilterOpen] = useState(false);
-  const [newsFilterClosing, setNewsFilterClosing] = useState(false);
-  const [newsCntSel, setNewsCntSel] = useState({US:1,EU:1,GB:1,JP:1,AU:1,CA:1,DE:1,FR:1,IT:1,CN:1,CH:1});
-  const [layoutOpen, setLayoutOpen] = useState(false);
-  const [layoutPos, setLayoutPos] = useState({ x: 0, y: 0 });
-  const [layoutPanels, setLayoutPanels] = useState({n:1,li:0});
-  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: true, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
-  const [layoutTab, setLayoutTab] = useState("panels");
-
-  /** Same keys as the legacy News country filter (economic-news-sidebar.js). */
-  const ECON_CAL_COUNTRIES = ["US", "EU", "GB", "JP", "AU", "CA", "DE", "FR", "IT", "CN", "CH"];
-  const [ecoNewsRev, setEcoNewsRev] = useState(0);
-  const newsSearchToModuleDebounceRef = useRef(null);
-
-  const pushEconNewsFiltersToModule = (impactArr, symOnly, cntSel) => {
-    const api = window.__economicCalendarUi;
-    const impact =
-      Array.isArray(impactArr) && impactArr.length > 0 ? impactArr : ["high", "med", "low"];
-    const allOff = ECON_CAL_COUNTRIES.every((co) => !cntSel[co]);
-    const allOn = ECON_CAL_COUNTRIES.every((co) => cntSel[co]);
-    let countryCodes;
-    if (allOff) countryCodes = ["__"];
-    else if (allOn) countryCodes = [];
-    else countryCodes = ECON_CAL_COUNTRIES.filter((co) => cntSel[co]);
-    if (!api) {
-      try {
-        window.chart?.scheduleRender?.();
-      } catch (_) {}
-      try {
-        window.dispatchEvent(new CustomEvent("economicCalendarUpdated"));
-      } catch (_) {}
-      return;
-    }
-    api.setFilters({
-      impactHigh: impact.includes("high"),
-      impactMedium: impact.includes("med"),
-      impactLow: impact.includes("low"),
-      pairOnly: !!symOnly,
-      countryCodes,
-    });
-    try {
-      window.chart?.scheduleRender?.();
-    } catch (_) {}
-    try {
-      window.dispatchEvent(new CustomEvent("economicCalendarUpdated"));
-    } catch (_) {}
-  };
-
-  useEffect(() => {
-    if (rightPanel !== "news") {
-      try { window.__v9NewsPanelActive = false; } catch (_) {}
-      try {
-        document.getElementById("newsContent")?.classList.remove("active");
-      } catch (_) {}
-      return undefined;
-    }
-    try { window.__v9NewsPanelActive = true; } catch (_) {}
-    try {
-      document.getElementById("newsContent")?.classList.add("active");
-    } catch (_) {}
-    const api = window.__economicCalendarUi;
-    if (api) {
-      const s = api.getStatus();
-      setNewsTab(s.tab);
-      setNewsSearch(s.query);
-      const f = s.filters;
-      setNewsImpact([
-        ...(f.impactHigh ? ["high"] : []),
-        ...(f.impactMedium ? ["med"] : []),
-        ...(f.impactLow ? ["low"] : []),
-      ]);
-      setNewsSymbolOnly(!!f.pairOnly);
-      const codes = f.countryCodes || [];
-      const allOn = codes.length === 0;
-      const isNoneMode = codes.length === 1 && codes[0] === "__";
-      setNewsCntSel(
-        ECON_CAL_COUNTRIES.reduce((acc, co) => {
-          let v = 0;
-          if (allOn) v = 1;
-          else if (isNoneMode) v = 0;
-          else v = codes.indexOf(co) >= 0 ? 1 : 0;
-          acc[co] = v;
-          return acc;
-        }, {})
-      );
-    }
-    try {
-      window.loadEconomicNewsSidebar?.();
-    } catch (_) {}
-    const bump = () => setEcoNewsRev((x) => x + 1);
-    window.addEventListener("economicCalendarUpdated", bump);
-    const tick = setInterval(bump, 1000);
-    return () => {
-      try { window.__v9NewsPanelActive = false; } catch (_) {}
-      try {
-        document.getElementById("newsContent")?.classList.remove("active");
-      } catch (_) {}
-      window.removeEventListener("economicCalendarUpdated", bump);
-      clearInterval(tick);
-    };
-  }, [rightPanel]);
-
-  // ─── MULTI-PANEL LAYOUTS + SYNC ↔ window.panelManager ───────────────────
-  // V9's layout picker uses (n=panel count 1..8, li=variant index). Legacy
-  // panelManager.applyLayout takes string IDs like '1','2v','2h','3l','4tl'.
-  // The 2D array below maps V9 (n,li) → legacy id, in the SAME visual order
-  // V9 renders the variants (see lyLines around line 10635). Variants whose
-  // visual layout doesn't exactly match a legacy id fall through to the
-  // closest legacy variant for that panel count.
-  const LAYOUT_ID_MAP = [
-    ["1"],
-    ["2v","2h"],
-    ["3v","3h","3l","3r","3t","3b"],
-    ["4","4h","4v","4b","4t","4l","4r","4tl"],
-    ["5a","5b","5c","5v","5h"],
-    ["6","6b","6v","6h"],
-    ["7a","7v"],
-    ["8","8b","8v","8h"],
-  ];
-  const layoutTupleFromId = (id) => {
-    for (let n = 0; n < LAYOUT_ID_MAP.length; n++) {
-      const li = LAYOUT_ID_MAP[n].indexOf(id);
-      if (li >= 0) return { n: n + 1, li };
-    }
-    return null;
-  };
-
-  // Mount: hydrate V9 state from whatever panelManager already has loaded
-  // from userStorage so the UI shows the correct active layout/sync toggles.
-  useEffect(() => {
-    let cancelled = false;
-    let attempts = 0;
-    const tryHydrate = () => {
-      if (cancelled) return;
-      const pm = window.panelManager;
-      if (!pm || !pm.syncSettings) {
-        if (attempts++ < 60) setTimeout(tryHydrate, 100);
-        return;
-      }
-      try {
-        const cur = pm.getCurrentLayout?.() || pm.currentLayout || "1";
-        const tuple = layoutTupleFromId(cur);
-        if (tuple) setLayoutPanels(tuple);
-      } catch (_) {}
-      try {
-        // Only copy keys V9 knows about so we don't spread legacy-only keys
-        // into V9's state object.
-        setLayoutSync((prev) => {
-          const next = { ...prev };
-          for (const k of Object.keys(prev)) {
-            if (k in pm.syncSettings) next[k] = !!pm.syncSettings[k];
-          }
-          return next;
-        });
-      } catch (_) {}
-      try {
-        const ss = pm.syncSettings;
-        if (ss) {
-          window.crosshairSyncEnabled = !!ss.crosshair;
-          if (window.chart) {
-            window.chart.syncCrosshair = !!ss.crosshair;
-            window.chart.syncDrawings = !!ss.drawings;
-          }
-          (pm.panels || []).forEach((p) => {
-            if (!p.chartInstance) return;
-            p.chartInstance.syncCrosshair = !!ss.crosshair;
-            p.chartInstance.syncDrawings = !!ss.drawings;
-          });
-        }
-      } catch (_) {}
-    };
-    tryHydrate();
-    return () => { cancelled = true; };
-  }, []);
-
-  // V9 layout picker → panelManager.applyLayout(id).
-  // Skips the very first run (initial defaults) so we don't reset whatever
-  // layout panelManager restored from userStorage on boot.
-  const layoutFirstApplyRef = useRef(true);
-  useEffect(() => {
-    if (layoutFirstApplyRef.current) { layoutFirstApplyRef.current = false; return; }
-    const id = LAYOUT_ID_MAP[layoutPanels.n - 1]?.[layoutPanels.li];
-    if (!id) return;
-    const apply = () => {
-      const pm = window.panelManager;
-      if (!pm || typeof pm.applyLayout !== "function") return false;
-      try {
-        if (pm.getCurrentLayout?.() === id || pm.currentLayout === id) return true;
-        pm.applyLayout(id);
-      } catch (err) { console.warn("[V9 layout] applyLayout failed:", err); }
-      return true;
-    };
-    if (apply()) return;
-    let n = 0;
-    const t = setInterval(() => { if (apply() || ++n > 60) clearInterval(t); }, 100);
-    return () => clearInterval(t);
-  }, [layoutPanels]);
-
-  // After a layout switch, force EVERY chart instance to fully recompute its
-  // dimensions and re-render axes. chart.resize() bails early when DPR hasn't
-  // changed, so the panel-0 main chart can keep its old axis positions even
-  // though #chartWrapper was resized to half width. Resetting _lastResizeDpr
-  // is the same trick panel-manager.js uses for non-main panels (line 1672).
-  // We also do TWO passes (RAF + ~250ms timeout) because percent-based widths
-  // sometimes report 0×0 on the first frame after a layout change.
-  useEffect(() => {
-    const id = LAYOUT_ID_MAP[layoutPanels.n - 1]?.[layoutPanels.li];
-    if (!id) return;
-    const forceResizeAll = () => {
-      try {
-        if (window.chart && window.chart.resize) {
-          window.chart._lastResizeDpr = 0;
-          window.chart.resize();
-          window.chart.render && window.chart.render();
-        }
-        const pm = window.panelManager;
-        if (pm && Array.isArray(pm.panels)) {
-          pm.panels.forEach((p) => {
-            const pc = p && p.chartInstance;
-            if (!pc || !pc.resize || pc === window.chart) return;
-            pc._lastResizeDpr = 0;
-            pc.resize();
-            pc.render && pc.render();
-          });
-        }
-      } catch (err) { console.warn("[V9 layout] resize-after-apply failed:", err); }
-    };
-    const r1 = requestAnimationFrame(forceResizeAll);
-    const r2 = setTimeout(forceResizeAll, 250);
-    return () => { cancelAnimationFrame(r1); clearTimeout(r2); };
-  }, [layoutPanels]);
-
-  // V9 sync toggles → panelManager.syncSettings + saveSyncSettings + legacy-parity side-effects
-  // (panel-manager setupSyncToggles): crosshair flags + hide/show, time/date-range/interval bootstrap,
-  // drawings on instances, indicators/chartType snapshot sync when enabling.
-  const layoutSyncFirstRef = useRef(true);
-  useEffect(() => {
-    if (layoutSyncFirstRef.current) { layoutSyncFirstRef.current = false; return; }
-    const pm = window.panelManager;
-    if (!pm || !pm.syncSettings) return;
-    let changed = false;
-    const fired = {};
-    for (const [k, v] of Object.entries(layoutSync)) {
-      if (pm.syncSettings[k] !== v) {
-        pm.syncSettings[k] = v;
-        fired[k] = v;
-        changed = true;
-      }
-    }
-    if (!changed) return;
-    try { pm.saveSyncSettings?.(); } catch (_) {}
-
-    if ("crosshair" in fired) {
-      try {
-        window.crosshairSyncEnabled = layoutSync.crosshair;
-        if (window.chart) window.chart.syncCrosshair = layoutSync.crosshair;
-        (pm.panels || []).forEach((p) => {
-          if (p?.chartInstance) p.chartInstance.syncCrosshair = layoutSync.crosshair;
-        });
-        if (!layoutSync.crosshair && typeof pm.hideAllSyncedCrosshairs === "function") {
-          pm.hideAllSyncedCrosshairs();
-        } else if (
-          layoutSync.crosshair &&
-          window.chart?.cursorType &&
-          typeof window.chart.syncCursorTypeToAllCharts === "function"
-        ) {
-          window.chart.syncCursorTypeToAllCharts(window.chart.cursorType);
-        }
-      } catch (_) {}
-    }
-    if ("drawings" in fired) {
-      try {
-        if (window.chart) window.chart.syncDrawings = layoutSync.drawings;
-        (pm.panels || []).forEach((p) => {
-          if (p?.chartInstance) p.chartInstance.syncDrawings = layoutSync.drawings;
-        });
-      } catch (_) {}
-    }
-    if ("time" in fired) {
-      try {
-        pm._timeSyncLastTargetBar = {};
-        if (layoutSync.time && (pm.panels || []).length > 1) {
-          const sp = pm.panels[pm.selectedPanelIndex];
-          if (sp && typeof pm.syncTimeToPanel === "function") pm.syncTimeToPanel(sp);
-        }
-      } catch (_) {}
-    }
-    if ("dateRange" in fired) {
-      try {
-        if (layoutSync.dateRange && (pm.panels || []).length > 1) {
-          const selectedPanel = pm.panels[pm.selectedPanelIndex];
-          const chart = selectedPanel?.chartInstance;
-          if (chart?.data?.length) {
-            const startIndex = chart.getVisibleStartIndex ? chart.getVisibleStartIndex() : 0;
-            const endIndex = chart.getVisibleEndIndex ? chart.getVisibleEndIndex() : chart.data.length - 1;
-            const startTimestamp = chart.data[Math.max(0, startIndex)]?.t;
-            const endTimestamp = chart.data[Math.min(chart.data.length - 1, endIndex)]?.t;
-            if (startTimestamp && endTimestamp && typeof pm.syncDateRange === "function") {
-              pm.syncDateRange(selectedPanel, startTimestamp, endTimestamp);
-            }
-          }
-        }
-      } catch (_) {}
-    }
-    if ("interval" in fired) {
-      try {
-        if (layoutSync.interval && (pm.panels || []).length > 1) {
-          const selectedPanel = pm.panels[pm.selectedPanelIndex];
-          if (selectedPanel?.chartInstance && typeof pm.syncInterval === "function") {
-            const timeframe =
-              selectedPanel.timeframe || selectedPanel.chartInstance.currentTimeframe || "1m";
-            pm.syncInterval(selectedPanel, timeframe);
-          }
-        }
-      } catch (_) {}
-    }
-    if ("indicators" in fired && layoutSync.indicators) {
-      try { pm.syncIndicatorsNow?.(); } catch (_) {}
-    }
-    if ("chartType" in fired && layoutSync.chartType) {
-      try { pm.syncChartTypeNow?.(); } catch (_) {}
-    }
-  }, [layoutSync]);
-
-  const [sessionDemoName, setSessionDemoName] = useState("Talaria V8b");
-  const [settingsTab, setSettingsTab] = useState("chart");
-  const [balVis, setBalVis] = useState(true);
-  const [sDrop, setSDrop] = useState(null); // which settings dropdown is open
-  const [colorPicker, setColorPicker] = useState(null);
-  const [cpPos, setCpPos] = useState({ top: 300, left: 500 });
-  const [swHov, setSwHov] = useState(null);
-  const [settDrop, setSettDrop] = useState(null);
-  const [settDropPos, setSettDropPos] = useState({ top: 0, left: 0, w: 0 });
-  const [customTemplates, setCustomTemplates] = useState([]);
-  const [tplNameInput, setTplNameInput] = useState("");
-  const [settHdrTplDrop, setSettHdrTplDrop] = useState(false);
-  const [settHdrSaveAs, setSettHdrSaveAs] = useState(false);
-  const [settHdrTplName, setSettHdrTplName] = useState("");
-  const [cpH, setCpH] = useState(0);
-  const [cpS, setCpS] = useState(0);
-  const [cpV, setCpV] = useState(1);
-  const [cpA, setCpA] = useState(1);
-  const [cpHex, setCpHex] = useState('ffffff');
-  const [cpDragging, setCpDragging] = useState(null);
-  const [cpDragRect, setCpDragRect] = useState(null);
-  /** Mirror state for document listeners registered once ([] effect) — assign each render (no useEffect lag). */
-  const colorPickerRef = useRef(null);
-  const cpDraggingRef = useRef(null);
-  colorPickerRef.current = colorPicker;
-  cpDraggingRef.current = cpDragging;
-  const DEFAULT_CHART_SETTINGS = {
-    theme: "Talaria Dark", chartType: "candlestick", precision: "0.00000", timezone: "UTC",
-    textColor: "#8CA0FF", background: "#07080E", gridColor: "rgba(140,160,255,0.15)", crosshairColor: "rgba(255,255,255,0.4)",
-    priceLine: true, priceLineColor: "#FF5068",
-    scaleTextColor: "rgba(255,255,255,0.25)", scaleLineColor: "rgba(140,160,255,0.12)",
-    bullBody: "#00D4A1", bullBorder: "#00D4A1", bullWick: "#00D4A1",
-    bearBody: "#FF5068", bearBorder: "#FF5068", bearWick: "#FF5068", unifiedBarColor: false, unifiedBarColorVal: "#00D4A1",
-    orderPlacement: "instant", showOrderHistory: true, showOpenOrders: true, timeFormat: "24h",
-    gridLinesOn: true, gridLineStyle: "solid", gridLineThickness: 1,
-    crosshairOn: true, crosshairStyle: "dashed",
-    priceLineStyle: "solid", priceLineThickness: 1,
-    chartTemplate: "Dark Classic",
-  };
-  const [settings, setSettings] = useState(DEFAULT_CHART_SETTINGS);
-  const settingsRef = useRef(settings);
-  useEffect(() => {
-    settingsRef.current = settings;
-  }, [settings]);
-
-  useEffect(() => {
-    const tick = () => {
-      const chart = v9ActiveChartInstance();
-      const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
-      const ms = getV9ChartBarTimeMs(chart);
-      const s = settingsRef.current;
-      const use12 = s?.timeFormat === "12h";
-      const { text: pnlStr, nonNeg: pnlNonNeg } = formatV9HudSessionPnl(om);
-      setReplayHud({
-        dateLine: formatV9HudDateLine(ms),
-        clock: formatV9HudClock(ms, use12),
-        tzLabel: v9HudTzShortLabel(s?.timezone),
-        balanceStr: formatV9AccountNum(om?.balance),
-        equityStr: formatV9AccountNum(om?.equity),
-        pnlStr,
-        pnlNonNeg,
-      });
-      const bal = Number(om?.balance);
-      const eq = Number(om?.equity);
-      setAccountBalance((prev) => (Number.isFinite(bal) ? bal : prev));
-      setAccountEquity((prev) => (Number.isFinite(eq) ? eq : prev));
-    };
-    tick();
-    const id = window.setInterval(tick, 500);
-    const onTz = () => tick();
-    try {
-      window.timezoneManager?.addListener?.(onTz);
-    } catch (_) {}
-    return () => {
-      window.clearInterval(id);
-      try {
-        window.timezoneManager?.removeListener?.(onTz);
-      } catch (_) {}
-    };
-  }, []);
-
-  const [indOpen, setIndOpen] = useState(false);
-  const [indPinned, setIndPinned] = useState([]);
-  const [indActive, setIndActive] = useState([]);
-
-  // ─── SYNC V9 SETTINGS PANEL → chart.chartSettings ───────────────────────
-  // V9 has its own native Settings/Profile UI which we keep as-is. But the
-  // colour/grid/crosshair pickers must drive chart.js's chartSettings (same
-  // keys legacy index.html uses) so the chart actually changes.
-  // NOTE: must live AFTER the `settings` useState above to avoid a TDZ.
-  //
-  // Mapping (V9 key → chart.js chartSettings key):
-  //   bullBody    → bodyUpColor + candleUpColor
-  //   bullBorder  → borderUpColor
-  //   bullWick    → wickUpColor
-  //   bearBody    → bodyDownColor + candleDownColor
-  //   bearBorder  → borderDownColor
-  //   bearWick    → wickDownColor
-  //   background  → backgroundColor
-  //   gridColor   → gridColor
-  //   crosshairColor → crosshairColor
-  //   priceLineColor → priceLineColor
-  //   priceLine   → showPriceLine
-  //   textColor   → scaleTextColor + symbolTextColor
-  //   unifiedBarColor (checkbox) → unifiedBarColorEnabled
-  //   unifiedBarColorVal → unifiedBarColor (hex)
-  //   gridLinesOn → showGrid + gridStyle (Vert and horz | None)
-  //   gridLineStyle / gridLineThickness → gridPattern, gridLineWidth
-  //   crosshairOn → showCrosshair (chart.js updateCrosshair + panel sync)
-  //   crosshairStyle → crosshairPattern
-  //   priceLineStyle / priceLineThickness → priceLinePattern, priceLineWidth
-  // Same fn as chart/modules/v9-theme-bridge.js — exposed for legacy HTML; implementation is bundled here
-  // so dev (vite proxy to remote /chart/modules/) cannot 404 the bridge.
-  useEffect(() => {
-    window.talariaApplyV9ThemeSettings = applyV9ThemeSettingsToChart;
-    return () => {
-      try {
-        if (window.talariaApplyV9ThemeSettings === applyV9ThemeSettingsToChart) {
-          delete window.talariaApplyV9ThemeSettings;
-        }
-      } catch (_) {}
-    };
-  }, []);
-
-  useEffect(() => {
-    const apply = () => applyV9ThemeSettingsToChart(settings);
-    if (apply()) return;
-    let n = 0;
-    const id = setInterval(() => {
-      if (apply() || ++n > 60) clearInterval(id);
-    }, 100);
-    return () => clearInterval(id);
-  }, [settings]);
-
-  // ─── SYNC INDICATORS → chart.js ──────────────────────────────────────────
-  // V9's indActive (array of V9 indicator IDs like "SMA", "RSI") drives
-  // chart.js's chart.addIndicator(type) / chart.removeIndicator(id).
-  // Each chart.js indicator gets a unique runtime ID; we track V9-ID → chart-ID
-  // per Chart instance in indicatorMapsByChartRef (WeakMap).
-  // Placed AFTER `indActive`'s useState because the dep array `[indActive]` is
-  // evaluated at render time and would TDZ if hoisted above.
-  useEffect(() => {
-    const ID_TO_TYPE = {
-      // Trend
-      SMA: "sma", EMA: "ema", WMA: "wma", DEMA: "dema", TEMA: "tema",
-      HMA: "hma", SUPERTREND: "supertrend",
-      // Momentum
-      RSI: "rsi", MACD: "macd", STOCH: "stoch", CCI: "cci", MOM: "mom",
-      ROC: "roc", WPR: "williams", DPO: "dpo", PPO: "ppo", AO: "ao",
-      STOCHRSI: "stochrsi",
-      // Volatility
-      BB: "bb", ATR: "atr", KC: "keltner", DC: "donchian",
-      // Volume
-      VWAP: "vwap", OBV: "obv", CMF: "cmf", MFI: "mfi",
-      // Sessions
-      SESS: "sessions",
-      // Others
-      PSAR: "psar", ADX: "adx", AROON: "aroon",
-    };
-
-    console.log("[V9 ind] useEffect fired, indActive =", indActive);
-    let cancelled = false;
-    let attempts = 0;
-
-    const getMapForChart = (ch) => {
-      if (!ch) return null;
-      let wm = indicatorMapsByChartRef.current;
-      if (!wm) {
-        wm = new WeakMap();
-        indicatorMapsByChartRef.current = wm;
-      }
-      let m = wm.get(ch);
-      if (!m) {
-        m = Object.create(null);
-        wm.set(ch, m);
-      }
-      return m;
-    };
-
-    const apply = () => {
-      if (cancelled) return;
-      const chart =
-        typeof window.getActiveChart === "function"
-          ? window.getActiveChart()
-          : window.chart;
-      // Wait for chart.js to be ready AND data to be loaded — addIndicator
-      // alerts and bails out early when this.data is empty.
-      if (!chart || typeof chart.addIndicator !== "function" || !chart.data || chart.data.length === 0) {
-        if (attempts === 0) {
-          console.log("[V9 ind] waiting: chart=", !!chart,
-            "addIndicator=", typeof chart?.addIndicator,
-            "data.length=", chart?.data?.length);
-        }
-        if (attempts++ < 60) setTimeout(apply, 200);
-        return;
-      }
-      console.log("[V9 ind] chart ready, applying. data.length=", chart.data.length);
-
-      const map = getMapForChart(chart);
-      if (!map) return;
-      const nowSet = new Set(indActive);
-      const prevSet = new Set(Object.keys(map));
-
-      // Remove indicators that are no longer active.
-      for (const v9Id of prevSet) {
-        if (!nowSet.has(v9Id)) {
-          const chartId = map[v9Id];
-          try {
-            if (chartId && typeof chart.removeIndicator === "function") {
-              chart.removeIndicator(chartId);
-            }
-          } catch (err) {
-            console.warn("[V9] removeIndicator failed for", v9Id, err);
-          }
-          delete map[v9Id];
-        }
-      }
-
-      // Add indicators that are newly active.
-      for (const v9Id of nowSet) {
-        if (prevSet.has(v9Id)) continue;
-        const type = ID_TO_TYPE[v9Id];
-        if (!type) {
-          console.warn("[V9] indicator", v9Id, "is not yet supported by chart.js");
-          continue;
-        }
-        try {
-          const ind = chart.addIndicator(type);
-          console.log("[V9 ind] addIndicator(", type, ") =>", ind);
-          if (ind && ind.id) {
-            map[v9Id] = ind.id;
-          } else {
-            console.warn("[V9 ind] addIndicator returned falsy for", v9Id, "->", type);
-          }
-        } catch (err) {
-          console.warn("[V9 ind] addIndicator failed for", v9Id, err);
-        }
-      }
-
-      try {
-        if (typeof chart.render === "function") chart.render();
-        // `#ohlcIndicators` is React-rendered; addIndicator can run before first commit → chips empty forever unless we re-sync.
-        if (typeof chart.updateOHLCIndicators === "function") chart.updateOHLCIndicators();
-      } catch (_) {}
-    };
-
-    const onPanelOrData = () => {
-      attempts = 0;
-      apply();
-    };
-
-    // When the focused tile changes, mirror V9's indActive + id-map from that chart's
-    // real indicators (so we don't re-apply the previous tile's list onto the new one).
-    const syncIndUiFromFocusedChart = () => {
-      if (cancelled) return;
-      const chart =
-        typeof window.getActiveChart === "function"
-          ? window.getActiveChart()
-          : window.chart;
-      if (!chart || !Array.isArray(chart.indicators?.active)) return;
-      const TYPE_TO_V9 = {};
-      for (const [v9Id, t] of Object.entries(ID_TO_TYPE)) {
-        TYPE_TO_V9[t] = v9Id;
-      }
-      const map = getMapForChart(chart);
-      if (!map) return;
-      for (const k of Object.keys(map)) delete map[k];
-      const next = [];
-      for (const ind of chart.indicators.active) {
-        const v9 = TYPE_TO_V9[ind.type];
-        if (v9 && ind.id) {
-          map[v9] = ind.id;
-          if (!next.includes(v9)) next.push(v9);
-        }
-      }
-      setIndActive((prev) => {
-        if (
-          prev.length === next.length &&
-          prev.every((x, i) => x === next[i])
-        ) {
-          return prev;
-        }
-        return next;
-      });
-    };
-
-    apply();
-    window.addEventListener("panelSelected", syncIndUiFromFocusedChart);
-    window.addEventListener("panelsCreated", onPanelOrData);
-    window.addEventListener("chartDataLoaded", onPanelOrData);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("panelSelected", syncIndUiFromFocusedChart);
-      window.removeEventListener("panelsCreated", onPanelOrData);
-      window.removeEventListener("chartDataLoaded", onPanelOrData);
-    };
-  }, [indActive]);
-
-  const [indSearch, setIndSearch] = useState("");
-  const [indPos, setIndPos] = useState({ x: 0, y: 0 });
-  const [indCat, setIndCat] = useState("all");
-  const [indTplOpen, setIndTplOpen] = useState(false);
-  const [indTplSaveMode, setIndTplSaveMode] = useState(false);
-  const [indTplName, setIndTplName] = useState("");
-  const [indTemplates, setIndTemplates] = useState([]);
-  const [dragging, setDragging] = useState(null);
-  const [settingsPos, setSettingsPos] = useState({ x: 0, y: 0 });
-  const [closing, setClosing] = useState(new Set());
-  const animClose = (setter, key) => {
-    setClosing(s => new Set([...s, key]));
-    setSettDrop(null);
-    setTimeout(() => { setter(false); setClosing(s => { const n = new Set(s); n.delete(key); return n; }); }, 155);
-  };
-  // Smooth close for small dropdown/popup panels (uses tlrDropOut / tlrPopOut)
-  const closePopup = (setter, key) => {
-    setClosing(s => new Set([...s, key]));
-    setTimeout(() => { setter(false); setClosing(s => { const n = new Set(s); n.delete(key); return n; }); }, 130);
-  };
-  const closeTlBarDrop = () => {
-    if (!tlBarDrop) return;
-    setClosing(s => new Set([...s, "tlbardrop"]));
-    setTimeout(() => { setTlBarDrop(null); setTlSaveAsMode(false); setTlNewTplName(""); setClosing(s => { const n = new Set(s); n.delete("tlbardrop"); return n; }); }, 130);
-  };
-  const closeTlSett = () => {
-    setCpDragging(null);
-    setCpDragRect(null);
-    cpBarAnchorRef.current = null;
-    setColorPicker(null);
-    setClosing(s => {
-      const n = new Set(s);
-      n.delete("cp");
-      n.add("tlsett");
-      return n;
-    });
-    setTlSettTplDrop(false); setTlSaveAsMode(false); setTlNewTplName(""); setTlStyleDrop(null);
-    setTimeout(() => { setTlSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("tlsett"); return n; }); }, 105);
-  };
-  const closeTxtSett = () => {
-    cpBarAnchorRef.current = null;
-    setColorPicker(null);
-    setClosing(s => new Set([...s, "txtsett"]));
-    setTxtSizeOpen(false); setTxtBarSizeOpen(false); setTxtBarDrop(null);
-    setTimeout(() => { setTxtSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("txtsett"); return n; }); }, 155);
-  };
-  const closeVwapSett = () => {
-    setClosing(s => new Set([...s, "vwapsett"]));
-    setVwapStyleDrop(null);
-    setTimeout(() => { setVwapSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("vwapsett"); return n; }); }, 155);
-  };
-  const closeVpSett = () => {
-    setClosing(s => new Set([...s, "vpsett"]));
-    setVpStyleDrop(null);
-    setTimeout(() => { setVpSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("vpsett"); return n; }); }, 155);
-  };
-  const closeAvSett = () => {
-    setClosing(s => new Set([...s, "avsett"]));
-    setAvStyleDrop(null);
-    setTimeout(() => { setAvSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("avsett"); return n; }); }, 155);
-  };
-  const closeDropdown = () => {
-    if (!dropdown) return;
-    cpBarAnchorRef.current = null;
-    setColorPicker(null);
-    closingDropdownKey.current = dropdown;
-    setClosing(s => new Set([...s, "tldrop"]));
-    setDropdown(null);
-    setTimeout(() => { closingDropdownKey.current = null; setClosing(s => { const n = new Set(s); n.delete("tldrop"); return n; }); }, 130);
-  };
-  const closeFontSizeDrop = () => {
-    setClosing(s => new Set([...s, "tlFontSizeDrop"]));
-    setTlStyleDrop(null);
-    setTimeout(() => { setClosing(s => { const n = new Set(s); n.delete("tlFontSizeDrop"); return n; }); }, 130);
-  };
-  const closeTlInfoDrop = () => {
-    if (tlStyleDrop !== "info" && !closing.has("tlInfoDrop")) return;
-    setClosing(s => new Set([...s, "tlInfoDrop"]));
-    setTlStyleDrop(null);
-    setTimeout(() => { setClosing(s => { const n = new Set(s); n.delete("tlInfoDrop"); return n; }); }, 130);
-  };
-  const closeTlSettTplDrop = () => {
-    if (!tlSettTplDrop && !closing.has("tlSettTplDrop")) return;
-    setClosing(s => new Set([...s, "tlSettTplDrop"]));
-    setTlSettTplDrop(false); setTlSaveAsMode(false); setTlNewTplName("");
-    setTimeout(() => { setClosing(s => { const n = new Set(s); n.delete("tlSettTplDrop"); return n; }); }, 130);
-  };
-  const closeCP = () => {
-    setCpDragging(null);
-    setCpDragRect(null);
-    cpBarAnchorRef.current = null;
-    setClosing(s => new Set([...s, "cp"]));
-    setColorPicker(null);
-    setTimeout(() => { setClosing(s => { const n = new Set(s); n.delete("cp"); return n; }); }, 150);
-  };
-
-  const c = darkMode ? {
-    ac: "#2643F7", acL: "#4A6AFF", acD: "rgba(38,67,247,0.08)", acB: "rgba(38,67,247,0.22)", acG: "rgba(38,67,247,0.12)",
-    gold: "#C9A84C", goldD: "rgba(201,168,76,0.07)",
-    bg: "#07080E", sf: "#0A0C14", el: "#0F1119", well: "#060710",
-    br: "rgba(140,160,255,0.05)", brL: "rgba(140,160,255,0.08)", brH: "rgba(140,160,255,0.12)",
-    tx: "rgba(255,255,255,0.92)", ts: "rgba(255,255,255,0.70)", tm: "rgba(255,255,255,0.50)",
-    gn: "#00D4A1", gnD: "rgba(0,212,161,0.07)", gnB: "rgba(0,212,161,0.18)",
-    rd: "#FF5068", rdD: "rgba(255,80,104,0.07)", rdB: "rgba(255,80,104,0.18)",
-    axTx: "rgba(255,255,255,0.45)", grid: "rgba(140,160,255,0.04)",
-    hv: "rgba(255,255,255,0.05)", hv2: "rgba(255,255,255,0.03)", trk: "rgba(255,255,255,0.18)", hvLn: "rgba(255,255,255,0.15)",
-    inputScheme: "dark",
-  } : {
-    ac: "#2643F7", acL: "#2F55E8", acD: "rgba(38,67,247,0.10)", acB: "rgba(38,67,247,0.30)", acG: "rgba(38,67,247,0.14)",
-    gold: "#9A7218", goldD: "rgba(154,114,24,0.08)",
-    bg: "#D8DCE9", sf: "#DFE3F0", el: "#E8EBF6", well: "#CDD1E0",
-    br: "rgba(0,5,40,0.12)", brL: "rgba(0,5,40,0.18)", brH: "rgba(0,5,40,0.26)",
-    tx: "rgba(0,0,0,0.92)", ts: "rgba(0,0,0,0.88)", tm: "rgba(0,0,0,0.72)",
-    gn: "#006B4F", gnD: "rgba(0,107,79,0.10)", gnB: "rgba(0,107,79,0.22)",
-    rd: "#C42030", rdD: "rgba(196,32,48,0.10)", rdB: "rgba(196,32,48,0.22)",
-    axTx: "rgba(0,0,0,0.78)", grid: "rgba(0,5,40,0.07)",
-    hv: "rgba(0,0,0,0.05)", hv2: "rgba(0,0,0,0.032)", trk: "rgba(0,0,0,0.16)", hvLn: "rgba(0,0,0,0.22)",
-    inputScheme: "light",
-  };
-  const F = "'Exo 2',sans-serif";
-
-  const allSymbols = SYMBOLS_DATA.flatMap(c => c.items);
-  const currentSymbol = allSymbols.find(s => s.id === symbol) || { id:symbol, type:"forex", base:symbol.split("/")[0], quote:symbol.split("/")[1] };
-  const chartTypeMap = {
-    "Candles": { icon: "candle", label: "Candles" },
-    "Hollow Candles": { icon: "hollowCandle", label: "Hollow Candles" },
-    "Heikin Ashi": { icon: "heikinAshi", label: "Heikin Ashi" },
-    "Bars": { icon: "tick", label: "Bars" },
-    "Line": { icon: "lineChart", label: "Line" },
-    "Area": { icon: "area", label: "Area" },
-    "candles": { icon: "candle", label: "Candles" },
-  };
-  const currentChartType = chartTypeMap[chartType] || { icon: "candle", label: chartType };
-  const gotoNextId = () => Date.now() + Math.random();
-
-  const parseGotoTimeParts = (timeStr) => {
-    if (!timeStr) return [0, 0];
-    const s = String(timeStr).replace(/\s*UTC\s*/gi, "").trim();
-    const segs = s.split(":");
-    return [parseInt(segs[0], 10) || 0, parseInt(segs[1], 10) || 0];
-  };
-
-  const buildGotoTimestampMs = (dateIso, timeStr) => {
-    if (!dateIso || typeof dateIso !== "string") return null;
-    const p = dateIso.split("-").map((x) => parseInt(x, 10));
-    if (p.length < 3 || !p.every((n) => Number.isFinite(n))) return null;
-    const [y, mo, d] = p;
-    const [hh, mm] = parseGotoTimeParts(timeStr);
-    const tm = typeof window !== "undefined" ? window.timezoneManager : null;
-    const utc = Date.UTC(y, mo - 1, d, hh, mm, 0, 0);
-    return tm ? utc - tm.getOffsetMs() : new Date(y, mo - 1, d, hh, mm, 0, 0).getTime();
-  };
-
-  const defaultGotoDateIsoFromChart = () => {
-    const ch = typeof window !== "undefined" ? window.chart : null;
-    if (!ch) return null;
-    const t =
-      ch.replaySystem?.fullRawData?.[0]?.t ??
-      ch.rawData?.[0]?.t ??
-      ch.data?.[0]?.t;
-    if (!Number.isFinite(t)) return null;
-    const d = new Date(t);
-    // Use UTC calendar parts so presets/session times align with chart bar timestamps (ms since epoch).
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-  };
-
-  const executeGotoItem = (item) => {
-    if (!item) return;
-    const ch = typeof window !== "undefined" ? window.chart : null;
-    if (!ch) return;
-    if (item.type === "price") {
-      const raw = String(item.label ?? "").replace(/[^0-9.-]/g, "");
-      const p = parseFloat(raw);
-      if (Number.isFinite(p) && typeof ch.jumpToPrice === "function") ch.jumpToPrice(p);
-      return;
-    }
-    const timeStr = item.time || "00:00";
-    const dateIso = item.dateIso || defaultGotoDateIsoFromChart() || gotoNewDate;
-    const ms = buildGotoTimestampMs(dateIso, timeStr);
-    if (ms == null || !Number.isFinite(ms)) return;
-    if (typeof ch.jumpToTimestamp === "function") {
-      void ch.jumpToTimestamp(ms, { showLoadingOverlay: true });
-    }
-  };
-
-  // Always use effective zoom 1: CSS `zoom` on the shell broke hit-testing vs visually
-  // stacked layers (left rail, floating bars) in Chromium — clicks registered on #chart-container
-  // “behind” chrome so the first mousedown cleared React panel state and it felt like buttons
-  // needed many clicks. Safari already used 1; one path keeps layout/pointer math consistent.
-  const Z = 1;
-  if (typeof window !== 'undefined' && window.__v9Zoom !== Z) {
-    window.__v9Zoom = Z;
-  }
-
-  useEffect(() => {
-    const onFSChange = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", onFSChange);
-    return () => document.removeEventListener("fullscreenchange", onFSChange);
-  }, []);
-
-  // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
-  useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260503-analytics-session-journal-merge";
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") {
-        closeWindows();
-        setTlSettOpen(false);
-        setTradeCard(null);
-        setViewingScreenshot(null);
-        setTradeActPopup(null);
-        setRollback(false);
-        hideTip();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  useEffect(() => {
-    const eventTargetEl = (e) => {
-      const t = e && e.target;
-      if (!t) return null;
-      if (t.nodeType === 1 && typeof t.closest === "function") return t;
-      const p = t.parentElement;
-      return p && typeof p.closest === "function" ? p : null;
-    };
-    const isOutsideUiChrome = (el) =>
-      !!el &&
-      !el.closest("[data-sdrop]") &&
-      !el.closest("[data-v9-chrome]") &&
-      !el.closest("[data-tlbar]") &&
-      !el.closest("#drawing-toolbar") &&
-      !el.closest(".drawing-toolbar") &&
-      !el.closest(".tlr-cp");
-
-    const dismissColorPickerIfOutside = (el) => {
-      if (!el) return;
-      const insideCp = typeof el.closest === "function" && el.closest(".tlr-cp");
-      if (colorPickerRef.current && !insideCp && !cpDraggingRef.current) {
-        cpBarAnchorRef.current = null;
-        setColorPicker(null);
-        setCpDragging(null);
-        setCpDragRect(null);
-      }
-    };
-    // TxBtn/TlBtn open the picker on pointerdown with stopPropagation — so bubble never reaches
-    // document. Using mousedown *capture* ran after pointerdown and cleared the picker on the same
-    // gesture (felt like a missed click or two-tap to open).
-    const dismissPointerHandler = (e) => {
-      const el = eventTargetEl(e);
-      dismissColorPickerIfOutside(el);
-    };
-    const chromeMouseHandler = (e) => {
-      const el = eventTargetEl(e);
-      if (!el) return;
-      // IMPORTANT: return BEFORE tlBar / chart dismiss setState. Presses inside [data-sdrop] must not
-      // clear tlBar on first press ("needs many taps").
-      if (!isOutsideUiChrome(el)) return;
-
-      setTlBarDrop(null);
-      setTlSaveAsMode(false);
-      setTlNewTplName("");
-      setVwapBarDrop(null);
-
-      const onChartSurface =
-        el.closest("#chart-container") ||
-        el.closest("#panels-container");
-      if (!onChartSurface) return;
-
-      try { closeAllRef.current?.(); } catch (_) {}
-      setTlSettTplDrop(false);
-      setTlSettOpen(false);
-    };
-    const scrollHandler = (ev) => {
-      const el = eventTargetEl(ev);
-      if (!el) return;
-      dismissColorPickerIfOutside(el);
-      if (!isOutsideUiChrome(el)) return;
-      setSettDrop(null);
-    };
-    document.addEventListener("pointerdown", dismissPointerHandler, false);
-    document.addEventListener("mousedown", chromeMouseHandler, false);
-    document.addEventListener("wheel", scrollHandler, { passive: true });
-    return () => {
-      document.removeEventListener("pointerdown", dismissPointerHandler, false);
-      document.removeEventListener("mousedown", chromeMouseHandler, false);
-      document.removeEventListener("wheel", scrollHandler);
-    };
-  }, []);
-
-  // While the V9 style panel is open, release the full-chart #drawingSvg hit-capture layer
-  // (z-index 11 + pointer-events all) so nothing under the body-portaled panel eats clicks.
-  useEffect(() => {
-    const active = tlSettOpen || closing.has("tlsett");
-    if (!active || typeof document === "undefined") return;
-    const svg = document.getElementById("drawingSvg");
-    if (!svg) return;
-    const prev = svg.style.pointerEvents;
-    const prevZ = svg.style.zIndex;
-    svg.style.pointerEvents = "none";
-    svg.style.zIndex = "1";
-    return () => {
-      svg.style.pointerEvents = prev;
-      svg.style.zIndex = prevZ;
-      try {
-        const ch = typeof window !== "undefined" ? window.chart : null;
-        if (ch && typeof ch.updateSVGPointerEvents === "function") ch.updateSVGPointerEvents();
-        const dm = ch && ch.drawingManager;
-        if (dm && typeof dm._updateAxisZonePointerEvents === "function") dm._updateAxisZonePointerEvents();
-      } catch (_) {}
-    };
-  }, [tlSettOpen, closing]);
-
-  useEffect(() => {
-    if (!document.querySelector('link[href*="Exo+2"]')) {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = 'https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700;800;900&display=swap';
-      document.head.appendChild(link);
-    }
-    {
-      let style = document.getElementById('tlr-scrollbar-css');
-      if (!style) { style = document.createElement('style'); style.id = 'tlr-scrollbar-css'; document.head.appendChild(style); }
-      const sbC = darkMode ? "rgba(140,160,255,0.22)" : "rgba(0,5,40,0.22)";
-      const sbH = darkMode ? "rgba(140,160,255,0.44)" : "rgba(0,5,40,0.40)";
-      style.textContent = `*{user-select:none!important;-webkit-user-select:none!important;cursor:default}input,textarea{user-select:text!important;-webkit-user-select:text!important;cursor:text}.tlr-scroll::-webkit-scrollbar{width:3px;height:3px}.tlr-scroll::-webkit-scrollbar-track{background:transparent}.tlr-scroll::-webkit-scrollbar-thumb{background:${sbC};border-radius:2px}.tlr-scroll::-webkit-scrollbar-thumb:hover{background:${sbH}}.tlr-scroll{scrollbar-width:thin;scrollbar-color:${sbC} transparent}`;
-    }
-  }, [darkMode]);
-
-  useLayoutEffect(() => {
-    if (!tfBarRef.current) return;
-    const btn = tfBarRef.current.querySelector(`[data-tf="${tf}"]`);
-    if (btn) {
-      setTfIndPos({ left: btn.offsetLeft, width: btn.offsetWidth });
-    } else {
-      setTfIndPos(null);
-    }
-  }, [tf, tfPinned]);
-
-  useLayoutEffect(() => {
-    if (!btmTabBarRef.current) return;
-    const btn = btmTabBarRef.current.querySelector(`[data-btmtab="${btmTab}"]`);
-    if (btn) {
-      setBtmIndPos({ left: btn.offsetLeft, width: btn.offsetWidth });
-    } else {
-      setBtmIndPos(null);
-    }
-  }, [btmTab]);
-
-  // When the V9 rollback (cut-line) overlay is active, intercept the next
-  // click: compute the candle index/timestamp at the click x and drive the
-  // legacy replaySystem to seek there. Mirrors the legacy pick-point flow
-  // (handlePickModeClick → startReplayAtIndex) but keeps V9 visual styling.
-  useEffect(() => {
-    if (!rollback) return;
-    const handleClick = (e) => {
-      const el = e.target;
-      // Never steal clicks from header, rail, or any UI outside the chart slot (#chart-container).
-      if (!el || !el.closest || !el.closest("#chart-container")) return;
-      // OHLC row, indicator chips, LOCKED toggle — must receive clicks normally.
-      if (el.closest(".ohlc-info")) return;
-
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      try {
-        const rs = getReplaySystem();
-        const chart =
-          typeof window.getActiveChart === "function"
-            ? window.getActiveChart()
-            : window.chart;
-        if (rs && chart) {
-          const containerNode =
-            chart.container && typeof chart.container.node === "function"
-              ? chart.container.node()
-              : (chart.canvas && chart.canvas.parentElement) || chartCanvasRef.current;
-          if (containerNode) {
-            const rect = containerNode.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const inChartArea =
-              x >= (chart.margin?.l || 0) &&
-              x <= (chart.w - (chart.margin?.r || 0));
-            if (inChartArea) {
-              const candleIndex =
-                typeof rs.getCandleIndexAtX === "function"
-                  ? rs.getCandleIndexAtX(x)
-                  : typeof chart.pixelToDataIndex === "function"
-                    ? Math.round(chart.pixelToDataIndex(x))
-                    : -1;
-              if (
-                candleIndex >= 0 &&
-                Array.isArray(chart.data) &&
-                chart.data[candleIndex]
-              ) {
-                const ts = chart.data[candleIndex].t;
-                if (!rs.isActive) {
-                  if (typeof rs.startReplayAtIndex === "function") {
-                    rs.startReplayAtIndex(candleIndex);
-                  } else {
-                    if (typeof rs.enterReplayMode === "function") rs.enterReplayMode();
-                    if (typeof rs.goToReplayTimestamp === "function") {
-                      rs.goToReplayTimestamp(ts);
-                    }
-                  }
-                } else if (typeof rs.goToReplayTimestamp === "function") {
-                  rs.goToReplayTimestamp(ts);
-                }
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("[V9 Replay] cut-line click failed", err);
-      }
-      setRollback(false);
-    };
-    const t = setTimeout(() => window.addEventListener("click", handleClick, true), 0);
-    return () => {
-      clearTimeout(t);
-      window.removeEventListener("click", handleClick, true);
-    };
-  }, [rollback]);
-
-  /** chart.js `drawing.type` → V9 rail group (`tool` state). Shared by settings open + floating toolbar selection sync. */
-  const drawingTypeToPanelGroup = useCallback((type) => {
-    if (!type) return null;
-    // Match chart text/annotation kinds (see drawing-tools-ui unifiedTextTypes).
-    if (['text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'callout', 'comment',
-         'price-label', 'price-label-2', 'signpost', 'signpost-2', 'flag-mark', 'image', 'emoji', 'pin', 'table'].includes(type)) {
-      return 'text';
-    }
-    if (['anchored-vwap', 'fixed-range-volume-profile', 'anchored-volume-profile'].includes(type)) return 'brush';
-    if (type.startsWith('fibonacci-') || type.startsWith('fib-') || type.startsWith('trend-fib-')) return 'fib';
-    // Gann tools live on the Fibonacci & Gann rail (`gannBox` … are in V9_RAIL_ICONS_BY_GROUP.fib, not `pattern`).
-    // Mapping them to `pattern` caused v9SanitizeGroupSelected to strip the selection → Elliott fallback → no Input tab.
-    if (type === 'gann-box' || type === 'gann-square' || type === 'gann-square-fixed' || type === 'gann-fan') return 'fib';
-    if (type.startsWith('elliott-')
-        || type === 'xabcd-pattern' || type === 'head-shoulders'
-        || type === 'abcd-pattern' || type === 'triangle-pattern'
-        || type === 'three-drives' || type === 'cypher-pattern') return 'pattern';
-    if (['rectangle', 'rotated-rectangle', 'triangle', 'arc', 'ellipse', 'circle',
-         'arrow', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down'].includes(type)) return 'rect';
-    if (['parallel-channel', 'regression-trend', 'flat-top-bottom',
-         'disjoint-channel', 'pitchfork'].includes(type)) return 'channel';
-    if (['brush', 'highlighter'].includes(type)) return 'brush2';
-    if (['ruler', 'short-position', 'long-position', 'price-range',
-         'date-range', 'date-and-price-range'].includes(type)) return 'measure';
-    if (['trendline', 'horizontal', 'vertical', 'horizontal-ray', 'ray',
-         'extended-line', 'cross-line', 'polyline', 'path', 'curve', 'double-curve'].includes(type)) {
-      return 'trendline';
-    }
-    return null;
-  }, []);
-
-  const drawingTypeToPanelGroupRef = useRef(drawingTypeToPanelGroup);
-  drawingTypeToPanelGroupRef.current = drawingTypeToPanelGroup;
-
-  const TL_LINE_SHAPE_GROUPS = useMemo(
-    () => new Set(["trendline", "rect", "channel", "brush2", "fib", "pattern", "measure"]),
-    [],
-  );
-
-  // After finalizeDrawing, chart clears the tool (crosshair) but `toolbar.show` already ran; until then
-  // `tool` is crosshair and tlSubTool used to fall through to Trend Line. Prefer the selected drawing's group.
-  // Volume profile types map to group `brush` — normalize to `brush2` (V9 rail) for the floating bar.
-  // Prefer live selection from getSelectedDrawingAcrossCharts (active chart first). If that drawing
-  // is any text/annotation type, it wins — fixes wrong Trend Line bar when the toolbar hook type or
-  // tlBarSelectedType is stale. Else fall back to hook type when it is text; else scanned || hook.
-  let chartPrimarySelectedDrawingType = tlBarSelectedType;
-  if (tlBarSelected && typeof window !== "undefined") {
-    try {
-      const live = getPrimarySelectedDrawingForActiveChart(null);
-      const liveT = live && live.type;
-      const liveG = liveT ? drawingTypeToPanelGroupRef.current(liveT) : null;
-      if (liveG === "text") {
-        chartPrimarySelectedDrawingType = liveT;
-      } else {
-        const hookT = tlBarSelectedType;
-        const hookG = hookT ? drawingTypeToPanelGroupRef.current(hookT) : null;
-        if (hookG === "text") {
-          chartPrimarySelectedDrawingType = hookT;
-        } else {
-          chartPrimarySelectedDrawingType = liveT || hookT;
-        }
-      }
-    } catch (_) {}
-  }
-  const tlBarDrawingGroupRaw =
-    tlBarSelected && chartPrimarySelectedDrawingType
-      ? drawingTypeToPanelGroupRef.current(chartPrimarySelectedDrawingType)
-      : null;
-  const tlBarDrawingGroup =
-    tlBarDrawingGroupRaw === "brush" ? "brush2" : tlBarDrawingGroupRaw;
-  // Selected annotation must never inherit line/shape rail from `tool`, or tlSubTool defaults to Trend Line.
-  const effectiveTlGroup =
-    tlBarDrawingGroup === "text"
-      ? null
-      : (tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) ? tlBarDrawingGroup : null)
-      || (TL_LINE_SHAPE_GROUPS.has(tool) ? tool : null);
-
-  // Active line/shape sub-tool (icon + label)
-  const tlSubTool = effectiveTlGroup === "rect"
-    ? v9RailSubtoolOrFallback("rect", groupSelected.rect, { icon: "rect", label: "Rectangle" })
-    : effectiveTlGroup === "channel"
-    ? v9RailSubtoolOrFallback("channel", groupSelected.channel, { icon: "channel", label: "Parallel Channel" })
-    : effectiveTlGroup === "brush2"
-    ? v9RailSubtoolOrFallback("brush2", groupSelected.brush2, { icon: "draw", label: "Brush" })
-    : effectiveTlGroup === "fib"
-    ? v9RailSubtoolOrFallback("fib", groupSelected.fib, { icon: "fib", label: "Fib Retracement" })
-    : effectiveTlGroup === "pattern"
-    ? v9RailSubtoolOrFallback("pattern", groupSelected.pattern, { icon: "elliott5", label: "Elliott Impulse (12345)" })
-    : effectiveTlGroup === "measure"
-    ? v9RailSubtoolOrFallback("measure", groupSelected.measure, { icon: "measure", label: "Range Tool" })
-    : v9RailSubtoolOrFallback("trendline", groupSelected.trendline, { icon: "trendline", label: "Trend Line" });
-  const tlSubToolRef = useRef(tlSubTool.label);
-  const txtSubToolFromRail = groupSelected.text || { icon: "text", label: "Text" };
-  const txtSubTool =
-    tlBarSelected && tlBarDrawingGroup === "text" && chartPrimarySelectedDrawingType
-      ? {
-          icon: legacyChartTextTypeToV9Icon(chartPrimarySelectedDrawingType),
-          label: chartPrimarySelectedDrawingType,
-        }
-      : txtSubToolFromRail;
-  const txtSubToolRef = useRef(txtSubTool.label);
-  const isFibTool = tlSubTool.icon.startsWith("fib");
-  const isGannTool = ["gannBox","gannSquare","gannFan"].includes(tlSubTool.icon);
-  const isElliottTool = ["elliott5","elliottABC","elliottTri","elliottWXY","elliottWXYXZ"].includes(tlSubTool.icon);
-  const isPatternTool = effectiveTlGroup === "pattern";
-  const isRRTool = tlSubTool.icon === "longPos" || tlSubTool.icon === "shortPos";
-
-  const lineShapeRailActive =
-    tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || tool === "pattern" || tool === "measure";
-  const annotationSelectedOnChart = tlBarSelected && tlBarDrawingGroup === "text";
-  const lineShapeUiContext =
-    !annotationSelectedOnChart &&
-    (lineShapeRailActive || (tlBarSelected && !!effectiveTlGroup));
-
-  useEffect(() => {
-    // Include `measure` — opening Style sets tool to the drawing’s panel group; omitting it
-    // immediately cleared tlSettOpen whenever the active rail tool was Range / measure.
-    if (!lineShapeRailActive) {
-      setTlSettOpen(false);
-      setTlBarDrop(null);
-    }
-    const textUiActive =
-      tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text");
-    if (!textUiActive) {
-      setTxtSettOpen(false);
-      setTxtSizeOpen(false);
-      setTxtBarSizeOpen(false);
-      setTxtBarDrop(null);
-    }
-  }, [tool, tlBarSelected, tlBarDrawingGroup]);
-
-  // Update name when switching between sub-tools; also reset to Style tab so the
-  // tab indicator never lands off-screen when the previous tab doesn't exist on the new tool
-  useEffect(() => {
-    if (lineShapeUiContext && tlSubTool.label !== tlSubToolRef.current) {
-      tlSubToolRef.current = tlSubTool.label;
-      setTlName(tlSubTool.label);
-      setTlSettTab("style");
-    }
-  }, [tlSubTool.label, lineShapeUiContext]);
-
-  // Update txtName when switching text sub-tools (Text → Note → Callout etc.), including when a placed annotation is selected.
-  useEffect(() => {
-    const textUiActive =
-      tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text");
-    if (textUiActive && txtSubTool.label !== txtSubToolRef.current) {
-      txtSubToolRef.current = txtSubTool.label;
-      setTxtName(txtSubTool.label);
-      setTxtSettTab(txtSubTool.icon === "emoji" ? "coordinates" : "style");
-    }
-  }, [txtSubTool.label, tool, tlBarSelected, tlBarDrawingGroup]);
-
-  // Keep color picker anchored to its tl bar button while the bar is being dragged
-  useEffect(() => {
-    if ((!["tlLineColor","rr_profitColor","rr_lossColor","rr_entryColor","rr_labelColor"].includes(colorPicker)) || !cpBarAnchorRef.current) return;
-    const a = cpBarAnchorRef.current;
-    setCpPos({ top: a.cpTop + (tlBarPos.y - a.barY), left: a.cpLeft + (tlBarPos.x - a.barX) });
-  }, [tlBarPos]);
-
-  // Push both floating bars out of the right panel the instant it opens
-  useEffect(() => {
-    const panelW = (rightPanel || orderPanelOpen) ? 336 : 0;
-    const vpW = window.innerWidth / Z;
-    if (tlBarRef.current) {
-      const barW = tlBarRef.current.getBoundingClientRect().width / Z;
-      setTlBarPos(p => ({ ...p, x: Math.min(p.x, vpW - panelW - barW) }));
-    }
-    if (pinnedBarRef.current) {
-      const barW = pinnedBarRef.current.getBoundingClientRect().width / Z;
-      setPinnedBarPos(p => ({ ...p, x: Math.min(p.x, vpW - panelW - barW) }));
-    }
-  }, [rightPanel, orderPanelOpen]);
-
-  useEffect(() => {
-    const onVis = (e) => {
-      const open = !!(e.detail && e.detail.open);
-      setOrderPanelOpen(open);
-    };
-    window.addEventListener("talaria:order-panel-visibility", onVis);
-    return () => window.removeEventListener("talaria:order-panel-visibility", onVis);
-  }, []);
-
-  const prevOrderPanelOpenRef = useRef(undefined);
-  useLayoutEffect(() => {
-    if (prevOrderPanelOpenRef.current === undefined) {
-      prevOrderPanelOpenRef.current = orderPanelOpen;
-      return;
-    }
-    if (prevOrderPanelOpenRef.current === orderPanelOpen) return;
-    prevOrderPanelOpenRef.current = orderPanelOpen;
-    const om = typeof window !== "undefined" && window.chart && window.chart.orderManager;
-    const panel = document.getElementById("orderPanel");
-    if (!om || typeof om.toggleOrderPanel !== "function") return;
-    const vis = !!(panel && panel.classList.contains("visible"));
-    if (orderPanelOpen && !vis) om.toggleOrderPanel();
-    else if (!orderPanelOpen && vis) om.toggleOrderPanel();
-  }, [orderPanelOpen]);
-
-  useEffect(() => {
-    if (!orderPanelOpen) return;
-    let cancelled = false;
-    let attempts = 0;
-    const maxAttempts = 160;
-    const tryOpen = () => {
-      if (cancelled || attempts++ > maxAttempts) return;
-      const om = window.chart?.orderManager;
-      const p = document.getElementById("orderPanel");
-      if (!p) {
-        requestAnimationFrame(tryOpen);
-        return;
-      }
-      if (typeof om?.toggleOrderPanel === "function" && !p.classList.contains("visible")) {
-        om.toggleOrderPanel();
-      }
-    };
-    tryOpen();
-    const t = setTimeout(tryOpen, 50);
-    const t2 = setTimeout(tryOpen, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-      clearTimeout(t2);
-    };
-  }, [orderPanelOpen]);
-
-  // Native #orderPanel stays in DOM but off-screen; V8b rail is the visible UI (same flags as V9ReactPlaceOrder).
-  useLayoutEffect(() => {
-    if (typeof window === "undefined") return;
-    window.__talariaV9ReactOrderUi = !!orderPanelOpen;
-    window.__talariaV9OrderRailOpen = !!orderPanelOpen;
-    try {
-      window.chart?.orderManager?.syncOrderPanelMountTarget?.();
-    } catch (_) {}
-  }, [orderPanelOpen]);
-
-  // Push V8b controls into order-manager's hidden inputs so calculations + Place Order match chart.js.
-  useEffect(() => {
-    if (!orderPanelOpen) return;
-    const panel = document.getElementById("orderPanel");
-    // Always push into #orderPanel when the rail is open. updatePreviewLines() still requires
-    // .visible on #orderPanel to draw — toggleOrderPanel normally sets that; do not skip sync here
-    // if the class lags one frame (otherwise multi-entry / TP never reaches order-manager.js).
-    if (!panel) return;
-
-    const tid = window.setTimeout(() => {
-      try {
-        const wantBuy = buySell === "buy";
-        const buyActive = document.getElementById("buyTab")?.classList.contains("active");
-        if (wantBuy !== !!buyActive) {
-          document.getElementById(wantBuy ? "buyTab" : "sellTab")?.click();
-        }
-
-        const otBtn = document.querySelector(`#orderPanel .order-type-btn[data-type="${orderType}"]`);
-        if (otBtn && !otBtn.classList.contains("active")) otBtn.click();
-
-        const modeMap = { $: "risk-usd", "%": "risk-percent", "#": "lot-size" };
-        const dm = modeMap[sizeMode];
-        const ptab = dm && document.querySelector(`#orderPanel .position-mode-tab[data-mode="${dm}"]`);
-        if (ptab && !ptab.classList.contains("active")) ptab.click();
-
-        const setIn = (id, val) => {
-          const el = document.getElementById(id);
-          if (!el) return;
-          const s = String(val ?? "");
-          if (el.value === s) return;
-          el.value = s;
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-        };
-
-        const setChk = (id, checked) => {
-          const el = document.getElementById(id);
-          if (!el || el.checked === !!checked) return;
-          el.checked = !!checked;
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-        };
-
-        const om = window.chart?.orderManager;
-        const skipPosSync = !!om?.isDraggingPreviewLine;
-
-        if (sizeMode === "$") setIn("riskAmountUSD", riskVal);
-        else if (sizeMode === "%") {
-          let pct = riskVal;
-          // order-manager.js applies % to balance (current/initial), not equity; scale so $ risk matches V8b EQ mode.
-          if (riskBasis === "equity" && om) {
-            const b = Number(om.balance);
-            const eq = Number(om.equity);
-            if (b > 0 && Number.isFinite(eq)) {
-              pct = String((parseFloat(riskVal || "0") * eq) / b);
-            }
-          }
-          setIn("riskAmountPercent", pct);
-          const wantBal = "current";
-          const br = document.querySelector(`input[name="balanceType"][value="${wantBal}"]`);
-          if (br && !br.checked) br.click();
-        } else setIn("lotSizeAmount", riskVal);
-        // Multi-entry / multi-TP: chart preview uses orderManager.multiEntryLevels + tpTargets (see order-manager.js).
-        const omHasMultiEntry = !!(om?.isMultiEntryMode && (om.multiEntryLevels?.length ?? 0) > 1);
-        const mtpOn = !!document.getElementById("multipleTPToggle")?.checked;
-        const omHasMultiTp = mtpOn && Array.isArray(om?.tpTargets) && om.tpTargets.length > 1;
-
-        if (!skipPosSync && entryRows.length > 1 && om) {
-          const want = entryRows.map((r, i) => {
-            let pid = r.id;
-            if (typeof pid === "number" && Number.isFinite(pid)) {
-              /* keep */
-            } else if (pid != null && Number.isFinite(Number(pid))) {
-              pid = Number(pid);
-            } else {
-              pid = om.multiEntryLevels?.[i]?.id ?? i + 1;
-            }
-            return {
-              id: pid,
-              price: parseFloat(r.price) || 0,
-              amount: parseFloat(r.risk) || 0,
-            };
-          });
-          const levels = want.map((w) => ({ id: w.id, price: w.price, amount: w.amount }));
-          const wantBuyEntry = document.getElementById("buyTab")?.classList.contains("active");
-          levels.sort((a, b) => (wantBuyEntry ? a.price - b.price : b.price - a.price));
-
-          if (!om.isMultiEntryMode) {
-            // Pre-fill levels before setEntryMode(true). Otherwise order-manager seeds two default
-            // legs from #orderEntryPrice and ignores the React "+" rows until the next tick.
-            om.multiEntryLevels = levels;
-            om.setEntryMode(true);
-          } else {
-            let dirty =
-              !Array.isArray(om.multiEntryLevels) || om.multiEntryLevels.length !== levels.length;
-            if (!dirty) {
-              for (let i = 0; i < levels.length; i++) {
-                const a = om.multiEntryLevels[i];
-                const w = levels[i];
-                if (!a || a.price !== w.price || a.amount !== w.amount) {
-                  dirty = true;
-                  break;
-                }
-              }
-            }
-            if (dirty) {
-              om.multiEntryLevels = levels.map((x) => ({ ...x }));
-              om.renderMultiEntryRows?.();
-              om.updateMultiEntrySummary?.();
-            }
-            // Keep #orderEntryPrice + splitEntries aligned when already in multi mode.
-            om.syncMultiEntryToSplitEntries?.();
-          }
-        } else if (!skipPosSync && entryRows.length === 1 && om?.isMultiEntryMode) {
-          try {
-            om.setEntryMode(false);
-          } catch (_) {}
-          const entryPx = parseFloat(entryRows[0]?.price ?? "0");
-          if (entryPx > 0) {
-            setIn("orderEntryPrice", String(entryPx));
-          } else {
-            om?.updateOrderPanelPrice?.();
-          }
-        } else if (!skipPosSync && !omHasMultiEntry) {
-          // Preview lines require #orderEntryPrice > 0 (order-manager.js updatePreviewLines). The V8b
-          // mock defaults entry to "0"; writing that wipes the live price updateOrderPanelPrice() set.
-          const entryPx = parseFloat(entryRows[0]?.price ?? "0");
-          if (entryPx > 0) {
-            setIn("orderEntryPrice", String(entryPx));
-          } else {
-            om?.updateOrderPanelPrice?.();
-          }
-        }
-
-        // Multi-TP: mirror React rows into om.tpTargets + list DOM (avoid toggling checkbox every tick — it re-inits).
-        const tpActive = tpRows.filter((r) => r.enabled !== false);
-        if (!skipPosSync && tpActive.length > 1 && om) {
-          const mtpEl = document.getElementById("multipleTPToggle");
-          if (mtpEl && !mtpEl.checked) {
-            mtpEl.checked = true;
-            const multiTPBtn = document.getElementById("multiTPBtn");
-            const multipleTPSettings = document.getElementById("multipleTPSettings");
-            const tpSingleView = document.querySelector("#orderPanel .order-tp-single");
-            if (multiTPBtn) {
-              multiTPBtn.textContent = "Single";
-              multiTPBtn.classList.add("active");
-            }
-            if (multipleTPSettings) multipleTPSettings.classList.remove("is-hidden");
-            if (tpSingleView) tpSingleView.classList.add("is-hidden");
-            mtpEl.dispatchEvent(new Event("change", { bubbles: true }));
-          }
-          const nextTgts = tpActive.map((r, idx) => ({
-            id: typeof r.id === "number" && Number.isFinite(r.id) ? r.id : idx + 1,
-            price: parseFloat(r.price) || 0,
-            percentage: parseFloat(r.qty) || 0,
-          }));
-          const wantBuyTp = document.getElementById("buyTab")?.classList.contains("active");
-          nextTgts.sort((a, b) =>
-            wantBuyTp ? a.price - b.price : b.price - a.price
-          );
-          let tgDirty = !Array.isArray(om.tpTargets) || om.tpTargets.length !== nextTgts.length;
-          if (!tgDirty) {
-            for (let i = 0; i < nextTgts.length; i++) {
-              const a = om.tpTargets[i];
-              const w = nextTgts[i];
-              if (!a || a.price !== w.price || a.percentage !== w.percentage) {
-                tgDirty = true;
-                break;
-              }
-            }
-          }
-          if (tgDirty) {
-            om.tpTargets = nextTgts.map((t) => ({ ...t }));
-            om.renderTPTargets?.();
-          }
-          const numEl = document.getElementById("numTPTargets");
-          // Update display only — dispatching input/change runs calculateTPTargetsFromNumber() and
-          // rebuilds ladder TPs, wiping manually added rows / prices from the React rail.
-          if (numEl && String(numEl.value || "") !== String(nextTgts.length)) {
-            numEl.value = String(nextTgts.length);
-          }
-        } else if (!skipPosSync && om && omHasMultiTp && tpRows.length === 1) {
-          // React has one TP row but OM still lists multiple (bridge missed remove). Drop extras so preview math matches.
-          while (Array.isArray(om.tpTargets) && om.tpTargets.length > 1) {
-            const last = om.tpTargets[om.tpTargets.length - 1];
-            try {
-              om.removeTPTarget(last != null && last.id != null ? last.id : om.tpTargets.length - 1);
-            } catch (_) {
-              break;
-            }
-          }
-        } else if (!skipPosSync && !omHasMultiTp) {
-          const mtpEl = document.getElementById("multipleTPToggle");
-          if (mtpEl?.checked && tpActive.length <= 1) {
-            mtpEl.checked = false;
-            const multiTPBtn = document.getElementById("multiTPBtn");
-            const multipleTPSettings = document.getElementById("multipleTPSettings");
-            const tpSingleView = document.querySelector("#orderPanel .order-tp-single");
-            if (multiTPBtn) {
-              multiTPBtn.textContent = "Multi";
-              multiTPBtn.classList.remove("active");
-            }
-            if (multipleTPSettings) multipleTPSettings.classList.add("is-hidden");
-            if (tpSingleView) tpSingleView.classList.remove("is-hidden");
-            mtpEl.dispatchEvent(new Event("change", { bubbles: true }));
-          }
-        }
-
-        const tp0 = tpRows[0];
-        setChk("enableSL", slEnabled);
-        setChk("enableTP", !!tp0?.enabled);
-
-        const slRowPx = String(slRows[0]?.price ?? "0");
-        const slPx = parseFloat(slRowPx);
-        if (!skipPosSync) {
-          if (slEnabled && slPx > 0) setIn("slPrice", slRowPx);
-
-          const tpMultiActive = !!document.getElementById("multipleTPToggle")?.checked;
-          const tpPx = parseFloat(tp0?.price ?? "0");
-          if (!tpMultiActive && tpActive.length <= 1 && tp0?.enabled !== false && tpPx > 0) {
-            setIn("tpPrice", String(tp0.price));
-          }
-
-          om?.calculatePositionFromRisk?.();
-          om?.calculateAdvancedRiskReward?.();
-          om?.updatePlaceButtonText?.();
-
-          try {
-            om?.updatePreviewLines?.();
-          } catch (_) {}
-          requestAnimationFrame(() => {
-            try {
-              om?.updatePreviewLines?.();
-            } catch (_) {}
-          });
-        }
-      } catch (_) {}
-    }, 80);
-
-    return () => clearTimeout(tid);
-  }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, riskBasis, slEnabled, slRows, entryRows, tpRows]);
-
-  // Mirror hidden #orderPanel → V8b React state. Chart drags / OM logic update the native inputs only;
-  // without this, the rail still shows 0 / Market while preview lines show Limit + real prices.
-  useEffect(() => {
-    if (!orderPanelOpen) return;
-    const tick = () => {
-      const panel = document.getElementById("orderPanel");
-      // Mirror from OM + hidden inputs whenever the rail is open (class "visible" can lag toggleOrderPanel).
-      if (!panel) return;
-
-      const ep = document.getElementById("orderEntryPrice")?.value ?? "";
-      const slp = document.getElementById("slPrice")?.value ?? "";
-      const tpp = document.getElementById("tpPrice")?.value ?? "";
-      const om = window.chart?.orderManager;
-      const omMultiEntry =
-        !!(om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length > 0);
-      const omMultiTp =
-        !!document.getElementById("multipleTPToggle")?.checked &&
-        Array.isArray(om?.tpTargets) &&
-        om.tpTargets.length > 0;
-
-      if (omMultiEntry) {
-        const next = om.multiEntryLevels.map((l) => ({
-          id: l.id,
-          price: String(l.price ?? "0"),
-          risk: String(l.amount ?? "0"),
-        }));
-        const entrySame = (a, b) =>
-          Math.abs((parseFloat(a.price) || 0) - (parseFloat(b.price) || 0)) < 1e-8 &&
-          Math.abs((parseFloat(a.risk) || 0) - (parseFloat(b.risk) || 0)) < 1e-6;
-        setEntryRows((prev) => {
-          if (prev.length > next.length) {
-            // Panel just added rows; OM not updated yet — hold. Chart deleted rows — apply OM.
-            if (isOmBridgeLead(omPanelBridgeRef.current.entryAdd)) return prev;
-            return next;
-          }
-          if (prev.length < next.length) {
-            // Panel removed a row; OM not updated yet — hold. Chart added a leg — apply OM.
-            if (isOmBridgeLead(omPanelBridgeRef.current.entryDel)) return prev;
-            return next;
-          }
-          if (prev.length === next.length && prev.every((p, i) => entrySame(p, next[i]))) return prev;
-          return next;
-        });
-        if (next.length > 1) setPanelMode("advanced");
-      } else {
-        setEntryRows((rows) => {
-          if (!rows.length) return rows;
-          // Don't collapse while user just clicked "+" — OM is still single-entry until forward bridge runs (~80ms).
-          if (rows.length > 1 && !isOmBridgeLead(omPanelBridgeRef.current.entryAdd)) {
-            const r0 = rows[0];
-            return [{ ...r0, price: ep, risk: r0.risk }];
-          }
-          const epp = parseFloat(ep);
-          const cur = parseFloat(rows[0].price || "0");
-          if (Number.isFinite(epp) && Number.isFinite(cur) && Math.abs(cur - epp) < 1e-8) return rows;
-          const nex = [...rows];
-          nex[0] = { ...nex[0], price: ep };
-          return nex;
-        });
-      }
-
-      setSlRows((rows) => {
-        if (!rows.length) return rows;
-        const slpN = parseFloat(slp);
-        const cur = parseFloat(rows[0].price || "0");
-        if (Number.isFinite(slpN) && Number.isFinite(cur) && Math.abs(cur - slpN) < 1e-8) return rows;
-        const next = [...rows];
-        next[0] = { ...next[0], price: slp };
-        return next;
-      });
-
-      const slOn = !!document.getElementById("enableSL")?.checked;
-      setSlEnabled((prev) => (prev === slOn ? prev : slOn));
-
-      if (omMultiTp && om.tpTargets.length >= 1) {
-        const nextTp = om.tpTargets.map((t) => ({
-          id: t.id,
-          price: String(t.price ?? "0"),
-          qty: String(t.percentage ?? "0"),
-          enabled: true,
-        }));
-        const tpSame = (a, b) =>
-          Math.abs((parseFloat(a.price) || 0) - (parseFloat(b.price) || 0)) < 1e-8 &&
-          Math.abs((parseFloat(a.qty) || 0) - (parseFloat(b.qty) || 0)) < 1e-6;
-        setTpRows((prev) => {
-          if (prev.length > nextTp.length) {
-            if (isOmBridgeLead(omPanelBridgeRef.current.tpAdd)) return prev;
-            return nextTp;
-          }
-          if (prev.length < nextTp.length) {
-            if (isOmBridgeLead(omPanelBridgeRef.current.tpDel)) return prev;
-            return nextTp;
-          }
-          if (prev.length === nextTp.length && prev.every((p, i) => tpSame(p, nextTp[i]))) return prev;
-          return nextTp;
-        });
-        if (nextTp.length > 1) setPanelMode("advanced");
-      } else {
-        setTpRows((rows) => {
-          if (!rows.length) return rows;
-          const tpOn = !!document.getElementById("enableTP")?.checked;
-          // Don't collapse while user just clicked "+" — OM is still single-TP until forward bridge enables multi.
-          if (rows.length > 1 && !isOmBridgeLead(omPanelBridgeRef.current.tpAdd)) {
-            const r0 = rows[0];
-            return [{ ...r0, price: tpp, qty: r0.qty ?? "100", enabled: tpOn }];
-          }
-          const r0 = rows[0];
-          const tppN = parseFloat(tpp);
-          const curP = parseFloat(r0.price || "0");
-          const priceChg = !Number.isFinite(tppN) || !Number.isFinite(curP) || Math.abs(curP - tppN) >= 1e-8;
-          const enChg = !!r0.enabled !== tpOn;
-          if (!priceChg && !enChg) return rows;
-          const next = [...rows];
-          next[0] = { ...r0, price: tpp, enabled: tpOn };
-          return next;
-        });
-      }
-
-      const buyOn = document.getElementById("buyTab")?.classList.contains("active");
-      const side = buyOn ? "buy" : "sell";
-      setBuySell((prev) => (prev === side ? prev : side));
-
-      const activeOt = document.querySelector("#orderPanel .order-type-btn.active");
-      const ot = activeOt?.dataset?.type;
-      if (ot && ["market", "limit", "stop"].includes(ot)) {
-        setOrderType((prev) => (prev === ot ? prev : ot));
-      }
-
-      const pm = document.querySelector("#orderPanel .position-mode-tab.active")?.dataset?.mode;
-      const sz = pm === "risk-percent" ? "%" : pm === "lot-size" ? "#" : "$";
-      setSizeMode((prev) => (prev === sz ? prev : sz));
-
-      const rid =
-        pm === "risk-percent" ? "riskAmountPercent" : pm === "lot-size" ? "lotSizeAmount" : "riskAmountUSD";
-      let rv = document.getElementById(rid)?.value;
-      if (rv != null && rv !== "" && pm === "risk-percent" && riskBasis === "equity") {
-        const omm = window.chart?.orderManager;
-        const b = Number(omm?.balance);
-        const eq = Number(omm?.equity);
-        if (b > 0 && Number.isFinite(eq)) {
-          rv = String((parseFloat(rv) * b) / eq);
-        }
-      }
-      if (rv != null && rv !== "") {
-        setRiskVal((prev) => (prev === rv ? prev : rv));
-      }
-
-      const rsk = document.getElementById("riskAmount")?.textContent?.trim() || "$0";
-      const rwd = document.getElementById("rewardAmount")?.textContent?.trim() || "$0";
-      setOmRiskSummaryTxt((prev) => (prev === rsk ? prev : rsk));
-      setOmRewardSummaryTxt((prev) => (prev === rwd ? prev : rwd));
-
-      const sd = document.getElementById("slPipsDisplay")?.textContent?.trim() || "—";
-      let td = document.getElementById("tpDistanceDisplay")?.textContent?.trim() || "—";
-      const mtpMirror = !!document.getElementById("multipleTPToggle")?.checked;
-      if ((td === "—" || td === "") && mtpMirror && om?.tpTargets && om.tpTargets.length > 1) {
-        const entryPx = parseFloat(document.getElementById("orderEntryPrice")?.value || 0);
-        const pip =
-          Number.isFinite(om.pipSize) && om.pipSize > 0 ? om.pipSize : 0.0001;
-        if (entryPx > 0 && pip > 0) {
-          let sum = 0;
-          let n = 0;
-          om.tpTargets.forEach((t) => {
-            const px = parseFloat(t?.price);
-            if (px > 0) {
-              sum += Math.abs(px - entryPx) / pip;
-              n++;
-            }
-          });
-          if (n > 0) td = `${(sum / n).toFixed(2)}`;
-        }
-      }
-      setOmSlDistTxt((prev) => (prev === sd ? prev : sd));
-      setOmTpDistTxt((prev) => (prev === td ? prev : td));
-
-      const oqNum = parseFloat(document.getElementById("orderQuantity")?.value ?? "");
-      const lotsStr = Number.isFinite(oqNum) ? oqNum.toFixed(2) : "";
-      setOmTpAvgLotsTxt((prev) => (prev === lotsStr ? prev : lotsStr));
-      let wapStr = "";
-      if (
-        mtpMirror &&
-        om?.tpTargets &&
-        om.tpTargets.length > 1 &&
-        typeof om._weightedAvgTPFromPricedTargets === "function"
-      ) {
-        const priced = om.tpTargets.filter((t) => t && parseFloat(t.price) > 0);
-        if (priced.length > 0) {
-          try {
-            const wap = om._weightedAvgTPFromPricedTargets(priced, "preview", {
-              quantity: Number.isFinite(oqNum) ? oqNum : parseFloat(document.getElementById("orderQuantity")?.value) || 1,
-              entryPrice: parseFloat(document.getElementById("orderEntryPrice")?.value || 0),
-              type: om.orderSide || "BUY",
-            });
-            if (Number.isFinite(wap) && typeof om.formatPrice === "function") wapStr = om.formatPrice(wap);
-          } catch (_) {}
-        }
-      }
-      setOmTpWapPriceTxt((prev) => (prev === wapStr ? prev : wapStr));
-
-      const entryInfos = Array.from(document.querySelectorAll("#multiEntryRows .multi-entry-row-info")).map(
-        (el) => el.textContent?.replace(/\s+/g, " ").trim() || ""
-      );
-      setOmEntryRowStatLines((prev) =>
-        prev.length === entryInfos.length && prev.every((v, i) => v === entryInfos[i]) ? prev : entryInfos
-      );
-      const mq = document.getElementById("multiEntryTotalQty")?.textContent?.trim() || "";
-      setOmMultiEntryTotalQtyTxt((prev) => (prev === mq ? prev : mq));
-
-      let entryAvgStr = "";
-      const avgDom = document.getElementById("multiEntryAvgPrice")?.textContent?.trim() || "";
-      if (avgDom && avgDom !== "0.00000") {
-        entryAvgStr = avgDom;
-      } else if (
-        om &&
-        typeof om._calcMultiEntryAvgPrice === "function" &&
-        typeof om.formatPrice === "function"
-      ) {
-        try {
-          const ap = om._calcMultiEntryAvgPrice();
-          if (Number.isFinite(ap) && ap > 0) entryAvgStr = om.formatPrice(ap);
-        } catch (_) {}
-      }
-      setOmEntryAvgPriceTxt((prev) => (prev === entryAvgStr ? prev : entryAvgStr));
-
-      const tpStats = Array.from(document.querySelectorAll("#multipleTPList .order-tp-multi__row")).map((row) => {
-        const rr = row.querySelector(".order-tp-multi__row-rr input")?.value?.trim() ?? "—";
-        const profit = row.querySelector(".order-tp-multi__row-profit input")?.value?.trim() ?? "0";
-        return `${rr}R · $${profit}`;
-      });
-      setOmTpRowStatLines((prev) =>
-        prev.length === tpStats.length && prev.every((v, i) => v === tpStats[i]) ? prev : tpStats
-      );
-
-      const sigPt = snapshotPreTradeStrategySig(window.chart);
-      const sigPo = snapshotPostTradeStrategySig(window.chart);
-      let bumped = false;
-      if (sigPt !== preTradeStrategySigRef.current) {
-        preTradeStrategySigRef.current = sigPt;
-        bumped = true;
-      }
-      if (sigPo !== postTradeStrategySigRef.current) {
-        postTradeStrategySigRef.current = sigPo;
-        bumped = true;
-      }
-      if (bumped) setPreTradeDefRevision((n) => n + 1);
-    };
-
-    tick();
-    const id = window.setInterval(tick, 24);
-    return () => clearInterval(id);
-  }, [orderPanelOpen, riskBasis]);
-
-  // PRE tags ↔ Strategies Lab: hydrate from hidden #orderStrategyVariablesMount, mirror writes back so place-order picks up strategyVariables.
-  useEffect(() => {
-    if (!orderPanelOpen) {
-      preTradeDomHydratedRef.current = false;
-      return;
-    }
-    const defs = sessionPreTradeVarsToTagDefs(window.chart);
-    if (!defs.length) {
-      preTradeDomHydratedRef.current = false;
-      return;
-    }
-    const om = window.chart?.orderManager;
-    if (typeof om?._renderStrategyVariablesPanel === "function") {
-      om._renderStrategyVariablesPanel();
-    }
-    let cancelled = false;
-    const raf1 = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (cancelled) return;
-        const mount = document.getElementById("orderStrategyVariablesMount");
-        if (!mount) {
-          preTradeDomHydratedRef.current = false;
-          return;
-        }
-        const next = {};
-        defs.forEach((def) => {
-          const sel = Array.from(mount.querySelectorAll("select.order-strategy-var-input")).find(
-            (el) => el.getAttribute("data-var-id") === def.id
-          );
-          if (!sel) return;
-          const raw = sel.value;
-          if (def.type === "bool") {
-            if (raw === "yes") next[def.id] = true;
-            else if (raw === "no") next[def.id] = false;
-          } else if (raw && raw !== "" && raw !== "—") {
-            next[def.id] = raw;
-          }
-        });
-        setTagSels(next);
-        preTradeDomHydratedRef.current = true;
-      });
-    });
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(raf1);
-    };
-  }, [orderPanelOpen, preTradeDefRevision]);
-
-  useEffect(() => {
-    if (!orderPanelOpen || !preTradeDomHydratedRef.current) return;
-    const defs = sessionPreTradeVarsToTagDefs(window.chart);
-    if (!defs.length) return;
-    const mount = document.getElementById("orderStrategyVariablesMount");
-    if (!mount) return;
-    defs.forEach((def) => {
-      const sel = Array.from(mount.querySelectorAll("select.order-strategy-var-input")).find(
-        (el) => el.getAttribute("data-var-id") === def.id
-      );
-      if (!sel) return;
-      if (def.type === "bool") {
-        const v = tagSels[def.id];
-        const domVal = v === true ? "yes" : v === false ? "no" : "";
-        if (sel.value !== domVal) sel.value = domVal;
-      } else {
-        const v = tagSels[def.id];
-        const want = v != null && v !== "" ? String(v) : "—";
-        if (sel.value !== want && [...sel.options].some((o) => o.value === want)) {
-          sel.value = want;
-        }
-      }
-    });
-  }, [tagSels, orderPanelOpen, preTradeDefRevision]);
-
-  // Rollback overlay — callback ref attaches native mousemove the instant the node mounts
-  // (avoids useEffect timing gap when rollback first becomes true)
-  const rollbackOverlayCallbackRef = (node) => {
-    rollbackOverlayRef.current = node;
-    if (!node) return;
-    // Cache rect — recomputed only on scroll/resize, never inside the hot path
-    let rectLeft = 0, rectWidth = 0;
-    const refreshRect = () => { const r = node.getBoundingClientRect(); rectLeft = r.left; rectWidth = r.width; };
-    refreshRect();
-    const onMove = (e) => {
-      if (!rollbackLineRef.current) return;
-      // Process every coalesced sample so the line matches the mouse's native
-      // polling rate rather than the display frame rate
-      const samples = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-      const last = samples[samples.length - 1];
-      const x = Math.min((rectWidth / Z) - 1, Math.max(0, (last.clientX - rectLeft) / Z));
-      rollbackLineRef.current.style.transform = `translateX(${x}px)`;
-      rollbackLineRef.current.style.opacity = '1';
-    };
-    node.addEventListener('pointermove', onMove, { passive: true });
-    window.addEventListener('resize', refreshRect, { passive: true });
-    window.addEventListener('scroll', refreshRect, { passive: true });
-    node._rbCleanup = () => {
-      node.removeEventListener('pointermove', onMove);
-      window.removeEventListener('resize', refreshRect);
-      window.removeEventListener('scroll', refreshRect);
-    };
-  };
-
-  const catColors = {trend:c.acL, momentum:"#E8820A", volatility:"#C9A84C", volume:c.gn, sessions:"#FF5068", others:c.ts};
-  const tplWatchKeys = new Set(["bullBody","bullBorder","bullWick","bearBody","bearBorder","bearWick","background","gridColor","unifiedBarColorVal","crosshairColor","priceLineColor","textColor"]);
-  const updateSetting = (key, val) => setSettings(prev => {
-    const next = {...prev, [key]: val};
-    if (tplWatchKeys.has(key) && prev.chartTemplate !== "CUSTOM") next.chartTemplate = "CUSTOM";
-    return next;
-  });
-  const defaultTemplateMap = {
-    "Dark Classic":   {bullBody:"#00D4A1",bullBorder:"#00D4A1",bullWick:"#00D4A1",bearBody:"#FF5068",bearBorder:"#FF5068",bearWick:"#FF5068",background:"#07080E",gridColor:"rgba(140,160,255,0.15)",textColor:"#B4C0E8",scaleLineColor:"rgba(140,160,255,0.42)"},
-    "Professional":   {bullBody:"#26A69A",bullBorder:"#26A69A",bullWick:"#26A69A",bearBody:"#EF5350",bearBorder:"#EF5350",bearWick:"#EF5350",background:"#131722",gridColor:"rgba(100,140,200,0.15)",textColor:"#C9D4E5",scaleLineColor:"rgba(120,145,190,0.45)"},
-    "Ocean Night":    {bullBody:"#00BCD4",bullBorder:"#00BCD4",bullWick:"#00BCD4",bearBody:"#FF4081",bearBorder:"#FF4081",bearWick:"#FF4081",background:"#050D18",gridColor:"rgba(0,188,212,0.12)",textColor:"#9FE8F2",scaleLineColor:"rgba(0,188,212,0.45)"},
-    "Amber Dusk":     {bullBody:"#FF9800",bullBorder:"#FF9800",bullWick:"#FF9800",bearBody:"#F44336",bearBorder:"#F44336",bearWick:"#F44336",background:"#0E0A05",gridColor:"rgba(255,152,0,0.12)",textColor:"#FFD9A3",scaleLineColor:"rgba(255,180,100,0.5)"},
-    "Forest Deep":    {bullBody:"#66BB6A",bullBorder:"#66BB6A",bullWick:"#66BB6A",bearBody:"#81C784",bearBorder:"#81C784",bearWick:"#81C784",background:"#060E06",gridColor:"rgba(102,187,106,0.12)",textColor:"#C8E6C9",scaleLineColor:"rgba(120,200,130,0.45)"},
-    "Midnight":       {bullBody:"#42A5F5",bullBorder:"#42A5F5",bullWick:"#42A5F5",bearBody:"#EF5350",bearBorder:"#EF5350",bearWick:"#EF5350",background:"#040812",gridColor:"rgba(66,165,245,0.12)",textColor:"#B3D7FF",scaleLineColor:"rgba(90,170,245,0.45)"},
-    "Crimson":        {bullBody:"#F44336",bullBorder:"#F44336",bullWick:"#F44336",bearBody:"#9C27B0",bearBorder:"#9C27B0",bearWick:"#9C27B0",background:"#0C0308",gridColor:"rgba(244,67,54,0.12)",textColor:"#FFCDD2",scaleLineColor:"rgba(244,120,140,0.45)"},
-    "Arctic Frost":   {bullBody:"#80DEEA",bullBorder:"#80DEEA",bullWick:"#80DEEA",bearBody:"#FFAB40",bearBorder:"#FFAB40",bearWick:"#FFAB40",background:"#05080F",gridColor:"rgba(128,222,234,0.12)",textColor:"#D7F7FB",scaleLineColor:"rgba(128,210,230,0.45)"},
-    "Cyber Green":    {bullBody:"#00E676",bullBorder:"#00E676",bullWick:"#00E676",bearBody:"#FF1744",bearBorder:"#FF1744",bearWick:"#FF1744",background:"#020A02",gridColor:"rgba(0,230,118,0.12)",textColor:"#A8FFD4",scaleLineColor:"rgba(0,220,130,0.5)"},
-    "Rose Gold":      {bullBody:"#F48FB1",bullBorder:"#F48FB1",bullWick:"#F48FB1",bearBody:"#FFB74D",bearBorder:"#FFB74D",bearWick:"#FFB74D",background:"#0E0608",gridColor:"rgba(244,143,177,0.12)",textColor:"#FFE0EC",scaleLineColor:"rgba(244,170,195,0.45)"},
-  };
-  const CUSTOM_TPL_STORAGE_KEY = "v9CustomChartTemplates";
-  const snapshotTemplateSettings = (src) => {
-    const snap = { ...src };
-    delete snap.chartTemplate;
-    return snap;
-  };
-  const upsertCustomTemplate = (name, srcSettings) => {
-    const cleanName = (name || "").trim();
-    if (!cleanName) return;
-    const snap = {
-      n: cleanName,
-      cols: [srcSettings.bullBody, srcSettings.bearBody, srcSettings.background],
-      settings: snapshotTemplateSettings(srcSettings),
-    };
-    setCustomTemplates(prev => [...prev.filter(t => t.n !== cleanName), snap]);
-  };
-
-  useEffect(() => {
-    try {
-      const raw = window.userStorage?.getItem?.(CUSTOM_TPL_STORAGE_KEY) ?? localStorage.getItem(CUSTOM_TPL_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-      const normalized = parsed
-        .filter(t => t && typeof t.n === "string" && t.n.trim())
-        .map(t => {
-          const tplSettings = t.settings && typeof t.settings === "object" ? t.settings : {};
-          const merged = { ...DEFAULT_CHART_SETTINGS, ...tplSettings };
-          delete merged.chartTemplate;
-          const fallbackCols = [merged.bullBody, merged.bearBody, merged.background];
-          return {
-            n: t.n.trim(),
-            cols: Array.isArray(t.cols) && t.cols.length === 3 ? t.cols : fallbackCols,
-            settings: merged,
-          };
-        });
-      setCustomTemplates(normalized);
-    } catch (_) {}
-  }, []);
-
-  useEffect(() => {
-    try {
-      const payload = JSON.stringify(customTemplates);
-      if (window.userStorage?.setItem) window.userStorage.setItem(CUSTOM_TPL_STORAGE_KEY, payload);
-      else localStorage.setItem(CUSTOM_TPL_STORAGE_KEY, payload);
-    } catch (_) {}
-  }, [customTemplates]);
-
-  const applyTemplate = (name, overrideSettings) => {
-    const base = overrideSettings || defaultTemplateMap[name] || {};
-    setSettings(prev => ({...prev, ...base, chartTemplate: name}));
-  };
-  const saveCustomTemplate = () => {
-    const name = tplNameInput.trim();
-    if (!name) return;
-    upsertCustomTemplate(name, settings);
-    setTplNameInput("");
-  };
-  // Bracket-style on/off indicator. Pass label to make the text part of the clickable area.
-  const Chk = (on, settKey, hKey, label) => {
-    const isH = swHov === hKey;
-    const bCol = on ? c.acL : isH ? c.ts : "rgba(140,160,255,0.22)";
-    const indicator = (
-      <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
-        <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-        <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-        {!on && isH && <>
-          <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
-          <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
-        </>}
-        {on && <>
-          <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-          <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-          <circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/>
-          <circle cx={5} cy={5} r={1.6} fill={c.acL}/>
-        </>}
-      </svg>
-    );
-    const shared = {onClick:()=>updateSetting(settKey,!on),onMouseEnter:()=>setSwHov(hKey),onMouseLeave:()=>setSwHov(null),style:{cursor:"default",userSelect:"none",WebkitUserSelect:"none"}};
-    if (label) return <>
-      <div {...shared} style={{...shared.style,display:"inline-flex",alignItems:"center",gap:6,flexShrink:0}}>
-        <div style={{width:10,height:10,flexShrink:0}}>{indicator}</div>
-        <span style={{fontSize:13,fontWeight:on?600:500,color:on?c.acL:isH?c.tx:c.ts,transition:"color 0.12s"}}>{label}</span>
-      </div>
-      <div style={{flex:1}}/>
-    </>;
-    return <div {...shared} style={{...shared.style,flexShrink:0,width:10,height:10}}>{indicator}</div>;
-  };
-  // TL-style checkbox SVG — same visual as Chk but wired to tlStyle + hov
-  const TlChk = (on, hKey, label, toggle) => {
-    const isH = hov === hKey;
-    const bCol = on ? c.acL : isH ? c.ts : "rgba(140,160,255,0.22)";
-    const indicator = (
-      <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
-        <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-        <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-        {!on && isH && <>
-          <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
-          <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
-        </>}
-        {on && <>
-          <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-          <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-          <circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/>
-          <circle cx={5} cy={5} r={1.6} fill={c.acL}/>
-        </>}
-      </svg>
-    );
-    return (
-      <div
-        onPointerDown={(e) => { e.stopPropagation(); toggle(); }}
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-        onMouseEnter={()=>setHov(hKey)} onMouseLeave={()=>setHov(null)}
-        style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"default",userSelect:"none",WebkitUserSelect:"none",
-                opacity: on && isH ? 0.65 : 1, transition:"opacity 0.12s"}}>
-        <div style={{width:10,height:10,flexShrink:0}}>{indicator}</div>
-        {label && <span style={{fontSize:12,fontWeight:500,color:on?c.acL:isH?c.tx:c.ts,transition:"color 0.12s",whiteSpace:"nowrap"}}>{label}</span>}
-      </div>
-    );
-  };
-  const cpW = 210; // color picker width
-  const CP_H = 280; // color picker estimated height
-  const posFromRect = (rect, popW, gapY = 6) => {
-    const vpH = window.innerHeight / Z;
-    const vpW = window.innerWidth / Z;
-    const bBottom = rect.bottom / Z;
-    const bTop = rect.top / Z;
-    // flip above if not enough space below
-    const t = bBottom + gapY + CP_H > vpH - 8
-      ? Math.max(8, bTop - gapY - CP_H)
-      : bBottom + gapY;
-    const rawL = (rect.left + rect.width / 2) / Z - popW / 2;
-    const l = Math.max(8, Math.min(rawL, vpW - popW - 8));
-    return { top: t, left: l };
-  };
-  // Edge-aware position for settDrop popups
-  // Returns { top, left } for below or { cssBottom, left } for above — render must handle both
-  const sdPos = (r, opts = {}) => {
-    const vpH = window.innerHeight / Z;
-    const vpW = window.innerWidth / Z;
-    const estH = opts.h || 180;
-    const w = opts.w;
-    const bB = r.bottom / Z, bT = r.top / Z, bL = r.left / Z, bR = r.right / Z;
-    // vertical: open below, flip above if overflow — use cssBottom so actual height doesn't matter
-    const flipAbove = bB + 4 + estH > vpH - 8;
-    const vert = flipAbove ? { cssBottom: vpH - bT + 4 } : { top: bB + 4 };
-    // horizontal
-    let left;
-    if (opts.rightAlign) {
-      left = bR - (w || 100);
-      if (left < 8) left = bL; // prevent left overflow
-    } else {
-      left = bL;
-      if (w && left + w > vpW - 8) left = Math.max(8, bR - w); // flip left if right overflow
-    }
-    return { ...vert, left, ...(w ? { w } : {}) };
-  };
-  const openCP = (e, key, value) => {
-    const val = value !== undefined ? value : settings[key];
-    const p = parseColor(val || '#ffffff');
-    const hsv = rgbToHsv(p.r, p.g, p.b);
-    setCpH(hsv.h); setCpS(hsv.s); setCpV(hsv.v); setCpA(p.a);
-    setCpHex(toHex2(p.r)+toHex2(p.g)+toHex2(p.b));
-    setCpPos(posFromRect(e.currentTarget.getBoundingClientRect(), cpW));
-    cpBarAnchorRef.current = null;
-    setColorPicker(key);
-  };
-  const openGotoCP = (e) => {
-    const p = parseColor(gotoNewColor || '#4A6AFF');
-    const hsv = rgbToHsv(p.r, p.g, p.b);
-    setCpH(hsv.h); setCpS(hsv.s); setCpV(hsv.v); setCpA(p.a);
-    setCpHex(toHex2(p.r)+toHex2(p.g)+toHex2(p.b));
-    setCpPos(posFromRect(e.currentTarget.getBoundingClientRect(), cpW));
-    cpBarAnchorRef.current = null;
-    setColorPicker("gotoNewColor");
-  };
-  const cpApply = (nh, ns, nv, na, key) => {
-    const targetKey = key || colorPicker;
-    if (targetKey == null || targetKey === "") return;
-    const rgb = hsvToRgb(nh, ns, nv);
-    setCpHex(toHex2(rgb.r)+toHex2(rgb.g)+toHex2(rgb.b));
-    const colorVal = cpBuildColor(rgb.r, rgb.g, rgb.b, na);
-    if(targetKey === "gotoNewColor") setGotoNewColor(colorVal);
-    else if(targetKey === "tlLineColor") setTlStyle(s=>isFibTool ? {...s, lineColor: colorVal, fibLevels: s.fibLevels.map(l=>({...l, color: colorVal}))} : {...s, lineColor: colorVal});
-    else if(targetKey === "tlBgColor") setTlStyle(s=>({...s, bgColor: colorVal}));
-    else if(targetKey === "tlMidLineColor") setTlStyle(s=>({...s, midLineColor: colorVal}));
-    else if(targetKey === "tlTextColor") setTlStyle(s=>({...s, textColor: colorVal}));
-    else if(targetKey === "tlLabelColor") setTlStyle(s=>({...s, labelColor: colorVal}));
-    else if(targetKey === "tlLabelBgColor") setTlStyle(s=>({...s, labelBgColor: colorVal}));
-    else if(targetKey === "tlBorderColor") setTlStyle(s=>({...s, borderColor: colorVal}));
-    else if(targetKey?.startsWith("chLine-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, chLines: s.chLines.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("regLine-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, regLines: s.regLines.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey === "regUpperBg") setTlStyle(s=>({...s, regUpperBg: colorVal}));
-    else if(targetKey === "regLowerBg") setTlStyle(s=>({...s, regLowerBg: colorVal}));
-    else if(targetKey?.startsWith("pfLevel-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("fibLevel-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, fibLevels: s.fibLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("fibTzLevel-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, fibTzLevels: s.fibTzLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey === "fibTrendColor") setTlStyle(s=>({...s, lineColor: colorVal}));
-    else if(targetKey?.startsWith("gannPrice-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, gannPriceLevels: s.gannPriceLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("gannTime-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, gannTimeLevels: s.gannTimeLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey === "fibGridColor") setTlStyle(s=>({...s, fibGridColor: colorVal}));
-    else if(targetKey?.startsWith("fibFanTimeLevel-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, fibFanTimeLevels: s.fibFanTimeLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("gannGrid-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, gannGridLevels: s.gannGridLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("gannFanLv-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, gannFanLevels: s.gannFanLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("gannArc-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, gannArcLevels: s.gannArcLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey === "txtTextColor") setTxtStyle(s=>({...s, textColor: colorVal}));
-    else if(targetKey === "txtBgColor") setTxtStyle(s=>({...s, bgColor: colorVal}));
-    else if(targetKey === "txtBorderColor") setTxtStyle(s=>({...s, borderColor: colorVal}));
-    else if(targetKey === "pinLabelColor") setTxtStyle(s=>({...s, pinLabelColor: colorVal}));
-    else if(targetKey === "vwap_vwapColor")  setVwapStyle(s=>({...s, vwapColor:  colorVal}));
-    else if(targetKey === "vwap_band1Color") setVwapStyle(s=>({...s, band1Color: colorVal}));
-    else if(targetKey === "vwap_bg1Color")   setVwapStyle(s=>({...s, bg1Color:   colorVal}));
-    else if(targetKey === "vwap_band2Color") setVwapStyle(s=>({...s, band2Color: colorVal}));
-    else if(targetKey === "vwap_bg2Color")   setVwapStyle(s=>({...s, bg2Color:   colorVal}));
-    else if(targetKey === "vwap_band3Color") setVwapStyle(s=>({...s, band3Color: colorVal}));
-    else if(targetKey === "vwap_bg3Color")   setVwapStyle(s=>({...s, bg3Color:   colorVal}));
-    else if(targetKey === "vp_valuesColor")       setVpStyle(s=>({...s, valuesColor:       colorVal}));
-    else if(targetKey === "vp_zoneBgColor")        setVpStyle(s=>({...s, zoneBgColor:        colorVal}));
-    else if(targetKey === "vp_upVolColor")         setVpStyle(s=>({...s, upVolColor:         colorVal}));
-    else if(targetKey === "vp_downVolColor")       setVpStyle(s=>({...s, downVolColor:       colorVal}));
-    else if(targetKey === "vp_valueAreaUpColor")   setVpStyle(s=>({...s, valueAreaUpColor:   colorVal}));
-    else if(targetKey === "vp_valueAreaDownColor") setVpStyle(s=>({...s, valueAreaDownColor: colorVal}));
-    else if(targetKey === "vp_pocColor")           setVpStyle(s=>({...s, pocColor:           colorVal}));
-    else if(targetKey === "vp_vahColor")           setVpStyle(s=>({...s, vahColor:           colorVal}));
-    else if(targetKey === "vp_valColor")           setVpStyle(s=>({...s, valColor:           colorVal}));
-    else if(targetKey === "vp_devPocColor")        setVpStyle(s=>({...s, devPocColor:        colorVal}));
-    else if(targetKey === "vp_devVAColor")         setVpStyle(s=>({...s, devVAColor:         colorVal}));
-    else if(targetKey === "av_valuesColor")        setAvStyle(s=>({...s, valuesColor:        colorVal}));
-    else if(targetKey === "av_zoneBgColor")        setAvStyle(s=>({...s, zoneBgColor:        colorVal}));
-    else if(targetKey === "av_upVolColor")         setAvStyle(s=>({...s, upVolColor:         colorVal}));
-    else if(targetKey === "av_downVolColor")       setAvStyle(s=>({...s, downVolColor:       colorVal}));
-    else if(targetKey === "av_valueAreaUpColor")   setAvStyle(s=>({...s, valueAreaUpColor:   colorVal}));
-    else if(targetKey === "av_valueAreaDownColor") setAvStyle(s=>({...s, valueAreaDownColor: colorVal}));
-    else if(targetKey === "av_pocColor")           setAvStyle(s=>({...s, pocColor:           colorVal}));
-    else if(targetKey === "av_vahColor")           setAvStyle(s=>({...s, vahColor:           colorVal}));
-    else if(targetKey === "av_valColor")           setAvStyle(s=>({...s, valColor:           colorVal}));
-    else if(targetKey === "av_devPocColor")        setAvStyle(s=>({...s, devPocColor:        colorVal}));
-    else if(targetKey === "av_devVAColor")         setAvStyle(s=>({...s, devVAColor:         colorVal}));
-    else if(targetKey === "rr_profitColor") setRrStyle(s=>({...s, profitColor: colorVal}));
-    else if(targetKey === "rr_lossColor")   setRrStyle(s=>({...s, lossColor:   colorVal}));
-    else if(targetKey === "rr_entryColor")  setRrStyle(s=>({...s, entryColor:  colorVal}));
-    else if(targetKey === "rr_labelColor")  setRrStyle(s=>({...s, labelColor:  colorVal}));
-    else updateSetting(targetKey, colorVal);
-  };
-  cpApplyRef.current = cpApply;
-  cpPickerDragRef.current = { cpH, cpS, cpV, cpA, cpDragging, cpDragRect, colorPicker };
-
-  // Drag SV / hue / alpha via window listeners so no fullscreen portal sits above the picker and blocks DONE.
-  useEffect(() => {
-    if (!cpDragging || !cpDragRect) return;
-    const cap = { capture: true };
-    const onMove = (e) => {
-      const d = cpPickerDragRef.current;
-      const r = d.cpDragRect;
-      if (!r || !d.cpDragging) return;
-      if (d.cpDragging === "sv") {
-        const ns = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-        const nv = 1 - Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
-        setCpS(ns);
-        setCpV(nv);
-        cpApplyRef.current(d.cpH, ns, nv, d.cpA, d.colorPicker);
-      } else if (d.cpDragging === "hue") {
-        const nh = Math.max(0, Math.min(360, ((e.clientX - r.left) / r.width) * 360));
-        setCpH(nh);
-        cpApplyRef.current(nh, d.cpS, d.cpV, d.cpA, d.colorPicker);
-      } else if (d.cpDragging === "alpha") {
-        const na = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-        setCpA(na);
-        cpApplyRef.current(d.cpH, d.cpS, d.cpV, na, d.colorPicker);
-      }
-    };
-    const onEnd = () => {
-      setCpDragging(null);
-      setCpDragRect(null);
-    };
-    window.addEventListener("pointermove", onMove, cap);
-    window.addEventListener("pointerup", onEnd, cap);
-    window.addEventListener("pointercancel", onEnd, cap);
-    return () => {
-      window.removeEventListener("pointermove", onMove, cap);
-      window.removeEventListener("pointerup", onEnd, cap);
-      window.removeEventListener("pointercancel", onEnd, cap);
-    };
-  }, [cpDragging, cpDragRect]);
-
-  const indicatorData = [
-    // Trend
-    {id:"SMA",name:"Simple Moving Average",abbr:"SMA",cat:"trend",desc:"Smoothed average of closing prices over N periods"},
-    {id:"EMA",name:"Exponential Moving Average",abbr:"EMA",cat:"trend",desc:"Gives more weight to recent prices"},
-    {id:"WMA",name:"Weighted Moving Average",abbr:"WMA",cat:"trend",desc:"Linearly weighted average, emphasises recency"},
-    {id:"DEMA",name:"Double EMA",abbr:"DEMA",cat:"trend",desc:"Reduces lag with a double-smoothed EMA"},
-    {id:"TEMA",name:"Triple EMA",abbr:"TEMA",cat:"trend",desc:"Further reduces lag using triple smoothing"},
-    {id:"HMA",name:"Hull Moving Average",abbr:"HMA",cat:"trend",desc:"Nearly eliminates lag while maintaining smoothness"},
-    {id:"VWMA",name:"Volume Weighted MA",abbr:"VWMA",cat:"trend",desc:"MA weighted by volume at each bar"},
-    {id:"ALMA",name:"Arnaud Legoux MA",abbr:"ALMA",cat:"trend",desc:"Low-noise Gaussian-weighted moving average"},
-    {id:"SUPERTREND",name:"Supertrend",abbr:"ST",cat:"trend",desc:"ATR-based trend-following overlay with signals"},
-    {id:"ICHIMOKU",name:"Ichimoku Cloud",abbr:"ICHI",cat:"trend",desc:"Multi-component Japanese trend & support system"},
-    // Momentum
-    {id:"RSI",name:"Relative Strength Index",abbr:"RSI",cat:"momentum",desc:"Oscillator measuring overbought/oversold conditions"},
-    {id:"MACD",name:"MACD",abbr:"MACD",cat:"momentum",desc:"Moving average convergence/divergence histogram"},
-    {id:"STOCH",name:"Stochastic",abbr:"STOCH",cat:"momentum",desc:"Compares closing price to price range over N periods"},
-    {id:"CCI",name:"Commodity Channel Index",abbr:"CCI",cat:"momentum",desc:"Measures deviation from statistical mean"},
-    {id:"MOM",name:"Momentum",abbr:"MOM",cat:"momentum",desc:"Raw price change over N periods"},
-    {id:"ROC",name:"Rate of Change",abbr:"ROC",cat:"momentum",desc:"Percentage change in price over N periods"},
-    {id:"WPR",name:"Williams %R",abbr:"%R",cat:"momentum",desc:"Overbought/oversold oscillator in -100 to 0 range"},
-    {id:"TSI",name:"True Strength Index",abbr:"TSI",cat:"momentum",desc:"Double-smoothed momentum oscillator"},
-    {id:"KST",name:"Know Sure Thing",abbr:"KST",cat:"momentum",desc:"Summed & smoothed rate-of-change oscillator"},
-    {id:"DPO",name:"Detrended Price Oscillator",abbr:"DPO",cat:"momentum",desc:"Removes trend to isolate cycles"},
-    {id:"PPO",name:"Percentage Price Oscillator",abbr:"PPO",cat:"momentum",desc:"MACD expressed as a percentage"},
-    {id:"AO",name:"Awesome Oscillator",abbr:"AO",cat:"momentum",desc:"5/34 period SMA midpoint difference"},
-    {id:"STOCHRSI",name:"Stochastic RSI",abbr:"StRSI",cat:"momentum",desc:"Stochastic applied to RSI values for sensitivity"},
-    // Volatility
-    {id:"BB",name:"Bollinger Bands",abbr:"BB",cat:"volatility",desc:"Dynamic bands 2 standard deviations from SMA"},
-    {id:"ATR",name:"Average True Range",abbr:"ATR",cat:"volatility",desc:"Average of true range over N periods"},
-    {id:"KC",name:"Keltner Channel",abbr:"KC",cat:"volatility",desc:"ATR-based envelope around EMA"},
-    {id:"DC",name:"Donchian Channel",abbr:"DC",cat:"volatility",desc:"High/low channel over N periods"},
-    {id:"ATRP",name:"ATR Percentage",abbr:"ATRP",cat:"volatility",desc:"ATR expressed as a percentage of price"},
-    {id:"HV",name:"Historical Volatility",abbr:"HV",cat:"volatility",desc:"Annualised standard deviation of log returns"},
-    {id:"NATR",name:"Normalized ATR",abbr:"NATR",cat:"volatility",desc:"ATR normalised by closing price"},
-    {id:"VHF",name:"Vertical Horizontal Filter",abbr:"VHF",cat:"volatility",desc:"Measures trending vs ranging conditions"},
-    // Volume
-    {id:"VWAP",name:"VWAP",abbr:"VWAP",cat:"volume",desc:"Intraday volume-weighted average price benchmark"},
-    {id:"OBV",name:"On Balance Volume",abbr:"OBV",cat:"volume",desc:"Cumulative volume direction indicator"},
-    {id:"CMF",name:"Chaikin Money Flow",abbr:"CMF",cat:"volume",desc:"Money flow oscillator over N periods"},
-    {id:"MFI",name:"Money Flow Index",abbr:"MFI",cat:"volume",desc:"RSI-like oscillator incorporating volume"},
-    {id:"VROC",name:"Volume Rate of Change",abbr:"VROC",cat:"volume",desc:"Percentage change in volume over N periods"},
-    {id:"AD",name:"Accumulation/Distribution",abbr:"A/D",cat:"volume",desc:"Cumulative money flow line"},
-    {id:"PVT",name:"Price Volume Trend",abbr:"PVT",cat:"volume",desc:"Combines price change percentage with volume"},
-    {id:"KLINGER",name:"Klinger Volume Oscillator",abbr:"KVO",cat:"volume",desc:"Long/short volume force oscillator"},
-    // Sessions
-    {id:"SESS",name:"Session Boxes",abbr:"SESS",cat:"sessions",desc:"Highlights all major trading sessions with boxes"},
-    {id:"ASIA",name:"Asia Session",abbr:"ASIA",cat:"sessions",desc:"Highlights the Asian session range"},
-    {id:"LON",name:"London Session",abbr:"LON",cat:"sessions",desc:"Highlights the London session range"},
-    {id:"NY",name:"New York Session",abbr:"NY",cat:"sessions",desc:"Highlights the New York session range"},
-    // Others
-    {id:"PIVOT",name:"Pivot Points",abbr:"PIVOT",cat:"others",desc:"Daily/weekly/monthly S/R pivot levels"},
-    {id:"PSAR",name:"Parabolic SAR",abbr:"PSAR",cat:"others",desc:"Trailing stop and reversal signal dots"},
-    {id:"ADX",name:"Average Directional Index",abbr:"ADX",cat:"others",desc:"Measures trend strength, not direction"},
-    {id:"AROON",name:"Aroon",abbr:"AROON",cat:"others",desc:"Identifies trend changes and strength"},
-    {id:"ZZ",name:"Zig Zag",abbr:"ZZ",cat:"others",desc:"Filters noise to highlight significant price swings"},
-    {id:"FVGBULL",name:"Bullish Fair Value Gap",abbr:"FVG+",cat:"others",desc:"Marks up-side imbalances in price action"},
-    {id:"FVGBEAR",name:"Bearish Fair Value Gap",abbr:"FVG−",cat:"others",desc:"Marks down-side imbalances in price action"},
-  ];
-
-  const indFiltered = indicatorData
-    .filter(i => indCat === "all" ? true : indCat === "pinned" ? indPinned.includes(i.id) : indCat === "active" ? indActive.includes(i.id) : i.cat === indCat)
-    .filter(i => !indSearch || i.name.toLowerCase().includes(indSearch.toLowerCase()) || i.abbr.toLowerCase().includes(indSearch.toLowerCase()));
-
-  const I = ({ n, s = 18, cl = "currentColor" }) => {
-    const v = "0 -960 960 960";
-    // stroke=c.bg with paintOrder="fill stroke" erodes the filled shape from the inside,
-    // making every icon line visually thinner without changing path data
-    const F = (d, fr) => <svg width={s} height={s} viewBox={v} fill={cl}><path d={d} fillRule={fr}/></svg>;
-    // custom icons that need special SVG structure
-    // --- Cursor variants ---
-    if (n === "crosshair")    return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><line x1="12" y1="2" x2="12" y2="9.5" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><line x1="12" y1="14.5" x2="12" y2="22" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><line x1="2" y1="12" x2="9.5" y2="12" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><line x1="14.5" y1="12" x2="22" y2="12" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><circle cx="12" cy="12" r="2.5" stroke={cl} strokeWidth="1.5"/></svg>;
-    if (n === "cursorDot")    return <svg width={s} height={s} viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5" fill={cl}/></svg>;
-    if (n === "cursorArrow")  return <svg width={s} height={s} viewBox="0 0 24 24" fill={cl}><path d="M4,2 L4,17 L8,13 L11,20 L13.5,19 L10.5,12 L16,12 Z"/></svg>;
-    // --- Line variants (standard: viewBox 0 0 17 17, stroke 1.5, circles r=2, arrowheads 4×6) ---
-    if (n === "hray")         return <svg width={s} height={s} viewBox="0 0 17 17" fill="none" style={{display:"block"}}><line x1="3.5" y1="8.5" x2="13.5" y2="8.5" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><circle cx="2" cy="8.5" r="2" fill={cl}/><polygon points="17,8.5 13,5.5 13,11.5" fill={cl}/></svg>;
-    if (n === "hline")        return <svg width={s} height={s} viewBox="0 0 17 17" fill="none" style={{display:"block"}}><line x1="4" y1="8.5" x2="13" y2="8.5" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><polygon points="0,8.5 4,5.5 4,11.5" fill={cl}/><polygon points="17,8.5 13,5.5 13,11.5" fill={cl}/></svg>;
-    if (n === "extendedLine") return <svg width={s} height={s} viewBox="0 0 17 17" fill="none" style={{display:"block"}}><line x1="2" y1="15" x2="15" y2="2" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><circle cx="6" cy="11" r="2" fill={cl}/><circle cx="11" cy="6" r="2" fill={cl}/></svg>;
-    if (n === "crossLine")    return <svg width={s} height={s} viewBox="0 0 17 17" fill="none" style={{display:"block"}}><line x1="2" y1="8.5" x2="15" y2="8.5" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><line x1="8.5" y1="2" x2="8.5" y2="15" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/></svg>;
-    if (n === "ray")          return <svg width={s} height={s} viewBox="0 0 17 17" fill="none" style={{display:"block"}}><line x1="3.5" y1="13.5" x2="11" y2="6" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><circle cx="2.5" cy="14.5" r="2" fill={cl}/><polygon points="15,2 10,3 14,7" fill={cl}/></svg>;
-    if (n === "curve")        return <svg width={s} height={s} viewBox="0 0 17 17" fill="none" style={{display:"block"}}><path d="M2,14 C2,6 8,2 15,6" stroke={cl} strokeWidth="1.5" strokeLinecap="round" fill="none"/><circle cx="2" cy="14" r="2" fill={cl}/><circle cx="15" cy="6" r="2" fill={cl}/></svg>;
-    if (n === "doubleCurve")  return <svg width={s} height={s} viewBox="0 0 17 17" fill="none" style={{display:"block"}}><path d="M2,14 C2,6 15,11 15,3" stroke={cl} strokeWidth="1.5" strokeLinecap="round" fill="none"/><circle cx="2" cy="14" r="2" fill={cl}/><circle cx="15" cy="3" r="2" fill={cl}/></svg>;
-    if (n === "polyline")     return <svg width={s} height={s} viewBox="0 0 17 17" fill="none" style={{display:"block"}}><polygon points="2,14 6,5 11,12 15,3" fill={cl} opacity="0.08" stroke="none"/><path d="M2,14 L6,5 L11,12 L15,3" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/><circle cx="2" cy="14" r="2" fill={cl}/><circle cx="6" cy="5" r="2" fill={cl}/><circle cx="11" cy="12" r="2" fill={cl}/><circle cx="15" cy="3" r="2" fill={cl}/></svg>;
-    if (n === "pathTool")     return <svg width={s} height={s} viewBox="0 0 17 17" fill="none" style={{display:"block"}}><path d="M2,3 L13,3 L4,14 L12.5,14" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/><circle cx="2" cy="3" r="2" fill={cl}/><polygon points="16,14 12,11 12,17" fill={cl}/></svg>;
-    // --- Shape variants ---
-    if (n === "arcShape")     return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.5" strokeLinecap="round"><path d="M4,18 Q12,2 20,18"/></svg>;
-    if (n === "arrowLine")    return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.5" strokeLinecap="round"><line x1="4" y1="20" x2="20" y2="4"/><path d="M14,4 L20,4 L20,10"/></svg>;
-    if (n === "circle")       return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.5"><circle cx="12" cy="12" r="9"/></svg>;
-    // --- Channel variants ---
-    if (n === "regressionCh") return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="round"><line x1="2" y1="22" x2="22" y2="14" strokeWidth="2"/><line x1="2" y1="10" x2="22" y2="2" strokeWidth="2"/><line x1="2" y1="16" x2="22" y2="8" strokeWidth="2" strokeDasharray="2 2" opacity="0.5"/></svg>;
-    if (n === "flatChannel")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="2" strokeLinecap="round"><line x1="2" y1="6" x2="22" y2="6"/><line x1="2" y1="20" x2="22" y2="14"/></svg>;
-    if (n === "disjointCh")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="2" strokeLinecap="round"><line x1="2" y1="7" x2="11" y2="5"/><line x1="13" y1="8" x2="22" y2="6"/><line x1="2" y1="17" x2="11" y2="15"/><line x1="13" y1="18" x2="22" y2="16"/></svg>;
-    // --- Fibonacci variants ---
-    if (n === "fibExtension") return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="round"><line x1="2" y1="20" x2="22" y2="20" strokeWidth="1.5"/><line x1="2" y1="14" x2="22" y2="14" strokeWidth="1.2" opacity="0.7"/><line x1="2" y1="9" x2="22" y2="9" strokeWidth="1" opacity="0.5"/><line x1="2" y1="5" x2="22" y2="5" strokeWidth="0.8" opacity="0.35"/><line x1="2" y1="2" x2="22" y2="2" strokeWidth="0.8" opacity="0.2"/><path d="M4,20 L10,9 L16,14 L22,2" strokeWidth="1.5" fill="none"/></svg>;
-    if (n === "fibChannel")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="round"><line x1="2" y1="22" x2="22" y2="10" strokeWidth="1.4"/><line x1="2" y1="19" x2="22" y2="7" strokeWidth="1.4"/><line x1="2" y1="16" x2="22" y2="4" strokeWidth="1.4"/><line x1="2" y1="13" x2="22" y2="1" strokeWidth="1.4"/></svg>;
-    if (n === "fibTimeZone")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="round"><line x1="3" y1="3" x2="3" y2="21" strokeWidth="1.5"/><line x1="6" y1="3" x2="6" y2="21" strokeWidth="1.3" opacity="0.8"/><line x1="11" y1="3" x2="11" y2="21" strokeWidth="1" opacity="0.55"/><line x1="19" y1="3" x2="19" y2="21" strokeWidth="0.8" opacity="0.35"/></svg>;
-    if (n === "fibFan")       return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="round"><line x1="3" y1="20" x2="22" y2="4" strokeWidth="1.5"/><line x1="3" y1="20" x2="22" y2="10" strokeWidth="1.2" opacity="0.6"/><line x1="3" y1="20" x2="22" y2="16" strokeWidth="1" opacity="0.4"/><circle cx="3" cy="20" r="1.5" fill={cl}/></svg>;
-    if (n === "fibCircles")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.2"><circle cx="12" cy="12" r="4" opacity="0.9"/><circle cx="12" cy="12" r="7" opacity="0.55"/><circle cx="12" cy="12" r="10" opacity="0.3"/></svg>;
-    if (n === "fibSpiral")    return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.4" strokeLinecap="round"><path d="M12,12 C12,10.3 13.3,9 15,9 C17.5,9 19,11 19,13 C19,16.3 16.5,19 13,19 C8.2,19 5,15.5 5,11 C5,5.5 9.5,2 15,2 C19,2 22,4.5 22,8"/></svg>;
-    if (n === "fibArcs")      return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="round"><path d="M3,20 Q3,12 12,12" strokeWidth="1.5" opacity="0.9"/><path d="M3,20 Q3,8 16,8" strokeWidth="1.2" opacity="0.55"/><path d="M3,20 Q3,4 20,4" strokeWidth="1" opacity="0.3"/><circle cx="3" cy="20" r="1.5" fill={cl}/></svg>;
-    if (n === "fibWedge")     return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.5" strokeLinecap="round"><path d="M3,20 L12,4 L21,20" fill="none"/><line x1="6" y1="15" x2="18" y2="15" strokeWidth="0.8" opacity="0.5"/><line x1="8" y1="11" x2="16" y2="11" strokeWidth="0.8" opacity="0.35"/></svg>;
-    if (n === "fibTime")      return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="round"><path d="M3,20 L10,6 L17,14 L22,4" strokeWidth="1.5" fill="none"/><line x1="3" y1="3" x2="3" y2="21" strokeWidth="1" opacity="0.4"/><line x1="10" y1="3" x2="10" y2="21" strokeWidth="1" opacity="0.4"/><line x1="17" y1="3" x2="17" y2="21" strokeWidth="1" opacity="0.4"/></svg>;
-    // --- Gann variants ---
-    if (n === "gannBox")      return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="round"><rect x="3" y="3" width="18" height="18" strokeWidth="1.5" fill="none"/><line x1="3" y1="12" x2="21" y2="12" strokeWidth="0.8" opacity="0.5"/><line x1="12" y1="3" x2="12" y2="21" strokeWidth="0.8" opacity="0.5"/><line x1="3" y1="3" x2="21" y2="21" strokeWidth="1" opacity="0.4"/></svg>;
-    if (n === "gannSquare")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="round"><rect x="3" y="3" width="18" height="18" strokeWidth="1.5" fill="none"/><line x1="3" y1="3" x2="21" y2="21" strokeWidth="1" opacity="0.5"/><line x1="21" y1="3" x2="3" y2="21" strokeWidth="1" opacity="0.5"/><line x1="3" y1="12" x2="21" y2="12" strokeWidth="0.8" opacity="0.35"/><line x1="12" y1="3" x2="12" y2="21" strokeWidth="0.8" opacity="0.35"/></svg>;
-    if (n === "gannFan")      return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="round"><line x1="3" y1="21" x2="21" y2="3" strokeWidth="1.5"/><line x1="3" y1="21" x2="21" y2="9" strokeWidth="1.1" opacity="0.6"/><line x1="3" y1="21" x2="21" y2="15" strokeWidth="0.9" opacity="0.4"/><line x1="3" y1="21" x2="15" y2="3" strokeWidth="1.1" opacity="0.6"/><line x1="3" y1="21" x2="9" y2="3" strokeWidth="0.9" opacity="0.4"/></svg>;
-    // --- Elliott Wave variants — shared sharp wave, differentiated by first/last label ---
-    if (n === "elliott5")     return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="square" strokeLinejoin="miter"><path d="M1,13 L5,3 L9,13 L14,3 L19,11 L23,5" strokeWidth="2"/><text x="1" y="23" fontSize="9" fill={cl} stroke="none" fontFamily="sans-serif" fontWeight="900">1</text><text x="23" y="23" fontSize="9" fill={cl} stroke="none" fontFamily="sans-serif" fontWeight="900" textAnchor="end">5</text></svg>;
-    if (n === "elliottABC")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="square" strokeLinejoin="miter"><path d="M1,13 L5,3 L9,13 L14,3 L19,11 L23,5" strokeWidth="2"/><text x="1" y="23" fontSize="9" fill={cl} stroke="none" fontFamily="sans-serif" fontWeight="900">A</text><text x="23" y="23" fontSize="9" fill={cl} stroke="none" fontFamily="sans-serif" fontWeight="900" textAnchor="end">C</text></svg>;
-    if (n === "elliottTri")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="square" strokeLinejoin="miter"><path d="M1,13 L5,3 L9,13 L14,3 L19,11 L23,5" strokeWidth="2"/><text x="1" y="23" fontSize="9" fill={cl} stroke="none" fontFamily="sans-serif" fontWeight="900">A</text><text x="23" y="23" fontSize="9" fill={cl} stroke="none" fontFamily="sans-serif" fontWeight="900" textAnchor="end">E</text></svg>;
-    if (n === "elliottWXY")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="square" strokeLinejoin="miter"><path d="M1,13 L5,3 L9,13 L14,3 L19,11 L23,5" strokeWidth="2"/><text x="1" y="23" fontSize="9" fill={cl} stroke="none" fontFamily="sans-serif" fontWeight="900">W</text><text x="23" y="23" fontSize="9" fill={cl} stroke="none" fontFamily="sans-serif" fontWeight="900" textAnchor="end">Y</text></svg>;
-    if (n === "elliottWXYXZ") return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="square" strokeLinejoin="miter"><path d="M1,13 L5,3 L9,13 L14,3 L19,11 L23,5" strokeWidth="2"/><text x="1" y="23" fontSize="9" fill={cl} stroke="none" fontFamily="sans-serif" fontWeight="900">W</text><text x="23" y="23" fontSize="9" fill={cl} stroke="none" fontFamily="sans-serif" fontWeight="900" textAnchor="end">Z</text></svg>;
-    // --- Pattern variants ---
-    if (n === "xabcd")        return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="square" strokeLinejoin="miter"><path d="M2,7 L7,12 L12,3 L17,11 L22,2" strokeWidth="2"/><text x="1" y="23" fontSize="9" fill={cl} stroke="none" fontFamily="sans-serif" fontWeight="900">X</text><text x="23" y="23" fontSize="9" fill={cl} stroke="none" fontFamily="sans-serif" fontWeight="900" textAnchor="end">D</text></svg>;
-    if (n === "headShoulders") return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2,18 L5,12 L8,16 L12,4 L16,16 L19,12 L22,18"/></svg>;
-    if (n === "abcdPattern")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="square" strokeLinejoin="miter"><path d="M2,5 L8,13 L14,4 L22,12" strokeWidth="2"/><text x="1" y="23" fontSize="9" fill={cl} stroke="none" fontFamily="sans-serif" fontWeight="900">A</text><text x="23" y="23" fontSize="9" fill={cl} stroke="none" fontFamily="sans-serif" fontWeight="900" textAnchor="end">D</text></svg>;
-    if (n === "triPattern")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="round"><line x1="1" y1="4" x2="23" y2="12" strokeWidth="1.5"/><line x1="1" y1="20" x2="23" y2="12" strokeWidth="1.5"/></svg>;
-    if (n === "threeDrives")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeLinecap="square" strokeLinejoin="miter"><path d="M2,16 L5,8 L8,14 L12,5 L16,13 L20,3 L22,8" strokeWidth="2"/></svg>;
-    // --- Text/Label variants ---
-    if (n === "note")         return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4,4 H20 V15 H9 L4,19 V4Z"/><line x1="8" y1="9" x2="16" y2="9" strokeWidth="1.2"/></svg>;
-    if (n === "priceNote")    return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4,4 H20 V15 H9 L4,19 V4Z"/><text x="12" y="11" textAnchor="middle" fontSize="7" fontWeight="700" fill={cl} stroke="none" fontFamily="sans-serif">$</text></svg>;
-    if (n === "callout")      return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3,4 H21 V16 H13 L8,20 V16 H3 Z"/><line x1="7" y1="8" x2="17" y2="8" strokeWidth="1"/><line x1="7" y1="12" x2="14" y2="12" strokeWidth="1"/></svg>;
-    if (n === "priceLabel")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2,9 L6,6 L22,6 L22,18 L6,18 L2,15 Z"/><line x1="9" y1="10" x2="19" y2="10" strokeWidth="1" opacity="0.5"/><line x1="9" y1="14" x2="16" y2="14" strokeWidth="1" opacity="0.5"/></svg>;
-    if (n === "signpost")     return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="4" x2="8" y2="21"/><path d="M8,5 L20,5 L18,9 L20,13 L8,13"/></svg>;
-    if (n === "image")        return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><circle cx="8.5" cy="8.5" r="2" fill={cl} stroke="none"/><path d="M3,17 L8,12 L12,16 L16,11 L21,17" fill="none"/></svg>;
-    if (n === "emoji")        return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.5"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r="1.2" fill={cl} stroke="none"/><circle cx="15" cy="10" r="1.2" fill={cl} stroke="none"/><path d="M8,14.5 Q12,18 16,14.5" fill="none"/></svg>;
-    // --- Volume variants ---
-    if (n === "volProfile")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><line x1="3" y1="3" x2="3" y2="21" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><line x1="21" y1="3" x2="21" y2="21" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><rect x="4" y="4.5" width="7" height="2" rx="0.4" fill={cl} opacity="0.4"/><rect x="4" y="8" width="11" height="2" rx="0.4" fill={cl} opacity="0.7"/><rect x="4" y="11.5" width="14" height="2" rx="0.4" fill={cl}/><rect x="4" y="15" width="10" height="2" rx="0.4" fill={cl} opacity="0.6"/><rect x="4" y="18.5" width="5" height="2" rx="0.4" fill={cl} opacity="0.35"/></svg>;
-    if (n === "anchoredVol")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><rect x="6" y="4" width="10" height="2.5" rx="0.5" fill={cl} opacity="0.4"/><rect x="4" y="7.5" width="14" height="2.5" rx="0.5" fill={cl} opacity="0.7"/><rect x="3" y="11" width="18" height="2.5" rx="0.5" fill={cl}/><rect x="5" y="14.5" width="12" height="2.5" rx="0.5" fill={cl} opacity="0.6"/><rect x="7" y="18" width="8" height="2.5" rx="0.5" fill={cl} opacity="0.35"/><line x1="3" y1="3" x2="3" y2="21" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><circle cx="3" cy="3" r="1.5" fill={cl}/></svg>;
-    if (n === "star")     return <svg width={s} height={s} viewBox={v} fill={cl}><path fillRule="evenodd" d="m354-287 126-76 126 77-33-144 111-96-146-13-58-136-58 135-146 13 111 97-33 143ZM233-120l65-281L80-590l288-25 112-265 112 265 288 25-218 189 65 281-247-149-247 149Zm247-350Z"/></svg>;
-    if (n === "starFill")  return F("m354-287 126-76 126 77-33-144 111-96-146-13-58-136-58 135-146 13 111 97-33 143ZM233-120l65-281L80-590l288-25 112-265 112 265 288 25-218 189 65 281-247-149-247 149Zm247-350Z");
-    if (n === "channel")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="2" strokeLinecap="round"><line x1="2" y1="21" x2="22" y2="13"/><line x1="2" y1="11" x2="22" y2="3"/></svg>;
-    if (n === "hollowCandle") return <svg width={s} height={s} viewBox={v} fill="none" stroke={cl} strokeWidth="55" strokeLinejoin="miter"><path d="M180-720h200v400h-200ZM280-720V-800M280-320V-220M580-620h200v400h-200ZM680-620V-700M680-220V-120"/></svg>;
-    if (n === "tick")      return <svg width={s} height={s} viewBox={v} fill="none" stroke={cl} strokeWidth="60" strokeLinecap="square"><line x1="300" y1="-120" x2="300" y2="-840"/><line x1="180" y1="-680" x2="300" y2="-680"/><line x1="300" y1="-300" x2="420" y2="-300"/><line x1="660" y1="-40" x2="660" y2="-760"/><line x1="540" y1="-600" x2="660" y2="-600"/><line x1="660" y1="-220" x2="780" y2="-220"/></svg>;
-    if (n === "magnet")      return F("M480-80q-117 0-198.5-81.5T200-360v-400h160v400q0 50 35 85t85 35q50 0 85-35t35-85v-400h160v400q0 117-81.5 198.5T480-80ZM360-840v240h-80v-240h80Zm160 0v240h-80v-240h80Z");
-    if (n === "magnetOff")    return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><rect x="3" y="0" width="8" height="2" rx="0.4" fill={cl}/><rect x="13" y="0" width="8" height="2" rx="0.4" fill={cl}/><path d="M7 1 L7 8 Q7 13 12 13 Q17 13 17 8 L17 1" stroke={cl} strokeWidth="4.5" strokeLinecap="butt" strokeLinejoin="round"/><line x1="7" y1="17" x2="17" y2="24" stroke={cl} strokeWidth="1.8" strokeLinecap="round"/><line x1="17" y1="17" x2="7" y2="24" stroke={cl} strokeWidth="1.8" strokeLinecap="round"/></svg>;
-    if (n === "magnetWeak")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><rect x="3" y="0" width="8" height="2" rx="0.4" fill={cl}/><rect x="13" y="0" width="8" height="2" rx="0.4" fill={cl}/><path d="M7 1 L7 8 Q7 13 12 13 Q17 13 17 8 L17 1" stroke={cl} strokeWidth="4.5" strokeLinecap="butt" strokeLinejoin="round"/><path d="M7 17 Q12 24 17 17" stroke={cl} strokeWidth="1.6" strokeLinecap="round" fill="none"/></svg>;
-    if (n === "magnetStrong") return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><rect x="3" y="0" width="8" height="2" rx="0.4" fill={cl}/><rect x="13" y="0" width="8" height="2" rx="0.4" fill={cl}/><path d="M7 1 L7 8 Q7 13 12 13 Q17 13 17 8 L17 1" stroke={cl} strokeWidth="4.5" strokeLinecap="butt" strokeLinejoin="round"/><path d="M7 16.5 Q12 21.5 17 16.5" stroke={cl} strokeWidth="1.6" strokeLinecap="round" fill="none"/><path d="M5.5 21 Q12 25 18.5 21" stroke={cl} strokeWidth="1.4" strokeLinecap="round" fill="none"/></svg>;
-    if (n === "fib")       return F("M80-180v-60h800v60H80Zm0-175v-60h800v60H80Zm0-160v-60h800v60H80Zm0-205v-60h800v60H80Z");
-    if (n === "vline")     return <svg width={s} height={s} viewBox="0 0 17 17" fill="none" style={{display:"block"}}><line x1="8.5" y1="4" x2="8.5" y2="13" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><polygon points="8.5,0 5.5,4 11.5,4" fill={cl}/><polygon points="8.5,17 5.5,13 11.5,13" fill={cl}/></svg>;
-    if (n === "baseline")  return F("M120-160v-520l160 120 200-280 200 160h160v520H120Zm200-120 160-220 280 218v-318H652L496-725 298-447l-98-73v144l120 96Z");
-    if (n === "indicator") return <svg width={s} height={s} viewBox={v}><path d="M140-420h120v260h-120ZM390-560h120v400h-120ZM640-760h120v600h-120Z" fill={cl}/><polyline points="200,-420 450,-560 700,-760" fill="none" stroke={cl} strokeWidth="58" strokeLinecap="round" strokeLinejoin="round"/><circle cx="200" cy="-420" r="62" fill={cl}/><circle cx="450" cy="-560" r="62" fill={cl}/><circle cx="700" cy="-760" r="62" fill={cl}/></svg>;
-    if (n === "pin")      return <svg width={s} height={s} viewBox={v} fill="none" stroke={cl} strokeWidth="55" strokeLinecap="round" strokeLinejoin="round"><path d="M480-880V-760"/><path d="M280-760H680L620-520H340L280-760Z"/><path d="M360-520L280-400"/><path d="M600-520L680-400"/><path d="M480-520V-80"/></svg>;
-    if (n === "pinFill")  return <svg width={s} height={s} viewBox={v} fill="none" stroke={cl} strokeWidth="55" strokeLinecap="round" strokeLinejoin="round"><path d="M480-880V-760"/><path d="M280-760H680L620-520H340L280-760Z" fill={cl}/><path d="M360-520L280-400"/><path d="M600-520L680-400"/><path d="M480-520V-80"/></svg>;
-    if (n === "locate")   return <svg width={s} height={s} viewBox={v} fill="none" style={{overflow:"visible"}}><g transform="rotate(30 480 -480)"><path d="M80,-120 C80,-700 200,-760 380,-760" stroke={cl} strokeWidth="92" strokeLinecap="round"/><path d="M620,-760 L380,-960 L380,-560 Z" fill={cl}/><circle cx="800" cy="-760" r="160" fill={cl}/></g></svg>;
-    if (n === "rollback") return <svg width={s} height={s} viewBox={v} fill="none"><path d="M640,-480 C640,-800 80,-800 80,-480" stroke={cl} strokeWidth="76" strokeLinecap="round"/><path d="M20,-480 L180,-600 L180,-360 Z" fill={cl}/><path d="M900,-780 L640,-480" stroke={cl} strokeWidth="64" strokeLinecap="round"/><path d="M900,-180 L640,-480" stroke={cl} strokeWidth="64" strokeLinecap="round"/><circle cx="640" cy="-480" r="48" fill={cl}/></svg>;
-    if (n === "trendline") return <svg width={s} height={s} viewBox="0 0 17 17" fill="none" style={{flexShrink:0,display:"block"}}><line x1="2" y1="15" x2="15" y2="2" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><circle cx="2" cy="15" r="2" fill={cl}/><circle cx="15" cy="2" r="2" fill={cl}/></svg>;
-
-    if (n === "cut")      return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><circle cx="5" cy="7.5" r="2.8" stroke={cl} strokeWidth="1.7"/><circle cx="5" cy="16.5" r="2.8" stroke={cl} strokeWidth="1.7"/><path d="M7.5,9 L21,12" stroke={cl} strokeWidth="1.7" strokeLinecap="round"/><path d="M7.5,15 L21,12" stroke={cl} strokeWidth="1.7" strokeLinecap="round"/><circle cx="14" cy="12" r="1.8" fill={cl}/></svg>;
-    if (n === "grip")     return <svg width={s} height={s} viewBox="0 0 24 24"><circle cx="9" cy="7" r="1.5" fill={cl}/><circle cx="9" cy="12" r="1.5" fill={cl}/><circle cx="9" cy="17" r="1.5" fill={cl}/><circle cx="15" cy="7" r="1.5" fill={cl}/><circle cx="15" cy="12" r="1.5" fill={cl}/><circle cx="15" cy="17" r="1.5" fill={cl}/></svg>;
-    if (n === "draw")     return <svg width={s} height={s} viewBox="-20 -630 640 640" fill={cl}><path d="M240-120q-45 0-89-22t-71-58q26 0 53-20.5t27-59.5q0-50 35-85t85-35q50 0 85 35t35 85q0 66-47 113t-113 47Zm0-80q33 0 56.5-23.5T320-280q0-17-11.5-28.5T280-320q-17 0-28.5 11.5T240-280q0 23-5.5 42T220-202q5 2 10 2h10Zm230-160L360-470l386-386 110 110-386 386Zm-190 80Z"/></svg>;
-    if (n === "brush")    return <svg width={s} height={s} viewBox="-20 -630 640 640" fill={cl}><path d="m544-400-52-52-52-52-200 200 104 104 200-200Zm-47-161 52 52 52 52 199-199-104-104-199 199ZM60-120l126-126-30-30v-56l257-257 216 216-257 257h-56l-30-30-26 26H60Zm353-469 283-283 216 216-283 283-216-216Z"/></svg>;
-    if (n === "eraser")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M20,20 H8 L3.5,15.5 L13,6 L21,14 Z"/><line x1="6.5" y1="13" x2="11" y2="17.5"/></svg>;
-    if (n === "triangle") return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"><polygon points="12,3 22,20.5 2,20.5"/></svg>;
-    if (n === "ellipse")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.5"><ellipse cx="12" cy="12" rx="9.5" ry="6.5"/></svg>;
-    if (n === "arrowMarker") return <svg width={s} height={s} viewBox="0 0 24 24" fill={cl}><path d="M12,1 L14,15 L18,15 L12,22 L6,15 L10,15 Z" transform="rotate(105,12,12)"/></svg>;
-    if (n === "arrowUp")  return <svg width={s} height={s} viewBox="0 0 24 24" fill={cl}><path d="M12,3 L4,13 H9 V21 H15 V13 H20 Z"/></svg>;
-    if (n === "arrowDn")  return <svg width={s} height={s} viewBox="0 0 24 24"><path d="M12,21 L4,11 H9 V3 H15 V11 H20 Z" fill={cl}/></svg>;
-    if (n === "pitchfork") return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="4" cy="12" r="1.2" fill={cl} stroke="none"/><circle cx="20" cy="4" r="1.2" fill={cl} stroke="none"/><circle cx="20" cy="20" r="1.2" fill={cl} stroke="none"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="12" y1="8" x2="20" y2="4"/><line x1="12" y1="16" x2="20" y2="20"/></svg>;
-    if (n === "flag")     return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><line x1="6" y1="3" x2="6" y2="21"/><path d="M6,3 L20,8 L6,13"/></svg>;
-    if (n === "comment")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4,4 H20 V15 H9 L4,19 V4Z"/></svg>;
-    if (n === "wave")     return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M2,16 L5,8 L8,14 L11,5 L14,12 L17,4 L20,10 L22,8"/></svg>;
-    if (n === "longPos")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="13" width="18" height="7" rx="1"/><path d="M12,13 V6 M9,9 L12,6 L15,9"/></svg>;
-    if (n === "shortPos") return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="7" rx="1"/><path d="M12,11 V18 M9,15 L12,18 L15,15"/></svg>;
-    if (n === "vwap")     return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={cl} strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter"><circle cx="12" cy="4" r="2.2" strokeLinecap="round" strokeLinejoin="round"/><line x1="7" y1="7" x2="17" y2="7"/><line x1="12" y1="7" x2="12" y2="19"/><polyline points="4,14 8,14 8,20"/><polyline points="20,14 16,14 16,20"/><path d="M8,20 Q12,23 16,20" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-    if (n === "goto")     return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><rect x="1.5" y="1.5" width="21" height="21" rx="2.5" stroke={cl} strokeWidth="1.3"/><text x="12" y="10.5" textAnchor="middle" dominantBaseline="middle" fill={cl} fontSize="11" fontWeight="900" fontFamily="sans-serif">GO</text><text x="12" y="18.5" textAnchor="middle" dominantBaseline="middle" fill={cl} fontSize="8" fontWeight="700" fontFamily="sans-serif">to</text></svg>;
-    if (n === "eyeAll")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M2 11 Q7 5 12 5 Q17 5 22 11 Q17 17 12 17 Q7 17 2 11Z" stroke={cl} strokeWidth="1.5" strokeLinejoin="round"/><circle cx="12" cy="11" r="2.8" stroke={cl} strokeWidth="1.4"/><circle cx="16.5" cy="21" r="1" fill={cl}/><circle cx="19" cy="21" r="1" fill={cl}/><circle cx="21.5" cy="21" r="1" fill={cl}/></svg>;
-    if (n === "eyeInd")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M2 11 Q7 5 12 5 Q17 5 22 11 Q17 17 12 17 Q7 17 2 11Z" stroke={cl} strokeWidth="1.5" strokeLinejoin="round"/><circle cx="12" cy="11" r="2.8" stroke={cl} strokeWidth="1.4"/><path d="M14 21 L17 19 L20 21 L23 19" stroke={cl} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-    if (n === "eyePos")   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M2 11 Q7 5 12 5 Q17 5 22 11 Q17 17 12 17 Q7 17 2 11Z" stroke={cl} strokeWidth="1.5" strokeLinejoin="round"/><circle cx="12" cy="11" r="2.8" stroke={cl} strokeWidth="1.4"/><path d="M16 23 L19.5 19 L23 23" stroke={cl} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-    if (n === "eyeHide")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M2 11 Q7 5 12 5 Q17 5 22 11 Q17 17 12 17 Q7 17 2 11Z" stroke={cl} strokeWidth="1.5" strokeLinejoin="round"/><circle cx="12" cy="11" r="2.8" stroke={cl} strokeWidth="1.4"/><line x1="4" y1="19" x2="20" y2="3" stroke={cl} strokeWidth="1.4" strokeLinecap="round"/></svg>;
-    if (n === "trashDraw") return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><line x1="3" y1="7" x2="21" y2="7" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><path d="M9 7V5h6v2" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M4.5 7l1 15h13l1-15" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><line x1="8.5" y1="20" x2="15.5" y2="11" stroke={cl} strokeWidth="1.3" strokeLinecap="round" strokeOpacity="0.7"/><circle cx="8.5" cy="20" r="1.1" fill={cl} fillOpacity="0.7"/></svg>;
-    if (n === "trashInd")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><line x1="3" y1="7" x2="21" y2="7" stroke={cl} strokeWidth="1.5" strokeLinecap="round"/><path d="M9 7V5h6v2" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M4.5 7l1 15h13l1-15" stroke={cl} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><polyline points="7.5,19.5 10,15.5 13,17.5 16.5,12.5" stroke={cl} strokeWidth="1.3" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.7"/></svg>;
-    if (n === "measure")  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><g transform="rotate(45 12 12)"><rect x="2" y="9" width="20" height="6" rx="1" stroke={cl} strokeWidth="1.4"/><line x1="12" y1="9" x2="12" y2="13.5" stroke={cl} strokeWidth="1.2" strokeLinecap="round"/><line x1="7" y1="9" x2="7" y2="12.5" stroke={cl} strokeWidth="1.1" strokeLinecap="round"/><line x1="17" y1="9" x2="17" y2="12.5" stroke={cl} strokeWidth="1.1" strokeLinecap="round"/><line x1="4.5" y1="9" x2="4.5" y2="12" stroke={cl} strokeWidth="1" strokeLinecap="round"/><line x1="9.5" y1="9" x2="9.5" y2="12" stroke={cl} strokeWidth="1" strokeLinecap="round"/><line x1="14.5" y1="9" x2="14.5" y2="12" stroke={cl} strokeWidth="1" strokeLinecap="round"/><line x1="19.5" y1="9" x2="19.5" y2="12" stroke={cl} strokeWidth="1" strokeLinecap="round"/></g></svg>;
-    // Stroke-only frame (Material P.rect fill can look like a diagonal smear at 17px next to line tools).
-    if (n === "rect") return <svg width={s} height={s} viewBox="0 0 17 17" fill="none" style={{ display: "block" }}><rect x="2.5" y="2.5" width="12" height="12" rx="1" stroke={cl} strokeWidth="1.5"/></svg>;
-    const P = {
-      trendline:  "m136-240-56-56 296-298 160 160 208-206H640v-80h240v240h-80v-104L536-320 376-480 136-240Z",
-      rect:       "M80-160v-640h800v640H80Zm80-80h640v-480H160v480Zm0 0v-480 480Z",
-      text:       "M280-160v-520H80v-120h520v120H400v520H280Zm360 0v-320H520v-120h360v120H760v320H640Z",
-      brush:      "M240-120q-45 0-89-22t-71-58q26 0 53-20.5t27-59.5q0-50 35-85t85-35q50 0 85 35t35 85q0 66-47 113t-113 47Zm230-160L360-470l386-386 110 110-386 386Z",
-      pattern:    "m140-220-60-60 300-300 160 160 284-320 56 56-340 384-160-160-240 240Z",
-      eye:        "M607.5-372.5Q660-425 660-500t-52.5-127.5Q555-680 480-680t-127.5 52.5Q300-575 300-500t52.5 127.5Q405-320 480-320t127.5-52.5Zm-204-51Q372-455 372-500t31.5-76.5Q435-608 480-608t76.5 31.5Q588-545 588-500t-31.5 76.5Q525-392 480-392t-76.5-31.5ZM480-200q-146 0-266-81.5T40-500q54-137 174-218.5T480-800q146 0 266 81.5T920-500q-54 137-174 218.5T480-200Zm207.5-139.5Q782-399 832-500q-50-101-144.5-160.5T480-720q-113 0-207.5 59.5T128-500q50 101 144.5 160.5T480-280q113 0 207.5-59.5Z",
-      palette:    "M480-80q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 32.5-156t88-127Q256-817 330-848.5T488-880q80 0 151 27.5t124.5 76q53.5 48.5 85 115T880-518q0 115-70 176.5T640-280h-74q-9 0-12.5 5t-3.5 11q0 12 15 34.5t15 51.5q0 50-27.5 74T480-80Zm-177-383q17-17 17-43t-17-43q-17-17-43-17t-43 17q-17 17-17 43t17 43q17 17 43 17t43-17Zm120-160q17-17 17-43t-17-43q-17-17-43-17t-43 17q-17 17-17 43t17 43q17 17 43 17t43-17Zm200 0q17-17 17-43t-17-43q-17-17-43-17t-43 17q-17 17-17 43t17 43q17 17 43 17t43-17Zm120 160q17-17 17-43t-17-43q-17-17-43-17t-43 17q-17 17-17 43t17 43q17 17 43 17t43-17ZM480-160q9 0 14.5-5t5.5-13q0-14-15-33t-15-57q0-42 29-67t71-25h70q66 0 113-38.5T800-518q0-121-92.5-201.5T488-800q-136 0-232 93t-96 227q0 133 93.5 226.5T480-160Z",
-      trash:      "M200-120v-600h-40v-80h200v-40h240v40h200v80h-40v600H200Zm80-80h400v-520H280v520Zm80-80h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z",
-      undo:       "M280-200v-80h284q63 0 109.5-40T720-420q0-60-46.5-100T564-560H312l104 104-56 56-200-200 200-200 56 56-104 104h252q97 0 166.5 63T800-420q0 94-69.5 157T564-200H280Z",
-      redo:       "M396-200q-97 0-166.5-63T160-420q0-94 69.5-157T396-640h252L544-744l56-56 200 200-200 200-56-56 104-104H396q-63 0-109.5 40T240-420q0 60 46.5 100T396-280h284v80H396Z",
-      lock:       "M160-80v-560h120v-80q0-83 58.5-141.5T480-920q83 0 141.5 58.5T680-720v80h120v560H160Zm80-80h480v-400H240v400Zm296.5-143.5Q560-327 560-360t-23.5-56.5Q513-440 480-440t-56.5 23.5Q400-393 400-360t23.5 56.5Q447-280 480-280t56.5-23.5ZM360-640h240v-80q0-50-35-85t-85-35q-50 0-85 35t-35 85v80ZM240-160v-400 400Z",
-      measure:    "M80-240v-480h800v480H80Zm80-80h640v-320H680v160h-80v-160h-80v160h-80v-160h-80v160h-80v-160H160v320Z",
-      play:       "M320-200v-560l440 280-440 280Z",
-      pause:      "M560-200v-560h160v560H560Zm-280 0v-560h160v560H280Z",
-      skipBack:   "M220-240v-480h80v480h-80Zm520 0L380-480l360-240v480Zm-80-240Zm0 90v-180l-136 90 136 90Z",
-      skipFwd:    "M660-240v-480h80v480h-80Zm-440 0v-480l360 240-360 240Zm80-240Zm0 90 136-90-136-90v180Z",
-      stepBack:   "M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z",
-      stepFwd:    "M240-200v-560l400 280-400 280ZM700-200v-560h100v560H700Z",
-      settings:   "m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm70-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z",
-      plus:       "M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z",
-      minus:      "M200-440v-80h560v80H200Z",
-      x:          "m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z",
-      check:      "M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z",
-      chevDown:   "M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z",
-      chevRight:  "M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z",
-      user:       "M367-527q-47-47-47-113t47-113q47-47 113-47t113 47q47 47 47 113t-47 113q-47 47-113 47t-113-47ZM160-160v-112q0-34 17.5-62.5T224-378q62-31 126-46.5T480-440q66 0 130 15.5T736-378q29 15 46.5 43.5T800-272v112H160Zm80-80h480v-32q0-11-5.5-20T700-306q-54-27-109-40.5T480-360q-56 0-111 13.5T260-306q-9 5-14.5 14t-5.5 20v32Zm296.5-343.5Q560-607 560-640t-23.5-56.5Q513-720 480-720t-56.5 23.5Q400-673 400-640t23.5 56.5Q447-560 480-560t56.5-23.5ZM480-640Zm0 400Z",
-      tree:       "M600-120v-120H440v-400h-80v120H80v-320h280v120h240v-120h280v320H600v-120h-80v320h80v-120h280v320H600ZM160-760v160-160Zm520 400v160-160Zm0-400v160-160Zm0 160h120v-160H680v160Zm0 400h120v-160H680v160ZM160-600h120v-160H160v160Z",
-      news:       "M80-200v-520h800v520ZM160-640v360h540v-360ZM755-580v40h50v-40ZM755-480v40h50v-40ZM755-380v40h50v-40ZM430-720L310-960L370-960L490-720ZM490-720L590-960L650-960L570-720Z",
-      config:     "M440-120v-240h80v80h320v80H520v80h-80Zm-320-80v-80h240v80H120Zm160-160v-80H120v-80h160v-80h80v240h-80Zm160-80v-80h400v80H440Zm160-160v-240h80v80h160v80H680v80h-80Zm-480-80v-80h400v80H120Z",
-      goto:       "M200-120v-680h360l16 80h224v400H520l-16-80H280v280h-80Zm80-360h290l16 80h134v-240H510l-16-80H280v240Zm0 0Z",
-      rollback:   "M480-120q-138 0-240.5-91.5T122-440h82q14 104 92.5 172T480-200q117 0 198.5-81.5T760-480q0-117-81.5-198.5T480-760q-69 0-129 32t-101 88h110v80H120v-240h80v94q51-64 124.5-99T480-840q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-480q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-120Zm112-192L440-464v-216h80v184l128 128-56 56Z",
-      scissors:   "M760-120 480-400l-94 94q8 15 11 32t3 34q0 66-47 113T240-80q-66 0-113-47T80-240q0-66 47-113t113-47q17 0 34 3t32 11l94-94-94-94q-15 8-32 11t-34 3q-66 0-113-47T80-720q0-66 47-113t113-47q66 0 113 47t47 113q0 17-3 34t-11 32l494 494v40H760ZM296.5-183.5Q320-207 320-240t-23.5-56.5Q273-320 240-320t-56.5 23.5Q160-273 160-240t23.5 56.5Q207-160 240-160t56.5-23.5ZM296.5-663.5Q320-687 320-720t-23.5-56.5Q273-800 240-800t-56.5 23.5Q160-753 160-720t23.5 56.5Q207-640 240-640t56.5-23.5ZM386-654 880-160 786-66 292-560Z",
-      candle:     "M240-800h80v80h60v400h-60v100h-80v-100h-60v-400h60v-80ZM640-700h80v80h60v400h-60v100h-80v-100h-60v-400h60v-80Z",
-      heikinAshi: "M180-840h200v420h-60v300h-80v-300h-60v-420ZM580-760h200v420h-60v300h-80v-300h-60v-420Z",
-      expand:     "M120-120v-240h80v160h160v80H120ZM840-840v240h-80v-160H600v-80h240Z",
-      compress:   "M120-840v240h80v-160h160v-80H120ZM840-120v-240h-80v160H600v80h240Z",
-      bell:       "M160-200v-80h80v-280q0-83 50-147.5T420-792v-88h120v88q80 20 130 84.5T720-560v280h80v80H160Zm320-300Zm0 420q-33 0-56.5-23.5T400-160h160q0 33-23.5 56.5T480-80ZM320-280h320v-280q0-66-47-113t-113-47q-66 0-113 47t-47 113v280Z",
-      link:       "M440-280H280q-83 0-141.5-58.5T80-480q0-83 58.5-141.5T280-680h160v80H280q-50 0-85 35t-35 85q0 50 35 85t85 35h160v80ZM320-440v-80h320v80H320Zm200 160v-80h160q50 0 85-35t35-85q0-50-35-85t-85-35H520v-80h160q83 0 141.5 58.5T880-480q0 83-58.5 141.5T680-280H520Z",
-      layout:     "M520-600v-240h320v240H520ZM120-440v-400h320v400H120Zm400 320v-400h320v400H520Zm-400 0v-240h320v240H120Zm80-400h160v-240H200v240Zm400 320h160v-240H600v240Zm0-480h160v-80H600v80ZM200-200h160v-80H200v80Z",
-      screenshot: "M480-260q75 0 127.5-52.5T660-440q0-75-52.5-127.5T480-620q-75 0-127.5 52.5T300-440q0 75 52.5 127.5T480-260Zm0-80q-42 0-71-29t-29-71q0-42 29-71t71-29q42 0 71 29t29 71q0 42-29 71t-71 29ZM80-120v-640h206l74-80h240l74 80h206v640H80Zm80-80h640v-480H638l-73-80H395l-73 80H160v480Zm320-240Z",
-      help:       "M513.5-254.5Q528-269 528-290t-14.5-35.5Q499-340 478-340t-35.5 14.5Q428-311 428-290t14.5 35.5Q457-240 478-240t35.5-14.5ZM442-394h74q0-33 7.5-52t42.5-52q26-26 41-49.5t15-56.5q0-56-41-86t-97-30q-57 0-92.5 30T342-618l66 26q5-18 22.5-39t53.5-21q32 0 48 17.5t16 38.5q0 20-12 37.5T506-526q-44 39-54 59t-10 73Zm38 314q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z",
-      bars:       "M640-160v-280h160v280H640Zm-240 0v-640h160v640H400Zm-240 0v-440h160v440H160Z",
-      lineChart:  "m140-220-60-60 300-300 160 160 284-320 56 56-340 384-160-160-240 240Z",
-      area:       "M120-160v-520l160 120 200-280 200 160h160v520H120Zm200-120 160-220 280 218v-318H652L496-725 298-447l-98-73v144l120 96Z",
-      search:     "M784-120 532-372q-30 24-69 38t-83 14q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l252 252-56 56ZM380-400q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z",
-      edit:       "M200-200h57l391-391-57-57-391 391v57Zm-80 80v-170l585-583 167 171-582 582H120Zm640-584-56-56 56 56Zm-141 85-28-29 57 57-29-28Z",
-      filter:     "M400-240v-80h160v80H400ZM240-440v-80h480v80H240ZM120-640v-80h720v80H120Z",
-    };
-    const d = P[n];
-    return d ? F(d) : null;
-  };
-
-  // Button component
-  // `fireOnPointerDown`: modal footers (Cancel/OK) — runs the action on pointerdown so it still
-  // fires if chart/document eats the synthetic click; suppress duplicate click when true.
-  const B = ({ children, onClick, primary, small, hk, sx = {}, fireOnPointerDown }) => {
-    const isH = hk ? swHov === hk : false;
-    const isP = hk ? swHov === hk + "_dn" : false;
-    return (
-      <button type="button"
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          if (fireOnPointerDown && typeof onClick === "function") onClick(e);
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (!fireOnPointerDown && typeof onClick === "function") onClick(e);
-        }}
-        onMouseEnter={hk ? () => setSwHov(hk) : undefined}
-        onMouseLeave={hk ? () => setSwHov(null) : undefined}
-        onMouseDown={(e) => {
-          e.stopPropagation();
-          if (hk) setSwHov(hk + "_dn");
-        }}
-        onMouseUp={hk ? () => setSwHov(hk) : undefined}
-        style={{
-          padding: small ? "0 10px" : "0 14px",
-          height: small ? 24 : 30,
-          minWidth: small ? undefined : 64,
-          display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box",
-          background: primary
-            ? isP ? c.ac : isH ? `linear-gradient(135deg,${c.acL},#6A8AFF)` : `linear-gradient(135deg,${c.ac},${c.acL})`
-            : isP ? "rgba(140,160,255,0.10)" : isH ? "rgba(140,160,255,0.06)" : c.hv2,
-          border: `1px solid ${primary
-            ? isH || isP ? c.acL : "rgba(74,106,255,0.5)"
-            : isH || isP ? "rgba(140,160,255,0.4)" : "rgba(140,160,255,0.22)"}`,
-          color: primary ? "#fff" : isH || isP ? c.tx : c.ts,
-          fontSize: small ? 10 : 12,
-          fontWeight: primary ? 700 : 600,
-          fontFamily: F,
-          cursor: "default",
-          boxShadow: primary
-            ? isH ? `0 2px 14px rgba(38,67,247,0.5)` : `0 2px 8px rgba(38,67,247,0.25)`
-            : isH ? "0 0 0 1px rgba(140,160,255,0.08)" : "none",
-          transform: isP ? "scale(0.96)" : "scale(1)",
-          transition: "background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, transform 0.08s ease",
-          WebkitFontSmoothing: "antialiased",
-          letterSpacing: "0.02em",
-          ...sx
-        }}
-      >{children}</button>
-    );
-  };
-
-  /** Primary action for floating UI (modals, portaled panels): run on pointerdown so it still fires if synthetic click is lost after stopPropagation on the press path. */
-  const modalPointerActivate = (fn) => ({
-    onPointerDown: (e) => {
-      e.stopPropagation();
-      fn(e);
-    },
-    onMouseDown: (e) => e.stopPropagation(),
-    onClick: (e) => e.stopPropagation(),
-  });
-
-  const Sel = ({ children, w }) => (
-    <select style={{ background: c.well, border: `1px solid ${c.br}`, color: c.tx, padding: "3px 6px", fontSize: 11, fontFamily: F, outline: "none", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.2)", width: w }}>{children}</select>
-  );
-
-  const MiniIn = ({ val, w = 36, pre }) => (
-    <div style={{ display: "inline-flex", alignItems: "center", background: c.hv, border: "1px solid rgba(140,160,255,0.22)", padding: "2px 4px", width: w, boxShadow: "inset 0 1px 2px rgba(0,0,0,0.2)" }}>
-      {pre && <span style={{ color: c.ts, fontSize: 10, marginRight: 2 }}>{pre}</span>}
-      <span style={{ flex: 1, textAlign: "right", fontSize: 11, fontWeight: 700, fontFamily: F, fontVariantNumeric: "tabular-nums", color: c.tx }}>{val}</span>
-    </div>
-  );
-
-  // Tool definitions - reorganized by function
-  const toolGroups = [
-    // Group 1 - Cursor
-    [{ id: "crosshair", icon: "crosshair", label: "Cursor", dd: [
-      {h:"CURSOR"},{icon:"crosshair",label:"Cross"},{icon:"cursorDot",label:"Dot"},{icon:"cursorArrow",label:"Arrow"},{icon:"eraser",label:"Eraser"}
-    ]}],
-    // Group 2 - Brushes
-    [{ id: "brush2", icon: "draw", label: "Brushes", dd: [
-      {h:"BRUSHES"},{icon:"draw",label:"Brush"},{icon:"brush",label:"Highlighter"}
-    ]}],
-    // Group 3 - Lines
-    [{ id: "trendline", icon: "trendline", label: "Lines", dd: [
-      {h:"LINES"},{icon:"trendline",label:"Trend Line"},{icon:"hray",label:"Horizontal Ray"},{icon:"hline",label:"Horizontal Line"},{icon:"vline",label:"Vertical Line"},{icon:"ray",label:"Ray"},{icon:"extendedLine",label:"Extended Line"},{icon:"crossLine",label:"Cross Line"},{icon:"polyline",label:"Polyline"},{icon:"pathTool",label:"Path"},{icon:"curve",label:"Curve"},{icon:"doubleCurve",label:"Double Curve"}
-    ]}],
-    // Group 4 - Shapes
-    [{ id: "rect", icon: "rect", label: "Shapes", dd: [
-      {h:"SHAPES"},{icon:"rect",label:"Rectangle"},{icon:"triangle",label:"Triangle"},{icon:"arcShape",label:"Arc"},{icon:"ellipse",label:"Ellipse"},{icon:"circle",label:"Circle"},
-      {h:"ARROWS"},{icon:"arrowMarker",label:"Arrow Marker"},{icon:"arrowLine",label:"Arrow"},{icon:"arrowUp",label:"Arrow Mark Up"},{icon:"arrowDn",label:"Arrow Mark Down"}
-    ]}],
-    // Group 5 - Channels & Pitchforks
-    [{ id: "channel", icon: "channel", label: "Channels", dd: [
-      {h:"CHANNELS"},{icon:"channel",label:"Parallel Channel"},{icon:"regressionCh",label:"Regression Channel"},{icon:"flatChannel",label:"Flat Top/Bottom"},{icon:"disjointCh",label:"Disjoint Channel"},
-      {h:"PITCHFORKS"},{icon:"pitchfork",label:"Pitchfork"}
-    ]}],
-    // Group 6 - Fibonacci & Gann
-    [{ id: "fib", icon: "fib", label: "Fibonacci & Gann", dd: [
-      {h:"FIBONACCI"},{icon:"fib",label:"Fib Retracement"},{icon:"fibExtension",label:"Trend-Based Fib Extension"},{icon:"fibChannel",label:"Fib Channel"},{icon:"fibTimeZone",label:"Fib Time Zone"},{icon:"fibFan",label:"Fib Speed Resistance Fan"},{icon:"fibTime",label:"Trend-Based Fib Time"},{icon:"fibCircles",label:"Fib Circles"},{icon:"fibSpiral",label:"Fib Spiral"},{icon:"fibArcs",label:"Fib Speed Resistance Arcs"},{icon:"fibWedge",label:"Fib Wedge"},
-      {h:"GANN"},{icon:"gannBox",label:"Gann Box"},{icon:"gannSquare",label:"Gann Square Fixed"},{icon:"gannFan",label:"Gann Fan"}
-    ]}],
-    // Group 7 - Text & Labels
-    [{ id: "text", icon: "text", label: "Text & Labels", dd: [
-      {h:"TEXT"},{icon:"text",label:"Text"},{icon:"note",label:"Note"},{icon:"priceNote",label:"Price Note"},{icon:"callout",label:"Callout"},{icon:"comment",label:"Comment"},
-      {h:"LABELS"},{icon:"pin",label:"Pin"},{icon:"priceLabel",label:"Price Label"},{icon:"signpost",label:"Signpost"},{icon:"flag",label:"Flag Mark"},{icon:"image",label:"Image"},
-      {h:"EMOJIS"},{icon:"emoji",label:"Emojis & Stickers"}
-    ]}],
-    // Group 8 - Patterns & Waves
-    [{ id: "pattern", icon: "wave", label: "Patterns & Waves", dd: [
-      {h:"ELLIOTT WAVES"},{icon:"elliott5",label:"Elliott Impulse (12345)"},{icon:"elliottABC",label:"Elliott Correction (ABC)"},{icon:"elliottTri",label:"Elliott Triangle (ABCDE)"},{icon:"elliottWXY",label:"Elliott Double Combo (WXY)"},{icon:"elliottWXYXZ",label:"Elliott Triple Combo (WXYXZ)"},
-      {h:"PATTERNS"},{icon:"xabcd",label:"XABCD Pattern"},{icon:"headShoulders",label:"Head and Shoulders"},{icon:"abcdPattern",label:"ABCD Pattern"},{icon:"triPattern",label:"Triangle Pattern"},{icon:"threeDrives",label:"Three Drives Pattern"}
-    ]}],
-    // Group 9 - Projections
-    [{ id: "measure", icon: "measure", label: "Projections", dd: [
-      {h:"PROJECTIONS"},{icon:"shortPos",label:"Short Position"},{icon:"longPos",label:"Long Position"},{icon:"measure",label:"Range Tool"}
-    ]}],
-    // Group 10 - Volume Tools
-    [{ id: "brush", icon: "bars", label: "Volume Tools", dd: [
-      {h:"VOLUME-BASED"},{icon:"vwap",label:"Anchored VWAP"},{icon:"volProfile",label:"Fixed Range Volume Profile"},{icon:"anchoredVol",label:"Anchored Volume Profile"}
-    ]}],
-    // Group 11 - Utilities
-    [
-      { id: "eye", icon: "eye", label: "Visibility", dd: [
-        {h:"VISIBILITY"},{icon:"eyeAll",label:"Hide Drawings"},{icon:"eyeInd",label:"Hide Indicators"},{icon:"eyePos",label:"Hide Positions"},{icon:"eyeHide",label:"Hide All"}
-      ]},
-      { id: "magnet", icon: "magnet", label: "Magnet", dd: [
-        {h:"MAGNET STRENGTH"},{icon:"magnetOff",label:"Off"},{icon:"magnetWeak",label:"Weak"},{icon:"magnetStrong",label:"Strong"}
-      ]},
-      { id: "lock", icon: "lock", label: "Lock" },
-    ],
-  ];
-  // Group 11 - Actions
-  const actionTools = [
-    { id: "trash", icon: "trash", label: "Delete", danger: true, dd: [
-      {h:"DELETE"},{icon:"trashDraw",label:"Delete Drawings"},{icon:"trashInd",label:"Delete Indicators"},{icon:"trash",label:"Delete Objects"}
-    ]},
-    { id: "pinbar", icon: "pin", label: "Pinned Tools" },
-    { id: "undo", icon: "undo", label: "Undo", action: true },
-    { id: "redo", icon: "redo", label: "Redo", action: true },
-  ];
-
-  // Magnet dropdown items (must match `toolGroups` magnet dd). Legacy applyMagnetMode sets BOTH
-  // drawingManager + chart.magnetMode + all panel charts; V9 previously only called dm.setMagnetMode,
-  // so chart.snapToOHLC / UI stayed on 'off' and the menu always showed "Off" (no groupSelected.magnet).
-  const MAGNET_MENU_ITEMS = {
-    off: { icon: "magnetOff", label: "Off" },
-    weak: { icon: "magnetWeak", label: "Weak" },
-    strong: { icon: "magnetStrong", label: "Strong" },
-  };
-
-  const applyV9MagnetMode = useCallback((item) => {
-    const mode =
-      item?.icon === "magnetOff" ? "off"
-      : item?.icon === "magnetWeak" ? "weak"
-      : item?.icon === "magnetStrong" ? "strong"
-      : "off";
-    const applyOne = (chartInst) => {
-      if (!chartInst) return;
-      try {
-        const dm = chartInst.drawingManager;
-        if (dm && typeof dm.setMagnetMode === "function") dm.setMagnetMode(mode);
-        else if (dm) dm.magnetMode = mode;
-        chartInst.magnetMode = mode;
-        if (typeof chartInst.syncMagnetButton === "function") chartInst.syncMagnetButton();
-      } catch (_) {}
-    };
-    try {
-      if (typeof window !== "undefined") window.magnetMode = mode;
-      const ch =
-        typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-      applyOne(ch);
-      const pm = typeof window !== "undefined" ? window.panelManager : null;
-      if (pm && Array.isArray(pm.panels)) {
-        pm.panels.forEach((p) => applyOne(p && p.chartInstance));
-      }
-    } catch (_) {}
-  }, []);
-
-  useEffect(() => {
-    const syncMagnetUiFromChart = () => {
-      try {
-        const ch =
-          typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-        const dm = ch && ch.drawingManager;
-        let raw = dm && dm.magnetMode != null ? dm.magnetMode : ch && ch.magnetMode;
-        if (raw === true) raw = "weak";
-        if (raw === false || raw == null) raw = "off";
-        const key = String(raw).toLowerCase();
-        const item = MAGNET_MENU_ITEMS[key] || MAGNET_MENU_ITEMS.off;
-        setGroupSelected((p) => {
-          if (p.magnet && p.magnet.label === item.label) return p;
-          return { ...p, magnet: item };
-        });
-      } catch (_) {}
-    };
-    syncMagnetUiFromChart();
-    window.addEventListener("chartDataLoaded", syncMagnetUiFromChart);
-    window.addEventListener("panelSelected", syncMagnetUiFromChart);
-    return () => {
-      window.removeEventListener("chartDataLoaded", syncMagnetUiFromChart);
-      window.removeEventListener("panelSelected", syncMagnetUiFromChart);
-    };
-  }, []);
-
-  // Mock price/time labels removed: chart.js renders the real axes directly
-  // on the canvas (right edge for price, bottom for time). V9 used to render
-  // these as separate sibling <div>s, which caused duplicate axes on screen.
-  // Kept priceAxisWidth = 0 so any remaining layout calculations don't break.
-  const priceAxisWidth = 0;
-
-  // ─── V9 ICON → LEGACY chart.js TOOL REGISTRY KEY ────────────────────────
-  // Every V9 icon id maps to a key in DrawingToolsManager.toolRegistry
-  // (see chart/modules/drawing-tools-manager.js line 108). Unmapped icons
-  // resolve to null and clear the tool (cursor mode).
-  const V9_ICON_TO_LEGACY = {
-    // Cursor / utility
-    crosshair: null, cursorDot: null, cursorArrow: null, eraser: null, lock: null,
-    // Brushes
-    draw: 'brush', brush: 'highlighter',
-    // Lines
-    trendline: 'trendline', hray: 'horizontal-ray', hline: 'horizontal',
-    vline: 'vertical', ray: 'ray', extendedLine: 'extended-line',
-    crossLine: 'cross-line', polyline: 'polyline', pathTool: 'path',
-    curve: 'curve', doubleCurve: 'double-curve',
-    // Shapes
-    triangle: 'triangle', rect: 'rectangle', arcShape: 'arc',
-    ellipse: 'ellipse', circle: 'circle',
-    // Arrows
-    arrowMarker: 'arrow-marker', arrowLine: 'arrow',
-    arrowUp: 'arrow-mark-up', arrowDn: 'arrow-mark-down',
-    // Channels & pitchforks
-    channel: 'parallel-channel', regressionCh: 'regression-trend',
-    flatChannel: 'flat-top-bottom', disjointCh: 'disjoint-channel',
-    pitchfork: 'pitchfork',
-    // Fibonacci
-    fib: 'fibonacci-retracement', fibExtension: 'fibonacci-extension',
-    fibChannel: 'fib-channel', fibTimeZone: 'fib-timezone',
-    fibFan: 'fib-speed-fan', fibTime: 'trend-fib-time',
-    fibCircles: 'fib-circles', fibSpiral: 'fib-spiral',
-    fibArcs: 'fib-arcs', fibWedge: 'fib-wedge',
-    // Gann
-    gannBox: 'gann-box', gannSquare: 'gann-square-fixed', gannFan: 'gann-fan',
-    // Text & labels
-    text: 'text', note: 'note', priceNote: 'price-note',
-    callout: 'callout', comment: 'comment',
-    pin: 'pin', priceLabel: 'price-label', signpost: 'signpost-2',
-    flag: 'flag-mark', image: 'image', emoji: 'emoji',
-    // Patterns & waves
-    elliott5: 'elliott-impulse', elliottABC: 'elliott-correction',
-    elliottTri: 'elliott-triangle', elliottWXY: 'elliott-double-combo',
-    elliottWXYXZ: 'elliott-triple-combo',
-    xabcd: 'xabcd-pattern', headShoulders: 'head-shoulders',
-    abcdPattern: 'abcd-pattern', triPattern: 'triangle-pattern',
-    threeDrives: 'three-drives',
-    // Projections
-    shortPos: 'short-position', longPos: 'long-position', measure: 'ruler',
-    // Volume
-    vwap: 'anchored-vwap', volProfile: 'fixed-range-volume-profile',
-    anchoredVol: 'anchored-volume-profile',
-  };
-
-  // ─── Objects Tree sync ──────────────────────────────────────────────────
-  // Build inverse map (legacy chart.js drawing.type → V9 icon id) from
-  // V9_ICON_TO_LEGACY so the Objects Tree row icon matches the left-rail
-  // icon used to draw the shape.
-  const LEGACY_TYPE_TO_V9_ICON = useMemo(() => {
-    const m = {};
-    Object.entries(V9_ICON_TO_LEGACY).forEach(([v9, legacy]) => {
-      if (legacy && !m[legacy]) m[legacy] = v9;
-    });
-    if (!m["rotated-rectangle"]) m["rotated-rectangle"] = "rect";
-    return m;
-  }, []);
-
-  // Listen for chart.js drawing changes and rebuild layersItems from
-  // dm.drawings. Legacy code dispatches `drawingsChanged` on window after
-  // every add / delete / load / undo / redo (see drawing-tools-manager.js
-  // line ~6410). We also poll once on mount to catch already-loaded
-  // drawings (e.g. session restore that fires before V9 mounts).
-  useEffect(() => {
-    const rebuild = () => {
-      try {
-        const dm = window.chart && window.chart.drawingManager;
-        if (!dm || !Array.isArray(dm.drawings)) {
-          setLayersItems([]);
-          return;
-        }
-        // Filter out orphaned / unfinalized drawings:
-        //  - missing type or id (not a real shape yet)
-        //  - SVG group destroyed or detached from the document
-        //  - no valid points (placement was cancelled mid-draw)
-        const valid = dm.drawings.filter((d) => {
-          if (!d || !d.type) return false;
-          // group is a d3 selection; .node() returns the underlying SVGElement.
-          // After destroy() group is null/undefined or its node is no longer
-          // in the document — treat as stale.
-          try {
-            const g = d.group;
-            const node = g && (typeof g.node === 'function' ? g.node() : g);
-            if (!node || (node.isConnected === false)) return false;
-          } catch (_) { return false; }
-          if (!Array.isArray(d.points) || d.points.length === 0) return false;
-          const hasValidPoint = d.points.some(p => p && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)));
-          if (!hasValidPoint) return false;
-          return true;
-        });
-        const items = valid.map((d) => {
-          const icon = LEGACY_TYPE_TO_V9_ICON[d.type] || 'trendline';
-          const name = (typeof dm.getDrawingDisplayTitle === 'function')
-            ? dm.getDrawingDisplayTitle(d)
-            : (d.type || 'Drawing');
-          return {
-            id: d.id || `d-${Math.random().toString(36).slice(2, 9)}`,
-            icon,
-            name,
-            _visible: d.visible !== false,
-            _locked: !!d.locked,
-            _drawing: d,
-          };
-        });
-        setLayersItems(items);
-      } catch (err) {
-        console.warn('[V9 Objects Tree] rebuild failed:', err);
-      }
-    };
-
-    let cancelled = false;
-    let attempts = 0;
-    const waitForChart = () => {
-      if (cancelled) return;
-      const dm = window.chart && window.chart.drawingManager;
-      if (dm && Array.isArray(dm.drawings)) { rebuild(); return; }
-      if (++attempts < 80) setTimeout(waitForChart, 100);
-    };
-    waitForChart();
-
-    window.addEventListener('drawingsChanged', rebuild);
-    // Style edits don't fire drawingsChanged — but we want the row name to
-    // refresh if the user renames a drawing via the legacy toolbar.
-    window.addEventListener('drawingStyleChanged', rebuild);
-    // File / symbol / timeframe switch reloads dm.drawings from storage —
-    // catch that or the tree keeps showing the previous chart's drawings.
-    window.addEventListener('chartDataLoaded', rebuild);
-    // Multi-panel: the active panel (and therefore window.chart.drawingManager)
-    // changes — rebuild against the newly active drawingManager.
-    window.addEventListener('panelSelected', rebuild);
-    window.addEventListener('returnedToSinglePanel', rebuild);
-    // Manual trigger: V9 calls window.__rebuildObjectsTree() when the
-    // Objects Tree panel is opened, to catch anything we may have missed.
-    window.__rebuildObjectsTree = rebuild;
-    return () => {
-      cancelled = true;
-      window.removeEventListener('drawingsChanged', rebuild);
-      window.removeEventListener('drawingStyleChanged', rebuild);
-      window.removeEventListener('chartDataLoaded', rebuild);
-      window.removeEventListener('panelSelected', rebuild);
-      window.removeEventListener('returnedToSinglePanel', rebuild);
-      if (window.__rebuildObjectsTree === rebuild) delete window.__rebuildObjectsTree;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Force a rebuild whenever the user opens the Objects Tree panel — a
-  // safety net for any drawing-state event we may not be listening to.
-  useEffect(() => {
-    if (rightPanel === 'layers' && typeof window.__rebuildObjectsTree === 'function') {
-      window.__rebuildObjectsTree();
-    }
-  }, [rightPanel]);
-
-  // V9 group id → default legacy tool (used when no sub-tool was picked yet).
-  const V9_GROUP_DEFAULT = {
-    crosshair: null, brush2: 'brush', trendline: 'trendline', rect: 'rectangle',
-    channel: 'parallel-channel', fib: 'fibonacci-retracement', text: 'text',
-    pattern: 'elliott-impulse', measure: 'ruler', brush: 'anchored-vwap',
-    eye: null, magnet: null, lock: null,
-  };
-
-  // Resolve current legacy tool from V9 state. Sub-tool selection in
-  // groupSelected[tool] wins; otherwise falls back to the group default.
-  const resolveLegacyTool = () => {
-    const sub = groupSelected[tool];
-    if (sub && sub.icon && V9_ICON_TO_LEGACY[sub.icon] !== undefined) {
-      return V9_ICON_TO_LEGACY[sub.icon];
-    }
-    // Per-group defaults before treating `tool` as an icon id. The Volume Tools
-    // group id is `brush` but V9_ICON_TO_LEGACY also maps icon `brush` → highlighter
-    // (Brushes sub-tool); without this order, anchored-vwap never wins.
-    if (V9_GROUP_DEFAULT[tool] !== undefined) return V9_GROUP_DEFAULT[tool];
-    if (V9_ICON_TO_LEGACY[tool] !== undefined) return V9_ICON_TO_LEGACY[tool];
-    return null;
-  };
-
-  // Set true while the user is editing an EXISTING drawing through the V9
-  // settings panel (opened via dblclick). We need to:
-  //   1. Force `tool` to the matching panel-group key so the JSX panel
-  //      conditional renders (`tool === "trendline" || tool === "rect" ...`).
-  //   2. Prevent the tool bridge below from arming chart.js's draw tool —
-  //      otherwise clicking the chart while the panel is open would start
-  //      drawing a new trendline. We zero out the legacy tool while editing.
-  // The ref also stores the drawing reference + the tool/groupSelected we
-  // had before the panel opened, so closing the panel restores them.
-  const editingDrawingRef = useRef(null);
-
-  // `drawingManager.toolbar.show` (shape selected / floating bar): the next tool-bridge tick must
-  // only clear chart.js. If we dm.setTool(legacy), drawing-tools-manager.setTool calls deselectAll()
-  // and wipes the selection the user just made — and leaves draw mode armed.
-  const v9SelectionToolbarSyncRef = useRef(false);
-
-  const getSelectedDrawingForTemplate = useCallback(() => {
-    try {
-      return getSelectedDrawingAcrossCharts(editingDrawingRef.current?.drawing) || null;
-    } catch (_) {
-      return null;
-    }
-  }, []);
-
-  const tlSavedTemplateList = useMemo(() => {
-    void tlTemplatesRev;
-    try {
-      const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-      const tb = ch?.drawingManager?.toolbar;
-      if (!tb || typeof tb.getSavedTemplates !== "function") return [];
-      const d = getSelectedDrawingForTemplate();
-      const toolType = (d && d.type) || resolveLegacyTool();
-      if (!toolType) return [];
-      return tb.getSavedTemplates(toolType) || [];
-    } catch (_) {
-      return [];
-    }
-  }, [tlTemplatesRev, tool, groupSelected, tlBarSelected, tlBarSelectedType, tlSettOpen, getSelectedDrawingForTemplate]);
-
-  useEffect(() => {
-    const bump = () => setTlTemplatesRev((n) => n + 1);
-    window.addEventListener("drawingTemplatesUpdated", bump);
-    return () => window.removeEventListener("drawingTemplatesUpdated", bump);
-  }, []);
-
-  // Push the current tool selection into the legacy chart.js drawing system.
-  // Runs whenever V9's tool / groupSelected changes. Polls briefly because
-  // chart.js / drawingManager may not be initialized yet on first mount.
-  useEffect(() => {
-    let cancelled = false; let n = 0;
-    const apply = () => {
-      if (cancelled) return;
-      const ch =
-        typeof window.getActiveChart === "function"
-          ? window.getActiveChart()
-          : window.chart;
-      const dm = ch && ch.drawingManager;
-      if (!dm || typeof dm.setTool !== 'function') {
-        if (++n < 50) setTimeout(apply, 100);
-        return;
-      }
-      // While editing an existing drawing through the V9 settings panel,
-      // keep chart.js in cursor mode regardless of `tool` (which we forced
-      // to the panel-group key purely so the JSX conditional renders).
-      if (editingDrawingRef.current) {
-        try {
-          if (typeof dm.clearTool === 'function') dm.clearTool();
-          else dm.currentTool = null;
-        } catch (_) {}
-        return;
-      }
-      if (v9SelectionToolbarSyncRef.current) {
-        v9SelectionToolbarSyncRef.current = false;
-        const legacy = resolveLegacyTool();
-        // Only suppress if switching to crosshair (the toolbar.show sync-back).
-        // If the user explicitly clicked a real drawing tool while a shape was
-        // selected, fall through and activate it instead of just clearing.
-        if (!legacy) {
-          try {
-            if (dm.currentTool != null) {
-              if (typeof dm.clearTool === 'function') dm.clearTool();
-              else dm.currentTool = null;
-            }
-          } catch (_) {}
-          return;
-        }
-        // fall through → activate the real tool below
-      }
-      const legacy = resolveLegacyTool();
-      try {
-        if (!legacy) {
-          if (dm.currentTool != null) {
-            if (typeof dm.clearTool === 'function') dm.clearTool();
-            else dm.currentTool = null;
-          }
-        } else if (dm.currentTool !== legacy) {
-          // drawing-tools-manager setTool() always deselects + drawingState.reset().
-          // Re-applying the same legacy id (e.g. [tool, groupSelected] re-ran) during
-          // a drag wiped the in-progress stroke and could freeze or crash the chart.
-          dm.setTool(legacy);
-        }
-      } catch (err) { console.warn('[V9 tool bridge] setTool failed:', legacy, err); }
-    };
-    apply();
-    const onPanelSelected = () => {
-      n = 0;
-      apply();
-    };
-    window.addEventListener("panelSelected", onPanelSelected);
-    window.addEventListener("panelsCreated", onPanelSelected);
-    window.addEventListener("chartDataLoaded", onPanelSelected);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("panelSelected", onPanelSelected);
-      window.removeEventListener("panelsCreated", onPanelSelected);
-      window.removeEventListener("chartDataLoaded", onPanelSelected);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, groupSelected]);
-
-  // Keep V9 left rail in sync when legacy drawing mode ends: (1) finalizeDrawing
-  // clears the tool after a completed stroke; (2) clearTool runs in many paths
-  // (cancel, panel switch, etc.). Without syncing, React can still show Trend Line
-  // as selected while dm.currentTool is null — looks armed but clicks pan/don't draw.
-  // Skip while dblclick edit panel is open (editingDrawingRef) — same rule as tool bridge.
-  useEffect(() => {
-    let cancelled = false;
-    /** @type {{ dm: object, origF?: function, wrapF?: function, origC?: function, wrapC?: function }[]} */
-    const tracked = [];
-
-    const syncRailIfCursor = (dm, mirrored) => {
-      try {
-        if (editingDrawingRef.current) return;
-        // panel-manager.selectPanel clears non-focused tiles with clearTool(true).
-        // Syncing React from those mirrored clears races the tool bridge and forces
-        // the V9 rail back to Cursor even when the user immediately picks a draw tool.
-        if (mirrored) return;
-        const activeCh =
-          typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-        const activeDm = activeCh && activeCh.drawingManager;
-        // Only sync the left rail from the focused tile's drawing manager. Clearing or
-        // finishing a stroke on a background chart must not reset V9 while a panel is active.
-        if (activeDm && dm !== activeDm) return;
-        if (!dm || dm.currentTool) return;
-        setTool("crosshair");
-        setDropdown(null);
-        setBtnPressed(null);
-      } catch (_) {}
-    };
-
-    const patchDm = (dm) => {
-      if (!dm) return;
-      if (tracked.some((t) => t.dm === dm)) return;
-      const entry = { dm };
-      let any = false;
-
-      if (typeof dm.finalizeDrawing === "function") {
-        const orig = dm.finalizeDrawing.bind(dm);
-        const wrapped = function v9WrappedFinalizeDrawing() {
-          orig();
-          syncRailIfCursor(dm);
-          queueMicrotask(() => syncRailIfCursor(dm));
-        };
-        dm.finalizeDrawing = wrapped;
-        entry.origF = orig;
-        entry.wrapF = wrapped;
-        any = true;
-      }
-      if (typeof dm.clearTool === "function") {
-        const origC = dm.clearTool.bind(dm);
-        const wrappedC = function v9WrappedClearTool(mirrored) {
-          origC.apply(this, arguments);
-          syncRailIfCursor(dm, mirrored);
-          queueMicrotask(() => syncRailIfCursor(dm, mirrored));
-        };
-        dm.clearTool = wrappedC;
-        entry.origC = origC;
-        entry.wrapC = wrappedC;
-        any = true;
-      }
-      if (any) tracked.push(entry);
-    };
-
-    const patchAllManagers = () => {
-      if (cancelled) return;
-      patchDm(window.chart && window.chart.drawingManager);
-      const panels = window.panelManager && window.panelManager.panels;
-      if (Array.isArray(panels)) {
-        panels.forEach((p) => patchDm(p && p.chartInstance && p.chartInstance.drawingManager));
-      }
-    };
-
-    let attempts = 0;
-    const tick = () => {
-      if (cancelled) return;
-      patchAllManagers();
-      if (++attempts < 100) setTimeout(tick, 100);
-    };
-    tick();
-
-    const onChartStructure = () => patchAllManagers();
-    window.addEventListener("panelSelected", onChartStructure);
-    window.addEventListener("panelsCreated", onChartStructure);
-    window.addEventListener("chartDataLoaded", onChartStructure);
-    window.addEventListener("returnedToSinglePanel", onChartStructure);
-
-    return () => {
-      cancelled = true;
-      window.removeEventListener("panelSelected", onChartStructure);
-      window.removeEventListener("panelsCreated", onChartStructure);
-      window.removeEventListener("chartDataLoaded", onChartStructure);
-      window.removeEventListener("returnedToSinglePanel", onChartStructure);
-      tracked.forEach((e) => {
-        try {
-          if (e.wrapF && e.dm.finalizeDrawing === e.wrapF) e.dm.finalizeDrawing = e.origF;
-          if (e.wrapC && e.dm.clearTool === e.wrapC) e.dm.clearTool = e.origC;
-        } catch (_) {}
-      });
-    };
-  }, []);
-
-  // Legacy chart.js finishes many drag tools in chart.js (SVG path) via Chart#setTool('cursor'),
-  // which clears chart.tool only — it never calls drawingManager.finalizeDrawing/clearTool.
-  // Patch the prototype once so V9 matches after those completions.
-  useEffect(() => {
-    let cancelled = false;
-    let restore = null;
-    let attempts = 0;
-    const tryPatch = () => {
-      if (cancelled) return;
-      const C = typeof window !== "undefined" && window.Chart;
-      if (!C || !C.prototype || typeof C.prototype.setTool !== "function") {
-        if (++attempts < 100) setTimeout(tryPatch, 100);
-        return;
-      }
-      if (C.prototype.__v9ChartSetToolHooked) return;
-      C.prototype.__v9ChartSetToolHooked = true;
-      const proto = C.prototype;
-      const orig = proto.setTool;
-      const patched = function v9PatchedChartSetTool(tool) {
-        orig.call(this, tool);
-        try {
-          if (editingDrawingRef.current) return;
-          if (!this.tool) {
-            const active =
-              typeof window.getActiveChart === "function"
-                ? window.getActiveChart()
-                : window.chart;
-            // Legacy Chart#setTool('cursor') still runs on window.chart when a secondary
-            // panel is focused; without this guard it clears the V9 rail on every tick.
-            if (active && this !== active) return;
-            setTool("crosshair");
-            setDropdown(null);
-            setBtnPressed(null);
-          }
-        } catch (_) {}
-      };
-      proto.setTool = patched;
-      restore = () => {
-        try {
-          if (proto.setTool === patched) proto.setTool = orig;
-          delete C.prototype.__v9ChartSetToolHooked;
-        } catch (_) {}
-      };
-    };
-    tryPatch();
-    return () => {
-      cancelled = true;
-      if (restore) restore();
-    };
-  }, []);
-
-  // Set true just before we update tlStyle from a selected drawing's style
-  // so the forward bridge below skips that pass and we don't loop.
-  const suppressForwardBridge = useRef(false);
-  const suppressTxtForwardBridge = useRef(false);
-
-  // Legacy chart.js saves drawings and updates `d.levels` / style directly; React `tlStyle` does not
-  // hear those edits. The forward bridge below would then push *stale* `tlStyle.fibLevels` back onto
-  // the chart on the next toolbar interaction. Re-read the live selection into `tlStyle` whenever
-  // drawings persist — chart modules stay unchanged; this is integration-only.
-  useEffect(() => {
-    let rafId = 0;
-    const v9DrawingUsesFibStyleBridge = (t) =>
-      !!t
-      && (t.startsWith("fibonacci-") || t.startsWith("fib-") || t.startsWith("trend-fib-")
-        || t === "gann-box" || t === "gann-square-fixed" || t === "gann-fan");
-    const syncTlStyleFromSelectedDrawing = () => {
-      try {
-        const d = getSelectedDrawingAcrossCharts(
-          editingDrawingRef.current ? editingDrawingRef.current.drawing : null,
-        );
-        if (!d || !d.type || !v9DrawingUsesFibStyleBridge(d.type)) return;
-        const patch = v9TlStylePatchFromDrawing(d);
-        if (!patch || Object.keys(patch).length === 0) return;
-        suppressForwardBridge.current = true;
-        setTlStyle((s) => ({ ...s, ...patch }));
-      } catch (_) { /* ignore */ }
-    };
-    const onDrawingsChanged = () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        rafId = 0;
-        syncTlStyleFromSelectedDrawing();
-      });
-    };
-    if (typeof window === "undefined") return undefined;
-    window.addEventListener("drawingsChanged", onDrawingsChanged);
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      window.removeEventListener("drawingsChanged", onDrawingsChanged);
-    };
-  }, []);
-
-  // ─── V9 dblclick → V9 settings panel ─────────────────────────────────────
-  // Register a hook that chart.js's drawing-tools-manager.editDrawing() calls
-  // when the user double-clicks an existing drawing. Replaces the legacy
-  // tv-settings-modal with the V9 floating panel (tlSettOpen) pre-filled
-  // from the drawing's current style. Edits propagate back to the drawing
-  // through the existing forward bridge above (line 2880+) because the
-  // drawing is already selected by drawing-tools-manager before editDrawing.
-  useEffect(() => {
-    // Map from drawing.style.dashArray back to V9 lineType.
-    const LEGACY_DASH_TO_V9 = { '': 'solid', '5,5': 'dashed', '2,4': 'dotted', '7,4,2,4': 'dashdot' };
-
-    const hook = (drawing, x, y) => {
-      try {
-        if (!drawing || !drawing.type) return false;
-        const group = drawingTypeToPanelGroupRef.current(drawing.type);
-        if (!group) return false; // Unknown type → legacy settings panel
-
-        // Drop stale close animation so reopening from the gear never plays PopOut first.
-        setClosing(s => { const n = new Set(s); n.delete("tlsett"); return n; });
-
-        const s = drawing.style || {};
-        // Stash the drawing so the tool bridge keeps chart.js in cursor mode
-        // and so closeTlSett (Esc / outside-click) can clear this on close.
-        editingDrawingRef.current = { drawing, prevTool: tool, prevGroupSelected: groupSelected };
-
-        // Match `toolbar.show`: map this drawing to the correct rail icon. Without this,
-        // dblclick/gear opens the panel while `groupSelected` still reflects the last line
-        // tool (e.g. Trend Line) because `editDrawing` calls `toolbar.hide()` and never
-        // re-ran selection sync for this drawing.
-        {
-          const g = group;
-          let icon = LEGACY_TYPE_TO_V9_ICON[drawing.type];
-          if (!icon) {
-            const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
-            icon = fb[g] || 'trendline';
-          }
-          const allowRail = V9_RAIL_ICONS_BY_GROUP[g];
-          if (allowRail && icon && !allowRail.has(icon)) {
-            const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
-            icon = fb[g] || allowRail.values().next().value;
-          }
-          let label = drawing.type;
-          try {
-            const dm = window.chart && window.chart.drawingManager;
-            if (dm && typeof dm.getDrawingDisplayTitle === 'function') {
-              label = dm.getDrawingDisplayTitle(drawing) || label;
-            }
-          } catch (_) {}
-          suppressForwardBridge.current = true;
-          setGroupSelected(prev => v9SanitizeGroupSelected({ ...prev, [g]: { icon, label } }));
-        }
-
-        // Suppress the forward bridge once: this read-back into tlStyle
-        // would otherwise re-emit the same values back to the drawing.
-        suppressForwardBridge.current = true;
-        setTlStyle(prev => ({
-          ...prev,
-          lineColor: s.stroke || s.color || prev.lineColor,
-          lineWidth: String(s.strokeWidth ?? prev.lineWidth),
-          lineType: LEGACY_DASH_TO_V9[(s.dashArray ?? s.strokeDasharray ?? '')] || prev.lineType,
-          bgColor: s.fill || s.backgroundColor || prev.bgColor,
-          ep1: s.startStyle || prev.ep1,
-          ep2: s.endStyle || prev.ep2,
-          extendLeft: !!s.extendLeft,
-          extendRight: !!s.extendRight,
-          priceLabels: s.showPriceLabel !== false,
-          timeLabels: s.showTimeLabel !== false,
-          rangeType: s.rangeMode === 'price' ? 'Price'
-                   : s.rangeMode === 'time' ? 'Date and time'
-                   : (prev.rangeType || 'Date & Price'),
-          ...(() => {
-            const info = s.infoSettings;
-            const types = v9ShowInfoTypesFromChartInfoSettings(info);
-            const showInfo = info
-              ? (info.showInfo === true || (types.length > 0 && info.showInfo !== false))
-              : false;
-            return {
-              showInfo,
-              showInfoTypes: types.length > 0 ? types : (prev.showInfoTypes || ['Price range']),
-            };
-          })(),
-          labelColor: s.labelColor || prev.labelColor,
-          labelFontSize: String(s.labelFontSize ?? prev.labelFontSize),
-          labelBg: !!s.labelBackground,
-          labelBgColor: s.labelBackgroundColor || prev.labelBgColor,
-          textContent: typeof drawing.text === 'string' ? drawing.text : prev.textContent,
-          textColor: s.textColor || prev.textColor,
-          textSize: String(s.fontSize ?? prev.textSize),
-          textBold: s.fontWeight === 'bold' || (typeof s.fontWeight === 'number' && s.fontWeight >= 600),
-          textItalic: s.fontStyle === 'italic',
-          vertAlign: v9ChartVertToUi(s.textVAlign || s.textPosition || prev.vertAlign),
-          horizAlign: (s.textHAlign || s.textAlign || prev.horizAlign),
-          midLine:
-            drawing.type === "rectangle" || drawing.type === "rotated-rectangle"
-            || drawing.type === "ellipse" || drawing.type === "circle"
-              ? !!s.showMiddleLine
-              : (typeof s.showMiddleLine === "boolean" ? s.showMiddleLine : prev.midLine),
-          midLineColor: s.middleLineColor != null && s.middleLineColor !== "" ? s.middleLineColor : prev.midLineColor,
-          midLineWidth: s.middleLineWidth != null ? String(parseInt(s.middleLineWidth, 10) || 1) : prev.midLineWidth,
-          midLineType: s.middleLineDash != null && s.middleLineDash !== undefined
-            ? (V9_LEGACY_DASH_STRING_TO_LINE_TYPE[String(s.middleLineDash).replace(/\s+/g, "")] ?? (String(s.middleLineDash).replace(/\s+/g, "") ? "dashed" : "solid"))
-            : prev.midLineType,
-          ...v9CoordPatchFromDrawing(drawing),
-          ...v9VisibilityPatchFromDrawing(drawing),
-          ...(() => {
-            const p = v9TlStylePatchFromDrawing(drawing);
-            if (!p) return {};
-            const out = {};
-            if (drawing.type === "parallel-channel" && p.chLines) out.chLines = p.chLines;
-            if (drawing.type === "regression-trend") {
-              if (p.regLines) out.regLines = p.regLines;
-              if (p.regUpperDev) out.regUpperDev = p.regUpperDev;
-              if (p.regLowerDev) out.regLowerDev = p.regLowerDev;
-              if (p.regPearsonR !== undefined) out.regPearsonR = p.regPearsonR;
-              if (p.source) out.source = p.source;
-            }
-            if (drawing.type === "pitchfork") {
-              if (p.pfLevels) out.pfLevels = p.pfLevels;
-              if (p.pitchforkStyle) out.pitchforkStyle = p.pitchforkStyle;
-              if (p.pfBackground !== undefined) out.pfBackground = p.pfBackground;
-              if (p.pfBgOpacity !== undefined) out.pfBgOpacity = p.pfBgOpacity;
-            }
-            if (v9IsClassicFibRetracementType(drawing.type)) {
-              if (p.fibLevels) out.fibLevels = p.fibLevels;
-              if (p.fibTrendLine !== undefined) out.fibTrendLine = p.fibTrendLine;
-              if (p.fibLineWidth) out.fibLineWidth = p.fibLineWidth;
-              if (p.fibLineType) out.fibLineType = p.fibLineType;
-              if (p.fibBackground !== undefined) out.fibBackground = p.fibBackground;
-              if (p.fibBgOpacity !== undefined) out.fibBgOpacity = p.fibBgOpacity;
-              if (p.fibReverse !== undefined) out.fibReverse = p.fibReverse;
-              if (p.fibPrices !== undefined) out.fibPrices = p.fibPrices;
-              if (p.fibLevelsOn !== undefined) out.fibLevelsOn = p.fibLevelsOn;
-              if (p.fibLevelsMode) out.fibLevelsMode = p.fibLevelsMode;
-              if (p.fibExtendLines !== undefined) out.fibExtendLines = p.fibExtendLines;
-              if (p.lineColor) out.lineColor = p.lineColor;
-              if (p.lineWidth) out.lineWidth = p.lineWidth;
-              if (p.lineType) out.lineType = p.lineType;
-            }
-            if (drawing.type === "fib-speed-fan") {
-              if (p.fibLevels) out.fibLevels = p.fibLevels;
-              if (p.fibFanTimeLevels) out.fibFanTimeLevels = p.fibFanTimeLevels;
-              if (p.fibBackground !== undefined) out.fibBackground = p.fibBackground;
-              if (p.fibBgOpacity !== undefined) out.fibBgOpacity = p.fibBgOpacity;
-              if (p.fibReverse !== undefined) out.fibReverse = p.fibReverse;
-              if (p.fibGrid !== undefined) out.fibGrid = p.fibGrid;
-              if (p.fibGridColor) out.fibGridColor = p.fibGridColor;
-              if (p.fibGridType) out.fibGridType = p.fibGridType;
-              if (p.fibGridWidth) out.fibGridWidth = p.fibGridWidth;
-              if (p.fibLineWidth) out.fibLineWidth = p.fibLineWidth;
-              if (p.fibLineType) out.fibLineType = p.fibLineType;
-              if (p.lineColor) out.lineColor = p.lineColor;
-              if (p.lineWidth) out.lineWidth = p.lineWidth;
-              if (p.lineType) out.lineType = p.lineType;
-            }
-            if (drawing.type === "trend-fib-time") {
-              if (p.fibLevels) out.fibLevels = p.fibLevels;
-              if (p.fibTrendLine !== undefined) out.fibTrendLine = p.fibTrendLine;
-              if (p.fibTimeTrendType) out.fibTimeTrendType = p.fibTimeTrendType;
-              if (p.fibTimeTrendWidth) out.fibTimeTrendWidth = p.fibTimeTrendWidth;
-              if (p.fibLineWidth) out.fibLineWidth = p.fibLineWidth;
-              if (p.fibLineType) out.fibLineType = p.fibLineType;
-              if (p.fibBackground !== undefined) out.fibBackground = p.fibBackground;
-              if (p.fibBgOpacity !== undefined) out.fibBgOpacity = p.fibBgOpacity;
-              if (p.lineColor) out.lineColor = p.lineColor;
-              if (p.lineWidth) out.lineWidth = p.lineWidth;
-              if (p.lineType) out.lineType = p.lineType;
-            }
-            if (drawing.type === "fib-circles") {
-              if (p.fibLevels) out.fibLevels = p.fibLevels;
-              if (p.fibLineWidth) out.fibLineWidth = p.fibLineWidth;
-              if (p.fibLineType) out.fibLineType = p.fibLineType;
-              if (p.fibBackground !== undefined) out.fibBackground = p.fibBackground;
-              if (p.fibBgOpacity !== undefined) out.fibBgOpacity = p.fibBgOpacity;
-              if (p.lineColor) out.lineColor = p.lineColor;
-              if (p.lineWidth) out.lineWidth = p.lineWidth;
-              if (p.lineType) out.lineType = p.lineType;
-            }
-            if (drawing.type === "fib-arcs") {
-              if (p.fibLevels) out.fibLevels = p.fibLevels;
-              if (p.fibLineWidth) out.fibLineWidth = p.fibLineWidth;
-              if (p.fibLineType) out.fibLineType = p.fibLineType;
-              if (p.fibBackground !== undefined) out.fibBackground = p.fibBackground;
-              if (p.fibBgOpacity !== undefined) out.fibBgOpacity = p.fibBgOpacity;
-              if (p.fibArcsTrendLine !== undefined) out.fibArcsTrendLine = p.fibArcsTrendLine;
-              if (p.fibArcsTrendType) out.fibArcsTrendType = p.fibArcsTrendType;
-              if (p.fibArcsTrendWidth) out.fibArcsTrendWidth = p.fibArcsTrendWidth;
-              if (p.fibArcsFullCircle !== undefined) out.fibArcsFullCircle = p.fibArcsFullCircle;
-              if (p.lineColor) out.lineColor = p.lineColor;
-              if (p.lineWidth) out.lineWidth = p.lineWidth;
-              if (p.lineType) out.lineType = p.lineType;
-            }
-            if (drawing.type === "gann-box" || drawing.type === "gann-square-fixed" || drawing.type === "gann-fan") {
-              [
-                "gannPriceLevels", "gannTimeLevels", "gannGridLevels", "gannFanLevels", "gannArcLevels",
-                "gannLineType", "gannLineWidth", "gannBackground", "gannBgOpacity",
-              ].forEach((k) => {
-                if (p[k] !== undefined) out[k] = p[k];
-              });
-              if (p.lineColor) out.lineColor = p.lineColor;
-              if (p.lineWidth) out.lineWidth = p.lineWidth;
-            }
-            return out;
-          })(),
-        }));
-
-        // Position panel near dblclick (clientX/Y are post-zoom; tlSettPos / txtSettPos
-        // are consumed inside the zoomed root, so divide by Z to get pre-zoom CSS pixels).
-        const zForPos = (typeof window !== 'undefined' && Number(window.__v9Zoom)) || 1;
-        const px = Math.max(20, Number(x) / zForPos - 220);
-        const py = Math.max(60, Number(y) / zForPos - 40);
-
-        // Force tool group → JSX conditional renders the panel.
-        setTool(group);
-
-        if (group === 'text') {
-          // Text tools have their own dedicated settings panel (txtSettOpen).
-          // The generic tlSettOpen panel requires effectiveTlGroup which only
-          // covers line/shape groups — text is intentionally excluded from that
-          // set, so we open the text panel directly instead.
-          setTxtSettPos({ x: px, y: py });
-          setTxtSettOpen(true);
-        } else {
-          setTlSettPos({ x: px, y: py });
-          setTlSettOpen(true);
-          // Match legacy index: level edits live on the Input tab — open there for Gann tools.
-          if (drawing.type === "gann-box" || drawing.type === "gann-square-fixed" || drawing.type === "gann-fan") {
-            setTlSettTab("input");
-          }
-        }
-        return true;
-      } catch (err) {
-        console.warn('[V9 dblclick hook] failed:', err);
-        return false;
-      }
-    };
-
-    if (typeof window !== 'undefined') window.__v9OpenDrawingSettings = hook;
-    return () => {
-      if (typeof window !== 'undefined' && window.__v9OpenDrawingSettings === hook) {
-        window.__v9OpenDrawingSettings = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, groupSelected, drawingTypeToPanelGroup, LEGACY_TYPE_TO_V9_ICON]);
-
-  // When the panel closes (tlSettOpen → false), restore the previous tool
-  // and clear editingDrawingRef so the chart re-arms the user's prior tool.
-  useEffect(() => {
-    if (tlSettOpen) return;
-    const editing = editingDrawingRef.current;
-    if (!editing) return;
-    editingDrawingRef.current = null;
-    // Restore prior tool / sub-tool. Schedule a microtask so the JSX
-    // panel's exit animation (closing.has('tlsett')) finishes first.
-    Promise.resolve().then(() => {
-      if (editing.prevTool !== undefined) setTool(editing.prevTool);
-      if (editing.prevGroupSelected !== undefined) setGroupSelected(v9SanitizeGroupSelected(editing.prevGroupSelected));
-    });
-  }, [tlSettOpen]);
-
-  // Mirror the same editingDrawingRef cleanup for the text settings panel.
-  // Without this, the forward bridge permanently stays in clearTool() mode
-  // after the text panel closes (editingDrawingRef is never cleared).
-  useEffect(() => {
-    if (txtSettOpen) return;
-    const editing = editingDrawingRef.current;
-    if (!editing) return;
-    // Only clear if it was set by a text-tool dblclick (group === 'text').
-    const group = editing.drawing && drawingTypeToPanelGroupRef.current(editing.drawing.type);
-    if (group !== 'text') return;
-    editingDrawingRef.current = null;
-    Promise.resolve().then(() => {
-      if (editing.prevTool !== undefined) setTool(editing.prevTool);
-      if (editing.prevGroupSelected !== undefined) setGroupSelected(v9SanitizeGroupSelected(editing.prevGroupSelected));
-    });
-  }, [txtSettOpen]);
-
-  // Latest React dispatchers/maps for toolbar wrappers — avoids stale closures when React Strict Mode
-  // remounts: the chart keeps one DrawingToolbar instance; without restoring show/hide on cleanup,
-  // __v9Hooked blocks re-attach and setState from the old wrapper is dropped.
-  const v9ToolbarBridgeActRef = useRef({});
-  v9ToolbarBridgeActRef.current = {
-    setTlBarSelected,
-    setTlBarSelectedType,
-    setGroupSelected,
-    setTool,
-    setDropdown,
-    setBtnPressed,
-    setTlStyle,
-    setTlLocked,
-    LEGACY_TYPE_TO_V9_ICON,
-    suppressForwardBridge,
-    suppressTxtForwardBridge,
-    setTxtStyle,
-    v9SelectionToolbarSyncRef,
-    drawingTypeToPanelGroupRef,
-    editingDrawingRef,
-  };
-
-  // ─── Drawing selection bridge ───────────────────────────────────────────
-  // Wrap drawingManager.toolbar.show / .hide on **every** chart's DrawingToolbar instance.
-  // Each panel tile has its own drawingManager + toolbar; hooking only window.chart meant
-  // selections on another tile never updated React — tlBarSelectedType stayed on the old trendline.
-  // See enumerateV9DrawingManagersFromWindow + getSelectedDrawingAcrossCharts.
-  useEffect(() => {
-    let cancelled = false;
-    let n = 0;
-    const attachToolbarHooks = (dm) => {
-      const tb = dm && dm.toolbar;
-      if (!tb || tb.__v9Hooked) return false;
-      const origShow = tb.show && tb.show.bind(tb);
-      const origHide = tb.hide && tb.hide.bind(tb);
-      tb.__v9OrigShow = origShow;
-      tb.__v9OrigHide = origHide;
-      tb.show = function (drawing, x, y) {
-        try {
-          const br = v9ToolbarBridgeActRef.current;
-          const editRef = br.editingDrawingRef;
-          if (!editRef || !editRef.current) {
-            br.v9SelectionToolbarSyncRef.current = true;
-          }
-          br.setTlBarSelected(true);
-          br.setTlBarSelectedType(drawing && drawing.type);
-          if (drawing && drawing.type && (!editRef || !editRef.current)) {
-            const g = br.drawingTypeToPanelGroupRef.current(drawing.type);
-            if (g) {
-              let icon = br.LEGACY_TYPE_TO_V9_ICON[drawing.type];
-              if (!icon) {
-                const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
-                icon = fb[g] || 'trendline';
-              }
-              const allowRail = V9_RAIL_ICONS_BY_GROUP[g];
-              if (allowRail && icon && !allowRail.has(icon)) {
-                const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
-                icon = fb[g] || allowRail.values().next().value;
-              }
-              let label = drawing.type;
-              try {
-                if (dm && typeof dm.getDrawingDisplayTitle === 'function') {
-                  label = dm.getDrawingDisplayTitle(drawing) || label;
-                }
-              } catch (_) {}
-              br.suppressForwardBridge.current = true;
-              br.setGroupSelected(prev => v9SanitizeGroupSelected({ ...prev, [g]: { icon, label } }));
-              br.setTool("crosshair");
-              br.setDropdown(null);
-              br.setBtnPressed(null);
-            } else {
-              br.suppressForwardBridge.current = true;
-              br.setTool("crosshair");
-              br.setDropdown(null);
-              br.setBtnPressed(null);
-            }
-          }
-          if (!editRef || !editRef.current) {
-            try {
-              if (dm && typeof dm.clearTool === 'function') dm.clearTool();
-              else if (dm) dm.currentTool = null;
-            } catch (_) {}
-          }
-          const patch = v9TlStylePatchFromDrawing(drawing);
-          if (patch) {
-            br.suppressForwardBridge.current = true;
-            br.setTlStyle(s => ({ ...s, ...patch }));
-            if (typeof drawing.locked === 'boolean') br.setTlLocked(!!drawing.locked);
-          }
-          if (drawing && drawing.type) {
-            const gTxt = br.drawingTypeToPanelGroupRef.current(drawing.type);
-            if (gTxt === "text") {
-              const tp = v9TxtStylePatchFromDrawing(drawing);
-              if (tp && Object.keys(tp).length) {
-                br.suppressTxtForwardBridge.current = true;
-                br.setTxtStyle((s) => ({ ...s, ...tp }));
-              }
-            }
-          }
-        } catch (_) {}
-        return origShow ? origShow(drawing, x, y) : undefined;
-      };
-      tb.hide = function () {
-        try {
-          const br = v9ToolbarBridgeActRef.current;
-          br.setTlBarSelected(false);
-          br.setTlBarSelectedType(null);
-        } catch (_) {}
-        return origHide ? origHide() : undefined;
-      };
-      tb.__v9Hooked = true;
-      return true;
-    };
-    const hookAll = () => {
-      if (cancelled) return;
-      try {
-        for (const dm of enumerateV9DrawingManagersFromWindow()) {
-          attachToolbarHooks(dm);
-        }
-      } catch (_) {}
-      const mgrs = enumerateV9DrawingManagersFromWindow();
-      const allHooked = mgrs.length > 0 && mgrs.every((dm) => dm && dm.toolbar && dm.toolbar.__v9Hooked);
-      if (!allHooked && ++n < 120) setTimeout(hookAll, 100);
-    };
-    hookAll();
-    const poll = setInterval(hookAll, 1500);
-    const onReady = () => hookAll();
-    window.addEventListener("chartDataLoaded", onReady);
-    window.addEventListener("panelSelected", onReady);
-    return () => {
-      cancelled = true;
-      clearInterval(poll);
-      window.removeEventListener("chartDataLoaded", onReady);
-      window.removeEventListener("panelSelected", onReady);
-      try {
-        for (const dm of enumerateV9DrawingManagersFromWindow()) {
-          const tb = dm && dm.toolbar;
-          if (tb && tb.__v9OrigShow) {
-            tb.show = tb.__v9OrigShow;
-            tb.hide = tb.__v9OrigHide;
-            delete tb.__v9OrigShow;
-            delete tb.__v9OrigHide;
-            delete tb.__v9Hooked;
-          }
-        }
-      } catch (_) {}
-    };
-  }, []);
-
-  // Chart.js fires this whenever a drawing becomes primary selection (see drawing-tools-manager
-  // `_notifyV9SelectionSync`) — survives toolbar wrapper loss and reaches always after finalize/select.
-  useEffect(() => {
-    const onV9Sel = (ev) => {
-      try {
-        const t = ev && ev.detail && ev.detail.drawingType;
-        if (!t) return;
-        const br = v9ToolbarBridgeActRef.current;
-        br.setTlBarSelected(true);
-        br.setTlBarSelectedType(t);
-        br.v9SelectionToolbarSyncRef.current = true;
-        const g = br.drawingTypeToPanelGroupRef.current(t);
-        let live = null;
-        try {
-          const p = getPrimarySelectedDrawingForActiveChart(null);
-          if (p && p.type === t) live = p;
-          if (!live) {
-            const d = getSelectedDrawingAcrossCharts(null);
-            if (d && d.type === t) live = d;
-          }
-        } catch (_) {}
-        const drawing = live || { type: t };
-        if (g && !br.editingDrawingRef?.current) {
-          let icon = br.LEGACY_TYPE_TO_V9_ICON[t];
-          if (!icon) {
-            const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
-            icon = fb[g] || 'trendline';
-          }
-          const allowRail = V9_RAIL_ICONS_BY_GROUP[g];
-          if (allowRail && icon && !allowRail.has(icon)) {
-            const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
-            icon = fb[g] || allowRail.values().next().value;
-          }
-          let label = t;
-          try {
-            const dm = live && typeof window !== "undefined" ? window.getActiveChart?.()?.drawingManager : null;
-            if (dm && typeof dm.getDrawingDisplayTitle === 'function' && live) {
-              label = dm.getDrawingDisplayTitle(live) || label;
-            }
-          } catch (_) {}
-          br.suppressForwardBridge.current = true;
-          br.setGroupSelected((prev) => v9SanitizeGroupSelected({ ...prev, [g]: { icon, label } }));
-          br.setTool("crosshair");
-          br.setDropdown(null);
-          br.setBtnPressed(null);
-        }
-        const patch = v9TlStylePatchFromDrawing(drawing);
-        if (patch) {
-          br.suppressForwardBridge.current = true;
-          br.setTlStyle((s) => ({ ...s, ...patch }));
-        }
-        if (g === "text") {
-          const tp = v9TxtStylePatchFromDrawing(drawing);
-          if (tp && Object.keys(tp).length) {
-            br.suppressTxtForwardBridge.current = true;
-            br.setTxtStyle((s) => ({ ...s, ...tp }));
-          }
-        }
-      } catch (_) {}
-    };
-    window.addEventListener("talaria:v9-selected-drawing", onV9Sel);
-    return () => window.removeEventListener("talaria:v9-selected-drawing", onV9Sel);
-  }, []);
-
-  // ─── V9 tlStyle → chart.js drawing style ─────────────────────────────────
-  // Whenever the V9 floating toolbar changes line color / width / dash type,
-  // push that into the legacy drawing system so:
-  //   - the currently-SELECTED drawing repaints with the new style, and
-  //   - subsequent NEW drawings of the active tool use it as the default
-  //     (drawingManager.saveToolStyle persists per-tool defaults the same
-  //      way the legacy toolbar does in chart/modules/drawing-toolbar.js).
-  // Maps V9 dash names to the dash-array strings the legacy code uses
-  // (chart/modules/drawing-toolbar.js line 1521-1525).
-  const V9_DASH_TO_LEGACY = { solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' };
-  // Skip the first run so V9's default tlStyle doesn't overwrite the user's
-  // previously-saved per-tool styles every time the page loads.
-  const styleBridgeReady = useRef(false);
-  const txtStyleBridgeReady = useRef(false);
-  // Coalesce localStorage writes — saveToolStyle does a synchronous
-  // JSON.stringify + setItem of the entire savedToolStyles map, which can
-  // stall click handlers when the bridge fires on every dropdown change.
-  const saveToolStyleTimer = useRef(null);
-  const collectV9BridgeTargets = () =>
-    collectV9BridgeTargetPairs(editingDrawingRef.current && editingDrawingRef.current.drawing);
-  // Pointer-toggle — flush middle-line fields immediately (same targets as full bridge).
-  const flushV9MiddleLineToChart = (prevTl, nextMidLineOn) => {
-    try {
-      const midDashArr =
-        prevTl.midLineType === "bold" ? "" : (V9_DASH_TO_LEGACY[prevTl.midLineType] ?? "");
-      const midWidthNum = parseInt(prevTl.midLineWidth, 10) || 1;
-      const patch = {
-        showMiddleLine: !!nextMidLineOn,
-        middleLineColor: prevTl.midLineColor,
-        middleLineWidth: midWidthNum,
-        middleLineDash: midDashArr,
-      };
-      const chartsToRender = new Set();
-      collectV9BridgeTargets().forEach(({ dm, d }) => {
-        if (drawingTypeToPanelGroupRef.current(d.type) === "text") return;
-        const tb = dm.toolbar;
-        try {
-          tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
-        } catch (_) {}
-        Object.assign(d.style, patch);
-        try {
-          if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
-          else dm.renderDrawing?.(d);
-        } catch (_) {
-          try {
-            dm.renderDrawing?.(d);
-          } catch (_) {}
-        }
-        if (dm.chart) chartsToRender.add(dm.chart);
-      });
-      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
-    } catch (err) {
-      console.warn("[V9 middle-line flush] failed:", err);
-    }
-  };
-
-  // When the armed legacy tool changes (e.g. Rectangle → Triangle), reload `tlStyle` from
-  // `drawingManager.getSavedToolStyle` *before* the forward bridge runs so we do not persist the
-  // previous tool's colors into the new tool's saved defaults.
-  const v9LastHydratedLegacyRef = useRef(null);
-  const [legacyHydrateNonce, setLegacyHydrateNonce] = useState(0);
-  useEffect(() => {
-    const onChartData = () => {
-      v9LastHydratedLegacyRef.current = null;
-      setLegacyHydrateNonce((n) => n + 1);
-    };
-    const onPanel = () => setLegacyHydrateNonce((n) => n + 1);
-    window.addEventListener("chartDataLoaded", onChartData);
-    window.addEventListener("panelSelected", onPanel);
-    return () => {
-      window.removeEventListener("chartDataLoaded", onChartData);
-      window.removeEventListener("panelSelected", onPanel);
-    };
-  }, []);
-
-  useLayoutEffect(() => {
-    if (editingDrawingRef.current) return;
-    const legacy = resolveLegacyTool();
-    if (!legacy) {
-      v9LastHydratedLegacyRef.current = null;
-      return;
-    }
-    if (v9LastHydratedLegacyRef.current === legacy) return;
-
-    let ch =
-      typeof window !== "undefined" && typeof window.getActiveChart === "function"
-        ? window.getActiveChart()
-        : window.chart;
-    let dm = ch && ch.drawingManager;
-    if (!dm && window.chart && window.chart !== ch) {
-      ch = window.chart;
-      dm = ch && ch.drawingManager;
-    }
-    if (!dm || typeof dm.getSavedToolStyle !== "function") return;
-
-    v9LastHydratedLegacyRef.current = legacy;
-    const mergePatch = v9MergeHydratePatchFromLegacy(dm, legacy);
-    flushSync(() => {
-      setTlStyle((prev) => ({ ...prev, ...mergePatch }));
-    });
-  }, [tool, groupSelected, legacyHydrateNonce]);
-
-  // useLayoutEffect: apply drawing.style in the same frame as tlStyle (legacy TV panel mutates
-  // synchronously on checkbox; late useEffect let the chart eat checkbox clicks and felt "unsynced").
-  useLayoutEffect(() => {
-    // Prefer focused tile; fall back to main chart if that instance is not ready yet.
-    let ch =
-      typeof window !== "undefined" && typeof window.getActiveChart === "function"
-        ? window.getActiveChart()
-        : window.chart;
-    let dm = ch && ch.drawingManager;
-    if (!dm && window.chart && window.chart !== ch) {
-      ch = window.chart;
-      dm = ch && ch.drawingManager;
-    }
-    if (!dm) return;
-    const legacyTool = resolveLegacyTool();
-    if (!styleBridgeReady.current) { styleBridgeReady.current = true; return; }
-    // Skip the pass triggered by reading a selected drawing's style into tlStyle.
-    if (suppressForwardBridge.current) { suppressForwardBridge.current = false; return; }
-    // We continue even when legacyTool is null so that edits made while a
-    // drawing is selected (with the cursor / crosshair active in the left
-    // rail) still propagate to the selected drawing.
-
-    const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? '';
-    // UI "bold" = thick solid (no dash); not a key in V9_DASH_TO_LEGACY.
-    const midDashArr = tlStyle.midLineType === 'bold' ? '' : (V9_DASH_TO_LEGACY[tlStyle.midLineType] ?? '');
-    const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
-    const midWidthNum = parseInt(tlStyle.midLineWidth, 10) || 1;
-    const stylePatch = {
-      // Stroke / line
-      stroke: tlStyle.lineColor,
-      color: tlStyle.lineColor,
-      strokeWidth: widthNum,
-      dashArray: dashArr,
-      strokeDasharray: dashArr,
-      // Fill (shapes, channels, range tool background, etc.)
-      fill: tlStyle.bgColor,
-      backgroundColor: tlStyle.bgColor,
-      // Endpoints (V9 uses 'normal' / 'arrow' / 'arrowFilled' etc; chart.js
-      // drawing-tools-lines.js reads style.startStyle / style.endStyle).
-      startStyle: tlStyle.ep1,
-      endStyle: tlStyle.ep2,
-      // Extend left / right (trendline + ray)
-      extendLeft: !!tlStyle.extendLeft,
-      extendRight: !!tlStyle.extendRight,
-      // Price / time labels
-      showPriceLabel: !!tlStyle.priceLabels,
-      showTimeLabel: !!tlStyle.timeLabels,
-      // Range tool (Date & Price): which info rows to show + which mode
-      rangeMode: tlStyle.rangeType === 'Price' ? 'price'
-                : tlStyle.rangeType === 'Date and time' ? 'time'
-                : 'both',
-      infoSettings: v9ChartInfoSettingsFromTlStyle(tlStyle),
-      // Label sub-styling (used by range tool / fib labels)
-      labelColor: tlStyle.labelColor,
-      labelFontSize: parseInt(tlStyle.labelFontSize, 10) || 12,
-      labelBackground: !!tlStyle.labelBg,
-      labelBackgroundColor: tlStyle.labelBgColor,
-      // Line/shape label text (Text tab — matches drawing-tools-lines renderTextLabel)
-      textColor: tlStyle.textColor,
-      fontSize: parseInt(String(tlStyle.textSize), 10) || 14,
-      fontWeight: tlStyle.textBold ? "bold" : "normal",
-      fontStyle: tlStyle.textItalic ? "italic" : "normal",
-      ...(() => {
-        const tv = v9UiVertToChartVert(tlStyle.vertAlign);
-        return { textVAlign: tv, textPosition: tv };
-      })(),
-      textHAlign: tlStyle.horizAlign || "center",
-      textAlign: tlStyle.horizAlign || "center",
-      // Middle line (rectangle / ellipse / circle — drawing-tools-shapes.js)
-      showMiddleLine: !!tlStyle.midLine,
-      middleLineColor: tlStyle.midLineColor,
-      middleLineWidth: midWidthNum,
-      middleLineDash: midDashArr,
-    };
-
-    // Persist as default for this tool — new drawings inherit via applySavedStyle.
-    // Debounced: avoid hammering localStorage on every dropdown click.
-    if (legacyTool) {
-      if (saveToolStyleTimer.current) clearTimeout(saveToolStyleTimer.current);
-      saveToolStyleTimer.current = setTimeout(() => {
-        try {
-          const merged = { ...(dm.getSavedToolStyle?.(legacyTool) || {}), ...stylePatch };
-          dm.saveToolStyle?.(legacyTool, merged);
-        } catch (err) { /* ignore */ }
-      }, 300);
-    }
-
-    // Mutate currently-selected drawing(s) and repaint immediately.
-    // We funnel through the legacy toolbar.onUpdate hook so renderDrawing,
-    // saveDrawings, history.recordModify and saveToolStyle all run exactly
-    // as they do when the user changes color via the legacy DOM toolbar.
-    // Without this the underlying drawing path was repainted but the
-    // selection layer (handles + cached stroke) kept showing the old color
-    // until the user deselected and reselected.
-    try {
-      const chartsToRender = new Set();
-      collectV9BridgeTargets().forEach(({ dm, d }) => {
-        if (!d || !d.style) return;
-        // Text / callout / notes use `txtStyle` bridge only — Trend Line patches would
-        // overwrite annotation fields (stroke, dash, fontSize from line label tab, etc.).
-        if (drawingTypeToPanelGroupRef.current(d.type) === "text") return;
-        const tb = dm.toolbar;
-        // Capture before state for undo (mirror legacy onBeforeUpdate).
-        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
-        Object.assign(d.style, stylePatch);
-        const nextText = tlStyle.textContent != null ? String(tlStyle.textContent) : "";
-        d.text = nextText;
-        if (typeof d.setText === "function") {
-          try { d.setText(nextText); } catch (_) {}
-        }
-        const isFib = d.type && (d.type.startsWith('fibonacci-') || d.type.startsWith('fib-') || d.type.startsWith('trend-fib-'));
-        if (v9IsClassicFibRetracementType(d.type)) {
-          v9ApplyClassicFibFromTlStyle(d, tlStyle, widthNum);
-        } else if (v9IsFibSpeedFanType(d.type)) {
-          v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthNum);
-        } else if (v9IsTrendFibTimeType(d.type)) {
-          v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthNum);
-        } else if (v9IsFibCirclesType(d.type)) {
-          v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthNum);
-        } else if (v9IsFibArcsType(d.type)) {
-          v9ApplyFibArcsFromTlStyle(d, tlStyle, widthNum);
-        } else if (isFib) {
-          d.style.trendLineColor = tlStyle.lineColor;
-          d.style.trendLineWidth = widthNum;
-        }
-        try { v9ApplyPointsFromTlStyle(d, tlStyle); } catch (_) {}
-        try { v9ApplyVisibilityFromTlStyle(d, tlStyle); } catch (_) {}
-        if (d.type === "parallel-channel" && Array.isArray(tlStyle.chLines)) {
-          d.levels = v9ChLinesToParallelLevels(tlStyle.chLines);
-        }
-        if (d.type === "regression-trend" && Array.isArray(tlStyle.regLines) && tlStyle.regLines.length >= 3) {
-          v9ApplyRegLinesToRegressionStyle(d.style, tlStyle.regLines);
-        }
-        if (d.type === "regression-trend") {
-          const sty = d.style;
-          sty.source = v9UiSourceToChartSource(tlStyle.source);
-          sty.showPearsonsR = !!tlStyle.regPearsonR;
-          const uv = tlStyle.regUpperDev;
-          const lv = tlStyle.regLowerDev;
-          if (uv && typeof uv === "object") {
-            const nu = parseFloat(uv.value);
-            if (Number.isFinite(nu)) sty.upperDeviation = Math.max(0, nu);
-          }
-          if (lv && typeof lv === "object") {
-            const nl = parseFloat(lv.value);
-            if (Number.isFinite(nl)) sty.lowerDeviation = -Math.abs(nl);
-          }
-        }
-        if (d.type === "pitchfork") {
-          if (Array.isArray(tlStyle.pfLevels)) {
-            d.levels = v9PfToPitchforkLevels(tlStyle.pfLevels);
-          }
-          d.style.pitchforkStyle = v9UiPitchforkStyleToChart(tlStyle.pitchforkStyle);
-          d.style.medianColor = tlStyle.lineColor;
-          d.style.backgroundEnabled = tlStyle.pfBackground !== false;
-          d.style.backgroundOpacity =
-            tlStyle.pfBgOpacity != null && !Number.isNaN(+tlStyle.pfBgOpacity)
-              ? +tlStyle.pfBgOpacity
-              : 0.2;
-        }
-        if (d.type === "gann-box") {
-          v9ApplyGannBoxFromTlStyle(d, tlStyle);
-        } else if (d.type === "gann-square-fixed") {
-          v9ApplyGannSquareFixedFromTlStyle(d, tlStyle);
-        } else if (d.type === "gann-fan") {
-          v9ApplyGannFanFromTlStyle(d, tlStyle);
-        }
-        // Prefer onUpdate (history + render + persist + saveDrawings).
-        if (tb && typeof tb.onUpdate === 'function') {
-          try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
-        } else {
-          try { dm.renderDrawing?.(d); } catch (_) {}
-        }
-        if (d.selected && typeof d.showAxisHighlights === 'function') {
-          try { d.showAxisHighlights(); } catch (_) {}
-        }
-        if (dm.chart) chartsToRender.add(dm.chart);
-      });
-      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
-    } catch (err) { console.warn('[V9 style bridge] failed:', err); }
-  }, [
-    tlStyle.lineColor, tlStyle.lineWidth, tlStyle.lineType, tlStyle.bgColor,
-    tlStyle.midLine, tlStyle.midLineColor, tlStyle.midLineType, tlStyle.midLineWidth,
-    tlStyle.ep1, tlStyle.ep2, tlStyle.extendLeft, tlStyle.extendRight,
-    tlStyle.priceLabels, tlStyle.timeLabels, tlStyle.rangeType,
-    tlStyle.showInfo, tlStyle.showInfoTypes,
-    tlStyle.labelColor, tlStyle.labelFontSize, tlStyle.labelBg, tlStyle.labelBgColor,
-    tlStyle.textContent, tlStyle.textColor, tlStyle.textSize, tlStyle.textBold, tlStyle.textItalic,
-    tlStyle.vertAlign, tlStyle.horizAlign,
-    tlStyle.pt1Price, tlStyle.pt1Bar, tlStyle.pt2Price, tlStyle.pt2Bar,
-    tlStyle.pt3Price, tlStyle.pt3Bar, tlStyle.pt4Price, tlStyle.pt4Bar,
-    tlStyle.pt5Price, tlStyle.pt5Bar, tlStyle.pt6Price, tlStyle.pt6Bar,
-    tlStyle.pt7Price, tlStyle.pt7Bar,
-    tlStyle.visMinutes, tlStyle.visHours, tlStyle.visDays, tlStyle.visWeeks, tlStyle.visMonths,
-    tlStyle.chLines,
-    tlStyle.regLines,
-    tlStyle.source,
-    tlStyle.regUpperDev,
-    tlStyle.regLowerDev,
-    tlStyle.regPearsonR,
-    tlStyle.pfLevels,
-    tlStyle.pitchforkStyle,
-    tlStyle.pfBackground,
-    tlStyle.pfBgOpacity,
-    tlStyle.fibLevels,
-    tlStyle.fibTrendLine,
-    tlStyle.fibLineWidth,
-    tlStyle.fibLineType,
-    tlStyle.fibBackground,
-    tlStyle.fibBgOpacity,
-    tlStyle.fibReverse,
-    tlStyle.fibPrices,
-    tlStyle.fibLevelsOn,
-    tlStyle.fibLevelsMode,
-    tlStyle.fibExtendLines,
-    tlStyle.fibFanTimeLevels,
-    tlStyle.fibGrid,
-    tlStyle.fibGridColor,
-    tlStyle.fibGridType,
-    tlStyle.fibGridWidth,
-    tlStyle.fibTimeTrendType,
-    tlStyle.fibTimeTrendWidth,
-    tlStyle.fibArcsTrendLine,
-    tlStyle.fibArcsTrendType,
-    tlStyle.fibArcsTrendWidth,
-    tlStyle.fibArcsFullCircle,
-    tlStyle.gannPriceLevels,
-    tlStyle.gannTimeLevels,
-    tlStyle.gannGridLevels,
-    tlStyle.gannFanLevels,
-    tlStyle.gannArcLevels,
-    tlStyle.gannLineType,
-    tlStyle.gannLineWidth,
-    tlStyle.gannBackground,
-    tlStyle.gannBgOpacity,
-    tool, groupSelected,
-  ]);
-
-  // V9 txtStyle → selected text/callout/note drawings (annotation rail bar).
-  useLayoutEffect(() => {
-    if (!txtStyleBridgeReady.current) {
-      txtStyleBridgeReady.current = true;
-      if (suppressTxtForwardBridge.current) {
-        suppressTxtForwardBridge.current = false;
-      }
-      return;
-    }
-    if (suppressTxtForwardBridge.current) {
-      suppressTxtForwardBridge.current = false;
-      return;
-    }
-    try {
-      const chartsToRender = new Set();
-      collectV9BridgeTargets().forEach(({ dm, d }) => {
-        if (!d || !d.style) return;
-        if (drawingTypeToPanelGroupRef.current(d.type) !== "text") return;
-        const tb = dm.toolbar;
-        try {
-          tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
-        } catch (_) {}
-        v9ApplyTxtStyleToDrawing(d, txtStyle);
-        if (tb && typeof tb.onUpdate === "function") {
-          try {
-            tb.onUpdate(d);
-          } catch (_) {
-            try {
-              dm.renderDrawing?.(d);
-            } catch (_) {}
-          }
-        } else {
-          try {
-            dm.renderDrawing?.(d);
-          } catch (_) {}
-        }
-        if (d.selected && typeof d.showAxisHighlights === "function") {
-          try {
-            d.showAxisHighlights();
-          } catch (_) {}
-        }
-        if (dm.chart) chartsToRender.add(dm.chart);
-      });
-      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
-    } catch (err) {
-      console.warn("[V9 txtStyle bridge] failed:", err);
-    }
-  }, [
-    txtStyle.textColor,
-    txtStyle.fontSize,
-    txtStyle.bold,
-    txtStyle.italic,
-    txtStyle.borderColor,
-    txtStyle.bgColor,
-    txtStyle.bgOn,
-    txtStyle.borderOn,
-    txtStyle.wrapText,
-    txtStyle.content,
-    txtStyle.horizAlign,
-    tool,
-    groupSelected,
-  ]);
-
-  const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
-  closeWindowsRef.current = closeWindows;
-  // closeAll is triggered by backdrop/outside clicks — intentionally does NOT close the indicators window
-  const closeAll = () => {
-    setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false);
-    setSDrop(null); setColorPicker(null); setSettDrop(null);
-    setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setScreenshotOpen(false); setLayersOpen(false); setProfileOpen(false);
-    if(logoMenu) closePopup(setLogoMenu, "logoMenu");
-    if(replayOpts) closePopup(setReplayOpts, "replayOpts");
-    if(gotoOpen) closePopup(setGotoOpen, "goto");
-    if(symbolOpen) closePopup(setSymbolOpen, "symbol");
-    if(chartTypeOpen) closePopup(setChartTypeOpen, "chartType");
-    if(tfOpen) closePopup(setTfOpen, "tf");
-    setTagDrop(null); setTlStyleDrop(null); setTlBarDrop(null); setTxtBarSizeOpen(false); setTxtBarDrop(null); setEmojiPanelOpen(false);
-    setOpSymOpen(false); setOpSymSearch(""); setOpSizeOpen(false);
-  };
-  closeAllRef.current = closeAll;
-
-  const copyScreenshotPageLink = async () => {
-    const url = typeof window !== "undefined" ? window.location.href : "";
-    const sm = window.screenshotManager;
-    try {
-      if (sm && typeof sm.copyText === "function") {
-        const ok = await sm.copyText(url);
-        if (sm.showNotification) sm.showNotification(ok ? "Chart link copied!" : "Could not copy link", ok ? "success" : "warning");
-        return;
-      }
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-        await navigator.clipboard.writeText(url);
-        if (sm?.showNotification) sm.showNotification("Chart link copied!", "success");
-      }
-    } catch (_) {
-      if (sm?.showNotification) sm.showNotification("Could not copy link", "warning");
-    }
-  };
-
-  const runV9Screenshot = (action) => {
-    const sm = window.screenshotManager;
-    if (!sm || typeof sm.takeScreenshotFromOptions !== "function") {
-      console.warn("[V9] screenshotManager not ready");
-      if (sm?.showNotification) sm.showNotification("Screenshot engine not ready yet", "warning");
-      return;
-    }
-    void sm.takeScreenshotFromOptions(action, {
-      flash: true,
-      includeToolbar: true,
-      includeSidebar: false,
-      includeWatermark: true,
-      format: "png",
-      quality: 0.9,
-    });
-  };
-
-  const showTip = (label, el, side="top") => {
-    clearTimeout(tipTimerRef.current);
-    if (!label || !el) return;
-    tipTimerRef.current = setTimeout(() => {
-      const r = el.getBoundingClientRect();
-      const cx = (r.left + r.width/2) / Z;
-      const y = side === "bottom" ? r.bottom/Z : r.top/Z;
-      const vw = window.innerWidth / Z;
-      setTipData({ label, x: Math.max(40, Math.min(vw - 40, cx)), y, side });
-    }, 250);
-  };
-  const hideTip = () => { clearTimeout(tipTimerRef.current); setTipData(null); };
-
-  // Chart right-click → Settings: same as logo menu → Settings (see chart.js openSettingsFromContextMenu)
-  useEffect(() => {
-    const onOpenSettings = (e) => {
-      try {
-        closeWindowsRef.current?.();
-      } catch (_) {}
-      setSettingsOpen(true);
-      if (e && typeof e.preventDefault === "function") e.preventDefault();
-    };
-    window.addEventListener("talaria-v9-open-settings", onOpenSettings);
-    return () => window.removeEventListener("talaria-v9-open-settings", onOpenSettings);
-  }, []);
-
-  // Render a tool button
-  const renderTB = (t, ref) => {
-    const railIcon = v9LeftRailIconForButton(t, groupSelected);
-    const ddOpen = dropdown === t.id;
-    const act = t.id === "pinbar" ? pinnedBarOpen : tool === t.id;
-    const h = hov === t.id;
-    const accentCol = t.id === "pinbar" ? c.gold : c.acL;
-    const accentGlow = t.id === "pinbar" ? "rgba(201,168,76,0.4)" : c.acG;
-    let col = c.ts;
-    if (act) col = accentCol;
-    else if (h && t.danger) col = c.rd;
-    else if (h) col = c.tx;
-
-    const openDd = (el) => {
-      const rect = el.getBoundingClientRect();
-      setDdPos({ top: rect.top / Z, left: 38 });
-      if(logoMenu)closePopup(setLogoMenu,"logoMenu");if(replayOpts)closePopup(setReplayOpts,"replayOpts");if(gotoOpen)closePopup(setGotoOpen,"goto");if(symbolOpen)closePopup(setSymbolOpen,"symbol");if(chartTypeOpen)closePopup(setChartTypeOpen,"chartType");if(tfOpen)closePopup(setTfOpen,"tf");setTfUnitOpen(false);
-      if (dropdown === t.id) { closeDropdown(); } else { setDropdown(t.id); }
-    };
-    const isPressed = t.action && btnPressed === t.id;
-    const pressCol = isPressed ? c.acL : col;
-    const hArr = hov === t.id + "-arr";
-    const arrCol = act ? accentCol : hArr ? c.tx : c.tm;
-    /* Selection strip at left:0; idle = flush. Active/pressed: 4px past 2px bar. Hover dim line: 2px. */
-    const railAccentPad =
-      act || isPressed ? 4
-        : h && !act && !isPressed ? 2
-        : 0;
-    return (
-      <div key={t.id} style={{ position: "relative", width: "100%", display: "flex", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
-        {/* Left rail: match TalariaV8b.jsx dimensions (Live has no root zoom). */}
-        <button
-          type="button"
-          ref={ref}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            if (t.action) setBtnPressed(t.id);
-          }}
-          onPointerUp={t.action ? () => setBtnPressed(null) : undefined}
-          onMouseEnter={() => setHov(t.id)}
-          onMouseLeave={() => { setHov(null); setBtnPressed(null); }}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (t.id === "pinbar") { setPinnedBarOpen(v => !v); return; }
-            if (t.action) {
-              // Wire to legacy undo/redo (chart.drawingManager.history) so V9
-              // buttons drive the same stack as keyboard shortcuts and the
-              // legacy index. drawingManager.history is created in init when
-              // UndoRedoManager class is loaded.
-              const dm = window.chart && window.chart.drawingManager;
-              const hist = dm && dm.history;
-              try {
-                if (t.id === "undo" && hist && hist.undo) hist.undo();
-                else if (t.id === "redo" && hist && hist.redo) hist.redo();
-              } catch (err) { console.warn('[V9] undo/redo failed:', err); }
-              return;
-            }
-            if (t.id === "lock") {
-              const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-              const dm = ch && ch.drawingManager;
-              const tb = dm && dm.toolbar;
-              if (dm) {
-                const list = [];
-                if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
-                  dm.selectedDrawings.forEach(d => { if (d) list.push(d); });
-                } else if (dm.selectedDrawing) list.push(dm.selectedDrawing);
-                else if (tb && tb.currentDrawing) list.push(tb.currentDrawing);
-                if (list.length) {
-                  list.forEach(d => { try { dm.toggleLock(d); } catch (_) {} });
-                } else if (typeof tb?.showNotification === "function") {
-                  tb.showNotification("Select a drawing first");
-                } else if (typeof ch?.showNotification === "function") {
-                  ch.showNotification("Select a drawing first");
-                }
-              }
-              setDropdown(null);
-              return;
-            }
-            if (t.dd) {
-              // Main icon: activate tool only. Chevron is the only control that opens/toggles the menu.
-              if (!["eye", "magnet", "trash"].includes(t.id)) setTool(t.id);
-              if (dropdown) closeDropdown();
-            }
-            else { setTool(t.id); setDropdown(null); }
-          }}
-          style={{
-            width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "flex-start",
-            background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
-            border: "none", cursor: "default", color: pressCol,
-            padding: 0, paddingLeft: railAccentPad, paddingRight: t.dd ? 11 : 4,
-            boxSizing: "border-box", touchAction: "manipulation",
-            transition: "color 0.15s ease, background 0.12s, padding-left 0.12s", position: "relative", fontFamily: F,
-          }}>
-          {/* pointer-events:none on icon so the whole <button type="button"> hit box counts — SVG paths alone miss gaps between strokes */}
-          {t.id === "pinbar"
-            ? <span style={{ display: "flex", pointerEvents: "none", transform: `${h && !act ? "rotate(-25deg) scale(1.15)" : "scale(1)"} translateX(2px)`, transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
-            : <span style={{ display: "flex", pointerEvents: "none", transform: "translateX(2px)" }}><I n={railIcon} s={17} cl={pressCol}/></span>
-          }
-        </button>
-        {act && <div style={{ position: "absolute", left: 0, top: "10%", bottom: "10%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 4px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
-        {h && !act && !isPressed && <div style={{ position: "absolute", left: 0, top: "12%", bottom: "12%", width: 1, background: `linear-gradient(180deg, transparent, `+c.hvLn+`, transparent)`, pointerEvents: "none", zIndex: 2 }}/>}
-        {isPressed && <div style={{ position: "absolute", left: 0, top: "10%", bottom: "10%", width: 2, background: `linear-gradient(180deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 4px ${c.acG}`, pointerEvents: "none", zIndex: 2 }}/>}
-        {t.dd && (
-          <button
-            type="button"
-            aria-label="Open tool menu"
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseEnter={() => setHov(t.id + "-arr")}
-            onMouseLeave={() => setHov(null)}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              openDd(e.currentTarget.parentElement);
-            }}
-            style={{
-              position: "absolute", right: 0, top: 0,
-              width: 8, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
-              background: hArr ? "rgba(255,255,255,0.06)" : "transparent",
-              border: "none", cursor: "default",
-              padding: 0, flexShrink: 0,
-              transition: "background 0.12s", fontFamily: F,
-              zIndex: 3, touchAction: "manipulation",
-            }}>
-            <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{ transition: "fill 0.12s", pointerEvents: "none", display: "block" }}>
-              <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
-            </svg>
-          </button>
-        )}
-        {h && !ddOpen && !t.dd && <div style={{ position: "absolute", left: "calc(100% + 10px)", top: "50%", transform: "translateY(-50%)", background: c.el, border: `1px solid ${c.brH}`, padding: "4px 10px", fontSize: 12, fontWeight: 600, fontFamily: F, color: c.tx, whiteSpace: "nowrap", zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.6)", borderLeft: `2px solid ${act ? accentCol : c.brH}`, pointerEvents: "none" }}>{t.label}</div>}
-      </div>
-    );
-  };
-
-  // Get dropdown items for current open dropdown
-  const getDdItems = () => {
-    const allTools = [...toolGroups.flat(), ...actionTools];
-    const t = allTools.find(x => x.id === dropdown);
-    if (!t || !t.dd) return null;
-    if (Array.isArray(t.dd)) return t.dd;
-    return [{h: t.label.toUpperCase()}, { icon: t.icon, label: t.label }];
-  };
-
-  const ddItems = getDdItems();
-
-  /* Same DOM shape as panel-manager.js (flag dot + single-line OHLC + change); chart.js owns ids #open … #chartChange */
-  const mainOhlcInfoEl = useMemo(
-    () => (
-      <div id="ohlcInfo" className="ohlc-info">
-        <div className="ohlc-header">
-          <div className="ohlc-symbol-block" style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
-            <span id="chartSymbol" className="ohlc-symbol-text" />
-            <span className="ohlc-separator">{" · "}</span>
-            <span id="chartTimeframe" />
-          </div>
-          <div className="ohlc-stats">
-            <div className="ohlc-item">
-              <span className="ohlc-label">O</span>
-              <span className="ohlc-value" id="open">—</span>
-            </div>
-            <div className="ohlc-item">
-              <span className="ohlc-label">H</span>
-              <span className="ohlc-value" id="high">—</span>
-            </div>
-            <div className="ohlc-item">
-              <span className="ohlc-label">L</span>
-              <span className="ohlc-value" id="low">—</span>
-            </div>
-            <div className="ohlc-item">
-              <span className="ohlc-label">C</span>
-              <span className="ohlc-value" id="close">—</span>
-            </div>
-            <span className="ohlc-change" id="chartChange">—</span>
-            {/* After OHL C + change so the symbol row stays clean; visible during replay */}
-            <div
-              id="navIntegrityBadge"
-              className="nav-integrity-badge"
-              style={{ display: "none" }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.currentTarget.classList.toggle("show-tooltip");
-              }}
-            >
-              <div className="nav-badge-icon">
-                {/* Same glyph as legacy #replayGoBack (replay toolbar) */}
-                <svg className="nav-badge-go-back" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="m9 6-6 6 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M3 12h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M21 19V5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </div>
-              <div className="nav-badge-tooltip" id="navBadgeTooltip">
-                <strong>Back Navigation Disabled</strong>
-                <br />
-                Ensures integrity — no going back in time
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="ohlc-body">
-          <div
-            id="ohlcIndicators"
-            className="ohlc-indicators"
-            style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 1, marginTop: 2, width: "100%", maxWidth: "100%", fontSize: 11, pointerEvents: "auto", position: "relative", zIndex: 100 }}
-          />
-        </div>
-        <div className="ohlc-legend-footer">
-          <button
-            type="button"
-            className="ohlc-legend-chevron"
-            id="ohlcCollapseBtn"
-            aria-label="Toggle indicator list"
-            aria-expanded="true"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <polyline points="6 9 12 15 18 9" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        </div>
-      </div>
-    ),
-    []
-  );
-
-  // Repaint indicator chips after OHLC host exists (race vs chart init).
-  useLayoutEffect(() => {
-    const flush = () => {
-      try {
-        const ch =
-          typeof window.getActiveChart === "function"
-            ? window.getActiveChart()
-            : window.chart;
-        if (ch && typeof ch.updateOHLCIndicators === "function") ch.updateOHLCIndicators();
-        if (ch && ch.currentSymbol && typeof ch.updateChartOHLCSymbol === "function") {
-          ch.updateChartOHLCSymbol(ch.currentSymbol);
-        }
-      } catch (_) {}
-    };
-    flush();
-    const raf = requestAnimationFrame(flush);
-    const t = window.setTimeout(flush, 0);
-    const onChartReady = () => flush();
-    window.addEventListener("chartDataLoaded", onChartReady);
-    window.addEventListener("panelsCreated", onChartReady);
-    window.addEventListener("panelSelected", onChartReady);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.clearTimeout(t);
-      window.removeEventListener("chartDataLoaded", onChartReady);
-      window.removeEventListener("panelsCreated", onChartReady);
-      window.removeEventListener("panelSelected", onChartReady);
-    };
-  }, [rollback, darkMode, c.gn, c.rd]);
+import React from 'react';
+import FlagSvg from '../components/FlagSvg';
+import SymBadge from '../components/SymBadge';
+import Toggle from '../components/Toggle';
+import ColorPickerPopup from '../components/ColorPickerPopup';
+import { SYMBOLS_DATA, EMOJI_CATS } from '../data/constants';
+
+export function renderMainApp(ctx) {
+  const { loading, setLoading, loadFading, setLoadFading, loadPhase, setLoadPhase, loadDots, setLoadDots, loadQuote, setLoadQuote, typedQuote, setTypedQuote, sessionPage, setSessionPage, sessPageFading, setSessPageFading, sessions, setSessions, newSessName, setNewSessName, newSessSymbol, setNewSessSymbol, newSessTf, setNewSessTf, newSessStart, setNewSessStart, newSessEnd, setNewSessEnd, newSessCapital, setNewSessCapital, sessHov, setSessHov, stratPopup, setStratPopup, symPopup, setSymPopup, sessView, setSessView, dashSessId, setDashSessId, dashHov, setDashHov, sessSelected, setSessSelected, sessSearchQ, setSessSearchQ, sessFilter, setSessFilter, sessActMenu, setSessActMenu, sessSortBy, setSessSortBy, sessSortDir, setSessSortDir, sessSortOpen, setSessSortOpen, sessSearchOpen, setSessSearchOpen, sessLayoutMode, setSessLayoutMode, cardSortOpen, setCardSortOpen, newSessCurrency, setNewSessCurrency, sessDateMode, setSessDateMode, sessNBars, setSessNBars, sessQuickDate, setSessQuickDate, sessRiskMode, setSessRiskMode, sessRiskVal, setSessRiskVal, sessLeverage, setSessLeverage, sessCommission, setSessCommission, sessCommissionVal, setSessCommissionVal, sessSlippage, setSessSlippage, sessTradingMode, setSessTradingMode, sessPropCat, setSessPropCat, sessPropFirm, setSessPropFirm, sessNumPhases, setSessNumPhases, sessChallengeType, setSessChallengeType, sessP1DailyLossPct, setSessP1DailyLossPct, sessP1TotalDDPct, setSessP1TotalDDPct, sessP1ProfitTargetPct, setSessP1ProfitTargetPct, sessP1MinDays, setSessP1MinDays, sessP1MinDaysEnabled, setSessP1MinDaysEnabled, sessP2DailyLossPct, setSessP2DailyLossPct, sessP2TotalDDPct, setSessP2TotalDDPct, sessP2ProfitTargetPct, setSessP2ProfitTargetPct, sessP2MinDays, setSessP2MinDays, sessP2MinDaysEnabled, setSessP2MinDaysEnabled, sessMaxLotSize, setSessMaxLotSize, sessMaxPosUnit, setSessMaxPosUnit, sessMaxPosEnabled, setSessMaxPosEnabled, sessConsistencyRule, setSessConsistencyRule, sessConsistencyPct, setSessConsistencyPct, sessWeekendHold, setSessWeekendHold, sessTrailingDrawdown, setSessTrailingDrawdown, sessDailyLossEnabled, setSessDailyLossEnabled, sessFutMinDays, setSessFutMinDays, sessFutMinDaysEnabled, setSessFutMinDaysEnabled, sessP1DailyLossAmt, setSessP1DailyLossAmt, sessP1MaxDDAmt, setSessP1MaxDDAmt, sessP1ProfitTargetAmt, setSessP1ProfitTargetAmt, sessP2DailyLossAmt, setSessP2DailyLossAmt, sessP2MaxDDAmt, setSessP2MaxDDAmt, sessP2ProfitTargetAmt, setSessP2ProfitTargetAmt, sessMaxContracts, setSessMaxContracts, sessMaxContractsEnabled, setSessMaxContractsEnabled, sessReplaySpeed, setSessReplaySpeed, sessReplayMode, setSessReplayMode, newSessTimezone, setNewSessTimezone, newSessDST, setNewSessDST, newSessDescription, setNewSessDescription, newSessPlaybook, setNewSessPlaybook, newSessFiles, setNewSessFiles, newSessMarginCall, setNewSessMarginCall, newSessStopOut, setNewSessStopOut, newSessMaxRisk, setNewSessMaxRisk, newSessProtect, setNewSessProtect, newSessNavEnabled, setNewSessNavEnabled, newSessFilePickerOpen, setNewSessFilePickerOpen, newSessOpen, setNewSessOpen, editSessId, setEditSessId, newSessTickers, setNewSessTickers, newSessTickerInput, setNewSessTickerInput, newSessTickerFocus, setNewSessTickerFocus, newSessAssetClass, setNewSessAssetClass, newSessAdvancedOrder, setNewSessAdvancedOrder, newSessRollback, setNewSessRollback, newSessTradingStyle, setNewSessTradingStyle, newSessStratDropOpen, setNewSessStratDropOpen, newSessStratHov, setNewSessStratHov, newSessSymDropOpen, setNewSessSymDropOpen, newSessAssetDropOpen, setNewSessAssetDropOpen, newSessAssetHov, setNewSessAssetHov, newSessMarketOpen, setNewSessMarketOpen, newSessSupportTickers, setNewSessSupportTickers, newSessSupportAssetClass, setNewSessSupportAssetClass, newSessSupportInput, setNewSessSupportInput, newSessSupportFocus, setNewSessSupportFocus, newSessSupportDropOpen, setNewSessSupportDropOpen, newSessInfoHov, setNewSessInfoHov, newSessSupportEnabled, setNewSessSupportEnabled, newSessCalOpen, setNewSessCalOpen, newSessCalTarget, setNewSessCalTarget, newSessCalPos, setNewSessCalPos, newSessCalViewY, setNewSessCalViewY, newSessCalViewM, setNewSessCalViewM, newSessCalMode, setNewSessCalMode, newSessCalYearBase, setNewSessCalYearBase, newSessStartInput, setNewSessStartInput, newSessEndInput, setNewSessEndInput, newSessRandomCount, setNewSessRandomCount, newSessRandRangeVal, setNewSessRandRangeVal, newSessRandRangeUnit, setNewSessRandRangeUnit, newSessActivePreset, setNewSessActivePreset, newSessSymPickerOpen, setNewSessSymPickerOpen, newSessSymPickerSearch, setNewSessSymPickerSearch, newSessSymPickerPos, setNewSessSymPickerPos, newSessSupPickerOpen, setNewSessSupPickerOpen, newSessSupPickerSearch, setNewSessSupPickerSearch, newSessSupPickerPos, setNewSessSupPickerPos, newSessSupPickerCat, setNewSessSupPickerCat, newSessTradingCostsEnabled, setNewSessTradingCostsEnabled, newSessCosts, setNewSessCosts, newSessSymbolSpreads, setNewSessSymbolSpreads, newSessFuturesData, setNewSessFuturesData, stratTab, setStratTab, stratSearch, setStratSearch, stratSort, setStratSort, stratSortDir, setStratSortDir, stratStyleFilter, setStratStyleFilter, stratBuilderOpen, setStratBuilderOpen, stratEditId, setStratEditId, savedCommunityIds, setSavedCommunityIds, myStrategies, setMyStrategies, stratBName, setStratBName, stratBStyle, setStratBStyle, stratBDesc, setStratBDesc, stratBInstruments, setStratBInstruments, stratBInstInput, setStratBInstInput, stratBTimeframes, setStratBTimeframes, stratBTagInput, setStratBTagInput, stratBTags, setStratBTags, stratBComplexity, setStratBComplexity, stratCardHov, setStratCardHov, tool, setTool, hov, setHov, btnPressed, setBtnPressed, dropdown, setDropdown, ddAnchor, setDdAnchor, toolPinned, setToolPinned, dialog, setDialog, dlgTab, setDlgTab, tickCandle, setTickCandle, playing, setPlaying, speed, setSpeed, buySell, setBuySell, orderType, setOrderType, btmTab, setBtmTab, btmIndPos, setBtmIndPos, tblSort, setTblSort, btmTabBarRef, tradeCard, setTradeCard, tradeCardPreTags, setTradeCardPreTags, tradeCardPostTags, setTradeCardPostTags, tradeCardNotes, setTradeCardNotes, tradeActPopup, setTradeActPopup, tapJournal, setTapJournal, tapStrategy, setTapStrategy, tapTags, setTapTags, tapScreenshots, setTapScreenshots, viewingScreenshot, setViewingScreenshot, tapFileSlot, setTapFileSlot, tapTagInput, setTapTagInput, tradeTagOverrides, setTradeTagOverrides, tagEditInput, setTagEditInput, selRow, setSelRow, tagDrop, setTagDrop, tagDropPos, setTagDropPos, btmOpen, setBtmOpen, btmHeight, setBtmHeight, btmResizing, setBtmResizing, btmDragRef, btmPanelRef, tf, setTf, sizeMode, setSizeMode, riskVal, setRiskVal, riskBasis, setRiskBasis, slEnabled, setSlEnabled, entryRows, setEntryRows, entryScrollRef, slPrice, setSlPrice, slRows, setSlRows, slScrollRef, tpRows, setTpRows, tpScrollRef, tagDefs, postTagDefs, tagSels, setTagSels, tagDropOpen, setTagDropOpen, tagsOpen, setTagsOpen, notesText, setNotesText, notesOpen, setNotesOpen, tradeNotes, setTradeNotes, tradeScreenshots, setTradeScreenshots, screenshots, setScreenshots, ssOpen, setSsOpen, replaceTargetId, setReplaceTargetId, fileInputRef, replaceInputRef, tipTimerRef, tipData, setTipData, panelRef, tapFileRef, tcFileRef, tcSsSlot, setTcSsSlot, accountBalance, accountEquity, slAdvMode, setSlAdvMode, slAdvDrop, setSlAdvDrop, slBeUnit, setSlBeUnit, slBeUnitDrop, setSlBeUnitDrop, slBeTrigger, setSlBeTrigger, slBeOffset, setSlBeOffset, slTslUnit, setSlTslUnit, slTslUnitDrop, setSlTslUnitDrop, slTslActivation, setSlTslActivation, slTslTrail, setSlTslTrail, slTslStep, setSlTslStep, logoMenu, setLogoMenu, replayOpts, setReplayOpts, replayMode, setReplayMode, replayInterval, setReplayInterval, rollback, setRollback, rollbackLineX, setRollbackLineX, rbDragging, setRbDragging, rbPressed, setRbPressed, rbPressTimer, gotoOpen, setGotoOpen, gotoItems, setGotoItems, gotoAddType, setGotoAddType, gotoTab, setGotoTab, gotoNewDate, setGotoNewDate, gotoNewTime, setGotoNewTime, gotoNewRepeat, setGotoNewRepeat, gotoNewPrice, setGotoNewPrice, gotoNewName, setGotoNewName, gotoNewColor, setGotoNewColor, gotoCalOpen, setGotoCalOpen, gotoCalPos, setGotoCalPos, gotoTimeOpen, setGotoTimeOpen, gotoTimePos, setGotoTimePos, gotoCalViewY, setGotoCalViewY, gotoCalViewM, setGotoCalViewM, gotoCalMode, setGotoCalMode, gotoCalYearBase, setGotoCalYearBase, gotoDateInput, setGotoDateInput, gotoTimeInput, setGotoTimeInput, gotoPresets, setGotoPresets, ddPos, setDdPos, symbolOpen, setSymbolOpen, symbol, setSymbol, symbolSearch, setSymbolSearch, chartTypeOpen, setChartTypeOpen, chartType, setChartType, chartTypeDropL, setChartTypeDropL, tfOpen, setTfOpen, tfCat, setTfCat, tfPinned, setTfPinned, tfCustomVal, setTfCustomVal, tfEditMode, setTfEditMode, tfDefaults, tfCustomItems, setTfCustomItems, tfSortItems, tfCategories, tfCustomUnit, setTfCustomUnit, tfUnitOpen, setTfUnitOpen, tfIndPos, setTfIndPos, tfBarRef, chartCanvasRef, rollbackLineRef, rollbackOverlayRef, tlBarRef, tlBarDropRef, pinnedBarRef, cpBarAnchorRef, closingDropdownKey, canvasDims, setCanvasDims, settingsOpen, setSettingsOpen, profileOpen, setProfileOpen, profileTab, setProfileTab, profileLang, setProfileLang, profileCat, setProfileCat, profilePos, setProfilePos, profileName, setProfileName, profileAvatar, setProfileAvatar, profileNameEdit, setProfileNameEdit, profilePwOpen, setProfilePwOpen, profileCurPw, setProfileCurPw, profileNewPw, setProfileNewPw, profileConfirmPw, setProfileConfirmPw, darkMode, setDarkMode, faqOpen, setFaqOpen, faqCat, setFaqCat, faqPos, setFaqPos, emojiPanelOpen, setEmojiPanelOpen, emojiPanelPos, setEmojiPanelPos, emojiCat, setEmojiCat, emojiSearch, setEmojiSearch, faqExpand, setFaqExpand, screenshotOpen, setScreenshotOpen, scLinkOpen, setScLinkOpen, scLinkSearch, setScLinkSearch, scLinkedTrade, setScLinkedTrade, scLinkPhase, setScLinkPhase, isFullscreen, setIsFullscreen, pinnedBarOpen, setPinnedBarOpen, pinnedBarPos, setPinnedBarPos, groupSelected, setGroupSelected, tlBarPos, setTlBarPos, tlSettOpen, setTlSettOpen, tlSettPos, setTlSettPos, tlName, setTlName, tlNameEditing, setTlNameEditing, tlSettTab, setTlSettTab, tlLocked, setTlLocked, rrStyle, setRrStyle, rrInputs, setRrInputs, vwapLocked, setVwapLocked, vpLocked, setVpLocked, avLocked, setAvLocked, txtLocked, setTxtLocked, tlStyleDrop, setTlStyleDrop, tlInfoDropUp, setTlInfoDropUp, tlInfoDropAnchor, setTlInfoDropAnchor, tlStyleDropUp, setTlStyleDropUp, tlBarDrop, setTlBarDrop, tlTemplates, setTlTemplates, tlBarDropAnchor, setTlBarDropAnchor, tlLastBarDropRef, tlSaveAsMode, setTlSaveAsMode, tlNewTplName, setTlNewTplName, tlSettTplDrop, setTlSettTplDrop, tlStyle, setTlStyle, txtSettOpen, setTxtSettOpen, txtSettPos, setTxtSettPos, txtSettTab, setTxtSettTab, txtName, setTxtName, txtNameEditing, setTxtNameEditing, txtSizeOpen, setTxtSizeOpen, txtBarSizeOpen, setTxtBarSizeOpen, txtBarDrop, setTxtBarDrop, txtTemplates, setTxtTemplates, txtSaveAsMode, setTxtSaveAsMode, txtNewTplName, setTxtNewTplName, txtStyle, setTxtStyle, vwapSettOpen, setVwapSettOpen, vwapSettPos, setVwapSettPos, vwapSettTab, setVwapSettTab, vwapStyleDrop, setVwapStyleDrop, vwapBarPos, setVwapBarPos, vwapBarDrop, setVwapBarDrop, vwapStyle, setVwapStyle, vpSettOpen, setVpSettOpen, vpSettPos, setVpSettPos, vpSettTab, setVpSettTab, vpStyleDrop, setVpStyleDrop, vpBarPos, setVpBarPos, vpBarDrop, setVpBarDrop, vpStyle, setVpStyle, avSettOpen, setAvSettOpen, avSettPos, setAvSettPos, avSettTab, setAvSettTab, avStyleDrop, setAvStyleDrop, avBarPos, setAvBarPos, avBarDrop, setAvBarDrop, avStyle, setAvStyle, screenshotFlash, setScreenshotFlash, orderPanelOpen, setOrderPanelOpen, opSymOpen, setOpSymOpen, opSymSearch, setOpSymSearch, opSymPos, setOpSymPos, opSizeOpen, setOpSizeOpen, opSizePos, setOpSizePos, opTplOpen, setOpTplOpen, opTplPos, setOpTplPos, activeTemplate, setActiveTemplate, opSaveAsMode, setOpSaveAsMode, opNewTplName, setOpNewTplName, opSavedTemplates, setOpSavedTemplates, opDotsOpen, setOpDotsOpen, opDotsPos, setOpDotsPos, panelDetached, setPanelDetached, detachPos, setDetachPos, detachSize, setDetachSize, panelMode, setPanelMode, isWide, opTemplates, rightPanel, setRightPanel, screenshotPos, setScreenshotPos, layersOpen, setLayersOpen, layersPos, setLayersPos, layersCat, setLayersCat, layersItems, setLayersItems, layersVis, setLayersVis, layersSearch, setLayersSearch, newsOpen, setNewsOpen, newsPos, setNewsPos, newsTab, setNewsTab, newsSearch, setNewsSearch, newsImpact, setNewsImpact, newsSymbolOnly, setNewsSymbolOnly, newsFilterOpen, setNewsFilterOpen, newsFilterClosing, setNewsFilterClosing, newsCntSel, setNewsCntSel, layoutOpen, setLayoutOpen, layoutPos, setLayoutPos, layoutPanels, setLayoutPanels, layoutSync, setLayoutSync, layoutTab, setLayoutTab, settingsTab, setSettingsTab, balVis, setBalVis, sDrop, setSDrop, colorPicker, setColorPicker, cpPos, setCpPos, swHov, setSwHov, settDrop, setSettDrop, settDropPos, setSettDropPos, customTemplates, setCustomTemplates, tplNameInput, setTplNameInput, settHdrTplDrop, setSettHdrTplDrop, settHdrSaveAs, setSettHdrSaveAs, settHdrTplName, setSettHdrTplName, cpH, setCpH, cpS, setCpS, cpV, setCpV, cpA, setCpA, cpHex, setCpHex, cpDragging, setCpDragging, cpDragRect, setCpDragRect, settings, setSettings, indOpen, setIndOpen, indPinned, setIndPinned, indActive, setIndActive, indSelected, setIndSelected, indSearch, setIndSearch, indPos, setIndPos, indCat, setIndCat, indTplOpen, setIndTplOpen, indTplSaveMode, setIndTplSaveMode, indTplName, setIndTplName, indTemplates, setIndTemplates, dragging, setDragging, settingsPos, setSettingsPos, closing, setClosing, animClose, closePopup, closeTlBarDrop, closeTlSett, closeTxtSett, closeVwapSett, closeVpSett, closeAvSett, closeDropdown, closeFontSizeDrop, closeTlInfoDrop, closeTlSettTplDrop, closeCP, c, chromeBr, F, allSymbols, currentSymbol, chartTypeMap, currentChartType, gotoNextId, tlSubTool, tlSubToolRef, txtSubTool, txtSubToolRef, isFibTool, isGannTool, isElliottTool, isPatternTool, isRRTool, rollbackOverlayCallbackRef, catColors, tplWatchKeys, updateSetting, defaultTemplateMap, applyTemplate, saveCustomTemplate, Chk, TlChk, Z, cpW, CP_H, posFromRect, sdPos, openCP, openGotoCP, cpApply, indicatorData, indFiltered, I, B, Sel, MiniIn, toolGroups, actionTools, priceLabels, timeLabels, priceAxisWidth, closeWindows, launchSession, startNewSession, saveNewSession, deleteSession, duplicateSession, openEditSession, closeAll, showTip, hideTip, renderTB, getDdItems, ddItems } = ctx;
 
   return (
-    <div data-v9-app="1" style={{ width: "100%", height: "100dvh", boxSizing: "border-box", paddingLeft: 1, background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
-      onClick={(e) => {
-        // Never run closeAll on bubbled clicks from children — it ran after every button/dropdown
-        // handler and cleared state in the same tick (felt like “dead clicks”, many taps needed).
-        if (e.target !== e.currentTarget) return;
-        closeAll();
-      }}>
-      <style>{`
-        /* Full-button hit targets (not just SVG ink). Portals render under body — scope is page-wide in this shell. */
-        button { touch-action: manipulation; box-sizing: border-box; }
-        button svg { pointer-events: none; }
-        @keyframes tlrWinIn  { from { opacity:0; transform:translate(-50%,-50%) scale(0.97) translateY(7px); } to { opacity:1; transform:translate(-50%,-50%) scale(1) translateY(0); } }
-        @keyframes tlrWinOut { from { opacity:1; transform:translate(-50%,-50%) scale(1) translateY(0); } to { opacity:0; transform:translate(-50%,-50%) scale(0.97) translateY(7px); } }
-        @keyframes tlrDropIn  { from { opacity:0; transform:translateY(-6px) scale(0.98); } to { opacity:1; transform:translateY(0) scale(1); } }
-        @keyframes tlrDropOut { from { opacity:1; transform:translateY(0) scale(1); } to { opacity:0; transform:translateY(-6px) scale(0.98); } }
-        @keyframes tlrPopIn    { from { opacity:0; transform:scale(0.97) translateY(4px); } to { opacity:1; transform:scale(1) translateY(0); } }
-        @keyframes tlrPopOut   { from { opacity:1; transform:scale(1) translateY(0); } to { opacity:0; transform:scale(0.96) translateY(4px); } }
-        @keyframes tlrTipIn    { from { opacity:0; } to { opacity:1; } }
-        /* Style panel: minimal motion + ~50ms so the window reads as instant */
-        @keyframes tlrSettIn  { from { opacity:0.92; transform:scale(0.992) translateY(2px); } to { opacity:1; transform:scale(1) translateY(0); } }
-        @keyframes tlrSettOut { from { opacity:1; transform:scale(1) translateY(0); } to { opacity:0; transform:scale(0.985) translateY(3px); } }
-        @keyframes tlrLinePulse { 0%,100% { opacity:0.25; box-shadow:0 0 3px rgba(0,212,161,0.2); } 50% { opacity:1; box-shadow:0 0 10px rgba(0,212,161,0.7); } }
-        @keyframes tlrBlink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
-        @keyframes tlrFullscreenIn { from { opacity:0.6; transform:scale(1.015); } to { opacity:1; transform:scale(1); } }
-        @keyframes tlrFlash { 0%{opacity:0.82} 60%{opacity:0.55} 100%{opacity:0} }
-        @keyframes tlrPanelIn { from{opacity:0;transform:translateX(8px)} to{opacity:1;transform:translateX(0)} }
-        @keyframes tlrDotPulse { 0%,100% { opacity:0.35; transform:scale(0.85); } 50% { opacity:1; transform:scale(1.3); } }
-        @keyframes tlrIdPulse { 0%,100% { color:rgba(0,212,161,0.55); } 50% { color:rgba(0,212,161,1); } }
-        .tlr-gloss{position:relative}.tlr-gloss::after{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,rgba(255,255,255,0.13) 0%,rgba(255,255,255,0.04) 45%,transparent 100%);pointer-events:none;z-index:9999;border-radius:inherit}.tlr-nospinner::-webkit-outer-spin-button,.tlr-nospinner::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-        .tlr-nospinner{-moz-appearance:textfield}
-        .tlr-unit-sel{background:transparent;border:1px solid rgba(140,160,255,0.2);color:rgba(255,255,255,0.7);font-size:10px;padding:2px 4px;outline:none;cursor:default;appearance:none;-webkit-appearance:none}
-        .tc-pill{padding:1px 7px;font-size:9px;cursor:default;transition:color 0.1s,background 0.1s;border:1px solid rgba(255,255,255,0.08)}
-        .tc-pill:not(.tc-pill-act):hover{color:rgba(255,255,255,0.65)!important;border-color:rgba(140,160,255,0.35)!important}
-        .tc-opt{padding:1px 6px;font-size:9px;cursor:default;transition:color 0.1s,background 0.1s;border:1px solid rgba(255,255,255,0.07)}
-        .tc-opt:not(.tc-opt-act):hover{color:rgba(255,255,255,0.55)!important;border-color:rgba(255,255,255,0.13)!important}
-        .tc-x:hover{background:rgba(255,80,80,0.07)!important}.tc-x:hover svg path{fill:var(--rd)!important}
-        .tc-cancel:hover{color:rgba(255,255,255,0.9)!important}.tc-cancel:hover .tc-cancel-line{background:linear-gradient(90deg,transparent,rgba(140,160,255,0.7),transparent)!important}
-        .tc-save:hover{background:linear-gradient(135deg,#3a5af8,#5a78ff)!important;box-shadow:0 2px 14px rgba(38,67,247,0.5)!important;border-color:rgba(140,160,255,0.8)!important}
-        .tc-ss-wrap:hover .tc-ss-overlay{opacity:1!important}
-        .tc-ss-add:hover{background:rgba(140,160,255,0.05)!important}.tc-ss-add:hover .tc-ss-plus{stroke:rgba(140,160,255,0.8)!important}.tc-ss-add:hover .tc-ss-lbl{color:rgba(255,255,255,0.5)!important}
-        .tap-ss-wrap:hover .tap-ss-overlay{opacity:1!important}
-        .ss-view-btn:hover{background:rgba(255,255,255,0.18)!important}
-        .ss-del-btn:hover{background:rgba(255,80,80,0.25)!important}
-        .tl-drag,.tl-drag *{cursor:move!important}
-        /* Legend collapse: control below indicator list (TradingView-like); expanded = ^ collapse, collapsed = v expand */
-        .ohlc-legend-footer{display:flex;align-items:center;justify-content:flex-start;margin-top:3px;padding:0;pointer-events:auto}
-        .ohlc-legend-chevron{appearance:none;-webkit-appearance:none;border:none;margin:0;padding:2px 4px;background:transparent;color:#787b86;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;line-height:0;flex-shrink:0;pointer-events:auto;opacity:0.88;transition:color .12s,background .12s,opacity .12s}
-        .ohlc-legend-chevron:hover{background:rgba(255,255,255,0.06);color:#b2b5be;opacity:1}
-        .ohlc-legend-chevron svg{width:13px;height:13px;transition:transform .15s ease;flex-shrink:0}
-        .ohlc-info:not(.collapsed) .ohlc-legend-chevron svg{transform:rotate(180deg)}
-        .ohlc-info.collapsed .ohlc-legend-chevron svg{transform:rotate(0deg)}
-        .ohlc-info.collapsed .ohlc-body{display:none !important}
-        .ohlc-indicators{min-width:0}
-        .ohlc-indicators > div{max-width:100%}
-        @media (hover:hover) and (pointer:fine){
-          .talaria-ind-legend-row .talaria-ind-actions{opacity:0;transition:opacity .12s ease;pointer-events:none}
-          .talaria-ind-legend-row:hover .talaria-ind-actions{opacity:1;pointer-events:auto}
-        }
-
-      `}</style>
-
-      {/* ── Trend Line Settings Window (portal → body: legacy drawing-toolbar is appendChild(body) @ z-index 10000, paints above #root) ── */}
-      {effectiveTlGroup && (tlSettOpen || closing.has("tlsett")) && typeof document !== "undefined" && createPortal(
+    <>
+      {/* ── Trend Line Settings Window ── */}
+      {(tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || isPatternTool || tool === "measure") && (tlSettOpen || closing.has("tlsett")) && (
         <div data-sdrop="1" onClick={e => { e.stopPropagation(); setTlStyleDrop(null); }}
-          style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:11000, width:440, fontFamily:F,
+          style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:9100, width:440, fontFamily:F,
                    background:c.sf, border:`1px solid ${c.brH}`,
                    boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                    display:"flex", flexDirection:"column",
-                   willChange: closing.has("tlsett") ? undefined : "transform, opacity",
-                   animation: closing.has("tlsett") ? "tlrSettOut 0.1s ease both" : "tlrSettIn 0.05s ease-out both" }}>
+                   animation: closing.has("tlsett") ? "tlrPopOut 0.155s ease both" : "tlrPopIn 0.15s ease" }}>
           {/* top accent */}
           <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`, flexShrink:0 }}/>
           {/* header */}
@@ -8790,15 +72,7 @@ const TalariaV8bLive = () => {
                   <div style={{height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"4px 0"}}>
                     {[["Save as", ()=>{ setTlSaveAsMode(true); setTlNewTplName(""); }],
-                      ["Apply default", ()=>{
-                        const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-                        const tb = ch?.drawingManager?.toolbar;
-                        const d = getSelectedDrawingForTemplate();
-                        if (!tb || typeof tb.applyDefaultTemplate !== "function") return;
-                        if (!d) { tb.showNotification?.("Select a drawing first"); return; }
-                        tb.applyDefaultTemplate(d);
-                        closeTlSettTplDrop();
-                      }]].map(([lbl, action])=>{
+                      ["Apply default", ()=>{ closeTlSettTplDrop(); }]].map(([lbl, action])=>{
                       const isH=hov===`stpl-${lbl}`, isAct=lbl==="Save as"&&tlSaveAsMode;
                       return (
                         <div key={lbl} onClick={action}
@@ -8815,16 +89,12 @@ const TalariaV8bLive = () => {
                       <div style={{padding:"4px 8px 4px 12px",display:"flex",alignItems:"center",gap:4,boxSizing:"border-box",width:"100%"}} onMouseDown={e=>e.stopPropagation()}>
                         <input autoFocus value={tlNewTplName} onChange={e=>setTlNewTplName(e.target.value)}
                           onKeyDown={e=>{
-                            if (e.key === "Enter" && tlNewTplName.trim()) {
-                              const d = getSelectedDrawingForTemplate();
-                              if (!d) { window.chart?.drawingManager?.toolbar?.showNotification?.("Select a drawing first"); return; }
-                              if (v9SaveDrawingTemplateToStorage(tlNewTplName, d)) { setTlSaveAsMode(false); setTlNewTplName(""); }
-                            }
-                            if (e.key === "Escape") { setTlSaveAsMode(false); setTlNewTplName(""); }
+                            if(e.key==="Enter"&&tlNewTplName.trim()){setTlTemplates(ts=>[...ts,{name:tlNewTplName.trim(),style:{...tlStyle}}]);setTlSaveAsMode(false);setTlNewTplName("");}
+                            if(e.key==="Escape"){setTlSaveAsMode(false);setTlNewTplName("");}
                           }}
                           placeholder="Template name…"
                           style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box",cursor:"text"}}/>
-                        <div onClick={()=>{ if (!tlNewTplName.trim()) return; const d = getSelectedDrawingForTemplate(); if (!d) { window.chart?.drawingManager?.toolbar?.showNotification?.("Select a drawing first"); return; } if (v9SaveDrawingTemplateToStorage(tlNewTplName, d)) { setTlSaveAsMode(false); setTlNewTplName(""); } }}
+                        <div onClick={()=>{if(tlNewTplName.trim()){setTlTemplates(ts=>[...ts,{name:tlNewTplName.trim(),style:{...tlStyle}}]);setTlSaveAsMode(false);setTlNewTplName("");}}}
                           onMouseEnter={()=>setHov("stpl-save-ok")} onMouseLeave={()=>setHov(null)}
                           style={{padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,position:"relative",
                                   background:hov==="stpl-save-ok"?c.hv:"transparent",transition:"background 0.12s"}}>
@@ -8833,31 +103,18 @@ const TalariaV8bLive = () => {
                         </div>
                       </div>
                     )}
-                    {tlSavedTemplateList.length === 0 && !tlSaveAsMode ? (
+                    {tlTemplates.length === 0 && !tlSaveAsMode ? (
                       <div style={{padding:"6px 12px"}}>
                         <span style={{fontSize:11, color:c.tm, fontStyle:"italic"}}>No saved templates</span>
                       </div>
-                    ) : tlSavedTemplateList.map((tpl, idx)=>(
-                      <div key={tpl.id || idx}
+                    ) : tlTemplates.map((tpl, idx)=>(
+                      <div key={idx}
                         onMouseEnter={()=>setHov(`stpl-${idx}`)} onMouseLeave={()=>setHov(null)}
                         style={{ display:"flex", alignItems:"center", padding:"4px 8px 4px 12px", cursor:"default", position:"relative",
                                  background:hov===`stpl-${idx}`?c.hv2:"transparent", transition:"background 0.1s" }}>
-                        <span onClick={()=>{
-                          const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-                          const tb = ch?.drawingManager?.toolbar;
-                          const d = getSelectedDrawingForTemplate();
-                          if (!tb || !d || !tpl.id) return;
-                          tb.applyTemplate(d, tpl.id);
-                          closeTlSettTplDrop();
-                        }}
+                        <span onClick={()=>{ setTlStyle(tpl.style); closeTlSettTplDrop(); }}
                           style={{flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontSize:12, color:hov===`stpl-${idx}`?c.tx:c.ts, fontWeight:500}}>{tpl.name}</span>
-                        <div onClick={e=>{ e.stopPropagation();
-                          const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-                          const tb = ch?.drawingManager?.toolbar;
-                          const d = getSelectedDrawingForTemplate();
-                          const toolType = (d && d.type) || resolveLegacyTool();
-                          if (tb && toolType && tpl.id) tb.deleteTemplate(toolType, tpl.id);
-                        }}
+                        <div onClick={e=>{ e.stopPropagation(); setTlTemplates(ts=>ts.filter((_,i)=>i!==idx)); }}
                           onMouseEnter={()=>setHov(`stpl-del-${idx}`)} onMouseLeave={()=>setHov(`stpl-${idx}`)}
                           style={{ padding:"2px 4px", cursor:"default" }}>
                           <I n="x" s={11} cl={hov===`stpl-del-${idx}`?c.rd:c.tm}/>
@@ -8869,7 +126,7 @@ const TalariaV8bLive = () => {
               )}
             </div>
             {/* close button */}
-            <div {...modalPointerActivate(closeTlSett)}
+            <div onMouseDown={e=>e.stopPropagation()} onClick={closeTlSett}
               onMouseEnter={()=>setHov("tlx")} onMouseLeave={()=>setHov(null)}
               style={{ width:30, height:30, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", position:"relative",
                        background:hov==="tlx"?"rgba(255,80,80,0.07)":"transparent", transition:"background 0.12s" }}>
@@ -8879,7 +136,7 @@ const TalariaV8bLive = () => {
           <div style={{ height:1, background:c.br, flexShrink:0 }}/>
           {/* tabs */}
           {(()=>{
-            const noTextTab = isFibTool || isGannTool || isPatternTool || effectiveTlGroup === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
+            const noTextTab = isFibTool || isGannTool || isPatternTool || tool === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
             const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","curve","doubleCurve","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
             const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || (isFibTool && tlSubTool.icon !== "fibSpiral") || isGannTool;
             const tlTabs=[["style","Style"],!noTextTab&&["text","Text"],hasInputTab&&["input","Input"],!noCoordsTab&&["coordinates","Coordinates"],["visibility","Visibility"]].filter(Boolean);
@@ -8889,12 +146,9 @@ const TalariaV8bLive = () => {
                 {tlTabs.map(([id,lbl])=>{
                   const isAct=tlSettTab===id;
                   return (
-                    <button type="button" key={id}
-                      onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`tlTab-${id}`);setTlSettTab(id);setTlStyleDrop(null);}}
-                      onMouseDown={(e)=>e.stopPropagation()}
-                      onClick={(e)=>e.stopPropagation()}
+                    <button key={id} onClick={e=>{e.stopPropagation();setTlSettTab(id);setTlStyleDrop(null);}}
                       onMouseEnter={()=>setHov(`tlTab-${id}`)} onMouseLeave={()=>{ setHov(null); setBtnPressed(null); }}
-                      onPointerUp={()=>setBtnPressed(null)}
+                      onPointerDown={()=>setBtnPressed(`tlTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
                       style={{ flex:1, padding:"10px 4px", border:"none", fontFamily:F, cursor:"default",
                                color:isAct?c.acL:hov===`tlTab-${id}`?c.tx:c.ts, fontSize:12, fontWeight:isAct?700:500,
                                display:"flex", alignItems:"center", justifyContent:"center",
@@ -8955,7 +209,7 @@ const TalariaV8bLive = () => {
                              transition:"border-color 0.12s,box-shadow 0.12s" }}/>
                 );
                 const showEp = !isFibTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowLine","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","brush"].includes(tlSubTool.icon);
-                const hasBg = ["polyline","pathTool","curve","doubleCurve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","flatChannel","disjointCh","xabcd","headShoulders","triPattern"].includes(tlSubTool.icon);
+                const hasBg = ["polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","flatChannel","disjointCh","xabcd","headShoulders","triPattern"].includes(tlSubTool.icon);
                 const showLine = !isGannTool && !(isFibTool && tlSubTool.icon !== "fibSpiral") && !["arrowMarker","arrowUp","arrowDn","channel","regressionCh","pitchfork"].includes(tlSubTool.icon);
                 const isChannel = ["channel","regressionCh"].includes(tlSubTool.icon);
                 const isRegCh = tlSubTool.icon === "regressionCh";
@@ -9187,7 +441,7 @@ const TalariaV8bLive = () => {
                   </div>
                 </>);
                 return (<>
-                  {showLine && <div style={{ display:"grid", gridTemplateColumns:`1fr auto auto auto ${(showEp||isBrushTool||(isPatternTool&&!isElliottTool))?"auto":""}`, columnGap:12, rowGap:0, alignItems:"start", marginRight:(isBrushTool&&!showEp)?65:0 }}>
+                  {showLine && <div style={{ display:"grid", gridTemplateColumns:`1fr auto auto auto ${(showEp||isBrushTool||(isPatternTool&&!isElliottTool))?"auto":""}`, columnGap:12, rowGap:0, alignItems:"center", marginRight:(isBrushTool&&!showEp)?65:0 }}>
                     {/* Column headers */}
                     <div/><div/>
                     <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
@@ -9196,15 +450,9 @@ const TalariaV8bLive = () => {
                     <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
                       <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span>
                     </div>
-                    {(showEp||isBrushTool||(isPatternTool&&!isElliottTool)) && (
-                      showEp ? (
-                        <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
-                          <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>ENDPOINTS</span>
-                        </div>
-                      ) : <div/>
-                    )}
+                    {(showEp||isBrushTool||(isPatternTool&&!isElliottTool)) && <div/>}
                     {/* ── Line row ── */}
-                    <span style={{ fontSize:12, color:c.ts, padding:"8px 0" }}>{["triangle","rect","arcShape","ellipse","circle"].includes(tlSubTool.icon)?"Borders":"Line"}</span>
+                    <span style={{ fontSize:12, color:c.ts, padding:"8px 0", alignSelf:"center" }}>{["triangle","rect","arcShape","ellipse","circle"].includes(tlSubTool.icon)?"Borders":"Line"}</span>
                     <div style={{ padding:"8px 0" }}>{colorSwatch("tlLineColor", tlStyle.lineColor)}</div>
                     {/* Style */}
                     {showStyle ? <div style={{ padding:"8px 0", position:"relative" }}>
@@ -9284,7 +532,9 @@ const TalariaV8bLive = () => {
                     </div>}
                     {/* Endpoints / 5th-col filler for pattern tools */}
                     {(isPatternTool&&!isElliottTool) && <div/>}
-                    {(showEp||isBrushTool) && (showEp ? <div style={{ display:"flex", gap:3, alignItems:"center", justifyContent:"center", padding:"8px 0" }}>
+                    {(showEp||isBrushTool) && (showEp ? <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"center", padding:"8px 0" }}>
+                      <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>ENDPOINTS</span>
+                      <div style={{ display:"flex", gap:3 }}>
                         {[["ep1",false],["ep2",true]].map(([k,rightAlign])=>{
                           const dk=`ep-${k}`; const val=tlStyle[k]||"normal"; const isOpen=tlStyleDrop===dk;
                           const epPrev = (open) => val==="arrow"
@@ -9321,6 +571,7 @@ const TalariaV8bLive = () => {
                             </div>
                           );
                         })}
+                      </div>
                     </div> : <div/>)}
                     {/* ── LABEL row (pure pattern tools only) ── */}
                     {(isPatternTool&&!isElliottTool) && <>
@@ -9370,11 +621,7 @@ const TalariaV8bLive = () => {
                       const midOp = tlStyle.midLine ? 1 : 0.38;
                       const midPE = tlStyle.midLine ? "auto" : "none";
                       return <><div style={{ padding:"8px 0", alignSelf:"center" }}>
-                        {TlChk(tlStyle.midLine,"tlchk-midLine","Middle Line",()=>setTlStyle(s=>{
-                          const nextOn=!s.midLine;
-                          queueMicrotask(()=>flushV9MiddleLineToChart(s,nextOn));
-                          return {...s,midLine:nextOn};
-                        }))}
+                        {TlChk(tlStyle.midLine,"tlchk-midLine","Middle Line",()=>setTlStyle(s=>({...s,midLine:!s.midLine})))}
                       </div>
                       <div style={{ padding:"8px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s" }}>{colorSwatch("tlMidLineColor", tlStyle.midLineColor)}</div>
                       <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"center", padding:"8px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s" }}>
@@ -9472,7 +719,7 @@ const TalariaV8bLive = () => {
                                              color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                                   <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                                     {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.01).toFixed(2))).toFixed(2)}:l)})))}
+                                      <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.01).toFixed(2))).toFixed(2)}:l)}));}}
                                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                         style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                                  display:"flex", alignItems:"center", justifyContent:"center",
@@ -9731,7 +978,7 @@ const TalariaV8bLive = () => {
                                            color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                                 <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                                   {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                    <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
+                                    <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
                                       onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                       style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                                display:"flex", alignItems:"center", justifyContent:"center",
@@ -10207,7 +1454,7 @@ const TalariaV8bLive = () => {
                                      color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                           <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                             {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                              <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, fibTzLevels: s.fibTzLevels.map((l,j)=>j===idx?{...l,value:String(Math.max(1,+l.value+delta))}:l)})))}
+                              <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibTzLevels: s.fibTzLevels.map((l,j)=>j===idx?{...l,value:String(Math.max(1,+l.value+delta))}:l)}));}}
                                 onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                 style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                          display:"flex", alignItems:"center", justifyContent:"center",
@@ -10312,7 +1559,7 @@ const TalariaV8bLive = () => {
                                        color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                             <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                               {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, [stateKey]: s[stateKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
+                                <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [stateKey]: s[stateKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
                                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                   style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                            display:"flex", alignItems:"center", justifyContent:"center",
@@ -10600,7 +1847,7 @@ const TalariaV8bLive = () => {
                                      color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                           <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                             {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                              <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, fibLevels: s.fibLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
+                              <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibLevels: s.fibLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
                                 onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                 style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                          display:"flex", alignItems:"center", justifyContent:"center",
@@ -10685,7 +1932,7 @@ const TalariaV8bLive = () => {
                                  color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                       <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                         {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                          <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, [levelKey]: s[levelKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
+                          <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [levelKey]: s[levelKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
                             onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                             style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                      display:"flex", alignItems:"center", justifyContent:"center",
@@ -10846,25 +2093,15 @@ const TalariaV8bLive = () => {
             })()}
             {/* ── INPUT TAB (regressionCh) ── */}
             {tlSettTab==="input" && tlSubTool.icon === "regressionCh" && <>
-              {/* Upper/Lower deviation (σ multipliers) — sync on-state with regLines[1]/[2] (Style tab lines) */}
-              {[["regUpperDev","Upper Deviation",1],["regLowerDev","Lower Deviation",2]].map(([key, label, lineIdx])=>{
+              {/* Upper Deviation — checkbox + spin input */}
+              {[["regUpperDev","Upper Deviation"],["regLowerDev","Lower Deviation"]].map(([key, label])=>{
                 const on = tlStyle[key]?.on ?? true;
                 const val = tlStyle[key]?.value ?? "2.00";
                 const op = on ? 1 : 0.38;
                 const pe = on ? "auto" : "none";
                 return (
                   <div key={key} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
-                    <div>{TlChk(on, `tlchk-${key}`, label, ()=>setTlStyle(s=>{
-                      const cur = s[key] || { on: true, value: "2" };
-                      const nextOn = !cur.on;
-                      return {
-                        ...s,
-                        [key]: { ...cur, on: nextOn },
-                        regLines: (s.regLines && s.regLines.length > lineIdx
-                          ? s.regLines.map((l, i) => (i === lineIdx ? { ...l, on: nextOn } : l))
-                          : s.regLines),
-                      };
-                    }))}</div>
+                    <div>{TlChk(on, `tlchk-${key}`, label, ()=>setTlStyle(s=>({...s, [key]:{...s[key], on:!on}})))}</div>
                     <div style={{ position:"relative", width:68, marginRight:40, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
                       <input value={val}
                         onChange={e=>{const v=e.target.value;if(/^[0-9.]*$/.test(v))setTlStyle(s=>({...s,[key]:{...s[key],value:v}}));}}
@@ -10874,7 +2111,7 @@ const TalariaV8bLive = () => {
                                  color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                       <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                         {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                          <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s,[key]:{...s[key],value:(Math.max(0,+(+(s[key]?.value??"2.00")+delta*0.01).toFixed(2))).toFixed(2)}})))}
+                          <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s,[key]:{...s[key],value:(Math.max(0,+(+(s[key]?.value??"2.00")+delta*0.01).toFixed(2))).toFixed(2)}}));}}
                             onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                             style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                      display:"flex", alignItems:"center", justifyContent:"center",
@@ -10888,15 +2125,13 @@ const TalariaV8bLive = () => {
                   </div>
                 );
               })}
-              {/* Extend Right — uses shared tlStyle.extendRight (same as Style tab; drives chart.style.extendRight) */}
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
-                <span style={{ fontSize:12, color:c.ts }}>Extend Right</span>
-                <div style={{ marginRight:40 }}>{TlChk(!!tlStyle.extendRight, "tlchk-regExtRight", "", ()=>setTlStyle(s=>({ ...s, extendRight:!s.extendRight })))}</div>
+              {/* Extend Right — checkbox */}
+              <div style={{ padding:"8px 0" }}>
+                {TlChk(tlStyle.regExtendRight ?? false, "tlchk-regExtRight", "Extend Right", ()=>setTlStyle(s=>({...s, regExtendRight:!(s.regExtendRight??false)})))}
               </div>
-              {/* Pearson's R */}
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
-                <span style={{ fontSize:12, color:c.ts }}>Pearson's R</span>
-                <div style={{ marginRight:40 }}>{TlChk(!!tlStyle.regPearsonR, "tlchk-regPearsonR", "", ()=>setTlStyle(s=>({ ...s, regPearsonR:!s.regPearsonR })))}</div>
+              {/* Pearson's R — checkbox */}
+              <div style={{ padding:"8px 0" }}>
+                {TlChk(tlStyle.regPearsonR ?? false, "tlchk-regPearsonR", "Pearson's R", ()=>setTlStyle(s=>({...s, regPearsonR:!(s.regPearsonR??false)})))}
               </div>
               {/* Source — dropdown */}
               {(()=>{
@@ -11060,7 +2295,7 @@ const TalariaV8bLive = () => {
                              outline:"none", boxSizing:"border-box", fontVariantNumeric:"tabular-nums" }}/>
                   <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                     {[[+1,"▲"],[- 1,"▼"]].map(([delta,chr],i)=>(
-                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
+                      <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                         style={{ flex:1, width:18, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                  display:"flex", alignItems:"center", justifyContent:"center",
@@ -11229,31 +2464,22 @@ const TalariaV8bLive = () => {
             })()}
           </div>
           {/* footer */}
-          <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
-            style={{ borderTop:`1px solid ${c.brH}`, display:"flex", alignItems:"center", justifyContent:"flex-end", padding:"10px 14px 14px", gap:8 }}>
-            <B hk="tl-cancel" fireOnPointerDown onClick={closeTlSett}>Cancel</B>
-            <B primary hk="tl-ok" fireOnPointerDown onClick={closeTlSett}>OK</B>
+          <div style={{ borderTop:`1px solid ${c.brH}`, display:"flex", alignItems:"center", justifyContent:"flex-end", padding:"10px 14px 14px", gap:8 }}>
+            <B hk="tl-cancel" onClick={closeTlSett}>Cancel</B>
+            <B primary hk="tl-ok" onClick={closeTlSett}>OK</B>
           </div>
         </div>
-      , document.body)}
+      )}
 
-      {/* ── Text Tool mini-bar ──
-          Active text tool OR a text/label drawing selected on the chart (toolbar.show
-          sets tool to crosshair — tlBarDrawingGroup === "text" so we must not fall through
-          to the Trend Line bar, which only keys off tlBarSelected). */}
-      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && (()=>{
+      {/* ── Text Tool mini-bar ── */}
+      {tool === "text" && (()=>{
         const TxBtn = ({id, isAct, onClick, children, isDel, tip}) => {
           const isH = hov === id;
           return (
             <div
               onMouseEnter={e=>{setHov(id);if(tip)showTip(tip,e.currentTarget,"bottom");}}
               onMouseLeave={()=>{setHov(null);hideTip();}}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                if (typeof onClick === "function") onClick(e);
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
+              onClick={onClick}
               style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",flexShrink:0,
                 background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",transition:"background 0.12s"}}>
               {children(isH, isAct, isDel&&isH?c.rd:isAct?c.acL:isH?c.tx:c.ts)}
@@ -11264,7 +2490,7 @@ const TalariaV8bLive = () => {
         };
         return (
         <div data-sdrop="1" onClick={e=>e.stopPropagation()}
-          style={{position:"fixed",top:tlBarPos.y,left:tlBarPos.x,zIndex:11000,
+          style={{position:"fixed",top:tlBarPos.y,left:tlBarPos.x,zIndex:9050,
                   background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
                   boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                   display:"flex",flexDirection:"row",alignItems:"stretch",
@@ -11308,7 +2534,7 @@ const TalariaV8bLive = () => {
                   ].map(([lbl,action])=>{
                     const isH=hov===`txtTpl-${lbl}`, isAct=lbl==="Save as"&&txtSaveAsMode;
                     return (
-                      <div key={lbl} {...modalPointerActivate(() => action())}
+                      <div key={lbl} onClick={action}
                         onMouseEnter={()=>setHov(`txtTpl-${lbl}`)} onMouseLeave={()=>setHov(null)}
                         style={{display:"flex",alignItems:"center",padding:"6px 12px",cursor:"default",position:"relative",
                                 background:isAct?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
@@ -11328,7 +2554,7 @@ const TalariaV8bLive = () => {
                         }}
                         placeholder="Template name…"
                         style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box"}}/>
-                      <div {...modalPointerActivate(() => { if(txtNewTplName.trim()){setTxtTemplates(ts=>[...ts,{name:txtNewTplName.trim(),style:{...txtStyle}}]);setTxtSaveAsMode(false);setTxtNewTplName("");} })}
+                      <div onClick={()=>{if(txtNewTplName.trim()){setTxtTemplates(ts=>[...ts,{name:txtNewTplName.trim(),style:{...txtStyle}}]);setTxtSaveAsMode(false);setTxtNewTplName("");}}}
                         onMouseEnter={()=>setHov("txt-tpl-ok")} onMouseLeave={()=>setHov(null)}
                         style={{padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,position:"relative",
                                 background:hov==="txt-tpl-ok"?c.hv:"transparent",transition:"background 0.12s"}}>
@@ -11342,9 +2568,9 @@ const TalariaV8bLive = () => {
                       <div key={idx} onMouseEnter={()=>setHov(`txtTpl-${idx}`)} onMouseLeave={()=>setHov(null)}
                         style={{display:"flex",alignItems:"center",padding:"4px 8px 4px 12px",cursor:"default",position:"relative",
                                 background:hov===`txtTpl-${idx}`?c.hv2:"transparent",transition:"background 0.1s"}}>
-                        <span {...modalPointerActivate(() => { setTxtStyle(tpl.style); setTxtBarDrop(null); })}
+                        <span onClick={()=>{setTxtStyle(tpl.style);setTxtBarDrop(null);}}
                           style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:12,color:hov===`txtTpl-${idx}`?c.tx:c.ts,fontWeight:500}}>{tpl.name}</span>
-                        <div {...modalPointerActivate(() => setTxtTemplates(ts=>ts.filter((_,i)=>i!==idx)))}
+                        <div onClick={e=>{e.stopPropagation();setTxtTemplates(ts=>ts.filter((_,i)=>i!==idx));}}
                           onMouseEnter={()=>setHov(`txtTpl-del-${idx}`)} onMouseLeave={()=>setHov(`txtTpl-${idx}`)}>
                           <I n="x" s={11} cl={hov===`txtTpl-del-${idx}`?c.rd:c.tm}/>
                         </div>
@@ -11355,33 +2581,20 @@ const TalariaV8bLive = () => {
               </div>
             )}
           </div>
-          {/* Background before border on note/priceNote — matches Style tab order and user expectation */}
-          {(txtSubTool.icon === "note" || txtSubTool.icon === "priceNote") && <TxBtn id="txt-bgcol" isAct={colorPicker==="txtBgColor"}
-            onClick={e=>{e.stopPropagation();if(colorPicker==="txtBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.bgColor||'#000000');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBgColor");}}}>
-            {(_,isAct,col)=>(() => {
-              const dimLn = "rgba(120,123,134,0.38)";
-              const innerFill = txtStyle.bgOn ? txtStyle.bgColor : "transparent";
-              const barBg = txtStyle.bgOn ? txtStyle.bgColor : dimLn;
-              return (
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" aria-hidden>
-                    <rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/>
-                    <rect x="6" y="6" width="12" height="12" rx="1" fill={innerFill}/>
-                  </svg>
-                  <div style={{width:12,height:2,background:barBg,borderRadius:1,opacity:txtStyle.bgOn ? 1 : 0.85}}/>
-                </div>
-              );
-            })()}
-          </TxBtn>}
-          {/* tool color button — note and priceNote: line/border accent (stroke on chart) */}
+          {/* tool color button — note and priceNote only */}
           {(txtSubTool.icon === "note" || txtSubTool.icon === "priceNote") && <TxBtn id="txt-toolcol" isAct={colorPicker==="txtBorderColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtBorderColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.borderColor||'#787B86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBorderColor");}}}>
-            {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n={txtSubTool.icon} s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.borderOn ? txtStyle.borderColor : "rgba(120,123,134,0.38)",borderRadius:1,opacity:txtStyle.borderOn ? 1 : 0.85}}/></div>}
+            {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n={txtSubTool.icon} s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.borderColor,borderRadius:1}}/></div>}
           </TxBtn>}
           {/* tool color button — pin only */}
           {txtSubTool.icon === "pin" && <TxBtn id="txt-pincol" isAct={colorPicker==="pinLabelColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="pinLabelColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.pinLabelColor||'#4A6AFF');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("pinLabelColor");}}}>
             {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n="pin" s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.pinLabelColor,borderRadius:1}}/></div>}
+          </TxBtn>}
+          {/* background color button — note order: shown here (before text color); other tools: shown after text color */}
+          {(txtSubTool.icon === "note" || txtSubTool.icon === "priceNote") && <TxBtn id="txt-bgcol" isAct={colorPicker==="txtBgColor"}
+            onClick={e=>{e.stopPropagation();if(colorPicker==="txtBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.bgColor||'#000000');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBgColor");}}}>
+            {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={txtStyle.bgColor}/></svg>}
           </TxBtn>}
           {/* text color button — hidden for emoji */}
           {!["emoji","signpost","flag","image"].includes(txtSubTool.icon) && <TxBtn id="txt-col" isAct={colorPicker==="txtTextColor"}
@@ -11391,27 +2604,12 @@ const TalariaV8bLive = () => {
           {/* background color button — all tools except note/priceNote (those render it earlier), emoji, pin, image */}
           {!["note","priceNote","emoji","pin","image","signpost"].includes(txtSubTool.icon) && <TxBtn id="txt-bgcol" isAct={colorPicker==="txtBgColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.bgColor||'#000000');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBgColor");}}}>
-            {(_,isAct,col)=>(() => {
-              const dimLn = "rgba(120,123,134,0.38)";
-              const innerFill = txtStyle.bgOn ? txtStyle.bgColor : "transparent";
-              const barBg = txtStyle.bgOn ? txtStyle.bgColor : dimLn;
-              return (
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" aria-hidden>
-                    <rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/>
-                    <rect x="6" y="6" width="12" height="12" rx="1" fill={innerFill}/>
-                  </svg>
-                  <div style={{width:12,height:2,background:barBg,borderRadius:1,opacity:txtStyle.bgOn ? 1 : 0.85}}/>
-                </div>
-              );
-            })()}
+            {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={txtStyle.bgColor}/></svg>}
           </TxBtn>}
           {/* font size dropdown — hidden for flag, emoji, note, priceNote */}
           {!["flag","emoji","note","priceNote","image"].includes(txtSubTool.icon) && <div style={{position:"relative",flexShrink:0}}>
             <div onMouseEnter={()=>setHov("txt-bar-sz")} onMouseLeave={()=>setHov(null)}
-              onPointerDown={(e)=>{e.stopPropagation();setTxtBarSizeOpen(v=>!v);setTxtSizeOpen(false);}}
-              onMouseDown={(e)=>e.stopPropagation()}
-              onClick={(e)=>e.stopPropagation()}
+              onClick={e=>{e.stopPropagation();setTxtBarSizeOpen(v=>!v);setTxtSizeOpen(false);}}
               style={{height:32,padding:"0 7px",display:"flex",alignItems:"center",gap:3,position:"relative",cursor:"default",
                       background:txtBarSizeOpen?"rgba(74,106,255,0.08)":hov==="txt-bar-sz"?c.hv:"transparent",transition:"background 0.12s"}}>
               <span style={{fontSize:12,color:txtBarSizeOpen?c.acL:c.ts,minWidth:16,textAlign:"center"}}>{txtStyle.fontSize}</span>
@@ -11430,7 +2628,7 @@ const TalariaV8bLive = () => {
                 {txtSizes.map(sz=>{
                   const isA=txtStyle.fontSize===sz; const isH=hov===`txtsz-bar-${sz}`;
                   return (
-                    <div key={sz} {...modalPointerActivate(() => { setTxtStyle(s=>({...s,fontSize:sz})); setTxtBarSizeOpen(false); })}
+                    <div key={sz} onClick={()=>{setTxtStyle(s=>({...s,fontSize:sz}));setTxtBarSizeOpen(false);}}
                       onMouseEnter={()=>setHov(`txtsz-bar-${sz}`)} onMouseLeave={()=>setHov(null)}
                       style={{padding:"5px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                               background:isA?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
@@ -11501,8 +2699,8 @@ const TalariaV8bLive = () => {
         );
       })()}
 
-      {/* ── Text Tool Settings Window (portal → body: same stacking as TL settings / chart toolbar) ── */}
-      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && (txtSettOpen || closing.has("txtsett")) && typeof document !== "undefined" && createPortal((()=>{
+      {/* ── Text Tool Settings Window ── */}
+      {tool === "text" && (txtSettOpen || closing.has("txtsett")) && (()=>{
         const txtSizes = [10,12,14,16,18,20,22,24];
         const openTxtCP = (e, key, val) => {
           const p = parseColor(val||'#ffffff'); const hsv = rgbToHsv(p.r,p.g,p.b);
@@ -11540,7 +2738,7 @@ const TalariaV8bLive = () => {
         const txtTabIdx=txtTabs.findIndex(([id])=>id===txtSettTab);
         return (
         <div data-sdrop="1" onClick={e=>{e.stopPropagation();setTxtSizeOpen(false);}}
-          style={{position:"fixed",left:txtSettPos.x,top:txtSettPos.y,zIndex:11000,width:420,fontFamily:F,
+          style={{position:"fixed",left:txtSettPos.x,top:txtSettPos.y,zIndex:9100,width:420,fontFamily:F,
                   background:c.sf,border:`1px solid ${c.brH}`,
                   boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                   display:"flex",flexDirection:"column",
@@ -11585,7 +2783,7 @@ const TalariaV8bLive = () => {
               {hov==="txt-tmpl-hdr"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
             </div>
             {/* close button — identical to TL settings */}
-            <div {...modalPointerActivate(closeTxtSett)}
+            <div onMouseDown={e=>e.stopPropagation()} onClick={closeTxtSett}
               onMouseEnter={()=>setHov("txtx")} onMouseLeave={()=>setHov(null)}
               style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
                       background:hov==="txtx"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s"}}>
@@ -11598,12 +2796,9 @@ const TalariaV8bLive = () => {
             {txtTabs.map(([id,lbl])=>{
               const isAct=txtSettTab===id;
               return (
-                <button type="button" key={id}
-                  onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`txtTab-${id}`);setTxtSettTab(id);setTxtSizeOpen(false);}}
-                  onMouseDown={(e)=>e.stopPropagation()}
-                  onClick={(e)=>e.stopPropagation()}
+                <button key={id} onClick={e=>{e.stopPropagation();setTxtSettTab(id);setTxtSizeOpen(false);}}
                   onMouseEnter={()=>setHov(`txtTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
-                  onPointerUp={()=>setBtnPressed(null)}
+                  onPointerDown={()=>setBtnPressed(`txtTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
                   style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                           color:isAct?c.acL:hov===`txtTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -11971,7 +3166,7 @@ const TalariaV8bLive = () => {
                             outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                   <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                     {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                      <button type="button" key={i} {...modalPointerActivate(() => setTxtStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
+                      <button key={i} onClick={e=>{e.stopPropagation();setTxtStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                         style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                 display:"flex",alignItems:"center",justifyContent:"center",
@@ -12099,14 +3294,13 @@ const TalariaV8bLive = () => {
             })()}
           </div>
           {/* footer */}
-          <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
-            style={{borderTop:`1px solid ${c.brH}`,display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"10px 14px 14px",gap:8}}>
-            <B hk="txt-cancel" fireOnPointerDown onClick={closeTxtSett}>Cancel</B>
-            <B primary hk="txt-ok" fireOnPointerDown onClick={closeTxtSett}>OK</B>
+          <div style={{borderTop:`1px solid ${c.brH}`,display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"10px 14px 14px",gap:8}}>
+            <B hk="txt-cancel" onClick={closeTxtSett}>Cancel</B>
+            <B primary hk="txt-ok" onClick={closeTxtSett}>OK</B>
           </div>
         </div>
         );
-      })(), document.body)}
+      })()}
 
       {/* Trend line floating bar dropdowns */}
       {((tlBarDrop&&tlBarDrop!=="template")||(closing.has("tlbardrop")&&tlLastBarDropRef.current!=="template")) && (()=>{
@@ -12132,7 +3326,7 @@ const TalariaV8bLive = () => {
         const isClosing = closing.has("tlbardrop") && !tlBarDrop;
         return (
         <div ref={tlBarDropRef} data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
-          style={{ position:"fixed", top, left, zIndex:10050,
+          style={{ position:"fixed", top, left, zIndex:9150,
                    width: (key==="style"||key==="width") ? 88 : undefined, minWidth: (key==="style"||key==="width") ? undefined : 148,
                    background:c.sf, border:`1px solid ${c.brH}`, fontFamily:F,
                    boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,
@@ -12360,7 +3554,7 @@ const TalariaV8bLive = () => {
                       outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
             <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
               {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                <button type="button" key={i} {...modalPointerActivate(() => { if(!disabled)setVwapStyle(s=>({...s,[valKey]:Math.max(0.1,+(+s[valKey]+delta)).toFixed(1)})); })}
+                <button key={i} onClick={e=>{e.stopPropagation();if(!disabled)setVwapStyle(s=>({...s,[valKey]:Math.max(0.1,+(+s[valKey]+delta)).toFixed(1)}));}}
                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                   style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -12375,7 +3569,7 @@ const TalariaV8bLive = () => {
         const tabs=[["style","Style"],["inputs","Inputs"],["coordinates","Coordinates"],["visibility","Visibility"]];
         return (
           <div data-sdrop="1" onClick={e=>{e.stopPropagation();setVwapStyleDrop(null);}}
-            style={{position:"fixed",left:vwapSettPos.x,top:vwapSettPos.y,zIndex:10050,width:420,fontFamily:F,
+            style={{position:"fixed",left:vwapSettPos.x,top:vwapSettPos.y,zIndex:9100,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
                     animation:closing.has("vwapsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
@@ -12396,7 +3590,7 @@ const TalariaV8bLive = () => {
               <I n="vwap" s={17} cl={c.acL}/>
               <span style={{fontSize:14,fontWeight:700,color:c.tx,marginLeft:8}}>Anchored VWAP</span>
               <div style={{flex:1,cursor:"move"}}/>
-              <div {...modalPointerActivate(closeVwapSett)}
+              <div onClick={closeVwapSett} onPointerDown={e=>e.stopPropagation()}
                 onMouseEnter={()=>setHov("vwap-x")} onMouseLeave={()=>setHov(null)}
                 style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",
                         background:hov==="vwap-x"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",position:"relative"}}>
@@ -12409,12 +3603,9 @@ const TalariaV8bLive = () => {
               {tabs.map(([id,lbl])=>{
                 const isAct=vwapSettTab===id;
                 return(
-                  <button type="button" key={id}
-                    onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`vwapTab-${id}`);setVwapSettTab(id);setVwapStyleDrop(null);}}
-                    onMouseDown={(e)=>e.stopPropagation()}
-                    onClick={(e)=>e.stopPropagation()}
+                  <button key={id} onClick={e=>{e.stopPropagation();setVwapSettTab(id);setVwapStyleDrop(null);}}
                     onMouseEnter={()=>setHov(`vwapTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
-                    onPointerUp={()=>setBtnPressed(null)}
+                    onPointerDown={()=>setBtnPressed(`vwapTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                             color:isAct?c.acL:hov===`vwapTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                             display:"flex",alignItems:"center",justifyContent:"center",
@@ -12554,7 +3745,7 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} {...modalPointerActivate(() => setVwapStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
+                        <button key={i} onClick={e=>{e.stopPropagation();setVwapStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -12668,10 +3859,9 @@ const TalariaV8bLive = () => {
 
             </div>
             {/* footer */}
-            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
-              style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
-              <B hk="vwap-cancel" fireOnPointerDown onClick={closeVwapSett}>Cancel</B>
-              <B primary hk="vwap-ok" fireOnPointerDown onClick={closeVwapSett}>OK</B>
+            <div style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
+              <B hk="vwap-cancel" onClick={closeVwapSett}>Cancel</B>
+              <B primary hk="vwap-ok" onClick={closeVwapSett}>OK</B>
             </div>
           </div>
         );
@@ -12740,7 +3930,7 @@ const TalariaV8bLive = () => {
                       outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
             <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
               {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                <button type="button" key={i} {...modalPointerActivate(() => setVpStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))})))}
+                <button key={i} onClick={e=>{e.stopPropagation();setVpStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))}));}}
                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                   style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -12755,7 +3945,7 @@ const TalariaV8bLive = () => {
         const tabs=[["style","Style"],["inputs","Inputs"],["coordinates","Coordinates"],["visibility","Visibility"]];
         return (
           <div data-sdrop="1" onClick={e=>{e.stopPropagation();setVpStyleDrop(null);}}
-            style={{position:"fixed",left:vpSettPos.x,top:vpSettPos.y,zIndex:10050,width:420,fontFamily:F,
+            style={{position:"fixed",left:vpSettPos.x,top:vpSettPos.y,zIndex:9100,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
                     animation:closing.has("vpsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
@@ -12776,7 +3966,7 @@ const TalariaV8bLive = () => {
               <I n="volProfile" s={17} cl={c.acL}/>
               <span style={{fontSize:14,fontWeight:700,color:c.tx,marginLeft:8}}>Fixed Range Volume Profile</span>
               <div style={{flex:1,cursor:"move"}}/>
-              <div {...modalPointerActivate(closeVpSett)}
+              <div onClick={closeVpSett} onPointerDown={e=>e.stopPropagation()}
                 onMouseEnter={()=>setHov("vp-x")} onMouseLeave={()=>setHov(null)}
                 style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",
                         background:hov==="vp-x"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",position:"relative"}}>
@@ -12789,12 +3979,9 @@ const TalariaV8bLive = () => {
               {tabs.map(([id,lbl])=>{
                 const isAct=vpSettTab===id;
                 return(
-                  <button type="button" key={id}
-                    onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`vpTab-${id}`);setVpSettTab(id);setVpStyleDrop(null);}}
-                    onMouseDown={(e)=>e.stopPropagation()}
-                    onClick={(e)=>e.stopPropagation()}
+                  <button key={id} onClick={e=>{e.stopPropagation();setVpSettTab(id);setVpStyleDrop(null);}}
                     onMouseEnter={()=>setHov(`vpTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
-                    onPointerUp={()=>setBtnPressed(null)}
+                    onPointerDown={()=>setBtnPressed(`vpTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                             color:isAct?c.acL:hov===`vpTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                             display:"flex",alignItems:"center",justifyContent:"center",
@@ -12935,7 +4122,7 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} {...modalPointerActivate(() => setVpStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
+                        <button key={i} onClick={e=>{e.stopPropagation();setVpStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -13053,10 +4240,9 @@ const TalariaV8bLive = () => {
 
             </div>
             {/* footer */}
-            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
-              style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
-              <B hk="vp-cancel" fireOnPointerDown onClick={closeVpSett}>Cancel</B>
-              <B primary hk="vp-ok" fireOnPointerDown onClick={closeVpSett}>OK</B>
+            <div style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
+              <B hk="vp-cancel" onClick={closeVpSett}>Cancel</B>
+              <B primary hk="vp-ok" onClick={closeVpSett}>OK</B>
             </div>
           </div>
         );
@@ -13125,7 +4311,7 @@ const TalariaV8bLive = () => {
                       outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
             <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
               {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                <button type="button" key={i} {...modalPointerActivate(() => setAvStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))})))}
+                <button key={i} onClick={e=>{e.stopPropagation();setAvStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))}));}}
                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                   style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -13140,7 +4326,7 @@ const TalariaV8bLive = () => {
         const tabs=[["style","Style"],["inputs","Inputs"],["coordinates","Coordinates"],["visibility","Visibility"]];
         return (
           <div data-sdrop="1" onClick={e=>{e.stopPropagation();setAvStyleDrop(null);}}
-            style={{position:"fixed",left:avSettPos.x,top:avSettPos.y,zIndex:10050,width:420,fontFamily:F,
+            style={{position:"fixed",left:avSettPos.x,top:avSettPos.y,zIndex:9100,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
                     animation:closing.has("avsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
@@ -13161,7 +4347,7 @@ const TalariaV8bLive = () => {
               <I n="anchoredVol" s={17} cl={c.acL}/>
               <span style={{fontSize:14,fontWeight:700,color:c.tx,marginLeft:8}}>Anchored Volume Profile</span>
               <div style={{flex:1,cursor:"move"}}/>
-              <div {...modalPointerActivate(closeAvSett)}
+              <div onClick={closeAvSett} onPointerDown={e=>e.stopPropagation()}
                 onMouseEnter={()=>setHov("av-x")} onMouseLeave={()=>setHov(null)}
                 style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",
                         background:hov==="av-x"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",position:"relative"}}>
@@ -13174,12 +4360,9 @@ const TalariaV8bLive = () => {
               {tabs.map(([id,lbl])=>{
                 const isAct=avSettTab===id;
                 return(
-                  <button type="button" key={id}
-                    onPointerDown={(e)=>{e.stopPropagation();setBtnPressed(`avTab-${id}`);setAvSettTab(id);setAvStyleDrop(null);}}
-                    onMouseDown={(e)=>e.stopPropagation()}
-                    onClick={(e)=>e.stopPropagation()}
+                  <button key={id} onClick={e=>{e.stopPropagation();setAvSettTab(id);setAvStyleDrop(null);}}
                     onMouseEnter={()=>setHov(`avTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
-                    onPointerUp={()=>setBtnPressed(null)}
+                    onPointerDown={()=>setBtnPressed(`avTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
                             color:isAct?c.acL:hov===`avTab-${id}`?c.tx:c.ts,fontSize:12,fontWeight:isAct?700:500,
                             display:"flex",alignItems:"center",justifyContent:"center",
@@ -13312,7 +4495,7 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} {...modalPointerActivate(() => setAvStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)})))}
+                        <button key={i} onClick={e=>{e.stopPropagation();setAvStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -13428,20 +4611,16 @@ const TalariaV8bLive = () => {
 
             </div>
             {/* footer */}
-            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
-              style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
-              <B hk="av-cancel" fireOnPointerDown onClick={closeAvSett}>Cancel</B>
-              <B primary hk="av-ok" fireOnPointerDown onClick={closeAvSett}>OK</B>
+            <div style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
+              <B hk="av-cancel" onClick={closeAvSett}>Cancel</B>
+              <B primary hk="av-ok" onClick={closeAvSett}>OK</B>
             </div>
           </div>
         );
       })()}
 
       {/* ── Trend Line floating toolbar (fixed — can overlay any UI area except right panels) ── */}
-      {/* Visibility: chart selection AND drawing maps to a line/shape rail group.
-          Text/label drawings map to group "text" (not in TL_LINE_SHAPE_GROUPS) — without
-          this guard, effectiveTlGroup is null and tlSubTool defaulted to Trend Line. */}
-      {tlBarSelected && tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) && (()=>{
+      {(tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || isPatternTool || tool === "measure") && (()=>{
         const TlBtn = ({id, isAct, children, onClick, w, tip}) => {
           const isH = hov === id;
           const isDel = id === "tl-del";
@@ -13449,12 +4628,7 @@ const TalariaV8bLive = () => {
             <div
               onMouseEnter={e=>{setHov(id);if(tip)showTip(tip,e.currentTarget,"bottom");}}
               onMouseLeave={()=>{setHov(null);hideTip();}}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                if (typeof onClick === "function") onClick(e);
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
+              onClick={onClick}
               style={{width:w||32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
                       cursor:"default",position:"relative",flexShrink:0,userSelect:"none",
                       background: isAct ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent",
@@ -13467,10 +4641,8 @@ const TalariaV8bLive = () => {
         };
         const TlSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
-        <div ref={tlBarRef} data-sdrop="1" data-tlbar="1"
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={e=>e.stopPropagation()}
-          style={{ position:"fixed", top:tlBarPos.y, left:tlBarPos.x, zIndex:11000,
+        <div ref={tlBarRef} data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
+          style={{ position:"fixed", top:tlBarPos.y, left:tlBarPos.x, zIndex:9050,
                    background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                    boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                    display:"flex", flexDirection:"row", alignItems:"stretch",
@@ -13525,18 +4697,10 @@ const TalariaV8bLive = () => {
                 <div style={{height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                 <div style={{padding:"4px 0"}}>
                   {[["Save as", ()=>{ setTlSaveAsMode(true); setTlNewTplName(""); }],
-                    ["Apply default", ()=>{
-                      const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-                      const tb = ch?.drawingManager?.toolbar;
-                      const d = getSelectedDrawingForTemplate();
-                      if (!tb || typeof tb.applyDefaultTemplate !== "function") return;
-                      if (!d) { tb.showNotification?.("Select a drawing first"); return; }
-                      tb.applyDefaultTemplate(d);
-                      closeTlBarDrop();
-                    }]].map(([lbl, action])=>{
+                    ["Apply default", ()=>{ closeTlBarDrop(); }]].map(([lbl, action])=>{
                     const isH=hov===`tbdrop-${lbl}`, isAct=lbl==="Save as"&&tlSaveAsMode;
                     return (
-                      <div key={lbl} {...modalPointerActivate(() => action())}
+                      <div key={lbl} onClick={action}
                         onMouseEnter={()=>setHov(`tbdrop-${lbl}`)} onMouseLeave={()=>setHov(null)}
                         style={{ display:"flex", alignItems:"center", padding:"6px 12px", cursor:"default", position:"relative",
                                  background:isAct?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
@@ -13550,16 +4714,12 @@ const TalariaV8bLive = () => {
                     <div style={{padding:"4px 8px 4px 12px",display:"flex",alignItems:"center",gap:4,boxSizing:"border-box",width:"100%"}} onMouseDown={e=>e.stopPropagation()}>
                       <input autoFocus value={tlNewTplName} onChange={e=>setTlNewTplName(e.target.value)}
                         onKeyDown={e=>{
-                          if (e.key === "Enter" && tlNewTplName.trim()) {
-                            const d = getSelectedDrawingForTemplate();
-                            if (!d) { window.chart?.drawingManager?.toolbar?.showNotification?.("Select a drawing first"); return; }
-                            if (v9SaveDrawingTemplateToStorage(tlNewTplName, d)) { setTlSaveAsMode(false); setTlNewTplName(""); }
-                          }
-                          if (e.key === "Escape") { setTlSaveAsMode(false); setTlNewTplName(""); }
+                          if(e.key==="Enter"&&tlNewTplName.trim()){setTlTemplates(ts=>[...ts,{name:tlNewTplName.trim(),style:{...tlStyle}}]);setTlSaveAsMode(false);setTlNewTplName("");}
+                          if(e.key==="Escape"){setTlSaveAsMode(false);setTlNewTplName("");}
                         }}
                         placeholder="Template name…"
                         style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box"}}/>
-                      <div {...modalPointerActivate(() => { if (!tlNewTplName.trim()) return; const d = getSelectedDrawingForTemplate(); if (!d) { window.chart?.drawingManager?.toolbar?.showNotification?.("Select a drawing first"); return; } if (v9SaveDrawingTemplateToStorage(tlNewTplName, d)) { setTlSaveAsMode(false); setTlNewTplName(""); } })}
+                      <div onClick={()=>{if(tlNewTplName.trim()){setTlTemplates(ts=>[...ts,{name:tlNewTplName.trim(),style:{...tlStyle}}]);setTlSaveAsMode(false);setTlNewTplName("");}}}
                         onMouseEnter={()=>setHov("tpl-save-ok")} onMouseLeave={()=>setHov(null)}
                         style={{padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,position:"relative",
                                 background:hov==="tpl-save-ok"?c.hv:"transparent",transition:"background 0.12s"}}>
@@ -13568,31 +4728,18 @@ const TalariaV8bLive = () => {
                       </div>
                     </div>
                   )}
-                  {tlSavedTemplateList.length === 0 && !tlSaveAsMode ? (
+                  {tlTemplates.length === 0 && !tlSaveAsMode ? (
                     <div style={{padding:"6px 12px"}}>
                       <span style={{fontSize:11, color:c.tm, fontStyle:"italic"}}>No saved templates</span>
                     </div>
-                  ) : tlSavedTemplateList.map((tpl, idx)=>(
-                    <div key={tpl.id || idx}
+                  ) : tlTemplates.map((tpl, idx)=>(
+                    <div key={idx}
                       onMouseEnter={()=>setHov(`tbtpl-${idx}`)} onMouseLeave={()=>setHov(null)}
                       style={{ display:"flex", alignItems:"center", padding:"4px 8px 4px 12px", cursor:"default", position:"relative",
                                background:hov===`tbtpl-${idx}`?c.hv2:"transparent", transition:"background 0.1s" }}>
-                      <span {...modalPointerActivate(() => {
-                        const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-                        const tb = ch?.drawingManager?.toolbar;
-                        const d = getSelectedDrawingForTemplate();
-                        if (!tb || !d || !tpl.id) return;
-                        tb.applyTemplate(d, tpl.id);
-                        closeTlBarDrop();
-                      })}
+                      <span onClick={()=>{ setTlStyle(tpl.style); closeTlBarDrop(); }}
                         style={{flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontSize:12, color:hov===`tbtpl-${idx}`?c.tx:c.ts, fontWeight:500}}>{tpl.name}</span>
-                      <div {...modalPointerActivate(() => {
-                        const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-                        const tb = ch?.drawingManager?.toolbar;
-                        const d = getSelectedDrawingForTemplate();
-                        const toolType = (d && d.type) || resolveLegacyTool();
-                        if (tb && toolType && tpl.id) tb.deleteTemplate(toolType, tpl.id);
-                      })}
+                      <div onClick={e=>{ e.stopPropagation(); setTlTemplates(ts=>ts.filter((_,i)=>i!==idx)); }}
                         onMouseEnter={()=>setHov(`tbtpl-del-${idx}`)} onMouseLeave={()=>setHov(`tbtpl-${idx}`)}
                         style={{ padding:"2px 4px", cursor:"default" }}>
                         <I n="x" s={11} cl={hov===`tbtpl-del-${idx}`?c.rd:c.tm}/>
@@ -13639,7 +4786,7 @@ const TalariaV8bLive = () => {
                 <line x1="12.5" y1="3" x2="17.5" y2="3" stroke={c.acL} strokeWidth="2" strokeLinecap="round"/>
               </svg>}
             </TlBtn>
-          </> : effectiveTlGroup === "measure" ? <>
+          </> : tool === "measure" ? <>
             {/* range: font color */}
             <TlBtn id="tl-rng-fcol" isAct={colorPicker==="tlLabelColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlLabelColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.labelColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlLabelColor");}}}>
@@ -13683,10 +4830,8 @@ const TalariaV8bLive = () => {
               {(_,isAct,col)=>{
                 const fibBar = isFibTool && tlStyle.fibLevels && tlStyle.fibLevels.length > 0
                   ? `linear-gradient(90deg,${tlStyle.fibLevels.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
-                  : (tlSubTool.icon === "channel" && tlStyle.chLines && tlStyle.chLines.length > 0)
+                  : (["channel","regressionCh"].includes(tlSubTool.icon) && tlStyle.chLines && tlStyle.chLines.length > 0)
                   ? `linear-gradient(90deg,${tlStyle.chLines.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
-                  : (tlSubTool.icon === "regressionCh" && tlStyle.regLines && tlStyle.regLines.length > 0)
-                  ? `linear-gradient(90deg,${tlStyle.regLines.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
                   : (tlSubTool.icon === "pitchfork" && tlStyle.pfLevels && tlStyle.pfLevels.length > 0)
                   ? `linear-gradient(90deg,${tlStyle.pfLevels.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
                   : tlStyle.lineColor;
@@ -13720,7 +4865,7 @@ const TalariaV8bLive = () => {
               </div>}
             </TlBtn>}
             {/* btn 2b: bg color — for non-rect, non-pattern applicable tools */}
-            {["polyline","pathTool","curve","doubleCurve","triangle","arcShape","arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" isAct={colorPicker==="tlBgColor"}
+            {["polyline","triangle","arcShape","arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" isAct={colorPicker==="tlBgColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
               {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={tlStyle.bgColor}/></svg>}
             </TlBtn>}
@@ -13761,69 +4906,18 @@ const TalariaV8bLive = () => {
             </TlBtn>}
           </>}
           <TlSep/>
-          {/* btn 5: lock — toggle locked state on the selected drawing(s) too,
-               so V9's lock matches what the legacy toolbar's lock button does. */}
-          <TlBtn id="tl-lock" isAct={tlLocked} tip={tlLocked?"Unlock":"Lock"} onClick={()=>{
-            setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();
-            const next = !tlLocked; setTlLocked(next);
-            try {
-              enumerateV9DrawingManagersFromWindow().forEach((dm) => {
-                const sel = dm && (dm.selectedDrawings && dm.selectedDrawings.length ? dm.selectedDrawings : (dm.selectedDrawing ? [dm.selectedDrawing] : []));
-                if (!sel || !sel.length) return;
-                sel.forEach((d) => { if (d) d.locked = next; });
-                if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
-              });
-            } catch(_){}
-          }}>
+          {/* btn 5: lock */}
+          <TlBtn id="tl-lock" isAct={tlLocked} tip={tlLocked?"Unlock":"Lock"} onClick={()=>{setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();setTlLocked(v=>!v);}}>
             {(_,isAct,col)=><I n="lock" s={16} cl={col}/>}
           </TlBtn>
-          {/* btn 6: delete — call drawingManager.deleteDrawing on the selected
-               drawing(s) so the canvas matches what the legacy toolbar does. */}
-          <TlBtn id="tl-del" isAct={false} tip="Delete" onClick={()=>{
-            setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();
-            try {
-              enumerateV9DrawingManagersFromWindow().forEach((dm) => {
-                const hasSel = (dm.selectedDrawings && dm.selectedDrawings.length) || dm.selectedDrawing;
-                if (!hasSel) return;
-                if (dm.deleteSelected) dm.deleteSelected();
-                else {
-                  const sel = dm.selectedDrawings && dm.selectedDrawings.length ? [...dm.selectedDrawings] : (dm.selectedDrawing ? [dm.selectedDrawing] : []);
-                  sel.forEach((d) => { try { dm.deleteDrawing && dm.deleteDrawing(d); } catch(_){} });
-                }
-                if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
-              });
-            } catch(err){ console.warn('[V9 delete] failed:', err); }
-          }}>
+          {/* btn 6: delete */}
+          <TlBtn id="tl-del" isAct={false} tip="Delete" onClick={()=>{setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();}}>
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TlBtn>
           <TlSep/>
           {/* btn 7: settings */}
-          <TlBtn id="tl-sett" isAct={tlSettOpen||closing.has("tlsett")}
-            onClick={e=>{
-              if (tlBarDrop) closeTlBarDrop();
-              setColorPicker(null);
-              if (tlSettOpen || closing.has("tlsett")) { closeTlSett(); return; }
-              if (txtSettOpen) closeTxtSett();
-              if (vwapSettOpen) closeVwapSett();
-              if (vpSettOpen) closeVpSett();
-              if (avSettOpen) closeAvSett();
-              const r = e.currentTarget.getBoundingClientRect();
-              const vpW = window.innerWidth / Z;
-              const xFallback = Math.max(8, Math.min(r.left / Z, vpW - 498));
-              const yFallback = r.bottom / Z + 8;
-              const d = getSelectedDrawingForTemplate();
-              const hook = typeof window !== "undefined" ? window.__v9OpenDrawingSettings : null;
-              if (d && typeof hook === "function") {
-                const anchorX = r.left + r.width / 2;
-                const anchorY = r.bottom + 8;
-                try {
-                  if (hook(d, anchorX, anchorY)) return;
-                } catch (_) {}
-              }
-              window.chart?.drawingManager?.toolbar?.showNotification?.(
-                d ? "Open style from the chart or pick a line/shape tool first." : "Select a drawing first."
-              );
-            }}>
+          <TlBtn id="tl-sett" isAct={tlSettOpen||closing.has("tlsett")} tip="Style"
+            onClick={e=>{if(tlBarDrop)closeTlBarDrop();setColorPicker(null);if(tlSettOpen||closing.has("tlsett")){closeTlSett();}else{if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-498));const y=r.bottom/Z+8;setTlSettPos({x,y});setTlSettOpen(true);}}}>
             {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
           </TlBtn>
           {/* btn 8: more */}
@@ -13850,10 +4944,8 @@ const TalariaV8bLive = () => {
           }
         }
         return (
-          <div ref={pinnedBarRef} data-sdrop="1"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={e=>e.stopPropagation()}
-            style={{position:"fixed",top:pinnedBarPos.y,left:pinnedBarPos.x,zIndex:11000,
+          <div ref={pinnedBarRef} onClick={e=>e.stopPropagation()}
+            style={{position:"fixed",top:pinnedBarPos.y,left:pinnedBarPos.x,zIndex:9050,
                     background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
                     boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(201,168,76,0.15)`,
                     animation:"tlrPopIn 0.15s ease",userSelect:"none",display:"flex",flexDirection:"row",fontFamily:F}}>
@@ -13892,7 +4984,7 @@ const TalariaV8bLive = () => {
                 return (
                   <div key={pbKey}
                     onMouseEnter={()=>setHov(`pb-${i}`)} onMouseLeave={()=>setHov(null)}
-                    {...modalPointerActivate(() => { setTool(t.parentId||t.id); if(t.parentId) setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [t.parentId]: t })); })}
+                    onClick={()=>{ setTool(t.parentId||t.id); if(t.parentId) setGroupSelected(p=>({...p,[t.parentId]:t})); }}
                     style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
                       background:isAct?"rgba(74,106,255,0.10)":isH?c.hv:"transparent",
                       transition:"background 0.12s"}}>
@@ -13914,9 +5006,9 @@ const TalariaV8bLive = () => {
         if (!tDd?.dd) return null;
         const items = Array.isArray(tDd.dd) ? tDd.dd : [{h: tDd.label.toUpperCase()}, {icon: tDd.icon, label: tDd.label}];
         const isDdClosing = closing.has("tldrop") && !dropdown;
-        const ddPanel = (
+        return (
         <div data-sdrop="1" onClick={(e) => e.stopPropagation()} style={{
-          position: "fixed", top: ddPos.top, left: ddPos.left, zIndex: 11000,
+          position: "fixed", top: ddPos.top, left: ddPos.left, zIndex: 9060,
           background: c.sf, border: `1px solid ${c.brH}`,
           boxShadow: `0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,
           minWidth: 190, fontFamily: F,
@@ -13947,34 +5039,9 @@ const TalariaV8bLive = () => {
                     transform: btnPressed===`dd-${i}` ? "scale(0.97)" : "scale(1)",
                   }}>
                   {isSelected && <div style={{position:"absolute",left:0,top:"10%",bottom:"10%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 4px ${c.acG}`}}/>}
-                  <button type="button"
+                  <button
                     onClick={(e) => {
-                      const ch =
-                        typeof window.getActiveChart === "function"
-                          ? window.getActiveChart()
-                          : window.chart;
-                      if (activeKey === "eye" && ch && typeof ch.handleVisibilityMenuAction === "function") {
-                        if (item.icon === "eyeAll") ch.handleVisibilityMenuAction("drawings");
-                        else if (item.icon === "eyeInd") ch.handleVisibilityMenuAction("indicators");
-                        else if (item.icon === "eyePos") ch.handleVisibilityMenuAction("positions");
-                        else if (item.icon === "eyeHide") ch.handleVisibilityMenuAction("all");
-                        closeDropdown();
-                        return;
-                      }
-                      if (activeKey === "magnet") {
-                        applyV9MagnetMode(item);
-                        setGroupSelected((p) => ({ ...p, magnet: item }));
-                        closeDropdown();
-                        return;
-                      }
-                      if (activeKey === "trash") {
-                        if (item.icon === "trashDraw") ch?.clearOnlyDrawings?.({ confirmPrompt: false });
-                        else if (item.icon === "trashInd") ch?.clearOnlyIndicators?.({ confirmPrompt: false });
-                        else if (item.icon === "trash") ch?.clearDrawingsAndIndicators?.({ confirmPrompt: false });
-                        closeDropdown();
-                        return;
-                      }
-                      setTool(activeKey); setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [activeKey]: item })); closeDropdown();
+                      setTool(activeKey); setGroupSelected(p => ({...p, [activeKey]: item})); closeDropdown();
                       if (item.icon === "emoji") {
                         const r = e.currentTarget.getBoundingClientRect();
                         setEmojiPanelPos({ x: (r.right + 8) / Z, y: r.top / Z });
@@ -14020,37 +5087,6 @@ const TalariaV8bLive = () => {
                     <I n={item.icon} s={15} cl={isSelected ? c.acL : rowHov ? c.tx : c.ts}/>
                     {item.label}
                   </button>
-                  {activeKey === "text" && <div
-                    title="Settings"
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      setTool("text");
-                      setGroupSelected((p) => v9SanitizeGroupSelected({ ...p, text: item }));
-                      const r = e.currentTarget.getBoundingClientRect();
-                      const vpW = window.innerWidth / Z;
-                      const x = Math.max(8, Math.min(r.left / Z - 220, vpW - 420));
-                      const y = Math.max(60, r.top / Z);
-                      if (tlSettOpen) closeTlSett();
-                      if (vwapSettOpen) closeVwapSett();
-                      if (vpSettOpen) closeVpSett();
-                      if (avSettOpen) closeAvSett();
-                      setTxtSettPos({ x, y });
-                      setTxtSettTab(item.icon === "emoji" ? "coordinates" : "style");
-                      setTxtSettOpen(true);
-                      closeDropdown();
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onMouseEnter={() => setHov(`ddtxtsett-${item.icon}-${i}`)}
-                    onMouseLeave={() => setHov(`dd-${i}`)}
-                    style={{
-                      padding: 4, cursor: "default", marginLeft: 2, flexShrink: 0,
-                      opacity: hov === `ddtxtsett-${item.icon}-${i}` ? 1 : rowHov ? 0.75 : 0.45,
-                      transition: "opacity 0.12s",
-                    }}>
-                    <I n="settings" s={12} cl={hov === `ddtxtsett-${item.icon}-${i}` ? c.acL : c.ts}/>
-                  </div>}
                   {!["eye","magnet","trash"].includes(activeKey) && <div
                     onPointerDown={(e) => {
                       e.stopPropagation(); e.preventDefault();
@@ -14073,7 +5109,6 @@ const TalariaV8bLive = () => {
           </div>
         </div>
         );
-        return typeof document !== "undefined" ? createPortal(ddPanel, document.body) : ddPanel;
       })()}
 
 
@@ -14098,7 +5133,7 @@ const TalariaV8bLive = () => {
         const VSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
           <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
-            style={{ position:"fixed", top:vwapBarPos.y, left:vwapBarPos.x, zIndex:11000,
+            style={{ position:"fixed", top:vwapBarPos.y, left:vwapBarPos.x, zIndex:9050,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                      boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                      display:"flex", flexDirection:"row", alignItems:"stretch",
@@ -14267,7 +5302,7 @@ const TalariaV8bLive = () => {
         const VPSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
           <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
-            style={{ position:"fixed", top:vpBarPos.y, left:vpBarPos.x, zIndex:11000,
+            style={{ position:"fixed", top:vpBarPos.y, left:vpBarPos.x, zIndex:9050,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                      boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                      display:"flex", flexDirection:"row", alignItems:"stretch",
@@ -14360,7 +5395,7 @@ const TalariaV8bLive = () => {
         const AVSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
           <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
-            style={{ position:"fixed", top:avBarPos.y, left:avBarPos.x, zIndex:11000,
+            style={{ position:"fixed", top:avBarPos.y, left:avBarPos.x, zIndex:9050,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                      boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                      display:"flex", flexDirection:"row", alignItems:"stretch",
@@ -14460,7 +5495,7 @@ const TalariaV8bLive = () => {
         };
         return (
           <div data-sdrop="1" onClick={e=>e.stopPropagation()}
-            style={{position:"fixed",left:px,top:py,width:W,height:H,zIndex:11000,
+            style={{position:"fixed",left:px,top:py,width:W,height:H,zIndex:9300,
                     background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
                     boxShadow:"0 8px 32px rgba(0,0,0,0.6)",
                     display:"flex",flexDirection:"column",fontFamily:F}}>
@@ -14535,11 +5570,11 @@ const TalariaV8bLive = () => {
       {(indOpen || closing.has("ind")) && (()=>{
         const indTabs=[["active","Active"],["pinned","Pinned"],["all","All"],["trend","Trend"],["momentum","Momentum"],["volatility","Volatility"],["volume","Volume"],["sessions","Sessions"],["others","Others"]];
         const indTabIdx=indTabs.findIndex(([id])=>id===indCat);
-        const closeInd=()=>{animClose(setIndOpen,"ind");setIndSearch("");};
+        const closeInd=()=>{animClose(setIndOpen,"ind");setIndSearch("");setIndSelected(null);};
         const tabAccent=(id)=> id==="active"?c.gn : id==="pinned"?c.gold : c.acL;
         const tabCount=(id)=> id==="active"?indActive.length : id==="pinned"?indPinned.length : id==="all"?indicatorData.length : indicatorData.filter(i=>i.cat===id).length;
         return (
-        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${indPos.y}px)`,left:`calc(50% + ${indPos.x}px)`,transform:"translate(-50%,-50%)",width:760,height:580,zIndex:9001,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("ind")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${indPos.y}px)`,left:`calc(50% + ${indPos.x}px)`,transform:"translate(-50%,-50%)",width:760,height:580,zIndex:9001,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("ind")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"ind",startX:e.clientX,startY:e.clientY,ox:indPos.x,oy:indPos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="indicator" s={17} cl={c.acL}/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8,color:c.tx}}>Indicators</span>
@@ -14621,7 +5656,7 @@ const TalariaV8bLive = () => {
                 </div>
               )}
             </div>
-            <div {...modalPointerActivate(closeInd)} onMouseEnter={()=>setSwHov("xInd")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xInd"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xInd"?c.rd:c.ts}/></div>
+            <div onMouseDown={(e)=>e.stopPropagation()} onClick={closeInd} onMouseEnter={()=>setSwHov("xInd")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xInd"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xInd"?c.rd:c.ts}/></div>
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",flexShrink:0}}>
@@ -14639,7 +5674,7 @@ const TalariaV8bLive = () => {
               const accent=tabAccent(id);
               const cnt=tabCount(id);
               return (
-                <button type="button" key={id} {...modalPointerActivate(() => setIndCat(id))}
+                <button key={id} onClick={()=>setIndCat(id)}
                   onMouseEnter={()=>setSwHov(`indTab-${id}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{flex:1,padding:"8px 2px",border:"none",fontFamily:F,cursor:"default",
                     color: isAct ? accent : (id==="active" ? c.gn : id==="pinned" ? c.gold : swHov===`indTab-${id}` ? c.tx : c.ts),
@@ -14668,25 +5703,26 @@ const TalariaV8bLive = () => {
             {indFiltered.map(ind=>{
               const isAct=indActive.includes(ind.id);
               const isPinned=indPinned.includes(ind.id);
+              const isSel=indSelected===ind.id;
               const isH=swHov===`ind-${ind.id}`;
               const isPinHov=swHov===`pin-${ind.id}`;
               const isAddHov=swHov===`add-${ind.id}`;
               const isAddDn=swHov===`add-${ind.id}_dn`;
               const indRowHov=isH||isPinHov||isAddHov||isAddDn;
-              const toggleIndActive=()=>setIndActive(prev=>isAct?prev.filter(x=>x!==ind.id):[...prev,ind.id]);
               return (
                 <div key={ind.id}
-                  onClick={(e)=>{if(e.target.closest('[data-indaction]'))return;toggleIndActive();}}
+                  onClick={(e)=>{if(!(e.target.closest('[data-indaction]')))setIndSelected(prev=>prev===ind.id?null:ind.id);}}
                   onMouseEnter={()=>setSwHov(`ind-${ind.id}`)} onMouseLeave={()=>setSwHov(null)}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"pointer",position:"relative",
-                    background:isAct?"rgba(38,67,247,0.07)":indRowHov?"rgba(255,255,255,0.022)":"transparent",
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"default",position:"relative",
+                    background:isAct?"rgba(38,67,247,0.07)":isSel?"rgba(255,255,255,0.045)":indRowHov?"rgba(255,255,255,0.022)":"transparent",
                     transition:"background 0.1s"}}>
                   {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                  {!isAct&&isSel&&<div style={{position:"absolute",left:0,top:"20%",bottom:"20%",width:2,background:`linear-gradient(180deg,transparent,rgba(140,160,255,0.4),transparent)`}}/>}
                   {/* abbr */}
-                  <span style={{minWidth:44,flexShrink:0,fontSize:14,fontWeight:800,color:isAct?c.acL:c.ts,fontFamily:F,letterSpacing:"0.02em"}}>{ind.abbr}</span>
+                  <span style={{minWidth:44,flexShrink:0,fontSize:14,fontWeight:800,color:isAct?c.acL:isSel?c.tx:c.ts,fontFamily:F,letterSpacing:"0.02em"}}>{ind.abbr}</span>
                   {/* name + desc */}
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,lineHeight:1.3,transition:"color 0.1s"}}>{ind.name}</div>
+                    <div style={{fontSize:12,fontWeight:isAct?700:isSel?600:500,color:isAct?c.acL:isSel?c.tx:isH?c.tx:c.ts,lineHeight:1.3,transition:"color 0.1s"}}>{ind.name}</div>
                     <div style={{fontSize:12,color:c.tm,lineHeight:1.3,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ind.desc}</div>
                   </div>
                   {/* pin */}
@@ -14696,17 +5732,17 @@ const TalariaV8bLive = () => {
                     style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,
                       transform:isPinHov&&!isPinned?"rotate(-25deg) scale(1.15)":"none",
                       transition:"transform 0.15s,opacity 0.15s",
-                      opacity:isPinned?1:isPinHov?1:indRowHov?0.6:0}}>
+                      opacity:isPinned?1:isPinHov?1:indRowHov||isSel?0.6:0}}>
                     <I n={isPinned?"pinFill":"pin"} s={16} cl={isPinned?c.gold:isPinHov?c.gold:c.ts}/>
                   </div>
                   {/* add/remove button */}
                   <div data-indaction="1"
-                    onClick={(e)=>{e.stopPropagation();toggleIndActive();}}
+                    onClick={(e)=>{e.stopPropagation();setIndActive(prev=>isAct?prev.filter(x=>x!==ind.id):[...prev,ind.id]);}}
                     onMouseEnter={()=>setSwHov(`add-${ind.id}`)} onMouseLeave={()=>setSwHov(`ind-${ind.id}`)}
                     onMouseDown={(e)=>{e.stopPropagation();setSwHov(`add-${ind.id}_dn`);}} onMouseUp={()=>setSwHov(`add-${ind.id}`)}
                     style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
                       cursor:"default",position:"relative",
-                      opacity:isAct?1:indRowHov?0.7:0,
+                      opacity:isAct?1:indRowHov||isSel?0.7:0,
                       background: isAct
                         ? isAddHov ? "rgba(255,80,104,0.10)" : "rgba(255,80,104,0.05)"
                         : isAddHov ? "rgba(74,106,255,0.10)" : "transparent",
@@ -14727,14 +5763,14 @@ const TalariaV8bLive = () => {
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:4,flexShrink:0}}>
-            <div {...modalPointerActivate(closeInd)} onMouseEnter={()=>setSwHov("indCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="indCancel"?c.tx:c.ts,background:swHov==="indCancel"?c.hv:"transparent",transition:"background 0.12s,color 0.12s"}}>Cancel</div>
-            <div {...modalPointerActivate(closeInd)} onMouseEnter={()=>setSwHov("indOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="indOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,WebkitFontSmoothing:"antialiased",boxShadow:swHov==="indOk"?`0 2px 12px rgba(38,67,247,0.45)`:`0 2px 6px rgba(38,67,247,0.22)`,transition:"background 0.12s,box-shadow 0.12s"}}>Apply</div>
+            <div onClick={closeInd} onMouseEnter={()=>setSwHov("indCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="indCancel"?c.tx:c.ts,background:swHov==="indCancel"?c.hv:"transparent",transition:"background 0.12s,color 0.12s"}}>Cancel</div>
+            <div onClick={closeInd} onMouseEnter={()=>setSwHov("indOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="indOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,WebkitFontSmoothing:"antialiased",boxShadow:swHov==="indOk"?`0 2px 12px rgba(38,67,247,0.45)`:`0 2px 6px rgba(38,67,247,0.22)`,transition:"background 0.12s,box-shadow 0.12s"}}>Apply</div>
           </div>
         </div>
         );
       })()}
       {(settingsOpen || closing.has("settings")) && (
-        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${settingsPos.y}px)`,left:`calc(50% + ${settingsPos.x}px)`,transform:"translate(-50%,-50%)",width:460,height:560,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("settings")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${settingsPos.y}px)`,left:`calc(50% + ${settingsPos.x}px)`,transform:"translate(-50%,-50%)",width:460,height:560,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("settings")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"settings",startX:e.clientX,startY:e.clientY,ox:settingsPos.x,oy:settingsPos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="settings" s={17} cl={c.acL}/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8}}>Settings</span>
@@ -14762,7 +5798,7 @@ const TalariaV8bLive = () => {
                     boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"4px 0"}}>
-                    {[["Save as",()=>setSettHdrSaveAs(true)],["Reset to default",()=>{setSettings({...DEFAULT_CHART_SETTINGS});setSettHdrTplDrop(false);}]].map(([lbl,action])=>{
+                    {[["Save as",()=>setSettHdrSaveAs(true)],["Reset to default",()=>{applyTemplate("Dark Classic");setSettHdrTplDrop(false);}]].map(([lbl,action])=>{
                       const isH=swHov===`settTpl-${lbl}`, isAct=lbl==="Save as"&&settHdrSaveAs;
                       return(
                         <div key={lbl} onClick={action}
@@ -14779,12 +5815,12 @@ const TalariaV8bLive = () => {
                       <div style={{padding:"4px 8px 4px 12px",display:"flex",alignItems:"center",gap:4,boxSizing:"border-box",width:"100%"}} onMouseDown={e=>e.stopPropagation()}>
                         <input autoFocus value={settHdrTplName} onChange={e=>setSettHdrTplName(e.target.value)}
                           onKeyDown={e=>{
-                            if(e.key==="Enter"&&settHdrTplName.trim()){const nm=settHdrTplName.trim();upsertCustomTemplate(nm, settings);setSettHdrSaveAs(false);setSettHdrTplName("");}
+                            if(e.key==="Enter"&&settHdrTplName.trim()){const nm=settHdrTplName.trim();const snap={n:nm,cols:[settings.bullBody,settings.bearBody,settings.background],settings:{bullBody:settings.bullBody,bullBorder:settings.bullBorder,bullWick:settings.bullWick,bearBody:settings.bearBody,bearBorder:settings.bearBorder,bearWick:settings.bearWick,background:settings.background,gridColor:settings.gridColor,unifiedBarColorVal:settings.unifiedBarColorVal}};setCustomTemplates(prev=>[...prev.filter(t=>t.n!==nm),snap]);setSettHdrSaveAs(false);setSettHdrTplName("");}
                             if(e.key==="Escape"){setSettHdrSaveAs(false);setSettHdrTplName("");}
                           }}
                           placeholder="Template name…"
                           style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box",cursor:"text"}}/>
-                        <div onClick={()=>{if(settHdrTplName.trim()){const nm=settHdrTplName.trim();upsertCustomTemplate(nm, settings);setSettHdrSaveAs(false);setSettHdrTplName("");}}}
+                        <div onClick={()=>{if(settHdrTplName.trim()){const nm=settHdrTplName.trim();const snap={n:nm,cols:[settings.bullBody,settings.bearBody,settings.background],settings:{bullBody:settings.bullBody,bullBorder:settings.bullBorder,bullWick:settings.bullWick,bearBody:settings.bearBody,bearBorder:settings.bearBorder,bearWick:settings.bearWick,background:settings.background,gridColor:settings.gridColor,unifiedBarColorVal:settings.unifiedBarColorVal}};setCustomTemplates(prev=>[...prev.filter(t=>t.n!==nm),snap]);setSettHdrSaveAs(false);setSettHdrTplName("");}}}
                           onMouseEnter={()=>setSwHov("settTpl-ok")} onMouseLeave={()=>setSwHov(null)}
                           style={{padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,position:"relative",
                             background:swHov==="settTpl-ok"?c.hv:"transparent",transition:"background 0.12s"}}>
@@ -14814,7 +5850,7 @@ const TalariaV8bLive = () => {
                 </div>
               )}
             </div>
-            <div {...modalPointerActivate(() => animClose(setSettingsOpen, "settings"))} onMouseEnter={()=>setSwHov("xSettings")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xSettings"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xSettings"?c.rd:c.ts}/></div>
+            <div onMouseDown={(e)=>e.stopPropagation()} onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("xSettings")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xSettings"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xSettings"?c.rd:c.ts}/></div>
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div className="tlr-scroll" style={{flex:1,overflowY:"auto",padding:"16px 18px"}}>
@@ -14992,6 +6028,41 @@ const TalariaV8bLive = () => {
                     <svg width={7} height={5} style={{flexShrink:0,marginLeft:4}}><path d="M0,0 L3.5,4.5 L7,0" stroke={c.ts} strokeWidth={1.3} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </div>
 
+                  {/* Save current as template */}
+                  <div style={{background:"rgba(140,160,255,0.04)",border:`1px solid rgba(140,160,255,0.15)`,padding:"10px 12px",marginBottom:4}}>
+                    <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:8}}>SAVE / LOAD TEMPLATE</div>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                      <input
+                        value={tplNameInput}
+                        onChange={e=>setTplNameInput(e.target.value)}
+                        onKeyDown={e=>e.key==="Enter"&&saveCustomTemplate()}
+                        placeholder="Template name…"
+                        style={{flex:1,background:c.hv,border:`1px solid ${swHov==="tplInput"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,color:c.tx,fontSize:13,fontFamily:F,padding:"6px 9px",outline:"none",transition:"border-color 0.14s"}}
+                        onFocus={()=>setSwHov("tplInput")} onBlur={()=>setSwHov(null)}
+                      />
+                      <div onMouseEnter={()=>setSwHov("tplSave")} onMouseLeave={()=>setSwHov(null)}
+                        onClick={saveCustomTemplate}
+                        style={{padding:"6px 12px",background:swHov==="tplSave"?`linear-gradient(135deg,${c.ac},${c.acL})`:`linear-gradient(135deg,rgba(38,67,247,0.35),rgba(74,106,255,0.35))`,border:`1px solid ${swHov==="tplSave"?"transparent":"rgba(74,106,255,0.45)"}`,cursor:"default",fontSize:11,fontWeight:700,color:"#fff",fontFamily:F,flexShrink:0,transition:"all 0.14s",whiteSpace:"nowrap",letterSpacing:"0.04em"}}>
+                        Save
+                      </div>
+                      <div onMouseEnter={()=>setSwHov("tplLoadBtn")} onMouseLeave={()=>setSwHov(null)}
+                        onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:200,rightAlign:true}));setSettDrop(settDrop==="loadTemplate"?null:"loadTemplate");}}
+                        style={{display:"flex",alignItems:"center",gap:4,padding:"6px 10px",background:swHov==="tplLoadBtn"||settDrop==="loadTemplate"?"rgba(140,160,255,0.10)":"rgba(140,160,255,0.04)",border:`1px solid ${swHov==="tplLoadBtn"||settDrop==="loadTemplate"?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,cursor:"default",fontSize:11,fontWeight:600,color:c.ts,fontFamily:F,flexShrink:0,transition:"all 0.14s",whiteSpace:"nowrap"}}>
+                        Load
+                        <svg width={8} height={5} viewBox="0 0 8 5"><path d="M0.5,0.5 L4,4 L7.5,0.5" stroke="currentColor" strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </div>
+                    </div>
+                    <div onMouseEnter={()=>setSwHov("tplReset")} onMouseLeave={()=>setSwHov(null)}
+                      onMouseDown={()=>setSwHov("tplReset_dn")} onMouseUp={()=>setSwHov("tplReset")}
+                      onClick={()=>applyTemplate("Dark Classic")}
+                      style={{display:"inline-flex",alignItems:"center",gap:5,padding:"4px 0",
+                        color:swHov==="tplReset_dn"?c.acL:swHov==="tplReset"?"rgba(140,160,255,0.85)":c.ts,
+                        cursor:"default",fontSize:10,fontFamily:F,
+                        transition:"color 0.12s"}}>
+                      <svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 2 3 8 9 8"/></svg>
+                      Reset to Default
+                    </div>
+                  </div>
                 </div>
               );
             })()}
@@ -14999,8 +6070,8 @@ const TalariaV8bLive = () => {
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:6,flexShrink:0}}>
-            <button type="button" {...modalPointerActivate(() => animClose(setSettingsOpen, "settings"))} onMouseEnter={()=>setSwHov("settCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="settCancel"?c.tx:c.ts,background:swHov==="settCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="settCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button type="button" {...modalPointerActivate(() => animClose(setSettingsOpen, "settings"))} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="settOk"?`linear-gradient(135deg,${c.acL},${c.ac})`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="settOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("settCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="settCancel"?c.tx:c.ts,background:swHov==="settCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="settCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
+            <button onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="settOk"?`linear-gradient(135deg,${c.acL},${c.ac})`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="settOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
       )}
@@ -15010,12 +6081,12 @@ const TalariaV8bLive = () => {
         const pwInputSx = { width:"100%", background:c.hv, border:"1px solid rgba(140,160,255,0.22)", color:c.tx, fontSize:13, fontFamily:F, padding:"6px 9px", outline:"none", boxSizing:"border-box", transition:"border-color 0.14s" };
         const langLabels = { english:"English", arabic:"العربية" };
         return (
-        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${profilePos.y}px)`,left:`calc(50% + ${profilePos.x}px)`,transform:"translate(-50%,-50%)",width:400,height:540,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("profile")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${profilePos.y}px)`,left:`calc(50% + ${profilePos.x}px)`,transform:"translate(-50%,-50%)",width:400,height:540,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("profile")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
           {/* Header */}
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"profile",startX:e.clientX,startY:e.clientY,ox:profilePos.x,oy:profilePos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="user" s={17} cl={c.acL}/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8,color:c.tx}}>Profile</span>
-            <div {...modalPointerActivate(() => animClose(setProfileOpen, "profile"))} onMouseEnter={()=>setSwHov("xProfile")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xProfile"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xProfile"?c.rd:c.ts}/></div>
+            <div onMouseDown={(e)=>e.stopPropagation()} onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("xProfile")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xProfile"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xProfile"?c.rd:c.ts}/></div>
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           {/* Tab bar with sliding indicator */}
@@ -15023,7 +6094,7 @@ const TalariaV8bLive = () => {
             {profTabs.map(([id,label])=>{
               const isA = profileTab===id;
               return (
-                <button type="button" key={id} {...modalPointerActivate(() => setProfileTab(id))}
+                <button key={id} onClick={()=>setProfileTab(id)}
                   onMouseEnter={()=>setSwHov(`profTab-${id}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{flex:1,padding:"8px 0",border:"none",fontFamily:F,cursor:"default",
                     color:isA?c.acL:swHov===`profTab-${id}`?c.tx:c.ts,
@@ -15075,7 +6146,7 @@ const TalariaV8bLive = () => {
                       <input autoFocus value={profileName} onChange={(e)=>setProfileName(e.target.value.slice(0,40))}
                         onKeyDown={(e)=>{if(e.key==="Enter"||e.key==="Escape"){setProfileNameEdit(false);setSwHov(null);}}}
                         style={{...pwInputSx,flex:1}}/>
-                      <button type="button"
+                      <button
                         onClick={()=>{setProfileNameEdit(false);setSwHov(null);}}
                         onMouseEnter={()=>setSwHov("pn-save")} onMouseLeave={()=>setSwHov(null)}
                         onMouseDown={()=>setSwHov("pn-save_dn")} onMouseUp={()=>setSwHov("pn-save")}
@@ -15090,7 +6161,7 @@ const TalariaV8bLive = () => {
                   ) : (
                     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
                       <span style={{fontSize:13,fontWeight:700,color:c.tx}}>{profileName}</span>
-                      <button type="button"
+                      <button
                         onClick={()=>setProfileNameEdit(true)}
                         onMouseEnter={()=>setSwHov("pn-edit")} onMouseLeave={()=>setSwHov(null)}
                         onMouseDown={()=>setSwHov("pn-edit_dn")} onMouseUp={()=>setSwHov("pn-edit")}
@@ -15211,7 +6282,7 @@ const TalariaV8bLive = () => {
                   <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 12px",borderBottom:i<arr.length-1?`1px solid ${c.br}`:"none"}}>
                     <span style={{fontSize:13,color:c.ts}}>{d}</span>
                     <span style={{fontSize:13,fontWeight:700,color:c.gn}}>{a}</span>
-                    <button type="button" onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
+                    <button onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
                       style={{height:20,padding:"0 9px",cursor:"default",fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.04em",
                         color:isH?"#fff":c.acL,
                         background:isH?`linear-gradient(135deg,${c.ac},${c.acL})`:"transparent",
@@ -15227,7 +6298,7 @@ const TalariaV8bLive = () => {
           {/* Footer */}
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:4,flexShrink:0}}>
-            {profileTab==="account" && <button type="button"
+            {profileTab==="account" && <button
               onMouseEnter={()=>setSwHov("prof-logout")} onMouseLeave={()=>setSwHov(null)}
               onMouseDown={()=>setSwHov("prof-logout_dn")} onMouseUp={()=>setSwHov("prof-logout")}
               style={{marginRight:"auto",height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,
@@ -15238,8 +6309,8 @@ const TalariaV8bLive = () => {
                 transition:"background 0.12s,border-color 0.12s,transform 0.08s"}}>
               Log Out
             </button>}
-            <button type="button" {...modalPointerActivate(() => animClose(setProfileOpen, "profile"))} onMouseEnter={()=>setSwHov("profCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="profCancel"?c.tx:c.ts,background:swHov==="profCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="profCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button type="button" {...modalPointerActivate(() => animClose(setProfileOpen, "profile"))} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="profCancel"?c.tx:c.ts,background:swHov==="profCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="profCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
+            <button onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
         );
@@ -15248,12 +6319,12 @@ const TalariaV8bLive = () => {
         const faqTabs = [["faq","FAQ"],["hotkeys","Hot Keys"],["education","Education"],["about","About"]];
         const faqTabIdx = faqTabs.findIndex(([id])=>id===faqCat);
         return (
-        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${faqPos.y}px)`,left:`calc(50% + ${faqPos.x}px)`,transform:"translate(-50%,-50%)",width:440,height:540,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("faq")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${faqPos.y}px)`,left:`calc(50% + ${faqPos.x}px)`,transform:"translate(-50%,-50%)",width:440,height:540,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("faq")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
           {/* Header */}
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"faq",startX:e.clientX,startY:e.clientY,ox:faqPos.x,oy:faqPos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="help" s={17} cl="#F0A030"/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8,color:c.tx}}>Help & Support</span>
-            <div {...modalPointerActivate(() => animClose(setFaqOpen, "faq"))} onMouseEnter={()=>setSwHov("xFaq")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xFaq"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xFaq"?c.rd:c.ts}/></div>
+            <div onMouseDown={(e)=>e.stopPropagation()} onClick={()=>animClose(setFaqOpen,"faq")} onMouseEnter={()=>setSwHov("xFaq")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xFaq"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xFaq"?c.rd:c.ts}/></div>
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           {/* Sliding tab bar */}
@@ -15261,7 +6332,7 @@ const TalariaV8bLive = () => {
             {faqTabs.map(([id,label])=>{
               const isA=faqCat===id;
               return (
-              <button type="button" key={id} {...modalPointerActivate(() => { setFaqCat(id); setFaqExpand(null); })}
+              <button key={id} onClick={()=>{setFaqCat(id);setFaqExpand(null);}}
                 onMouseEnter={()=>setSwHov(`faqTab-${id}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{flex:1,padding:"8px 0",border:"none",fontFamily:F,cursor:"default",
                   color:isA?c.acL:swHov===`faqTab-${id}`?c.tx:c.ts,
@@ -15312,7 +6383,7 @@ const TalariaV8bLive = () => {
                     support@talaria.io
                   </a>
                 </div>
-                <button type="button"
+                <button
                   onMouseEnter={()=>setSwHov("faq-more")} onMouseLeave={()=>setSwHov(null)}
                   onMouseDown={()=>setSwHov("faq-more_dn")} onMouseUp={()=>setSwHov("faq-more")}
                   style={{height:28,padding:"0 4px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",gap:6,cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,background:"none",border:"none",
@@ -15389,7 +6460,7 @@ const TalariaV8bLive = () => {
                   </div>
                 ))}
               </div>
-              <button type="button"
+              <button
                 onMouseEnter={()=>setSwHov("edu-all")} onMouseLeave={()=>setSwHov(null)}
                 onMouseDown={()=>setSwHov("edu-all_dn")} onMouseUp={()=>setSwHov("edu-all")}
                 style={{width:"100%",height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",gap:6,cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,
@@ -15453,7 +6524,7 @@ const TalariaV8bLive = () => {
               </div>
               <div style={{display:"flex",gap:4}}>
                 {[["about-docs","Documentation"],["about-support","Contact Support"]].map(([hk,label])=>(
-                  <button type="button" key={hk}
+                  <button key={hk}
                     onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
                     onMouseDown={()=>setSwHov(hk+"_dn")} onMouseUp={()=>setSwHov(hk)}
                     style={{flex:1,height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,
@@ -15470,20 +6541,20 @@ const TalariaV8bLive = () => {
           {/* Footer */}
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",gap:4,flexShrink:0}}>
-            <button type="button" {...modalPointerActivate(() => animClose(setFaqOpen, "faq"))} onMouseEnter={()=>setSwHov("faqClose")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="faqClose"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="faqClose"?`0 0 10px ${c.acG}`:"none"}}>Close</button>
+            <button onClick={()=>animClose(setFaqOpen,"faq")} onMouseEnter={()=>setSwHov("faqClose")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="faqClose"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="faqClose"?`0 0 10px ${c.acG}`:"none"}}>Close</button>
           </div>
         </div>
         );
       })()}
       {(screenshotOpen || closing.has("screenshot")) && (
-        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${screenshotPos.y}px)`,left:`calc(50% + ${screenshotPos.x}px)`,transform:"translate(-50%,-50%)",width:Math.min(1180,typeof window!=="undefined"?window.innerWidth-32:1180),maxWidth:"calc(100vw - 32px)",zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("screenshot")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${screenshotPos.y}px)`,left:`calc(50% + ${screenshotPos.x}px)`,transform:"translate(-50%,-50%)",width:920,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("screenshot")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"screenshot",startX:e.clientX,startY:e.clientY,ox:screenshotPos.x,oy:screenshotPos.y});}}
             style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="screenshot" s={17} cl={c.acL}/>
             <span style={{fontSize:14,fontWeight:700,marginLeft:8,color:c.tx}}>Screenshot</span>
             <span style={{fontSize:13,color:c.tm,fontVariantNumeric:"tabular-nums",marginLeft:8,flex:1}}>{canvasDims.w} × {canvasDims.h} px</span>
-            <div {...modalPointerActivate(() => animClose(setScreenshotOpen, "screenshot"))}
+            <div onMouseDown={(e)=>e.stopPropagation()} onClick={()=>animClose(setScreenshotOpen,"screenshot")}
               onMouseEnter={()=>setSwHov("xScreenshot")} onMouseLeave={()=>setSwHov(null)}
               style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xScreenshot"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}>
               <I n="x" s={18} cl={swHov==="xScreenshot"?c.rd:c.ts}/>
@@ -15491,30 +6562,58 @@ const TalariaV8bLive = () => {
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
 
-          {/* chart preview — real bitmap from screenshot-manager (same pipeline as Copy/Download) */}
+          {/* chart preview */}
           <div style={{padding:"14px 16px 0",flexShrink:0}}>
-            {(() => {
-              const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
-              const vh = typeof window !== "undefined" ? window.innerHeight : 800;
-              const modalInner = Math.min(1180, vw - 32) - 32;
-              const W = Math.max(560, Math.min(modalInner, 1140));
-              const maxPrev = Math.min(860, Math.round(vh * 0.78));
-              const aspect = canvasDims.w > 0 ? canvasDims.h / canvasDims.w : 0.42;
-              const boxH = Math.min(maxPrev, Math.max(340, Math.round(W * aspect)));
+            {(()=>{
+              const candles=[[48,56,44,54,0],[54,61,52,58,0],[58,60,53,55,1],[55,59,51,57,0],[57,65,55,63,0],[63,67,58,60,1],[60,64,57,62,0],[62,69,61,68,0],[68,72,65,70,0],[70,68,63,65,1],[65,70,63,68,0],[68,74,67,72,0],[72,76,70,74,0],[74,72,68,69,1],[69,73,67,71,0],[71,76,70,75,0],[75,79,73,77,0],[77,75,71,72,1],[72,77,71,76,0],[76,82,75,80,0],[80,84,78,82,0],[82,86,80,84,0],[84,82,79,80,1],[80,83,78,82,0],[82,87,81,86,0],[86,90,84,88,0],[88,86,83,84,1],[84,88,83,87,0],[87,92,86,91,0],[91,94,89,92,0],[92,90,87,88,1],[88,92,87,91,0],[91,95,90,94,0],[94,97,92,95,0],[95,93,90,91,1],[91,95,90,94,0],[94,98,93,97,0],[97,100,95,98,0],[98,96,93,94,1],[94,98,93,97,0],[97,102,96,100,0],[100,103,98,101,0]];
+              const allClose=candles.map(d=>d[3]);
+              const allH=candles.map(d=>d[1]), allL=candles.map(d=>d[2]);
+              const minP=Math.min(...allL)-3, maxP=Math.max(...allH)+3, range=maxP-minP;
+              const W=888, H=Math.round(888*(canvasDims.h/canvasDims.w)), padR=44, padB=22, padT=10;
+              const chartW=W-padR, chartH=H-padB-padT;
+              const py=(p)=>padT+chartH*(1-(p-minP)/range);
+              const step=chartW/candles.length;
+              const candleW=Math.max(Math.floor(step)-3,4);
+              const ma=allClose.map((_,i)=>i<8?null:allClose.slice(i-8,i+1).reduce((a,b)=>a+b,0)/9);
+              const gridCount=6;
+              const gridPrices=Array.from({length:gridCount},(_,i)=>Math.round(minP+(range/(gridCount-1))*i));
+              const times=["15:30","16:00","16:30","17:00","17:30","18:00","18:30"];
+              const lastClose=allClose[allClose.length-1];
               return (
-                <div style={{ background: c.bg, border: `1px solid ${c.brH}`, position: "relative", overflow: "hidden", borderRadius: 4, minHeight: boxH }}>
-                  {!screenshotPreviewUrl ? (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: boxH, color: c.tm, fontSize: 13, fontFamily: F }}>
-                      Loading preview…
-                    </div>
-                  ) : (
-                    <img src={screenshotPreviewUrl} alt="" draggable={false} style={{ display: "block", width: W, height: "auto", maxHeight: maxPrev, objectFit: "contain", verticalAlign: "top", margin: "0 auto" }} />
-                  )}
-                  <div style={{ position: "absolute", top: 8, left: 10, display: "flex", alignItems: "center", gap: 8, pointerEvents: "none", textShadow: "0 1px 4px rgba(0,0,0,0.85)" }}>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", fontFamily: F }}>{symbol}</span>
-                    <span style={{ fontSize: 10, color: "#e8eaed", background: "rgba(0,0,0,0.5)", padding: "2px 7px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.14)", fontFamily: F }}>
-                      {tf} · {chartType}
-                    </span>
+                <div style={{background:c.bg,border:`1px solid ${c.brH}`,position:"relative",overflow:"hidden",height:H}}>
+                  <svg width={W} height={H} style={{display:"block",position:"absolute",inset:0}}>
+                    {gridPrices.map(p=>(
+                      <g key={p}>
+                        <line x1={0} y1={py(p)} x2={chartW} y2={py(p)} stroke="rgba(140,160,255,0.06)" strokeWidth={1}/>
+                        <text x={chartW+5} y={py(p)+3.5} fontSize={8} fill={c.tm} fontFamily={F} fontVariantNumeric="tabular-nums">{p.toFixed(0)}</text>
+                      </g>
+                    ))}
+                    {times.map((t,i)=>(
+                      <text key={t} x={Math.round(i*(chartW/6))+2} y={H-6} fontSize={8} fill={c.tm} fontFamily={F} fontVariantNumeric="tabular-nums">{t}</text>
+                    ))}
+                    <polyline
+                      points={ma.map((v,i)=>v==null?null:`${Math.round(step*i+step/2)},${py(v)}`).filter(Boolean).join(" ")}
+                      fill="none" stroke={c.acL} strokeWidth={1.5} opacity={0.55}/>
+                    {candles.map(([o,h,l,cl,bear],i)=>{
+                      const x=Math.round(step*i+(step-candleW)/2);
+                      const col=bear?c.rd:c.gn;
+                      const bodyY=py(Math.max(o,cl)), bodyH=Math.max(Math.abs(py(o)-py(cl)),2);
+                      return (
+                        <g key={i}>
+                          <line x1={x+candleW/2} y1={py(h)} x2={x+candleW/2} y2={py(l)} stroke={col} strokeWidth={1} opacity={0.7}/>
+                          <rect x={x} y={bodyY} width={candleW} height={bodyH} fill={col} opacity={0.9}/>
+                        </g>
+                      );
+                    })}
+                    <line x1={0} y1={py(lastClose)} x2={chartW} y2={py(lastClose)} stroke={c.acL} strokeWidth={1} strokeDasharray="5,3" opacity={0.55}/>
+                    <rect x={chartW} y={py(lastClose)-9} width={padR} height={18} fill={c.ac} opacity={0.9}/>
+                    <text x={chartW+5} y={py(lastClose)+4} fontSize={8.5} fill="#fff" fontFamily={F} fontWeight="700" fontVariantNumeric="tabular-nums">{lastClose}.00</text>
+                  </svg>
+                  <div style={{position:"absolute",top:8,left:10,display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:15,fontWeight:800,color:c.tx,letterSpacing:"-0.02em"}}>{symbol}</span>
+                    <span style={{fontSize:10,color:c.tm,background:"rgba(140,160,255,0.08)",padding:"2px 6px",border:`1px solid ${c.br}`}}>1m · Candles</span>
+                    <span style={{fontSize:10,color:c.gn,fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{lastClose}.00</span>
+                    <span style={{fontSize:12,color:c.gn,fontWeight:600}}>+2.15%</span>
                   </div>
                 </div>
               );
@@ -15525,10 +6624,21 @@ const TalariaV8bLive = () => {
           <div style={{padding:"10px 16px 12px",borderTop:`1px solid ${c.br}`,marginTop:14,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
             {/* Link to Trade — left side */}
             {(()=>{
+              const scTrades=[
+                {id:"#1001",sym:"EUR/JPY",side:"LONG"},
+                {id:"#1002",sym:"GBP/USD",side:"SHORT"},
+                {id:"#1003",sym:"USD/JPY",side:"LONG"},
+                {id:"#1004",sym:"EUR/USD",side:"SHORT"},
+                {id:"#1005",sym:"AUD/USD",side:"LONG"},
+                {id:"#1006",sym:"USD/CAD",side:"SHORT"},
+                {id:"#1007",sym:"NZD/USD",side:"LONG"},
+                {id:"#1008",sym:"EUR/GBP",side:"SHORT"},
+                {id:"#1009",sym:"USD/CHF",side:"LONG"},
+              ];
               const q=scLinkSearch.toLowerCase().trim();
-              const filtered=scJournalRows.filter(t=>t.id.toLowerCase().includes(q)||t.sym.toLowerCase().includes(q)||t.side.toLowerCase().includes(q));
+              const filtered=scTrades.filter(t=>t.id.toLowerCase().includes(q)||t.sym.toLowerCase().includes(q)||t.side.toLowerCase().includes(q));
               const isLH=swHov==="sc-link";
-              const isLinked=scLinkedSessionTradeId!=null;
+              const isLinked=!!scLinkedTrade;
               return (
                 <div style={{position:"relative"}}>
                   {scLinkOpen && (
@@ -15536,9 +6646,6 @@ const TalariaV8bLive = () => {
                       background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,boxShadow:"0 4px 16px rgba(0,0,0,0.5)",
                       width:260,fontFamily:F}}>
                       <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-                      {scJournalListErr && (
-                        <div style={{padding:"6px 10px",fontSize:11,color:c.rd,borderBottom:`1px solid ${c.br}`}}>{scJournalListErr}</div>
-                      )}
                       {/* search */}
                       <div style={{padding:"7px 10px 5px",borderBottom:`1px solid ${c.br}`}}>
                         <div style={{display:"flex",alignItems:"center",gap:5,background:"rgba(255,255,255,0.04)",border:`1px solid ${c.br}`,padding:"3px 8px"}}>
@@ -15556,22 +6663,14 @@ const TalariaV8bLive = () => {
                       </div>
                       {/* list */}
                       <div className="tlr-scroll" style={{maxHeight:180,overflowY:"auto",padding:"3px 0"}}>
-                        {scJournalLoading && scJournalRows.length === 0 ? (
-                          <div style={{padding:"8px 12px",fontSize:12,color:c.tm,textAlign:"center"}}>Loading…</div>
-                        ) : filtered.length===0 ? (
-                          <div style={{padding:"8px 12px",fontSize:12,color:c.tm,textAlign:"center"}}>
-                            {scJournalListErr ? "" : scJournalRows.length === 0 ? "No trades in session yet" : "No trades found"}
-                          </div>
+                        {filtered.length===0 ? (
+                          <div style={{padding:"8px 12px",fontSize:12,color:c.tm,textAlign:"center"}}>No trades found</div>
                         ) : filtered.map(t=>{
-                          const rowKey=`${t.sessionTradeId}`;
-                          const isAct=scLinkedSessionTradeId===t.sessionTradeId;
-                          const lk=t.linkKind??"closed";
-                          const preLinkAllowed=lk==="pending"||lk==="open";
-                          const postLinkAllowed=lk==="closed";
-                          const isH=swHov===`sc-trade-${rowKey}`||swHov===`sc-ph-${rowKey}-Pre`||swHov===`sc-ph-${rowKey}-Post`;
+                          const isAct=scLinkedTrade===t.id;
+                          const isH=swHov===`sc-trade-${t.id}`||swHov===`sc-ph-${t.id}-Pre`||swHov===`sc-ph-${t.id}-Post`;
                           return (
-                            <div key={rowKey}
-                              onMouseEnter={()=>setSwHov(`sc-trade-${rowKey}`)} onMouseLeave={()=>setSwHov(null)}
+                            <div key={t.id}
+                              onMouseEnter={()=>setSwHov(`sc-trade-${t.id}`)} onMouseLeave={()=>setSwHov(null)}
                               style={{display:"flex",alignItems:"center",padding:"5px 10px",cursor:"default",
                                 position:"relative",gap:6,minHeight:28,
                                 background:isAct?c.acD:isH?c.hv2:"transparent",
@@ -15581,135 +6680,26 @@ const TalariaV8bLive = () => {
                                 boxShadow:`0 0 6px ${c.acG}`}}/>}
                               <span style={{fontSize:12,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,minWidth:42,fontVariantNumeric:"tabular-nums"}}>{t.id}</span>
                               <span style={{fontSize:12,color:isAct?c.tx:isH?c.tx:c.ts,flex:1}}>{t.sym}</span>
-                              {t.linkKind === "pending" && (
-                                <span style={{fontSize:8,fontWeight:800,color:c.tm,letterSpacing:"0.08em",flexShrink:0}}>PENDING</span>
-                              )}
-                              {t.linkKind === "open" && (
-                                <span style={{fontSize:8,fontWeight:800,color:c.tm,letterSpacing:"0.08em",flexShrink:0}}>OPEN</span>
-                              )}
                               <span style={{fontSize:11,fontWeight:600,color:t.side==="LONG"?c.gn:c.rd,marginRight:4}}>{t.side}</span>
-                              {/* Pre / Post — upload + PUT journal entry */}
+                              {/* Pre / Post inline buttons — visible on hover or when this trade is selected */}
                               {(isH||isAct) && (
                                 <div style={{display:"flex",gap:1,flexShrink:0}}>
                                   {["Pre","Post"].map(ph=>{
-                                    const allowed=ph==="Pre"?preLinkAllowed:postLinkAllowed;
                                     const isPh=isAct&&scLinkPhase===ph;
-                                    const isPhH=swHov===`sc-ph-${rowKey}-${ph}`;
+                                    const isPhH=swHov===`sc-ph-${t.id}-${ph}`;
                                     return (
                                       <div key={ph}
-                                        title={
-                                          allowed
-                                            ? ""
-                                            : ph === "Pre"
-                                              ? "Pre-trade screenshots only while the order is pending or open."
-                                              : "Post-trade screenshots only after the trade is closed."
-                                        }
-                                        onClick={async (e)=>{
-                                          e.stopPropagation();
-                                          if (!allowed) return;
-                                          if (scLinkSaving) return;
-                                          if (!screenshotPreviewUrl || String(screenshotPreviewUrl).startsWith("data:image/svg")) {
-                                            try {
-                                              window.alert("Screenshot must be a captured image. Reload the page if the preview shows an export-blocked message.");
-                                            } catch (_) {}
-                                            return;
-                                          }
-                                          setScLinkSaving(true);
-                                          try {
-                                            let journalId = t.journalId;
-                                            if (journalId == null) {
-                                              journalId = await createJournalEntryFromSessionTrade(t.sessionTradeId);
-                                              setScJournalRows((prev) =>
-                                                prev.map((r) =>
-                                                  r.sessionTradeId === t.sessionTradeId ? { ...r, journalId } : r,
-                                                ),
-                                              );
-                                            }
-                                            const up = await fetchJournalEndpoint("/upload-screenshot", {
-                                              method: "POST",
-                                              headers: { "Content-Type": "application/json" },
-                                              body: JSON.stringify({ data_url: screenshotPreviewUrl }),
-                                            });
-                                            const upBody = await up.json().catch(() => ({}));
-                                            if (!up.ok) {
-                                              throw new Error(upBody.error || `Upload failed (${up.status})`);
-                                            }
-                                            const rawImgUrl = upBody.url || upBody.path;
-                                            if (!rawImgUrl) throw new Error("No image URL returned");
-                                            const imageUrl = await resolveJournalScreenshotUrlForStorage(rawImgUrl);
-                                            const field = ph === "Pre" ? "entry_screenshot" : "exit_screenshot";
-                                            const put = await fetchJournalEndpoint(`/${journalId}`, {
-                                              method: "PUT",
-                                              headers: { "Content-Type": "application/json" },
-                                              body: JSON.stringify({ [field]: imageUrl }),
-                                            });
-                                            const putBody = await put.json().catch(() => ({}));
-                                            if (!put.ok) {
-                                              throw new Error(putBody.error || `Save failed (${put.status})`);
-                                            }
-                                            patchOrderManagerJournalScreenshot(t.sessionTradeId, ph, imageUrl);
-                                            {
-                                              const rowId = `#${t.sessionTradeId}`;
-                                              const sk = ph === "Pre" ? "pre" : "post";
-                                              setTradeScreenshots((prev) => {
-                                                const cur = { ...(prev[rowId] || {}) };
-                                                const arr = clampScreenshotSlot([...(cur[sk] || [])]);
-                                                if (
-                                                  arr.length >= MAX_SCREENSHOTS_PRE_POST &&
-                                                  !arr.includes(imageUrl)
-                                                ) {
-                                                  try {
-                                                    window.alert(
-                                                      `Maximum ${MAX_SCREENSHOTS_PRE_POST} screenshots per ${sk === "pre" ? "Pre-trade" : "Post-trade"} slot. Remove one in the trade card first.`,
-                                                    );
-                                                  } catch (_) {}
-                                                  return prev;
-                                                }
-                                                const next = [...arr];
-                                                if (!next.includes(imageUrl)) next.push(imageUrl);
-                                                return {
-                                                  ...prev,
-                                                  [rowId]: {
-                                                    ...cur,
-                                                    [sk]: clampScreenshotSlot(next),
-                                                  },
-                                                };
-                                              });
-                                            }
-                                            setOmTradeRev((n) => n + 1);
-                                            setScLinkedSessionTradeId(t.sessionTradeId);
-                                            setScLinkedJournalId(journalId);
-                                            setScLinkPhase(ph);
-                                            setScLinkOpen(false);
-                                            setScLinkSearch("");
-                                          } catch (err) {
-                                            try {
-                                              window.alert(String(err?.message || err));
-                                            } catch (_) {}
-                                          } finally {
-                                            setScLinkSaving(false);
-                                          }
-                                        }}
-                                        onMouseEnter={e=>{
-                                          if (!allowed) return;
-                                          e.stopPropagation();
-                                          setSwHov(`sc-ph-${rowKey}-${ph}`);
-                                        }}
-                                        onMouseLeave={e=>{
-                                          if (!allowed) return;
-                                          e.stopPropagation();
-                                          setSwHov(`sc-trade-${rowKey}`);
-                                        }}
-                                        style={{fontSize:10,fontWeight:700,padding:"3px 7px",
-                                          cursor:!allowed?"not-allowed":scLinkSaving?"wait":"default",
+                                        onClick={e=>{e.stopPropagation();setScLinkedTrade(t.id);setScLinkPhase(ph);setScLinkOpen(false);setScLinkSearch("");}}
+                                        onMouseEnter={e=>{e.stopPropagation();setSwHov(`sc-ph-${t.id}-${ph}`);}}
+                                        onMouseLeave={e=>{e.stopPropagation();setSwHov(`sc-trade-${t.id}`);}}
+                                        style={{fontSize:10,fontWeight:700,padding:"3px 7px",cursor:"default",
                                           position:"relative",
-                                          opacity:!allowed?0.38:scLinkSaving?0.45:1,
-                                          color:!allowed?c.tm:isPh?c.acL:isPhH?c.tx:c.ts,
-                                          background:isPh?"rgba(74,106,255,0.08)":isPhH&&allowed?c.hv:"transparent",
-                                          transition:"background 0.1s,color 0.1s,opacity 0.1s"}}>
+                                          color:isPh?c.acL:isPhH?c.tx:c.ts,
+                                          background:isPh?"rgba(74,106,255,0.08)":isPhH?c.hv:"transparent",
+                                          transition:"background 0.1s,color 0.1s"}}>
                                         {ph}
-                                        {allowed&&isPh&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
-                                        {allowed&&!isPh&&isPhH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
+                                        {isPh&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
+                                        {!isPh&&isPhH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
                                       </div>
                                     );
                                   })}
@@ -15731,10 +6721,10 @@ const TalariaV8bLive = () => {
                       <path d="M440 726 296 582l56-56 88 88 168-168 56 56-224 224ZM200 976q-33 0-56.5-23.5T120 896V296q0-33 23.5-56.5T200 216h360l200 200v480q0 33-23.5 56.5T680 976H200Zm0-80h480V456H520V296H200v600Zm0 0V296v600Z"/>
                     </svg>
                     <span style={{fontSize:13,fontWeight:600,color:isLinked?c.acL:isLH?c.tx:c.ts,whiteSpace:"nowrap"}}>
-                      {isLinked ? `#${scLinkedSessionTradeId}${scLinkPhase?` · ${scLinkPhase}`:""}` : "Link to Trade"}
+                      {isLinked ? `${scLinkedTrade}${scLinkPhase?` · ${scLinkPhase}`:""}` : "Link to Trade"}
                     </span>
                     {isLinked && (
-                      <div onClick={e=>{e.stopPropagation();setScLinkedSessionTradeId(null);setScLinkedJournalId(null);setScLinkPhase(null);}}
+                      <div onClick={e=>{e.stopPropagation();setScLinkedTrade(null);setScLinkPhase(null);}}
                         style={{marginLeft:2,color:c.tm,fontSize:14,lineHeight:1,cursor:"default"}}
                         onMouseEnter={e=>{e.currentTarget.style.color=c.rd;}} onMouseLeave={e=>{e.currentTarget.style.color=c.tm;}}>×</div>
                     )}
@@ -15745,18 +6735,15 @@ const TalariaV8bLive = () => {
             {/* right buttons */}
             <div style={{display:"flex",gap:6}}>
             {[
-              {label:"Copy Link", hk:"sc-cancel", act:()=>{ void copyScreenshotPageLink(); }, primary:false},
-              {label:"Copy",     hk:"sc-copy",   act:()=>runV9Screenshot("copy"), primary:false},
-              {label:"Download", hk:"sc-dl",     act:()=>runV9Screenshot("download"), primary:true},
+              {label:"Copy Link", hk:"sc-cancel", act:()=>{}, primary:false},
+              {label:"Copy",     hk:"sc-copy",   act:()=>{}, primary:false},
+              {label:"Download", hk:"sc-dl",     act:()=>{}, primary:true},
             ].map(({label,hk,act,primary})=>{
               const isH=swHov===hk, isDn=swHov===hk+"_dn";
               return (
-                <button type="button" key={hk}
-                  onPointerDown={(e)=>{e.stopPropagation();act();}}
-                  onMouseDown={(e)=>{e.stopPropagation();setSwHov(hk+"_dn");}}
-                  onMouseUp={()=>setSwHov(hk)}
-                  onClick={(e)=>e.stopPropagation()}
+                <button key={hk} onClick={act}
                   onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
+                  onMouseDown={()=>setSwHov(hk+"_dn")} onMouseUp={()=>setSwHov(hk)}
                   style={{height:28,padding:"0 18px",display:"flex",alignItems:"center",justifyContent:"center",
                     boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:primary?700:600,
                     color:primary?"#fff":isH?c.tx:c.ts,
@@ -15778,7 +6765,7 @@ const TalariaV8bLive = () => {
 
 
       {(logoMenu||closing.has("logoMenu")) && (
-        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:10,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:168,fontFamily:F,animation:closing.has("logoMenu")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:10,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:168,fontFamily:F,animation:closing.has("logoMenu")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div style={{padding:"4px 0"}}>
             <div style={{padding:"5px 14px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>MENU</div>
@@ -15807,29 +6794,7 @@ const TalariaV8bLive = () => {
                 const isH = swHov==="lm-dash";
                 const isP = swHov==="lm-dash_dn";
                 return (
-                  <div onClick={()=>{
-                    setLogoMenu(false);
-                    // Mirrors legacy "Go to dashboard" button (index.html ~59239):
-                    // resolve active trading session id from chart, then storage,
-                    // then URL query — and navigate to /dashboard/sessions/...
-                    let sid = null;
-                    try {
-                      const c = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || window.chart || window.mainChart;
-                      if (c && typeof c.getActiveTradingSessionId === 'function') sid = c.getActiveTradingSessionId();
-                    } catch(_){}
-                    if (!sid) {
-                      try { sid = window.userStorage?.getItem?.('active_trading_session_id') || localStorage.getItem('active_trading_session_id'); } catch(_){}
-                    }
-                    if (!sid) {
-                      try {
-                        const p = new URLSearchParams(window.location.search);
-                        sid = p.get('sessionId') || p.get('session_id') || null;
-                      } catch(_){}
-                    }
-                    window.location.href = sid
-                      ? '/dashboard/sessions/analytics/?id=' + encodeURIComponent(String(sid))
-                      : '/dashboard/sessions/';
-                  }}
+                  <div onClick={()=>setLogoMenu(false)}
                     onMouseEnter={()=>setSwHov("lm-dash")} onMouseLeave={()=>setSwHov(null)}
                     onMouseDown={()=>setSwHov("lm-dash_dn")} onMouseUp={()=>setSwHov("lm-dash")}
                     style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 10px",cursor:"default",
@@ -15848,7 +6813,7 @@ const TalariaV8bLive = () => {
         </div>
       )}
       {(symbolOpen||closing.has("symbol")) && (
-        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:50,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:190,fontFamily:F,animation:closing.has("symbol")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:50,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:190,fontFamily:F,animation:closing.has("symbol")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
           <div style={{position:"sticky",top:0,height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,zIndex:1}}/>
           <div style={{padding:"5px 8px 4px",borderBottom:`1px solid ${c.br}`}}>
             <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em",marginBottom:4}}>MARKETS</div>
@@ -15859,48 +6824,7 @@ const TalariaV8bLive = () => {
             </div>
           </div>
           <div className="tlr-scroll" style={{maxHeight:320,overflowY:"auto",padding:"4px 0"}}>
-            {(()=>{
-              // Build the dropdown list from the active backtest session's pairs.
-              // sessionPairs is populated by the polling effect from
-              // window.chart.backtestingSession (or userStorage fallback).
-              // If the session isn't loaded yet, fall back to a single entry
-              // built from the current symbol so the dropdown is never empty.
-              const known = SYMBOLS_DATA.flatMap(c=>c.items.map(it=>({...it,cat:c.cat})));
-              const normSymKey = (x) => String(x||"").toUpperCase().replace(/\s+/g,"").replace(/\//g,"");
-              const parseFxPair = (raw) => {
-                const u = String(raw||"").toUpperCase().replace(/\s+/g,"");
-                if (u.includes("/")) {
-                  const p = u.split("/").filter(Boolean);
-                  if (p.length===2 && p[0].length===3 && p[1].length===3)
-                    return { id:`${p[0]}/${p[1]}`, name:`${p[0]} / ${p[1]}`, type:"forex", base:p[0], quote:p[1], cat:"BACKTEST" };
-                }
-                if (/^[A-Z]{6}$/.test(u))
-                  return { id:`${u.slice(0,3)}/${u.slice(3)}`, name:`${u.slice(0,3)} / ${u.slice(3)}`, type:"forex", base:u.slice(0,3), quote:u.slice(3), cat:"BACKTEST" };
-                return null;
-              };
-              const buildEntry = (ticker, fileId) => {
-                let found = known.find(s=>s.id===ticker);
-                if (!found && ticker)
-                  found = known.find(s=>normSymKey(s.id)===normSymKey(ticker));
-                if (found) return {...found, fileId};
-                const parts = (ticker||"").split("/");
-                if(parts.length===2 && parts[0].length===3 && parts[1].length===3){
-                  const b = parts[0].toUpperCase(), q = parts[1].toUpperCase();
-                  return {id:`${b}/${q}`,name:`${b} / ${q}`,type:"forex",base:b,quote:q,cat:"FOREX",fileId};
-                }
-                const fx = parseFxPair(ticker);
-                if (fx) return {...fx, fileId};
-                return {id:ticker,name:ticker,type:"other",cat:"BACKTEST",fileId};
-              };
-              const items = (sessionPairs.length
-                ? sessionPairs.map(p=>buildEntry(p.ticker, p.fileId))
-                : [buildEntry(symbol, null)]
-              );
-              // Group by cat (FOREX, FUTURES, etc.) so the visual grouping is preserved.
-              const byCat = {};
-              items.forEach(it=>{ const k=it.cat||"BACKTEST"; (byCat[k] ||= []).push(it); });
-              return Object.entries(byCat).map(([cat,items])=>({cat,items}));
-            })().map(({cat,items})=>{
+            {SYMBOLS_DATA.map(({cat,items})=>{
               const q=symbolSearch.toLowerCase();
               const filtered = items.filter(s=>!q||s.id.toLowerCase().startsWith(q)||s.name.toLowerCase().split(/[\s/\-]+/).some(w=>w.startsWith(q)));
               if(filtered.length===0) return null;
@@ -15912,27 +6836,14 @@ const TalariaV8bLive = () => {
                     const isH=hov===`sym-${s.id}`;
                     return (
                       <div key={s.id}
-                        onMouseDown={(e)=>e.stopPropagation()}
                         onMouseEnter={()=>setHov(`sym-${s.id}`)} onMouseLeave={()=>setHov(null)}
-                        onClick={(e)=>{
-                          e.stopPropagation();
-                          setSymbol(s.id);
-                          setSymbolOpen(false);
-                          setSymbolSearch("");
-                          // Route load to the selected multi-panel tile (main → loadFileData,
-                          // other panels → chartInstance.loadPanelFileData). Symbol sync in
-                          // panel-manager still applies when layout sync is enabled.
-                          if (s.fileId != null) {
-                            try { routeSessionFileLoadToSelectedPanel(s.fileId); }
-                            catch (err) { console.warn("[V9 sym] session file load failed", err); }
-                          }
-                        }}
+                        onClick={()=>{setSymbol(s.id);setSymbolOpen(false);setSymbolSearch("");}}
                         style={{display:"flex",alignItems:"center",gap:9,padding:"5px 14px",cursor:"default",position:"relative",
                           background:isAct?c.acD:isH?c.hv2:"transparent",
                           transition:"background 0.1s"}}>
                         {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                         <div style={{display:"flex",alignItems:"center",position:"relative",width:27,height:12,flexShrink:0}}>
-                          {s.type==="forex" && s.base && s.quote ? <>
+                          {s.type==="forex" ? <>
                             <div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 2px 4px rgba(0,0,0,0.8)",zIndex:2}}><FlagSvg code={s.base} w={18} h={12}/></div>
                             <div style={{position:"absolute",left:9,top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.6)",zIndex:1}}><FlagSvg code={s.quote} w={18} h={12}/></div>
                           </> : <SymBadge sym={s} w={27} h={12}/>}
@@ -15953,7 +6864,7 @@ const TalariaV8bLive = () => {
       {(chartTypeOpen||closing.has("chartType")) && (()=>{
         const ctMap={"Candles":"candle","Hollow Candles":"hollowCandle","Heikin Ashi":"heikinAshi","Bars":"tick","Line":"lineChart","Area":"area"};
         return (
-          <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:chartTypeDropL,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:136,fontFamily:F,animation:closing.has("chartType")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+          <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:chartTypeDropL,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:136,fontFamily:F,animation:closing.has("chartType")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
               <div style={{padding:"5px 14px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>CHART TYPE</div>
@@ -15962,7 +6873,7 @@ const TalariaV8bLive = () => {
                 return (
                   <div key={t}
                     onMouseEnter={()=>setHov(`ct-${t}`)} onMouseLeave={()=>setHov(null)}
-                    onClick={(e)=>{e.stopPropagation();setChartType(t);setChartTypeOpen(false);}}
+                    onClick={()=>{setChartType(t);setChartTypeOpen(false);}}
                     style={{display:"flex",alignItems:"center",gap:9,padding:"5px 14px",cursor:"default",position:"relative",
                       background:isAct?c.acD:isH?c.hv2:"transparent",
                       transition:"background 0.1s"}}>
@@ -15976,7 +6887,7 @@ const TalariaV8bLive = () => {
           </div>
         );
       })()}
-      <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ height: 36, flexShrink: 0, background: c.sf, borderBottom: `1px solid rgba(140,160,255,0.22)`, display: "flex", alignItems: "center", padding: "0 10px", gap: 4 }}>
+      <div style={{ height: 36, flexShrink: 0, background: c.sf, borderBottom: `1px solid rgba(140,160,255,0.22)`, display: "flex", alignItems: "center", padding: "0 10px", gap: 4 }}>
         {(()=>{ const logoActive = logoMenu || settingsOpen || profileOpen || faqOpen; return (
         <div onClick={(e) => { e.stopPropagation(); const was=logoMenu; closeAll(); if(!was) setLogoMenu(true); }}
           onMouseEnter={() => setHov("logo-btn")} onMouseLeave={() => setHov(null)}
@@ -15994,7 +6905,7 @@ const TalariaV8bLive = () => {
         </div>
         ); })()}
         <div style={{ width: 1, height: 16, margin: "0 3px 0 0", background: "rgba(140,160,255,0.18)" }}/>
-        <button type="button" onClick={(e) => { e.stopPropagation(); const was=symbolOpen; closeAll(); if(!was) setSymbolOpen(true); }} onMouseEnter={() => setHov("symbol")} onMouseLeave={() => setHov(null)}
+        <button onClick={(e) => { e.stopPropagation(); const was=symbolOpen; closeAll(); if(!was) setSymbolOpen(true); }} onMouseEnter={() => setHov("symbol")} onMouseLeave={() => setHov(null)}
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px", background: symbolOpen ? "rgba(74,106,255,0.08)" : hov==="symbol" ? c.hv : "transparent", border: "none", color: symbolOpen ? c.acL : hov==="symbol" ? c.tx : c.ts, cursor: "default", fontSize: 14, fontWeight: 700, fontFamily: F, position: "relative", width: 128, flexShrink: 0, transition: "color 0.12s, background 0.12s" }}>
           <div style={{ display: "flex", alignItems: "center", position: "relative", width: 32, height: 14, flexShrink: 0 }}>
             {currentSymbol.type==="forex" ? <>
@@ -16010,7 +6921,7 @@ const TalariaV8bLive = () => {
           {hov==="symbol" && !symbolOpen && <div style={{ position: "absolute", bottom: -1, left: "15%", right: "15%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "rgba(140,160,255,0.18)" }}/>
-        <button type="button" onClick={(e) => { e.stopPropagation(); const was=chartTypeOpen; closeAll(); if(!was) { const r=e.currentTarget.getBoundingClientRect(); setChartTypeDropL(r.left/Z); setChartTypeOpen(true); } }} onMouseEnter={() => setHov("chartType")} onMouseLeave={() => setHov(null)}
+        <button onClick={(e) => { e.stopPropagation(); const was=chartTypeOpen; closeAll(); if(!was) { const r=e.currentTarget.getBoundingClientRect(); setChartTypeDropL(r.left/Z); setChartTypeOpen(true); } }} onMouseEnter={() => setHov("chartType")} onMouseLeave={() => setHov(null)}
           style={{ padding: "3px 7px", display: "flex", alignItems: "center", gap: 4, position: "relative", background: chartTypeOpen ? "rgba(74,106,255,0.08)" : hov==="chartType" ? c.hv : "transparent", border: "none", fontFamily: F, color: chartTypeOpen ? c.acL : hov==="chartType" ? c.tx : c.ts, fontSize: currentChartType.label==="Hollow Candles" ? 11 : 13, fontWeight: 600, cursor: "default", width: 136, flexShrink: 0, transition: "background 0.12s, color 0.12s" }}>
           <I n={currentChartType.icon} s={18} cl={chartTypeOpen ? c.acL : hov==="chartType" ? c.tx : c.ts}/><span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentChartType.label}</span>
           <div style={{transform:chartTypeOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s ease",lineHeight:0,flexShrink:0}}>
@@ -16020,7 +6931,7 @@ const TalariaV8bLive = () => {
           {hov==="chartType" && !chartTypeOpen && <div style={{ position: "absolute", bottom: -1, left: "15%", right: "15%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "rgba(140,160,255,0.18)" }}/>
-        <button type="button" onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");}else{closeWindows();setSettingsOpen(false);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
+        <button onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");}else{closeWindows();setSettingsOpen(false);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
           style={{ padding: "3px 8px", display: "flex", alignItems: "center", gap: 4, background: indOpen ? "rgba(74,106,255,0.08)" : hov==="indicators" ? c.hv : "transparent", border: "none", fontFamily: F, color: indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts, fontSize: 13, fontWeight: indOpen ? 700 : 600, cursor: "default", position: "relative", transition: "background 0.12s, color 0.12s" }}>
           <I n="indicator" s={15} cl={indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts}/>Indicators
           {indOpen && <div style={{ position: "absolute", bottom: -1, left: "10%", right: "10%", height: 2, background: `linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
@@ -16029,7 +6940,7 @@ const TalariaV8bLive = () => {
         <div style={{ width: 1, height: 16, margin: "0 4px", background: "rgba(140,160,255,0.18)" }}/>
         <div style={{ display: "flex", gap: 0, alignItems: "center" }}>
           <div style={{ position: "relative" }}>
-            <button type="button" onClick={(e) => { e.stopPropagation(); const was=tfOpen; setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false); setSDrop(null); setSettDrop(null); if(logoMenu)closePopup(setLogoMenu,"logoMenu");if(replayOpts)closePopup(setReplayOpts,"replayOpts");if(gotoOpen)closePopup(setGotoOpen,"goto");if(symbolOpen)closePopup(setSymbolOpen,"symbol");if(chartTypeOpen)closePopup(setChartTypeOpen,"chartType"); if(was){closePopup(setTfOpen,"tf");}else{setTfOpen(true);setTfEditMode(false);} }} onMouseEnter={() => setHov("tf-more")} onMouseLeave={() => setHov(null)}
+            <button onClick={(e) => { e.stopPropagation(); const was=tfOpen; setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false); setSDrop(null); setSettDrop(null); if(logoMenu)closePopup(setLogoMenu,"logoMenu");if(replayOpts)closePopup(setReplayOpts,"replayOpts");if(gotoOpen)closePopup(setGotoOpen,"goto");if(symbolOpen)closePopup(setSymbolOpen,"symbol");if(chartTypeOpen)closePopup(setChartTypeOpen,"chartType"); if(was){closePopup(setTfOpen,"tf");}else{setTfOpen(true);setTfEditMode(false);} }} onMouseEnter={() => setHov("tf-more")} onMouseLeave={() => setHov(null)}
               style={{ padding: "4px 5px", position: "relative", background: tfOpen ? "rgba(74,106,255,0.08)" : hov==="tf-more" ? c.hv : "transparent", border: "none", fontFamily: F, cursor: "default", display: "flex", alignItems: "center", transition: "background 0.12s" }}>
               <div style={{transform:tfOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s ease",lineHeight:0}}>
                 <svg width={10} height={6} viewBox="0 0 10 6"><path d="M1,1 L5,5 L9,1" stroke={tfOpen ? c.acL : hov==="tf-more" ? c.tx : c.ts} strokeWidth={1.8} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -16048,7 +6959,7 @@ const TalariaV8bLive = () => {
                 setTfCustomVal("");
               };
               return (
-              <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:42,left:300,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7)`,width:200,fontFamily:F,animation:closing.has("tf")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+              <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:42,left:300,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7)`,width:200,fontFamily:F,animation:closing.has("tf")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
                 <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                 <div className="tlr-scroll" style={{maxHeight:360,overflowY:"auto",padding:"4px 0"}}>
                   {Object.entries(tfCategories).map(([catId,{label,items}],ci)=>(
@@ -16070,7 +6981,7 @@ const TalariaV8bLive = () => {
                               background:isAct?c.acD:isRowHov?"rgba(255,255,255,0.025)":"transparent",
                               transition:"background 0.1s"}}>
                             {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                            <button type="button" onClick={(e)=>{e.stopPropagation();setTf(t);}}
+                            <button onClick={()=>{setTf(t);}}
                               style={{flex:1,background:"transparent",border:"none",cursor:"default",
                                 color:isAct?c.acL:c.ts,fontSize:13,fontWeight:isAct?700:500,
                                 fontFamily:F,textAlign:"left",padding:0}}>
@@ -16157,7 +7068,7 @@ const TalariaV8bLive = () => {
                     </div>
                     );
                   })()}
-                  <button type="button" onClick={addCustomTf}
+                  <button onClick={addCustomTf}
                     onMouseEnter={()=>setSwHov("tf-add")} onMouseLeave={()=>setSwHov(null)}
                     onMouseDown={()=>setSwHov("tf-add_dn")} onMouseUp={()=>setSwHov("tf-add")}
                     style={{width:22,height:22,position:"relative",boxSizing:"border-box",cursor:"default",
@@ -16180,7 +7091,7 @@ const TalariaV8bLive = () => {
           </div>
           <div ref={tfBarRef} style={{ display:"flex", alignItems:"center", position:"relative" }}>
             {[...new Set([...tfPinned, tf])].sort((a,b)=>{const uO={m:0,H:1,D:2,W:3,M:4};const uA=a.replace(/[0-9]/g,""),uB=b.replace(/[0-9]/g,"");return uO[uA]!==uO[uB]?uO[uA]-uO[uB]:parseInt(a)-parseInt(b);}).map((t) => (
-              <button type="button" key={t} data-tf={t} onClick={(e) => { e.stopPropagation(); setTf(t); }} onMouseEnter={() => setHov(`tf-${t}`)} onMouseLeave={() => setHov(null)}
+              <button key={t} data-tf={t} onClick={() => setTf(t)} onMouseEnter={() => setHov(`tf-${t}`)} onMouseLeave={() => setHov(null)}
                 style={{ padding: "4px 7px", position: "relative", background: tf===t ? "rgba(74,106,255,0.08)" : hov===`tf-${t}` ? c.hv : "transparent", border: "none", fontFamily: F, color: tf===t ? c.acL : hov===`tf-${t}` ? c.tx : c.ts, fontSize: 12, fontWeight: tf===t ? 700 : 500, cursor: "default", transition: "background 0.12s, color 0.12s" }}>
                 {t}
                 {hov===`tf-${t}` && tf!==t && <div style={{ position: "absolute", bottom: -1, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
@@ -16197,7 +7108,7 @@ const TalariaV8bLive = () => {
           </div>
         </div>
         <div style={{ flex: 1 }}/>
-        <button type="button" onClick={(e) => { e.stopPropagation(); setRightPanel(null); setOrderPanelOpen(prev => !prev); }}
+        <button onClick={(e) => { e.stopPropagation(); setRightPanel(null); setOrderPanelOpen(prev => !prev); }}
           onMouseEnter={() => setHov("place-order")} onMouseLeave={() => setHov(null)}
           onMouseDown={() => setHov("place-order_dn")} onMouseUp={() => setHov("place-order")}
           style={{
@@ -16217,7 +7128,7 @@ const TalariaV8bLive = () => {
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: c.br }}/>
         {[{id:"layout",icon:"layout",label:"Layout"},{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
-          <button type="button" key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
+          <button key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
               background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
               transition: "background 0.12s" }}>
@@ -16229,8 +7140,8 @@ const TalariaV8bLive = () => {
           </button>
         ))}
       </div>
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
-        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, boxSizing: "border-box", background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 1, paddingLeft: 0, paddingRight: 2, overflowY: "auto", overflowX: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, overflowY: "auto", overflowX: "hidden" }}>
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%" }}>
               {gi === toolGroups.length - 1 && <div style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>}
@@ -16243,10 +7154,10 @@ const TalariaV8bLive = () => {
           ])}
           <div style={{ flex: 1 }}/>
           {/* Dark / Light mode toggle */}
-          <div onClick={(e) => { e.stopPropagation(); setDarkMode(v => !v); }}
+          <div onClick={() => setDarkMode(v => !v)}
             onMouseEnter={() => setHov("sb-theme")} onMouseLeave={() => setHov(null)}
-            style={{ width:"100%", height:32, display:"flex", alignItems:"center", justifyContent:"center",
-              paddingLeft:0, paddingRight:0, boxSizing:"border-box", cursor:"default", position:"relative",
+            style={{ width:"100%", height:32, display:"flex", alignItems:"center", justifyContent:"flex-end",
+              paddingRight:10, boxSizing:"border-box", cursor:"default", position:"relative",
               background: hov==="sb-theme" ? c.hv : "transparent",
               transition:"background 0.12s" }}>
             {darkMode ? (
@@ -16265,112 +7176,65 @@ const TalariaV8bLive = () => {
             {hov==="sb-theme" && <div style={{ position:"absolute", left:"calc(100% + 10px)", top:"50%", transform:"translateY(-50%)",
               background:c.el, border:`1px solid ${c.brH}`, padding:"4px 10px", fontSize:12, fontWeight:600, fontFamily:F,
               color:c.tx, whiteSpace:"nowrap", zIndex:100, boxShadow:"0 4px 16px rgba(0,0,0,0.6)",
-              borderLeft:`2px solid ${c.brH}`, pointerEvents:"none" }}>{darkMode ? "Light Mode" : "Dark Mode"}</div>}
+              borderLeft:`2px solid ${c.brH}` }}>{darkMode ? "Light Mode" : "Dark Mode"}</div>}
             {hov==="sb-theme" && <div style={{ position:"absolute", left:3, top:"25%", bottom:"25%", width:1,
               background:`linear-gradient(180deg,transparent,`+c.hvLn+`,transparent)`, pointerEvents:"none", zIndex:2 }}/>}
           </div>
         </div>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", minHeight: 0 }}>
-          {/* Match legacy chart/index.html #chart-container: absolutely filled slot — not flex:1 on
-              this node (Safari can disagree canvas vs overlay rects when the chart area is flex-sized). */}
-          <div style={{ flex: 1, position: "relative", background: c.bg, minHeight: 0 }}>
-            <div ref={chartCanvasRef} id="chart-container"
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                overflow: "hidden",
-                isolation: "isolate",
-                userSelect: "none",
-                cursor: rollback ? "none" : "default",
-              }}>
-              {/* Legacy probes: panel-manager + replay-system expect these IDs; V9 UI lives in React. */}
-              <button type="button" id="layout-selector-btn" data-open-mode="settings-panel" tabIndex={-1} aria-hidden="true" style={{ display: "none" }} />
-              <div id="replayToolbar" aria-hidden="true" style={{ position: "fixed", left: -9999, top: 0, width: 1, height: 1, overflow: "hidden", pointerEvents: "none", visibility: "hidden" }}>
-                <div id="replayToolbarHandle" />
-                <button type="button" id="replayModeBtn" tabIndex={-1} />
-              </div>
-              {/* ────────────────────────────────────────────────────────────────
-                   #panels-container MUST come BEFORE #chartWrapper in DOM.
-                   In multi-panel mode panelManager sets both to z-index:10 and
-                   resizes #chartWrapper to panel-0's slot. With same z-index,
-                   paint order = DOM order — the later-painted #chartWrapper
-                   covers #panels-container in panel 0's region (so main chart
-                   shows), and the rest of #panels-container shows through with
-                   panel 1+ divs. Reversing this order hides the main chart.
-                   Mirrors legacy chart/index.html lines 42838 (panels) before
-                   42848 (chartWrapper).
-                   ──────────────────────────────────────────────────────────── */}
-              <div id="panels-container" style={{ position: "absolute", inset: 0, display: "none", zIndex: 10, background: "#050028" }} />
-
-              {/* #chartWrapper holds the SINGLE-panel chart (default layout).
-                   panelManager.applyLayout() resizes / hides this when
-                   switching to a multi-panel layout and restores it when going
-                   back to '1'. */}
-              {/* Do not put layout (width/left/…) in React style here — panel-manager sets
-                  those INLINE per layout; React re-renders would reset style={{ inset:0 }} and
-                  wipe sizing, so #chartWrapper spans the full chart and stacks over other panels
-                  (ghost main OHLC / broken tiles). Default fill comes from live/index.html CSS. */}
-              <div id="chartWrapper" className="chart-wrapper">
-                <canvas id="chartCanvas" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", background: "transparent" }} />
-                <svg id="drawingSvg" />
-                {/* Axis cursor zones — chart.js reserves 60px right and 30px bottom margin.
-                     #timeAxisZone is a thin bottom strip so Chromium/Brave do not cover
-                     canvas time labels; full-height transparent siblings can mis-composite. */}
-                <div id="priceAxisZone" className="axis-cursor-zone price-axis-zone" style={{ position: "absolute", right: 0, top: 5, bottom: 30, width: 14, background: "transparent", zIndex: 10, cursor: "ns-resize", pointerEvents: "auto" }} />
-                <div id="timeAxisZone"  className="axis-cursor-zone time-axis-zone"  style={{ position: "absolute", left: 0, right: 60, bottom: 0, height: 10, background: "transparent", zIndex: 10, cursor: "ew-resize", pointerEvents: "auto" }} />
-
-                {/* Crosshair elements — chart.js positions these on mousemove */}
-                <div className="crosshair-vertical" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
-                <div className="crosshair-horizontal" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
-                <div className="price-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
-                <div className="time-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
-
-                {/* OHLC: chart.js owns #chartSymbol / #chartTimeframe + OHLC values; memoized subtree +
-                    multi-panel effect re-stamping window.chart keeps main tile vs toolbar in sync. */}
-                {mainOhlcInfoEl}
-              </div>
-
-              {/* Overlays — stay on top of both #chartWrapper and #panels-container */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative" }}>
+          <div style={{ flex: 1, position: "relative", background: c.bg, display: "flex" }}>
+            <div ref={chartCanvasRef}
+              style={{ flex: 1, position: "relative", overflow: "hidden", userSelect:"none", cursor: rollback?"none":"default" }}>
+              {/* Screenshot flash */}
               {screenshotFlash && <div onAnimationEnd={()=>setScreenshotFlash(false)} style={{position:"absolute",inset:0,background:"white",animation:"tlrFlash 0.35s ease-out forwards",zIndex:9998,pointerEvents:"none"}}/>}
+              {/* Rollback line — IS the cursor when rollback active */}
               {rollback&&<div ref={rollbackLineRef} style={{position:"absolute",top:0,bottom:0,left:0,width:1,opacity:0,willChange:"transform",background:c.acL,boxShadow:`0 0 6px ${c.acL}, 0 0 16px ${c.acG}`,zIndex:22,pointerEvents:"none"}}/>}
+              {/* Overlay — callback ref attaches native listener immediately on mount, no React event overhead */}
               {rollback&&<div ref={(node)=>{ if(!node&&rollbackOverlayRef.current?._rbCleanup){rollbackOverlayRef.current._rbCleanup();}rollbackOverlayCallbackRef(node); }} style={{position:"absolute",inset:0,zIndex:21,cursor:"none"}}/>}
+              {priceLabels.map((_, i) => <div key={`h${i}`} style={{ position: "absolute", left: 0, right: 0, top: `${(i/(priceLabels.length-1))*100}%`, height: 1, background: c.grid }}/>)}
+              {timeLabels.map((_, i) => <div key={`v${i}`} style={{ position: "absolute", top: 0, bottom: 0, left: `${(i/(timeLabels.length-1))*100}%`, width: 1, background: c.grid }}/>)}
+              <div style={{ position: "absolute", left: 0, right: 0, top: "28%", height: 1, background: c.ac, opacity: 0.3 }}>
+                <div style={{ position: "absolute", right: 0, top: -9, background: `linear-gradient(135deg,${c.ac},${c.acL})`, color: "#fff", fontSize: 11, fontWeight: 700, fontFamily: F, padding: "2px 8px", fontVariantNumeric: "tabular-nums" }}>126.895</div>
+              </div>
+              <div style={{ position: "absolute", left: 0, right: 0, top: "58%", height: 1, borderTop: `1px dashed ${c.rd}44` }}/>
+              <div style={{ position: "absolute", top: 8, left: 10, zIndex: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>{symbol}</span>
+                  <span style={{ fontSize: 11, color: c.tm }}>? 1m</span>
+                  <div onClick={(e) => { e.stopPropagation(); setRollback(!rollback); }} style={{ cursor: "default", opacity: rollback ? 1 : 0.4, display: "flex", alignItems: "center", gap: 3 }}>
+                    <I n="rollback" s={13} cl={rollback ? c.gn : c.rd}/>
+                    <span style={{ fontSize: 12, color: rollback ? c.gn : c.rd, fontWeight: 700 }}>{rollback ? "RB" : "LOCKED"}</span>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, fontSize: 13 }}>
+                  {[["O","126,680",c.gn],["H","126,745",c.gn],["L","126,675",c.rd],["C","126,730",c.gn]].map(([k,v,col]) => (
+                    <span key={k} style={{ color: c.tm, fontWeight: 600 }}>{k} <span style={{ color: col, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{v}</span></span>
+                  ))}
+                </div>
+              </div>
 
-              {/*
-                `#replayFollow` MUST live AFTER rollback/screenshot layers. Inside `#chartWrapper` it sat under
-                sibling overlays (#chart-container isolation), so it looked "missing" while rollback UI was off —
-                paint order still favored later siblings in some builds.
-              */}
-              <button
-                type="button"
-                id="replayFollow"
-                className="replay-follow-float-btn"
-                title="Follow replay — scroll with playback (click after panning to catch up)"
-                aria-label="Follow replay candle"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth={0.5} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 4v16" fill="none" strokeWidth={2} />
-                  <path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z" />
-                </svg>
-              </button>
             </div>
-            {/* V9 mock price axis div removed — chart.js draws the real
-                price axis on the right edge of #chartCanvas. Adding back a
-                sibling div here would cause two axes to render side-by-side
-                (the legacy chart.js one + the V9 mock). */}
+            <div style={{ width: priceAxisWidth, flexShrink: 0, background: settings.background||c.bg, borderLeft: `1px solid ${c.br}`, position: "relative", overflow: "hidden" }}>
+              {priceLabels.map((p, i) => {
+                const pct = (i/(priceLabels.length-1))*100;
+                const shift = i===0 ? "0%" : i===priceLabels.length-1 ? "-100%" : "-50%";
+                return <span key={i} style={{ position:"absolute", right:8, top:`${pct}%`, transform:`translateY(${shift})`, fontSize:11, fontWeight:600, color:c.axTx, fontVariantNumeric:"tabular-nums", lineHeight:1, whiteSpace:"nowrap" }}>{p}</span>;
+              })}
+            </div>
           </div>
-          {/* V9 mock time axis row removed — chart.js draws times at the
-              bottom of the canvas. */}
+          <div style={{ height: 18, flexShrink: 0, background: settings.background||c.bg, borderTop: `1px solid ${c.br}`, display: "flex", alignItems: "center", paddingRight: priceAxisWidth }}>
+            <div style={{ flex: 1, display: "flex", justifyContent: "space-between", padding: "0 8px", marginLeft: 36 }}>
+              {timeLabels.map((t, i) => <span key={i} style={{ fontSize: 10, fontWeight: 600, color: c.axTx, fontVariantNumeric: "tabular-nums" }}>{t}</span>)}
+            </div>
+          </div>
           {/* Status + Replay bar */}
-          <div data-v9-chrome="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{height:36,flexShrink:0,background:c.sf,borderTop:`1px solid rgba(140,160,255,0.22)`,display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',padding:'0 10px',position:'relative'}}>
+          <div style={{height:36,flexShrink:0,background:c.sf,borderTop:`1px solid rgba(140,160,255,0.22)`,display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',padding:'0 10px',position:'relative'}}>
             {/* Resize handle — at upper edge of replay bar, only when panel is open */}
             {btmOpen&&<div
               onPointerDown={(e)=>{
-                e.stopPropagation();
                 e.preventDefault();
                 e.currentTarget.setPointerCapture(e.pointerId);
+                const Z = 1.05;
                 const startY = e.clientY;
                 const startH = btmHeight;
                 const maxH = Math.floor(window.innerHeight / Z - 36);
@@ -16407,33 +7271,42 @@ const TalariaV8bLive = () => {
                 {[0,1,2,3,4].map(i=><div key={i} style={{width:3,height:3,borderRadius:'50%',background:hov==="btm-hdl"?"rgba(140,160,255,0.65)":"rgba(140,160,255,0.28)",transition:"background 0.15s"}}/>)}
               </div>
             </div>}
-            {/* Date/clock left — bar/replay time + tz; fixed-width so the separator never shifts */}
-            <div style={{display:'flex',flexDirection:'column',alignItems:'flex-start',justifyContent:'center',gap:7,boxSizing:'border-box',width:172,padding:'0 12px',height:'100%',flexShrink:0,overflow:'hidden'}}>
-              <span style={{fontSize:9,fontWeight:600,color:c.tm,letterSpacing:'0.08em',textTransform:'uppercase',lineHeight:1,fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap'}}>{replayHud.dateLine}</span>
-              <div style={{display:'flex',alignItems:'baseline',gap:8,whiteSpace:'nowrap'}}>
-                <span style={{fontSize:14,fontWeight:700,color:c.tx,fontVariantNumeric:'tabular-nums',letterSpacing:'0.04em',lineHeight:1}}>{replayHud.clock}</span>
-                <span style={{fontSize:10,fontWeight:600,color:c.tm,letterSpacing:'0.06em',lineHeight:1}}>{replayHud.tzLabel}</span>
-              </div>
-            </div>
+            {/* Date/clock left — fixed-width so the separator never shifts */}
+            {(()=>{
+              const tz=(settings.timezone||'UTC').split(' ')[0];
+              const use12=settings.timeFormat==='12h';
+              const rawTime='02:21:00';
+              const [hh,mm,ss]=rawTime.split(':').map(Number);
+              const displayTime=use12?`${String(hh%12||12).padStart(2,'0')}:${String(mm).padStart(2,'0')} ${hh>=12?'PM':'AM'}`:rawTime;
+              return(
+                <div style={{display:'flex',flexDirection:'column',alignItems:'flex-start',justifyContent:'center',gap:7,boxSizing:'border-box',width:172,padding:'0 12px',height:'100%',flexShrink:0,overflow:'hidden'}}>
+                  <span style={{fontSize:9,fontWeight:600,color:c.tm,letterSpacing:'0.08em',textTransform:'uppercase',lineHeight:1,fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap'}}>FRI 09 JAN '09</span>
+                  <div style={{display:'flex',alignItems:'baseline',gap:8,whiteSpace:'nowrap'}}>
+                    <span style={{fontSize:14,fontWeight:700,color:c.tx,fontVariantNumeric:'tabular-nums',letterSpacing:'0.04em',lineHeight:1}}>{displayTime}</span>
+                    <span style={{fontSize:10,fontWeight:600,color:c.tm,letterSpacing:'0.06em',lineHeight:1}}>{tz}</span>
+                  </div>
+                </div>
+              );
+            })()}
             {/* Replay controls — grid column 2, auto-width, truly centered */}
             <div style={{display:"flex",alignItems:"center",height:"100%",justifyContent:"center"}}>
             {/* Left separator */}
             <div style={{width:1,height:16,background:"rgba(140,160,255,0.18)",margin:"0 4px 0 0",flexShrink:0}}/>
             {/* Settings / Mode */}
             <div style={{position:"relative"}}>
-              <button type="button" onClick={(e)=>{e.stopPropagation();if(replayOpts){closePopup(setReplayOpts,"replayOpts");}else{if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}setReplayOpts(true);}}}
+              <button onClick={(e)=>{e.stopPropagation();if(replayOpts){closePopup(setReplayOpts,"replayOpts");}else{if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}setReplayOpts(true);}}}
                 onMouseEnter={()=>setHov("rp-mode")} onMouseLeave={()=>setHov(null)}
                 style={{padding:"4px 5px",position:"relative",background:replayOpts?"rgba(74,106,255,0.08)":hov==="rp-mode"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",color:replayOpts?c.acL:hov==="rp-mode"?c.tx:c.ts,transition:"color 0.15s ease,background 0.12s"}}>
                 <I n="config" s={18} cl="currentColor"/>
                 {replayOpts&&<div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                 {hov==="rp-mode"&&!replayOpts&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
               </button>
-              {(replayOpts||closing.has("replayOpts"))&&<div style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:11000,pointerEvents:"none"}}>
-                <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{pointerEvents:"auto",background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 28px rgba(0,0,0,0.7),0 0 14px ${c.acG}`,minWidth:160,animation:closing.has("replayOpts")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both"}}>
+              {(replayOpts||closing.has("replayOpts"))&&<div style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:9050,pointerEvents:"none"}}>
+                <div onClick={e=>e.stopPropagation()} style={{pointerEvents:"auto",background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 28px rgba(0,0,0,0.7),0 0 14px ${c.acG}`,minWidth:160,animation:closing.has("replayOpts")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both"}}>
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"6px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>MODE</div>
                   {[{id:"tick",l:"Tick by Tick"},{id:"candle",l:"Candle by Candle"}].map(({id,l})=>{const isA=replayMode===id;return(
-                    <button type="button" key={id} onClick={(e)=>{e.stopPropagation();setReplayMode(id);}}
+                    <button key={id} onClick={()=>setReplayMode(id)}
                       onMouseEnter={()=>setHov(`rm-${id}`)} onMouseLeave={()=>setHov(null)}
                       style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"5px 10px",background:isA?c.acD:hov===`rm-${id}`?c.hv2:"transparent",border:"none",cursor:"default",fontFamily:F,transition:"background 0.1s",position:"relative"}}>
                       {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -16445,7 +7318,7 @@ const TalariaV8bLive = () => {
                   <div style={{padding:"4px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>INTERVAL</div>
                   <div style={{padding:"4px 10px 8px",display:"flex",gap:4,flexWrap:"wrap"}}>
                     {["Auto","1m","5m","15m","30m"].map(t=>{const isA=replayInterval===t,isH=hov===`ri-${t}`;return(
-                      <div key={t} onClick={(e)=>{e.stopPropagation();setReplayInterval(t);}}
+                      <div key={t} onClick={()=>setReplayInterval(t)}
                         onMouseEnter={()=>setHov(`ri-${t}`)} onMouseLeave={()=>setHov(null)}
                         style={{padding:"3px 8px",position:"relative",background:isA?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",color:isA?c.acL:isH?c.tx:c.ts,fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
                         {t}
@@ -16457,39 +7330,22 @@ const TalariaV8bLive = () => {
                 </div>
               </div>}
             </div>
-            {/* Play / Pause — wired to chart.replaySystem.
-                When replay isn't yet active, open the V9 cut-line so the
-                user picks a start point (legacy UX, V9 visuals). */}
-            <button type="button" onClick={(e)=>{
-                e.stopPropagation();
-                const rs = getReplaySystem();
-                if (rs && !rs.isActive) {
-                  closeAll();
-                  setRollback(true);
-                  return;
-                }
-                if (!rs) { setPlaying(p=>!p); return; }
-                if (rs.isPlaying) {
-                  if (typeof rs.pause === 'function') rs.pause();
-                } else {
-                  if (typeof rs.play === 'function') rs.play();
-                }
-                setPlaying(!!rs.isPlaying);
-              }}
+            {/* Play / Pause */}
+            <button onClick={()=>setPlaying(!playing)}
               onMouseEnter={e=>{setHov("rp-play");showTip(playing?"Pause":"Play",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
               style={{padding:"4px 5px",position:"relative",background:hov==="rp-play"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"background 0.12s"}}>
               <I n={playing?"pause":"play"} s={18} cl={hov==="rp-play"?(playing?"#FFA060":c.gn):(playing?"#FF8C42":"rgba(0,212,161,0.7)")}/>
               <div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,
                 background:`linear-gradient(90deg,transparent,${playing?"#FF8C42":c.gn},transparent)`,
                 boxShadow:`0 0 6px ${playing?"rgba(255,140,66,0.5)":"rgba(0,212,161,0.4)"}`,
-                animation:undefined,
+                animation:!playing?`tlrLinePulse ${(3-(speed-1)/99*2.7).toFixed(2)}s ease-in-out infinite`:undefined,
                 opacity:playing?(hov==="rp-play"?1:0.7):undefined}}/>
             </button>
             {/* Speed */}
             {/* Speed — 15-step slide bar */}
             {(()=>{const steps=[1,2,3,5,10,15,20,25,30,50,60,70,80,90,100];const si=steps.reduce((best,v,i)=>Math.abs(v-speed)<Math.abs(steps[best]-speed)?i:best,0);const pct=si/14*100;return(
             <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 6px",width:140,flexShrink:0}}>
-              <span style={{fontSize:14,fontWeight:800,color:c.acL,fontVariantNumeric:"tabular-nums",width:40,flexShrink:0,textAlign:"right",userSelect:"none",letterSpacing:"-0.02em",transition:"transform 0.1s ease",transform:hov==="rp-spd-dn"?`scale(1.18) translateY(-2px)`:`translateY(-2px)`,display:"inline-block",paddingRight:2,boxSizing:"border-box"}}>{steps[si]}<span style={{fontSize:16,fontWeight:800,color:c.acL,marginLeft:1}}>×</span></span>
+              <span style={{fontSize:14,fontWeight:800,color:c.acL,fontVariantNumeric:"tabular-nums",width:27,flexShrink:0,textAlign:"right",userSelect:"none",letterSpacing:"-0.02em",transition:"transform 0.1s ease",transform:hov==="rp-spd-dn"?`scale(1.18) translateY(-2px)`:`translateY(-2px)`,display:"inline-block"}}>{steps[si]}<span style={{fontSize:16,fontWeight:800,color:c.acL,marginLeft:1}}>×</span></span>
               <div style={{position:"relative",width:88,height:36,display:"flex",alignItems:"center"}}>
                 {/* Track */}
                 <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
@@ -16504,20 +7360,8 @@ const TalariaV8bLive = () => {
                   style={{position:"absolute",left:-10,right:-10,width:"calc(100% + 20px)",height:"100%",opacity:0,cursor:"default",margin:0}}/>
               </div>
             </div>);})()}
-            {/* Next candle (step forward) — if replay isn't active, open
-                the V9 cut-line for the user to pick a start. Otherwise
-                step forward via replaySystem.requestStepForward. */}
-            <button type="button"
-              onClick={(e)=>{
-                e.stopPropagation();
-                const rs = getReplaySystem();
-                if (rs && !rs.isActive) {
-                  closeAll();
-                  setRollback(true);
-                  return;
-                }
-                if (rs && typeof rs.requestStepForward === 'function') rs.requestStepForward();
-              }}
+            {/* Next candle (step forward) */}
+            <button
               onPointerDown={()=>setHov("rp-next-dn")} onPointerUp={()=>setHov("rp-next")} onPointerLeave={()=>{setHov(null);hideTip();}}
               onMouseEnter={e=>{setHov(h=>h==="rp-next-dn"?h:"rp-next");showTip("Step Forward",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
               style={{padding:"4px 5px",position:"relative",background:hov==="rp-next-dn"?"rgba(74,106,255,0.08)":hov==="rp-next"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"transform 0.08s ease, color 0.15s ease, background 0.12s",transform:hov==="rp-next-dn"?"scale(0.88)":"scale(1)",color:hov==="rp-next-dn"?c.acL:hov==="rp-next"?c.tx:c.ts}}>
@@ -16525,29 +7369,17 @@ const TalariaV8bLive = () => {
               {hov==="rp-next-dn"&&<div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
               {hov==="rp-next"&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
             </button>
-            {/* Rollback (cut) — V9 cut-line overlay. While replay is active, disabled when session forbids back navigation (same as legacy Go Back). */}
-            <button type="button" onClick={(e)=>{
-                e.stopPropagation();
-                const opening=!rollback;
-                const rsRb = getReplaySystem();
-                if (opening && rsRb && rsRb.isActive && typeof rsRb.isBackNavigationAllowed === "function" && !rsRb.isBackNavigationAllowed()) {
-                  return;
-                }
-                if(opening)closeAll();
-                setRollback(opening);
-              }}
-              onMouseEnter={e=>{
-                setHov("rp-rb");
-                showTip(replayRollbackBlocked ? "Back navigation disabled for this session" : "Rollback", e.currentTarget, "top");
-              }} onMouseLeave={()=>{setHov(null);hideTip();}}
-              style={{padding:"4px 5px",position:"relative",background:rollback?"rgba(74,106,255,0.08)":hov==="rp-rb"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"transform 0.15s ease, color 0.15s ease, background 0.12s,opacity 0.15s",transform:rollback?"scale(1.18)":"scale(1)",color:rollback?c.acL:hov==="rp-rb"?c.tx:c.ts,opacity:replayRollbackBlocked?0.35:1}}>
+            {/* Rollback */}
+            <button onClick={(e)=>{e.stopPropagation();const opening=!rollback;if(opening)closeAll();setRollback(opening);}}
+              onMouseEnter={e=>{setHov("rp-rb");showTip("Rollback",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
+              style={{padding:"4px 5px",position:"relative",background:rollback?"rgba(74,106,255,0.08)":hov==="rp-rb"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"transform 0.15s ease, color 0.15s ease, background 0.12s",transform:rollback?"scale(1.18)":"scale(1)",color:rollback?c.acL:hov==="rp-rb"?c.tx:c.ts}}>
               <svg width={19} height={19} viewBox="0 0 24 24" fill="none"><line x1="15" y1="4" x2="15" y2="7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><rect x="12" y="7" width="6" height="10" rx="0.5" fill="currentColor"/><line x1="15" y1="17" x2="15" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="12" y1="12" x2="4" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><polyline points="7,9 4,12 7,15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><line x1="3" y1="4" x2="3" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
               {rollback&&<div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 8px ${c.acG}`}}/>}
               {!rollback&&hov==="rp-rb"&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
             </button>
             {/* Goto */}
             <div style={{position:"relative"}}>
-              <button type="button" onClick={(e)=>{e.stopPropagation();if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}else{if(replayOpts){closePopup(setReplayOpts,"replayOpts");}setGotoOpen(true);setGotoTab("pinned");}}}
+              <button onClick={(e)=>{e.stopPropagation();if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}else{if(replayOpts){closePopup(setReplayOpts,"replayOpts");}setGotoOpen(true);setGotoTab("pinned");}}}
                 onMouseEnter={e=>{setHov("rp-goto");showTip("Go To",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
                 style={{padding:"4px 5px",position:"relative",background:gotoOpen?"rgba(74,106,255,0.08)":hov==="rp-goto"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",color:gotoOpen?c.acL:hov==="rp-goto"?c.tx:c.ts,transition:"color 0.15s ease,background 0.12s"}}>
                 <I n="goto" s={19} cl="currentColor"/>
@@ -16564,7 +7396,7 @@ const TalariaV8bLive = () => {
                 const addItem=(item)=>{setGotoPresets(prev=>[...prev,{...item,id:gotoNextId()}]);};
                 const iSt={background:c.well,border:`1px solid ${c.brH}`,color:c.tx,fontSize:13,padding:"6px 9px",fontFamily:F,outline:"none",width:"100%",boxSizing:"border-box",colorScheme:c.inputScheme};
                 return(
-                <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:11000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 48px rgba(0,0,0,0.8),0 0 18px ${c.acG}`,width:300,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("goto")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both",maxHeight:480}}>
+                <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:9050,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 48px rgba(0,0,0,0.8),0 0 18px ${c.acG}`,width:300,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("goto")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both",maxHeight:480}}>
                   {/* Top accent bar */}
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
                   {/* Header */}
@@ -16586,7 +7418,7 @@ const TalariaV8bLive = () => {
                       const accent=tabAccentGoto(id);
                       const cnt=id==="pinned"?gotoItems.filter(x=>x.pinned).length:id==="preset"?gotoPresets.length:null;
                       return(
-                        <button type="button" key={id} onClick={e=>{e.stopPropagation();setGotoTab(id);if(id==="create"){setGotoAddType("datetime");const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}else setGotoAddType(null);}}
+                        <button key={id} onClick={e=>{e.stopPropagation();setGotoTab(id);if(id==="create"){setGotoAddType("datetime");const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}else setGotoAddType(null);}}
                           style={{flex:1,padding:"9px 4px",border:"none",background:"transparent",fontFamily:F,cursor:"default",
                             color:isA?accent:id==="pinned"?c.gold:c.ts,
                             fontSize:14,fontWeight:isA?700:500,
@@ -16621,7 +7453,7 @@ const TalariaV8bLive = () => {
                           const isPinH=hov===`gip-${item.id}`;
                           return(
                             <div key={item.id}
-                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();executeGotoItem(item);closePopup(setGotoOpen,"goto");}}
+                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();closePopup(setGotoOpen,"goto");}}
                               onMouseEnter={()=>setHov(`gi-${item.id}`)} onMouseLeave={()=>setHov(null)}
                               style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"default",position:"relative",
                                 background:isH?`${item.color||c.gold}11`:"transparent",
@@ -16670,7 +7502,7 @@ const TalariaV8bLive = () => {
                           const isPinned=gotoItems.some(x=>x.label===s.label&&x.pinned);
                           return(
                             <div key={s.id}
-                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();executeGotoItem({type:"datetime",label:s.label,time:s.time,color:s.color});closePopup(setGotoOpen,"goto");}}
+                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();closePopup(setGotoOpen,"goto");}}
                               onMouseEnter={()=>setHov(`gs-${s.id}`)} onMouseLeave={()=>setHov(null)}
                               style={{display:"flex",alignItems:"center",gap:8,padding:"7px 14px",cursor:"default",position:"relative",
                                 background:isH?"rgba(0,212,161,0.06)":"transparent",
@@ -16712,21 +7544,8 @@ const TalariaV8bLive = () => {
                     {gotoTab==="create"&&(()=>{
                       const crTabs=[{t:"datetime",l:"Date & Time"},{t:"price",l:"Price"}];
                       const crIdx=crTabs.findIndex(x=>x.t===gotoAddType);
-                      const doAdd=(extra)=>{
-                        const payload=extra.type==="datetime"?{...extra,dateIso:gotoNewDate}:extra;
-                        addItem({...payload,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");
-                      };
-                      const doAddAndGo=(extra)=>{
-                        const payload=extra.type==="datetime"?{...extra,dateIso:gotoNewDate}:extra;
-                        addItem({...payload,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");closePopup(setGotoOpen,"goto");
-                        if(extra.type==="datetime"){
-                          const ms=buildGotoTimestampMs(gotoNewDate,gotoNewTime);
-                          if(ms!=null&&typeof window.chart?.jumpToTimestamp==="function")void window.chart.jumpToTimestamp(ms,{showLoadingOverlay:true});
-                        }else if(extra.type==="price"){
-                          const p=parseFloat(gotoNewPrice);
-                          if(Number.isFinite(p)&&typeof window.chart?.jumpToPrice==="function")window.chart.jumpToPrice(p);
-                        }
-                      };
+                      const doAdd=(extra)=>{addItem({...extra,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");};
+                      const doAddAndGo=(extra)=>{addItem({...extra,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");closePopup(setGotoOpen,"goto");};
                       const Chevron=({open})=>(
                         <svg width={8} height={8} viewBox="0 0 8 8" fill="none">
                           <path d={open?"M1,5 L4,2 L7,5":"M1,3 L4,6 L7,3"} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/>
@@ -16739,7 +7558,7 @@ const TalariaV8bLive = () => {
                           {crTabs.map(({t,l})=>{
                             const isA=gotoAddType===t;
                             return(
-                              <button type="button" key={t} onClick={e=>{e.stopPropagation();setGotoAddType(t);setGotoCalOpen(false);setGotoTimeOpen(false);if(t==="datetime"){const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}}}
+                              <button key={t} onClick={e=>{e.stopPropagation();setGotoAddType(t);setGotoCalOpen(false);setGotoTimeOpen(false);if(t==="datetime"){const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}}}
                                 style={{flex:1,padding:"8px 4px",border:"none",background:"transparent",fontFamily:F,cursor:"default",
                                   color:isA?c.acL:c.ts,fontSize:13,fontWeight:isA?700:500,
                                   transition:"color 0.15s",whiteSpace:"nowrap"}}>
@@ -16858,11 +7677,11 @@ const TalariaV8bLive = () => {
                                 </div>
                               </div>
                               <div style={{display:"flex",gap:6}}>
-                                <button type="button" onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAdd({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
+                                <button onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAdd({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
                                   style={{flex:1,padding:"7px 0",background:"transparent",border:`1px solid ${c.acL}`,color:c.acL,fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em",transition:"background 0.12s"}}>
                                   Add
                                 </button>
-                                <button type="button" onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAddAndGo({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
+                                <button onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAddAndGo({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
                                   style={{flex:1,padding:"7px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em"}}>
                                   Go
                                 </button>
@@ -16886,20 +7705,20 @@ const TalariaV8bLive = () => {
                                     onClick={e=>e.stopPropagation()}
                                     style={{...iSt,flex:1,width:"auto",border:"none",background:"transparent",fontVariantNumeric:"tabular-nums"}}/>
                                   <div style={{display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
-                                    <button type="button" onClick={e=>{e.stopPropagation();spinPrice(1);}} style={spinSx}
+                                    <button onClick={e=>{e.stopPropagation();spinPrice(1);}} style={spinSx}
                                       onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}>▲</button>
                                     <div style={{height:1,background:c.br}}/>
-                                    <button type="button" onClick={e=>{e.stopPropagation();spinPrice(-1);}} style={spinSx}
+                                    <button onClick={e=>{e.stopPropagation();spinPrice(-1);}} style={spinSx}
                                       onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}>▼</button>
                                   </div>
                                 </div>
                               </div>
                               <div style={{display:"flex",gap:6}}>
-                                <button type="button" onClick={e=>{e.stopPropagation();if(!gotoNewPrice)return;doAdd({type:"price",label:gotoNewName||parseFloat(gotoNewPrice).toFixed(decimals)});setGotoNewPrice("");}}
+                                <button onClick={e=>{e.stopPropagation();if(!gotoNewPrice)return;doAdd({type:"price",label:gotoNewName||parseFloat(gotoNewPrice).toFixed(decimals)});setGotoNewPrice("");}}
                                   style={{flex:1,padding:"7px 0",background:"transparent",border:`1px solid ${c.acL}`,color:c.acL,fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em",transition:"background 0.12s"}}>
                                   Add
                                 </button>
-                                <button type="button" onClick={e=>{e.stopPropagation();if(!gotoNewPrice)return;doAddAndGo({type:"price",label:gotoNewName||parseFloat(gotoNewPrice).toFixed(decimals)});setGotoNewPrice("");}}
+                                <button onClick={e=>{e.stopPropagation();if(!gotoNewPrice)return;doAddAndGo({type:"price",label:gotoNewName||parseFloat(gotoNewPrice).toFixed(decimals)});setGotoNewPrice("");}}
                                   style={{flex:1,padding:"7px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em"}}>
                                   Go
                                 </button>
@@ -16937,11 +7756,7 @@ const TalariaV8bLive = () => {
                   {['BALANCE','EQUITY','P&L'].map(l=>(
                     <span key={l} style={{fontSize:9,fontWeight:600,color:c.tm,letterSpacing:'0.07em',lineHeight:1}}>{l}</span>
                   ))}
-                  {[
-                    { v: replayHud.balanceStr, col: c.tx },
-                    { v: replayHud.equityStr, col: c.tx },
-                    { v: replayHud.pnlStr, col: replayHud.pnlNonNeg ? c.gn : c.rd },
-                  ].map(({ v, col }, i) => (
+                  {[{v:'10,000',col:c.tx},{v:'10,000',col:c.tx},{v:'+0.00',col:c.gn}].map(({v,col},i)=>(
                     <span key={i} style={{fontSize:12,fontWeight:700,color:col,fontVariantNumeric:'tabular-nums',lineHeight:1}}>{balVis?v:'•••'}</span>
                   ))}
                 </div>
@@ -16959,16 +7774,10 @@ const TalariaV8bLive = () => {
               </div>
             </div>
           </div>
-          <div data-v9-chrome="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ flexShrink:0, background:c.sf, borderTop:`1px solid ${c.brH}` }}>
+          <div style={{ flexShrink:0, background:c.sf, borderTop:`1px solid ${c.brH}` }}>
             {/* Tab bar — always visible outside the collapsing panel */}
             {(()=>{
-              void omTradeRev;
-              const rawCounts = buildLiveTradeRowsFromOrderManager(typeof window !== "undefined" ? window.chart?.orderManager : null, c);
-              const nAll = rawCounts.length;
-              const nPend = rawCounts.filter((r) => r.status === "pending").length;
-              const nOpen = rawCounts.filter((r) => r.status === "open").length;
-              const nHist = rawCounts.filter((r) => r.status === "closed").length;
-              const ordTabs=[["all","All Trade",nAll],["pending","Pending",nPend],["open","Open Positions",nOpen],["history","History",nHist],["analytics","Analytics",null]];
+              const ordTabs=[["all","All Trade",14],["pending","Pending",3],["open","Open Positions",4],["history","History",7],["analytics","Analytics",null]];
               return(
               <div ref={btmTabBarRef} style={{display:"flex",flexShrink:0,borderBottom:`1px solid ${c.br}`,paddingLeft:10,position:"relative",alignItems:"center"}}>
                 {ordTabs.map(([id,label,cnt])=>{
@@ -16990,8 +7799,28 @@ const TalariaV8bLive = () => {
             {/* Panel content — only this collapses */}
             <div ref={btmPanelRef} style={{height:btmResizing?btmDragRef.current.curH:btmOpen?btmHeight:0,overflow:"hidden",transition:btmResizing?"none":"height 0.2s ease",display:"flex",flexDirection:"column"}}>
               {(()=>{
-                void omTradeRev;
-                const allTrades = buildLiveTradeRowsFromOrderManager(typeof window !== "undefined" ? window.chart?.orderManager : null, c);
+                const allTrades=[
+                  {id:"#1001",time:"Apr 16 09:14",status:"open",    sym:"EUR/JPY", side:"LONG", sz:"0.50",type:"Market",entry:"126,100",exit:"126,745",pnl:"+$1,090",pc:c.gn,tp:"127,000",sl:"125,500",dur:"2h 14m",preTags:["scalp","trend"],postTags:["good entry"]},
+                  {id:"#1002",time:"Apr 16 10:45",status:"pending", sym:"GBP/USD", side:"SHORT",sz:"1.00",type:"Limit",  entry:"1.2650", exit:"—",       pnl:"—",     pc:c.tm,tp:"1.2550", sl:"1.2720", dur:"—",      preTags:["swing"],          postTags:[]},
+                  {id:"#1003",time:"Apr 16 11:32",status:"open",    sym:"USD/JPY", side:"LONG", sz:"0.75",type:"Limit",  entry:"149.20", exit:"148.85",  pnl:"-$263", pc:c.rd,tp:"150.50", sl:"148.00", dur:"1h 05m", preTags:[],                 postTags:["early exit"]},
+                  {id:"#1004",time:"Apr 15 08:05",status:"closed",  sym:"EUR/USD", side:"SHORT",sz:"2.00",type:"Market",entry:"1.0820", exit:"1.0845",  pnl:"-$500", pc:c.rd,tp:"1.0750", sl:"1.0900", dur:"5h 52m", preTags:["news"],           postTags:["oversize"],   mae:"25 pips",mfe:"40 pips"},
+                  {id:"#1005",time:"Apr 16 13:20",status:"open",    sym:"AUD/USD", side:"LONG", sz:"0.30",type:"Limit",  entry:"0.6540", exit:"0.6572",  pnl:"+$96",  pc:c.gn,tp:"0.6620", sl:"0.6480", dur:"3h 20m", preTags:["scalp"],          postTags:[]},
+                  {id:"#1006",time:"Apr 17 14:50",status:"pending", sym:"USD/CAD", side:"SHORT",sz:"0.50",type:"Stop",   entry:"1.3680", exit:"—",       pnl:"—",     pc:c.tm,tp:"1.3600", sl:"1.3760", dur:"—",      preTags:[],                 postTags:[]},
+                  {id:"#1007",time:"Apr 14 07:33",status:"closed",  sym:"NZD/USD", side:"LONG", sz:"0.40",type:"Market",entry:"0.5980", exit:"0.6015",  pnl:"+$140", pc:c.gn,tp:"0.6080", sl:"0.5920", dur:"6h 11m", preTags:["trend","breakout"],postTags:["textbook"],  mae:"8 pips", mfe:"62 pips"},
+                  {id:"#1008",time:"Apr 15 15:11",status:"closed",  sym:"EUR/GBP", side:"SHORT",sz:"0.80",type:"Limit",  entry:"0.8560", exit:"0.8541",  pnl:"+$152", pc:c.gn,tp:"0.8480", sl:"0.8630", dur:"2h 59m", preTags:["swing"],          postTags:[]},
+                  {id:"#1009",time:"Apr 15 12:01",status:"closed",  sym:"USD/CHF", side:"LONG", sz:"1.20",type:"Market",entry:"0.9020", exit:"0.8995",  pnl:"-$300", pc:c.rd,tp:"0.9120", sl:"0.8940", dur:"7h 03m", preTags:[],                 postTags:["fomo entry"]},
+                  {id:"#1010",time:"Apr 14 16:22",status:"closed",  sym:"GBP/JPY", side:"LONG", sz:"0.60",type:"Market",entry:"188.40", exit:"189.10",  pnl:"+$420", pc:c.gn,tp:"190.00", sl:"187.50", dur:"1h 44m", preTags:["scalp"],          postTags:["perfect tp"],mae:"12 pips",mfe:"78 pips"},
+                  {id:"#1011",time:"Apr 15 09:55",status:"closed",  sym:"EUR/AUD", side:"SHORT",sz:"0.35",type:"Limit",  entry:"1.6480", exit:"1.6510",  pnl:"-$105", pc:c.rd,tp:"1.6380", sl:"1.6580", dur:"3h 28m", preTags:["news"],           postTags:[]},
+                  {id:"#1012",time:"Apr 15 10:08",status:"closed",  sym:"CAD/JPY", side:"LONG", sz:"0.45",type:"Market",entry:"110.20", exit:"110.85",  pnl:"+$293", pc:c.gn,tp:"111.50", sl:"109.50", dur:"5h 16m", preTags:["trend"],          postTags:["held conviction"]},
+                  {id:"#1013",time:"Apr 16 17:40",status:"open",    sym:"GBP/CHF", side:"SHORT",sz:"0.55",type:"Market",entry:"1.1340", exit:"1.1318",  pnl:"+$121", pc:c.gn,tp:"1.1250", sl:"1.1420", dur:"0h 52m", preTags:["scalp"],          postTags:[]},
+                  {id:"#1014",time:"Apr 17 08:30",status:"pending", sym:"XAU/USD", side:"LONG", sz:"0.10",type:"Stop",   entry:"2,015",  exit:"—",       pnl:"—",     pc:c.tm,tp:"2,080",  sl:"1,990",  dur:"—",      preTags:["swing"],          postTags:[]},
+                  {id:"#1015",time:"Apr 17 10:05",status:"pending", sym:"NQ",      side:"LONG", sz:"3×0.25",type:"Limit",  entry:"19840 / 19800 / 19765", exit:"—", pnl:"—", pc:c.tm, tp:"19920 / 19980", sl:"19700", dur:"—", preTags:["scalp","trend"], postTags:[],
+                    entries:[{price:"19840",qty:"0.25",filled:false},{price:"19800",qty:"0.25",filled:false},{price:"19765",qty:"0.25",filled:false}],
+                    targets:[{price:"19920",hit:false},{price:"19980",hit:false}]},
+                  {id:"#1016",time:"Apr 18 09:30",status:"open",    sym:"ES",      side:"LONG", sz:"4×0.25",type:"Limit",  entry:"5820",               exit:"—", pnl:"+$312",pc:c.gn, tp:"5845",  sl:"5795", dur:"1h 22m",preTags:["trend","breakout"],postTags:[],
+                    entries:[{price:"5820",qty:"0.25",filled:true},{price:"5810",qty:"0.25",filled:true},{price:"5800",qty:"0.25",filled:false},{price:"5790",qty:"0.25",filled:false}],
+                    targets:[{price:"5845",hit:true},{price:"5862",hit:true},{price:"5878",hit:false},{price:"5900",hit:false}]},
+                ];
                 // Apply tag edits overlay
                 const allTradesR = allTrades.map(t => { const ov=tradeTagOverrides[t.id]; return ov ? {...t, preTags:ov.pre??t.preTags, postTags:ov.post??t.postTags} : t; });
                 const updPreTags = (id, tags) => setTradeTagOverrides(prev => ({...prev, [id]: {...(prev[id]||{}), pre: tags}}));
@@ -17012,92 +7841,24 @@ const TalariaV8bLive = () => {
                   btmTab==="open"?r.status==="open":
                   btmTab==="history"?r.status==="closed":false
                 );
-                const ja = journalAnalytics;
-                const jMeta = journalAnalyticsMeta;
-                const jSt = ja?.stats || {};
-                const jTotalTrades = jSt.total_trades != null ? String(jSt.total_trades) : "—";
-                const jWinRate = jSt.win_rate != null ? `${Number(jSt.win_rate).toFixed(1)}%` : "—";
-                const jPfRaw = jSt.profit_factor;
-                const jPf =
-                  jPfRaw === Infinity
-                    ? "∞"
-                    : jPfRaw != null && Number.isFinite(Number(jPfRaw))
-                      ? Number(jPfRaw).toFixed(2)
-                      : "—";
-                const jNet = fmtUsdAnalytics(jSt.total_pnl, 0);
-                const jBal = fmtUsdAnalytics(jSt.balance, 0);
-                const jEq = fmtUsdAnalytics(jSt.equity, 0);
-                const jAvgWin = fmtUsdAnalytics(jSt.avg_win, 0);
-                const jAvgLoss = jSt.avg_loss != null && Number(jSt.avg_loss) > 0 ? `-$${Number(jSt.avg_loss).toFixed(0)}` : "—";
-                const jNWins = Number(jSt.winning_trades) || 0;
-                const jNLoss = Number(jSt.losing_trades) || 0;
-                const jNTot = Math.max(1, jNWins + jNLoss);
-                const jBw = bestWorstJournalTrades(ja?.list || []);
-                const jSymRows = (ja?.symbols || []).slice(0, 12);
-                const jMaxSymT = Math.max(1, ...jSymRows.map((s) => Number(s.total_trades) || 0));
-                const jCum = cumulativePnLFromJournalEntries(ja?.list || []);
-                const jMaxAbsCum = Math.max(1, ...jCum.map((x) => Math.abs(x.cum)));
-                const jStrats = (ja?.strategies || []).slice(0, 12);
                 const cols="minmax(0,0.7fr) minmax(0,0.9fr) minmax(0,1.1fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,0.6fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,0.9fr) minmax(0,1fr)";
                 if(btmTab==="analytics") return(
                   <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
-                    {jMeta.loading&&(
-                      <div style={{fontSize:11,color:c.ts,padding:"8px 0"}}>Loading journal analytics…</div>
-                    )}
-                    {jMeta.error&&!jMeta.loading&&(
-                      <div style={{fontSize:11,color:c.rd,padding:"8px 10px",background:"rgba(255,80,104,0.08)",border:`1px solid ${c.br}`}}>{jMeta.error}</div>
-                    )}
-                    {!jMeta.loading&&(
-                    <>
-                    {/* Summary — computed from merged journal list + live balance/equity from orderManager */}
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:8}}>
-                      {[
-                        { l: "Balance", v: jBal, col: c.tx },
-                        { l: "Equity", v: jEq, col: c.tx },
-                        { l: "Total Trades", v: jTotalTrades, col: c.tx },
-                        {
-                          l: "Win Rate",
-                          v: jWinRate,
-                          col:
-                            jSt.win_rate == null || !Number.isFinite(Number(jSt.win_rate))
-                              ? c.tx
-                              : Number(jSt.win_rate) >= 50
-                                ? c.gn
-                                : c.rd,
-                        },
-                        {
-                          l: "Profit Factor",
-                          v: jPf,
-                          col:
-                            jPf === "—"
-                              ? c.tx
-                              : jPfRaw === Infinity || Number(jPfRaw) >= 1
-                                ? c.gn
-                                : c.rd,
-                        },
-                        {
-                          l: "Net P&L",
-                          v: jNet,
-                          col:
-                            jSt.total_pnl == null || !Number.isFinite(Number(jSt.total_pnl))
-                              ? c.tx
-                              : Number(jSt.total_pnl) >= 0
-                                ? c.gn
-                                : c.rd,
-                        },
-                        { l: "Avg Win", v: jAvgWin, col: c.gn },
-                        { l: "Avg Loss", v: jAvgLoss, col: c.rd },
-                      ].map(({ l, v, col }, i) => (
+                    {/* Summary cards */}
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:8}}>
+                      {[{l:"Total Trades",v:"14",sub:null},{l:"Win Rate",v:"64.3%",sub:null,col:c.gn},{l:"Profit Factor",v:"1.84",sub:null,col:c.gn},{l:"Net P&L",v:"+$1,533",sub:null,col:c.gn},{l:"Avg Win",v:"+$316",sub:null,col:c.gn},{l:"Avg Loss",v:"-$267",sub:null,col:c.rd}].map(({l,v,col},i)=>(
                         <div key={i} style={{background:c.bg,border:`1px solid ${c.br}`,padding:"10px 12px",display:"flex",flexDirection:"column",gap:5}}>
                           <span style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em"}}>{l}</span>
                           <span style={{fontSize:18,fontWeight:700,color:col||c.tx,fontVariantNumeric:"tabular-nums"}}>{v}</span>
                         </div>
                       ))}
                     </div>
+                    {/* Win/Loss breakdown + pair breakdown */}
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                      {/* Win/Loss bar */}
                       <div style={{background:c.bg,border:`1px solid ${c.br}`,padding:"12px 14px"}}>
                         <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em",marginBottom:10}}>WIN / LOSS BREAKDOWN</div>
-                        {[{l:"Wins",n:jNWins,tot:jNTot,col:c.gn},{l:"Losses",n:jNLoss,tot:jNTot,col:c.rd}].map(({l,n,tot,col})=>(
+                        {[{l:"Wins",n:9,tot:14,col:c.gn},{l:"Losses",n:5,tot:14,col:c.rd}].map(({l,n,tot,col})=>(
                           <div key={l} style={{marginBottom:8}}>
                             <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
                               <span style={{fontSize:10,fontWeight:600,color:c.ts}}>{l}</span>
@@ -17109,70 +7870,60 @@ const TalariaV8bLive = () => {
                           </div>
                         ))}
                         <div style={{height:1,background:c.br,margin:"10px 0"}}/>
-                        {[{l:"Best Trade",row:jBw.best,col:c.gn},{l:"Worst Trade",row:jBw.worst,col:c.rd}].map(({l,row,col})=>(
+                        {[{l:"Best Trade",v:"+$1,090",sym:"EUR/JPY",col:c.gn},{l:"Worst Trade",v:"-$500",sym:"EUR/USD",col:c.rd}].map(({l,v,sym,col})=>(
                           <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
                             <span style={{fontSize:10,color:c.tm}}>{l}</span>
                             <div style={{display:"flex",alignItems:"center",gap:6}}>
-                              <span style={{fontSize:10,color:c.ts}}>{row?.sym ?? "—"}</span>
-                              <span style={{fontSize:11,fontWeight:700,color:col,fontVariantNumeric:"tabular-nums"}}>{row!=null&&row.pnl!=null?fmtUsdAnalytics(row.pnl,0):"—"}</span>
+                              <span style={{fontSize:10,color:c.ts}}>{sym}</span>
+                              <span style={{fontSize:11,fontWeight:700,color:col,fontVariantNumeric:"tabular-nums"}}>{v}</span>
                             </div>
                           </div>
                         ))}
                       </div>
+                      {/* Pair breakdown */}
                       <div style={{background:c.bg,border:`1px solid ${c.br}`,padding:"12px 14px"}}>
                         <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em",marginBottom:10}}>TRADES BY PAIR</div>
-                        {jSymRows.length===0&&<div style={{fontSize:10,color:c.tm}}>No journal trades with symbols.</div>}
-                        {jSymRows.map((row,i)=>{
-                          const sym=fmtJournalPair(row.symbol);
-                          const n=Number(row.total_trades)||0;
-                          const pnlN=Number(row.total_pnl);
-                          const col=!Number.isFinite(pnlN)?c.tm:pnlN>=0?c.gn:c.rd;
-                          const pnlStr=fmtUsdAnalytics(row.total_pnl,0);
-                          return(
-                          <div key={`${String(row.symbol)}-${i}`} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
-                            <span style={{fontSize:10,fontWeight:600,color:c.ts,width:72,flexShrink:0}}>{sym}</span>
+                        {[{sym:"EUR/JPY",n:2,pnl:"+$827",col:c.gn},{sym:"GBP/USD",n:2,pnl:"+$415",col:c.gn},{sym:"USD/JPY",n:1,pnl:"-$263",col:c.rd},{sym:"AUD/USD",n:1,pnl:"+$96",col:c.gn},{sym:"NZD/USD",n:1,pnl:"+$140",col:c.gn},{sym:"GBP/JPY",n:1,pnl:"+$420",col:c.gn},{sym:"Others",n:6,pnl:"-$102",col:c.rd}].map(({sym,n,pnl,col})=>(
+                          <div key={sym} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                            <span style={{fontSize:10,fontWeight:600,color:c.ts,width:60,flexShrink:0}}>{sym}</span>
                             <div style={{flex:1,height:4,background:"rgba(140,160,255,0.07)"}}>
-                              <div style={{width:`${Math.min((n/jMaxSymT)*100,100)}%`,height:"100%",background:col,opacity:0.6}}/>
+                              <div style={{width:`${Math.min((n/4)*100,100)}%`,height:"100%",background:col,opacity:0.6}}/>
                             </div>
-                            <span style={{fontSize:10,color:c.tm,width:20,textAlign:"center",flexShrink:0}}>{n}</span>
-                            <span style={{fontSize:10,fontWeight:700,color:col,fontVariantNumeric:"tabular-nums",width:56,textAlign:"right",flexShrink:0}}>{pnlStr}</span>
-                          </div>);
-                        })}
-                      </div>
-                    </div>
-                    <div style={{background:c.bg,border:`1px solid ${c.br}`,padding:"12px 14px"}}>
-                      <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em",marginBottom:10}}>CUMULATIVE P&L (journal, time order)</div>
-                      {jCum.length===0&&<div style={{fontSize:10,color:c.tm}}>No closed P&amp;L series — add trades to the journal.</div>}
-                      <div style={{display:"flex",alignItems:"flex-end",gap:2,minHeight:52,overflowX:jCum.length>40?"auto":"visible"}}>
-                        {jCum.map((pt)=>(
-                          <div key={pt.idx} style={{flex:jCum.length>60?"0 0 3px":1,minWidth:jCum.length>60?3:0,maxWidth:jCum.length>60?4:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                            <div style={{width:"100%",height:`${Math.max((Math.abs(pt.cum)/jMaxAbsCum)*48,3)}px`,background:pt.tradePnl>=0?c.gn:c.rd,opacity:0.72,marginTop:"auto"}} title={`#${pt.idx} · trade ${fmtUsdAnalytics(pt.tradePnl,2)} · cum ${fmtUsdAnalytics(pt.cum,2)}`}/>
-                            {jCum.length<=24&&<span style={{fontSize:8,color:c.tm,fontVariantNumeric:"tabular-nums"}}>{pt.idx}</span>}
+                            <span style={{fontSize:10,color:c.tm,width:16,textAlign:"center",flexShrink:0}}>{n}</span>
+                            <span style={{fontSize:10,fontWeight:700,color:col,fontVariantNumeric:"tabular-nums",width:52,textAlign:"right",flexShrink:0}}>{pnl}</span>
                           </div>
                         ))}
                       </div>
                     </div>
+                    {/* Cumulative P&L bar chart */}
                     <div style={{background:c.bg,border:`1px solid ${c.br}`,padding:"12px 14px"}}>
-                      <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em",marginBottom:8}}>STRATEGY / TAG PERFORMANCE</div>
-                      {jStrats.length===0&&<div style={{fontSize:10,color:c.tm}}>No strategy breakdown — assign a strategy on journal entries.</div>}
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",gap:6}}>
-                        {jStrats.map((row,i)=>{
-                          const tag=String(row.strategy||"Other").trim()||"Other";
-                          const trades=row.total_trades??0;
-                          const wr=row.win_rate!=null?`${Number(row.win_rate).toFixed(0)}%`:"—";
-                          const pnlStr=fmtUsdAnalytics(row.total_pnl,0);
-                          const pos=Number(row.total_pnl)>=0;
-                          return(
-                          <div key={`${tag}-${i}`} style={{background:"rgba(140,160,255,0.04)",border:`1px solid ${c.br}`,padding:"8px 10px"}}>
-                            <div style={{fontSize:9,fontWeight:700,color:c.acL,letterSpacing:"0.05em",marginBottom:5}}>{tag.toUpperCase()}</div>
-                            <div style={{fontSize:10,color:c.tm,marginBottom:2}}>{trades} trades · WR {wr}</div>
-                            <div style={{fontSize:12,fontWeight:700,color:pos?c.gn:c.rd,fontVariantNumeric:"tabular-nums"}}>{pnlStr}</div>
-                          </div>);
+                      <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em",marginBottom:10}}>CUMULATIVE P&L</div>
+                      <div style={{display:"flex",alignItems:"flex-end",gap:3,height:52}}>
+                        {[120,260,110,350,240,590,490,910,610,1090,990,1330,1225,1533].map((v,i)=>{
+                          const prev=i>0?[120,260,110,350,240,590,490,910,610,1090,990,1330,1225,1533][i-1]:0;
+                          const gain=v>prev;
+                          const pct=Math.abs(v)/1533;
+                          return <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                            <div style={{width:"100%",height:`${Math.max(pct*48,3)}px`,background:gain?c.gn:c.rd,opacity:0.7,marginTop:"auto"}}/>
+                            <span style={{fontSize:8,color:c.tm,fontVariantNumeric:"tabular-nums"}}>{i+1}</span>
+                          </div>;
                         })}
                       </div>
                     </div>
-                    </>
-                    )}
+                    {/* Tag performance */}
+                    <div style={{background:c.bg,border:`1px solid ${c.br}`,padding:"12px 14px"}}>
+                      <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em",marginBottom:8}}>TAG PERFORMANCE</div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+                        {[{tag:"scalp",trades:5,wr:"80%",pnl:"+$727"},{tag:"swing",trades:4,wr:"50%",pnl:"+$667"},{tag:"trend",trades:3,wr:"100%",pnl:"+$853"},{tag:"news",trades:2,wr:"0%",pnl:"-$605"}].map(({tag,trades,wr,pnl})=>{
+                          const pos=!pnl.startsWith("-");
+                          return <div key={tag} style={{background:"rgba(140,160,255,0.04)",border:`1px solid ${c.br}`,padding:"8px 10px"}}>
+                            <div style={{fontSize:9,fontWeight:700,color:c.acL,letterSpacing:"0.05em",marginBottom:5}}>{tag.toUpperCase()}</div>
+                            <div style={{fontSize:10,color:c.tm,marginBottom:2}}>{trades} trades · WR {wr}</div>
+                            <div style={{fontSize:12,fontWeight:700,color:pos?c.gn:c.rd,fontVariantNumeric:"tabular-nums"}}>{pnl}</div>
+                          </div>;
+                        })}
+                      </div>
+                    </div>
                   </div>
                 );
                 const hdrs=[
@@ -17233,31 +7984,7 @@ const TalariaV8bLive = () => {
                     const isSelected=selRow===r.id;
                     const isHov=hov===`pos-${i}`;
                     const rowBg=isSelected?"rgba(140,160,255,0.07)":isHov?"rgba(140,160,255,0.025)":"transparent";
-                    const openCard=()=>{
-                      const om=typeof window!=="undefined"?window.chart?.orderManager:null;
-                      const tid=r.omId;
-                      let noteFallback="";
-                      let j=null;
-                      if(om&&tid!=null){
-                        j=Array.isArray(om.tradeJournal)?om.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
-                        const order=om.pendingOrders?.find(o=>o.id===tid)||om.openPositions?.find(o=>o.id===tid)||om.closedPositions?.find(o=>o.id===tid);
-                        noteFallback=j?.v9TradeNotes||order?.journalEntry?.v9TradeNotes||"";
-                      }
-                      setTradeCard(r);
-                      setTradeCardPreTags([...r.preTags]);
-                      setTradeCardPostTags([...r.postTags]);
-                      setTradeCardNotes(tradeNotes[r.id]||noteFallback||"");
-                      if(j&&(j.entryScreenshot||j.exitScreenshot)){
-                        setTradeScreenshots((prev)=>{
-                          const ex=prev[r.id]||{};
-                          const pre=clampScreenshotSlot([...(ex.pre||[])]);
-                          const post=clampScreenshotSlot([...(ex.post||[])]);
-                          if(j.entryScreenshot&&!pre.includes(j.entryScreenshot))pre.push(j.entryScreenshot);
-                          if(j.exitScreenshot&&!post.includes(j.exitScreenshot))post.push(j.exitScreenshot);
-                          return {...prev,[r.id]:{...ex,pre:clampScreenshotSlot(pre),post:clampScreenshotSlot(post)}};
-                        });
-                      }
-                    };
+                    const openCard=()=>{setTradeCard(r);setTradeCardPreTags([...r.preTags]);setTradeCardPostTags([...r.postTags]);setTradeCardNotes(tradeNotes[r.id]||"");};
                     const isActive=r.status==="open"||r.status==="pending";
                     return(
                     <div key={r.id}
@@ -17305,7 +8032,7 @@ const TalariaV8bLive = () => {
                             const hasTags=tags.length>0;
                             const isHov=hov===hk;
                             const clickable = hasTags||canEdit;
-                            const col = isOpen?activeCol : isHov&&clickable?activeCol : hasTags?"rgba(255,255,255,0.35)" : "rgba(255,255,255,0.14)";
+                            const col = isOpen?activeCol : isHov&&clickable?activeCol : hasTags?c.ts : c.tm;
                             return(
                               <div key={type} style={{position:"relative"}}>
                                 <div onMouseEnter={()=>clickable&&setHov(hk)} onMouseLeave={()=>setHov(null)}
@@ -17314,7 +8041,7 @@ const TalariaV8bLive = () => {
                                   <span style={{fontSize:8,fontWeight:700,letterSpacing:"0.06em",color:col,lineHeight:1,transition:"color 0.15s"}}>{label}</span>
                                   {clickable&&<svg width={5} height={3} viewBox="0 0 5 3" style={{flexShrink:0,transition:"transform 0.15s",transform:isOpen?"rotate(180deg)":"rotate(0deg)"}}><path d="M0.5,0.5 L2.5,2.5 L4.5,0.5" stroke={col} strokeWidth={1.3} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                                   {isOpen&&<div style={{position:"absolute",bottom:0,left:0,right:0,height:2,background:`linear-gradient(90deg,transparent,${activeCol},transparent)`,boxShadow:`0 0 5px ${acGlow}`,pointerEvents:"none"}}/>}
-                                  {isHov&&!isOpen&&clickable&&<div style={{position:"absolute",bottom:0,left:0,right:0,height:1,background:"linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent)",pointerEvents:"none"}}/>}
+                                  {isHov&&!isOpen&&clickable&&<div style={{position:"absolute",bottom:0,left:0,right:0,height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
                                 </div>
                                 {isOpen&&(()=>{
                                   const editTags = type==="pre" ? r.preTags : r.postTags;
@@ -17339,13 +8066,12 @@ const TalariaV8bLive = () => {
                                                   const isH2=swHov===`td-yn-${r.id}-${def.id}-${lbl}`;
                                                   return(
                                                     <div key={lbl}
-                                                      onClick={()=>{ if(!canEdit) return; updTags(r.id,val?[...editTags.filter(x=>x!==def.label),def.label]:editTags.filter(x=>x!==def.label)); }}
-                                                      onMouseEnter={()=>canEdit&&setSwHov(`td-yn-${r.id}-${def.id}-${lbl}`)} onMouseLeave={()=>setSwHov(null)}
+                                                      onClick={()=>updTags(r.id,val?[...editTags.filter(x=>x!==def.label),def.label]:editTags.filter(x=>x!==def.label))}
+                                                      onMouseEnter={()=>setSwHov(`td-yn-${r.id}-${def.id}-${lbl}`)} onMouseLeave={()=>setSwHov(null)}
                                                       style={{padding:"1px 7px",fontSize:9,fontWeight:sel?700:500,cursor:"default",transition:"all 0.12s",
-                                                        opacity:canEdit?1:0.72,
-                                                        color:sel?accentCol:!canEdit?c.trk:isH2?"rgba(255,255,255,0.65)":c.ts,
+                                                        color:sel?accentCol:isH2?c.tx:c.ts,
                                                         background:sel?accentBg:"transparent",
-                                                        border:`1px solid ${sel?accentBorder:"rgba(255,255,255,0.08)"}`}}>
+                                                        border:`1px solid ${sel?accentBorder:c.br}`}}>
                                                       {lbl}
                                                     </div>
                                                   );
@@ -17362,13 +8088,12 @@ const TalariaV8bLive = () => {
                                                   const active=editTags.includes(opt);
                                                   const isH=swHov===`td-opt-${r.id}-${def.id}-${opt}`;
                                                   return(
-                                                    <div key={opt} onClick={()=>{ if(!canEdit) return; updTags(r.id,active?editTags.filter(x=>x!==opt):[...editTags,opt]); }}
-                                                      onMouseEnter={()=>canEdit&&setSwHov(`td-opt-${r.id}-${def.id}-${opt}`)} onMouseLeave={()=>setSwHov(null)}
+                                                    <div key={opt} onClick={()=>updTags(r.id,active?editTags.filter(x=>x!==opt):[...editTags,opt])}
+                                                      onMouseEnter={()=>setSwHov(`td-opt-${r.id}-${def.id}-${opt}`)} onMouseLeave={()=>setSwHov(null)}
                                                       style={{padding:"2px 8px",fontSize:9,fontWeight:active?700:400,cursor:"default",transition:"all 0.12s",
-                                                        opacity:canEdit?1:0.72,
-                                                        color:active?accentCol:!canEdit?c.trk:isH?"rgba(255,255,255,0.55)":c.ts,
+                                                        color:active?accentCol:isH?c.tx:c.ts,
                                                         background:active?accentBg:"transparent",
-                                                        border:`1px solid ${active?accentBorder:"rgba(255,255,255,0.07)"}`}}>
+                                                        border:`1px solid ${active?accentBorder:c.br}`}}>
                                                       {opt}
                                                     </div>
                                                   );
@@ -17396,26 +8121,16 @@ const TalariaV8bLive = () => {
                           <span style={{fontSize:9,color:c.tm,fontStyle:"italic"}}>—</span>
                         )}
                       </div>
-                      {/* Screenshots cell — merge React state with persisted session journal URLs */}
+                      {/* Screenshots cell */}
                       <div style={{overflow:"hidden",minWidth:0}} onClick={e=>e.stopPropagation()}>
-                        {(()=>{
-                          const omRow=typeof window!=="undefined"?window.chart?.orderManager:null;
-                          const tid=r.omId;
-                          const jRow=tid!=null&&Array.isArray(omRow?.tradeJournal)?omRow.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
-                          const fromSt=tradeScreenshots[r.id]||{};
-                          const pre=clampScreenshotSlot([...(fromSt.pre||[])]);
-                          const post=clampScreenshotSlot([...(fromSt.post||[])]);
-                          if(jRow?.entryScreenshot&&!pre.includes(jRow.entryScreenshot))pre.push(jRow.entryScreenshot);
-                          if(jRow?.exitScreenshot&&!post.includes(jRow.exitScreenshot))post.push(jRow.exitScreenshot);
-                          const allSs=[...clampScreenshotSlot(pre),...clampScreenshotSlot(post)];
-                          return allSs.length>0?(
-                          <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap",maxWidth:148}}>
-                            {allSs.slice(0,4).map((src,si)=>(
-                              <div key={si} style={{width:30,height:22,border:"1px solid rgba(140,160,255,0.3)",overflow:"hidden",flexShrink:0,borderRadius:2}}>
-                                <img src={src} alt="" onError={journalScreenshotImgOnError} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                        {(()=>{const allSs=[...((tradeScreenshots[r.id]||{}).pre||[]),...((tradeScreenshots[r.id]||{}).post||[])];return allSs.length>0?(
+                          <div style={{display:"flex",alignItems:"center",gap:3}}>
+                            {allSs.slice(0,3).map((src,si)=>(
+                              <div key={si} style={{width:22,height:16,border:"1px solid rgba(140,160,255,0.3)",overflow:"hidden",flexShrink:0}}>
+                                <img src={src} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
                               </div>
                             ))}
-                            {allSs.length>4&&<span style={{fontSize:8,color:c.ts}}>+{allSs.length-4}</span>}
+                            {allSs.length>3&&<span style={{fontSize:8,color:c.ts}}>+{allSs.length-3}</span>}
                           </div>
                         ) : (
                           <span style={{fontSize:9,color:c.tm,fontStyle:"italic"}}>—</span>
@@ -17424,14 +8139,14 @@ const TalariaV8bLive = () => {
                       {/* Action column */}
                       <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,overflow:"hidden"}}>
                         {r.status==="pending"&&(
-                          <div onMouseEnter={()=>setHov(`cls-${i}`)} onMouseLeave={()=>setHov(null)} onClick={(e)=>{ e.stopPropagation(); const oid=r.omId ?? parseInt(String(r.id).replace(/\D/g,""),10); if(Number.isFinite(oid)) window.chart?.orderManager?.cancelPendingOrder?.(oid); }}
+                          <div onMouseEnter={()=>setHov(`cls-${i}`)} onMouseLeave={()=>setHov(null)} onClick={e=>e.stopPropagation()}
                             style={{position:"relative",cursor:"default",fontSize:9,fontWeight:700,letterSpacing:"0.06em",color:hov===`cls-${i}`?"#FFa055":"rgba(255,140,66,0.6)",transition:"color 0.15s",userSelect:"none"}}>
                             CANCEL
                             {hov===`cls-${i}`&&<div style={{position:"absolute",bottom:-1,left:0,right:0,height:1,background:"linear-gradient(90deg,transparent,#FF8C42,transparent)"}}/>}
                           </div>
                         )}
                         {r.status==="open"&&(
-                          <div onMouseEnter={()=>setHov(`cls-${i}`)} onMouseLeave={()=>setHov(null)} onClick={(e)=>{ e.stopPropagation(); const oid=r.omId ?? parseInt(String(r.id).replace(/\D/g,""),10); if(Number.isFinite(oid)) window.chart?.orderManager?.closePosition?.(oid); }}
+                          <div onMouseEnter={()=>setHov(`cls-${i}`)} onMouseLeave={()=>setHov(null)} onClick={e=>e.stopPropagation()}
                             style={{position:"relative",cursor:"default",fontSize:9,fontWeight:700,letterSpacing:"0.06em",color:hov===`cls-${i}`?c.rd:"rgba(220,80,80,0.85)",transition:"color 0.15s",userSelect:"none"}}>
                             CLOSE
                             {hov===`cls-${i}`&&<div style={{position:"absolute",bottom:-1,left:0,right:0,height:1,background:`linear-gradient(90deg,transparent,${c.rd},transparent)`}}/>}
@@ -17445,7 +8160,7 @@ const TalariaV8bLive = () => {
             </div>
           </div>
         </div>
-        <div data-v9-chrome="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ width: (rightPanel || (orderPanelOpen && !panelDetached)) ? 336 : 0, flexShrink: 0, overflow: "hidden", transition: "width 0.2s ease" }}>
+        <div style={{ width: (rightPanel || (orderPanelOpen && !panelDetached)) ? 336 : 0, flexShrink: 0, overflow: "hidden", transition: "width 0.2s ease" }}>
         {rightPanel ? (()=>{
           // lyLines: each variant is an array of internal {x1,y1,x2,y2} dividing lines (fractions 0-1)
           const lyLines = [
@@ -17528,51 +8243,55 @@ const TalariaV8bLive = () => {
           )}
           <div style={{ flex: 1, overflowY: "auto", fontSize: 11 }} className="tlr-scroll">
             {rightPanel==="news" && (()=>{
-              void ecoNewsRev;
+              const ALL_COUNTRIES = ["US","EU","GB","JP","AU","CA","DE","FR","IT","CN","CH"];
               const cntNames = {US:"United States",EU:"Euro Zone",GB:"United Kingdom",JP:"Japan",AU:"Australia",CA:"Canada",DE:"Germany",FR:"France",IT:"Italy",CN:"China",CH:"Switzerland"};
               const impCol = {high:c.rd, med:"#FF8C00", low:"#FFD700"};
-              const api = typeof window !== "undefined" ? window.__economicCalendarUi : null;
-              const st = api ? api.getStatus() : null;
-              const rawList = api && st && !st.loading && !st.error ? api.getFilteredEvents() : [];
-              const filtered = rawList.map((e, idx) => {
-                const d = api.displayForEvent(e);
-                const imp = e.impact === "medium" ? "med" : e.impact;
-                return {
-                  id: `${e.t}:${idx}:${(e.event || "").slice(0, 48)}`,
-                  time: d ? d.time : "",
-                  countdown: d && d.upcoming && d.countdown ? d.countdown : null,
-                  country: e.countryKey || (String(e.country || "").trim().slice(0, 2).toUpperCase() || "US"),
-                  impact: imp,
-                  title: e.event,
-                  date: d ? d.dateStr : "",
-                  actual: e.actual,
-                  forecast: e.forecast,
-                  previous: e.previous,
-                  tab: newsTab,
-                };
-              });
-              const allCntOn = ECON_CAL_COUNTRIES.every((co) => newsCntSel[co]);
-              if (st && st.loading) {
-                return (
-                  <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                    <div style={{ padding: "40px 14px", textAlign: "center", color: c.tm, fontSize: 11 }}>Loading economic calendar…</div>
-                  </div>
-                );
-              }
-              if (st && st.error) {
-                return (
-                  <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                    <div style={{ padding: "24px 14px", textAlign: "center", color: c.rd, fontSize: 11 }}>{st.error}</div>
-                  </div>
-                );
-              }
-              if (!api) {
-                return (
-                  <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                    <div style={{ padding: "24px 14px", textAlign: "center", color: c.tm, fontSize: 11 }}>Economic calendar unavailable.</div>
-                  </div>
-                );
-              }
+              const newsData = [
+                {id:1, time:"06:00",countdown:"in 0h 20m",country:"AU",impact:"low",  title:"RBA Meeting Minutes",                      date:"2026.04.16",actual:null,forecast:"-",    previous:"-",    tab:"upcoming"},
+                {id:2, time:"06:30",countdown:"in 0h 50m",country:"JP",impact:"med",  title:"Japan Industrial Production m/m",            date:"2026.04.16",actual:null,forecast:"1.2%", previous:"-0.6%",tab:"upcoming"},
+                {id:3, time:"07:00",countdown:"in 1h 20m", country:"DE",impact:"low",  title:"Germany Import Price Index m/m",              date:"2026.04.16",actual:null,forecast:"0.4%", previous:"0.8%", tab:"upcoming"},
+                {id:4, time:"07:45",countdown:"in 2h 05m", country:"FR",impact:"med",  title:"France CPI m/m (Final)",                      date:"2026.04.16",actual:null,forecast:"0.6%", previous:"0.1%", tab:"upcoming"},
+                {id:5, time:"08:00",countdown:"in 2h 20m", country:"CH",impact:"low",  title:"Switzerland Trade Balance",                   date:"2026.04.16",actual:null,forecast:"3.4B", previous:"4.1B", tab:"upcoming"},
+                {id:6, time:"09:00",countdown:"in 3h 20m", country:"EU",impact:"high", title:"Eurozone CPI y/y (Final)",                     date:"2026.04.16",actual:null,forecast:"2.2%", previous:"2.3%", tab:"upcoming"},
+                {id:7, time:"09:00",countdown:"in 3h 20m", country:"EU",impact:"med",  title:"Eurozone Core CPI y/y (Final)",                date:"2026.04.16",actual:null,forecast:"2.4%", previous:"2.6%", tab:"upcoming"},
+                {id:8, time:"09:30",countdown:"in 3h 50m", country:"GB",impact:"high", title:"UK CPI y/y",                                   date:"2026.04.16",actual:null,forecast:"3.0%", previous:"2.8%", tab:"upcoming"},
+                {id:9, time:"09:30",countdown:"in 3h 50m", country:"GB",impact:"med",  title:"UK Core CPI y/y",                             date:"2026.04.16",actual:null,forecast:"3.5%", previous:"3.5%", tab:"upcoming"},
+                {id:10,time:"09:30",countdown:"in 3h 50m", country:"GB",impact:"low",  title:"UK PPI Input m/m",                            date:"2026.04.16",actual:null,forecast:"0.3%", previous:"-0.2%",tab:"upcoming"},
+                {id:11,time:"10:00",countdown:"in 4h 20m", country:"DE",impact:"high", title:"Germany ZEW Economic Sentiment",              date:"2026.04.16",actual:null,forecast:"-11.4",previous:"-26.0",tab:"upcoming"},
+                {id:12,time:"10:00",countdown:"in 4h 20m", country:"EU",impact:"med",  title:"Eurozone ZEW Economic Sentiment",             date:"2026.04.16",actual:null,forecast:"3.6",  previous:"39.8", tab:"upcoming"},
+                {id:13,time:"11:30",countdown:"in 5h 50m", country:"US",impact:"low",  title:"4-Week Bill Auction",                         date:"2026.04.16",actual:null,forecast:"-",    previous:"4.23%",tab:"upcoming"},
+                {id:14,time:"12:30",countdown:"in 6h 50m", country:"CA",impact:"high", title:"Canada CPI y/y",                              date:"2026.04.16",actual:null,forecast:"2.6%", previous:"2.6%", tab:"upcoming"},
+                {id:15,time:"12:30",countdown:"in 6h 50m", country:"CA",impact:"med",  title:"Canada Core CPI m/m",                        date:"2026.04.16",actual:null,forecast:"0.4%", previous:"0.7%", tab:"upcoming"},
+                {id:16,time:"12:30",countdown:"in 6h 50m", country:"US",impact:"high", title:"Core PPI m/m",                                date:"2026.04.16",actual:null,forecast:"0.2%", previous:"0.5%", tab:"upcoming"},
+                {id:17,time:"12:30",countdown:"in 6h 50m", country:"US",impact:"med",  title:"Retail Sales m/m",                           date:"2026.04.16",actual:null,forecast:"0.8%", previous:"-1.1%",tab:"upcoming"},
+                {id:18,time:"12:30",countdown:"in 6h 50m", country:"US",impact:"med",  title:"Retail Sales ex Autos m/m",                  date:"2026.04.16",actual:null,forecast:"0.4%", previous:"-0.4%",tab:"upcoming"},
+                {id:19,time:"13:15",countdown:"in 7h 35m", country:"US",impact:"high", title:"Industrial Production m/m",                  date:"2026.04.16",actual:null,forecast:"0.4%", previous:"-0.3%",tab:"upcoming"},
+                {id:20,time:"13:15",countdown:"in 7h 35m", country:"US",impact:"med",  title:"Capacity Utilization Rate",                  date:"2026.04.16",actual:null,forecast:"77.9%",previous:"78.2%",tab:"upcoming"},
+                {id:21,time:"14:00",countdown:"in 8h 20m", country:"US",impact:"low",  title:"Business Inventories m/m",                   date:"2026.04.16",actual:null,forecast:"0.3%", previous:"0.2%", tab:"upcoming"},
+                {id:22,time:"14:00",countdown:"in 8h 20m", country:"US",impact:"low",  title:"NAHB Housing Market Index",                  date:"2026.04.16",actual:null,forecast:"37",    previous:"39",   tab:"upcoming"},
+                {id:23,time:"14:30",countdown:"in 8h 50m", country:"US",impact:"low",  title:"Crude Oil Inventories",                      date:"2026.04.16",actual:null,forecast:"-1.2M", previous:"2.6M", tab:"upcoming"},
+                {id:24,time:"16:00",countdown:"in 10h 20m",country:"CA",impact:"med",  title:"BOC Governor Macklem Speaks",                date:"2026.04.16",actual:null,forecast:"-",    previous:"-",    tab:"upcoming"},
+                {id:25,time:"17:00",countdown:"in 11h 20m",country:"US",impact:"med",  title:"Fed Chair Powell Speaks",                    date:"2026.04.16",actual:null,forecast:"-",    previous:"-",    tab:"upcoming"},
+                {id:26,time:"17:30",countdown:"in 11h 50m",country:"US",impact:"low",  title:"5-Year TIPS Auction",                        date:"2026.04.16",actual:null,forecast:"-",    previous:"1.84%",tab:"upcoming"},
+                {id:27,time:"19:00",countdown:"in 13h 20m",country:"US",impact:"low",  title:"Fed Waller Speaks",                          date:"2026.04.16",actual:null,forecast:"-",    previous:"-",    tab:"upcoming"},
+                {id:28,time:"02:00",countdown:"in 19h 20m",country:"CN",impact:"high", title:"China Retail Sales y/y",                     date:"2026.04.17",actual:null,forecast:"4.2%", previous:"4.0%", tab:"upcoming"},
+                {id:29,time:"02:00",countdown:"in 19h 20m",country:"CN",impact:"high", title:"China Industrial Production y/y",            date:"2026.04.17",actual:null,forecast:"5.7%", previous:"5.9%", tab:"upcoming"},
+                {id:30,time:"12:30",countdown:"in 30h 50m",country:"US",impact:"high", title:"Philadelphia Fed Manufacturing Index",       date:"2026.04.17",actual:null,forecast:"-10.0",previous:"-26.4",tab:"upcoming"},
+                {id:7,time:"08:30",country:"US",impact:"high",title:"CPI m/m",date:"2026.04.15",actual:"0.1%",forecast:"0.3%",previous:"0.2%",tab:"previous"},
+                {id:8,time:"08:30",country:"US",impact:"high",title:"Core CPI m/m",date:"2026.04.15",actual:"0.3%",forecast:"0.3%",previous:"0.4%",tab:"previous"},
+                {id:9,time:"03:00",country:"CN",impact:"high",title:"GDP q/y",date:"2026.04.16",actual:"5.4%",forecast:"5.2%",previous:"5.4%",tab:"previous"},
+                {id:10,time:"10:00",country:"EU",impact:"med",title:"ECB President Lagarde Speaks",date:"2026.04.15",actual:"-",forecast:"-",previous:"-",tab:"previous"},
+                {id:11,time:"09:30",country:"GB",impact:"high",title:"GDP m/m",date:"2026.04.11",actual:"0.5%",forecast:"0.1%",previous:"-0.1%",tab:"previous"},
+                {id:12,time:"14:00",country:"US",impact:"med",title:"Michigan Consumer Sentiment",date:"2026.04.11",actual:"50.8",forecast:"54.5",previous:"57.0",tab:"previous"},
+              ];
+              const q = newsSearch.toLowerCase();
+              const filtered = newsData.filter(ev =>
+                ev.tab===newsTab &&
+                newsImpact.includes(ev.impact) &&
+                newsCntSel[ev.country] &&
+                (!q || ev.title.toLowerCase().includes(q) || ev.country.toLowerCase().includes(q))
+              );
+              const allCntOn = ALL_COUNTRIES.every(co=>newsCntSel[co]);
               return (
                 <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
                   {/* Search + Filter button */}
@@ -17599,71 +8318,12 @@ const TalariaV8bLive = () => {
                     {/* Search bar */}
                     <div style={{flex:1,display:"flex",alignItems:"center",gap:6,background:c.well,border:`1px solid ${c.brH}`,padding:"5px 8px"}}>
                       <I n="search" s={13} cl={c.tm}/>
-                      <input type="text" placeholder="Search events…" value={newsSearch} onChange={(e) => {
-                        const v = e.target.value;
-                        setNewsSearch(v);
-                        if (newsSearchToModuleDebounceRef.current) clearTimeout(newsSearchToModuleDebounceRef.current);
-                        newsSearchToModuleDebounceRef.current = setTimeout(() => {
-                          window.__economicCalendarUi?.setQuery(v);
-                        }, 200);
-                      }}
+                      <input type="text" placeholder="Search events…" value={newsSearch} onChange={e=>setNewsSearch(e.target.value)}
                         style={{flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:0}}/>
-                      {newsSearch && (
-                        <div
-                          onClick={() => {
-                            setNewsSearch("");
-                            window.__economicCalendarUi?.setQuery("");
-                          }}
-                          style={{ cursor: "default" }}
-                        >
-                          <I n="x" s={12} cl={c.ts} />
-                        </div>
-                      )}
+                      {newsSearch && <div onClick={()=>setNewsSearch("")} style={{cursor:"default"}}><I n="x" s={12} cl={c.ts}/></div>}
                     </div>
                   </div>
-                  {/* Always visible: pair filter (was inside collapsed panel — 0fr height hid controls). */}
-                  <div
-                    onClick={() => {
-                      setNewsSymbolOnly((p) => {
-                        const next = !p;
-                        queueMicrotask(() => pushEconNewsFiltersToModule(newsImpact, next, newsCntSel));
-                        return next;
-                      });
-                    }}
-                    onMouseEnter={() => setSwHov("news-pair-row")}
-                    onMouseLeave={() => setSwHov(null)}
-                    style={{
-                      flexShrink: 0,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "6px 10px",
-                      cursor: "default",
-                      background: swHov === "news-pair-row" ? "rgba(255,255,255,0.03)" : "transparent",
-                      transition: "background 0.12s",
-                      borderBottom: `1px solid ${c.br}`,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 12,
-                        color: newsSymbolOnly ? c.acL : c.ts,
-                        fontWeight: newsSymbolOnly ? 600 : 400,
-                        transition: "color 0.15s",
-                      }}
-                    >
-                      Chart symbol only
-                    </span>
-                    <Toggle
-                      on={newsSymbolOnly}
-                      color={c.acL}
-                      c={c}
-                      hk="news-pair"
-                      swHov={swHov}
-                      setSwHov={setSwHov}
-                    />
-                  </div>
-                  {/* Filters: impact + countries (collapsible) */}
+                  {/* Filters */}
                   <div style={{flexShrink:0,display:"grid",gridTemplateRows:newsFilterOpen?"1fr":"0fr",transition:"grid-template-rows 0.28s cubic-bezier(0.4,0,0.2,1)",overflow:"hidden"}}>
                     <div style={{overflow:"hidden",opacity:newsFilterOpen?1:0,transition:"opacity 0.22s ease"}}>
                       <div style={{padding:"0 10px 10px",display:"flex",flexDirection:"column",gap:8}}>
@@ -17677,16 +8337,7 @@ const TalariaV8bLive = () => {
                               const isH=swHov===`ni-${lv}`;
                               return (
                                 <div key={lv}
-                                  onClick={()=>{
-                                    setNewsImpact((prev) => {
-                                      const next = on ? prev.filter((x) => x !== lv) : [...prev, lv];
-                                      const effective = next.length === 0 ? ["high", "med", "low"] : next;
-                                      queueMicrotask(() =>
-                                        pushEconNewsFiltersToModule(effective, newsSymbolOnly, newsCntSel)
-                                      );
-                                      return effective;
-                                    });
-                                  }}
+                                  onClick={()=>setNewsImpact(prev=>on?prev.filter(x=>x!==lv):[...prev,lv])}
                                   onMouseEnter={()=>setSwHov(`ni-${lv}`)} onMouseLeave={()=>setSwHov(null)}
                                   style={{padding:"3px 8px",fontSize:12,fontWeight:on?700:500,cursor:"default",
                                     letterSpacing:"0.03em",position:"relative",
@@ -17704,18 +8355,16 @@ const TalariaV8bLive = () => {
                             })}
                           </div>
                         </div>
+                        {/* Symbol only */}
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                          <span style={{fontSize:12,color:newsSymbolOnly?c.acL:c.ts,fontWeight:newsSymbolOnly?600:400,transition:"color 0.15s"}}>Chart symbol only</span>
+                          <Toggle on={newsSymbolOnly} onClick={()=>setNewsSymbolOnly(p=>!p)} color={c.acL} c={c} swHov={swHov} setSwHov={setSwHov}/>
+                        </div>
                         {/* Countries */}
                         <div>
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
                             <span style={{fontSize:11,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>COUNTRIES</span>
-                            <div onClick={()=>{
-                              setNewsCntSel((prev) => {
-                                const allOn = ECON_CAL_COUNTRIES.every((x) => prev[x]);
-                                const next = ECON_CAL_COUNTRIES.reduce((a, co) => ({ ...a, [co]: allOn ? 0 : 1 }), {});
-                                queueMicrotask(() => pushEconNewsFiltersToModule(newsImpact, newsSymbolOnly, next));
-                                return next;
-                              });
-                            }}
+                            <div onClick={()=>setNewsCntSel(ALL_COUNTRIES.reduce((a,co)=>({...a,[co]:allCntOn?0:1}),{}))}
                               onMouseEnter={()=>setSwHov("ncAll")} onMouseLeave={()=>setSwHov(null)}
                               style={{width:28,textAlign:"center",fontSize:11,fontWeight:700,cursor:"default",letterSpacing:"0.04em",
                                 color:allCntOn?c.ts:c.acL,
@@ -17726,16 +8375,12 @@ const TalariaV8bLive = () => {
                             </div>
                           </div>
                           <div className="tlr-scroll" style={{maxHeight:130,overflowY:"auto",display:"flex",flexDirection:"column",gap:1}}>
-                            {ECON_CAL_COUNTRIES.map(co=>{
+                            {ALL_COUNTRIES.map(co=>{
                               const on=!!newsCntSel[co];
                               const isH=swHov===`nc-${co}`;
                               return (
                                 <div key={co}
-                                  onClick={()=>setNewsCntSel((prev)=>{
-                                    const next={...prev,[co]:prev[co]?0:1};
-                                    queueMicrotask(()=>pushEconNewsFiltersToModule(newsImpact,newsSymbolOnly,next));
-                                    return next;
-                                  })}
+                                  onClick={()=>setNewsCntSel(prev=>({...prev,[co]:prev[co]?0:1}))}
                                   onMouseEnter={()=>setSwHov(`nc-${co}`)} onMouseLeave={()=>setSwHov(null)}
                                   style={{display:"flex",alignItems:"center",gap:7,padding:"4px 8px",cursor:"default",position:"relative",
                                     background:on?c.acD:isH?"rgba(255,255,255,0.022)":"transparent",
@@ -17776,10 +8421,7 @@ const TalariaV8bLive = () => {
                       const isAct=newsTab===tab;
                       const isH=swHov===`ntab-${tab}`;
                       return (
-                        <div key={tab} onClick={()=>{
-                          setNewsTab(tab);
-                          window.__economicCalendarUi?.setTab(tab);
-                        }}
+                        <div key={tab} onClick={()=>setNewsTab(tab)}
                           onMouseEnter={()=>setSwHov(`ntab-${tab}`)} onMouseLeave={()=>setSwHov(null)}
                           style={{flex:1,padding:"7px 0",textAlign:"center",cursor:"default",
                             color:isAct?c.acL:isH?c.tx:c.ts,fontSize:11,fontWeight:isAct?700:500,
@@ -17892,7 +8534,7 @@ const TalariaV8bLive = () => {
                                   <span style={{fontSize:13,fontWeight:700,color:c.ts,
                                     fontVariantNumeric:"tabular-nums",textAlign:"center",lineHeight:1.35,
                                     whiteSpace:"nowrap",marginRight:16}}>
-                                    {String(ev.countdown).replace(/^-\s*/, "")}
+                                    {ev.countdown.replace("in ","")}
                                   </span>
                                 ) : hasAct && fcVal!=null ? (
                                   <>
@@ -17930,38 +8572,9 @@ const TalariaV8bLive = () => {
                   const isDelH = swHov===`lyrD-${item.id}`;
                   const isDelDn = swHov===`lyrD-${item.id}_dn`;
                   const anyHov = isH||isJumpH||isVisH||isDelH||isDelDn;
-                  // _visible reflects the actual chart.js drawing.visible flag
-                  // (rebuilt on every drawingsChanged event).
-                  const isVis = item._visible !== false;
-                  // Helper: get the chart.js drawingManager + the live drawing
-                  // (item._drawing reference can become stale after undo/redo;
-                  // fall back to id lookup).
-                  const findDm = () => (window.chart && window.chart.drawingManager) || null;
-                  const findDrawing = (dm) => {
-                    if (!dm || !Array.isArray(dm.drawings)) return null;
-                    if (item._drawing && dm.drawings.includes(item._drawing)) return item._drawing;
-                    return dm.drawings.find(x => x && x.id === item.id) || null;
-                  };
-                  const _logAct = (kind) => {
-                    const dm = findDm();
-                    const d = findDrawing(dm);
-                    console.log('[V9 ObjectsTree]', kind, {
-                      itemId: item.id,
-                      itemName: item.name,
-                      hasDm: !!dm,
-                      hasDrawing: !!d,
-                      dmDrawingsCount: dm && dm.drawings ? dm.drawings.length : 'N/A',
-                      hasObjectTreeManager: !!(dm && dm.objectTreeManager),
-                    });
-                  };
+                  const isVis = layersVis[item.id] !== false;
                   return (
                     <div key={item.id}
-                      onClick={()=>{
-                        // Legacy parity (object-tree.js:364-366): item click → selectDrawing(d).
-                        const dm = findDm(); const d = findDrawing(dm);
-                        if (!dm || !d) return;
-                        if (typeof dm.selectDrawing === 'function') dm.selectDrawing(d);
-                      }}
                       onMouseEnter={()=>setSwHov(`lyr-${item.id}`)}
                       onMouseLeave={()=>setSwHov(null)}
                       style={{display:"flex",alignItems:"center",gap:7,padding:"6px 10px",
@@ -17977,53 +8590,24 @@ const TalariaV8bLive = () => {
                         userSelect:"none",cursor:"default",
                         transition:"color 0.04s"}}>{item.name}</span>
                       {/* action buttons — appear on row hover */}
-                      {/* jump to: center chart viewport on the drawing + select it */}
+                      {/* jump to */}
                       <div data-layeraction="1"
-                        onClick={(e)=>{
-                          // Legacy parity (object-tree.js:316-319): jumpBtn click →
-                          // stopPropagation + jumpToDrawing(d).
-                          e.stopPropagation();
-                          _logAct('jump');
-                          const dm = findDm(); const d = findDrawing(dm);
-                          if (!dm || !d) return;
-                          if (dm.objectTreeManager && typeof dm.objectTreeManager.jumpToDrawing === 'function') {
-                            dm.objectTreeManager.jumpToDrawing(d);
-                          } else if (typeof dm.selectDrawing === 'function') {
-                            dm.selectDrawing(d);
-                          }
-                        }}
+                        onClick={(e)=>{e.stopPropagation();}}
                         onMouseEnter={()=>setSwHov(`lyrJ-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
-                        onMouseDown={(e)=>e.stopPropagation()}
-                        style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:"pointer",flexShrink:0,opacity:isJumpH?1:anyHov?0.55:0,
-                          pointerEvents:"auto",transition:"opacity 0.04s"}}>
+                        style={{width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",
+                          cursor:"default",flexShrink:0,opacity:isJumpH?1:anyHov?0.55:0,
+                          transition:"opacity 0.04s"}}>
                         <I n="locate" s={15} cl={isJumpH?c.acL:c.ts}/>
                       </div>
-                      {/* visibility: flips drawing.visible and re-renders */}
+                      {/* visibility */}
                       <div data-layeraction="1"
-                        onClick={(e)=>{
-                          // Legacy parity (object-tree.js:339-342, 526-538):
-                          // visibility click → toggle drawing.visible, renderDrawing,
-                          // saveDrawings (which fires drawingsChanged → V9 rebuilds).
-                          e.stopPropagation();
-                          _logAct('toggleVisibility');
-                          const dm = findDm(); const d = findDrawing(dm);
-                          if (!dm || !d) return;
-                          if (dm.objectTreeManager && typeof dm.objectTreeManager.toggleDrawingVisibility === 'function') {
-                            dm.objectTreeManager.toggleDrawingVisibility(d);
-                          } else {
-                            d.visible = d.visible === false ? true : false;
-                            if (typeof dm.renderDrawing === 'function') dm.renderDrawing(d);
-                            if (typeof dm.saveDrawings === 'function') dm.saveDrawings();
-                          }
-                        }}
+                        onClick={(e)=>{e.stopPropagation();setLayersVis(prev=>({...prev,[item.id]:!isVis}));}}
                         onMouseEnter={()=>setSwHov(`lyrV-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
-                        onMouseDown={(e)=>e.stopPropagation()}
-                        style={{width:22,height:22,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:"pointer",flexShrink:0,opacity:isVisH?1:!isVis?1:anyHov?0.55:0,
-                          pointerEvents:"auto",transition:"opacity 0.04s"}}>
+                        style={{width:16,height:16,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",
+                          cursor:"default",flexShrink:0,opacity:isVisH?1:!isVis?1:anyHov?0.55:0,
+                          transition:"opacity 0.04s"}}>
                         <I n="eye" s={14} cl={isVisH?c.acL:isVis?c.ts:"#F5A020"}/>
                         {!isVis && (
                           <svg width={16} height={16} viewBox="0 0 16 16" style={{position:"absolute",top:0,left:0,pointerEvents:"none"}}>
@@ -18031,26 +8615,16 @@ const TalariaV8bLive = () => {
                           </svg>
                         )}
                       </div>
-                      {/* delete: removes the drawing from chart.js */}
+                      {/* delete */}
                       <div data-layeraction="1"
-                        onClick={(e)=>{
-                          // Legacy parity (object-tree.js:355-358, 543-549):
-                          // delete click → stopPropagation + dm.deleteDrawing(d).
-                          // dm.deleteDrawing calls saveDrawings → dispatches
-                          // drawingsChanged → V9 rebuilds the tree automatically.
-                          e.stopPropagation();
-                          _logAct('delete');
-                          const dm = findDm(); const d = findDrawing(dm);
-                          if (!dm || !d) return;
-                          if (typeof dm.deleteDrawing === 'function') dm.deleteDrawing(d);
-                        }}
+                        onClick={(e)=>{e.stopPropagation();setLayersItems(prev=>prev.filter(x=>x.id!==item.id));}}
                         onMouseEnter={()=>setSwHov(`lyrD-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
                         onMouseDown={(e)=>{e.stopPropagation();setSwHov(`lyrD-${item.id}_dn`);}}
                         onMouseUp={()=>setSwHov(`lyrD-${item.id}`)}
-                        style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:"pointer",flexShrink:0,opacity:isDelH||isDelDn?1:anyHov?0.55:0,
-                          pointerEvents:"auto",transform:isDelDn?"scale(0.86)":"scale(1)",
+                        style={{width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",
+                          cursor:"default",flexShrink:0,opacity:isDelH||isDelDn?1:anyHov?0.55:0,
+                          transform:isDelDn?"scale(0.86)":"scale(1)",
                           transition:"opacity 0.04s,transform 0.08s"}}>
                         <I n="trash" s={14} cl={isDelH||isDelDn?c.rd:c.ts}/>
                       </div>
@@ -18063,14 +8637,7 @@ const TalariaV8bLive = () => {
               <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
                 {/* Tab bar */}
                 <div style={{position:"relative",display:"flex",flexShrink:0,borderBottom:`1px solid ${c.br}`}}>
-                  {(()=>{
-                    const layoutTabs=[["panels","Panel Layouts"],["sync","Sync"],["sessionDemo","Session demo"]];
-                    const tabIdx=Math.max(0,layoutTabs.findIndex(([id])=>id===layoutTab));
-                    const tabCount=layoutTabs.length;
-                    const tabPct=100/tabCount;
-                    return(
-                      <>
-                  {layoutTabs.map(([id,label])=>{
+                  {[["panels","Panel Layouts"],["sync","Sync"]].map(([id,label],ti,arr)=>{
                     const isAct=layoutTab===id; const isH=swHov===`ltab-${id}`;
                     return(
                       <div key={id} onClick={()=>setLayoutTab(id)}
@@ -18084,14 +8651,11 @@ const TalariaV8bLive = () => {
                       </div>
                     );
                   })}
-                  <div style={{position:"absolute",bottom:0,height:2,width:`${tabPct}%`,
-                    left:`${tabIdx*tabPct}%`,
+                  <div style={{position:"absolute",bottom:0,height:2,width:"50%",
+                    left:layoutTab==="panels"?"0%":"50%",
                     transition:"left 0.25s cubic-bezier(0.4,0,0.2,1)",
                     background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,
                     boxShadow:`0 0 8px ${c.acG}`}}/>
-                      </>
-                    );
-                  })()}
                 </div>
                 {/* Tab content */}
                 <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0}}>
@@ -18135,31 +8699,12 @@ const TalariaV8bLive = () => {
                       })}
                     </div>
                   )}
-                  {layoutTab==="sessionDemo" && (
-                    <div style={{padding:"14px 12px 16px"}}>
-                      <div style={{fontSize:9,color:c.tm,marginBottom:6,letterSpacing:"0.06em",fontWeight:700}}>SESSION NAME</div>
-                      <input
-                        type="text"
-                        value={sessionDemoName}
-                        onChange={(e)=>setSessionDemoName(e.target.value)}
-                        placeholder="Name this session…"
-                        style={{
-                          width:"100%",boxSizing:"border-box",padding:"8px 10px",marginBottom:12,
-                          background:c.well,border:`1px solid ${c.brH}`,borderRadius:2,
-                          color:c.tx,fontSize:13,fontFamily:F,outline:"none",colorScheme:c.inputScheme,
-                        }}
-                      />
-                      <div style={{fontSize:11,color:c.tm,lineHeight:1.45,opacity:0.9}}>
-                        This panel is the <span style={{color:c.acL,fontWeight:600}}>TalariaV8b.jsx</span> UI mock. Use Session demo to label the workspace session in previews and screenshots.
-                      </div>
-                    </div>
-                  )}
                   {layoutTab==="sync" && (
                     <div style={{padding:"8px 0"}}>
                       {syncItems.map(([key,label])=>{
                         const on = layoutSync[key];
                         const isH = swHov===`sync-${key}`;
-                        const bCol = on ? c.acL : isH ? c.ts : "rgba(140,160,255,0.22)";
+                        const bCol = on ? c.acL : isH ? c.tx : c.ts;
                         return (
                           <div key={key}
                             onClick={()=>setLayoutSync(prev=>({...prev,[key]:!prev[key]}))}
@@ -18198,7 +8743,7 @@ const TalariaV8bLive = () => {
           );
         })() : orderPanelOpen ? (
         <div ref={panelRef} key={panelDetached?"order-float":"order-dock"} style={panelDetached
-          ? { position:"fixed", top:detachPos.y, left:detachPos.x, width:detachSize.w, height:detachSize.h, background:c.sf, border:`1px solid rgba(140,160,255,0.28)`, display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:F, zIndex:10050, boxShadow:"0 12px 40px rgba(0,0,0,0.75), 0 0 0 1px rgba(140,160,255,0.18)", animation:"tlrPanelIn 0.18s ease forwards" }
+          ? { position:"fixed", top:detachPos.y, left:detachPos.x, width:detachSize.w, height:detachSize.h, background:c.sf, border:`1px solid rgba(140,160,255,0.28)`, display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:F, zIndex:9100, boxShadow:"0 12px 40px rgba(0,0,0,0.75), 0 0 0 1px rgba(140,160,255,0.18)", animation:"tlrPanelIn 0.18s ease forwards" }
           : { width:"100%", background:c.sf, borderLeft:`2px solid rgba(140,160,255,0.3)`, display:"flex", flexDirection:"column", height:"100%", animation:"tlrPanelIn 0.18s ease forwards", overflow:"hidden", fontFamily:F }
         }>
 
@@ -18290,7 +8835,7 @@ const TalariaV8bLive = () => {
           {/* 3 — BUY / SELL */}
           <div style={{ display:"flex", flexShrink:0, position:"relative" }}>
             {["BUY","SELL"].map((s,i) => { const a=buySell===s.toLowerCase(); const col=s==="BUY"?c.gn:c.rd; const isH=swHov===`bs-${s}`; return (
-              <button type="button" key={s} onClick={()=>setBuySell(s.toLowerCase())}
+              <button key={s} onClick={()=>setBuySell(s.toLowerCase())}
                 onMouseEnter={()=>setSwHov(`bs-${s}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{ flex:1, height:34, border:"none", borderRight:i===0?"1px solid rgba(140,160,255,0.08)":"none", position:"relative",
                          background:a?(s==="BUY"?c.gnD:c.rdD):isH?(s==="BUY"?"rgba(0,212,161,0.06)":"rgba(255,80,104,0.06)"):"transparent",
@@ -18311,7 +8856,7 @@ const TalariaV8bLive = () => {
           {/* 4 — Order type */}
           <div style={{ borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", position:"relative", flexShrink:0 }}>
             {["Market","Limit","Stop"].map((t) => { const a=orderType===t.toLowerCase(); const isH=swHov===`ot-${t}`; return (
-              <button type="button" key={t} onClick={()=>setOrderType(t.toLowerCase())}
+              <button key={t} onClick={()=>setOrderType(t.toLowerCase())}
                 onMouseEnter={()=>setSwHov(`ot-${t}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{ flex:1, height:26, background:isH&&!a?c.hv2:"transparent", border:"none", color:a?c.acL:isH?c.tx:c.ts, fontSize:10, fontWeight:a?700:600, fontFamily:F, cursor:"default", transition:"color 0.12s, background 0.12s", letterSpacing:"0.01em" }}>
                 {t}
@@ -18429,152 +8974,13 @@ const TalariaV8bLive = () => {
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
             const totalRisk = entryRows.reduce((s,r) => s + (parseFloat(r.risk)||0), 0);
-            const sortEntryRowsBySide = (rows, side) => {
-              if (!rows || rows.length < 2) return rows;
-              return [...rows].sort((a, b) => {
-                const pa = parseFloat(a.price) || 0;
-                const pb = parseFloat(b.price) || 0;
-                return side === "sell" ? pb - pa : pa - pb;
-              });
-            };
-            const sortedEntryRows = sortEntryRowsBySide(entryRows, buySell);
-            const pricedEntryRows = entryRows.filter((r) => parseFloat(r.price) > 0);
-            const omFmt = typeof window !== "undefined" ? window.chart?.orderManager : null;
-            let entryAvgDisplay = "";
-            if (entryRows.length > 1) {
-              entryAvgDisplay = omEntryAvgPriceTxt;
-              if (
-                !entryAvgDisplay &&
-                omFmt &&
-                typeof omFmt._calcMultiEntryAvgPrice === "function" &&
-                typeof omFmt.formatPrice === "function"
-              ) {
-                try {
-                  const w = omFmt._calcMultiEntryAvgPrice();
-                  if (Number.isFinite(w) && w > 0) entryAvgDisplay = omFmt.formatPrice(w);
-                } catch (_) {}
-              }
-              if (!entryAvgDisplay && pricedEntryRows.length) {
-                const mean =
-                  pricedEntryRows.reduce((s, r) => s + (parseFloat(r.price) || 0), 0) / pricedEntryRows.length;
-                entryAvgDisplay =
-                  omFmt && typeof omFmt.formatPrice === "function"
-                    ? omFmt.formatPrice(mean)
-                    : String(mean);
-              }
-              if (!entryAvgDisplay) entryAvgDisplay = "0.00";
-            }
+            const avgPrice = entryRows.length ? (entryRows.reduce((s,r) => s + (parseFloat(r.price)||0), 0) / entryRows.length).toFixed(2) : "0.00";
             const updRow = (id, field, val) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
             const stepRow = (id, field, dir, step=1) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
-            const delRow = (id) => {
-              omPanelBridgeRef.current.entryDel = Date.now();
-              const om = window.chart?.orderManager;
-              if (om && typeof om.removeMultiEntryLevel === "function" && Array.isArray(om.multiEntryLevels)) {
-                const row = entryRows.find((r) => r.id === id);
-                let lev = om.multiEntryLevels.find((l) => l && l.id === id);
-                if (!lev && row) {
-                  const rp = parseFloat(row.price);
-                  if (Number.isFinite(rp) && rp > 0) {
-                    lev = om.multiEntryLevels.find((l) => l && Math.abs(parseFloat(l.price) - rp) < 1e-7);
-                  }
-                }
-                const rid = lev?.id != null ? lev.id : id;
-                try {
-                  om.removeMultiEntryLevel(rid);
-                } catch (_) {
-                  try {
-                    om.removeMultiEntryLevel(id);
-                  } catch (_) {}
-                }
-              }
-              setEntryRows((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
-            };
-            const addRow = () => {
-              omPanelBridgeRef.current.entryAdd = Date.now();
-              const om = window.chart?.orderManager;
-              setEntryRows((rows) => {
-                if (!om || typeof om.addMultiEntryLevel !== "function") {
-                  const n = rows.length + 1;
-                  const next = [...rows, { id: Date.now(), price: "0", risk: "0" }];
-                  const prevSum = rows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0);
-                  if (sizeMode === "%") {
-                    const base = Math.floor(100 / n);
-                    const last = 100 - base * (n - 1);
-                    return next.map((r, i) => ({ ...r, risk: String(i < n - 1 ? base : last) }));
-                  }
-                  if (sizeMode === "$") {
-                    let total = prevSum;
-                    if (total <= 0) total = Math.max(1, parseFloat(riskVal) || 100);
-                    const share = Math.max(1, Math.round(total / n));
-                    const lastAmt = Math.max(0, total - share * (n - 1));
-                    return next.map((r, i) => ({ ...r, risk: String(i < n - 1 ? share : lastAmt) }));
-                  }
-                  let total = prevSum;
-                  if (total <= 0) total = Math.max(0.01, parseFloat(riskVal) || 1);
-                  const each = (total / n).toFixed(2);
-                  return next.map((r) => ({ ...r, risk: each }));
-                }
-
-                const want = rows.map((r, i) => {
-                  let pid = r.id;
-                  if (typeof pid !== "number" || !Number.isFinite(pid)) {
-                    pid = om.multiEntryLevels?.[i]?.id ?? i + 1;
-                  }
-                  return {
-                    id: pid,
-                    price: parseFloat(r.price) || 0,
-                    amount: parseFloat(r.risk) || 0,
-                  };
-                });
-
-                if (!om.isMultiEntryMode) {
-                  om.multiEntryLevels = want.map((w) => ({ id: w.id, price: w.price, amount: w.amount }));
-                  om.setEntryMode(true);
-                } else {
-                  om.multiEntryLevels = want.map((w) => ({ ...w }));
-                  om.renderMultiEntryRows?.();
-                }
-
-                om.addMultiEntryLevel();
-
-                return (om.multiEntryLevels || []).map((l) => ({
-                  id: l.id,
-                  price: String(l.price ?? "0"),
-                  risk: String(l.amount ?? "0"),
-                }));
-              });
-              setTimeout(() => {
-                if (entryScrollRef.current) entryScrollRef.current.scrollTop = entryScrollRef.current.scrollHeight;
-              }, 0);
-              requestAnimationFrame(() => {
-                try {
-                  window.chart?.orderManager?.updatePreviewLines?.();
-                } catch (_) {}
-              });
-            };
+            const delRow = (id) => setEntryRows(rows => rows.length > 1 ? rows.filter(r => r.id!==id) : rows);
+            const addRow = () => { setEntryRows(rows => [...rows, {id:Date.now(), price:"0", risk:"0"}]); setTimeout(()=>{ if(entryScrollRef.current) entryScrollRef.current.scrollTop = entryScrollRef.current.scrollHeight; }, 0); };
             const clearRows = () => { setEntryRows([{id:Date.now(), price:"0", risk:"0"}]); };
-            const equalizeRisk = () => {
-              setEntryRows((rows) => {
-                const n = rows.length;
-                if (n === 0) return rows;
-                if (sizeMode === "%") {
-                  const base = Math.floor(100 / n);
-                  const last = 100 - base * (n - 1);
-                  return rows.map((r, i) => ({ ...r, risk: String(i < n - 1 ? base : last) }));
-                }
-                if (sizeMode === "$") {
-                  const total = rows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0);
-                  const t = total > 0 ? total : Math.max(1, parseFloat(riskVal) || 100);
-                  const share = Math.max(1, Math.round(t / n));
-                  const lastAmt = Math.max(0, t - share * (n - 1));
-                  return rows.map((r, i) => ({ ...r, risk: String(i < n - 1 ? share : lastAmt) }));
-                }
-                const total = rows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0);
-                const t = total > 0 ? total : Math.max(0.01, parseFloat(riskVal) || 1);
-                const each = (t / n).toFixed(2);
-                return rows.map((r) => ({ ...r, risk: each }));
-              });
-            };
+            const equalizeRisk = () => { const each = (100/entryRows.length).toFixed(0); setEntryRows(rows => rows.map(r => ({...r, risk:each}))); };
             const arw = (onClick, up, hk) => {
               const isH = swHov === hk;
               return (
@@ -18652,7 +9058,7 @@ const TalariaV8bLive = () => {
                   </div>
                   {/* Rows — scrollable after 5 */}
                   <div ref={entryScrollRef} className="tlr-scroll" style={{ padding:"3px 6px", maxHeight:52, overflowY:"auto" }}>
-                    {sortedEntryRows.map((row, i) => {
+                    {entryRows.map((row, i) => {
                       const pct = totalRisk > 0 ? ((parseFloat(row.risk)||0)/totalRisk*100).toFixed(0) : "0";
                       return (
                         <div key={row.id} style={{ display:"flex", alignItems:"center", gap:3, height:22, marginBottom:1 }}>
@@ -18683,21 +9089,19 @@ const TalariaV8bLive = () => {
                               {arw(()=>stepRow(row.id,"risk",-1), false, `er-${row.id}-dn`)}
                             </div>
                           </div>
-                          {/* Pct · lots inline — prefer OM-rendered line from hidden #multiEntryRows when present */}
+                          {/* Pct · lots inline */}
                           <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", flexShrink:0 }}>
-                            {omEntryRowStatLines[i]
-                              ? omEntryRowStatLines[i]
-                              : sizeMode==="$"
-                                ? <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
-                                : sizeMode==="%"
-                                  ? <><span style={{ color:c.ts }}>${(parseFloat(row.risk||"0")/100*(riskBasis==="balance"?accountBalance:accountEquity)).toFixed(0)}</span>{" · "}0.00 {sizeUnit}</>
-                                  : <>0.00 {sizeUnit}</>
+                            {sizeMode==="$"
+                              ? <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
+                              : sizeMode==="%"
+                              ? <><span style={{ color:c.ts }}>${(parseFloat(row.risk||"0")/100*(riskBasis==="balance"?accountBalance:accountEquity)).toFixed(0)}</span>{" · "}0.00 {sizeUnit}</>
+                              : <>0.00 {sizeUnit}</>
                             }
                           </span>
                           <div style={{ flex:1 }}/>
                           {/* Delete — far right, hidden when only 1 row */}
                           {entryRows.length > 1 ? (
-                            <div onClick={(e) => { e.stopPropagation(); delRow(row.id); }}
+                            <div onClick={()=>delRow(row.id)}
                               onMouseEnter={()=>setSwHov(`ed-${row.id}`)} onMouseLeave={()=>setSwHov(null)}
                               style={{ width:16, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0, color:swHov===`ed-${row.id}`?c.rd:c.ts, transition:"color 0.1s" }}>
                               <I n="x" s={9} cl={swHov===`ed-${row.id}`?c.rd:c.ts}/>
@@ -18712,10 +9116,10 @@ const TalariaV8bLive = () => {
                     <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(74,106,255,0.1)" }}>
                       <div style={{ flex:1 }}/>
                       <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                        Avg <span style={{ color:c.ts, fontWeight:700 }}>{entryAvgDisplay}</span>
+                        Avg <span style={{ color:c.ts, fontWeight:700 }}>{avgPrice}</span>
                       </span>
                       <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                        Qty <span style={{ color:c.ts, fontWeight:700 }}>{omMultiEntryTotalQtyTxt || `0.00 ${sizeUnit}`}</span>
+                        Qty <span style={{ color:c.ts, fontWeight:700 }}>0.00 {sizeUnit}</span>
                       </span>
                     </div>
                   )}
@@ -18849,11 +9253,11 @@ const TalariaV8bLive = () => {
                   {/* Footer: Loss · Dist */}
                   <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", borderTop:"1px solid rgba(255,80,104,0.1)" }}>
                     <span style={{ fontSize:9, fontWeight:700, color:c.rd, fontVariantNumeric:"tabular-nums" }}>
-                      Loss <span style={{ fontWeight:800 }}>{omRiskSummaryTxt}</span>
+                      Loss <span style={{ fontWeight:800 }}>-$0.00</span>
                     </span>
                     <div style={{ flex:1 }}/>
                     <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                      Dist <span style={{ color:c.ts, fontWeight:700 }}>{omSlDistTxt}</span>{" "}{currentSymbol.type==="futures"?"ticks":"pips"}
+                      Dist <span style={{ color:c.ts, fontWeight:700 }}>0.00</span>{" "}{currentSymbol.type==="futures"?"ticks":"pips"}
                     </span>
                   </div>
                   {/* Advanced order content */}
@@ -19066,142 +9470,13 @@ const TalariaV8bLive = () => {
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
             const totalQty = tpRows.reduce((s,r) => s + (parseFloat(r.qty)||0), 0);
-            const sortTpRowsBySide = (rows, side) => {
-              if (!rows || rows.length < 2) return rows;
-              return [...rows].sort((a, b) => {
-                const pa = parseFloat(a.price) || 0;
-                const pb = parseFloat(b.price) || 0;
-                return side === "sell" ? pb - pa : pa - pb;
-              });
-            };
-            const sortedTpRows = sortTpRowsBySide(tpRows, buySell);
+            const avgTpPrice = tpRows.length ? (tpRows.reduce((s,r) => s + (parseFloat(r.price)||0), 0) / tpRows.length).toFixed(2) : "0.00";
             const updTp  = (id, field, val) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
             const stepTp = (id, field, dir, step=1) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
-            const delTp = (id) => {
-              omPanelBridgeRef.current.tpDel = Date.now();
-              const om = window.chart?.orderManager;
-              if (om && typeof om.removeTPTarget === "function" && Array.isArray(om.tpTargets) && om.tpTargets.length) {
-                const row = tpRows.find((r) => r.id === id);
-                let tRm = om.tpTargets.find((t) => t && t.id === id);
-                if (!tRm && row) {
-                  const rp = parseFloat(row.price);
-                  if (Number.isFinite(rp) && rp > 0) {
-                    tRm = om.tpTargets.find((t) => t && Math.abs(parseFloat(t.price) - rp) < 1e-7);
-                  }
-                }
-                const rid = tRm?.id != null ? tRm.id : id;
-                try {
-                  om.removeTPTarget(rid);
-                } catch (_) {
-                  try {
-                    om.removeTPTarget(id);
-                  } catch (_) {}
-                }
-              }
-              setTpRows((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
-            };
-            /** Stack new TP above furthest priced TP (buy) / below (sell) — matches order-manager _ensureUnsetMultiTPPreviewPrices. */
-            const defaultPriceForNewTp = (prevTpRows) => {
-              const om = window.chart?.orderManager;
-              const isBuy = buySell === "buy";
-              const pip = om?.pipSize > 0 ? om.pipSize : 0.0001;
-              let refEntry = parseFloat(document.getElementById("orderEntryPrice")?.value || "0");
-              if (om?.isMultiEntryMode && typeof om._calcMultiEntryAvgPrice === "function") {
-                const avg = om._calcMultiEntryAvgPrice();
-                if (avg > 0) refEntry = avg;
-              }
-              const pricedPrev = prevTpRows.filter((r) => parseFloat(r.price) > 0);
-              const prec =
-                typeof om?.getPricePrecision === "function" ? om.getPricePrecision() : 5;
-              if (pricedPrev.length > 0) {
-                const px = pricedPrev.map((r) => parseFloat(r.price));
-                const band = isBuy ? Math.max(...px) : Math.min(...px);
-                const dist = Math.abs(band - refEntry);
-                const step = Math.max(pip * 5, dist * 0.12, pip);
-                const raw = isBuy ? band + step : band - step;
-                if (!Number.isFinite(raw) || !(raw > 0)) return "";
-                const rounded = parseFloat(raw.toFixed(prec));
-                return om?.formatPrice ? om.formatPrice(rounded) : String(rounded);
-              }
-              const tpd = parseFloat(document.getElementById("tpPrice")?.value || "0");
-              if (tpd > 0 && refEntry > 0) {
-                const dist = Math.abs(tpd - refEntry);
-                const step = Math.max(pip * 5, dist * 0.12, pip);
-                const raw = isBuy ? tpd + step : tpd - step;
-                const rounded = parseFloat(raw.toFixed(prec));
-                if (!(rounded > 0)) return "";
-                return om?.formatPrice ? om.formatPrice(rounded) : String(rounded);
-              }
-              return "";
-            };
-            const addTp = () => {
-              omPanelBridgeRef.current.tpAdd = Date.now();
-              setTpRows((rows) => {
-                const initPx = defaultPriceForNewTp(rows);
-                const n = rows.length + 1;
-                const next = [
-                  ...rows,
-                  { id: Date.now(), price: initPx || "0", qty: "0", enabled: true },
-                ];
-                const prevSum = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
-                if (sizeMode === "%") {
-                  const base = Math.floor(100 / n);
-                  const last = 100 - base * (n - 1);
-                  return next.map((r, i) => ({ ...r, qty: String(i < n - 1 ? base : last) }));
-                }
-                if (sizeMode === "$") {
-                  let total = prevSum;
-                  if (total <= 0) total = Math.max(1, parseFloat(riskVal) || 100);
-                  const share = Math.max(1, Math.round(total / n));
-                  const lastAmt = Math.max(0, total - share * (n - 1));
-                  return next.map((r, i) => ({ ...r, qty: String(i < n - 1 ? share : lastAmt) }));
-                }
-                let total = prevSum;
-                if (total <= 0) total = Math.max(0.01, parseFloat(riskVal) || 1);
-                const each = (total / n).toFixed(2);
-                return next.map((r) => ({ ...r, qty: each }));
-              });
-              setTimeout(() => {
-                if (tpScrollRef.current) tpScrollRef.current.scrollTop = tpScrollRef.current.scrollHeight;
-              }, 0);
-            };
-            const clearTp = () => {
-              omPanelBridgeRef.current.tpDel = Date.now();
-              const om = window.chart?.orderManager;
-              if (om && typeof om.removeTPTarget === "function" && Array.isArray(om.tpTargets)) {
-                while (om.tpTargets.length > 0) {
-                  const last = om.tpTargets[om.tpTargets.length - 1];
-                  try {
-                    om.removeTPTarget(last?.id != null ? last.id : om.tpTargets.length - 1);
-                  } catch (_) {
-                    break;
-                  }
-                }
-              }
-              setTpRows([{ id: Date.now(), price: "0", qty: "100", enabled: true }]);
-            };
-            const equalizeTp = () => {
-              setTpRows((rows) => {
-                const n = rows.length;
-                if (n === 0) return rows;
-                if (sizeMode === "%") {
-                  const base = Math.floor(100 / n);
-                  const last = 100 - base * (n - 1);
-                  return rows.map((r, i) => ({ ...r, qty: String(i < n - 1 ? base : last) }));
-                }
-                if (sizeMode === "$") {
-                  const total = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
-                  const t = total > 0 ? total : Math.max(1, parseFloat(riskVal) || 100);
-                  const share = Math.max(1, Math.round(t / n));
-                  const lastAmt = Math.max(0, t - share * (n - 1));
-                  return rows.map((r, i) => ({ ...r, qty: String(i < n - 1 ? share : lastAmt) }));
-                }
-                const total = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
-                const t = total > 0 ? total : Math.max(0.01, parseFloat(riskVal) || 1);
-                const each = (t / n).toFixed(2);
-                return rows.map((r) => ({ ...r, qty: each }));
-              });
-            };
+            const delTp  = (id) => setTpRows(rows => rows.length > 1 ? rows.filter(r => r.id!==id) : rows);
+            const addTp  = () => { setTpRows(rows => [...rows, {id:Date.now(), price:"0", qty:"0", enabled:true}]); setTimeout(()=>{ if(tpScrollRef.current) tpScrollRef.current.scrollTop = tpScrollRef.current.scrollHeight; }, 0); };
+            const clearTp = () => setTpRows([{id:Date.now(), price:"0", qty:"100", enabled:true}]);
+            const equalizeTp = () => { const each = (100/tpRows.length).toFixed(0); setTpRows(rows => rows.map(r => ({...r, qty:each}))); };
             const arw = (onClick, up, hk) => {
               const isH = swHov===hk;
               return (
@@ -19276,7 +9551,7 @@ const TalariaV8bLive = () => {
                   </div>
                   {/* Rows — scrollable after 5 */}
                   <div ref={tpScrollRef} className="tlr-scroll" style={{ padding:"3px 6px", maxHeight:52, overflowY:"auto" }}>
-                    {sortedTpRows.map((row, i) => {
+                    {tpRows.map((row, i) => {
                       const pct = totalQty > 0 ? ((parseFloat(row.qty)||0)/totalQty*100).toFixed(0) : "0";
                       return (
                         <div key={row.id} style={{ display:"flex", alignItems:"center", gap:3, height:22, marginBottom:1, opacity:row.enabled?1:0.38, transition:"opacity 0.15s" }}>
@@ -19331,18 +9606,16 @@ const TalariaV8bLive = () => {
                               {arw(()=>stepTp(row.id,"qty",-1), false, `tq-${row.id}-dn`)}
                             </div>
                           </div>
-                          {/* Pct · lots / RR+profit — prefer OM multi-TP row from hidden #multipleTPList */}
+                          {/* Pct · lots inline */}
                           <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", flexShrink:0 }}>
-                            {omTpRowStatLines[i]
-                              ? omTpRowStatLines[i]
-                              : sizeMode==="#"
-                                ? <>0.00 {sizeUnit}</>
-                                : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
+                            {sizeMode==="#"
+                              ? <>0.00 {sizeUnit}</>
+                              : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
                             }
                           </span>
                           <div style={{ flex:1 }}/>
                           {tpRows.length > 1 ? (
-                            <div onClick={(e) => { e.stopPropagation(); delTp(row.id); }}
+                            <div onClick={()=>delTp(row.id)}
                               onMouseEnter={()=>setSwHov(`tpd-${row.id}`)} onMouseLeave={()=>setSwHov(null)}
                               style={{ width:16, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0, color:swHov===`tpd-${row.id}`?c.rd:c.ts, transition:"color 0.1s" }}>
                               <I n="x" s={9} cl={swHov===`tpd-${row.id}`?c.rd:c.ts}/>
@@ -19355,24 +9628,16 @@ const TalariaV8bLive = () => {
                   {/* Footer — always visible */}
                   <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(0,212,161,0.1)" }}>
                     <span style={{ fontSize:9, fontWeight:700, color:c.gn, fontVariantNumeric:"tabular-nums" }}>
-                      Profit <span style={{ fontWeight:800 }}>{omRewardSummaryTxt}</span>
+                      Profit <span style={{ fontWeight:800 }}>+$0.00</span>
                     </span>
                     <div style={{ flex:1 }}/>
                     {tpRows.length > 1 && (
-                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", textAlign:"right", lineHeight:1.25, maxWidth:160 }}>
-                        Avg TP{" "}
-                        <span style={{ color:c.ts, fontWeight:700 }}>{omTpAvgLotsTxt || "—"}</span>
-                        {" lots"}
-                        {omTpWapPriceTxt ? (
-                          <>
-                            {" · "}
-                            <span style={{ color:c.ts, fontWeight:600 }}>{omTpWapPriceTxt}</span>
-                          </>
-                        ) : null}
+                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
+                        Avg <span style={{ color:c.ts, fontWeight:700 }}>{avgTpPrice}</span>
                       </span>
                     )}
                     <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                      Dist <span style={{ color:c.ts, fontWeight:700 }}>{omTpDistTxt}</span>
+                      Dist <span style={{ color:c.ts, fontWeight:700 }}>0.00</span>
                       {" "}{currentSymbol.type==="futures" ? "ticks" : "pips"}
                     </span>
                   </div>
@@ -19400,8 +9665,7 @@ const TalariaV8bLive = () => {
               e.target.value = "";
             }}/>
 
-          {/* Pre-Trade Tags — labels/options from Strategies Lab (same as order-manager pre-trade variables) */}
-          {tagDefs.length > 0 && (
+          {/* Pre-Trade Tags */}
           <div style={{ flexShrink:0, padding:"4px 8px 6px" }}>
             <div style={{ border:"1px solid rgba(255,140,66,0.22)", background:"rgba(255,140,66,0.02)" }}>
               {/* Header */}
@@ -19411,15 +9675,8 @@ const TalariaV8bLive = () => {
                          background:swHov==="tags-hdr"?"rgba(255,140,66,0.03)":"transparent", transition:"background 0.12s" }}>
                 <div style={{ width:5, height:5, background:"#FF8C42", transform:"rotate(45deg)", flexShrink:0 }}/>
                 <span style={{ fontSize:10, fontWeight:800, color:"#FF8C42", letterSpacing:"0.06em" }}>PRE-TRADE TAGS</span>
-                {(() => {
-                  const done = Object.keys(tagSels).filter((k) => {
-                    const v = tagSels[k];
-                    if (v === undefined || v === "") return false;
-                    if (v === "—") return false;
-                    return true;
-                  }).length;
-                  return done > 0 && <span style={{ padding:"0 4px", fontSize:9, fontWeight:800, color:"#FF8C42", background:"rgba(255,140,66,0.15)" }}>{done}</span>;
-                })()}
+                {(() => { const done = Object.keys(tagSels).filter(k=>tagSels[k]!==undefined&&tagSels[k]!=="").length;
+                  return done > 0 && <span style={{ padding:"0 4px", fontSize:9, fontWeight:800, color:"#FF8C42", background:"rgba(255,140,66,0.15)" }}>{done}</span>; })()}
                 <div style={{ flex:1 }}/>
                 <svg width={7} height={4} viewBox="0 0 8 5" fill="none" style={{ color:"#FF8C42", opacity:0.6, transition:"transform 0.15s", transform:tagsOpen?"rotate(180deg)":"rotate(0deg)" }}>
                   <polyline points="0.5,0.5 4,4.5 7.5,0.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -19500,7 +9757,6 @@ const TalariaV8bLive = () => {
               )}
             </div>
           </div>
-          )}
 
           {/* Screenshots */}
           <div style={{ flexShrink:0, padding:"4px 8px 5px", gridColumn:isWide?"1 / -1":undefined }}>
@@ -19636,13 +9892,7 @@ const TalariaV8bLive = () => {
             const isPr   = swHov==="exec-btn_dn";
             return (
               <div style={{ padding:"0 8px 6px", flexShrink:0 }}>
-                <div onClick={() => {
-                    const list = screenshots.map((s) => ({ dataUrl: s.dataUrl, name: s.name || "" }));
-                    if (typeof window !== "undefined") {
-                      window.__talariaV9RailScreenshots = list.length ? list : null;
-                    }
-                    document.getElementById("placeOrderButton")?.click();
-                  }} data-nodrag="1"
+                <div onClick={()=>{}} data-nodrag="1"
                   onMouseEnter={()=>setSwHov("exec-btn")} onMouseLeave={()=>setSwHov(null)}
                   onMouseDown={()=>setSwHov("exec-btn_dn")} onMouseUp={()=>setSwHov("exec-btn")}
                   style={{ width:"100%", height:36, cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
@@ -19659,7 +9909,6 @@ const TalariaV8bLive = () => {
               </div>
             );
           })()}
-
 
           {/* Resize handles — only when detached */}
           {panelDetached && <>
@@ -19829,7 +10078,7 @@ const TalariaV8bLive = () => {
         const tplOpts = [...(customTemplates.length>0?[{divider:"SAVED"},...customTemplates,{divider:"DEFAULT"}]:[]),...defaultTplOpts];
         const cfgMap = { gridStyle:{key:"gridLineStyle",type:"style"}, gridThick:{key:"gridLineThickness",type:"thick"}, priceStyle:{key:"priceLineStyle",type:"style"}, priceThick:{key:"priceLineThickness",type:"thick"}, chartTimeFormat:{key:"timeFormat",type:"select",opts:["24h","12h"]}, chartTimezone:{key:"timezone",type:"select",opts:["UTC","UTC+3 (Riyadh)","UTC+4 (Dubai)","UTC+5:30 (IST)","UTC+8 (Asia)","UTC-5 (EST)","UTC-8 (PST)"]}, chartPrecision:{key:"precision",type:"select",opts:["0.00000","0.0000","0.000","0.00","0.0"]}, chartTemplate:{key:"chartTemplate",type:"template",opts:tplOpts} };
         if (settDrop==="profLang") return <>
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||140,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
+          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:9250,width:settDropPos.w||140,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
               <div style={{padding:"5px 12px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>LANGUAGE</div>
@@ -19850,7 +10099,7 @@ const TalariaV8bLive = () => {
           </div>
         </>;
         if (settDrop==="loadTemplate") return <>
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||150,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
+          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:9250,width:settDropPos.w||150,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
               <div style={{padding:"5px 12px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>SAVED TEMPLATES</div>
@@ -19883,7 +10132,7 @@ const TalariaV8bLive = () => {
         const styleOpts = [{val:"solid",dash:"none"},{val:"dashed",dash:"5,4"},{val:"dotted",dash:"1.5,4"},{val:"longDash",dash:"10,5"}];
         const thickOpts = [0.5,1,1.5,2,2.5,3];
         return <>
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease",...(settDropPos.w?{width:settDropPos.w}:{minWidth:80})}}>
+          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:9250,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease",...(settDropPos.w?{width:settDropPos.w}:{minWidth:80})}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
               {cfg.type==="select" && cfg.opts.map(opt=>{
@@ -19954,6 +10203,26 @@ const TalariaV8bLive = () => {
           </div>
         </>;
       })()}
+      {cpDragging && (
+        <div
+          onMouseMove={(e)=>{
+            if(!cpDragRect) return;
+            if(cpDragging==='sv'){
+              const ns=Math.max(0,Math.min(1,(e.clientX-cpDragRect.left)/cpDragRect.width));
+              const nv=1-Math.max(0,Math.min(1,(e.clientY-cpDragRect.top)/cpDragRect.height));
+              setCpS(ns); setCpV(nv); cpApply(cpH,ns,nv,cpA);
+            } else if(cpDragging==='hue'){
+              const nh=Math.max(0,Math.min(360,((e.clientX-cpDragRect.left)/cpDragRect.width)*360));
+              setCpH(nh); cpApply(nh,cpS,cpV,cpA);
+            } else if(cpDragging==='alpha'){
+              const na=Math.max(0,Math.min(1,(e.clientX-cpDragRect.left)/cpDragRect.width));
+              setCpA(na); cpApply(cpH,cpS,cpV,na);
+            }
+          }}
+          onMouseUp={()=>setCpDragging(null)}
+          style={{position:"fixed",inset:0,zIndex:9300,cursor:cpDragging==='sv'?'crosshair':'ew-resize'}}
+        />
+      )}
       {/* ── Go To Calendar sub-window ── */}
       {gotoCalOpen&&(()=>{
         const selDate=new Date(gotoNewDate+"T00:00:00");
@@ -19966,10 +10235,10 @@ const TalariaV8bLive = () => {
           color:isSel?"#fff":isH?c.acL:c.ts,
           transition:"background 0.08s,color 0.08s"});
         const NavBtn=({onClick,label})=>(
-          <button type="button" onClick={e=>{e.stopPropagation();onClick();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"0 7px",fontSize:16,fontFamily:F,lineHeight:1}}>{label}</button>
+          <button onClick={e=>{e.stopPropagation();onClick();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"0 7px",fontSize:16,fontFamily:F,lineHeight:1}}>{label}</button>
         );
         return(
-        <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:gotoCalPos.top,left:gotoCalPos.left,zIndex:9200,width:224,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 40px rgba(0,0,0,0.8),0 0 14px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.12s ease both"}}>
+        <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:gotoCalPos.top,left:gotoCalPos.left,zIndex:9200,width:224,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 40px rgba(0,0,0,0.8),0 0 14px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.12s ease both"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div style={{display:"flex",alignItems:"center",padding:"7px 10px 6px"}}>
             <span style={{fontSize:13,fontWeight:700,color:c.tx,flex:1}}>Date</span>
@@ -20067,6 +10336,110 @@ const TalariaV8bLive = () => {
         );
       })()}
 
+      {/* ── Session Date Picker ── */}
+      {newSessCalOpen&&(()=>{
+        const selIso=newSessCalTarget==="start"?newSessStart:newSessEnd;
+        const selDate=selIso?new Date(selIso.split("T")[0]+"T00:00:00"):null;
+        const selY=selDate?.getFullYear(),selMo=selDate?.getMonth(),selD=selDate?.getDate();
+        const MON_SHORT=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+        const DOW=["Su","Mo","Tu","We","Th","Fr","Sa"];
+        const today=new Date();today.setHours(0,0,0,0);
+        const boundStart=newSessStart?new Date(newSessStart+"T00:00:00"):null;
+        const boundEnd=newSessEnd?new Date(newSessEnd+"T00:00:00"):null;
+        const isDis=(yr,mo,day)=>{
+          const d=new Date(yr,mo,day);
+          if(newSessCalTarget==="start"){if(boundEnd&&d>boundEnd)return true;}
+          else{if(boundStart&&d<boundStart)return true;}
+          return false;
+        };
+        const cellSx=(isSel,isH,isDis)=>({
+          textAlign:"center",fontFamily:F,
+          background:isDis?"transparent":isSel?c.acL:isH?"rgba(140,160,255,0.2)":"transparent",
+          color:isDis?"rgba(255,255,255,0.18)":isSel?"#fff":isH?c.acL:c.ts,
+          cursor:isDis?"not-allowed":"default",
+          transition:"background 0.08s,color 0.08s",
+          borderRadius:1,
+        });
+        const NavBtn=({onClick,label})=>(<button onClick={e=>{e.stopPropagation();onClick();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"0 7px",fontSize:16,fontFamily:F,lineHeight:1}}>{label}</button>);
+        const selectDay=(yr,mo,day)=>{
+          if(isDis(yr,mo,day))return;
+          const m=String(mo+1).padStart(2,"0"),d=String(day).padStart(2,"0");
+          const iso=`${yr}-${m}-${d}`;const disp=`${d}-${MON_SHORT[mo]}-${yr}`;
+          if(newSessCalTarget==="start"){
+            if(newSessStart===iso){setNewSessStart("");setNewSessStartInput("");}
+            else{setNewSessStart(iso);setNewSessStartInput(disp);}
+          }else{
+            if(newSessEnd===iso){setNewSessEnd("");setNewSessEndInput("");}
+            else{setNewSessEnd(iso);setNewSessEndInput(disp);}
+          }
+          setNewSessActivePreset(null);
+          setNewSessCalOpen(false);setNewSessCalMode("days");
+        };
+        return(
+          <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:newSessCalPos.top,left:newSessCalPos.left,zIndex:100010,width:newSessCalPos.width||224,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 40px rgba(0,0,0,0.8),0 0 14px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.12s ease both"}}>
+            <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
+            <div style={{display:"flex",alignItems:"center",padding:"7px 10px 6px"}}>
+              <span style={{fontSize:12,fontWeight:700,color:c.tx,flex:1}}>{newSessCalTarget==="start"?"Start Date":"End Date"}</span>
+              <div onClick={e=>{e.stopPropagation();setNewSessCalOpen(false);setNewSessCalMode("days");}} onMouseEnter={()=>setHov("scal-x")} onMouseLeave={()=>setHov(null)} style={{cursor:"default",padding:3,display:"flex",alignItems:"center"}}>
+                <I n="x" s={14} cl={hov==="scal-x"?c.rd:c.ts}/>
+              </div>
+            </div>
+            <div style={{height:1,background:c.br}}/>
+            <div style={{display:"flex",alignItems:"center",padding:"5px 4px",borderBottom:`1px solid ${c.br}`}}>
+              {newSessCalMode==="days"&&<NavBtn label="‹" onClick={()=>{const d=new Date(newSessCalViewY,newSessCalViewM-1,1);setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());}}/>}
+              {newSessCalMode==="months"&&<NavBtn label="‹" onClick={()=>setNewSessCalViewY(y=>y-1)}/>}
+              {newSessCalMode==="years"&&<NavBtn label="‹" onClick={()=>setNewSessCalYearBase(b=>b-12)}/>}
+              <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                {(newSessCalMode==="days"||newSessCalMode==="months")&&(
+                  <span onClick={e=>{e.stopPropagation();setNewSessCalMode(m=>m==="months"?"days":"months");}} style={{fontSize:11,fontWeight:700,color:newSessCalMode==="months"?c.acL:c.tx,cursor:"default",padding:"2px 5px",background:newSessCalMode==="months"?"rgba(74,106,255,0.12)":"transparent",transition:"color 0.12s,background 0.12s"}}>
+                    {MON_SHORT[newSessCalViewM]}
+                  </span>
+                )}
+                <span onClick={e=>{e.stopPropagation();if(newSessCalMode!=="years"){setNewSessCalYearBase(Math.floor(newSessCalViewY/12)*12);setNewSessCalMode("years");}else{setNewSessCalMode("days");}}} style={{fontSize:11,fontWeight:700,color:newSessCalMode==="years"?c.acL:c.tx,cursor:"default",padding:"2px 5px",background:newSessCalMode==="years"?"rgba(74,106,255,0.12)":"transparent",transition:"color 0.12s,background 0.12s"}}>
+                  {newSessCalMode==="years"?`${newSessCalYearBase} – ${newSessCalYearBase+11}`:newSessCalViewY}
+                </span>
+              </div>
+              {newSessCalMode==="days"&&<NavBtn label="›" onClick={()=>{const d=new Date(newSessCalViewY,newSessCalViewM+1,1);setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());}}/>}
+              {newSessCalMode==="months"&&<NavBtn label="›" onClick={()=>setNewSessCalViewY(y=>y+1)}/>}
+              {newSessCalMode==="years"&&<NavBtn label="›" onClick={()=>setNewSessCalYearBase(b=>b+12)}/>}
+            </div>
+            {newSessCalMode==="days"&&(<>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",padding:"6px 6px 2px"}}>
+                {DOW.map(d=><div key={d} style={{textAlign:"center",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.04em"}}>{d}</div>)}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",padding:"0 6px 8px",gap:2}}>
+                {Array.from({length:new Date(newSessCalViewY,newSessCalViewM,1).getDay()}).map((_,i)=><div key={"e"+i}/>)}
+                {Array.from({length:new Date(newSessCalViewY,newSessCalViewM+1,0).getDate()}).map((_,i)=>{
+                  const day=i+1;
+                  const isSel=selY===newSessCalViewY&&selMo===newSessCalViewM&&selD===day;
+                  const dis=isDis(newSessCalViewY,newSessCalViewM,day);
+                  const isH=!dis&&hov===`scal-${day}`;
+                  return(
+                    <div key={day}
+                      onClick={e=>{e.stopPropagation();selectDay(newSessCalViewY,newSessCalViewM,day);}}
+                      onMouseEnter={()=>{if(!dis)setHov(`scal-${day}`);}}
+                      onMouseLeave={()=>setHov(null)}
+                      style={{...cellSx(isSel,isH,dis),fontSize:11,padding:"5px 0",fontWeight:isSel?700:400}}>
+                      {day}
+                    </div>
+                  );
+                })}
+              </div>
+            </>)}
+            {newSessCalMode==="months"&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,padding:"8px"}}>
+                {MON_SHORT.map((m,i)=>{const isSel=i===selMo&&selY===newSessCalViewY,isH=hov===`scal-m-${i}`;return(<div key={m} onClick={e=>{e.stopPropagation();setNewSessCalViewM(i);setNewSessCalMode("days");}} onMouseEnter={()=>setHov(`scal-m-${i}`)} onMouseLeave={()=>setHov(null)} style={{...cellSx(isSel,isH,false),padding:"7px 0",fontSize:11,fontWeight:isSel?700:500}}>{m}</div>);})}
+              </div>
+            )}
+            {newSessCalMode==="years"&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3,padding:"8px"}}>
+                {Array.from({length:12}).map((_,i)=>{const yr=newSessCalYearBase+i,isSel=yr===selY,isH=hov===`scal-y-${yr}`;return(<div key={yr} onClick={e=>{e.stopPropagation();setNewSessCalViewY(yr);setNewSessCalMode("months");}} onMouseEnter={()=>setHov(`scal-y-${yr}`)} onMouseLeave={()=>setHov(null)} style={{...cellSx(isSel,isH,false),padding:"7px 0",fontSize:11,fontWeight:isSel?700:500}}>{yr}</div>);})}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ── Go To Time sub-window ── */}
       {gotoTimeOpen&&(()=>{
         const tH=parseInt(gotoNewTime.split(":")[0])||0;
@@ -20079,22 +10452,22 @@ const TalariaV8bLive = () => {
         const setMn=v=>{setGotoNewTime(String(tH).padStart(2,"0")+":"+String(v).padStart(2,"0"));setGotoTimeInput(fmtTI(tH,v));};
         const SpinCol=({val,onUp,onDn})=>(
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
-            <button type="button" onClick={e=>{e.stopPropagation();onUp();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"1px 7px",fontFamily:F,fontSize:11,lineHeight:1,transition:"color 0.1s"}}
+            <button onClick={e=>{e.stopPropagation();onUp();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"1px 7px",fontFamily:F,fontSize:11,lineHeight:1,transition:"color 0.1s"}}
               onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}>▲</button>
             <div style={{fontSize:14,fontWeight:700,color:c.tx,fontVariantNumeric:"tabular-nums",minWidth:22,textAlign:"center"}}>{val}</div>
-            <button type="button" onClick={e=>{e.stopPropagation();onDn();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"1px 7px",fontFamily:F,fontSize:11,lineHeight:1,transition:"color 0.1s"}}
+            <button onClick={e=>{e.stopPropagation();onDn();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"1px 7px",fontFamily:F,fontSize:11,lineHeight:1,transition:"color 0.1s"}}
               onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}>▼</button>
           </div>
         );
         return(
-        <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:gotoTimePos.top,left:gotoTimePos.left,zIndex:9200,width:use12?122:100,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 28px rgba(0,0,0,0.75),0 0 10px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.12s ease both"}}>
+        <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:gotoTimePos.top,left:gotoTimePos.left,zIndex:9200,width:use12?122:100,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 28px rgba(0,0,0,0.75),0 0 10px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.12s ease both"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,padding:"7px 8px 4px"}}>
             <SpinCol val={use12?String(disp12H).padStart(2,"0"):String(tH).padStart(2,"0")} onUp={()=>setH((tH+1)%24)} onDn={()=>setH((tH-1+24)%24)}/>
             <span style={{fontSize:14,fontWeight:700,color:c.ts,marginBottom:2}}>:</span>
             <SpinCol val={String(tMn).padStart(2,"0")} onUp={()=>setMn((tMn+1)%60)} onDn={()=>setMn((tMn-1+60)%60)}/>
             {use12&&(
-              <button type="button" onClick={e=>{e.stopPropagation();setH(isPM?tH-12:tH+12);}}
+              <button onClick={e=>{e.stopPropagation();setH(isPM?tH-12:tH+12);}}
                 style={{marginLeft:1,padding:"3px 5px",background:isPM?"rgba(74,106,255,0.15)":"rgba(140,160,255,0.06)",
                   border:`1px solid ${isPM?c.acL:c.br}`,color:isPM?c.acL:c.ts,cursor:"default",
                   fontSize:10,fontWeight:700,fontFamily:F,letterSpacing:"0.04em",lineHeight:1,transition:"all 0.12s"}}>
@@ -20103,13 +10476,13 @@ const TalariaV8bLive = () => {
             )}
           </div>
           <div style={{padding:"3px 8px 7px"}}>
-            <button type="button" onClick={e=>{e.stopPropagation();setGotoTimeOpen(false);}} style={{width:"100%",padding:"4px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.04em"}}>Done</button>
+            <button onClick={e=>{e.stopPropagation();setGotoTimeOpen(false);}} style={{width:"100%",padding:"4px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.04em"}}>Done</button>
           </div>
         </div>
         );
       })()}
 
-      {(colorPicker || closing.has("cp")) && typeof document !== "undefined" && createPortal(
+      {(colorPicker || closing.has("cp")) && <>
         <ColorPickerPopup
           pos={cpPos} h={cpH} s={cpS} v={cpV} a={cpA} hexStr={cpHex} c={c} F={F}
           onSVChange={(ns,nv)=>{ setCpS(ns); setCpV(nv); cpApply(cpH,ns,nv,cpA); }}
@@ -20122,10 +10495,9 @@ const TalariaV8bLive = () => {
           hideAlpha={colorPicker==="tlTextColor"||colorPicker==="tlLineColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"}
           animation={closing.has("cp")?"tlrPopOut 0.15s ease both":"tlrPopIn 0.15s ease"}
         />
-      , document.body)}
+      </>}
       {dragging && (
         <div
-          data-sdrop="1"
           onMouseMove={(e) => {
             const dx = e.clientX - dragging.startX;
             const dy = e.clientY - dragging.startY;
@@ -20139,7 +10511,7 @@ const TalariaV8bLive = () => {
             else if (dragging.target === "profile") setProfilePos(cc(dragging.ox+dx, dragging.oy+dy, 400, 540));
             else if (dragging.target === "faq") setFaqPos(cc(dragging.ox+dx, dragging.oy+dy, 440, 540));
             else if (dragging.target === "news") setNewsPos({ x: dragging.ox + dx, y: dragging.oy + dy });
-            else if (dragging.target === "screenshot") setScreenshotPos(cc(dragging.ox+dx, dragging.oy+dy, Math.min(1180,(typeof window!=="undefined"?window.innerWidth:1200)-24), Math.min(760,(typeof window!=="undefined"?window.innerHeight:900)-24)));
+            else if (dragging.target === "screenshot") setScreenshotPos(cc(dragging.ox+dx, dragging.oy+dy, 920, 580));
             else if (dragging.target === "layers") setLayersPos({ x: dragging.ox + dx, y: dragging.oy + dy });
             else if (dragging.target === "layout") setLayoutPos({ x: dragging.ox + dx, y: dragging.oy + dy });
           }}
@@ -20173,48 +10545,10 @@ const TalariaV8bLive = () => {
         const sizeUnit=r.sym.includes("/")?((r.sym.startsWith("XAU")||r.sym.startsWith("XAG"))?"oz":"Lots"):"Contracts";
         const hasProtection=!!(r.breakeven||r.trailingSL);
         const saveCard=()=>{
-          const om=typeof window!=="undefined"?window.chart?.orderManager:null;
-          const tid=r.omId;
-          try{
-            if(om&&tid!=null&&Number.isFinite(Number(tid))){
-              const order=om.pendingOrders?.find(o=>o.id===tid)||om.openPositions?.find(o=>o.id===tid)||om.closedPositions?.find(o=>o.id===tid)||null;
-              const isActiveTrade=r.status==="pending"||r.status==="open";
-              if(isActiveTrade&&order){
-                const jv={...(order.journalEntry||{})};
-                if(canEditPre){
-                  jv.v9PreTradeTags=[...tradeCardPreTags];
-                  jv.preTradeNotes={...(jv.preTradeNotes||{}),tags:tradeCardPreTags.join(", ")};
-                }
-                jv.v9TradeNotes=tradeCardNotes;
-                jv.timestamp=Date.now();
-                order.journalEntry=jv;
-                if(typeof om.persistRuntimeOrderState==="function")om.persistRuntimeOrderState({critical:true});
-              }
-              if(r.status==="closed"){
-                const existing=Array.isArray(om.tradeJournal)?om.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid))||{}:{};
-                const patch={tradeId:tid,id:tid,v9TradeNotes:tradeCardNotes};
-                // PRE is frozen once closed — only POST edits persist here.
-                if(canEditPost){
-                  patch.v9PostTradeTags=[...tradeCardPostTags];
-                  const postJoin=tradeCardPostTags.join(", ");
-                  patch.postTradeNotes={...(typeof existing.postTradeNotes==="object"?existing.postTradeNotes:{}),tags:postJoin};
-                  patch.tags=[...tradeCardPostTags];
-                }
-                const sym=order?.ticker||order?.symbol||existing.ticker||existing.symbol;
-                if(sym){patch.ticker=sym;patch.symbol=sym;}
-                const tsShots=tradeScreenshots[r.id];
-                if(tsShots?.pre?.length)patch.entryScreenshot=tsShots.pre[tsShots.pre.length-1];
-                if(tsShots?.post?.length)patch.exitScreenshot=tsShots.post[tsShots.post.length-1];
-                om.upsertJournalEntry({...existing,...patch});
-                if(typeof om.persistJournal==="function")om.persistJournal();
-              }
-            }
-          }catch(e){console.warn("Trade card journal save failed",e);}
-          if(canEditPre)setTradeTagOverrides(prev=>({...prev,[r.id]:{...(prev[r.id]||{}),pre:tradeCardPreTags}}));
-          if(canEditPost)setTradeTagOverrides(prev=>({...prev,[r.id]:{...(prev[r.id]||{}),post:tradeCardPostTags}}));
+          if(canEditPre) setTradeTagOverrides(prev=>({...prev,[r.id]:{...(prev[r.id]||{}),pre:tradeCardPreTags}}));
+          if(canEditPost) setTradeTagOverrides(prev=>({...prev,[r.id]:{...(prev[r.id]||{}),post:tradeCardPostTags}}));
           setTradeNotes(prev=>({...prev,[r.id]:tradeCardNotes}));
           setTradeCard(null);
-          setOmTradeRev(n=>n+1);
         };
         const accentPre="rgba(255,140,66,0.9)", accentPreBg="rgba(255,140,66,0.1)", accentPreBd="rgba(255,140,66,0.4)";
         const accentPost="rgba(180,140,255,0.9)", accentPostBg="rgba(180,140,255,0.1)", accentPostBd="rgba(180,140,255,0.4)";
@@ -20224,14 +10558,13 @@ const TalariaV8bLive = () => {
             const active=tags.includes(def.label);
             return(
               <div key={def.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",minHeight:24}}>
-                <span style={{fontSize:11,color:canEdit?c.ts:"rgba(255,255,255,0.3)"}}>{def.label}</span>
+                <span style={{fontSize:11,color:c.ts}}>{def.label}</span>
                 <div style={{display:"flex",gap:2}}>
                   {[["YES",true],["NO",false]].map(([lbl,val])=>{
                     const sel=val?active:!active;
-                    // read-only: selected pill stays colored; unselected is very dim
-                    const pillColor=sel?accent:canEdit?c.ts:c.trk;
+                    const pillColor=sel?accent:canEdit?c.ts:c.tm;
                     const pillBg=sel?accentBg:"transparent";
-                    const pillBd=sel?accentBd:canEdit?"rgba(255,255,255,0.08)":"rgba(255,255,255,0.06)";
+                    const pillBd=sel?accentBd:c.br;
                     return(
                       <div key={lbl}
                         onClick={canEdit?()=>setTags(pt=>val?[...pt.filter(x=>x!==def.label),def.label]:pt.filter(x=>x!==def.label)):undefined}
@@ -20250,13 +10583,13 @@ const TalariaV8bLive = () => {
             const selOpts=tags.filter(t=>def.options.includes(t));
             return(
               <div key={def.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,minHeight:24}}>
-                <span style={{fontSize:11,color:canEdit?c.ts:"rgba(255,255,255,0.3)",flexShrink:0}}>{def.label}</span>
+                <span style={{fontSize:11,color:c.ts,flexShrink:0}}>{def.label}</span>
                 <div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"flex-end"}}>
                   {def.options.map(opt=>{
                     const sel=selOpts.includes(opt);
-                    const pillColor=sel?accent:canEdit?c.ts:c.trk;
+                    const pillColor=sel?accent:canEdit?c.ts:c.tm;
                     const pillBg=sel?accentBg:"transparent";
-                    const pillBd=sel?accentBd:canEdit?"rgba(255,255,255,0.07)":c.hv;
+                    const pillBd=sel?accentBd:c.br;
                     return(
                       <div key={opt}
                         onClick={canEdit?()=>setTags(pt=>sel?pt.filter(x=>x!==opt):[...pt,opt]):undefined}
@@ -20445,7 +10778,7 @@ const TalariaV8bLive = () => {
                     <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8}}>
                       <div style={{width:6,height:6,background:dotCol,flexShrink:0}}/>
                       <span style={{fontSize:9,fontWeight:800,color:textCol,letterSpacing:"0.1em"}}>{label}</span>
-                      <span style={{fontSize:9,color:canEdit?dimCol:"rgba(255,255,255,0.2)",marginLeft:"auto",letterSpacing:"0.06em"}}>{canEdit?"EDITABLE":"READ ONLY"}</span>
+                      <span style={{fontSize:9,color:canEdit?dimCol:c.tm,marginLeft:"auto",letterSpacing:"0.06em"}}>{canEdit?"EDITABLE":"READ ONLY"}</span>
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:5}}>
                       {defs.map(def=>TagRow(def,tags,setTags,acc,accBg,accBd,canEdit))}
@@ -20464,51 +10797,40 @@ const TalariaV8bLive = () => {
                   onFocus={e=>e.target.style.borderColor=c.acB} onBlur={e=>e.target.style.borderColor=c.br}/>
               </div>
 
-              {/* ── SCREENSHOTS — PRE and POST side by side (max 4 each, 2×2 grid) ── */}
+              {/* ── SCREENSHOTS — PRE and POST side by side ── */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr"}}>
                 {["pre","post"].map((slot,si)=>{
-                  const imgs=clampScreenshotSlot((tradeScreenshots[r.id]||{})[slot]||[]);
-                  const canEditSs=slot==="pre"?canEditPre:canEditPost;
-                  const atCap=imgs.length>=MAX_SCREENSHOTS_PRE_POST;
-                  const TC_SW=118;
-                  const TC_SH=80;
+                  const imgs=(tradeScreenshots[r.id]||{})[slot]||[];
                   return(
                   <div key={slot} style={{padding:"10px 14px",borderRight:si===0?`1px solid ${c.br}`:"none"}}>
-                    <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:8,marginBottom:6,flexWrap:"wrap"}}>
-                      <span style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.1em"}}>
-                        {slot==="pre"?"PRE TRADE":"POST TRADE"} SCREENSHOTS
-                      </span>
-                      <span style={{fontSize:8,color:c.ts,letterSpacing:"0.04em"}}>{imgs.length}/{MAX_SCREENSHOTS_PRE_POST}</span>
+                    <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.1em",marginBottom:6}}>
+                      {slot==="pre"?"PRE TRADE":"POST TRADE"} SCREENSHOTS
                     </div>
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(2, minmax(0, 1fr))",gap:8,maxWidth:TC_SW*2+8}}>
+                    <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"flex-start"}}>
                       {imgs.map((src,ssi)=>(
-                        <div key={ssi} className="tc-ss-wrap" style={{width:TC_SW,height:TC_SH,border:"1px solid rgba(140,160,255,0.25)",borderRadius:2,overflow:"hidden",flexShrink:0,position:"relative"}}>
-                          <img src={src} alt="" onError={journalScreenshotImgOnError} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                        <div key={ssi} className="tc-ss-wrap" style={{width:64,height:44,border:"1px solid rgba(140,160,255,0.25)",overflow:"hidden",flexShrink:0,position:"relative"}}>
+                          <img src={src} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
                           <div className="tc-ss-overlay"
                             style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",gap:5,opacity:0,transition:"opacity 0.12s"}}>
                             <div className="ss-view-btn" onClick={()=>setViewingScreenshot(src)}
-                              style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.1)",cursor:"default",transition:"background 0.1s"}}>
-                              <I n="eye" s={11} cl="rgba(255,255,255,0.85)"/>
+                              style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.1)",cursor:"default",transition:"background 0.1s"}}>
+                              <I n="eye" s={10} cl="rgba(255,255,255,0.85)"/>
                             </div>
-                            {canEditSs&&(
-                            <div className="ss-del-btn" onClick={()=>setTradeScreenshots(prev=>{const n={...prev};const cur={...(n[r.id]||{})};cur[slot]=clampScreenshotSlot((cur[slot]||[]).filter((_,j)=>j!==ssi));n[r.id]=cur;return n;})}
-                              style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.1)",cursor:"default",transition:"background 0.1s"}}>
-                              <I n="x" s={11} cl="rgba(255,100,100,0.85)"/>
+                            <div className="ss-del-btn" onClick={()=>setTradeScreenshots(prev=>{const n={...prev};const cur={...(n[r.id]||{})};cur[slot]=(cur[slot]||[]).filter((_,j)=>j!==ssi);n[r.id]=cur;return n;})}
+                              style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.1)",cursor:"default",transition:"background 0.1s"}}>
+                              <I n="x" s={10} cl="rgba(255,100,100,0.85)"/>
                             </div>
-                            )}
                           </div>
                         </div>
                       ))}
-                      {canEditSs&&!atCap&&(
                       <div className="tc-ss-add" onClick={()=>{setTcSsSlot(slot);tcFileRef.current?.click();}}
-                        style={{width:TC_SW,height:TC_SH,border:`1px dashed rgba(140,160,255,0.28)`,borderRadius:2,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,cursor:"default",flexShrink:0,transition:"background 0.12s"}}>
-                        <svg width={11} height={11} viewBox="0 0 14 14" fill="none">
+                        style={{width:64,height:44,border:`1px dashed rgba(140,160,255,0.2)`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,cursor:"default",flexShrink:0,transition:"background 0.12s"}}>
+                        <svg width={10} height={10} viewBox="0 0 14 14" fill="none">
                           <line x1="7" y1="2" x2="7" y2="12" className="tc-ss-plus" stroke={c.trk} strokeWidth="1.5" strokeLinecap="round"/>
                           <line x1="2" y1="7" x2="12" y2="7" className="tc-ss-plus" stroke={c.trk} strokeWidth="1.5" strokeLinecap="round"/>
                         </svg>
                         <span className="tc-ss-lbl" style={{fontSize:9,color:c.trk}}>ADD</span>
                       </div>
-                      )}
                     </div>
                   </div>
                   );
@@ -20518,32 +10840,11 @@ const TalariaV8bLive = () => {
             </div>
             {/* Footer */}
             <div style={{padding:"7px 12px",borderTop:`1px solid ${c.br}`,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0,background:"rgba(255,255,255,0.01)"}}>
-              <B hk="tc-cancel" fireOnPointerDown onClick={()=>setTradeCard(null)}>Cancel</B>
-              <B primary hk="tc-save" fireOnPointerDown onClick={saveCard}>Save</B>
+              <B hk="tc-cancel" onClick={()=>setTradeCard(null)}>Cancel</B>
+              <B primary hk="tc-save" onClick={saveCard}>Save</B>
             </div>
             <input ref={tcFileRef} type="file" accept="image/*" style={{display:"none"}}
-              onChange={e=>{
-                const f=e.target.files[0];
-                if(!f)return;
-                const reader=new FileReader();
-                reader.onload=ev=>{
-                  setTradeScreenshots(prev=>{
-                    const n={...prev};
-                    const cur={...(n[r.id]||{})};
-                    const slotKey=tcSsSlot;
-                    const slotArr=clampScreenshotSlot([...(cur[slotKey]||[])]);
-                    if(slotArr.length>=MAX_SCREENSHOTS_PRE_POST){
-                      try{window.alert(`Maximum ${MAX_SCREENSHOTS_PRE_POST} screenshots per ${slotKey==="pre"?"Pre-trade":"Post-trade"} slot.`);}catch(_){}
-                      return prev;
-                    }
-                    cur[slotKey]=clampScreenshotSlot([...slotArr,ev.target.result]);
-                    n[r.id]=cur;
-                    return n;
-                  });
-                };
-                reader.readAsDataURL(f);
-                e.target.value="";
-              }}/>
+              onChange={e=>{const f=e.target.files[0];if(!f)return;const reader=new FileReader();reader.onload=ev=>setTradeScreenshots(prev=>{const n={...prev};const cur={...(n[r.id]||{})};cur[tcSsSlot]=[...(cur[tcSsSlot]||[]),ev.target.result];n[r.id]=cur;return n;});reader.readAsDataURL(f);e.target.value="";}}/>
           </div>
         </div>
         );
@@ -20630,7 +10931,7 @@ const TalariaV8bLive = () => {
                                   style={{padding:"2px 8px",fontSize:9,fontWeight:sel?700:400,cursor:"default",transition:"all 0.12s",
                                     color:sel?"#FF8C42":isH?"rgba(255,140,66,0.65)":c.ts,
                                     background:sel?"rgba(255,140,66,0.12)":isH?"rgba(255,140,66,0.05)":"transparent",
-                                    border:`1px solid ${sel?"rgba(255,140,66,0.4)":isH?"rgba(255,140,66,0.18)":"rgba(255,255,255,0.07)"}`}}>
+                                    border:`1px solid ${sel?"rgba(255,140,66,0.4)":isH?"rgba(255,140,66,0.18)":c.br}`}}>
                                   {opt}
                                 </div>
                               );
@@ -20706,7 +11007,7 @@ const TalariaV8bLive = () => {
                           cursor:"default",overflow:"hidden",background:img?"transparent":isH?"rgba(140,160,255,0.04)":"transparent",transition:"border-color 0.15s,background 0.15s"}}>
                         {img?(
                           <>
-                            <img src={img} alt="" onError={journalScreenshotImgOnError} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                            <img src={img} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
                             <div className="tap-ss-overlay"
                               style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:0,transition:"opacity 0.12s"}}>
                               <div className="ss-view-btn" onClick={()=>setViewingScreenshot(img)}
@@ -20783,7 +11084,7 @@ const TalariaV8bLive = () => {
           fontSize:10,fontWeight:600,color:c.tx,fontFamily:F,
           padding:"3px 8px 3px 11px",
           boxShadow:"0 4px 14px rgba(0,0,0,0.55)",
-          animation:"tlrTipIn 0.1s ease"}}>
+          animation:"tlrPopIn 0.1s ease"}}>
           <div style={{position:"absolute",left:0,top:0,bottom:0,width:2,
             background:`linear-gradient(180deg,transparent,${c.acL},transparent)`}}/>
           {tipData.label}
@@ -20792,35 +11093,17 @@ const TalariaV8bLive = () => {
 
       {viewingScreenshot&&(
         <div onClick={()=>setViewingScreenshot(null)}
-          style={{position:"fixed",inset:0,zIndex:100001,background:"rgba(0,0,0,0.93)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",padding:16,boxSizing:"border-box"}}>
-          <div onClick={e=>e.stopPropagation()} style={{
-            width:"min(96vw, 1600px)",
-            height:"min(90vh, 1000px)",
-            display:"flex",
-            alignItems:"center",
-            justifyContent:"center",
-            boxSizing:"border-box",
-          }}>
-            <img src={viewingScreenshot} alt="" onError={journalScreenshotImgOnError}
-              style={{
-                maxWidth:"100%",
-                maxHeight:"100%",
-                width:"auto",
-                height:"auto",
-                objectFit:"contain",
-                boxShadow:"0 8px 48px rgba(0,0,0,0.9)",
-              }}/>
-          </div>
+          style={{position:"fixed",inset:0,zIndex:100001,background:"rgba(0,0,0,0.93)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default"}}>
+          <img src={viewingScreenshot} onClick={e=>e.stopPropagation()}
+            style={{maxWidth:"92vw",maxHeight:"92vh",objectFit:"contain",boxShadow:"0 8px 48px rgba(0,0,0,0.9)"}}/>
           <div onClick={()=>setViewingScreenshot(null)} onMouseEnter={()=>setHov("ss-lb-x")} onMouseLeave={()=>setHov(null)}
             style={{position:"absolute",top:16,right:16,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
-              background:hov==="ss-lb-x"?"rgba(255,80,80,0.15)":"rgba(255,255,255,0.06)",border:`1px solid ${hov==="ss-lb-x"?"rgba(255,80,80,0.4)":"rgba(255,255,255,0.12)"}`,
+              background:hov==="ss-lb-x"?"rgba(255,80,80,0.15)":c.hv,border:`1px solid ${hov==="ss-lb-x"?"rgba(255,80,80,0.4)":c.brL}`,
               transition:"all 0.12s",cursor:"default"}}>
-            <I n="x" s={14} cl={hov==="ss-lb-x"?c.rd:"rgba(255,255,255,0.6)"}/>
+            <I n="x" s={14} cl={hov==="ss-lb-x"?c.rd:c.ts}/>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
-};
-
-export default TalariaV8bLive;
+}

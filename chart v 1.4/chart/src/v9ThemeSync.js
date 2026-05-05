@@ -55,6 +55,19 @@ function applyCanvasTheme(targetCs, settings) {
   return c;
 }
 
+function mapV9TimezoneToId(tzLabel) {
+  const map = {
+    "UTC": "UTC",
+    "UTC+3 (Riyadh)": "Europe/Moscow",
+    "UTC+4 (Dubai)": "Asia/Dubai",
+    "UTC+5:30 (IST)": "Asia/Kolkata",
+    "UTC+8 (Asia)": "Asia/Singapore",
+    "UTC-5 (EST)": "America/New_York",
+    "UTC-8 (PST)": "America/Los_Angeles",
+  };
+  return map[tzLabel] || "UTC";
+}
+
 /**
  * @param {object} settings V9 settings state
  * @returns {boolean} true if chart exists and sync completed (or nothing to do); false if window.chart not ready
@@ -80,6 +93,8 @@ export function applyV9ThemeSettingsToChart(settings) {
     showPriceLine: settings.priceLine,
     scaleTextColor: settings.textColor,
     symbolTextColor: settings.textColor,
+    timeFormat: settings.timeFormat,
+    timezone: settings.timezone,
   };
   let changed = false;
   for (const k of Object.keys(map)) {
@@ -100,6 +115,14 @@ export function applyV9ThemeSettingsToChart(settings) {
     changed = true;
   }
   if (applyCanvasTheme(cs, settings)) changed = true;
+  try {
+    const tm = typeof window !== "undefined" ? window.timezoneManager : null;
+    const tzId = mapV9TimezoneToId(settings.timezone);
+    if (tm && typeof tm.setTimezone === "function" && tm.getTimezone?.()?.id !== tzId) {
+      tm.setTimezone(tzId);
+      changed = true;
+    }
+  } catch (_) {}
 
   if (!changed) return true;
 
