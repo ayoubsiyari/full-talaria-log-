@@ -1025,37 +1025,105 @@ async function handleFormSubmit(e) {
         }, {})
         : null;
 
+    const getEl = (id) => document.getElementById(id);
+    const getNum = (id, fallback = 0) => {
+        const v = parseFloat((getEl(id) && getEl(id).value) || '');
+        return Number.isFinite(v) ? v : fallback;
+    };
+    const getInt = (id, fallback = 0) => {
+        const v = parseInt((getEl(id) && getEl(id).value) || '', 10);
+        return Number.isFinite(v) ? v : fallback;
+    };
+    const getBool = (id, fallback = false) => {
+        const el = getEl(id);
+        return el && typeof el.checked === 'boolean' ? !!el.checked : fallback;
+    };
+    const getStr = (id, fallback = '') => {
+        const el = getEl(id);
+        return el && typeof el.value !== 'undefined' ? String(el.value) : fallback;
+    };
+
+    const challengeType = getStr('challengeType', 'Evaluation');
+    const numPhases = Math.max(1, Math.min(2, getInt('challengePhaseCount', 2)));
+    const p1DailyLossPct = getNum('maxDailyLossPercent', 5);
+    const p1TotalDdPct = getNum('maxTotalLossPercent', 10);
+    const p1ProfitTargetPct = getNum('profitTarget', 10);
+    const p1DailyLossAmt = getNum('maxDailyLossDollar', Math.round(getNum('balance', 10000) * p1DailyLossPct / 100));
+    const p1TotalDdAmt = getNum('maxTotalLossDollar', Math.round(getNum('balance', 10000) * p1TotalDdPct / 100));
+    const p1ProfitTargetAmt = getNum('profitTargetUsd', Math.round(getNum('balance', 10000) * p1ProfitTargetPct / 100));
+    const p2DailyLossPct = getNum('phase2DailyLossPercent', p1DailyLossPct);
+    const p2TotalDdPct = getNum('phase2MaxDrawdownPercent', p1TotalDdPct);
+    const p2ProfitTargetPct = getNum('phase2ProfitTargetPercent', p1ProfitTargetPct);
+    const p2DailyLossAmt = getNum('phase2DailyLossDollar', p1DailyLossAmt);
+    const p2TotalDdAmt = getNum('phase2MaxDrawdownDollar', p1TotalDdAmt);
+    const p2ProfitTargetAmt = getNum('phase2ProfitTargetDollar', p1ProfitTargetAmt);
+    const minTradingDays = getBool('disableMinDays', false) ? 0 : getInt('minTradingDays', 0);
+    const leverageNumber = getInt('leverageValue', 100);
+
     // Collect form data
     const formData = {
         type: 'propfirm',
-        simulationPresetId: (document.getElementById('simulationPresetId') && document.getElementById('simulationPresetId').value) || 'custom',
-        simulationPresetLabel: (document.getElementById('simulationPresetLabel') && document.getElementById('simulationPresetLabel').value) || 'Custom configuration',
-        projectName: document.getElementById('projectName').value,
-        balance: parseFloat(document.getElementById('balance').value),
+        simulationPresetId: getStr('simulationPresetId', 'custom'),
+        simulationPresetLabel: getStr('simulationPresetLabel', 'Custom configuration'),
+        projectName: getStr('projectName'),
+        balance: getNum('balance', 10000),
         symbols: selectedSymbols,
         ...(instrumentsMap ? { instruments: instrumentsMap } : {}),
         files: filesForSwitching, // For symbol switching on chart
         activeFileIndex: 0,
         fileId: primaryFileId, // Primary file for loading
         fileName: primaryFileName,
-        startDate: document.getElementById('startDate').value,
-        endDate: document.getElementById('endDate').value,
-        minTradingDays: document.getElementById('disableMinDays').checked ? 0 : parseInt(document.getElementById('minTradingDays').value),
-        profitTarget: parseFloat(document.getElementById('profitTarget').value),
+        startDate: getStr('startDate'),
+        endDate: getStr('endDate'),
+        challenge: true,
+        challengeType: challengeType,
+        minTradingDays: minTradingDays,
+        minTradingDaysEnabled: !getBool('disableMinDays', false),
+        profitTarget: p1ProfitTargetPct,
+        profitTargetUsd: p1ProfitTargetAmt,
         maxDailyLoss: {
-            percent: parseFloat(document.getElementById('maxDailyLossPercent').value),
-            dollar: parseFloat(document.getElementById('maxDailyLossDollar').value)
+            percent: p1DailyLossPct,
+            dollar: p1DailyLossAmt
         },
         maxTotalLoss: {
-            percent: parseFloat(document.getElementById('maxTotalLossPercent').value),
-            dollar: parseFloat(document.getElementById('maxTotalLossDollar').value)
+            percent: p1TotalDdPct,
+            dollar: p1TotalDdAmt
         },
-        timezone: document.getElementById('timezone').value,
-        sessionCloseTime: document.getElementById('sessionCloseTime').value,
-        daylightSavingTime: document.getElementById('daylightSavingTime').value,
-        barsTimeFormat: document.getElementById('barsTimeFormat').value,
-        accountCurrency: (document.getElementById('accountCurrency') && document.getElementById('accountCurrency').value) || 'USD',
-        leverage: parseInt(document.getElementById('leverageValue').value),
+        maxDailyLossPercent: p1DailyLossPct,
+        maxDailyLossDollar: p1DailyLossAmt,
+        maxTotalLossPercent: p1TotalDdPct,
+        maxTotalLossDollar: p1TotalDdAmt,
+        timezone: getStr('timezone'),
+        sessionCloseTime: getStr('sessionCloseTime'),
+        daylightSavingTime: getStr('daylightSavingTime'),
+        barsTimeFormat: getStr('barsTimeFormat'),
+        accountCurrency: getStr('accountCurrency', 'USD'),
+        leverage: leverageNumber,
+        leverageNumber: leverageNumber,
+        accountLeverage: `1:${leverageNumber}`,
+        prop_rules: {
+            numPhases: numPhases,
+            challengeType: challengeType,
+            p1Pct: { dl: p1DailyLossPct, dd: p1TotalDdPct, pt: p1ProfitTargetPct },
+            p2Pct: { dl: p2DailyLossPct, dd: p2TotalDdPct, pt: p2ProfitTargetPct },
+            p1Amt: { dl: p1DailyLossAmt, dd: p1TotalDdAmt, pt: p1ProfitTargetAmt },
+            p2Amt: { dl: p2DailyLossAmt, dd: p2TotalDdAmt, pt: p2ProfitTargetAmt },
+            p1MinDays: minTradingDays,
+            p2MinDays: getInt('phase2MinTradingDays', minTradingDays),
+            minTradingDays: minTradingDays,
+            maxPosition: getNum('maxPositionValue', getNum('maxContracts', 0)),
+            maxPositionEnabled: getBool('maxPositionEnabled', getBool('maxContractsEnabled', false)),
+            maxPositionUnit: getStr('maxPositionUnit', 'lots'),
+            maxContracts: getInt('maxContracts', 0),
+            maxContractsEnabled: getBool('maxContractsEnabled', false),
+            consistencyRule: getBool('consistencyRule', false),
+            consistencyPct: getNum('consistencyPct', 30),
+            weekendHold: getBool('weekendHold', false),
+            trailingDrawdown: getBool('trailingDrawdown', true),
+            dailyLossEnabled: getBool('dailyLossEnabled', true),
+            leverage: `1:${leverageNumber}`,
+            leverageNumber: leverageNumber
+        },
         forwardTestingOnly: true,
         allowBackNavigation: false,
         created: new Date().toISOString(),

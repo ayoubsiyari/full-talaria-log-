@@ -576,6 +576,21 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
       });
     }
 
+    const p1DailyLossPct = parseFloat(sessP1DailyLossPct || "0") || 0;
+    const p1TotalDdPct = parseFloat(sessP1TotalDDPct || "0") || 0;
+    const p1ProfitTargetPct = parseFloat(sessP1ProfitTargetPct || "0") || 0;
+    const p1DailyLossAmt = parseFloat(sessP1DailyLossAmt || "0") || 0;
+    const p1TotalDdAmt = parseFloat(sessP1MaxDDAmt || "0") || 0;
+    const p1ProfitTargetAmt = parseFloat(sessP1ProfitTargetAmt || "0") || 0;
+    const p2DailyLossPct = parseFloat(sessP2DailyLossPct || "0") || 0;
+    const p2TotalDdPct = parseFloat(sessP2TotalDDPct || "0") || 0;
+    const p2ProfitTargetPct = parseFloat(sessP2ProfitTargetPct || "0") || 0;
+    const p2DailyLossAmt = parseFloat(sessP2DailyLossAmt || "0") || 0;
+    const p2TotalDdAmt = parseFloat(sessP2MaxDDAmt || "0") || 0;
+    const p2ProfitTargetAmt = parseFloat(sessP2ProfitTargetAmt || "0") || 0;
+    const minTradingDays = sessP1MinDaysEnabled ? (parseInt(sessP1MinDays || "0", 10) || 0) : 0;
+    const leverageNumber = parseFloat(String(sessLeverage || "").split(":")[1] || String(sessLeverage || "0")) || 0;
+
     return {
       type: modeType,
       name: sessionName,
@@ -628,22 +643,59 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
       prop_rules: sessTradingMode === "prop" ? {
         numPhases: sessNumPhases,
         challengeType: sessChallengeType,
-        p1Pct: { dl: sessP1DailyLossPct, dd: sessP1TotalDDPct, pt: sessP1ProfitTargetPct },
-        p2Pct: { dl: sessP2DailyLossPct, dd: sessP2TotalDDPct, pt: sessP2ProfitTargetPct },
-        p1Amt: { dl: sessP1DailyLossAmt, dd: sessP1MaxDDAmt, pt: sessP1ProfitTargetAmt },
-        p2Amt: { dl: sessP2DailyLossAmt, dd: sessP2MaxDDAmt, pt: sessP2ProfitTargetAmt },
+        propCategory: sessPropCat,
+        propFirm: sessPropFirm,
+        leverage: sessLeverage,
+        leverageNumber,
+        p1Pct: { dl: p1DailyLossPct, dd: p1TotalDdPct, pt: p1ProfitTargetPct },
+        p2Pct: { dl: p2DailyLossPct, dd: p2TotalDdPct, pt: p2ProfitTargetPct },
+        p1Amt: { dl: p1DailyLossAmt, dd: p1TotalDdAmt, pt: p1ProfitTargetAmt },
+        p2Amt: { dl: p2DailyLossAmt, dd: p2TotalDdAmt, pt: p2ProfitTargetAmt },
+        p1MinDays: sessP1MinDaysEnabled ? (parseInt(sessP1MinDays || "0", 10) || 0) : 0,
+        p2MinDays: sessP2MinDaysEnabled ? (parseInt(sessP2MinDays || "0", 10) || 0) : 0,
+        minTradingDays,
+        maxPosition: parseFloat(sessMaxLotSize || sessMaxContracts || "0") || 0,
+        maxPositionEnabled: sessMaxPosEnabled || sessMaxContractsEnabled,
+        maxPositionUnit: sessMaxPosUnit,
+        maxContracts: parseInt(sessMaxContracts || "0", 10) || 0,
+        maxContractsEnabled: sessMaxContractsEnabled,
+        consistencyRule: sessConsistencyRule,
+        consistencyPct: parseFloat(sessConsistencyPct || "0") || 0,
+        weekendHold: sessWeekendHold,
+        trailingDrawdown: sessTrailingDrawdown,
+        dailyLossEnabled: sessDailyLossEnabled,
       } : null,
       challenge: sessTradingMode === "prop",
-      minTradingDays: parseInt(sessFutMinDays || "0", 10) || 0,
+      challengeType: sessChallengeType,
+      minTradingDays,
+      minTradingDaysEnabled: sessP1MinDaysEnabled,
       maxDailyLoss: {
-        percent: parseFloat(sessP1DailyLossPct || "0") || 0,
-        dollar: parseFloat(sessP1DailyLossAmt || "0") || 0,
+        percent: p1DailyLossPct,
+        dollar: p1DailyLossAmt,
       },
       maxTotalLoss: {
-        percent: parseFloat(sessP1TotalDDPct || "0") || 0,
-        dollar: parseFloat(sessP1MaxDDAmt || "0") || 0,
+        percent: p1TotalDdPct,
+        dollar: p1TotalDdAmt,
       },
-      profitTarget: parseFloat(sessP1ProfitTargetAmt || sessP1ProfitTargetPct || "0") || 0,
+      profitTarget: p1ProfitTargetPct,
+      profitTargetUsd: p1ProfitTargetAmt,
+      maxDailyLossPercent: p1DailyLossPct,
+      maxDailyLossDollar: p1DailyLossAmt,
+      maxTotalLossPercent: p1TotalDdPct,
+      maxTotalLossDollar: p1TotalDdAmt,
+      leverageNumber,
+      maxPosition: parseFloat(sessMaxLotSize || sessMaxContracts || "0") || 0,
+      maxPositionEnabled: sessMaxPosEnabled || sessMaxContractsEnabled,
+      maxPositionUnit: sessMaxPosUnit,
+      maxContracts: parseInt(sessMaxContracts || "0", 10) || 0,
+      maxContractsEnabled: sessMaxContractsEnabled,
+      consistencyRule: sessConsistencyRule,
+      consistencyPct: parseFloat(sessConsistencyPct || "0") || 0,
+      weekendHold: sessWeekendHold,
+      trailingDrawdown: sessTrailingDrawdown,
+      dailyLossEnabled: sessDailyLossEnabled,
+      futMinDays: parseInt(sessFutMinDays || "0", 10) || 0,
+      futMinDaysEnabled: sessFutMinDaysEnabled,
       daylightSavingTime: newSessDST ? "enabled" : "disabled",
     };
   }
