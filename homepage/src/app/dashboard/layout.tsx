@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useLanguage } from "../LanguageProvider";
 import "./dashboard-shell.css";
 
@@ -225,15 +225,29 @@ function DashboardNotificationBell({ isArabic }: { isArabic: boolean }) {
 
 const F = "'Exo 2', sans-serif";
 
-function getPageTitle(pathname: string): string {
-  if (pathname.startsWith("/journal")) return "Journal";
-  if (pathname.startsWith("/backtest") || pathname.startsWith("/chart")) return "Backtest";
-  if (pathname.startsWith("/strategies")) return "Strategies Lab";
-  if (pathname.startsWith("/dashboard/cot")) return "COT Analysis";
-  if (pathname.startsWith("/dashboard/support")) return "Support";
-  if (pathname.startsWith("/bootcamp")) return "Resources";
-  return "Dashboard";
-}
+const VIEW_TITLES: Record<string, string> = {
+  dashboard: "Dashboard",
+  journal: "Journal",
+  backtest: "Backtest",
+  strategies: "Strategies",
+  resources: "Resources",
+  support: "Support",
+  cot: "COT Analysis",
+  admin: "Admin",
+};
+
+const EXTERNAL_VIEWS: Record<string, string> = {
+  journal: "/journal/dashboard",
+  backtest: "/backtest/",
+  strategies: "/strategies-lab/",
+  resources: "/bootcamp/",
+};
+
+const INTERNAL_NAV: Record<string, string> = {
+  dashboard: "/dashboard/",
+  cot: "/dashboard/cot/",
+  support: "/dashboard/support/",
+};
 
 export default function DashboardLayout({
   children,
@@ -242,7 +256,10 @@ export default function DashboardLayout({
 }) {
   const { isArabic } = useLanguage();
   const [user, setUser] = React.useState<User | null>(null);
+  const [activeView, setActiveView] = React.useState<string>("dashboard");
+  const [loadedViews, setLoadedViews] = React.useState<Record<string, boolean>>({});
   const pathname = usePathname() || "";
+  const router = useRouter();
 
   React.useEffect(() => {
     fetchMe()
@@ -252,6 +269,22 @@ export default function DashboardLayout({
         window.location.href = `/login/?next=${encodeURIComponent(target)}`;
       });
   }, []);
+
+  React.useEffect(() => {
+    if (pathname.startsWith("/dashboard/cot")) setActiveView("cot");
+    else if (pathname.startsWith("/dashboard/support")) setActiveView("support");
+    else if (pathname.startsWith("/dashboard/admin")) setActiveView("admin");
+    else if (pathname.startsWith("/dashboard")) setActiveView("dashboard");
+  }, [pathname]);
+
+  const handleNavClick = (id: string) => {
+    setActiveView(id);
+    if (EXTERNAL_VIEWS[id]) {
+      setLoadedViews((prev) => ({ ...prev, [id]: true }));
+    } else if (INTERNAL_NAV[id]) {
+      router.push(INTERNAL_NAV[id]);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -264,21 +297,15 @@ export default function DashboardLayout({
     window.location.href = "/login/";
   };
 
-  const isActive = (href: string) => {
-    const p = pathname.replace(/\/$/, "") || "/";
-    const h = href.replace(/\/$/, "");
-    return p === h || (h.length > 1 && p.startsWith(h));
-  };
+  const pageTitle = VIEW_TITLES[activeView] || "Dashboard";
 
-  const pageTitle = getPageTitle(pathname);
-
-  const NAV_ITEMS: { id: string; label: string; href: string; icon: React.ReactNode }[] = [
-    { id: "dashboard", label: "Dashboard", href: "/dashboard/", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="3" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/></svg> },
-    { id: "journal",   label: "Journal",   href: "/journal/dashboard", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="15" height="18" rx="1" stroke="currentColor" strokeWidth="1.5"/><line x1="7" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="7" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="7" y1="16" x2="11" y2="16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
-    { id: "backtest",  label: "Backtest",  href: "/backtest/", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><polyline points="3,20 3,4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="3,15 8,11 12,14 18,7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><polygon points="20,10 23,13 20,16" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg> },
-    { id: "strategies",label: "Strategies",href: "/strategies-lab/", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="2" width="14" height="20" rx="1" stroke="currentColor" strokeWidth="1.4"/><rect x="8" y="1" width="4" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.3"/><circle cx="7" cy="9" r="1.2" fill="currentColor" opacity="0.8"/><circle cx="13" cy="9" r="1.2" fill="currentColor" opacity="0.8"/><circle cx="10" cy="14" r="1.2" fill="currentColor" opacity="0.8"/><path d="M7 9c0 3 3 3 3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><path d="M13 9c-1 2-1 3-3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="8.5" y1="19" x2="11.5" y2="19" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
-    { id: "resources", label: "Resources", href: "/bootcamp/", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="2" y="16.5" width="20" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="5.5" y1="16.5" x2="5.5" y2="20" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="3.5" y="12" width="17" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="7" y1="12" x2="7" y2="15.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="5" y="7.5" width="14" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="8.5" y1="7.5" x2="8.5" y2="11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg> },
-    { id: "support",   label: "Support",   href: "/dashboard/support/", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="currentColor" strokeWidth="1"/></svg> },
+  const NAV_ITEMS: { id: string; label: string; icon: React.ReactNode }[] = [
+    { id: "dashboard", label: "Dashboard", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="3" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/></svg> },
+    { id: "journal",   label: "Journal",   icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="15" height="18" rx="1" stroke="currentColor" strokeWidth="1.5"/><line x1="7" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="7" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="7" y1="16" x2="11" y2="16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
+    { id: "backtest",  label: "Backtest",  icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><polyline points="3,20 3,4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="3,15 8,11 12,14 18,7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><polygon points="20,10 23,13 20,16" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg> },
+    { id: "strategies",label: "Strategies",icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="2" width="14" height="20" rx="1" stroke="currentColor" strokeWidth="1.4"/><rect x="8" y="1" width="4" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.3"/><circle cx="7" cy="9" r="1.2" fill="currentColor" opacity="0.8"/><circle cx="13" cy="9" r="1.2" fill="currentColor" opacity="0.8"/><circle cx="10" cy="14" r="1.2" fill="currentColor" opacity="0.8"/><path d="M7 9c0 3 3 3 3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><path d="M13 9c-1 2-1 3-3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="8.5" y1="19" x2="11.5" y2="19" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
+    { id: "resources", label: "Resources", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="2" y="16.5" width="20" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="5.5" y1="16.5" x2="5.5" y2="20" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="3.5" y="12" width="17" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="7" y1="12" x2="7" y2="15.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="5" y="7.5" width="14" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="8.5" y1="7.5" x2="8.5" y2="11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg> },
+    { id: "support",   label: "Support",   icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="currentColor" strokeWidth="1"/></svg> },
   ];
 
   return (
@@ -318,30 +345,54 @@ export default function DashboardLayout({
 
         {/* Left Sidebar */}
         <nav style={{ width: 64, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 0 6px", background: "#0F1119", gap: 1, boxShadow: "4px 0 20px rgba(0,0,0,0.45)", zIndex: 1 }}>
-          {NAV_ITEMS.map(({ id, label, href, icon }) => {
-            const active = isActive(href);
+          {NAV_ITEMS.map(({ id, label, icon }) => {
+            const active = activeView === id;
             return (
-              <a key={id} href={href}
-                style={{ width: "100%", height: 56, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textDecoration: "none", position: "relative", background: active ? "rgba(38,67,247,0.08)" : "transparent", color: active ? "#4A6AFF" : "rgba(255,255,255,0.55)", transition: "background 0.12s,color 0.12s" }}>
+              <div key={id} onClick={() => handleNavClick(id)}
+                style={{ width: "100%", height: 56, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer", position: "relative", background: active ? "rgba(38,67,247,0.08)" : "transparent", color: active ? "#4A6AFF" : "rgba(255,255,255,0.55)", transition: "background 0.12s,color 0.12s" }}>
                 {active && <div style={{ position: "absolute", left: 0, top: "20%", bottom: "20%", width: 2, background: "linear-gradient(180deg,transparent,#4A6AFF,transparent)", boxShadow: "0 0 6px rgba(38,67,247,0.35)" }} />}
                 {icon}
                 <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase" as const, fontFamily: F }}>{label}</span>
-              </a>
+              </div>
             );
           })}
           <div style={{ flex: 1 }} />
           {/* Profile at bottom */}
-          <a href="/journal/settings"
-            style={{ width: "100%", height: 56, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textDecoration: "none", color: "rgba(255,255,255,0.40)", transition: "color 0.12s" }}>
+          <div onClick={() => handleNavClick("support")}
+            style={{ width: "100%", height: 56, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer", color: activeView === "support" ? "#4A6AFF" : "rgba(255,255,255,0.40)", transition: "color 0.12s" }}>
             <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
             <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase" as const, fontFamily: F }}>Profile</span>
-          </a>
+          </div>
         </nav>
 
         {/* Main content area */}
-        <main style={{ flex: 1, overflowY: "auto", background: "#07080E" }}
-          className={pathname.startsWith("/dashboard/cot") ? "db-main-wrap--full" : ""}>
-          {children}
+        <main style={{ flex: 1, overflow: "hidden", background: "#07080E", position: "relative" }}>
+
+          {/* Internal Next.js pages (dashboard, cot, support) */}
+          <div style={{
+            position: "absolute", inset: 0, overflowY: "auto",
+            visibility: !EXTERNAL_VIEWS[activeView] ? "visible" : "hidden",
+            pointerEvents: !EXTERNAL_VIEWS[activeView] ? "auto" : "none",
+          }}>
+            {children}
+          </div>
+
+          {/* External views loaded as full-page iframes */}
+          {Object.entries(EXTERNAL_VIEWS).map(([id, url]) => (
+            <iframe
+              key={id}
+              title={id}
+              src={loadedViews[id] ? url : undefined}
+              style={{
+                position: "absolute", inset: 0,
+                width: "100%", height: "100%",
+                border: "none",
+                opacity: activeView === id ? 1 : 0,
+                pointerEvents: activeView === id ? "auto" : "none",
+                transition: "opacity 0.15s",
+              }}
+            />
+          ))}
         </main>
       </div>
     </div>
