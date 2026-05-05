@@ -736,7 +736,7 @@ export function BacktestView() {
 
       {/* ── New session iframe overlay ── */}
       {iframeUrl && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(0,0,0,0.52)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 99999, background: "#07080E", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div style={{ width: "min(980px, calc(100vw - 48px))", height: "min(690px, calc(100vh - 48px))", border: `1px solid ${c.brH}`, boxShadow: "0 20px 80px rgba(0,0,0,0.65)", background: "#05070d" }}>
             <iframe ref={iframeRef} onLoad={forceModalOnlyInIframe} title="New Session" src={iframeUrl} style={{ width: "100%", height: "100%", border: "none" }} />
           </div>
