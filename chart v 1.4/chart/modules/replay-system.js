@@ -1608,6 +1608,7 @@ class ReplaySystem {
         }
         if (sess && sess.type === 'propfirm') return false;
         if (sess && sess.allowBackNavigation === false) return false;
+        if (sess && sess.rollback_allowed === false) return false;
         return true;
     }
 

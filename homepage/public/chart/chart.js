@@ -713,7 +713,133 @@ class Chart {
             normalized.startBalance = parsedStart;
         }
 
+        this.materializeInstrumentCostFields(normalized);
+
         return normalized;
+    }
+
+    /**
+     * Map homepage/session-modal instrument rows (`spread`, `commission`) to fields the order stack expects
+     * (`spread_pips`, `commission_per_lot_per_side`). Honors Real-World Trading Costs: zeros costs when disabled,
+     * merges `trading_costs` when enabled (RT commissions → per-side).
+     */
+    materializeInstrumentCostFields(normalized) {
+        if (!normalized || typeof normalized !== 'object') return;
+        const instruments = normalized.instruments;
+        if (!instruments || typeof instruments !== 'object') return;
+
+        const commissionRaw = normalized.commission;
+        const costsOff =
+            commissionRaw === 'None' ||
+            commissionRaw === 'none' ||
+            commissionRaw === '' ||
+            normalized.trading_costs == null;
+
+        const tc =
+            normalized.trading_costs && typeof normalized.trading_costs === 'object'
+                ? normalized.trading_costs
+                : null;
+
+        const classifyAsset = (ticker, row) => {
+            const ac = String(row.asset_class || row.assetClass || normalized.asset_class || 'Forex').toLowerCase();
+            if (ac.includes('future')) return 'Futures';
+            if (ac.includes('stock') || ac.includes('equit')) return 'Stocks';
+            if (ac.includes('crypto')) return 'Crypto';
+            return 'Forex';
+        };
+
+        const rtToPerSide = (v) => {
+            const n = Number.parseFloat(v);
+            if (!Number.isFinite(n) || n < 0) return 0;
+            return n / 2;
+        };
+
+        Object.keys(instruments).forEach((key) => {
+            const row = instruments[key];
+            if (!row || typeof row !== 'object') return;
+
+            if (costsOff) {
+                row.spread_pips = 0;
+                row.spreadPips = 0;
+                row.commission_per_lot_per_side = 0;
+                row.commissionPerLotPerSide = 0;
+                row.commission_per_lot = 0;
+                return;
+            }
+
+            let spread =
+                Number.parseFloat(row.spread_pips ?? row.spreadPips ?? row.spread ?? 0) || 0;
+            let commSide =
+                Number.parseFloat(
+                    row.commission_per_lot_per_side ??
+                        row.commissionPerLotPerSide ??
+                        row.commission_per_lot ??
+                        row.commission ??
+                        0,
+                ) || 0;
+
+            if (tc) {
+                const ticker = String(row.ticker || key).toUpperCase();
+                const asset = classifyAsset(ticker, row);
+                const spOv =
+                    tc.spreads && tc.spreads[ticker] != null && tc.spreads[ticker] !== ''
+                        ? Number.parseFloat(tc.spreads[ticker])
+                        : NaN;
+                if (Number.isFinite(spOv)) spread = spOv;
+
+                if (asset === 'Futures') {
+                    const fd = tc.futuresMargins && tc.futuresMargins[ticker];
+                    if (fd && fd.commission != null && fd.commission !== '') {
+                        commSide = rtToPerSide(fd.commission);
+                    } else if (tc.costs && tc.costs.Futures && tc.costs.Futures.commission != null && tc.costs.Futures.commission !== '') {
+                        commSide = rtToPerSide(tc.costs.Futures.commission);
+                    }
+                } else if (asset === 'Stocks' || asset === 'Crypto') {
+                    const bucket = tc.costs && tc.costs[asset];
+                    if (bucket && bucket.commission != null && bucket.commission !== '') {
+                        commSide = Number.parseFloat(bucket.commission) || 0;
+                    }
+                } else {
+                    const bucket = tc.costs && tc.costs.Forex;
+                    if (bucket && bucket.commission != null && bucket.commission !== '') {
+                        commSide = rtToPerSide(bucket.commission);
+                    }
+                }
+            }
+
+            row.spread_pips = spread;
+            row.spreadPips = spread;
+            row.commission_per_lot_per_side = commSide;
+            row.commissionPerLotPerSide = commSide;
+            row.commission_per_lot = commSide;
+        });
+    }
+
+    /**
+     * Sync session toggles (advanced orders, replay rollback policy) into globals + order-manager DOM state.
+     */
+    applySessionTradingPreferences(session) {
+        if (!session || typeof session !== 'object') return;
+        try {
+            window.backtestingSettings = window.backtestingSettings || {};
+            const navAllowed =
+                session.allowBackNavigation !== false &&
+                session.rollback_allowed !== false &&
+                String(session.type || '').toLowerCase() !== 'propfirm';
+            window.backtestingSettings.allowBackNavigation = navAllowed;
+        } catch (e) { /* ignore */ }
+
+        try {
+            const om = this.orderManager;
+            const adv = document.getElementById('advancedOrderToggle');
+            const wantAdv = !!session.advanced_order;
+            if (adv) adv.checked = wantAdv;
+            if (om && typeof om.syncAdvancedOrderUI === 'function') {
+                om.syncAdvancedOrderUI({ skipPreviewAndCalc: true });
+            } else if (om) {
+                om.advancedOrderEnabled = wantAdv;
+            }
+        } catch (e) { /* ignore */ }
     }
 
     /**
@@ -875,6 +1001,14 @@ class Chart {
                     userStorage.setItem('backtestingSession', JSON.stringify(this.backtestingSession));
                 } catch (e) {}
 
+                this.applySessionTradingPreferences(this.backtestingSession);
+                if (this.orderManager && this.orderManager.orderService && typeof this.orderManager.orderService.loadSessionState === 'function') {
+                    try {
+                        this.orderManager.orderService.loadSessionState(this.backtestingSession);
+                    } catch (e) {
+                        console.warn('orderService.loadSessionState failed', e);
+                    }
+                }
                 if (this.orderManager && typeof this.orderManager.applySessionStartingBalance === 'function') {
                     this.orderManager.applySessionStartingBalance();
                 }
@@ -1005,6 +1139,18 @@ class Chart {
         
         const urlParams = new URLSearchParams(window.location.search);
         session = this.normalizeBacktestingSession(session);
+        this.backtestingSession = session;
+        try {
+            userStorage.setItem('backtestingSession', JSON.stringify(session));
+        } catch (e) { /* ignore */ }
+        if (this.orderManager && this.orderManager.orderService && typeof this.orderManager.orderService.loadSessionState === 'function') {
+            try {
+                this.orderManager.orderService.loadSessionState(session);
+            } catch (e) {
+                console.warn('orderService.loadSessionState failed', e);
+            }
+        }
+
         const missingInstrumentData = [];
         if (session && session.instruments && typeof session.instruments === 'object') {
             Object.keys(session.instruments).forEach((ticker) => {
