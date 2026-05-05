@@ -3,8 +3,8 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import FlagSvg from "./backtestModal/FlagSvg";
-import { currencyCountry } from "./backtestModal/FlagSvg";
+import { SymbolBadge } from "./backtestModal/SymbolBadge";
+import { normalizeBadgeAsset } from "./backtestModal/symbolIcons";
 import { JOURNAL_API_BASE } from "@/lib/journalApi";
 
 const F = "'Exo 2', sans-serif";
@@ -262,13 +262,24 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
     void fetch("/api/files", { credentials: "include" })
       .then(res => {
         if (!res.ok) throw new Error(String(res.status));
-        return res.json() as Promise<{ files: { id: number; original_name: string; row_count: number; description?: string | null }[] }>;
+        return res.json() as Promise<{
+          files: {
+            id: number;
+            original_name: string;
+            row_count: number;
+            description?: string | null;
+            ticker?: string | null;
+            asset_class?: string | null;
+          }[];
+        }>;
       })
       .then(payload => {
         const next: AvailFile[] = (payload.files || []).map(f => {
           const name = f.original_name || `File ${f.id}`;
-          const ticker = guessTicker(name);
-          const asset = inferAsset(name, ticker);
+          const serverTicker = String(f.ticker || "").trim().toUpperCase();
+          const ticker = serverTicker || guessTicker(name);
+          const serverAsset = normalizeBadgeAsset(f.asset_class || undefined);
+          const asset = (serverAsset as AvailFile["asset"] | undefined) || inferAsset(name, ticker);
           const tf = guessTf(name);
           const approxSize = f.row_count ? `${(f.row_count / 1_000_000).toFixed(2)}M rows` : "rows";
           return {
@@ -902,20 +913,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                         const catOf=sym=>allSymbols.find(s=>s.sym===sym)?.cat||"";
                         const assetLabel=cat=>({"Forex":"Forex","Futures":"Futures","Crypto":"Crypto","Equities":"Stocks"}[cat]||cat);
                         const totalSelected=newSessTickers.length+newSessSupportTickers.length;
-                        const mkFlags=(sym,sz=11)=>{
-                          const fw=Math.round(sz*15/11),fh=sz;
-                          const isFxPair = sym.length===6 && currencyCountry[sym.slice(0,3)] && currencyCountry[sym.slice(3,6)];
-                          if(isFxPair){
-                            const b=sym.slice(0,3),q=sym.slice(3,6);
-                            return(<div style={{position:"relative",width:Math.round(sz*22/11),height:fh,flexShrink:0}}><div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.7)",zIndex:2}}><FlagSvg code={b} w={fw} h={fh}/></div><div style={{position:"absolute",left:Math.round(sz*7/11),top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.5)",zIndex:1}}><FlagSvg code={q} w={fw} h={fh}/></div></div>);
-                          }
-                          const metalMap={XAUUSD:{bg:"#2B2200",fg:"#FFD700",label:"Au"},XAGUSD:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},GC:{bg:"#2B2200",fg:"#FFD700",label:"Au"},SI:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},CL:{bg:"#0D1A12",fg:"#4CAF50",label:"CL"},NG:{bg:"#0A1020",fg:"#64B5F6",label:"NG"}};
-                          if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily="'Exo 2',sans-serif">{m.label}</text></svg>);}
-                          const cryptoMap={BTCUSD:{bg:"#E8820C",fg:"#fff",label:"₿"},ETHUSD:{bg:"#3D4FC4",fg:"#fff",label:"Ξ"},BNBUSD:{bg:"#C99800",fg:"#000",label:"B"},SOLUSD:{bg:"#7B3FBE",fg:"#fff",label:"S"},ADAUSD:{bg:"#0033AD",fg:"#fff",label:"A"}};
-                          if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily="'Exo 2',sans-serif">{cr.label}</text></svg>);}
-                          const genericLabel=(sym||"").replace(/USDT|USDC|USD$/,"").replace(/[^A-Z0-9]/g,"").slice(0,3)||"?";
-                          return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill="#22324A"/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill="#D7E6FF" fontSize={fh*0.45} fontWeight="800" fontFamily="'Exo 2',sans-serif">{genericLabel}</text></svg>);
-                        };
+                        const mkFlags=(sym,sz=11)=>(<SymbolBadge sym={sym} asset={catOf(sym)} w={sz} h={sz} fontFamily={F}/>);
                         const mkCell=(t,onDel)=>(<div key={t} style={{display:"flex",alignItems:"center",padding:"2px 4px 2px 3px",background:c.sf,border:`1px solid ${c.brH}`,gap:3,minWidth:0}}>{mkFlags(t,10)}<span style={{fontSize:10,fontWeight:700,color:c.tx,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t}</span><span onClick={onDel} style={{fontSize:13,lineHeight:1,color:c.tm,cursor:"default",flexShrink:0,marginLeft:5,transition:"color 0.1s"}} onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span></div>);
                         /* ── date helpers (shared with grid below) ── */
                         const MON_D=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -1450,20 +1448,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                             const symCat={EURUSD:"Forex",GBPUSD:"Forex",USDJPY:"Forex",USDCHF:"Forex",AUDUSD:"Forex",NZDUSD:"Forex",USDCAD:"Forex",EURGBP:"Forex",EURJPY:"Forex",GBPJPY:"Forex",XAUUSD:"Forex",XAGUSD:"Forex",USDSEK:"Forex",USDNOK:"Forex",NQ:"Futures",ES:"Futures",YM:"Futures",RTY:"Futures",CL:"Futures",GC:"Futures",SI:"Futures",NG:"Futures",MNQ:"Futures",MES:"Futures",MYM:"Futures",M2K:"Futures",MGC:"Futures",MCL:"Futures",BTCUSD:"Crypto",ETHUSD:"Crypto",BNBUSD:"Crypto",SOLUSD:"Crypto",ADAUSD:"Crypto",XRPUSD:"Crypto",DOGEUSD:"Crypto",AAPL:"Stocks",TSLA:"Stocks",NVDA:"Stocks",MSFT:"Stocks",AMZN:"Stocks",GOOG:"Stocks"};
                             const assetOf=cat=>({"Equities":"Stocks"}[cat]||cat);
                             const catOf2=sym=>assetOf(symCat[sym] || availFiles.find(f=>f.ticker===sym)?.asset || "");
-                            const mkFlags2=sym=>{
-                              const sz=10,fw=Math.round(sz*15/11),fh=sz;
-                              const isFxPair = sym.length===6 && currencyCountry[sym.slice(0,3)] && currencyCountry[sym.slice(3,6)];
-                              if(isFxPair){
-                                const b=sym.slice(0,3),q=sym.slice(3,6);
-                                return(<div style={{position:"relative",width:Math.round(sz*22/11),height:fh,flexShrink:0}}><div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.7)",zIndex:2}}><FlagSvg code={b} w={fw} h={fh}/></div><div style={{position:"absolute",left:Math.round(sz*7/11),top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.5)",zIndex:1}}><FlagSvg code={q} w={fw} h={fh}/></div></div>);
-                              }
-                              const metalMap={XAUUSD:{bg:"#2B2200",fg:"#FFD700",label:"Au"},XAGUSD:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},GC:{bg:"#2B2200",fg:"#FFD700",label:"GC"},SI:{bg:"#1C2028",fg:"#C8D4E0",label:"SI"},CL:{bg:"#0D1A12",fg:"#4CAF50",label:"CL"},NG:{bg:"#0A1020",fg:"#64B5F6",label:"NG"},MGC:{bg:"#1A1200",fg:"#FFBA00",label:"mGC"},MCL:{bg:"#071510",fg:"#33CC66",label:"mCL"}};
-                              if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily={F}>{m.label}</text></svg>);}
-                              const cryptoMap={BTCUSD:{bg:"#E8820C",fg:"#fff",label:"₿"},ETHUSD:{bg:"#3D4FC4",fg:"#fff",label:"Ξ"},BNBUSD:{bg:"#C99800",fg:"#000",label:"B"},SOLUSD:{bg:"#7B3FBE",fg:"#fff",label:"S"},ADAUSD:{bg:"#0033AD",fg:"#fff",label:"A"}};
-                              if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily={F}>{cr.label}</text></svg>);}
-                              const genericLabel=(sym||"").replace(/USDT|USDC|USD$/,"").replace(/[^A-Z0-9]/g,"").slice(0,3)||"?";
-                              return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill="#22324A"/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill="#D7E6FF" fontSize={fh*0.45} fontWeight="800" fontFamily={F}>{genericLabel}</text></svg>);
-                            };
+                            const mkFlags2=sym=>(<SymbolBadge sym={sym} asset={catOf2(sym)} w={10} h={10} fontFamily={F}/>);
                             const mkArrows=(onUp,onDown)=>(
                               <div style={{position:"absolute",right:0,top:0,bottom:0,width:16,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                                 {[[onUp,"▲"],[onDown,"▼"]].map(([fn,ch],ii)=>(
@@ -1561,7 +1546,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                                         <div>
                                           <div style={{marginBottom:5,paddingBottom:4,borderBottom:`1px solid ${c.br}`}}><span style={{fontSize:9,fontWeight:700,color:c.tm,fontFamily:F,letterSpacing:"0.03em"}}>SPREAD</span><span style={{fontSize:8,fontWeight:500,fontStyle:"italic",color:c.tm,opacity:0.75,marginLeft:4,fontFamily:F}}>{meta.spreadUnit}</span></div>
                                           <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4}}>
-                                            {assetSyms.map(sym=>(<div key={sym} style={{display:"grid",gridTemplateColumns:"14px 1fr 48px",alignItems:"center",columnGap:3,background:c.bg,padding:"2px 5px",border:`1px solid ${c.br}`,height:24,boxSizing:"border-box",minWidth:0}}>{(()=>{const sz=8,fw=Math.round(sz*15/11),fh=sz;const isFxPair=sym.length===6&&currencyCountry[sym.slice(0,3)]&&currencyCountry[sym.slice(3,6)];if(isFxPair){const b=sym.slice(0,3),q=sym.slice(3,6);return(<div style={{position:"relative",width:Math.round(sz*22/11),height:fh,flexShrink:0}}><div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",zIndex:2}}><FlagSvg code={b} w={fw} h={fh}/></div><div style={{position:"absolute",left:Math.round(sz*7/11),top:0,borderRadius:1,overflow:"hidden",zIndex:1}}><FlagSvg code={q} w={fw} h={fh}/></div></div>);}const metalMap={XAUUSD:{bg:"#2B2200",fg:"#FFD700",label:"Au"},XAGUSD:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},GC:{bg:"#2B2200",fg:"#FFD700",label:"GC"},SI:{bg:"#1C2028",fg:"#C8D4E0",label:"SI"},CL:{bg:"#0D1A12",fg:"#4CAF50",label:"CL"},NG:{bg:"#0A1020",fg:"#64B5F6",label:"NG"},MGC:{bg:"#1A1200",fg:"#FFBA00",label:"mGC"},MCL:{bg:"#071510",fg:"#33CC66",label:"mCL"}};if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily={F}>{m.label}</text></svg>);}const cryptoMap={BTCUSD:{bg:"#E8820C",fg:"#fff",label:"₿"},ETHUSD:{bg:"#3D4FC4",fg:"#fff",label:"Ξ"},BNBUSD:{bg:"#C99800",fg:"#000",label:"B"},SOLUSD:{bg:"#7B3FBE",fg:"#fff",label:"S"},ADAUSD:{bg:"#0033AD",fg:"#fff",label:"A"}};if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35)}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily={F}>{cr.label}</text></svg>);}const genericLabel=(sym||"").replace(/USDT|USDC|USD$/,"").replace(/[^A-Z0-9]/g,"").slice(0,3)||"?";return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35)}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill="#22324A"/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill="#D7E6FF" fontSize={fh*0.45} fontWeight="800" fontFamily={F}>{genericLabel}</text></svg>);})()}<span style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,letterSpacing:"0.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{sym}</span>{numCell(getSpread(sym),e=>setSpread(sym,e.target.value),meta.spreadStep,48)}</div>))}
+                                            {assetSyms.map(sym=>(<div key={sym} style={{display:"grid",gridTemplateColumns:"14px 1fr 48px",alignItems:"center",columnGap:3,background:c.bg,padding:"2px 5px",border:`1px solid ${c.br}`,height:24,boxSizing:"border-box",minWidth:0}}><SymbolBadge sym={sym} asset={catOf2(sym)} w={8} h={8} fontFamily={F}/><span style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,letterSpacing:"0.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{sym}</span>{numCell(getSpread(sym),e=>setSpread(sym,e.target.value),meta.spreadStep,48)}</div>))}
                                           </div>
                                         </div>
                                       ))}

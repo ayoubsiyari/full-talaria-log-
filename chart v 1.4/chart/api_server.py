@@ -2259,6 +2259,65 @@ def _firstrate_classify_ticker(ticker: str) -> str | None:
     return None
 
 
+def _guess_ticker_from_csv_filename_fallback(original_name: str) -> str:
+    """
+    When FirstRate-style extraction yields nothing, derive a best-effort ticker from the CSV filename
+    (same spirit as the homepage backtest modal client fallback).
+    """
+    name = re.sub(r"^.*[\\/]", "", str(original_name or ""))
+    base = re.sub(r"\.csv$", "", name, flags=re.IGNORECASE)
+    parts = re.split(r"[\s_-]+", base)
+    for p in parts:
+        pu = str(p).strip().upper()
+        if not pu or pu.isdigit():
+            continue
+        if re.fullmatch(r"[A-Z]{6}", pu):
+            return pu
+        if re.fullmatch(r"[A-Z0-9]{2,12}", pu):
+            return pu
+    stem = re.sub(r"^.*[\\/]", "", base).upper()
+    return stem[:18].strip()
+
+
+def _infer_dataset_asset_label(ticker: str, original_name: str) -> str:
+    """
+    Map a ticker + filename to UI asset buckets: Forex | Futures | Crypto | Stocks.
+    Prefer FirstRate classifier; fall back to filename/ticker heuristics (mirrors homepage modal).
+    """
+    cls = _firstrate_classify_ticker(ticker or "")
+    if cls == "fx":
+        return "Forex"
+    if cls == "futures":
+        return "Futures"
+    if cls == "crypto":
+        return "Crypto"
+    if cls == "stock":
+        return "Stocks"
+
+    t = (ticker or "").upper()
+    n = (original_name or "").upper()
+    if re.search(r"(BTC|ETH|BNB|SOL|ADA|XRP|DOGE|CRYPTO|USDT|USDC)", t) or re.search(r"(CRYPTO|USDT|USDC)", n):
+        return "Crypto"
+    if re.search(r"(NQ|ES|YM|RTY|MNQ|MES|MYM|M2K|MGC|MCL|CL|GC|SI|NG|HG|PL|RB|HO|FUTURE)", t) or re.search(
+        r"(FUTURE|CME|CBOT|NYMEX|COMEX)", n
+    ):
+        return "Futures"
+    if re.fullmatch(r"[A-Z]{3}[A-Z]{3}", t) or re.search(r"(FOREX|FX)", n):
+        return "Forex"
+    if re.search(r"(STOCK|NASDAQ|NYSE)", n) or (re.fullmatch(r"[A-Z]{1,5}", t) is not None):
+        return "Stocks"
+    return "Forex"
+
+
+def _dataset_file_symbol_fields(original_name: str) -> tuple[str, str]:
+    raw_name = original_name or ""
+    ticker = (_firstrate_extract_ticker_from_filename(raw_name) or "").strip().upper()
+    if not ticker:
+        ticker = _guess_ticker_from_csv_filename_fallback(raw_name).strip().upper()
+    asset = _infer_dataset_asset_label(ticker, raw_name)
+    return ticker, asset
+
+
 def _firstrate_classify_existing_datasets() -> dict[str, list[str]]:
     """
     Walk the dataset registry and bucket every CSV into the FirstRate instrument
@@ -11276,18 +11335,21 @@ async def get_files():
     db = next(get_db())
     try:
         files = db.query(CSVFile).order_by(CSVFile.upload_date.desc()).all()
-        return {
-            "files": [
+        out_files = []
+        for f in files:
+            ticker, asset_class = _dataset_file_symbol_fields(f.original_name or "")
+            out_files.append(
                 {
                     "id": f.id,
                     "original_name": f.original_name,
                     "upload_date": f.upload_date.isoformat(),
                     "row_count": f.row_count,
-                    "description": f.description
+                    "description": f.description,
+                    "ticker": ticker,
+                    "asset_class": asset_class,
                 }
-                for f in files
-            ]
-        }
+            )
+        return {"files": out_files}
     finally:
         db.close()
 
