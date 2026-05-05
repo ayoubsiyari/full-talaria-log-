@@ -16478,7 +16478,7 @@ const TalariaV8bLive = () => {
               <div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,
                 background:`linear-gradient(90deg,transparent,${playing?"#FF8C42":c.gn},transparent)`,
                 boxShadow:`0 0 6px ${playing?"rgba(255,140,66,0.5)":"rgba(0,212,161,0.4)"}`,
-                animation:!playing?`tlrLinePulse ${(3-(speed-1)/99*2.7).toFixed(2)}s ease-in-out infinite`:undefined,
+                animation:undefined,
                 opacity:playing?(hov==="rp-play"?1:0.7):undefined}}/>
             </button>
             {/* Speed */}
