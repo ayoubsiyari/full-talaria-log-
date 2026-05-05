@@ -424,7 +424,7 @@ export function BacktestView() {
       </div>
 
       {/* ── Scrollable body ── */}
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div className="tlr-scroll" style={{ flex: 1, overflowY: "auto" }}>
 
         {/* ── 5 Stats Tiles ── */}
         <div style={{ padding: "16px 32px 12px" }}>
