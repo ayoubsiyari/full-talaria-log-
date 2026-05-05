@@ -2557,6 +2557,25 @@ class Chart {
         return Object.prototype.hasOwnProperty.call(patch, 'drawings');
     }
 
+    _sessionPatchBackoffActive() {
+        return !!(this._sessionPatchBackoffUntil && Date.now() < this._sessionPatchBackoffUntil);
+    }
+
+    _bumpSessionPatchBackoff(httpStatus) {
+        const prev = Number(this._sessionPatchBackoffMs) || 2000;
+        const next = Math.min(prev * 2, 120000);
+        this._sessionPatchBackoffMs = next;
+        this._sessionPatchBackoffUntil = Date.now() + next;
+        console.warn(
+            `⚠️ Session state PATCH backoff ~${Math.round(next / 1000)}s (HTTP ${httpStatus || '?'} — upstream unavailable or overloaded)`
+        );
+    }
+
+    _clearSessionPatchBackoff() {
+        this._sessionPatchBackoffMs = 2000;
+        this._sessionPatchBackoffUntil = 0;
+    }
+
     scheduleSessionStateSave(patch) {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
@@ -2592,6 +2611,7 @@ class Chart {
     async flushCriticalSessionStateSave() {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
+        if (this._sessionPatchBackoffActive()) return;
         const patch = this._pendingCriticalSessionStatePatch;
         if (!patch) return;
         this._pendingCriticalSessionStatePatch = null;
@@ -2610,6 +2630,14 @@ class Chart {
                 const errText = await res.text().catch(() => '');
                 console.warn('⚠️ Critical session state PATCH failed', res.status, errText);
                 this._notifyJournalSaveFailed(res.status);
+                if (res.status === 503 || res.status === 502) {
+                    this._bumpSessionPatchBackoff(res.status);
+                    this._pendingCriticalSessionStatePatch = Object.assign(
+                        {},
+                        patch,
+                        this._pendingCriticalSessionStatePatch || {}
+                    );
+                }
                 if (res.status === 403) {
                     console.warn(
                         'Journal not saved: API CSRF middleware blocked this Origin. GET /state still works, so trades disappear after refresh. ' +
@@ -2617,6 +2645,7 @@ class Chart {
                     );
                 }
             } else {
+                this._clearSessionPatchBackoff();
                 this._markSessionStateSyncedToServer(sessionId);
             }
         } catch (e) {
@@ -2647,6 +2676,16 @@ class Chart {
     async flushSessionStateSave() {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
+        if (this._sessionPatchBackoffActive()) {
+            const wait = Math.max(250, Math.min(this._sessionPatchBackoffUntil - Date.now(), 60000));
+            if (!this._sessionStateSaveTimer) {
+                this._sessionStateSaveTimer = setTimeout(() => {
+                    this._sessionStateSaveTimer = null;
+                    void this.flushSessionStateSave();
+                }, wait);
+            }
+            return;
+        }
         const patch = this._pendingSessionStatePatch;
         if (!patch) return;
         if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchAllowedBeforeHydrate(patch)) return;
@@ -2666,6 +2705,10 @@ class Chart {
                 const errText = await res.text().catch(() => '');
                 console.warn('⚠️ Session state PATCH failed', res.status, errText);
                 this._notifyJournalSaveFailed(res.status);
+                if (res.status === 503 || res.status === 502) {
+                    this._bumpSessionPatchBackoff(res.status);
+                    this._pendingSessionStatePatch = Object.assign({}, patch, this._pendingSessionStatePatch || {});
+                }
                 if (res.status === 403) {
                     console.warn(
                         'Journal not saved: API CSRF middleware blocked this Origin. GET /state still works, so trades disappear after refresh. ' +
@@ -2673,6 +2716,7 @@ class Chart {
                     );
                 }
             } else {
+                this._clearSessionPatchBackoff();
                 this._markSessionStateSyncedToServer(sessionId);
             }
         } catch (e) {

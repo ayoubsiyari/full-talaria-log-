@@ -184,10 +184,11 @@ export default function GlobalDashboard() {
     []
   );
 
-  const jwtFetch = useCallback((url: string) => {
+  const journalApiFetch = useCallback((url: string) => {
     const token = localStorage.getItem("token");
-    if (!token) return Promise.reject("no token");
-    return fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return fetch(url, { credentials: "include", headers });
   }, []);
 
   useEffect(() => {
@@ -203,13 +204,13 @@ export default function GlobalDashboard() {
 
         const r = await Promise.allSettled([
           fetch("/api/sessions", { credentials: "include" }),
-          jwtFetch("/journal/api/subscriptions/my-subscription"),
-          jwtFetch("/journal/api/journal/stats"),
-          jwtFetch("/journal/api/journal/equities"),
-          jwtFetch("/journal/api/journal/streaks"),
-          jwtFetch("/journal/api/journal/list"),
-          jwtFetch("/journal/api/journal/strategy-analysis"),
-          jwtFetch("/journal/api/journal/symbol-analysis"),
+          journalApiFetch("/journal/api/subscriptions/my-subscription"),
+          journalApiFetch("/journal/api/journal/stats"),
+          journalApiFetch("/journal/api/journal/equities"),
+          journalApiFetch("/journal/api/journal/streaks"),
+          journalApiFetch("/journal/api/journal/list"),
+          journalApiFetch("/journal/api/journal/strategy-analysis"),
+          journalApiFetch("/journal/api/journal/symbol-analysis"),
         ]);
         if (!alive) return;
 
@@ -237,7 +238,7 @@ export default function GlobalDashboard() {
       }
     })();
     return () => { alive = false; };
-  }, [jwtFetch]);
+  }, [journalApiFetch]);
 
   const dailyPnl = useMemo(() => {
     if (!equity?.equity_curve?.length) return [];

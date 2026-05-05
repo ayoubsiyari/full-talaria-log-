@@ -45,6 +45,41 @@ async function fetchJson<T>(url: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** One DB round-trip instead of N parallel GET …/sessions/:id/analytics (reduces 503 under load). */
+async function fetchSessionsKpisBatch(): Promise<Record<number, Kpis>> {
+  const res = await fetch("/api/sessions/kpis", { credentials: "include" });
+  if (!res.ok) throw new Error(String(res.status));
+  const data = (await res.json()) as { kpis_by_session_id?: Record<string, Kpis> };
+  const raw = data.kpis_by_session_id || {};
+  const map: Record<number, Kpis> = {};
+  Object.entries(raw).forEach(([id, k]) => {
+    const n = Number(id);
+    if (Number.isFinite(n) && k && typeof k === "object") map[n] = k;
+  });
+  return map;
+}
+
+async function fetchKpisLegacyParallel(list: Session[]): Promise<Record<number, Kpis>> {
+  const concurrency = 4;
+  const map: Record<number, Kpis> = {};
+  let i = 0;
+  async function worker() {
+    while (i < list.length) {
+      const idx = i++;
+      const s = list[idx];
+      try {
+        const r = await fetch(`/api/sessions/${s.id}/analytics`, { credentials: "include" });
+        if (!r.ok) continue;
+        const j = (await r.json()) as { analytics?: { kpis?: Kpis } };
+        const k = j.analytics?.kpis;
+        if (k) map[s.id] = k;
+      } catch { /* ignore */ }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, list.length) || 1 }, () => worker()));
+  return map;
+}
+
 function fmtShortDate(d?: string): string {
   if (!d) return "—";
   const [, mo, day] = d.split("-");
@@ -97,13 +132,12 @@ export function BacktestView() {
       const data = await fetchJson<{ sessions: Session[] }>("/api/sessions");
       const list = data.sessions ?? [];
       setSessions(list);
-      const results = await Promise.allSettled(
-        list.map(s => fetchJson<{ analytics: { kpis: Kpis } }>(`/api/sessions/${s.id}/analytics`))
-      );
-      const map: Record<number, Kpis> = {};
-      results.forEach((r, i) => {
-        if (r.status === "fulfilled") map[list[i].id] = r.value.analytics.kpis;
-      });
+      let map: Record<number, Kpis> = {};
+      try {
+        map = await fetchSessionsKpisBatch();
+      } catch {
+        map = await fetchKpisLegacyParallel(list);
+      }
       setKpis(map);
     } catch { /* ignore */ }
     finally { setLoading(false); }

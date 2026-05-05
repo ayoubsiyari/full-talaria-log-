@@ -10900,6 +10900,42 @@ async def list_trading_sessions(request: Request):
     finally:
         db.close()
 
+
+@app.get("/api/sessions/kpis")
+async def list_all_sessions_kpis(request: Request):
+    """Dashboard batch: one request instead of N× GET /api/sessions/{id}/analytics."""
+    user = _require_user(request)
+    db = SessionLocal()
+    try:
+        sessions = (
+            db.query(TradingSession)
+            .filter(TradingSession.user_id == user.id)
+            .order_by(TradingSession.created_at.desc())
+            .all()
+        )
+        kpis_by_id: dict = {}
+        for s in sessions:
+            st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
+            state = _parse_json_dict(st.state_json)
+            journal = state.get("journal") if isinstance(state.get("journal"), list) else []
+            session_public = _session_public_dict(s)
+            analytics = _compute_session_analytics(session_public, journal)
+            sanitized = _sanitize_for_json(analytics)
+            k = sanitized.get("kpis") if isinstance(sanitized.get("kpis"), dict) else {}
+            kpis_by_id[str(s.id)] = k
+        return {"kpis_by_session_id": kpis_by_id}
+    finally:
+        db.close()
+
+
+@app.get("/api/strategies")
+async def list_strategies_chart_shim(request: Request):
+    """Journal strategies live on Flask at /journal/api/strategies (nginx). When that route is missing,
+    return an empty list so SPAs do not 404 this URL."""
+    _require_user(request)
+    return {"strategies": []}
+
+
 @app.post("/api/sessions")
 async def create_trading_session(payload: TradingSessionCreateIn, request: Request):
     user = _require_user(request)

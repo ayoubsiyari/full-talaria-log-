@@ -16,6 +16,12 @@ const CHART_BACKEND =
   process.env.NEXT_PUBLIC_CHART_BACKEND?.replace(/\/$/, "") ||
   "http://127.0.0.1:8000";
 
+/** Optional Flask journal API (same mapping as nginx `location ^~ /journal/api/`). */
+const JOURNAL_BACKEND =
+  process.env.JOURNAL_BACKEND?.replace(/\/$/, "") ||
+  process.env.NEXT_PUBLIC_JOURNAL_BACKEND?.replace(/\/$/, "") ||
+  "";
+
 const nextConfig = {
   output: "export",
   trailingSlash: true,
@@ -27,9 +33,8 @@ const nextConfig = {
       return [];
     }
     const b = CHART_BACKEND;
-    return {
-      afterFiles: [
-        { source: "/api/:path*", destination: `${b}/api/:path*` },
+    const afterFiles = [
+      { source: "/api/:path*", destination: `${b}/api/:path*` },
         { source: "/auth/:path*", destination: `${b}/auth/:path*` },
         { source: "/chart/chart.js", destination: `${b}/chart/chart.js` },
         { source: "/chart/chart-main.js", destination: `${b}/chart/chart-main.js` },
@@ -41,8 +46,14 @@ const nextConfig = {
         { source: "/chart/modules/:path*", destination: `${b}/chart/modules/:path*` },
         { source: "/chart/indicators/:path*", destination: `${b}/chart/indicators/:path*` },
         { source: "/chart/image/:path*", destination: `${b}/chart/image/:path*` },
-      ],
-    };
+    ];
+    if (JOURNAL_BACKEND) {
+      afterFiles.unshift({
+        source: "/journal/api/:path*",
+        destination: `${JOURNAL_BACKEND}/api/:path*`,
+      });
+    }
+    return { afterFiles };
   },
 };
 

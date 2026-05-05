@@ -377,15 +377,17 @@ export default function DashboardLayout({
             {children}
           </div>
 
-          {/* BacktestView inline */}
-          <div style={{
-            position: "absolute", inset: 0,
-            opacity: activeView === "backtest" ? 1 : 0,
-            pointerEvents: activeView === "backtest" ? "auto" : "none",
-            transition: "opacity 0.15s",
-          }}>
-            <BacktestView />
-          </div>
+          {/* BacktestView — mount only when tab is active to avoid N× /analytics calls on Dashboard */}
+          {activeView === "backtest" ? (
+            <div style={{
+              position: "absolute", inset: 0,
+              opacity: 1,
+              pointerEvents: "auto",
+              transition: "opacity 0.15s",
+            }}>
+              <BacktestView />
+            </div>
+          ) : null}
 
           {/* External views loaded as full-page iframes */}
           {Object.entries(EXTERNAL_VIEWS).map(([id, url]) => (

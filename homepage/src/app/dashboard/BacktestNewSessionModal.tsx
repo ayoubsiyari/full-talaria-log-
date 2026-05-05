@@ -352,10 +352,13 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     const strategyHeaders: Record<string, string> = { "Content-Type": "application/json" };
     if (token) strategyHeaders.Authorization = `Bearer ${token}`;
+    const journalInit: RequestInit = {
+      credentials: "include",
+      headers: strategyHeaders,
+    };
     const endpoints = [
-      { url: `${JOURNAL_API_BASE}/strategies`, init: { headers: strategyHeaders } },
-      { url: "/journal/api/strategies", init: { credentials: "include" as const } },
-      { url: "/api/strategies", init: { credentials: "include" as const } },
+      { url: `${JOURNAL_API_BASE}/strategies`, init: journalInit },
+      { url: "/api/strategies", init: journalInit },
     ];
 
     void Promise.any(
