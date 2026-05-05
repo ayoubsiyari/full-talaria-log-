@@ -90,6 +90,7 @@ export function BacktestView() {
   const [hov, setHov] = useState<string | null>(null);
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
   const newSessionFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const autoOpenedNewSessionRef = useRef(false);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -188,27 +189,39 @@ export function BacktestView() {
 
   /* ── Actions ── */
   const goNew = () => {
-    setIframeUrl(`/talaria-v8b-design/index.html?newSession=1&embed=1&v=${Date.now()}`);
+    autoOpenedNewSessionRef.current = false;
+    setIframeUrl(`/talaria-v8b-design/index.html?v=${Date.now()}`);
   };
 
-  useEffect(() => {
-    if (!iframeUrl) return;
-    const timer = window.setInterval(() => {
-      try {
-        const href = newSessionFrameRef.current?.contentWindow?.location?.href || "";
-        if (!href) return;
-        if (
-          href.includes("/chart/index.html") ||
-          href.includes("/chart/dist-v9/index.html") ||
-          href.includes("/dashboard/sessions/analytics")
-        ) {
-          window.location.href = href;
-        }
-      } catch {
-        // Ignore transient frame access errors.
+  const tryOpenEmbeddedNewSession = useCallback(() => {
+    if (autoOpenedNewSessionRef.current) return;
+    const frame = newSessionFrameRef.current;
+    if (!frame) return;
+    try {
+      const doc = frame.contentDocument || frame.contentWindow?.document;
+      if (!doc) return;
+      const candidates = Array.from(doc.querySelectorAll("button,div"));
+      const newSessionBtn = candidates.find((el) => {
+        const text = (el.textContent || "").trim().toLowerCase();
+        if (text !== "new session") return false;
+        const node = el as HTMLElement;
+        if (node.offsetParent === null) return false;
+        const role = (node.getAttribute("role") || "").toLowerCase();
+        return role !== "dialog";
+      }) as HTMLElement | undefined;
+      if (newSessionBtn) {
+        newSessionBtn.click();
+        autoOpenedNewSessionRef.current = true;
       }
-    }, 400);
-    return () => window.clearInterval(timer);
+    } catch {
+      // Same-origin timing can throw while frame is navigating.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!iframeUrl) {
+      autoOpenedNewSessionRef.current = false;
+    }
   }, [iframeUrl]);
 
   const openSession = (s: Session) => {
@@ -716,7 +729,21 @@ export function BacktestView() {
             >
               ×
             </div>
-            <iframe ref={newSessionFrameRef} title="New Session" src={iframeUrl} style={{ width: "100%", height: "100%", border: "none" }} />
+            <iframe
+              ref={newSessionFrameRef}
+              title="New Session"
+              src={iframeUrl}
+              onLoad={() => {
+                // The app mounts asynchronously; probe briefly until the button exists.
+                let tries = 0;
+                const timer = window.setInterval(() => {
+                  tryOpenEmbeddedNewSession();
+                  tries += 1;
+                  if (autoOpenedNewSessionRef.current || tries > 12) window.clearInterval(timer);
+                }, 180);
+              }}
+              style={{ width: "100%", height: "100%", border: "none" }}
+            />
           </div>
         </div>
       )}
