@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { BacktestNewSessionModal } from "./BacktestNewSessionModal";
-import { SymbolBadge } from "./backtestModal/SymbolBadge";
 
 /* ── Design system tokens (dark mode) ── */
 const c = {
@@ -413,15 +412,15 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   const dotsN = Math.min(Math.ceil(totalDays / 30), 56);
 
   const daysTestedDisplay = totalDays.toLocaleString();
-  /** Narrow tile (~165px): keep label on its own row; scale figure so long counts never spill */
+  /** Narrow tile: figure stays close to the 9px title (baseline row); scale down for long counts */
   const daysTestedHeadPx =
-    daysTestedDisplay.length <= 5 ? 16
-      : daysTestedDisplay.length <= 7 ? 14
-        : daysTestedDisplay.length <= 9 ? 12
-          : daysTestedDisplay.length <= 11 ? 11
-            : daysTestedDisplay.length <= 13 ? 10
-              : daysTestedDisplay.length <= 15 ? 9
-                : 8;
+    daysTestedDisplay.length <= 5 ? 12
+      : daysTestedDisplay.length <= 7 ? 11
+        : daysTestedDisplay.length <= 9 ? 10
+          : daysTestedDisplay.length <= 11 ? 9
+            : daysTestedDisplay.length <= 13 ? 8
+              : daysTestedDisplay.length <= 15 ? 8
+                : 7;
 
   if (loading) {
     return (
@@ -437,11 +436,6 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: c.bg, fontFamily: F, overflow: "hidden" }}>
-
-      {/* ── Sub-header (primary action moved to dashboard top header) ── */}
-      <div style={{ height: 48, flexShrink: 0, display: "flex", alignItems: "center", padding: "0 32px", borderBottom: `1px solid ${c.brH}`, background: c.el }}>
-        <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.06em", color: c.ts }}>BACKTESTING SESSIONS</span>
-      </div>
 
       {/* ── Scrollable body ── */}
       <div className="tlr-scroll" style={{ flex: 1, overflowY: "auto" }}>
@@ -605,20 +599,19 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
             {/* Tile 4: Days Tested dots */}
             <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)` }} />
-              <div style={{ marginBottom: 4, minWidth: 0 }}>
-                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const, whiteSpace: "nowrap" as const }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 4, minWidth: 0 }}>
+                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const, whiteSpace: "nowrap" as const, flexShrink: 0 }}>
                   Days Tested
                 </div>
                 <div style={{
-                  marginTop: 3,
                   fontSize: daysTestedHeadPx,
-                  fontWeight: 800,
+                  fontWeight: 700,
                   color: c.tx,
                   fontVariantNumeric: "tabular-nums",
                   whiteSpace: "nowrap" as const,
-                  lineHeight: 1.1,
+                  lineHeight: 1.15,
                   textAlign: "right" as const,
-                  width: "100%",
+                  flexShrink: 1,
                   minWidth: 0,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -784,7 +777,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
             <div style={{ width: 96, flexShrink: 0 }} />
             {([
               ["Session", 110, "name"], ["Strategy", 100, "strategy"], ["Mode", 74, "mode"], ["Asset", 90, "asset"],
-              ["Symbols", 120, "symbol"], ["Date Range", 134, "date"], ["Options", 102, null],
+              ["Symbols", 132, "symbol"], ["Date Range", 134, "date"], ["Options", 102, null],
               ["Starting Bal.", 88, "capital"], ["Net P&L", 80, "pnl"], ["Win %", 60, "winRate"],
               ["Avg R:R", 62, "avgRR"], ["Trades", 56, "trades"], ["Progress", 66, "progress"], ["", 50, null],
             ] as [string, number, string | null][]).map(([label, w, sk]) => {
@@ -978,15 +971,22 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                             <span style={{ fontSize: 9, color: c.tm, fontFamily: F }}>—</span>
                           )
                         ) : (
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 4px" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 6px" }}>
                             {tickerRows.map(r => (
-                              <div key={r.sym} style={{ display: "flex", alignItems: "center", gap: 3, minWidth: 0 }}>
-                                <SymbolBadge sym={r.sym} asset={r.asset} w={10} h={10} fontFamily={F} />
-                                <span style={{
-                                  fontSize: 9, fontWeight: 600, color: c.ts, letterSpacing: "0.04em", fontFamily: F,
-                                  lineHeight: 1.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                }}>{r.sym}</span>
-                              </div>
+                              <span
+                                key={r.sym}
+                                style={{
+                                  fontSize: 9,
+                                  fontWeight: 600,
+                                  color: c.ts,
+                                  letterSpacing: "0.02em",
+                                  fontFamily: F,
+                                  fontVariantNumeric: "tabular-nums",
+                                  lineHeight: 1.35,
+                                  overflowWrap: "anywhere",
+                                }}>
+                                {r.sym}
+                              </span>
                             ))}
                           </div>
                         )}
@@ -1163,18 +1163,36 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                       {/* Asset */}
                       {colCell(cfgS?.asset_class || "—", 90)}
                       {/* Symbols */}
-                      <div style={{ width: 120, flexShrink: 0, padding: "0 8px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                      <div style={{ width: 132, flexShrink: 0, padding: "0 8px", display: "flex", alignItems: "flex-start", justifyContent: "flex-start", overflow: "hidden" }}>
                         {tickerRows.length === 0 ? (
                           sess.symbol ? (
-                            <span style={{ fontSize: 8, fontWeight: 700, color: c.ts, background: "rgba(255,255,255,0.07)", padding: "2px 6px", border: `1px solid ${c.br}`, whiteSpace: "nowrap" }}>{sess.symbol}</span>
+                            <span style={{
+                              fontSize: 8,
+                              fontWeight: 700,
+                              color: c.ts,
+                              background: "rgba(255,255,255,0.07)",
+                              padding: "2px 6px",
+                              border: `1px solid ${c.br}`,
+                              overflowWrap: "anywhere",
+                              lineHeight: 1.3,
+                            }}>{sess.symbol}</span>
                           ) : <span style={{ fontSize: 10, color: c.tm }}>—</span>
                         ) : (
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 4px", width: "100%" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "3px 8px", width: "100%" }}>
                             {tickerRows.slice(0, 6).map(r => (
-                              <div key={r.sym} style={{ display: "flex", alignItems: "center", gap: 3, minWidth: 0 }}>
-                                <SymbolBadge sym={r.sym} asset={r.asset} w={12} h={12} fontFamily={F} />
-                                <span style={{ fontSize: 8, fontWeight: 600, color: c.ts, letterSpacing: "0.03em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.sym}</span>
-                              </div>
+                              <span
+                                key={r.sym}
+                                style={{
+                                  fontSize: 8,
+                                  fontWeight: 600,
+                                  color: c.ts,
+                                  letterSpacing: "0.02em",
+                                  fontVariantNumeric: "tabular-nums",
+                                  lineHeight: 1.35,
+                                  overflowWrap: "anywhere",
+                                }}>
+                                {r.sym}
+                              </span>
                             ))}
                           </div>
                         )}
