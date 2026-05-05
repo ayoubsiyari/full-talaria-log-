@@ -14,10 +14,6 @@ const c = {
 };
 const F = "'Exo 2', sans-serif";
 
-/** Same rail + column rhythm as session cards so KPI edges line up with the 4-column grid below */
-const BACKTEST_CONTENT_MAX = "min(1288px, 100%)";
-const BACKTEST_GRID_GAP = 10;
-
 /* ── Types ── */
 interface Session {
   id: number;
@@ -444,19 +440,12 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
       {/* ── Scrollable body ── */}
       <div className="tlr-scroll" style={{ flex: 1, overflowY: "auto" }}>
 
-        {/* ── 5 Stats Tiles (2×4-column grid — aligns with session card columns) ── */}
+        {/* ── 5 Stats Tiles ── */}
         <div style={{ padding: "16px 32px 12px" }}>
-          <div style={{
-            width: BACKTEST_CONTENT_MAX,
-            margin: "0 auto",
-            display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-            gap: BACKTEST_GRID_GAP,
-            alignItems: "stretch",
-          }}>
+          <div style={{ display: "grid", gridTemplateColumns: "260px 1fr 185px 165px 200px", gap: 8, alignItems: "stretch" }}>
 
-            {/* Tile 1: Sessions & Mode — column 1 */}
-            <div style={{ gridColumn: "span 1", background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column", minWidth: 0 }}>
+            {/* Tile 1: Sessions & Mode */}
+            <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,${c.acL},${c.gold})`, opacity: 0.6 }} />
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
                 <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const }}>Sessions & Mode</div>
@@ -495,8 +484,8 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               </div>
             </div>
 
-            {/* Tile 2: Total Trades bar chart — columns 2–3 */}
-            <div style={{ gridColumn: "span 2", background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column", minWidth: 0 }}>
+            {/* Tile 2: Total Trades bar chart */}
+            <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)` }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
                 <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const }}>Total Trades</div>
@@ -553,7 +542,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                 const usedW = barsN * barW + barGap * (barsN - 1);
                 const ox = Math.floor((svgW - usedW) / 2);
                 return (
-                  <svg viewBox={`0 0 ${svgW} ${maxH}`} width="100%" height={maxH} preserveAspectRatio="xMidYMid meet" style={{ display: "block", flex: "none", marginBottom: 2, maxWidth: svgW }}>
+                  <svg width={svgW} height={maxH} style={{ display: "block", flex: "none", marginBottom: 2 }}>
                     {trBars.map((s, i) => {
                       const t = kpis[s.id]?.trades || 0;
                       const h = t ? Math.max(3, Math.round((t / trMax) * maxH)) : 2;
@@ -583,8 +572,8 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               </div>
             </div>
 
-            {/* Tile 3: Profitable sessions arc — column 4 */}
-            <div style={{ gridColumn: "span 1", background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column", minWidth: 0 }}>
+            {/* Tile 3: Profitable sessions arc */}
+            <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${profPct >= 50 ? c.gn : c.rd},transparent)` }} />
               <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const, marginBottom: 6 }}>Profitable Sessions</div>
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -607,8 +596,8 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               </div>
             </div>
 
-            {/* Tile 4: Days Tested dots — row 2, columns 1–2 */}
-            <div style={{ gridColumn: "span 2", background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column", minWidth: 0 }}>
+            {/* Tile 4: Days Tested dots */}
+            <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)` }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 4, minWidth: 0 }}>
                 <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const, whiteSpace: "nowrap" as const, flexShrink: 0 }}>
@@ -646,8 +635,8 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               <div style={{ fontSize: 8, color: c.tm, marginTop: 4 }}>each square ≈ 1 month</div>
             </div>
 
-            {/* Tile 5: Tickers Tested — row 2, columns 3–4 */}
-            <div style={{ gridColumn: "span 2", background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column", minWidth: 0 }}>
+            {/* Tile 5: Tickers Tested */}
+            <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)` }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
                 <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const }}>Tickers Tested</div>
@@ -833,7 +822,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
             </div>
           ) : layoutMode === "cards" ? (
             /* ── Cards layout (parity with dashboardV8.jsx sessions cards) ── */
-            <div style={{ width: BACKTEST_CONTENT_MAX, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: BACKTEST_GRID_GAP, padding: "4px 0 24px" }}>
+            <div style={{ width: "min(1288px, 100%)", margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, padding: "4px 0 24px" }}>
               {filteredSessions.map(sess => {
                 const isProp = sess.session_type === "propfirm";
                 const k = kpis[sess.id];
