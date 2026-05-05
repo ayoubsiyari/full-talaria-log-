@@ -1788,9 +1788,9 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(0, 0, 0, 0.4);
+        background: rgba(0, 0, 0, 0.55);
         z-index: 9999;
-        backdrop-filter: blur(2px);
+        backdrop-filter: blur(4px);
     `;
 
     const panel = document.createElement('div');
@@ -1803,25 +1803,40 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         transform: translate(-50%, -50%);
         background: var(--sp-ui-chrome-bg, #131722);
         border: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
-        border-radius: 10px;
-        box-shadow: 0 24px 64px rgba(0,0,0,0.65);
+        border-radius: 0;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.85), 0 0 24px rgba(38,67,247,0.2);
         z-index: 10000;
         min-width: ${isCustomPanel ? '480px' : '360px'};
         max-width: ${isCustomPanel ? '640px' : '460px'};
         width: ${isCustomPanel ? 'min(92vw, 600px)' : 'auto'};
-        max-height: 80vh;
-        padding: 22px;
+        max-height: 82vh;
         display: flex;
         flex-direction: column;
         font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
-        overflow: visible;
+        overflow: hidden;
     `;
+
+    const topAccent = document.createElement('div');
+    topAccent.style.cssText = 'height:2px;flex-shrink:0;background:linear-gradient(90deg,var(--sp-accent,#2962ff),#6a8aff,var(--sp-accent,#2962ff));';
+    panel.appendChild(topAccent);
+
+    const titleBar = document.createElement('div');
+    titleBar.style.cssText = 'display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));flex-shrink:0;user-select:none;';
 
     const title = document.createElement('div');
     title.className = 'settings-section-title';
-    title.textContent = existingIndicator ? `Edit ${def.name}` : `Add ${def.name}`;
-    title.style.flexShrink = '0';
-    panel.appendChild(title);
+    title.textContent = `${def.name} Settings`;
+    title.style.cssText = 'flex:1;margin:0;font-size:14px;font-weight:700;color:var(--sp-text,#d1d4dc);';
+    titleBar.appendChild(title);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.innerHTML = '&#10005;';
+    closeBtn.style.cssText = 'width:26px;height:26px;border:none;background:transparent;color:var(--sp-text-muted,#8d93a1);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .12s, background .12s;';
+    closeBtn.onmouseenter = () => { closeBtn.style.color = 'var(--sp-text,#d1d4dc)'; closeBtn.style.background = 'rgba(255,255,255,0.06)'; };
+    closeBtn.onmouseleave = () => { closeBtn.style.color = 'var(--sp-text-muted,#8d93a1)'; closeBtn.style.background = 'transparent'; };
+    titleBar.appendChild(closeBtn);
+    panel.appendChild(titleBar);
 
     if (indicatorType === 'custom') {
         const hint = document.createElement('p');
@@ -1831,7 +1846,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             'where plots are line or histogram series. For built-in EMA/RSI/MACD, use the Technicals list instead.';
         hint.style.cssText =
             'font-size:12px;line-height:1.45;color:var(--sp-text-muted,#787b86);' +
-            'margin:0 0 12px 0;padding:10px 12px;border-radius:6px;' +
+            'margin:12px 14px 0 14px;padding:10px 12px;border-radius:6px;' +
             'background:rgba(255,193,7,0.07);border:1px solid rgba(255,193,7,0.28);';
         panel.appendChild(hint);
     }
@@ -1841,9 +1856,9 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     form.style.flexDirection = 'column';
     form.style.gap = '6px';
     form.style.overflowY = 'auto';
-    form.style.maxHeight = 'calc(80vh - 120px)';
-    form.style.paddingRight = '8px';
-    form.style.marginTop = '10px';
+    form.style.maxHeight = 'calc(82vh - 156px)';
+    form.style.padding = '12px 14px 0 14px';
+    form.style.marginTop = '0';
     // Add scrollbar styling
     form.style.scrollbarWidth = 'thin';
     form.style.scrollbarColor = 'var(--sp-ui-border, rgba(42,46,57,0.55)) transparent';
@@ -1851,6 +1866,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     const initialParams = existingIndicator ? existingIndicator.params : {};
     const initialStyle = existingIndicator ? existingIndicator.style : {};
     const allParams = { ...initialParams, ...initialStyle };
+    const baseExisting = existingIndicator ? { ...initialParams, ...initialStyle } : {};
     if (indicatorType === 'custom' && existingIndicator && existingIndicator.params) {
         if (allParams.placement === undefined || allParams.placement === '') {
             allParams.placement = existingIndicator.params.separatePanel ? 'panel' : 'overlay';
@@ -2006,11 +2022,11 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     // Buttons
     const buttonWrapper = document.createElement('div');
     buttonWrapper.className = 'settings-actions';
-    buttonWrapper.style.cssText = 'display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:15px;padding:0;';
+    buttonWrapper.style.cssText = 'display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:12px;padding:10px 14px;border-top:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));flex-shrink:0;';
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'settings-btn settings-btn-save';
-    saveBtn.style.cssText = 'flex:0 0 auto;min-width:150px;width:auto;padding:10px 22px;';
+    saveBtn.style.cssText = 'flex:0 0 auto;min-width:130px;width:auto;padding:8px 16px;';
     saveBtn.textContent = existingIndicator ? 'Apply Changes' : 'Add Indicator';
     const closePanel = () => {
         document.removeEventListener('click', handleOutsideClick, true);
@@ -2019,6 +2035,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         backdrop.remove();
         panel.remove();
     };
+    closeBtn.onclick = closePanel;
 
     saveBtn.onclick = () => {
         const newParams = {};
@@ -2064,7 +2081,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         }
 
         if (indicatorType === 'custom') {
-            const mergedEarly = { ...newParams, ...newStyle };
+            const mergedEarly = { ...baseExisting, ...newParams, ...newStyle };
             const TC = typeof window.TalariaCustomIndicators !== 'undefined' ? window.TalariaCustomIndicators : null;
             if (TC && typeof TC.validateCustomScriptSource === 'function') {
                 const check = TC.validateCustomScriptSource(mergedEarly.script);
@@ -2077,7 +2094,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
         if (existingIndicator) {
             // Edit existing indicator
-            const mergedParams = { ...newParams, ...newStyle };
+            const mergedParams = { ...baseExisting, ...newParams, ...newStyle };
             if (indicatorType === 'custom' && typeof targetChart.updateIndicator === 'function') {
                 const p = { ...mergedParams };
                 p.customParams = { period: p.period };
@@ -2107,7 +2124,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
                 };
                 targetChart.addIndicator('custom', payload);
             } else {
-                targetChart.addIndicator(indicatorType, { ...newParams, ...newStyle });
+                targetChart.addIndicator(indicatorType, { ...baseExisting, ...newParams, ...newStyle });
             }
         }
 
@@ -2130,14 +2147,14 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'settings-btn settings-btn-close';
-    cancelBtn.style.cssText = 'flex:0 0 auto;min-width:130px;width:auto;padding:10px 22px;';
+    cancelBtn.style.cssText = 'flex:0 0 auto;min-width:110px;width:auto;padding:8px 14px;';
     cancelBtn.textContent = 'Cancel';
     cancelBtn.onclick = () => {
         closePanel();
     };
 
-    buttonWrapper.appendChild(saveBtn);
     buttonWrapper.appendChild(cancelBtn);
+    buttonWrapper.appendChild(saveBtn);
     panel.appendChild(buttonWrapper);
 
     // Add both backdrop and panel to DOM
