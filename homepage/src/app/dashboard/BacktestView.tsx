@@ -963,15 +963,24 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                       <div style={{ width: 1, height: 12, background: c.brH, flexShrink: 0 }} />
                       <div style={{ fontSize: 10, fontWeight: 600, color: c.ts, fontFamily: F, flexShrink: 0 }}>{cfgS?.asset_class || "—"}</div>
                       <div style={{ width: 1, height: 12, background: c.brH, flexShrink: 0 }} />
-                      <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
+                      <div style={{ flex: 1, overflow: "hidden", minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                         {tickerRows.length === 0 ? (
                           sess.symbol ? (
-                            <span style={{ fontSize: 9, fontWeight: 600, color: c.ts, fontFamily: F }}>{sess.symbol}</span>
+                            <span style={{ fontSize: 9, fontWeight: 600, color: c.ts, fontFamily: F, textAlign: "center", maxWidth: "100%", overflowWrap: "anywhere", lineHeight: 1.35 }}>{sess.symbol}</span>
                           ) : (
-                            <span style={{ fontSize: 9, color: c.tm, fontFamily: F }}>—</span>
+                            <span style={{ fontSize: 9, color: c.tm, fontFamily: F, textAlign: "center" }}>—</span>
                           )
                         ) : (
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 6px" }}>
+                          <div style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            justifyContent: "center",
+                            alignContent: "center",
+                            alignItems: "center",
+                            gap: "4px 10px",
+                            width: "100%",
+                            maxWidth: "100%",
+                          }}>
                             {tickerRows.map(r => (
                               <span
                                 key={r.sym}
@@ -984,6 +993,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                                   fontVariantNumeric: "tabular-nums",
                                   lineHeight: 1.35,
                                   overflowWrap: "anywhere",
+                                  textAlign: "center",
                                 }}>
                                 {r.sym}
                               </span>
@@ -1163,7 +1173,17 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                       {/* Asset */}
                       {colCell(cfgS?.asset_class || "—", 90)}
                       {/* Symbols */}
-                      <div style={{ width: 132, flexShrink: 0, padding: "0 8px", display: "flex", alignItems: "flex-start", justifyContent: "flex-start", overflow: "hidden" }}>
+                      <div style={{
+                        width: 132,
+                        flexShrink: 0,
+                        padding: "0 6px",
+                        boxSizing: "border-box",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        overflow: "hidden",
+                        alignSelf: "stretch",
+                      }}>
                         {tickerRows.length === 0 ? (
                           sess.symbol ? (
                             <span style={{
@@ -1171,14 +1191,25 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                               fontWeight: 700,
                               color: c.ts,
                               background: "rgba(255,255,255,0.07)",
-                              padding: "2px 6px",
+                              padding: "2px 8px",
                               border: `1px solid ${c.br}`,
                               overflowWrap: "anywhere",
                               lineHeight: 1.3,
+                              textAlign: "center",
+                              maxWidth: "100%",
                             }}>{sess.symbol}</span>
-                          ) : <span style={{ fontSize: 10, color: c.tm }}>—</span>
+                          ) : <span style={{ fontSize: 10, color: c.tm, textAlign: "center" }}>—</span>
                         ) : (
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "3px 8px", width: "100%" }}>
+                          <div style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            justifyContent: "center",
+                            alignContent: "center",
+                            alignItems: "center",
+                            gap: "4px 8px",
+                            width: "100%",
+                            maxWidth: "100%",
+                          }}>
                             {tickerRows.slice(0, 6).map(r => (
                               <span
                                 key={r.sym}
@@ -1190,6 +1221,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                                   fontVariantNumeric: "tabular-nums",
                                   lineHeight: 1.35,
                                   overflowWrap: "anywhere",
+                                  textAlign: "center",
                                 }}>
                                 {r.sym}
                               </span>
