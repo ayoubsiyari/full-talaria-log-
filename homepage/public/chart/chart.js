@@ -6973,11 +6973,58 @@ class Chart {
         return stripped || clean;
     }
 
+    /** Futures root before expiry digits (MESZ24 → MES). */
+    _futuresRootSSD(ticker) {
+        const u = String(ticker || '').replace(/[\s\-_\/\.]/g, '').toUpperCase();
+        const cut = u.search(/\d/);
+        const root = (cut > 0 ? u.slice(0, cut) : u).slice(0, 6);
+        return root || u || 'FX';
+    }
+
+    /** TradingView-style futures badge colors. */
+    _futuresBadgeColorsSSD(root) {
+        const r = String(root || '').toUpperCase();
+        const preset = {
+            ES: { bg: '#123a5c', fg: '#e3f2ff' },
+            NQ: { bg: '#3b1570', fg: '#f3e8ff' },
+            MNQ: { bg: '#3b1570', fg: '#f3e8ff' },
+            MES: { bg: '#123a5c', fg: '#e3f2ff' },
+            YM: { bg: '#3d2914', fg: '#ffe8c8' },
+            MYM: { bg: '#3d2914', fg: '#ffe8c8' },
+            RTY: { bg: '#14263d', fg: '#dcecff' },
+            M2K: { bg: '#14263d', fg: '#dcecff' },
+            CL: { bg: '#1a2f22', fg: '#c8ffd4' },
+            MCL: { bg: '#1a2f22', fg: '#c8ffd4' },
+            GC: { bg: '#3d3010', fg: '#ffeaa3' },
+            MGC: { bg: '#3d3010', fg: '#ffeaa3' },
+            SI: { bg: '#252838', fg: '#dde4ff' },
+            NG: { bg: '#132238', fg: '#cfe9ff' },
+            HG: { bg: '#4a2810', fg: '#ffd9bf' },
+            PL: { bg: '#222428', fg: '#eaeaff' },
+            RB: { bg: '#261818', fg: '#ffd6d6' },
+            HO: { bg: '#2a2218', fg: '#ffe8c4' },
+            ZB: { bg: '#1e2430', fg: '#dbe7ff' },
+            ZN: { bg: '#1e2430', fg: '#dbe7ff' },
+            ZF: { bg: '#1e2430', fg: '#dbe7ff' },
+            ZT: { bg: '#1e2430', fg: '#dbe7ff' },
+            '6E': { bg: '#153040', fg: '#d8f4ff' },
+            '6B': { bg: '#153040', fg: '#d8f4ff' },
+            '6J': { bg: '#153040', fg: '#d8f4ff' },
+            MBT: { bg: '#2d1f08', fg: '#ffdca8' },
+            MBTX: { bg: '#2d1f08', fg: '#ffdca8' },
+            NKD: { bg: '#301828', fg: '#ffd6ea' },
+        };
+        if (preset[r]) return preset[r];
+        let h = 0;
+        for (let i = 0; i < r.length; i++) h = (h * 31 + r.charCodeAt(i)) >>> 0;
+        const hue = h % 360;
+        return { bg: `hsl(${hue} 42% 22%)`, fg: `hsl(${hue} 20% 94%)` };
+    }
+
     /**
      * Build a 30×30 asset-class-appropriate icon for the symbol-selector
-     * dropdown's `.ssd-item-icon` slot. Crypto pulls a real coin logo from
-     * CoinCap's CDN; futures/stock render a gradient badge with the ticker's
-     * leading letters. Falls back to plain initials if classification fails.
+     * dropdown's `.ssd-item-icon` slot. Crypto: CoinCap + GitHub fallback logos.
+     * Stocks: FMP logos over gradient. Futures: colored root badges (TradingView-like).
      */
     _buildAssetClassIconSSD(ticker) {
         const raw = String(ticker || '');
@@ -6987,21 +7034,25 @@ class Chart {
         if (cls === 'crypto') {
             const base = this._cryptoBase(raw);
             const iconUrl = `https://assets.coincap.io/assets/icons/${base.toLowerCase()}@2x.png`;
-            // Gradient badge sits underneath the <img>; if the CDN 404s we hide
-            // the image via onerror so the badge shows through.
             return `<div class="ssd-item-icon ssd-crypto-icon" style="position:relative;padding:0;border:0;background:linear-gradient(135deg,#f7931a,#ffb347);color:#fff;font-weight:700;font-size:10px;overflow:hidden">
                 <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;letter-spacing:-0.3px">${base.slice(0,3)}</span>
-                <img src="${iconUrl}" alt="${base}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit" onerror="this.style.display='none'" />
+                <img src="${iconUrl}" alt="${base}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/'+this.alt.toLowerCase()+'.png';}else{this.style.display='none'}" />
             </div>`;
         }
         if (cls === 'futures') {
-            const root = clean.slice(0, Math.min(3, clean.length)) || 'FX';
-            return `<div class="ssd-item-icon ssd-futures-icon" style="background:linear-gradient(135deg,#3b82f6,#6366f1);border-color:rgba(99,102,241,0.55);color:#fff;font-weight:700;font-size:11px">${root}</div>`;
+            const root = this._futuresRootSSD(raw);
+            const { bg, fg } = this._futuresBadgeColorsSSD(root);
+            const label = root.slice(0, 4);
+            const fs = label.length >= 4 ? '9px' : '11px';
+            return `<div class="ssd-item-icon ssd-futures-icon" style="display:flex;align-items:center;justify-content:center;background:${bg};border:1px solid rgba(255,255,255,0.14);color:${fg};font-weight:700;font-size:${fs};letter-spacing:-0.3px">${label}</div>`;
         }
         if (cls === 'stock') {
-            const sym = clean.slice(0, Math.min(4, clean.length)) || 'ST';
+            const sym = clean.slice(0, Math.min(5, clean.length)) || 'ST';
             const size = sym.length >= 4 ? '9px' : '11px';
-            return `<div class="ssd-item-icon ssd-stock-icon" style="background:linear-gradient(135deg,#10b981,#14b8a6);border-color:rgba(16,185,129,0.55);color:#fff;font-weight:700;font-size:${size};letter-spacing:-0.3px">${sym}</div>`;
+            return `<div class="ssd-item-icon ssd-stock-icon" style="position:relative;padding:0;border:0;background:linear-gradient(135deg,#0f3d32,#14b8a6);border:1px solid rgba(16,185,129,0.45);color:#fff;font-weight:700;font-size:${size};letter-spacing:-0.3px;overflow:hidden">
+                <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">${sym}</span>
+                <img src="https://financialmodelingprep.com/image-stock/${sym}.png" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit" onerror="this.style.display='none'" />
+            </div>`;
         }
         const initials = clean.slice(0, 2).toUpperCase() || '•';
         return `<div class="ssd-item-icon">${initials}</div>`;

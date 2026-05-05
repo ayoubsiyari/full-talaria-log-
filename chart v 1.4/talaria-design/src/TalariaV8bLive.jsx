@@ -2,6 +2,13 @@ import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallba
 import { createPortal, flushSync } from "react-dom";
 import { applyV9ThemeSettingsToChart } from "./v9ThemeSync.js";
 import { buildLiveTradeRowsFromOrderManager } from "./orderManagerTradeRows.js";
+import {
+  FlagSvg,
+  ChartSymbolBadge,
+  chartAssetFromSymbolObj,
+  normalizeSymForBadge,
+  resolveSessionChartSymbol,
+} from "./chartSymbolBadge.jsx";
 
 // ── Color utilities ──────────────────────────────────────────────────────────
 function parseColor(str) {
@@ -2495,8 +2502,6 @@ const Toggle = ({ on, onClick, color, hk, c, swHov, setSwHov }) => {
   );
 };
 
-const currencyCountry = { EUR: "EU", JPY: "JP", USD: "US", GBP: "GB", AUD: "AU", CAD: "CA", CHF: "CH", NZD: "NZ" };
-
 const SYMBOLS_DATA = [
   { cat:"FOREX", items:[
     {id:"EUR/JPY",name:"Euro / Yen",type:"forex",base:"EUR",quote:"JPY"},
@@ -2528,152 +2533,6 @@ const SYMBOLS_DATA = [
     {id:"ETHUSDT",name:"Ethereum / Tether",type:"crypto",col:"#627EEA",bg:"rgba(98,126,234,0.22)"},
   ]},
 ];
-
-const SymBadge = ({ sym, w=18, h=12 }) => {
-  const cx=w/2, cy=h/2, uid=`${sym.id}-${w}`;
-  /* ── Bitcoin ── */
-  if (sym.id==="BTCUSDT") return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-      <defs><radialGradient id={`bg-${uid}`} cx="40%" cy="35%"><stop offset="0%" stopColor="#FFAC33"/><stop offset="100%" stopColor="#E8820C"/></radialGradient></defs>
-      <circle cx={cx} cy={cy} r={Math.min(cx,cy)-0.3} fill={`url(#bg-${uid})`}/>
-      <text x={cx+w*0.02} y={cy+h*0.24} textAnchor="middle" fill="#fff" fontSize={h*0.62} fontWeight="900" fontFamily="Arial,sans-serif" letterSpacing="-0.5">₿</text>
-    </svg>
-  );
-  /* ── Ethereum ── */
-  if (sym.id==="ETHUSDT") return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-      <defs><linearGradient id={`bg-${uid}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#1A1E3C"/><stop offset="100%" stopColor="#111628"/></linearGradient></defs>
-      <rect width={w} height={h} rx={2} fill={`url(#bg-${uid})`}/>
-      <polygon points={`${cx},${h*0.08} ${cx+w*0.3},${cy-h*0.04} ${cx},${h*0.63} ${cx-w*0.3},${cy-h*0.04}`} fill="#627EEA"/>
-      <polygon points={`${cx},${h*0.63} ${cx+w*0.3},${cy-h*0.04} ${cx},${h*0.92}`} fill="#B0C0F5" opacity={0.75}/>
-      <polygon points={`${cx},${h*0.63} ${cx-w*0.3},${cy-h*0.04} ${cx},${h*0.92}`} fill="#4A62D8" opacity={0.85}/>
-    </svg>
-  );
-  /* ── Apple ── */
-  if (sym.id==="AAPL") {
-    const bx=cx, by=cy+h*0.06, br=h*0.44;
-    return (
-      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-        <rect width={w} height={h} rx={2} fill="#2A2B2E"/>
-        <clipPath id={`cp-${uid}`}><rect width={w} height={h} rx={2}/></clipPath>
-        <g clipPath={`url(#cp-${uid})`}>
-          {/* apple body */}
-          <ellipse cx={bx} cy={by} rx={br*0.85} ry={br} fill="#C8C9CA"/>
-          {/* bite out of upper right */}
-          <circle cx={bx+br*0.72} cy={by-br*0.55} r={br*0.52} fill="#2A2B2E"/>
-          {/* top indent between lobes */}
-          <circle cx={bx} cy={by-br*0.96} r={br*0.28} fill="#2A2B2E"/>
-          {/* stem */}
-          <path d={`M${bx+br*0.08},${by-br} C${bx+br*0.15},${by-br*1.4} ${bx+br*0.5},${by-br*1.35} ${bx+br*0.4},${by-br*0.9}`}
-            stroke="#C8C9CA" strokeWidth={br*0.22} fill="none" strokeLinecap="round"/>
-        </g>
-      </svg>
-    );
-  }
-  /* ── Tesla ── */
-  if (sym.id==="TSLA") return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-      <defs><linearGradient id={`bg-${uid}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2A0608"/><stop offset="100%" stopColor="#1A0305"/></linearGradient></defs>
-      <rect width={w} height={h} rx={2} fill={`url(#bg-${uid})`}/>
-      {/* Tesla T — horizontal bar + vertical stem + side arcs */}
-      <path d={`M${cx-w*0.36},${h*0.2} L${cx+w*0.36},${h*0.2} L${cx+w*0.22},${h*0.34} C${cx+w*0.22},${h*0.34} ${cx+w*0.08},${h*0.33} ${cx+w*0.06},${h*0.34} L${cx+w*0.06},${h*0.84} L${cx-w*0.06},${h*0.84} L${cx-w*0.06},${h*0.34} C${cx-w*0.08},${h*0.33} ${cx-w*0.22},${h*0.34} ${cx-w*0.22},${h*0.34} Z`}
-        fill="#E82127"/>
-    </svg>
-  );
-  /* ── Gold Futures / XAUUSD ── gold bar ── */
-  if (sym.id==="GC"||sym.id==="XAUUSD") return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-      <defs><linearGradient id={`bg-${uid}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2B2200"/><stop offset="100%" stopColor="#1A1500"/></linearGradient>
-      <linearGradient id={`bar-${uid}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#FFE566"/><stop offset="50%" stopColor="#FFD700"/><stop offset="100%" stopColor="#C8A600"/></linearGradient></defs>
-      <rect width={w} height={h} rx={2} fill={`url(#bg-${uid})`}/>
-      {/* gold bar shape */}
-      <path d={`M${cx-w*0.3},${h*0.28} L${cx+w*0.3},${h*0.28} L${cx+w*0.38},${h*0.72} L${cx-w*0.38},${h*0.72} Z`} fill={`url(#bar-${uid})`}/>
-      <line x1={cx-w*0.22} y1={h*0.45} x2={cx+w*0.22} y2={h*0.45} stroke="rgba(0,0,0,0.25)" strokeWidth={0.6}/>
-      <text x={cx} y={h*0.64} textAnchor="middle" fill="rgba(0,0,0,0.55)" fontSize={h*0.28} fontWeight="800" fontFamily="'Exo 2',sans-serif">{sym.id==="XAUUSD"?"XAU":"GC"}</text>
-    </svg>
-  );
-  /* ── ES — S&P 500 mini bar chart ── */
-  if (sym.id==="ES") return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-      <defs><linearGradient id={`bg-${uid}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#0D1640"/><stop offset="100%" stopColor="#080E28"/></linearGradient></defs>
-      <rect width={w} height={h} rx={2} fill={`url(#bg-${uid})`}/>
-      {[[w*0.18,h*0.72,h*0.48],[w*0.32,h*0.72,h*0.32],[w*0.46,h*0.72,h*0.55],[w*0.60,h*0.72,h*0.22],[w*0.74,h*0.72,h*0.38]].map(([x,bot,ht],i)=>(
-        <rect key={i} x={x-w*0.05} y={bot-ht} width={w*0.09} height={ht} rx={1} fill={i===3||i===1?"#FF5068":"#5B8CFF"} opacity={0.9}/>
-      ))}
-      <text x={w*0.86} y={h*0.42} textAnchor="middle" fill="#5B8CFF" fontSize={h*0.28} fontWeight="900" fontFamily="'Exo 2',sans-serif">ES</text>
-    </svg>
-  );
-  /* ── NQ — Nasdaq mini chart ── */
-  if (sym.id==="NQ") return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-      <defs><linearGradient id={`bg-${uid}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#001830"/><stop offset="100%" stopColor="#000D1E"/></linearGradient></defs>
-      <rect width={w} height={h} rx={2} fill={`url(#bg-${uid})`}/>
-      <polyline points={`${w*0.1},${h*0.72} ${w*0.28},${h*0.55} ${w*0.44},${h*0.62} ${w*0.6},${h*0.35} ${w*0.76},${h*0.28} ${w*0.9},${h*0.22}`}
-        fill="none" stroke="#26C6DA" strokeWidth={1.1} strokeLinejoin="round" strokeLinecap="round"/>
-      <text x={w*0.5} y={h*0.88} textAnchor="middle" fill="#26C6DA" fontSize={h*0.26} fontWeight="900" fontFamily="'Exo 2',sans-serif">NQ</text>
-    </svg>
-  );
-  /* ── default fallback ── */
-  const label = sym.id.slice(0,3);
-  const fs = h<=12 ? 5 : 6.5;
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",flexShrink:0}}>
-      <rect width={w} height={h} rx={2} fill={sym.bg||"rgba(255,255,255,0.10)"}/>
-      <text x={cx} y={cy+fs*0.38} textAnchor="middle" fill={sym.col||"#fff"} fontSize={fs} fontWeight="800" fontFamily="'Exo 2',sans-serif" letterSpacing="-0.3">{label}</text>
-    </svg>
-  );
-};
-const FlagSvg = ({ code, w = 22, h = 14 }) => {
-  const sw = { width: w, height: h, viewBox: "0 0 22 14", style: { display: "block", flexShrink: 0 } };
-  const cc = currencyCountry[code] || code;
-  const f = {
-    EU: <svg {...sw}><rect width={22} height={14} fill="#003399"/>{Array.from({length:12},(_,i)=>{const a=(i/12)*Math.PI*2-Math.PI/2;return<circle key={i} cx={11+4.8*Math.cos(a)} cy={7+4.8*Math.sin(a)} r={0.85} fill="#FFCC00"/>})}</svg>,
-    JP: <svg {...sw}><rect width={22} height={14} fill="#fff"/><circle cx={11} cy={7} r={4} fill="#BC002D"/></svg>,
-    US: <svg {...sw}>
-      {[0,1,2,3,4,5,6,7,8,9,10,11,12].map(i=><rect key={i} y={i*14/13} width={22} height={14/13+0.2} fill={i%2===0?"#B22234":"#fff"}/>)}
-      <rect width={9} height={7.5} fill="#3C3B6E"/>
-      {Array.from({length:18},(_,i)=>{const col=i%6,row=Math.floor(i/6);return<circle key={i} cx={0.9+col*1.45+(row%2===0?0:0.72)} cy={0.9+row*2.4} r={0.42} fill="#fff"/>;})}
-    </svg>,
-    GB: <svg {...sw}>
-      <rect width={22} height={14} fill="#012169"/>
-      <line x1={0} y1={0} x2={22} y2={14} stroke="#fff" strokeWidth={4}/><line x1={22} y1={0} x2={0} y2={14} stroke="#fff" strokeWidth={4}/>
-      <line x1={0} y1={0} x2={22} y2={14} stroke="#C8102E" strokeWidth={2}/><line x1={22} y1={0} x2={0} y2={14} stroke="#C8102E" strokeWidth={2}/>
-      <rect x={9.5} y={0} width={3} height={14} fill="#fff"/><rect x={0} y={5.5} width={22} height={3} fill="#fff"/>
-      <rect x={10} y={0} width={2} height={14} fill="#C8102E"/><rect x={0} y={6} width={22} height={2} fill="#C8102E"/>
-    </svg>,
-    AU: <svg {...sw}>
-      <rect width={22} height={14} fill="#00008B"/>
-      <line x1={0} y1={0} x2={9} y2={7} stroke="#fff" strokeWidth={2.5}/><line x1={9} y1={0} x2={0} y2={7} stroke="#fff" strokeWidth={2.5}/>
-      <line x1={0} y1={0} x2={9} y2={7} stroke="#C8102E" strokeWidth={1.2}/><line x1={9} y1={0} x2={0} y2={7} stroke="#C8102E" strokeWidth={1.2}/>
-      <rect x={3.8} y={0} width={1.4} height={7} fill="#fff"/><rect x={0} y={2.8} width={9} height={1.4} fill="#fff"/>
-      <rect x={4.1} y={0} width={0.8} height={7} fill="#C8102E"/><rect x={0} y={3.1} width={9} height={0.8} fill="#C8102E"/>
-      <circle cx={4.5} cy={10.5} r={1.6} fill="#fff" opacity={0.9}/>
-      <circle cx={15} cy={3.5} r={1.1} fill="#fff"/><circle cx={13} cy={8} r={0.9} fill="#fff"/><circle cx={18} cy={7.5} r={0.9} fill="#fff"/><circle cx={19} cy={4.5} r={0.8} fill="#fff"/>
-    </svg>,
-    CA: <svg {...sw}>
-      <rect width={22} height={14} fill="#fff"/>
-      <rect width={5.5} height={14} fill="#FF0000"/><rect x={16.5} width={5.5} height={14} fill="#FF0000"/>
-      <path d="M11,2 L12,5 L14.5,4.5 L13,6 L15,7 L11.5,8.5 L12,11 L11,10 L10,11 L10.5,8.5 L7,7 L9,6 L7.5,4.5 L10,5 Z" fill="#FF0000"/>
-    </svg>,
-    CH: <svg {...sw}><rect width={22} height={14} fill="#FF0000"/><rect x={9.5} y={2.5} width={3} height={9} fill="#fff"/><rect x={5.5} y={5.5} width={11} height={3} fill="#fff"/></svg>,
-    DE: <svg {...sw}><rect width={22} height={14} fill="#000"/><rect y={4.67} width={22} height={4.66} fill="#DD0000"/><rect y={9.33} width={22} height={4.67} fill="#FFCE00"/></svg>,
-    FR: <svg {...sw}><rect width={22} height={14} fill="#002395"/><rect x={7.33} width={7.34} height={14} fill="#fff"/><rect x={14.67} width={7.33} height={14} fill="#ED2939"/></svg>,
-    IT: <svg {...sw}><rect width={22} height={14} fill="#009246"/><rect x={7.33} width={7.34} height={14} fill="#fff"/><rect x={14.67} width={7.33} height={14} fill="#CE2B37"/></svg>,
-    CN: <svg {...sw}><rect width={22} height={14} fill="#DE2910"/><polygon points="3.5,1.5 4.2,3.6 6.2,3.6 4.6,4.8 5.3,6.9 3.5,5.6 1.7,6.9 2.4,4.8 0.8,3.6 2.8,3.6" fill="#FFDE00"/><polygon points="7,0.5 7.5,1.5 8.5,1.3 7.9,2.1 8.4,3 7.4,2.6 6.7,3.3 6.8,2.2 5.9,1.8 6.9,1.5" fill="#FFDE00"/><polygon points="9,2.5 9.3,3.5 10.3,3.5 9.5,4.1 9.8,5.1 9,4.5 8.2,5.1 8.5,4.1 7.7,3.5 8.7,3.5" fill="#FFDE00"/><polygon points="9,5.5 9.3,6.5 10.3,6.5 9.5,7.1 9.8,8.1 9,7.5 8.2,8.1 8.5,7.1 7.7,6.5 8.7,6.5" fill="#FFDE00"/><polygon points="7,8 7.5,9 8.5,8.8 7.9,9.6 8.4,10.5 7.4,10.1 6.7,10.8 6.8,9.7 5.9,9.3 6.9,9" fill="#FFDE00"/></svg>,
-    NZ: <svg {...sw}>
-      <rect width={22} height={14} fill="#00247D"/>
-      <line x1={0} y1={0} x2={9} y2={7} stroke="#fff" strokeWidth={2.5}/><line x1={9} y1={0} x2={0} y2={7} stroke="#fff" strokeWidth={2.5}/>
-      <line x1={0} y1={0} x2={9} y2={7} stroke="#C8102E" strokeWidth={1.2}/><line x1={9} y1={0} x2={0} y2={7} stroke="#C8102E" strokeWidth={1.2}/>
-      <rect x={3.8} y={0} width={1.4} height={7} fill="#fff"/><rect x={0} y={2.8} width={9} height={1.4} fill="#fff"/>
-      <rect x={4.1} y={0} width={0.8} height={7} fill="#C8102E"/><rect x={0} y={3.1} width={9} height={0.8} fill="#C8102E"/>
-      <circle cx={14} cy={3} r={1.2} fill="#CC142B" stroke="#fff" strokeWidth={0.4}/>
-      <circle cx={18} cy={5.5} r={1} fill="#CC142B" stroke="#fff" strokeWidth={0.4}/>
-      <circle cx={17} cy={9.5} r={1} fill="#CC142B" stroke="#fff" strokeWidth={0.4}/>
-      <circle cx={13.5} cy={7.5} r={0.8} fill="#CC142B" stroke="#fff" strokeWidth={0.3}/>
-    </svg>,
-  };
-  return f[cc] || <svg {...sw}><rect width={22} height={14} fill="#1a2030"/><text x={11} y={10} textAnchor="middle" fontSize={6} fontWeight="bold" fill="#8CA0FF" fontFamily="sans-serif">{cc}</text></svg>;
-};
 
 const EMOJI_CATS = [
   { id:"smileys",  icon:"😀", label:"Smileys",  emojis:["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🥴","😌","😔","😪","😴","😷","🤒","🤕","🤢","🤧","🥵","🥶","😵","🤯","🤠","🥳","😎","🤓","🧐","😢","😭","😤","😠","😡","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","🤖","😺","😸","😹","😻","😼","😽","🙀","😿","😾"] },
@@ -5066,7 +4925,7 @@ const TalariaV8bLive = () => {
   const F = "'Exo 2',sans-serif";
 
   const allSymbols = SYMBOLS_DATA.flatMap(c => c.items);
-  const currentSymbol = allSymbols.find(s => s.id === symbol) || { id:symbol, type:"forex", base:symbol.split("/")[0], quote:symbol.split("/")[1] };
+  const currentSymbol = resolveSessionChartSymbol(symbol, allSymbols);
   const chartTypeMap = {
     "Candles": { icon: "candle", label: "Candles" },
     "Hollow Candles": { icon: "hollowCandle", label: "Hollow Candles" },
@@ -15931,11 +15790,8 @@ const TalariaV8bLive = () => {
                           background:isAct?c.acD:isH?c.hv2:"transparent",
                           transition:"background 0.1s"}}>
                         {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                        <div style={{display:"flex",alignItems:"center",position:"relative",width:27,height:12,flexShrink:0}}>
-                          {s.type==="forex" && s.base && s.quote ? <>
-                            <div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 2px 4px rgba(0,0,0,0.8)",zIndex:2}}><FlagSvg code={s.base} w={18} h={12}/></div>
-                            <div style={{position:"absolute",left:9,top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.6)",zIndex:1}}><FlagSvg code={s.quote} w={18} h={12}/></div>
-                          </> : <SymBadge sym={s} w={27} h={12}/>}
+                        <div style={{display:"flex",alignItems:"center",position:"relative",minWidth:28,height:12,flexShrink:0}}>
+                          <ChartSymbolBadge sym={normalizeSymForBadge(s.id)} asset={chartAssetFromSymbolObj(s)} w={14} h={12} fontFamily={F}/>
                         </div>
                         <div style={{flex:1}}>
                           <div style={{fontSize:12,fontWeight:isAct?700:600,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,lineHeight:1.2}}>{s.id}</div>
@@ -15996,11 +15852,8 @@ const TalariaV8bLive = () => {
         <div style={{ width: 1, height: 16, margin: "0 3px 0 0", background: "rgba(140,160,255,0.18)" }}/>
         <button type="button" onClick={(e) => { e.stopPropagation(); const was=symbolOpen; closeAll(); if(!was) setSymbolOpen(true); }} onMouseEnter={() => setHov("symbol")} onMouseLeave={() => setHov(null)}
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px", background: symbolOpen ? "rgba(74,106,255,0.08)" : hov==="symbol" ? c.hv : "transparent", border: "none", color: symbolOpen ? c.acL : hov==="symbol" ? c.tx : c.ts, cursor: "default", fontSize: 14, fontWeight: 700, fontFamily: F, position: "relative", width: 128, flexShrink: 0, transition: "color 0.12s, background 0.12s" }}>
-          <div style={{ display: "flex", alignItems: "center", position: "relative", width: 32, height: 14, flexShrink: 0 }}>
-            {currentSymbol.type==="forex" ? <>
-              <div style={{ position: "absolute", left: 0, top: 0, borderRadius: 1, overflow: "hidden", boxShadow: "0 2px 4px rgba(0,0,0,0.8)", zIndex: 2 }}><FlagSvg code={currentSymbol.base} w={22} h={14}/></div>
-              <div style={{ position: "absolute", left: 10, top: 0, borderRadius: 1, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.6)", zIndex: 1 }}><FlagSvg code={currentSymbol.quote} w={22} h={14}/></div>
-            </> : <SymBadge sym={currentSymbol} w={32} h={14}/>}
+          <div style={{ display: "flex", alignItems: "center", position: "relative", minWidth: 34, height: 14, flexShrink: 0 }}>
+            <ChartSymbolBadge sym={normalizeSymForBadge(symbol)} asset={chartAssetFromSymbolObj(currentSymbol)} w={16} h={14} fontFamily={F}/>
           </div>
           {symbol}
           <div style={{transform:symbolOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s ease",lineHeight:0,flexShrink:0}}>
