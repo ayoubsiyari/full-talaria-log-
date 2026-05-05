@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 /* ── Design system tokens (dark mode) ── */
 const c = {
@@ -88,8 +88,13 @@ export function BacktestView() {
   const [sortBy, setSortBy] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [hov, setHov] = useState<string | null>(null);
-  const [iframeUrl, setIframeUrl] = useState<string | null>(null);
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [newSessOpen, setNewSessOpen] = useState(false);
+  const [newSessName, setNewSessName] = useState("");
+  const [newSessSymbol, setNewSessSymbol] = useState("");
+  const [newSessType, setNewSessType] = useState<"standard" | "propfirm">("standard");
+  const [newSessBalance, setNewSessBalance] = useState("10000");
+  const [newSessStartDate, setNewSessStartDate] = useState("");
+  const [newSessEndDate, setNewSessEndDate] = useState("");
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -110,13 +115,6 @@ export function BacktestView() {
   }, []);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
-
-  useEffect(() => {
-    const w = window as Window & { closeBacktestingIframe?: () => void; closePropFirmIframe?: () => void };
-    w.closeBacktestingIframe = () => { setIframeUrl(null); loadSessions(); };
-    w.closePropFirmIframe = () => { setIframeUrl(null); loadSessions(); };
-    return () => { delete w.closeBacktestingIframe; delete w.closePropFirmIframe; };
-  }, [loadSessions]);
 
   /* ── Derived stats ── */
   const propSess = sessions.filter(s => s.session_type === "propfirm");
@@ -187,101 +185,28 @@ export function BacktestView() {
     });
 
   /* ── Actions ── */
-  const goNew = () => {
-    setIframeUrl(`/talaria-v8b-design/index.html?newSession=1&modalOnly=1&v=${Date.now()}`);
+  const resetNewSessionForm = () => {
+    setNewSessName("");
+    setNewSessSymbol("");
+    setNewSessType("standard");
+    setNewSessBalance("10000");
+    setNewSessStartDate("");
+    setNewSessEndDate("");
   };
 
-  const forceModalOnlyInIframe = useCallback(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    const frameWithWatcher = iframe as HTMLIFrameElement & { __tlrCloseWatch?: number };
-    if (frameWithWatcher.__tlrCloseWatch) {
-      window.clearInterval(frameWithWatcher.__tlrCloseWatch);
-      delete frameWithWatcher.__tlrCloseWatch;
-    }
-    try {
-      const doc = iframe.contentDocument;
-      if (!doc) return;
-      const styleId = "tlr-modal-opaque-bg";
-      if (!doc.getElementById(styleId)) {
-        const style = doc.createElement("style");
-        style.id = styleId;
-        style.textContent = `
-          html, body, #root { background: #07080E !important; }
-          /* Make modal backdrop opaque so parent page cannot show through iframe. */
-          div[style*="position:absolute"][style*="inset:0"][style*="backdropFilter"] {
-            background: #07080E !important;
-            backdrop-filter: none !important;
-          }
-        `;
-        doc.head.appendChild(style);
-      }
+  const goNew = () => {
+    resetNewSessionForm();
+    setNewSessOpen(true);
+  };
 
-      const isolateModalByTitle = (liveDoc: Document) => {
-        const root = liveDoc.getElementById("root");
-        if (!root) return false;
+  const closeNewModal = () => {
+    setNewSessOpen(false);
+  };
 
-        const titleNode = Array.from(liveDoc.querySelectorAll("div")).find((el) => {
-          const t = (el.textContent || "").trim();
-          return t === "New Backtest Session" || t === "Edit Session";
-        }) as HTMLElement | undefined;
-        if (!titleNode) return false;
-
-        // The title sits in modal header; climb to the nearest "panel-like" container.
-        let panel: HTMLElement | null = titleNode;
-        for (let i = 0; i < 8 && panel; i += 1) {
-          const st = panel.getAttribute("style") || "";
-          if (st.includes("position:relative") && st.includes("display:flex") && st.includes("flex-direction:column")) break;
-          panel = panel.parentElement;
-        }
-        if (!panel) return false;
-
-        const keep = new Set<Element>();
-        keep.add(panel);
-        panel.querySelectorAll("*").forEach((el) => keep.add(el));
-
-        let anc: Element | null = panel;
-        while (anc) {
-          keep.add(anc);
-          if (anc === root) break;
-          anc = anc.parentElement;
-        }
-
-        root.querySelectorAll("*").forEach((el) => {
-          const htmlEl = el as HTMLElement;
-          if (keep.has(el)) {
-            htmlEl.style.visibility = "visible";
-            htmlEl.style.pointerEvents = "";
-          } else {
-            htmlEl.style.visibility = "hidden";
-            htmlEl.style.pointerEvents = "none";
-          }
-        });
-        return true;
-      };
-
-      let seenModal = false;
-      frameWithWatcher.__tlrCloseWatch = window.setInterval(() => {
-        const liveDoc = iframe.contentDocument;
-        if (!liveDoc) return;
-        const hasModal = isolateModalByTitle(liveDoc) || !!liveDoc.querySelector('div[style*="z-index: 99999"], div[style*="z-index:99999"]');
-        if (hasModal) {
-          seenModal = true;
-          return;
-        }
-        if (seenModal) {
-          if (frameWithWatcher.__tlrCloseWatch) {
-            window.clearInterval(frameWithWatcher.__tlrCloseWatch);
-            delete frameWithWatcher.__tlrCloseWatch;
-          }
-          setIframeUrl(null);
-          loadSessions();
-        }
-      }, 180);
-    } catch {
-      // Ignore cross-document access failures.
-    }
-  }, [loadSessions]);
+  const startNewSession = () => {
+    const mode = newSessType === "propfirm" ? "propfirm" : "backtest";
+    window.location.href = `/chart/index.html?mode=${mode}`;
+  };
 
   const openSession = (s: Session) => {
     try {
@@ -777,11 +702,30 @@ export function BacktestView() {
         </div>
       </div>
 
-      {/* ── New session iframe overlay ── */}
-      {iframeUrl && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(0,0,0,0.52)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div style={{ width: "min(980px, calc(100vw - 48px))", height: "min(690px, calc(100vh - 48px))", border: `1px solid ${c.brH}`, boxShadow: "0 20px 80px rgba(0,0,0,0.65)", background: "#05070d" }}>
-            <iframe ref={iframeRef} onLoad={forceModalOnlyInIframe} title="New Session" src={iframeUrl} style={{ width: "100%", height: "100%", border: "none" }} />
+      {/* ── Standalone New Session modal ── */}
+      {newSessOpen && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(4,5,10,0.72)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={closeNewModal}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(680px, 92vw)", background: c.sf, border: `1px solid ${c.brH}`, boxShadow: "0 24px 72px rgba(0,0,0,0.9)", display: "flex", flexDirection: "column", fontFamily: F }}>
+            <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`, flexShrink: 0 }} />
+            <div style={{ height: 44, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", borderBottom: `1px solid ${c.br}` }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: c.tx, letterSpacing: "0.04em" }}>New Backtest Session</div>
+              <div onClick={closeNewModal} style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: c.ts }}>×</div>
+            </div>
+            <div style={{ padding: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <input value={newSessName} onChange={(e) => setNewSessName(e.target.value)} placeholder="Session name" style={{ background: c.el, border: `1px solid ${c.brH}`, color: c.tx, fontSize: 11, padding: "0 8px", height: 30, fontFamily: F }} />
+              <input value={newSessSymbol} onChange={(e) => setNewSessSymbol(e.target.value)} placeholder="Symbol (e.g. EURUSD)" style={{ background: c.el, border: `1px solid ${c.brH}`, color: c.tx, fontSize: 11, padding: "0 8px", height: 30, fontFamily: F }} />
+              <select value={newSessType} onChange={(e) => setNewSessType(e.target.value as "standard" | "propfirm")} style={{ background: c.el, border: `1px solid ${c.brH}`, color: c.tx, fontSize: 11, padding: "0 8px", height: 30, fontFamily: F }}>
+                <option value="standard">Standard</option>
+                <option value="propfirm">Prop Firm</option>
+              </select>
+              <input value={newSessBalance} onChange={(e) => setNewSessBalance(e.target.value)} placeholder="Starting balance" style={{ background: c.el, border: `1px solid ${c.brH}`, color: c.tx, fontSize: 11, padding: "0 8px", height: 30, fontFamily: F }} />
+              <input type="date" value={newSessStartDate} onChange={(e) => setNewSessStartDate(e.target.value)} style={{ background: c.el, border: `1px solid ${c.brH}`, color: c.tx, fontSize: 11, padding: "0 8px", height: 30, fontFamily: F }} />
+              <input type="date" value={newSessEndDate} onChange={(e) => setNewSessEndDate(e.target.value)} style={{ background: c.el, border: `1px solid ${c.brH}`, color: c.tx, fontSize: 11, padding: "0 8px", height: 30, fontFamily: F }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, padding: "0 16px 14px" }}>
+              <button onClick={closeNewModal} style={{ height: 30, padding: "0 14px", border: `1px solid ${c.brH}`, background: "transparent", color: c.ts, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+              <button onClick={startNewSession} style={{ height: 30, padding: "0 14px", border: "none", background: "linear-gradient(135deg,#1e38e8,#4A6AFF)", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Start Session</button>
+            </div>
           </div>
         </div>
       )}
