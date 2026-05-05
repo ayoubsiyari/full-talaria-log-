@@ -17184,7 +17184,7 @@ class Chart {
                 const changePercent = (change / candle.o) * 100;
                 const chartChangeElem = document.getElementById('chartChange' + idSuffix);
                 if (chartChangeElem) {
-                    chartChangeElem.textContent = `${change >= 0 ? '+' : ''}${formatPrice(Math.abs(change))} (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)`;
+                    chartChangeElem.textContent = `${formatPrice(Math.abs(change))} (${Math.abs(changePercent).toFixed(2)}%)`;
                     chartChangeElem.className = change >= 0 ? 'ohlc-change positive' : 'ohlc-change negative';
                     chartChangeElem.style.color = change >= 0 ? _ohlcUp : _ohlcDn;
                     // Enforce showBarChangeValues flag
@@ -19610,7 +19610,7 @@ class Chart {
         const changePercent = (change / candle.o) * 100;
         const chartChangeElem = document.getElementById('chartChange' + idSuffix);
         if (chartChangeElem) {
-            chartChangeElem.textContent = `${change >= 0 ? '+' : ''}${formatPrice(Math.abs(change))} (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)`;
+            chartChangeElem.textContent = `${formatPrice(Math.abs(change))} (${Math.abs(changePercent).toFixed(2)}%)`;
             chartChangeElem.className = change >= 0 ? 'ohlc-change positive' : 'ohlc-change negative';
             chartChangeElem.style.color = change >= 0 ? _ohlcUp : _ohlcDn;
             // Enforce showBarChangeValues flag
