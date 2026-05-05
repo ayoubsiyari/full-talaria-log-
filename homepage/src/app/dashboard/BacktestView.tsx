@@ -620,13 +620,12 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                 </div>
               </div>
               <div style={{ fontSize: 8, color: c.tm }}>{(totalDays / 365).toFixed(1)} yrs equivalent</div>
-              <div style={{ flex: 1 }} />
               {(() => {
                 const dcols = 20, ds = 5, dg = 2, step = ds + dg;
                 const rows = Math.ceil(dotsN / dcols) || 1;
                 const svgW = dcols * step - dg, svgH = rows * step - dg;
                 return (
-                  <svg width={svgW} height={svgH} style={{ display: "block", margin: "0 auto 48px" }}>
+                  <svg width={svgW} height={svgH} style={{ display: "block", margin: "10px auto 6px", flexShrink: 0 }}>
                     {Array.from({ length: dotsN }).map((_, i) => (
                       <rect key={i} x={(i % dcols) * step} y={Math.floor(i / dcols) * step} width={ds} height={ds} fill={c.acL} opacity={0.75} />
                     ))}
