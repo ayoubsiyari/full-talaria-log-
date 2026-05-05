@@ -746,10 +746,9 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
       await onSaved?.();
       closeNewSess();
       if (sessTradingMode === "prop") {
-        const target = id != null
-          ? `/backtest/challenge?sessionId=${encodeURIComponent(String(id))}`
-          : "/backtest/challenge";
-        window.location.href = target;
+        const mode = "propfirm";
+        const q = id != null ? `?mode=${encodeURIComponent(mode)}&sessionId=${encodeURIComponent(String(id))}` : `?mode=${encodeURIComponent(mode)}`;
+        window.location.href = `/chart/index.html${q}`;
       } else {
         const mode = "backtest";
         const q = id != null ? `?mode=${encodeURIComponent(mode)}&sessionId=${encodeURIComponent(String(id))}` : `?mode=${encodeURIComponent(mode)}`;

@@ -1174,7 +1174,7 @@ async function handleFormSubmit(e) {
         po = new URLSearchParams(window.location.search).get('parentOrigin');
     } catch (e) {}
     var appOrigin = (po && String(po).replace(/\/$/, '')) || window.location.origin;
-    var targetUrl = appOrigin + '/backtest/challenge?sessionId=' + encodeURIComponent(String(sessionId));
+    var targetUrl = appOrigin + '/chart/index.html?mode=propfirm&sessionId=' + encodeURIComponent(String(sessionId));
 
     var inIframe = window.self !== window.top;
     if (!inIframe) {
