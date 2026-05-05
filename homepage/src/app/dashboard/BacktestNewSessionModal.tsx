@@ -885,6 +885,20 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                           return acc;
                         }, []);
                         const catMap={"Forex":"Forex","Futures":"Futures","Crypto":"Crypto","Stocks":"Equities"};
+                        const MAJOR_FOREX=["EURUSD","GBPUSD","USDJPY","USDCHF","AUDUSD","NZDUSD","USDCAD","EURGBP","EURJPY","GBPJPY","EURCHF","AUDJPY","CADJPY","NZDJPY","GBPCHF","EURAUD","EURNZD","AUDNZD","AUDCAD","GBPAUD","GBPNZD","XAUUSD","XAGUSD"];
+                        const MAJOR_FUTURES=["ES","NQ","MNQ","MES","YM","RTY","MYM","M2K","CL","GC","SI","NG","ZB","ZN","ZF","ZT","6E","6B","6J","6A","6C","MGC","MCL"];
+                        const MAJOR_CRYPTO=["BTCUSD","ETHUSD","SOLUSD","XRPUSD","BNBUSD","ADAUSD","DOGEUSD","DOTUSD","AVAXUSD","LINKUSD","MATICUSD","LTCUSD"];
+                        const MAJOR_STOCKS=["AAPL","MSFT","GOOGL","GOOG","AMZN","META","NVDA","TSLA","AMD","SPY","QQQ","IWM","DIA","JPM","V","JNJ"];
+                        const sortSymbolsMajorFirst=(pool)=>{
+                          const rank=(sym,cat)=>{
+                            const s=String(sym||"").toUpperCase();
+                            const list=cat==="Forex"?MAJOR_FOREX:cat==="Futures"?MAJOR_FUTURES:cat==="Crypto"?MAJOR_CRYPTO:cat==="Equities"?MAJOR_STOCKS:null;
+                            if(!list)return 50000;
+                            const i=list.indexOf(s);
+                            return i>=0?i:50000;
+                          };
+                          return [...pool].sort((a,b)=>{const ra=rank(a.sym,a.cat),rb=rank(b.sym,b.cat);if(ra!==rb)return ra-rb;return a.sym.localeCompare(b.sym);});
+                        };
                         const catOf=sym=>allSymbols.find(s=>s.sym===sym)?.cat||"";
                         const assetLabel=cat=>({"Forex":"Forex","Futures":"Futures","Crypto":"Crypto","Equities":"Stocks"}[cat]||cat);
                         const totalSelected=newSessTickers.length+newSessSupportTickers.length;
@@ -1063,7 +1077,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                                       <div className="tlr-scroll" style={{overflowY:"auto",flex:1}}>
                                         {(()=>{
                                           const catKey=catMap[newSessAssetClass]||newSessAssetClass;
-                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!newSessSymPickerSearch||s.sym.toLowerCase().includes(newSessSymPickerSearch.toLowerCase())));
+                                          const pool=sortSymbolsMajorFirst(allSymbols.filter(s=>s.cat===catKey&&(!newSessSymPickerSearch||s.sym.toLowerCase().includes(newSessSymPickerSearch.toLowerCase()))));
                                           if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
                                           return pool.map(s=>{
                                             const isChk=newSessTickers.includes(s.sym);
@@ -1172,7 +1186,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                                       <div className="tlr-scroll" style={{overflowY:"auto",flex:1}}>
                                         {(()=>{
                                           const catKey=catMap[newSessSupPickerCat]||newSessSupPickerCat;
-                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!newSessSupPickerSearch||s.sym.toLowerCase().includes(newSessSupPickerSearch.toLowerCase())));
+                                          const pool=sortSymbolsMajorFirst(allSymbols.filter(s=>s.cat===catKey&&(!newSessSupPickerSearch||s.sym.toLowerCase().includes(newSessSupPickerSearch.toLowerCase()))));
                                           if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
                                           return pool.map(s=>{
                                             const isChk=newSessSupportTickers.includes(s.sym);
