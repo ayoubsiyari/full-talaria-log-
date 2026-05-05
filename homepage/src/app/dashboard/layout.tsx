@@ -3,6 +3,7 @@
 import React from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useLanguage } from "../LanguageProvider";
+import { BacktestView } from "./BacktestView";
 import "./dashboard-shell.css";
 
 type User = {
@@ -238,7 +239,6 @@ const VIEW_TITLES: Record<string, string> = {
 
 const EXTERNAL_VIEWS: Record<string, string> = {
   journal: "/journal/dashboard",
-  backtest: "/backtest/",
   strategies: "/strategies-lab/",
   resources: "/bootcamp/",
 };
@@ -371,10 +371,20 @@ export default function DashboardLayout({
           {/* Internal Next.js pages (dashboard, cot, support) */}
           <div style={{
             position: "absolute", inset: 0, overflowY: "auto",
-            visibility: !EXTERNAL_VIEWS[activeView] ? "visible" : "hidden",
-            pointerEvents: !EXTERNAL_VIEWS[activeView] ? "auto" : "none",
+            visibility: !EXTERNAL_VIEWS[activeView] && activeView !== "backtest" ? "visible" : "hidden",
+            pointerEvents: !EXTERNAL_VIEWS[activeView] && activeView !== "backtest" ? "auto" : "none",
           }}>
             {children}
+          </div>
+
+          {/* BacktestView inline */}
+          <div style={{
+            position: "absolute", inset: 0,
+            opacity: activeView === "backtest" ? 1 : 0,
+            pointerEvents: activeView === "backtest" ? "auto" : "none",
+            transition: "opacity 0.15s",
+          }}>
+            <BacktestView />
           </div>
 
           {/* External views loaded as full-page iframes */}

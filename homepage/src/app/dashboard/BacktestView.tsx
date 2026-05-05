@@ -516,7 +516,7 @@ export function BacktestView() {
                 const pnlPos = hasPnl && (k?.net_pnl ?? 0) >= 0;
                 const stripeCol = isProp ? c.gold : c.acL;
                 const pnlCol = hasPnl ? (pnlPos ? c.gn : c.rd) : c.tm;
-                const isH = sessHov === sess.id;
+                const isH = hov === `card_${sess.id}`;
                 const createdStr = sess.created_at ? new Date(sess.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
                 const cfg = sess.config as Record<string, string> | undefined;
                 return (

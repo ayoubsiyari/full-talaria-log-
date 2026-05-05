@@ -12589,8 +12589,10 @@ class Chart {
         this.ctx.closePath();
         this.ctx.fill();
 
+        // Auto-contrast text so white/black price-line colors remain readable
+        const labelTextColor = this.isLightColor(bgColor) ? '#111111' : '#FFFFFF';
         // Draw price text centered in top section
-        this.ctx.fillStyle = '#FFFFFF';
+        this.ctx.fillStyle = labelTextColor;
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
         this.ctx.font = `500 ${this.chartSettings.scaleTextSize}px Roboto`;
@@ -12598,7 +12600,7 @@ class Chart {
 
         // Draw countdown text in bottom section if in replay mode
         if (inReplayMode) {
-            this.ctx.fillStyle = '#FFFFFF';
+            this.ctx.fillStyle = labelTextColor;
             this.ctx.font = `600 ${this.chartSettings.scaleTextSize - 1}px Roboto`;
             this.ctx.fillText(countdownText, labelX + labelWidth / 2, labelY + priceHeight + countdownHeight / 2);
         }
