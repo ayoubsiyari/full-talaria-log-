@@ -200,11 +200,17 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
     asset: "Forex" | "Futures" | "Crypto" | "Stocks";
   };
 
+  type StrategyOption = {
+    value: string;
+    label: string;
+    variables: unknown[];
+  };
+
   const [availFiles, setAvailFiles] = useState<AvailFile[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
   const [fileMetaLoaded, setFileMetaLoaded] = useState<Record<string, boolean>>({});
-  const [myStrategies, setMyStrategies] = useState<string[]>([]);
+  const [myStrategies, setMyStrategies] = useState<StrategyOption[]>([]);
 
   useEffect(() => {
     if (!open || filesLoading || availFiles.length > 0) return;
@@ -326,8 +332,16 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
       .then(r => (r.ok ? r.json() : null))
       .then((payload: any) => {
         const list = Array.isArray(payload?.strategies) ? payload.strategies : [];
-        const names = list.map((s: any) => String(s?.name || "").trim()).filter(Boolean);
-        if (names.length) setMyStrategies(names);
+        const options = list
+          .map((s: any) => {
+            const id = s?.id;
+            const name = String(s?.name || "").trim();
+            if (!id || !name) return null;
+            const vars = Array.isArray(s?.strategy_definition?.variables) ? s.strategy_definition.variables : [];
+            return { value: `strategy:${id}`, label: name, variables: vars } as StrategyOption;
+          })
+          .filter((x: StrategyOption | null): x is StrategyOption => !!x);
+        if (options.length) setMyStrategies(options);
       })
       .catch(() => {
         // Keep modal usable if strategy service is unavailable.
@@ -348,6 +362,11 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
   }).filter(Boolean);
 
   const selectedFiles = availFiles.filter(f => newSessFiles.includes(f.id));
+  const strategyMap = myStrategies.reduce((acc: Record<string, StrategyOption>, s) => {
+    acc[s.value] = s;
+    return acc;
+  }, {});
+  const selectedStrategy = strategyMap[newSessPlaybook] || null;
   const availableStartIso = selectedFiles
     .map(f => f.from)
     .filter(Boolean)
@@ -489,7 +508,9 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
       typeof newSessPlaybook === "string" && newSessPlaybook.startsWith("strategy:")
         ? parseInt(newSessPlaybook.split(":")[1] || "", 10) || null
         : null;
-    const playbook_display = newSessPlaybook || "General";
+    const strategy_variables = selectedStrategy?.variables || [];
+    const strategy_name = selectedStrategy?.label || (newSessPlaybook || "General");
+    const playbook_display = strategy_name;
     const startBalance = String(newSessCapital || "10000");
     const accountCurrency = newSessCurrency || "USD";
     const fileId = primaryFile ? Number(primaryFile.id) : null;
@@ -547,8 +568,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
       playbook: newSessPlaybook || "",
       playbook_display,
       strategy_id,
-      strategy_variables: [],
-      strategy_name: newSessPlaybook || "",
+      strategy_variables,
+      strategy_name,
       fileId,
       fileName,
       files: selectedFilesArray,
@@ -705,9 +726,19 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                       {(()=>{
                         const myStrats = myStrategies.length
                           ? myStrategies
-                          : ["EMA Crossover","London Breakout","VWAP Scalp","Golden Cross Trend","Volume Breakout"];
-                        const commStrats=["Momentum Surge","ICT Model A","SMC Liquidity Grab"];
-                        const allGroups=[["My Strategies",myStrats],["Saved Strategies",commStrats]];
+                          : [
+                              { value: "EMA Crossover", label: "EMA Crossover", variables: [] },
+                              { value: "London Breakout", label: "London Breakout", variables: [] },
+                              { value: "VWAP Scalp", label: "VWAP Scalp", variables: [] },
+                              { value: "Golden Cross Trend", label: "Golden Cross Trend", variables: [] },
+                              { value: "Volume Breakout", label: "Volume Breakout", variables: [] },
+                            ];
+                        const commStrats=[
+                          { value: "Momentum Surge", label: "Momentum Surge", variables: [] },
+                          { value: "ICT Model A", label: "ICT Model A", variables: [] },
+                          { value: "SMC Liquidity Grab", label: "SMC Liquidity Grab", variables: [] },
+                        ];
+                        const allGroups:[string, StrategyOption[]][]=[["My Strategies",myStrats],["Saved Strategies",commStrats]];
                         return(<>
                           {/* Session name + strategy: left 50% column, New Strategy button beside it */}
                           <div style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:10}}>
@@ -724,7 +755,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                                 <div onClick={(e)=>{e.stopPropagation();if(newSessStratDropOpen){setNewSessStratDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+3,left:r.left/Z,width:r.width/Z});setNewSessStratDropOpen(true);setDropdown(null);}}}
                                   style={{...inp({padding:"0 24px 0 8px",cursor:"default"}),display:"flex",alignItems:"center",border:`1px solid ${newSessStratDropOpen?c.acB:c.brH}`,position:"relative",userSelect:"none"}}>
                                   <span style={{flex:1,color:newSessPlaybook?c.tx:c.tm,fontSize:11,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                                    {newSessPlaybook||"— None —"}
+                                    {selectedStrategy?.label || newSessPlaybook || "— None —"}
                                   </span>
                                   <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${newSessStratDropOpen?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                 </div>
@@ -741,11 +772,11 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                                     {allGroups.map(([groupLabel,items])=>(
                                       <div key={groupLabel}>
                                         <div style={{padding:"5px 10px 3px",fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",borderTop:"1px solid rgba(140,160,255,0.08)"}}>{groupLabel}</div>
-                                        {items.map(s=>{const isAct=newSessPlaybook===s;const isH=newSessStratHov===s;return(
-                                          <div key={s} onClick={()=>{setNewSessPlaybook(s);setNewSessStratDropOpen(false);}} onMouseEnter={()=>setNewSessStratHov(s)} onMouseLeave={()=>setNewSessStratHov(null)}
+                                        {items.map(s=>{const isAct=newSessPlaybook===s.value;const isH=newSessStratHov===s.value;return(
+                                          <div key={s.value} onClick={()=>{setNewSessPlaybook(s.value);setNewSessStratDropOpen(false);}} onMouseEnter={()=>setNewSessStratHov(s.value)} onMouseLeave={()=>setNewSessStratHov(null)}
                                             style={{display:"flex",alignItems:"center",padding:"5px 10px 5px 14px",cursor:"default",position:"relative",background:isAct?c.acD:isH?"rgba(255,255,255,0.03)":"transparent",transition:"background 0.1s"}}>
                                             {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                                            <span style={{fontSize:11,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F}}>{s}</span>
+                                            <span style={{fontSize:11,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F}}>{s.label}</span>
                                           </div>
                                         );})}
                                       </div>
