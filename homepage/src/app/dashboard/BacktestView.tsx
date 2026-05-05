@@ -201,8 +201,13 @@ function durationLabelMonths(start?: string, end?: string): string | null {
   return `${durMo}mo`;
 }
 
+export type BacktestViewProps = {
+  /** Registers open-modal handler so the dashboard shell can show “New Session” in the top header */
+  onProvideOpenNewSession?: (fn: (() => void) | null) => void;
+};
+
 /* ── Main component ── */
-export function BacktestView() {
+export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [kpis, setKpis] = useState<Record<number, Kpis>>({});
   const [loading, setLoading] = useState(true);
@@ -250,6 +255,13 @@ export function BacktestView() {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [cardSortOpen]);
+
+  useEffect(() => {
+    if (!onProvideOpenNewSession) return;
+    const open = () => setNewSessOpen(true);
+    onProvideOpenNewSession(open);
+    return () => onProvideOpenNewSession(null);
+  }, [onProvideOpenNewSession]);
 
   /* ── Derived stats ── */
   const propSess = sessions.filter(s => s.session_type === "propfirm");
@@ -401,14 +413,15 @@ export function BacktestView() {
   const dotsN = Math.min(Math.ceil(totalDays / 30), 56);
 
   const daysTestedDisplay = totalDays.toLocaleString();
-  /** Shrink headline figure as digit count grows so “Days Tested” stays one line in the narrow tile */
+  /** Narrow tile (~165px): keep label on its own row; scale figure so long counts never spill */
   const daysTestedHeadPx =
-    daysTestedDisplay.length <= 7 ? 18
-      : daysTestedDisplay.length <= 9 ? 15
-        : daysTestedDisplay.length <= 11 ? 13
-          : daysTestedDisplay.length <= 13 ? 11
-            : daysTestedDisplay.length <= 15 ? 10
-              : 9;
+    daysTestedDisplay.length <= 5 ? 16
+      : daysTestedDisplay.length <= 7 ? 14
+        : daysTestedDisplay.length <= 9 ? 12
+          : daysTestedDisplay.length <= 11 ? 11
+            : daysTestedDisplay.length <= 13 ? 10
+              : daysTestedDisplay.length <= 15 ? 9
+                : 8;
 
   if (loading) {
     return (
@@ -425,17 +438,9 @@ export function BacktestView() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: c.bg, fontFamily: F, overflow: "hidden" }}>
 
-      {/* ── Sub-header: title + New Session button ── */}
+      {/* ── Sub-header (primary action moved to dashboard top header) ── */}
       <div style={{ height: 48, flexShrink: 0, display: "flex", alignItems: "center", padding: "0 32px", borderBottom: `1px solid ${c.brH}`, background: c.el }}>
         <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.06em", color: c.ts }}>BACKTESTING SESSIONS</span>
-        <div style={{ flex: 1 }} />
-        <div onClick={goNew}
-          onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.filter = "brightness(1.15)"}
-          onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.filter = "brightness(1)"}
-          style={{ display: "flex", alignItems: "center", gap: 6, height: 32, padding: "0 16px", background: "linear-gradient(135deg,#1e38e8,#4A6AFF)", cursor: "pointer", fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.96)", letterSpacing: "0.07em", boxShadow: "0 2px 10px rgba(38,67,247,0.35)", userSelect: "none" }}>
-          <svg width={11} height={11} viewBox="0 0 24 24" fill="none"><line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>
-          New Session
-        </div>
       </div>
 
       {/* ── Scrollable body ── */}
@@ -600,20 +605,23 @@ export function BacktestView() {
             {/* Tile 4: Days Tested dots */}
             <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)` }} />
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 4, flexWrap: "nowrap" as const, minWidth: 0 }}>
-                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const, whiteSpace: "nowrap" as const, flexShrink: 0 }}>
+              <div style={{ marginBottom: 4, minWidth: 0 }}>
+                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const, whiteSpace: "nowrap" as const }}>
                   Days Tested
                 </div>
                 <div style={{
+                  marginTop: 3,
                   fontSize: daysTestedHeadPx,
                   fontWeight: 800,
                   color: c.tx,
                   fontVariantNumeric: "tabular-nums",
                   whiteSpace: "nowrap" as const,
                   lineHeight: 1.1,
-                  flexShrink: 1,
-                  minWidth: 0,
                   textAlign: "right" as const,
+                  width: "100%",
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}>
                   {daysTestedDisplay}
                 </div>

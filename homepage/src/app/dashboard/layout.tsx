@@ -283,6 +283,10 @@ export default function DashboardLayout({
   const profileWrapRef = React.useRef<HTMLDivElement>(null);
   const pathname = usePathname() || "";
   const router = useRouter();
+  const openBacktestNewSessionRef = React.useRef<(() => void) | null>(null);
+  const registerBacktestOpenNewSession = React.useCallback((fn: (() => void) | null) => {
+    openBacktestNewSessionRef.current = fn;
+  }, []);
 
   React.useEffect(() => {
     fetchMe()
@@ -360,6 +364,41 @@ export default function DashboardLayout({
         <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.92)", flexShrink: 0 }}>{pageTitle}</span>
         {/* Right side — Alerts / email / Logout live under sidebar Profile */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, paddingRight: 16 }}>
+          {activeView === "backtest" ? (
+            <button
+              type="button"
+              onClick={() => openBacktestNewSessionRef.current?.()}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                height: 34,
+                padding: "0 16px",
+                background: "linear-gradient(135deg,#1e38e8,#4A6AFF)",
+                border: "none",
+                borderRadius: 6,
+                cursor: "pointer",
+                fontFamily: F,
+                fontSize: 11,
+                fontWeight: 800,
+                color: "rgba(255,255,255,0.96)",
+                letterSpacing: "0.07em",
+                boxShadow: "0 2px 10px rgba(38,67,247,0.35)",
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1.12)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1)";
+              }}>
+              <svg width={11} height={11} viewBox="0 0 24 24" fill="none" aria-hidden>
+                <line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              New Session
+            </button>
+          ) : null}
           {user?.role === "admin" && (
             <a href="/dashboard/admin/" style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.50)", textDecoration: "none", padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(140,160,255,0.12)", fontFamily: F }}>
               Admin
@@ -481,7 +520,7 @@ export default function DashboardLayout({
               pointerEvents: "auto",
               transition: "opacity 0.15s",
             }}>
-              <BacktestView />
+              <BacktestView onProvideOpenNewSession={registerBacktestOpenNewSession} />
             </div>
           ) : null}
 
