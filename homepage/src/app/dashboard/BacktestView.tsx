@@ -408,6 +408,9 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
     .slice(0, TRADE_CHART_MAX_BARS);
   const trMax = Math.max(1, ...trBars.map(s => kpis[s.id]?.trades || 0));
 
+  /* ── Dot grid (Days Tested tile): ≈1 square per month, capped for layout ── */
+  const dotsN = Math.min(Math.ceil(totalDays / 30), 56);
+
   const daysTestedDisplay = totalDays.toLocaleString();
   /** Narrow tile: figure stays close to the 9px title (baseline row); scale down for long counts */
   const daysTestedHeadPx =
@@ -593,7 +596,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               </div>
             </div>
 
-            {/* Tile 4: Days Tested — headline + single calendar symbol (no month grid) */}
+            {/* Tile 4: Days Tested dots */}
             <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)` }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 4, minWidth: 0 }}>
@@ -617,13 +620,20 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                 </div>
               </div>
               <div style={{ fontSize: 8, color: c.tm }}>{(totalDays / 365).toFixed(1)} yrs equivalent</div>
-              <div style={{ flex: 1, minHeight: 52, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg width={40} height={40} viewBox="0 0 24 24" fill="none" aria-hidden style={{ opacity: 0.88 }}>
-                  <rect x="3.5" y="5.5" width="17" height="15" rx="2" stroke={c.acL} strokeWidth="1.35" />
-                  <path d="M3.5 10.5h17" stroke={c.acL} strokeWidth="1.35" />
-                  <path d="M8 4v4M16 4v4" stroke={c.acL} strokeWidth="1.35" strokeLinecap="round" />
-                </svg>
-              </div>
+              <div style={{ flex: 1 }} />
+              {(() => {
+                const dcols = 20, ds = 5, dg = 2, step = ds + dg;
+                const rows = Math.ceil(dotsN / dcols) || 1;
+                const svgW = dcols * step - dg, svgH = rows * step - dg;
+                return (
+                  <svg width={svgW} height={svgH} style={{ display: "block", margin: "0 auto 48px" }}>
+                    {Array.from({ length: dotsN }).map((_, i) => (
+                      <rect key={i} x={(i % dcols) * step} y={Math.floor(i / dcols) * step} width={ds} height={ds} fill={c.acL} opacity={0.75} />
+                    ))}
+                  </svg>
+                );
+              })()}
+              <div style={{ fontSize: 8, color: c.tm, marginTop: 4 }}>each square ≈ 1 month</div>
             </div>
 
             {/* Tile 5: Tickers Tested */}
@@ -945,28 +955,28 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                       )}
                     </div>
 
-                    {/* Row 3: Mode | Asset | Symbols */}
-                    <div style={{ padding: "7px 10px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${c.brH}` }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: isProp ? c.gold : c.acL, fontFamily: F, flexShrink: 0 }}>
+                    {/* Row 3: Mode | Asset | Symbols (symbols top-aligned, full text — not centered) */}
+                    <div style={{ padding: "7px 10px", display: "flex", alignItems: "flex-start", gap: 8, borderBottom: `1px solid ${c.brH}` }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: isProp ? c.gold : c.acL, fontFamily: F, flexShrink: 0, paddingTop: 1 }}>
                         {isProp ? "Prop Firm" : "Standard"}
                       </div>
-                      <div style={{ width: 1, height: 12, background: c.brH, flexShrink: 0 }} />
-                      <div style={{ fontSize: 10, fontWeight: 600, color: c.ts, fontFamily: F, flexShrink: 0 }}>{cfgS?.asset_class || "—"}</div>
-                      <div style={{ width: 1, height: 12, background: c.brH, flexShrink: 0 }} />
-                      <div style={{ flex: 1, overflow: "hidden", minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <div style={{ width: 1, height: 12, background: c.brH, flexShrink: 0, marginTop: 3 }} />
+                      <div style={{ fontSize: 10, fontWeight: 600, color: c.ts, fontFamily: F, flexShrink: 0, paddingTop: 1 }}>{cfgS?.asset_class || "—"}</div>
+                      <div style={{ width: 1, height: 12, background: c.brH, flexShrink: 0, marginTop: 3 }} />
+                      <div style={{ flex: 1, overflow: "hidden", minWidth: 0, display: "flex", alignItems: "flex-start", justifyContent: "flex-start", paddingTop: 1 }}>
                         {tickerRows.length === 0 ? (
                           sess.symbol ? (
-                            <span style={{ fontSize: 9, fontWeight: 600, color: c.ts, fontFamily: F, textAlign: "center", maxWidth: "100%", overflowWrap: "anywhere", lineHeight: 1.35 }}>{sess.symbol}</span>
+                            <span style={{ fontSize: 9, fontWeight: 600, color: c.ts, fontFamily: F, maxWidth: "100%", overflowWrap: "anywhere", lineHeight: 1.35 }}>{sess.symbol}</span>
                           ) : (
-                            <span style={{ fontSize: 9, color: c.tm, fontFamily: F, textAlign: "center" }}>—</span>
+                            <span style={{ fontSize: 9, color: c.tm, fontFamily: F }}>—</span>
                           )
                         ) : (
                           <div style={{
                             display: "flex",
                             flexWrap: "wrap",
-                            justifyContent: "center",
-                            alignContent: "center",
-                            alignItems: "center",
+                            justifyContent: "flex-start",
+                            alignContent: "flex-start",
+                            alignItems: "flex-start",
                             gap: "4px 10px",
                             width: "100%",
                             maxWidth: "100%",
@@ -983,7 +993,6 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                                   fontVariantNumeric: "tabular-nums",
                                   lineHeight: 1.35,
                                   overflowWrap: "anywhere",
-                                  textAlign: "center",
                                 }}>
                                 {r.sym}
                               </span>
@@ -1166,11 +1175,11 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                       <div style={{
                         width: 132,
                         flexShrink: 0,
-                        padding: "0 6px",
+                        padding: "0 8px",
                         boxSizing: "border-box",
                         display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        alignItems: "flex-start",
+                        justifyContent: "flex-start",
                         overflow: "hidden",
                         alignSelf: "stretch",
                       }}>
@@ -1181,21 +1190,20 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                               fontWeight: 700,
                               color: c.ts,
                               background: "rgba(255,255,255,0.07)",
-                              padding: "2px 8px",
+                              padding: "2px 6px",
                               border: `1px solid ${c.br}`,
                               overflowWrap: "anywhere",
                               lineHeight: 1.3,
-                              textAlign: "center",
                               maxWidth: "100%",
                             }}>{sess.symbol}</span>
-                          ) : <span style={{ fontSize: 10, color: c.tm, textAlign: "center" }}>—</span>
+                          ) : <span style={{ fontSize: 10, color: c.tm }}>—</span>
                         ) : (
                           <div style={{
                             display: "flex",
                             flexWrap: "wrap",
-                            justifyContent: "center",
-                            alignContent: "center",
-                            alignItems: "center",
+                            justifyContent: "flex-start",
+                            alignContent: "flex-start",
+                            alignItems: "flex-start",
                             gap: "4px 8px",
                             width: "100%",
                             maxWidth: "100%",
@@ -1211,7 +1219,6 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                                   fontVariantNumeric: "tabular-nums",
                                   lineHeight: 1.35,
                                   overflowWrap: "anywhere",
-                                  textAlign: "center",
                                 }}>
                                 {r.sym}
                               </span>
