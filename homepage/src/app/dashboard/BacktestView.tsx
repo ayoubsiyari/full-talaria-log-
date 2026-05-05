@@ -202,21 +202,35 @@ export function BacktestView() {
     try {
       const doc = iframe.contentDocument;
       if (!doc) return;
-      const styleId = "tlr-modal-backdrop-fix";
-      if (!doc.getElementById(styleId)) {
-        const style = doc.createElement("style");
-        style.id = styleId;
-        style.textContent = `
-          /* Modal wrapper itself has no background in SessionsView;
-             the backdrop is a child div with absolute inset + blur. */
-          div[style*="position:absolute"][style*="inset:0"][style*="backdropFilter"] {
-            background: #07080E !important;
-            opacity: 1 !important;
-            backdrop-filter: none !important;
+      const applyStrictModalOnly = () => {
+        const root = doc.getElementById("root");
+        const modal = doc.querySelector('div[style*="z-index: 99999"], div[style*="z-index:99999"]') as HTMLElement | null;
+        if (!root || !modal) return false;
+
+        const keep = new Set<Element>();
+        // Keep modal descendants.
+        modal.querySelectorAll("*").forEach((el) => keep.add(el));
+        keep.add(modal);
+        // Keep ancestors up to root.
+        let cur: Element | null = modal;
+        while (cur) {
+          keep.add(cur);
+          if (cur === root) break;
+          cur = cur.parentElement;
+        }
+
+        root.querySelectorAll("*").forEach((el) => {
+          const htmlEl = el as HTMLElement;
+          if (keep.has(el)) {
+            htmlEl.style.visibility = "visible";
+            htmlEl.style.pointerEvents = "";
+          } else {
+            htmlEl.style.visibility = "hidden";
+            htmlEl.style.pointerEvents = "none";
           }
-        `;
-        doc.head.appendChild(style);
-      }
+        });
+        return true;
+      };
 
       let seenModal = false;
       frameWithWatcher.__tlrCloseWatch = window.setInterval(() => {
@@ -224,6 +238,7 @@ export function BacktestView() {
         if (!liveDoc) return;
         const hasModal = !!liveDoc.querySelector('div[style*="z-index: 99999"], div[style*="z-index:99999"]');
         if (hasModal) {
+          applyStrictModalOnly();
           seenModal = true;
           return;
         }
