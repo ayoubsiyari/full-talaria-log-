@@ -16485,7 +16485,7 @@ const TalariaV8bLive = () => {
             {/* Speed — 15-step slide bar */}
             {(()=>{const steps=[1,2,3,5,10,15,20,25,30,50,60,70,80,90,100];const si=steps.reduce((best,v,i)=>Math.abs(v-speed)<Math.abs(steps[best]-speed)?i:best,0);const pct=si/14*100;return(
             <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 6px",width:140,flexShrink:0}}>
-              <span style={{fontSize:14,fontWeight:800,color:c.acL,fontVariantNumeric:"tabular-nums",width:27,flexShrink:0,textAlign:"right",userSelect:"none",letterSpacing:"-0.02em",transition:"transform 0.1s ease",transform:hov==="rp-spd-dn"?`scale(1.18) translateY(-2px)`:`translateY(-2px)`,display:"inline-block"}}>{steps[si]}<span style={{fontSize:16,fontWeight:800,color:c.acL,marginLeft:1}}>×</span></span>
+              <span style={{fontSize:14,fontWeight:800,color:c.acL,fontVariantNumeric:"tabular-nums",width:40,flexShrink:0,textAlign:"right",userSelect:"none",letterSpacing:"-0.02em",transition:"transform 0.1s ease",transform:hov==="rp-spd-dn"?`scale(1.18) translateY(-2px)`:`translateY(-2px)`,display:"inline-block",paddingRight:2,boxSizing:"border-box"}}>{steps[si]}<span style={{fontSize:16,fontWeight:800,color:c.acL,marginLeft:1}}>×</span></span>
               <div style={{position:"relative",width:88,height:36,display:"flex",alignItems:"center"}}>
                 {/* Track */}
                 <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
