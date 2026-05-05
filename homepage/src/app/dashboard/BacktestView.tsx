@@ -89,7 +89,6 @@ export function BacktestView() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [hov, setHov] = useState<string | null>(null);
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
-  const [newSessionMenuOpen, setNewSessionMenuOpen] = useState(false);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -188,14 +187,8 @@ export function BacktestView() {
 
   /* ── Actions ── */
   const goNew = () => {
-    setNewSessionMenuOpen(true);
-  };
-
-  const startNewSession = (type: "standard" | "propfirm") => {
     const origin = encodeURIComponent(window.location.origin);
-    const path = type === "propfirm" ? "/chart/propfirm-backtest.html" : "/chart/backtesting.html";
-    setNewSessionMenuOpen(false);
-    setIframeUrl(`${path}?parentOrigin=${origin}&v=${Date.now()}`);
+    setIframeUrl(`/chart/backtesting.html?parentOrigin=${origin}&v=${Date.now()}`);
   };
 
   const openSession = (s: Session) => {
@@ -693,55 +686,6 @@ export function BacktestView() {
       </div>
 
       {/* ── New session iframe overlay ── */}
-      {newSessionMenuOpen && (
-        <div
-          style={{ position: "fixed", inset: 0, zIndex: 99990, display: "flex", alignItems: "center", justifyContent: "center" }}
-          onClick={() => setNewSessionMenuOpen(false)}
-        >
-          <div style={{ position: "absolute", inset: 0, background: "rgba(4,5,10,0.72)", backdropFilter: "blur(3px)" }} />
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ position: "relative", width: "min(720px,92vw)", background: c.sf, border: `1px solid ${c.brH}`, boxShadow: "0 24px 72px rgba(0,0,0,0.9)", fontFamily: F }}
-          >
-            <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }} />
-            <div style={{ padding: "16px 18px 10px", borderBottom: `1px solid ${c.br}` }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: c.tx, letterSpacing: "0.04em" }}>New Backtest Session</div>
-              <div style={{ fontSize: 10, color: c.tm, marginTop: 4 }}>
-                Choose the same session flow: standard backtesting or prop firm challenge.
-              </div>
-            </div>
-            <div style={{ padding: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div
-                onClick={() => startNewSession("standard")}
-                onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.filter = "brightness(1.08)"}
-                onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.filter = "brightness(1)"}
-                style={{ border: `1px solid ${c.brH}`, background: c.el, padding: "14px 12px", cursor: "pointer", transition: "filter 0.12s" }}
-              >
-                <div style={{ fontSize: 11, fontWeight: 800, color: c.acL, letterSpacing: "0.06em", textTransform: "uppercase" as const }}>Standard</div>
-                <div style={{ fontSize: 10, color: c.ts, marginTop: 6 }}>Create a regular backtesting session for personal strategy testing.</div>
-              </div>
-              <div
-                onClick={() => startNewSession("propfirm")}
-                onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.filter = "brightness(1.08)"}
-                onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.filter = "brightness(1)"}
-                style={{ border: `1px solid ${c.brH}`, background: c.el, padding: "14px 12px", cursor: "pointer", transition: "filter 0.12s" }}
-              >
-                <div style={{ fontSize: 11, fontWeight: 800, color: c.gold, letterSpacing: "0.06em", textTransform: "uppercase" as const }}>Prop Firm</div>
-                <div style={{ fontSize: 10, color: c.ts, marginTop: 6 }}>Use challenge-style rules and open the prop firm session setup flow.</div>
-              </div>
-            </div>
-            <div style={{ height: 42, borderTop: `1px solid ${c.br}`, display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "0 12px", background: c.el }}>
-              <div
-                onClick={() => setNewSessionMenuOpen(false)}
-                style={{ height: 26, padding: "0 12px", display: "flex", alignItems: "center", border: `1px solid ${c.br}`, fontSize: 10, fontWeight: 600, color: c.ts, cursor: "pointer" }}
-              >
-                Cancel
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {iframeUrl && (
         <div style={{ position: "fixed", inset: 0, zIndex: 99999 }}>
           <iframe title="New Session" src={iframeUrl} style={{ width: "100%", height: "100%", border: "none" }} />
