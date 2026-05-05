@@ -220,10 +220,20 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
     const symCat: Record<string, AvailFile["asset"]> = {
       EURUSD: "Forex", GBPUSD: "Forex", USDJPY: "Forex", USDCHF: "Forex", AUDUSD: "Forex", NZDUSD: "Forex",
       USDCAD: "Forex", EURGBP: "Forex", EURJPY: "Forex", GBPJPY: "Forex", XAUUSD: "Forex", XAGUSD: "Forex",
-      BTCUSD: "Crypto", ETHUSD: "Crypto", BNBUSD: "Crypto", SOLUSD: "Crypto", ADAUSD: "Crypto",
+      BTCUSD: "Crypto", ETHUSD: "Crypto", BNBUSD: "Crypto", SOLUSD: "Crypto", ADAUSD: "Crypto", XRPUSD: "Crypto", DOGEUSD: "Crypto",
       NQ: "Futures", ES: "Futures", YM: "Futures", RTY: "Futures", MNQ: "Futures", MES: "Futures",
-      MYM: "Futures", M2K: "Futures", MGC: "Futures", MCL: "Futures",
+      MYM: "Futures", M2K: "Futures", MGC: "Futures", MCL: "Futures", CL: "Futures", GC: "Futures", SI: "Futures", NG: "Futures",
       AAPL: "Stocks", TSLA: "Stocks", NVDA: "Stocks", MSFT: "Stocks", AMZN: "Stocks", GOOG: "Stocks",
+    };
+    const inferAsset = (name: string, ticker: string): AvailFile["asset"] => {
+      const n = String(name || "").toUpperCase();
+      const t = String(ticker || "").toUpperCase();
+      if (symCat[t]) return symCat[t];
+      if (/(BTC|ETH|BNB|SOL|ADA|XRP|DOGE|CRYPTO|USDT|USDC)/.test(t) || /(CRYPTO|USDT|USDC)/.test(n)) return "Crypto";
+      if (/(NQ|ES|YM|RTY|MNQ|MES|MYM|M2K|MGC|MCL|CL|GC|SI|NG|FUTURE)/.test(t) || /(FUTURE|CME|CBOT|NYMEX|COMEX)/.test(n)) return "Futures";
+      if (/^[A-Z]{3}[A-Z]{3}$/.test(t) || /(FOREX|FX)/.test(n)) return "Forex";
+      if (/(STOCK|NASDAQ|NYSE)/.test(n) || /^[A-Z]{1,5}$/.test(t)) return "Stocks";
+      return "Forex";
     };
 
     const guessTicker = (name: string) => {
@@ -258,7 +268,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
         const next: AvailFile[] = (payload.files || []).map(f => {
           const name = f.original_name || `File ${f.id}`;
           const ticker = guessTicker(name);
-          const asset = symCat[ticker] || "Forex";
+          const asset = inferAsset(name, ticker);
           const tf = guessTf(name);
           const approxSize = f.row_count ? `${(f.row_count / 1_000_000).toFixed(2)}M rows` : "rows";
           return {
@@ -328,8 +338,15 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
 
   useEffect(() => {
     if (!open || myStrategies.length > 0) return;
-    void fetch("/journal/api/strategies", { credentials: "include" })
-      .then(r => (r.ok ? r.json() : null))
+    const endpoints = ["/journal/api/strategies", "/api/strategies"];
+    void Promise.any(
+      endpoints.map((url) =>
+        fetch(url, { credentials: "include" }).then((r) => {
+          if (!r.ok) throw new Error(String(r.status));
+          return r.json();
+        }),
+      ),
+    )
       .then((payload: any) => {
         const list = Array.isArray(payload?.strategies) ? payload.strategies : [];
         const options = list
@@ -344,7 +361,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
         if (options.length) setMyStrategies(options);
       })
       .catch(() => {
-        // Keep modal usable if strategy service is unavailable.
+        // Keep modal usable if strategy service is unavailable; dropdown will show no strategies.
       });
   }, [open, myStrategies.length]);
 
@@ -724,21 +741,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                       <div style={{border:`1px solid ${c.brH}`,padding:"12px 14px"}}>
                       {secH("Session Info")}
                       {(()=>{
-                        const myStrats = myStrategies.length
-                          ? myStrategies
-                          : [
-                              { value: "EMA Crossover", label: "EMA Crossover", variables: [] },
-                              { value: "London Breakout", label: "London Breakout", variables: [] },
-                              { value: "VWAP Scalp", label: "VWAP Scalp", variables: [] },
-                              { value: "Golden Cross Trend", label: "Golden Cross Trend", variables: [] },
-                              { value: "Volume Breakout", label: "Volume Breakout", variables: [] },
-                            ];
-                        const commStrats=[
-                          { value: "Momentum Surge", label: "Momentum Surge", variables: [] },
-                          { value: "ICT Model A", label: "ICT Model A", variables: [] },
-                          { value: "SMC Liquidity Grab", label: "SMC Liquidity Grab", variables: [] },
-                        ];
-                        const allGroups:[string, StrategyOption[]][]=[["My Strategies",myStrats],["Saved Strategies",commStrats]];
+                        const allGroups:[string, StrategyOption[]][]=[["My Strategies",myStrategies]];
                         return(<>
                           {/* Session name + strategy: left 50% column, New Strategy button beside it */}
                           <div style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:10}}>
@@ -772,6 +775,11 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                                     {allGroups.map(([groupLabel,items])=>(
                                       <div key={groupLabel}>
                                         <div style={{padding:"5px 10px 3px",fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",borderTop:"1px solid rgba(140,160,255,0.08)"}}>{groupLabel}</div>
+                                        {items.length===0&&(
+                                          <div style={{padding:"6px 10px 8px",fontSize:10,color:c.tm,fontFamily:F}}>
+                                            No strategies found. Create one in Strategy Builder.
+                                          </div>
+                                        )}
                                         {items.map(s=>{const isAct=newSessPlaybook===s.value;const isH=newSessStratHov===s.value;return(
                                           <div key={s.value} onClick={()=>{setNewSessPlaybook(s.value);setNewSessStratDropOpen(false);}} onMouseEnter={()=>setNewSessStratHov(s.value)} onMouseLeave={()=>setNewSessStratHov(null)}
                                             style={{display:"flex",alignItems:"center",padding:"5px 10px 5px 14px",cursor:"default",position:"relative",background:isAct?c.acD:isH?"rgba(255,255,255,0.03)":"transparent",transition:"background 0.1s"}}>
@@ -786,7 +794,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                               </div>
                             </div>
                             {/* New Strategy button – bottom-aligned beside the 50% block */}
-                            <div style={{flexShrink:0,height:27,width:110,justifyContent:"center",display:"flex",alignItems:"center",gap:5,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.96)",letterSpacing:"0.05em",boxShadow:"0 2px 8px rgba(38,67,247,0.35)",fontFamily:F,whiteSpace:"nowrap",transition:"filter 0.12s"}}
+                            <div onClick={()=>{window.location.href="/strategies-lab/";}}
+                              style={{flexShrink:0,height:27,width:110,justifyContent:"center",display:"flex",alignItems:"center",gap:5,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.96)",letterSpacing:"0.05em",boxShadow:"0 2px 8px rgba(38,67,247,0.35)",fontFamily:F,whiteSpace:"nowrap",transition:"filter 0.12s"}}
                               onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                               onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
                               <svg width={8} height={8} viewBox="0 0 12 12" fill="none"><line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
@@ -806,7 +815,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                       <div style={{border:`1px solid ${sessInfoDone?c.brH:c.br}`,padding:"12px 14px",transition:"opacity 0.2s,border-color 0.2s",...(sessInfoDone?activeBox:lockedBox)}}>
                       {secH("Session Settings")}
                       {(()=>{
-                        const allSymbols=[
+                        const staticSymbols=[
                           {sym:"EURUSD",cat:"Forex"},{sym:"GBPUSD",cat:"Forex"},{sym:"USDJPY",cat:"Forex"},{sym:"USDCHF",cat:"Forex"},{sym:"AUDUSD",cat:"Forex"},
                           {sym:"NZDUSD",cat:"Forex"},{sym:"USDCAD",cat:"Forex"},{sym:"EURGBP",cat:"Forex"},{sym:"EURJPY",cat:"Forex"},{sym:"GBPJPY",cat:"Forex"},
                           {sym:"XAUUSD",cat:"Forex"},{sym:"XAGUSD",cat:"Forex"},{sym:"USDSEK",cat:"Forex"},{sym:"USDNOK",cat:"Forex"},
@@ -817,6 +826,13 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                           {sym:"BTCUSD",cat:"Crypto"},{sym:"ETHUSD",cat:"Crypto"},{sym:"BNBUSD",cat:"Crypto"},{sym:"SOLUSD",cat:"Crypto"},{sym:"ADAUSD",cat:"Crypto"},
                           {sym:"AAPL",cat:"Equities"},{sym:"TSLA",cat:"Equities"},{sym:"NVDA",cat:"Equities"},{sym:"MSFT",cat:"Equities"},{sym:"AMZN",cat:"Equities"},{sym:"GOOG",cat:"Equities"},
                         ];
+                        const fileSymbols = availFiles
+                          .filter(f=>f.ticker)
+                          .map(f=>({sym:String(f.ticker).toUpperCase(),cat:f.asset==="Stocks"?"Equities":f.asset}));
+                        const allSymbols = [...staticSymbols, ...fileSymbols].reduce<{sym:string;cat:string}[]>((acc, cur)=>{
+                          if (!acc.some(x=>x.sym===cur.sym)) acc.push(cur);
+                          return acc;
+                        }, []);
                         const catMap={"Forex":"Forex","Futures":"Futures","Crypto":"Crypto","Stocks":"Equities"};
                         const catOf=sym=>allSymbols.find(s=>s.sym===sym)?.cat||"";
                         const assetLabel=cat=>({"Forex":"Forex","Futures":"Futures","Crypto":"Crypto","Equities":"Stocks"}[cat]||cat);
@@ -1652,9 +1668,9 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                             </div>
                           </div>
                           {newSessTradingCostsEnabled&&(()=>{
-                            const symCat={EURUSD:"Forex",GBPUSD:"Forex",USDJPY:"Forex",USDCHF:"Forex",AUDUSD:"Forex",NZDUSD:"Forex",USDCAD:"Forex",EURGBP:"Forex",EURJPY:"Forex",GBPJPY:"Forex",XAUUSD:"Forex",XAGUSD:"Forex",USDSEK:"Forex",USDNOK:"Forex",NQ:"Futures",ES:"Futures",YM:"Futures",RTY:"Futures",CL:"Futures",GC:"Futures",SI:"Futures",NG:"Futures",MNQ:"Futures",MES:"Futures",MYM:"Futures",M2K:"Futures",MGC:"Futures",MCL:"Futures",BTCUSD:"Crypto",ETHUSD:"Crypto",BNBUSD:"Crypto",SOLUSD:"Crypto",ADAUSD:"Crypto",AAPL:"Stocks",TSLA:"Stocks",NVDA:"Stocks",MSFT:"Stocks",AMZN:"Stocks",GOOG:"Stocks"};
+                            const symCat={EURUSD:"Forex",GBPUSD:"Forex",USDJPY:"Forex",USDCHF:"Forex",AUDUSD:"Forex",NZDUSD:"Forex",USDCAD:"Forex",EURGBP:"Forex",EURJPY:"Forex",GBPJPY:"Forex",XAUUSD:"Forex",XAGUSD:"Forex",USDSEK:"Forex",USDNOK:"Forex",NQ:"Futures",ES:"Futures",YM:"Futures",RTY:"Futures",CL:"Futures",GC:"Futures",SI:"Futures",NG:"Futures",MNQ:"Futures",MES:"Futures",MYM:"Futures",M2K:"Futures",MGC:"Futures",MCL:"Futures",BTCUSD:"Crypto",ETHUSD:"Crypto",BNBUSD:"Crypto",SOLUSD:"Crypto",ADAUSD:"Crypto",XRPUSD:"Crypto",DOGEUSD:"Crypto",AAPL:"Stocks",TSLA:"Stocks",NVDA:"Stocks",MSFT:"Stocks",AMZN:"Stocks",GOOG:"Stocks"};
                             const assetOf=cat=>({"Equities":"Stocks"}[cat]||cat);
-                            const catOf2=sym=>assetOf(symCat[sym]||"");
+                            const catOf2=sym=>assetOf(symCat[sym] || availFiles.find(f=>f.ticker===sym)?.asset || "");
                             const pairInfo2=sym=>{if(sym.length===6){const b=sym.slice(0,3),q=sym.slice(3,6);if(currencyCountry[b]&&currencyCountry[q])return{b,q};}return null;};
                             const mkFlags2=sym=>{
                               const sz=10,fw=Math.round(sz*15/11),fh=sz;
