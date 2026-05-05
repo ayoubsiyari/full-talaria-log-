@@ -187,8 +187,7 @@ export function BacktestView() {
 
   /* ── Actions ── */
   const goNew = () => {
-    const origin = encodeURIComponent(window.location.origin);
-    setIframeUrl(`/chart/backtesting.html?parentOrigin=${origin}&v=${Date.now()}`);
+    setIframeUrl(`/talaria-v8b-design/index.html?v=${Date.now()}`);
   };
 
   const openSession = (s: Session) => {
