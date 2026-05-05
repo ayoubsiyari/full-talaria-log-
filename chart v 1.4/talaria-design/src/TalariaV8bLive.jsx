@@ -14953,41 +14953,6 @@ const TalariaV8bLive = () => {
                     <svg width={7} height={5} style={{flexShrink:0,marginLeft:4}}><path d="M0,0 L3.5,4.5 L7,0" stroke={c.ts} strokeWidth={1.3} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </div>
 
-                  {/* Save current as template */}
-                  <div style={{background:"rgba(140,160,255,0.04)",border:`1px solid rgba(140,160,255,0.15)`,padding:"10px 12px",marginBottom:4}}>
-                    <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:8}}>SAVE / LOAD TEMPLATE</div>
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-                      <input
-                        value={tplNameInput}
-                        onChange={e=>setTplNameInput(e.target.value)}
-                        onKeyDown={e=>e.key==="Enter"&&saveCustomTemplate()}
-                        placeholder="Template name…"
-                        style={{flex:1,background:c.hv,border:`1px solid ${swHov==="tplInput"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,color:c.tx,fontSize:13,fontFamily:F,padding:"6px 9px",outline:"none",transition:"border-color 0.14s"}}
-                        onFocus={()=>setSwHov("tplInput")} onBlur={()=>setSwHov(null)}
-                      />
-                      <div onMouseEnter={()=>setSwHov("tplSave")} onMouseLeave={()=>setSwHov(null)}
-                        onClick={saveCustomTemplate}
-                        style={{padding:"6px 12px",background:swHov==="tplSave"?`linear-gradient(135deg,${c.ac},${c.acL})`:`linear-gradient(135deg,rgba(38,67,247,0.35),rgba(74,106,255,0.35))`,border:`1px solid ${swHov==="tplSave"?"transparent":"rgba(74,106,255,0.45)"}`,cursor:"default",fontSize:11,fontWeight:700,color:"#fff",fontFamily:F,flexShrink:0,transition:"all 0.14s",whiteSpace:"nowrap",letterSpacing:"0.04em"}}>
-                        Save
-                      </div>
-                      <div onMouseEnter={()=>setSwHov("tplLoadBtn")} onMouseLeave={()=>setSwHov(null)}
-                        onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:200,rightAlign:true}));setSettDrop(settDrop==="loadTemplate"?null:"loadTemplate");}}
-                        style={{display:"flex",alignItems:"center",gap:4,padding:"6px 10px",background:swHov==="tplLoadBtn"||settDrop==="loadTemplate"?"rgba(140,160,255,0.10)":"rgba(140,160,255,0.04)",border:`1px solid ${swHov==="tplLoadBtn"||settDrop==="loadTemplate"?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,cursor:"default",fontSize:11,fontWeight:600,color:c.ts,fontFamily:F,flexShrink:0,transition:"all 0.14s",whiteSpace:"nowrap"}}>
-                        Load
-                        <svg width={8} height={5} viewBox="0 0 8 5"><path d="M0.5,0.5 L4,4 L7.5,0.5" stroke="currentColor" strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      </div>
-                    </div>
-                    <div onMouseEnter={()=>setSwHov("tplReset")} onMouseLeave={()=>setSwHov(null)}
-                      onMouseDown={()=>setSwHov("tplReset_dn")} onMouseUp={()=>setSwHov("tplReset")}
-                      onClick={()=>applyTemplate("Dark Classic")}
-                      style={{display:"inline-flex",alignItems:"center",gap:5,padding:"4px 0",
-                        color:swHov==="tplReset_dn"?c.acL:swHov==="tplReset"?"rgba(140,160,255,0.85)":c.ts,
-                        cursor:"default",fontSize:10,fontFamily:F,
-                        transition:"color 0.12s"}}>
-                      <svg width={9} height={9} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 2 3 8 9 8"/></svg>
-                      Reset to Default
-                    </div>
-                  </div>
                 </div>
               );
             })()}

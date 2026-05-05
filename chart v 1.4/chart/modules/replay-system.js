@@ -142,7 +142,7 @@ class ReplaySystem {
                 this.currentIndex = Math.min(Math.max(idx, 0), this.fullRawData.length - 1);
                 this.replayTimestamp = this.fullRawData[this.currentIndex]?.t || this.replayTimestamp;
                 this.tickElapsedMs = typeof state.tickElapsedMs === 'number' ? state.tickElapsedMs : 0;
-                this.speed = typeof state.speed === 'number' ? state.speed : this.speed;
+                this.speed = typeof state.speed === 'number' ? this.normalizeSpeed(state.speed) : this.speed;
                 if (typeof state.playbackMode === 'string') {
                     this.setPlaybackMode(state.playbackMode, { restartPlayback: false });
                 }
@@ -1571,7 +1571,7 @@ class ReplaySystem {
         
         // Apply any pending speed set before replay was entered
         if (window._pendingReplaySpeed != null) {
-            this.speed = window._pendingReplaySpeed;
+            this.speed = this.normalizeSpeed(window._pendingReplaySpeed);
             window._pendingReplaySpeed = null;
             this.updateSpeedButtonUI(this.speed);
         }
@@ -2079,7 +2079,7 @@ class ReplaySystem {
         
         // Apply any pending speed set before replay was entered
         if (window._pendingReplaySpeed != null) {
-            this.speed = window._pendingReplaySpeed;
+            this.speed = this.normalizeSpeed(window._pendingReplaySpeed);
             window._pendingReplaySpeed = null;
             this.updateSpeedButtonUI(this.speed);
         }
@@ -4135,11 +4135,17 @@ class ReplaySystem {
     /**
      * Set playback speed
      */
+    normalizeSpeed(speed) {
+        const n = Number(speed);
+        if (!Number.isFinite(n)) return 1;
+        return Math.max(1, Math.min(100, n));
+    }
+
     setSpeed(speed) {
-        this.speed = speed;
+        this.speed = this.normalizeSpeed(speed);
         
         // Update button UI to show active state
-        this.updateSpeedButtonUI(speed);
+        this.updateSpeedButtonUI(this.speed);
 
         const playbackMode = this.getPlaybackMode();
         
@@ -4873,7 +4879,7 @@ class ReplaySystem {
             // === RESUME PLAYBACK IF WAS PLAYING ===
             if (wasPlaying) {
                 this._preserveTickProgress = true;
-                this.speed = savedSpeed;
+                this.speed = this.normalizeSpeed(savedSpeed);
                 this.play();
             }
         }, 50);
