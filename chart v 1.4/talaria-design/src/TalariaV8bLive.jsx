@@ -8644,6 +8644,7 @@ const TalariaV8bLive = () => {
         @keyframes tlrDropOut { from { opacity:1; transform:translateY(0) scale(1); } to { opacity:0; transform:translateY(-6px) scale(0.98); } }
         @keyframes tlrPopIn    { from { opacity:0; transform:scale(0.97) translateY(4px); } to { opacity:1; transform:scale(1) translateY(0); } }
         @keyframes tlrPopOut   { from { opacity:1; transform:scale(1) translateY(0); } to { opacity:0; transform:scale(0.96) translateY(4px); } }
+        @keyframes tlrTipIn    { from { opacity:0; } to { opacity:1; } }
         /* Style panel: minimal motion + ~50ms so the window reads as instant */
         @keyframes tlrSettIn  { from { opacity:0.92; transform:scale(0.992) translateY(2px); } to { opacity:1; transform:scale(1) translateY(0); } }
         @keyframes tlrSettOut { from { opacity:1; transform:scale(1) translateY(0); } to { opacity:0; transform:scale(0.985) translateY(3px); } }
@@ -20778,7 +20779,7 @@ const TalariaV8bLive = () => {
           fontSize:10,fontWeight:600,color:c.tx,fontFamily:F,
           padding:"3px 8px 3px 11px",
           boxShadow:"0 4px 14px rgba(0,0,0,0.55)",
-          animation:"tlrPopIn 0.1s ease"}}>
+          animation:"tlrTipIn 0.1s ease"}}>
           <div style={{position:"absolute",left:0,top:0,bottom:0,width:2,
             background:`linear-gradient(180deg,transparent,${c.acL},transparent)`}}/>
           {tipData.label}
