@@ -189,15 +189,91 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
     padding: "0 8px", height: 27, fontFamily: F, outline: "none", width: "100%", boxSizing: "border-box", ...extra,
   });
 
-  const availFiles = [
-    { id: "f1", name: "EURUSD_M1_2020-2024.csv", ticker: "EURUSD", tf: "1m", from: "2020-01-02", to: "2024-12-31", size: "4.2 GB", asset: "Forex" },
-    { id: "f2", name: "GBPUSD_M5_2018-2024.csv", ticker: "GBPUSD", tf: "5m", from: "2018-03-01", to: "2024-12-31", size: "1.8 GB", asset: "Forex" },
-    { id: "f3", name: "NQ_M1_2019-2024.csv", ticker: "NQ", tf: "1m", from: "2019-01-02", to: "2024-12-31", size: "6.1 GB", asset: "Futures" },
-    { id: "f4", name: "ES_M5_2017-2024.csv", ticker: "ES", tf: "5m", from: "2017-06-01", to: "2024-12-31", size: "2.3 GB", asset: "Futures" },
-    { id: "f5", name: "XAUUSD_H1_2015-2024.csv", ticker: "XAUUSD", tf: "1H", from: "2015-01-05", to: "2024-12-31", size: "820 MB", asset: "Forex" },
-    { id: "f6", name: "BTCUSD_M15_2020-2024.csv", ticker: "BTCUSD", tf: "15m", from: "2020-01-01", to: "2024-12-31", size: "1.1 GB", asset: "Crypto" },
-    { id: "f7", name: "USDJPY_M1_2021-2024.csv", ticker: "USDJPY", tf: "1m", from: "2021-01-04", to: "2024-12-31", size: "2.9 GB", asset: "Forex" },
-  ];
+  type AvailFile = {
+    id: string;
+    name: string;
+    ticker: string;
+    tf: string;
+    from: string;
+    to: string;
+    size: string;
+    asset: "Forex" | "Futures" | "Crypto" | "Stocks";
+  };
+
+  const [availFiles, setAvailFiles] = useState<AvailFile[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || filesLoading || availFiles.length > 0) return;
+    setFilesLoading(true);
+    setFilesError(null);
+
+    const symCat: Record<string, AvailFile["asset"]> = {
+      EURUSD: "Forex", GBPUSD: "Forex", USDJPY: "Forex", USDCHF: "Forex", AUDUSD: "Forex", NZDUSD: "Forex",
+      USDCAD: "Forex", EURGBP: "Forex", EURJPY: "Forex", GBPJPY: "Forex", XAUUSD: "Forex", XAGUSD: "Forex",
+      BTCUSD: "Crypto", ETHUSD: "Crypto", BNBUSD: "Crypto", SOLUSD: "Crypto", ADAUSD: "Crypto",
+      NQ: "Futures", ES: "Futures", YM: "Futures", RTY: "Futures", MNQ: "Futures", MES: "Futures",
+      MYM: "Futures", M2K: "Futures", MGC: "Futures", MCL: "Futures",
+      AAPL: "Stocks", TSLA: "Stocks", NVDA: "Stocks", MSFT: "Stocks", AMZN: "Stocks", GOOG: "Stocks",
+    };
+
+    const guessTicker = (name: string) => {
+      const base = name.replace(/\\.csv$/i, "");
+      const first = base.split(/[ _-]/)[0];
+      if (first && /^[A-Z0-9]{2,10}$/.test(first)) return first;
+      const six = base.slice(0, 6);
+      if (/^[A-Z]{3}[A-Z]{3}$/.test(six)) return six;
+      return base.toUpperCase();
+    };
+
+    const guessTf = (name: string) => {
+      const m = name.match(/_(M\\d+|H\\d+|D\\d+|W\\d+|1m|5m|15m|30m|1H|4H|1D)/i);
+      if (!m) return "1m";
+      const t = m[1].toUpperCase();
+      if (t === "1M") return "1m";
+      if (t === "M5") return "5m";
+      if (t === "M15") return "15m";
+      if (t === "M30") return "30m";
+      if (t === "H1" || t === "1H") return "1H";
+      if (t === "H4" || t === "4H") return "4H";
+      if (t === "D1" || t === "1D") return "1D";
+      return t;
+    };
+
+    void fetch("/api/files", { credentials: "include" })
+      .then(res => {
+        if (!res.ok) throw new Error(String(res.status));
+        return res.json() as Promise<{ files: { id: number; original_name: string; row_count: number; description?: string | null }[] }>;
+      })
+      .then(payload => {
+        const next: AvailFile[] = (payload.files || []).map(f => {
+          const name = f.original_name || `File ${f.id}`;
+          const ticker = guessTicker(name);
+          const asset = symCat[ticker] || "Forex";
+          const tf = guessTf(name);
+          const approxSize = f.row_count ? `${(f.row_count / 1_000_000).toFixed(2)}M rows` : "rows";
+          return {
+            id: String(f.id),
+            name,
+            ticker,
+            tf,
+            from: "",
+            to: "",
+            size: approxSize,
+            asset,
+          };
+        });
+        setAvailFiles(next);
+      })
+      .catch(err => {
+        console.error("Failed to load /api/files", err);
+        setFilesError("Failed to load datasets. Start the backtest server first.");
+      })
+      .finally(() => {
+        setFilesLoading(false);
+      });
+  }, [open, filesLoading, availFiles.length]);
 
   const instrDefaults: Record<string, any> = {
     Forex: { spread: "1.2", commission: "0", pipSize: "0.0001", pipVal: "10", contractSize: "100000", minLot: "0.01", lotStep: "0.01" },
