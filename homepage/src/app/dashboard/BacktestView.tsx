@@ -408,9 +408,6 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
     .slice(0, TRADE_CHART_MAX_BARS);
   const trMax = Math.max(1, ...trBars.map(s => kpis[s.id]?.trades || 0));
 
-  /* ── Dot grid ── */
-  const dotsN = Math.min(Math.ceil(totalDays / 30), 56);
-
   const daysTestedDisplay = totalDays.toLocaleString();
   /** Narrow tile: figure stays close to the 9px title (baseline row); scale down for long counts */
   const daysTestedHeadPx =
@@ -596,7 +593,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               </div>
             </div>
 
-            {/* Tile 4: Days Tested dots */}
+            {/* Tile 4: Days Tested — headline + single calendar symbol (no month grid) */}
             <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)` }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 4, minWidth: 0 }}>
@@ -620,20 +617,13 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                 </div>
               </div>
               <div style={{ fontSize: 8, color: c.tm }}>{(totalDays / 365).toFixed(1)} yrs equivalent</div>
-              <div style={{ flex: 1 }} />
-              {(() => {
-                const dcols = 20, ds = 5, dg = 2, step = ds + dg;
-                const rows = Math.ceil(dotsN / dcols) || 1;
-                const svgW = dcols * step - dg, svgH = rows * step - dg;
-                return (
-                  <svg width={svgW} height={svgH} style={{ display: "block", margin: "0 auto 48px" }}>
-                    {Array.from({ length: dotsN }).map((_, i) => (
-                      <rect key={i} x={(i % dcols) * step} y={Math.floor(i / dcols) * step} width={ds} height={ds} fill={c.acL} opacity={0.75} />
-                    ))}
-                  </svg>
-                );
-              })()}
-              <div style={{ fontSize: 8, color: c.tm, marginTop: 4 }}>each square ≈ 1 month</div>
+              <div style={{ flex: 1, minHeight: 52, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width={40} height={40} viewBox="0 0 24 24" fill="none" aria-hidden style={{ opacity: 0.88 }}>
+                  <rect x="3.5" y="5.5" width="17" height="15" rx="2" stroke={c.acL} strokeWidth="1.35" />
+                  <path d="M3.5 10.5h17" stroke={c.acL} strokeWidth="1.35" />
+                  <path d="M8 4v4M16 4v4" stroke={c.acL} strokeWidth="1.35" strokeLinecap="round" />
+                </svg>
+              </div>
             </div>
 
             {/* Tile 5: Tickers Tested */}
