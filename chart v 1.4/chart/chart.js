@@ -651,6 +651,13 @@ class Chart {
                 this.scheduleRender();
             });
         }
+        // Runtime fallback for V9 settings panel when React bundle is stale:
+        // read Time Format / Time Zone text from the opened Settings modal and
+        // apply it to chartSettings + timezoneManager so axis/crosshair update.
+        if (!this.isPanel) {
+            this.syncV9TimeControlsFromDom();
+            this._v9TimeSyncTimer = setInterval(() => this.syncV9TimeControlsFromDom(), 600);
+        }
         
         // Check for backtesting mode from URL (only for main chart)
         if (!this.isPanel) {
@@ -12688,6 +12695,49 @@ class Chart {
         return new Date(timestamp);
     }
 
+    mapV9TimezoneLabelToId(label) {
+        const map = {
+            'UTC': 'UTC',
+            'UTC+3 (Riyadh)': 'Europe/Moscow',
+            'UTC+4 (Dubai)': 'Asia/Dubai',
+            'UTC+5:30 (IST)': 'Asia/Kolkata',
+            'UTC+8 (Asia)': 'Asia/Singapore',
+            'UTC-5 (EST)': 'America/New_York',
+            'UTC-8 (PST)': 'America/Los_Angeles'
+        };
+        return map[label] || null;
+    }
+
+    syncV9TimeControlsFromDom() {
+        if (typeof document === 'undefined' || !this.chartSettings) return;
+        try {
+            const spans = Array.from(document.querySelectorAll('span'));
+            const getSettingValue = (label) => {
+                const labelEl = spans.find((el) => (el.textContent || '').trim() === label);
+                const row = labelEl && labelEl.parentElement;
+                if (!row) return null;
+                const rowSpans = row.querySelectorAll('span');
+                if (!rowSpans || rowSpans.length < 2) return null;
+                const val = (rowSpans[1].textContent || '').trim();
+                return val || null;
+            };
+            const tf = getSettingValue('Time Format');
+            if (tf === '12h' || tf === '24h') this.chartSettings.timeFormat = tf;
+            const tzLabel = getSettingValue('Time Zone');
+            if (tzLabel) {
+                this.chartSettings.timezone = tzLabel;
+                const tzId = this.mapV9TimezoneLabelToId(tzLabel);
+                if (tzId && window.timezoneManager && typeof window.timezoneManager.setTimezone === 'function') {
+                    const cur = window.timezoneManager.getTimezone ? window.timezoneManager.getTimezone() : null;
+                    if (!cur || cur.id !== tzId) {
+                        window.timezoneManager.setTimezone(tzId);
+                        this.scheduleRender();
+                    }
+                }
+            }
+        } catch (_) {}
+    }
+
     /**
      * Format time label based on timeframe and zoom level (TradingView style)
      */
@@ -17282,7 +17332,8 @@ class Chart {
         const changePercent = ((candle.c - candle.o) / candle.o) * 100;
         const highLowRange = ((candle.h - candle.l) / candle.l) * 100;
         
-        const date = new Date(candle.t);
+        const date = this.convertToTimezone(candle.t);
+        const use12h = this.chartSettings && this.chartSettings.timeFormat === '12h';
         const dateStr = date.toLocaleDateString('en-US', { 
             weekday: 'short',
             year: 'numeric', 
@@ -17290,9 +17341,9 @@ class Chart {
             day: 'numeric' 
         });
         const timeStr = date.toLocaleTimeString('en-US', { 
-            hour: '2-digit', 
+            hour: use12h ? 'numeric' : '2-digit',
             minute: '2-digit',
-            hour12: false
+            hour12: !!use12h
         });
         
         const _tooltipDec = this.getPriceDecimals(
