@@ -348,7 +348,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
   }, [open, availFiles, newSessFiles, fileMetaLoaded]);
 
   useEffect(() => {
-    if (!open || myStrategies.length > 0) return;
+    if (!open) return;
+
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     const strategyHeaders: Record<string, string> = { "Content-Type": "application/json" };
     if (token) strategyHeaders.Authorization = `Bearer ${token}`;
@@ -356,40 +357,54 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
       credentials: "include",
       headers: strategyHeaders,
     };
-    const endpoints = [
-      { url: `${JOURNAL_API_BASE}/strategies`, init: journalInit },
-      { url: "/api/strategies", init: journalInit },
-    ];
 
-    void Promise.any(
-      endpoints.map((ep) =>
-        fetch(ep.url, ep.init).then((r) => {
-          if (!r.ok) throw new Error(String(r.status));
-          return r.json();
-        }),
-      ),
-    )
-      .then((payload: any) => {
-        const list = Array.isArray(payload?.strategies)
-          ? payload.strategies
-          : Array.isArray(payload?.data?.strategies)
-            ? payload.data.strategies
-            : [];
-        const options = list
-          .map((s: any) => {
-            const id = s?.id;
-            const name = String(s?.name || "").trim();
-            if (!id || !name) return null;
-            const vars = Array.isArray(s?.strategy_definition?.variables) ? s.strategy_definition.variables : [];
-            return { value: `strategy:${id}`, label: name, variables: vars } as StrategyOption;
-          })
-          .filter((x: StrategyOption | null): x is StrategyOption => !!x);
-        setMyStrategies(options);
-      })
-      .catch(() => {
-        // Keep modal usable if strategy service is unavailable; dropdown will show no strategies.
-      });
-  }, [open, myStrategies.length]);
+    const payloadToOptions = (payload: any): StrategyOption[] => {
+      const list = Array.isArray(payload?.strategies)
+        ? payload.strategies
+        : Array.isArray(payload?.data?.strategies)
+          ? payload.data.strategies
+          : [];
+      return list
+        .map((s: any) => {
+          const id = s?.id;
+          const name = String(s?.name || "").trim();
+          if (!id || !name) return null;
+          const vars = Array.isArray(s?.strategy_definition?.variables) ? s.strategy_definition.variables : [];
+          return { value: `strategy:${id}`, label: name, variables: vars } as StrategyOption;
+        })
+        .filter((x: StrategyOption | null): x is StrategyOption => !!x);
+    };
+
+    let cancelled = false;
+
+    void (async () => {
+      /** Prefer journal first: FastAPI `/api/strategies` returns 200 + `{ strategies: [] }` as a shim and often wins Promise.any(), hiding real journal data. */
+      try {
+        const rj = await fetch(`${JOURNAL_API_BASE}/strategies`, journalInit);
+        if (rj.ok) {
+          const payload = await rj.json();
+          if (!cancelled) setMyStrategies(payloadToOptions(payload));
+          return;
+        }
+      } catch {
+        /* journal unreachable or CORS */
+      }
+
+      try {
+        const ra = await fetch("/api/strategies", journalInit);
+        if (ra.ok) {
+          const payload = await ra.json();
+          if (!cancelled) setMyStrategies(payloadToOptions(payload));
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const instrDefaults: Record<string, any> = {
     Forex: { spread: "1.2", commission: "0", pipSize: "0.0001", pipVal: "10", contractSize: "100000", minLot: "0.01", lotStep: "0.01" },

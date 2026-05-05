@@ -792,8 +792,8 @@ export function BacktestView() {
               </div>
             </div>
           ) : layoutMode === "cards" ? (
-            /* ── Cards layout ── */
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 10, paddingTop: 12 }}>
+            /* ── Cards layout (parity with dashboardV8.jsx sessions cards) ── */
+            <div style={{ width: "min(1288px, 100%)", margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, padding: "4px 0 24px" }}>
               {filteredSessions.map(sess => {
                 const isProp = sess.session_type === "propfirm";
                 const k = kpis[sess.id];
@@ -802,56 +802,243 @@ export function BacktestView() {
                 const pnlPos = hasPnl && (k?.net_pnl ?? 0) >= 0;
                 const stripeCol = isProp ? c.gold : c.acL;
                 const pnlCol = hasPnl ? (pnlPos ? c.gn : c.rd) : c.tm;
-                const isH = hov === `card_${sess.id}`;
+                const pnlVal = k ? fmtMoney(k.net_pnl) : "—";
+                const isH = hov === `card_${sess.id}` || hov === `crs_${sess.id}` || hov === `cdb_${sess.id}`;
                 const createdStr = sess.created_at ? new Date(sess.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
-                const cfg = sess.config as Record<string, string> | undefined;
+                const cfg = sess.config as Record<string, unknown> | undefined;
+                const cfgS = sess.config as Record<string, string> | undefined;
+                const stratDesc = strategyDescription(sess);
+                const tickerRows = sessionTickerRows(sess);
+                const costsOn = !!(cfgS?.commission && cfgS.commission !== "None")
+                  || (cfg?.trading_costs != null && cfg.trading_costs !== "");
+                const rb = cfg?.rollback_allowed ?? cfg?.allowBackNavigation;
+                const rollbackOn = rb === true || rb === "true" || rb === 1;
+                const wf = winRateAsFrac(k?.win_rate);
+                const winPctStr = fmtWinRate(k?.win_rate) ?? "—";
+                const stratName = cfgS?.strategy_name || "—";
+                const nm = sess.name || "";
+                const sn = stratName || "";
+                const brSide = isH ? (isProp ? "rgba(201,168,76,0.35)" : c.acB) : c.brH;
+                const progBarFill = progress >= 100 ? (isProp ? (hasPnl ? (pnlPos ? c.gn : c.rd) : c.acL) : c.gn) : c.acL;
+                const progLblCol = progress >= 100 ? (isProp ? (hasPnl ? (pnlPos ? c.gn : c.rd) : c.tm) : c.gn) : progress > 0 ? c.acL : c.tm;
+                const progLabel = progress >= 100
+                  ? (isProp ? (hasPnl ? (pnlPos ? "Passed" : "Lost") : "Done") : "Done")
+                  : `${progress}%`;
+
                 return (
                   <div key={sess.id}
                     onMouseEnter={() => setHov(`card_${sess.id}`)} onMouseLeave={() => setHov(null)}
-                    style={{ borderTop: `3px solid ${stripeCol}`, border: `1px solid ${isH ? (isProp ? "rgba(201,168,76,0.35)" : c.acB) : c.brH}`, background: c.sf, cursor: "default", boxShadow: isH ? `0 0 0 1px ${isProp ? "rgba(201,168,76,0.2)" : c.acB},0 4px 24px rgba(0,0,0,0.6)` : "0 3px 12px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 0, padding: "10px 10px 8px", borderBottom: `1px solid ${c.brH}` }}>
-                      <div onClick={e => { e.stopPropagation(); openSession(sess); }} style={{ width: 26, height: 26, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#1e38e8,#4A6AFF)", cursor: "pointer" }}>
+                    style={{
+                      borderTop: `3px solid ${stripeCol}`,
+                      borderRight: `1px solid ${brSide}`,
+                      borderBottom: `1px solid ${brSide}`,
+                      borderLeft: `1px solid ${brSide}`,
+                      background: c.sf,
+                      cursor: "default",
+                      transition: "box-shadow 0.15s, border-color 0.15s",
+                      boxShadow: isH
+                        ? (isProp
+                          ? "0 0 0 1px rgba(201,168,76,0.2), 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(201,168,76,0.12)"
+                          : `0 0 0 1px ${c.acB}, 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(38,67,247,0.15)`)
+                        : "0 3px 12px rgba(0,0,0,0.5)",
+                      display: "flex",
+                      flexDirection: "column",
+                      overflow: "hidden",
+                    }}>
+
+                    {/* Row 1: Resume + Dashboard | name + date | ⋯ */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 0, padding: "10px 10px 0", borderBottom: `1px solid ${c.brH}`, paddingBottom: 8 }}>
+                      <div
+                        onClick={e => { e.stopPropagation(); openSession(sess); }}
+                        onMouseEnter={() => setHov(`crs_${sess.id}`)}
+                        onMouseLeave={() => setHov(null)}
+                        style={{
+                          width: 26, height: 26, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                          background: "linear-gradient(135deg,#1e38e8,#4A6AFF)", cursor: "pointer", transition: "filter 0.12s",
+                          filter: hov === `crs_${sess.id}` ? "brightness(1.2)" : "brightness(1)",
+                          boxShadow: "0 2px 8px rgba(38,67,247,0.35)",
+                        }}>
                         <svg width={9} height={9} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="rgba(255,255,255,0.95)" /></svg>
                       </div>
-                      <div onClick={e => { e.stopPropagation(); openAnalytics(sess); }} style={{ width: 26, height: 26, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.07)", border: `1px solid ${c.br}`, cursor: "pointer", marginLeft: 5 }}>
-                        <svg width={11} height={11} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill={c.ts} /><rect x="11" y="1" width="8" height="8" fill={c.ts} /><rect x="1" y="11" width="8" height="8" fill={c.ts} /><rect x="11" y="11" width="8" height="8" fill={c.ts} /></svg>
+                      <div
+                        onClick={e => { e.stopPropagation(); openAnalytics(sess); }}
+                        onMouseEnter={() => setHov(`cdb_${sess.id}`)}
+                        onMouseLeave={() => setHov(null)}
+                        style={{
+                          width: 26, height: 26, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                          background: hov === `cdb_${sess.id}` ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.07)",
+                          border: `1px solid ${hov === `cdb_${sess.id}` ? c.brH : c.br}`,
+                          cursor: "pointer", transition: "background 0.12s, border-color 0.12s", marginLeft: 5,
+                        }}>
+                        <svg width={11} height={11} viewBox="0 0 20 20" fill="none">
+                          <rect x="1" y="1" width="8" height="8" fill={hov === `cdb_${sess.id}` ? c.tx : c.ts} />
+                          <rect x="11" y="1" width="8" height="8" fill={hov === `cdb_${sess.id}` ? c.tx : c.ts} />
+                          <rect x="1" y="11" width="8" height="8" fill={hov === `cdb_${sess.id}` ? c.tx : c.ts} />
+                          <rect x="11" y="11" width="8" height="8" fill={hov === `cdb_${sess.id}` ? c.tx : c.ts} />
+                        </svg>
                       </div>
                       <div style={{ flex: 1, minWidth: 0, padding: "0 8px", display: "flex", flexDirection: "column", gap: 2 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: c.ts, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sess.name || "—"}</div>
-                        <div style={{ fontSize: 8, color: c.tm }}>{createdStr}</div>
+                        <div style={{
+                          fontSize: nm.length > 22 ? 9 : nm.length > 15 ? 10 : 11,
+                          fontWeight: 700, color: c.ts, lineHeight: 1.3, fontFamily: F,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>{sess.name || "—"}</div>
+                        <div style={{ fontSize: 8, fontWeight: 500, color: c.tm, fontFamily: F, whiteSpace: "nowrap" }}>{createdStr}</div>
+                      </div>
+                      <div
+                        className="sess-act-btn"
+                        onClick={e => {
+                          e.stopPropagation();
+                          const r = e.currentTarget.getBoundingClientRect();
+                          setActMenu(actMenu?.id === sess.id ? null : { id: sess.id, x: (r.left + r.right) / 2, y: r.bottom });
+                        }}
+                        style={{
+                          width: 28, height: 28, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                          cursor: "pointer", color: actMenu?.id === sess.id ? c.acL : c.ts,
+                          background: actMenu?.id === sess.id ? "rgba(255,255,255,0.08)" : "transparent", transition: "all 0.12s",
+                        }}>
+                        <svg width={16} height={16} viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="2.2" fill="currentColor" /><circle cx="12" cy="12" r="2.2" fill="currentColor" /><circle cx="19" cy="12" r="2.2" fill="currentColor" /></svg>
                       </div>
                     </div>
-                    <div style={{ padding: "6px 10px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 8px" }}>
-                      {[
-                        ["Mode", isProp ? "Prop Firm" : "Standard", isProp ? c.gold : c.acL],
-                        ["Strategy", cfg?.strategy_name || "—", c.ts],
-                        ["Balance", sess.start_balance ? `$${sess.start_balance.toLocaleString()}` : "—", c.ts],
-                        ["Net P&L", k ? fmtMoney(k.net_pnl) : "—", pnlCol],
-                        ["Win %", fmtWinRate(k?.win_rate) ?? "—", (() => { const wf = winRateAsFrac(k?.win_rate); return wf != null ? (wf >= 0.5 ? c.gn : c.rd) : c.tm; })()],
-                        ["Trades", k?.trades != null ? String(k.trades) : "—", c.ts],
-                      ].map(([label, val, valCol]) => (
-                        <div key={label as string} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                          <span style={{ fontSize: 7, color: c.tm, letterSpacing: "0.04em", textTransform: "uppercase" as const }}>{label}</span>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: valCol as string, fontVariantNumeric: "tabular-nums" }}>{val}</span>
+
+                    {/* Row 2: Strategy + info */}
+                    <div style={{ padding: "7px 10px", display: "flex", alignItems: "center", gap: 5, borderBottom: `1px solid ${c.brH}` }}>
+                      <div style={{
+                        fontSize: sn.length > 22 ? 10 : sn.length > 15 ? 11 : 12,
+                        fontWeight: 600, color: c.ts, lineHeight: 1.3, fontFamily: F, flex: 1,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>{stratName}</div>
+                      {stratDesc && (
+                        <div
+                          onClick={e => e.stopPropagation()}
+                          onMouseEnter={e => {
+                            const r = e.currentTarget.getBoundingClientRect();
+                            setStratPop({ id: sess.id, x: r.right + 6, y: r.top, name: stratName, desc: stratDesc });
+                          }}
+                          onMouseLeave={() => setStratPop(null)}
+                          style={{
+                            width: 14, height: 14, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                            cursor: "default", color: stratPop?.id === sess.id ? c.acL : c.ts, transition: "color 0.12s",
+                          }}>
+                          <svg width={12} height={12} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.4" /><line x1="8" y1="7" x2="8" y2="11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><circle cx="8" cy="5" r="0.8" fill="currentColor" /></svg>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Row 3: Mode | Asset | Symbols */}
+                    <div style={{ padding: "7px 10px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${c.brH}` }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: isProp ? c.gold : c.acL, fontFamily: F, flexShrink: 0 }}>
+                        {isProp ? "Prop Firm" : "Standard"}
+                      </div>
+                      <div style={{ width: 1, height: 12, background: c.brH, flexShrink: 0 }} />
+                      <div style={{ fontSize: 10, fontWeight: 600, color: c.ts, fontFamily: F, flexShrink: 0 }}>{cfgS?.asset_class || "—"}</div>
+                      <div style={{ width: 1, height: 12, background: c.brH, flexShrink: 0 }} />
+                      <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
+                        {tickerRows.length === 0 ? (
+                          sess.symbol ? (
+                            <span style={{ fontSize: 9, fontWeight: 600, color: c.ts, fontFamily: F }}>{sess.symbol}</span>
+                          ) : (
+                            <span style={{ fontSize: 9, color: c.tm, fontFamily: F }}>—</span>
+                          )
+                        ) : (
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 4px" }}>
+                            {tickerRows.map(r => (
+                              <div key={r.sym} style={{ display: "flex", alignItems: "center", gap: 3, minWidth: 0 }}>
+                                <SymbolBadge sym={r.sym} asset={r.asset} w={10} h={10} fontFamily={F} />
+                                <span style={{
+                                  fontSize: 9, fontWeight: 600, color: c.ts, letterSpacing: "0.04em", fontFamily: F,
+                                  lineHeight: 1.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                }}>{r.sym}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Row 4: Date timeline */}
+                    <div style={{ padding: "7px 10px", borderBottom: `1px solid ${c.brH}` }}>
+                      {sess.start_date && sess.end_date ? (() => {
+                        const sd = parseYmdParts(sess.start_date);
+                        const ed = parseYmdParts(sess.end_date);
+                        const durLabel = durationLabelMonths(sess.start_date, sess.end_date) || "";
+                        if (!sd || !ed) return <span style={{ fontSize: 9, color: c.tm, fontFamily: F }}>—</span>;
+                        return (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3, fontFamily: F, fontVariantNumeric: "tabular-nums" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, color: c.ts }}>{sd.mo} {sd.day}</span>
+                              <span style={{ fontSize: 10, fontWeight: 700, color: c.ts }}>{ed.mo} {ed.day}</span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ fontSize: 9, fontWeight: 600, color: c.tm }}>{sd.y}</span>
+                              <div style={{ flex: 1, position: "relative", height: 1, background: `linear-gradient(90deg,${c.tm},${c.acL},${c.tm})` }}>
+                                <div style={{
+                                  position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+                                  background: c.bg, padding: "0 4px", fontSize: 12, fontWeight: 800, color: c.acL,
+                                  letterSpacing: "0.04em", lineHeight: 1.2, whiteSpace: "nowrap",
+                                }}>{durLabel}</div>
+                              </div>
+                              <span style={{ fontSize: 9, fontWeight: 600, color: c.tm }}>{ed.y}</span>
+                            </div>
+                          </div>
+                        );
+                      })() : (
+                        <span style={{ fontSize: 9, color: c.tm, fontFamily: F }}>—</span>
+                      )}
+                    </div>
+
+                    {/* Row 5: Options */}
+                    <div style={{ padding: "6px 10px", display: "flex", alignItems: "center", gap: 14, borderBottom: `1px solid ${c.brH}` }}>
+                      {[{ label: "Rollback", on: rollbackOn }, { label: "Costs", on: costsOn }].map(({ label, on }) => (
+                        <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: F }}>
+                          <div style={{
+                            width: 5, height: 5, borderRadius: "50%", background: on ? c.gn : c.rd, flexShrink: 0,
+                            boxShadow: on ? `0 0 4px ${c.gn}88` : `0 0 4px ${c.rd}88`,
+                          }} />
+                          <div style={{ fontSize: 10, fontWeight: 600, color: on ? c.gn : c.rd, whiteSpace: "nowrap" }}>{label}</div>
                         </div>
                       ))}
                     </div>
-                    <div style={{ padding: "4px 10px 8px", display: "flex", alignItems: "center", gap: 8 }}>
+
+                    {/* Row 6: Stats row */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", borderBottom: `1px solid ${c.brH}` }}>
+                      {[
+                        ["Bal.", sess.start_balance != null ? `$${sess.start_balance.toLocaleString()}` : "—", c.ts],
+                        ["P&L", pnlVal, pnlCol],
+                        ["Win%", winPctStr, wf != null ? (wf >= 0.5 ? c.gn : c.rd) : c.tm],
+                        ["R:R", k?.expectancy_r != null ? `1:${k.expectancy_r.toFixed(1)}` : "—", c.ts],
+                        ["Trades", k?.trades != null ? String(k.trades) : "—", c.ts],
+                      ].map(([lab, val, valCol], i) => (
+                        <div key={lab as string} style={{
+                          padding: "6px 6px", display: "flex", flexDirection: "column", gap: 2,
+                          borderRight: i < 4 ? `1px solid ${c.brH}` : "none", alignItems: "center",
+                        }}>
+                          <div style={{ fontSize: 7, fontWeight: 700, color: c.tm, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: F }}>{lab}</div>
+                          <div style={{
+                            fontSize: 10, fontWeight: 800, color: valCol as string, fontVariantNumeric: "tabular-nums",
+                            fontFamily: F, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%",
+                          }}>{val}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Row 7: Progress */}
+                    <div style={{ padding: "6px 10px 8px", display: "flex", alignItems: "center", gap: 8 }}>
                       <div style={{ flex: 1, height: 2, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
                         <div style={{
-                          width: `${Math.min(progress, 100)}%`,
-                          height: "100%",
-                          background: progress >= 100 ? (isProp ? (pnlPos ? c.gn : c.rd) : c.gn) : c.acL,
-                          transition: "width 0.3s ease",
+                          width: `${Math.min(progress, 100)}%`, height: "100%", background: progBarFill, transition: "width 0.3s ease",
                         }} />
                       </div>
-                      <span style={{ fontSize: 9, fontWeight: 800, color: progress >= 100 ? (isProp ? (hasPnl && pnlPos ? c.gn : c.rd) : c.gn) : progress > 0 ? c.acL : c.tm, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-                        {progress >= 100 ? (isProp ? (hasPnl && pnlPos ? "Passed" : "Lost") : "Done") : progress > 0 ? `${progress}%` : "0%"}
+                      <span style={{ fontSize: 10, fontWeight: 800, color: progLblCol, fontVariantNumeric: "tabular-nums", fontFamily: F, flexShrink: 0 }}>
+                        {progLabel}
                       </span>
                     </div>
                   </div>
                 );
               })}
+              {filteredSessions.length === 0 && sessions.length > 0 && (
+                <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "48px 0", color: c.tm, fontSize: 12 }}>No sessions match your filter</div>
+              )}
             </div>
           ) : (
             /* ── Rows layout ── */
