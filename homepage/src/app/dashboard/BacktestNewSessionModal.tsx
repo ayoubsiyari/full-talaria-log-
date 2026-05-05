@@ -565,6 +565,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
       acc[row.ticker] = {
         fileId: fileRef ? Number(fileRef.id) : fileId,
         ticker: row.ticker,
+        asset_class: fileRef?.asset,
         timeframe: row.tf,
         spread: row.spread,
         commission: row.commission,
@@ -585,6 +586,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
         instrumentsByTicker[ticker] = {
           fileId: Number(fileRef.id),
           ticker,
+          asset_class: fileRef.asset,
           timeframe: fileRef.tf || newSessTf,
           spread: def.spread,
           commission: def.commission,

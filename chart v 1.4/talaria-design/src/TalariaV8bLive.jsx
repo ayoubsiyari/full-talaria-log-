@@ -3063,13 +3063,21 @@ const TalariaV8bLive = () => {
 
         const pairs = [];
         const seen = new Set();
-        const pushPair = (ticker, fileId) => {
+        const pushPair = (ticker, fileId, assetClass) => {
           if (!ticker) return;
           const fid = fileId != null ? fileId : null;
           const dedupeKey = fid != null ? `id:${fid}` : `sym:${ticker}`;
           if (seen.has(dedupeKey)) return;
           seen.add(dedupeKey);
-          pairs.push({ ticker: normalizeSymbol(String(ticker).trim()), fileId: fid });
+          const ac =
+            assetClass != null && String(assetClass).trim()
+              ? String(assetClass).trim()
+              : null;
+          pairs.push({
+            ticker: normalizeSymbol(String(ticker).trim()),
+            fileId: fid,
+            assetClass: ac,
+          });
         };
 
         // Same source as chart.js multi-file picker: session.files + resolveSessionTickerForFileId.
@@ -3096,7 +3104,9 @@ const TalariaV8bLive = () => {
                 display = rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
               }
             }
-            if (display && String(display).trim()) pushPair(String(display).trim(), fileId);
+            const assetHint = f.asset_class ?? f.asset ?? null;
+            if (display && String(display).trim())
+              pushPair(String(display).trim(), fileId, assetHint);
           }
         }
 
@@ -3104,18 +3114,20 @@ const TalariaV8bLive = () => {
           for (const [ticker, info] of Object.entries(session.instruments)) {
             const fid = info?.fileId ?? info?.datasetId ?? null;
             const sym = resolveTickerForInstrument(ticker, info, fid);
-            if (sym) pushPair(sym, fid);
+            const assetHint = info?.asset_class ?? info?.assetClass ?? null;
+            if (sym) pushPair(sym, fid, assetHint);
           }
         }
         if (pairs.length === 0 && Array.isArray(session.symbols)) {
           for (const s of session.symbols) {
             const nm = s?.symbolName || s?.symbol || s?.ticker;
-            if (nm) pushPair(normalizeSymbol(String(nm).trim()), s.fileId ?? null);
+            const assetHint = s.asset_class ?? s.asset ?? null;
+            if (nm) pushPair(normalizeSymbol(String(nm).trim()), s.fileId ?? null, assetHint);
           }
         }
         if (pairs.length === 0 && Array.isArray(session.instrumentTickers)) {
           for (const t of session.instrumentTickers) {
-            pushPair(normalizeSymbol(t), null);
+            pushPair(normalizeSymbol(t), null, null);
           }
         }
         if (pairs.length) setSessionPairs(pairs);
@@ -4926,6 +4938,15 @@ const TalariaV8bLive = () => {
 
   const allSymbols = SYMBOLS_DATA.flatMap(c => c.items);
   const currentSymbol = resolveSessionChartSymbol(symbol, allSymbols);
+  const sessionAssetHintForSymbol = useMemo(() => {
+    const want = normalizeSymForBadge(symbol);
+    const hit = sessionPairs.find(p => normalizeSymForBadge(p.ticker) === want);
+    return hit?.assetClass ?? null;
+  }, [symbol, sessionPairs]);
+  const headerBadgeAsset = chartAssetFromSymbolObj({
+    ...currentSymbol,
+    ...(sessionAssetHintForSymbol ? { badgeAsset: sessionAssetHintForSymbol } : {}),
+  });
   const chartTypeMap = {
     "Candles": { icon: "candle", label: "Candles" },
     "Hollow Candles": { icon: "hollowCandle", label: "Hollow Candles" },
@@ -15737,23 +15758,28 @@ const TalariaV8bLive = () => {
                   return { id:`${u.slice(0,3)}/${u.slice(3)}`, name:`${u.slice(0,3)} / ${u.slice(3)}`, type:"forex", base:u.slice(0,3), quote:u.slice(3), cat:"BACKTEST" };
                 return null;
               };
-              const buildEntry = (ticker, fileId) => {
+              const buildEntry = (ticker, fileId, assetClass) => {
+                const badgeAsset =
+                  assetClass != null && String(assetClass).trim()
+                    ? String(assetClass).trim()
+                    : undefined;
+                const withBadge = (row) => (badgeAsset ? { ...row, badgeAsset } : row);
                 let found = known.find(s=>s.id===ticker);
                 if (!found && ticker)
                   found = known.find(s=>normSymKey(s.id)===normSymKey(ticker));
-                if (found) return {...found, fileId};
+                if (found) return withBadge({ ...found, fileId });
                 const parts = (ticker||"").split("/");
                 if(parts.length===2 && parts[0].length===3 && parts[1].length===3){
                   const b = parts[0].toUpperCase(), q = parts[1].toUpperCase();
-                  return {id:`${b}/${q}`,name:`${b} / ${q}`,type:"forex",base:b,quote:q,cat:"FOREX",fileId};
+                  return withBadge({ id:`${b}/${q}`, name:`${b} / ${q}`, type:"forex", base:b, quote:q, cat:"FOREX", fileId });
                 }
                 const fx = parseFxPair(ticker);
-                if (fx) return {...fx, fileId};
-                return {id:ticker,name:ticker,type:"other",cat:"BACKTEST",fileId};
+                if (fx) return withBadge({ ...fx, fileId });
+                return withBadge({ id:ticker, name:ticker, type:"other", cat:"BACKTEST", fileId });
               };
               const items = (sessionPairs.length
-                ? sessionPairs.map(p=>buildEntry(p.ticker, p.fileId))
-                : [buildEntry(symbol, null)]
+                ? sessionPairs.map(p=>buildEntry(p.ticker, p.fileId, p.assetClass))
+                : [buildEntry(symbol, null, null)]
               );
               // Group by cat (FOREX, FUTURES, etc.) so the visual grouping is preserved.
               const byCat = {};
@@ -15853,7 +15879,7 @@ const TalariaV8bLive = () => {
         <button type="button" onClick={(e) => { e.stopPropagation(); const was=symbolOpen; closeAll(); if(!was) setSymbolOpen(true); }} onMouseEnter={() => setHov("symbol")} onMouseLeave={() => setHov(null)}
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px", background: symbolOpen ? "rgba(74,106,255,0.08)" : hov==="symbol" ? c.hv : "transparent", border: "none", color: symbolOpen ? c.acL : hov==="symbol" ? c.tx : c.ts, cursor: "default", fontSize: 14, fontWeight: 700, fontFamily: F, position: "relative", width: 128, flexShrink: 0, transition: "color 0.12s, background 0.12s" }}>
           <div style={{ display: "flex", alignItems: "center", position: "relative", minWidth: 42, height: 16, flexShrink: 0 }}>
-            <ChartSymbolBadge sym={normalizeSymForBadge(symbol)} asset={chartAssetFromSymbolObj(currentSymbol)} w={20} h={16} fontFamily={F}/>
+            <ChartSymbolBadge sym={normalizeSymForBadge(symbol)} asset={headerBadgeAsset} w={20} h={16} fontFamily={F}/>
           </div>
           {symbol}
           <div style={{transform:symbolOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s ease",lineHeight:0,flexShrink:0}}>

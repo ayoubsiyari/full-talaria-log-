@@ -406,11 +406,58 @@ const METAL_BADGES = {
   MCL: { bg: "#071510", fg: "#33CC66", label: "μCL" },
 };
 
-function normalizeBadgeAsset(a) {
+export function normalizeBadgeAsset(a) {
   if (!a) return undefined;
-  if (a === "Equities") return "Stocks";
-  if (a === "Forex" || a === "Futures" || a === "Crypto" || a === "Stocks") return a;
+  const s = String(a).trim();
+  if (!s) return undefined;
+  if (/^equities$/i.test(s)) return "Stocks";
+  if (/^(forex|futures|crypto|stocks)$/i.test(s)) return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  if (s === "Equities") return "Stocks";
+  if (s === "Forex" || s === "Futures" || s === "Crypto" || s === "Stocks") return s;
   return undefined;
+}
+
+/** Longest root first so `MES` does not steal `MESA`, and `RB` does not steal `RBA`. */
+const FUTURES_ROOTS_FOR_INFER = [
+  "MNQ",
+  "MES",
+  "MYM",
+  "M2K",
+  "MGC",
+  "MCL",
+  "MBTX",
+  "NKD",
+  "MBT",
+  "RTY",
+  "ES",
+  "NQ",
+  "YM",
+  "CL",
+  "GC",
+  "SI",
+  "NG",
+  "HG",
+  "PL",
+  "ZB",
+  "ZN",
+  "ZF",
+  "ZT",
+  "HO",
+  "RB",
+  "6E",
+  "6B",
+  "6J",
+  "6A",
+  "6C",
+  "6S",
+].sort((a, b) => b.length - a.length);
+
+function futuresSuffixLooksLikeContract(rest) {
+  if (rest === "") return true;
+  if (/^\d/.test(rest)) return true;
+  // CME-style month letter + 2–4 digit year (MESZ24, RBZ2024)
+  if (/^[FGHJKMNQUVXZ]\d{2,4}$/i.test(rest)) return true;
+  return false;
 }
 
 export function inferChartAssetClass(ticker) {
@@ -421,9 +468,11 @@ export function inferChartAssetClass(ticker) {
 
   if (/(BTC|ETH|BNB|SOL|ADA|XRP|DOGE|DOT|AVAX|LINK|MATIC|UNI|USDT|USDC|PERP|SWAP)/.test(u)) return "Crypto";
 
-  const futRe =
-    /^(NQ|ES|YM|RTY|MNQ|MES|MYM|M2K|MGC|MCL|CL|GC|SI|NG|HG|PL|RB|HO|ZB|ZN|ZF|ZT|6E|6B|6J|6A|6C|6S|MBT|MBTX|NKD)/;
-  if (futRe.test(u)) return "Futures";
+  for (const root of FUTURES_ROOTS_FOR_INFER) {
+    if (!u.startsWith(root)) continue;
+    const rest = u.slice(root.length);
+    if (futuresSuffixLooksLikeContract(rest)) return "Futures";
+  }
 
   if (u.length === 6) {
     const b = u.slice(0, 3),
@@ -446,6 +495,8 @@ export function normalizeSymForBadge(symbol) {
 
 export function chartAssetFromSymbolObj(s) {
   if (!s) return "";
+  const hinted = normalizeBadgeAsset(s.badgeAsset || s.assetClass || s.asset_class);
+  if (hinted) return hinted;
   const t = s.type;
   if (t === "forex") return "Forex";
   if (t === "futures") return "Futures";
