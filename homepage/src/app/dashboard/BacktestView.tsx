@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 
 /* ── Design system tokens (dark mode) ── */
 const c = {
@@ -89,6 +89,7 @@ export function BacktestView() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [hov, setHov] = useState<string | null>(null);
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -189,6 +190,28 @@ export function BacktestView() {
   const goNew = () => {
     setIframeUrl(`/talaria-v8b-design/index.html?newSession=1&modalOnly=1&v=${Date.now()}`);
   };
+
+  const forceModalOnlyInIframe = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+      const styleId = "tlr-force-modal-only";
+      if (doc.getElementById(styleId)) return;
+      const style = doc.createElement("style");
+      style.id = styleId;
+      style.textContent = `
+        div[style*="z-index: 99998"] { visibility: hidden !important; }
+        div[style*="z-index:99998"] { visibility: hidden !important; }
+        div[style*="z-index: 99999"] { visibility: visible !important; }
+        div[style*="z-index:99999"] { visibility: visible !important; }
+      `;
+      doc.head.appendChild(style);
+    } catch {
+      // Ignore cross-document access failures.
+    }
+  }, []);
 
   const openSession = (s: Session) => {
     try {
@@ -688,7 +711,7 @@ export function BacktestView() {
       {iframeUrl && (
         <div style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(0,0,0,0.52)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div style={{ width: "min(980px, calc(100vw - 48px))", height: "min(690px, calc(100vh - 48px))", border: `1px solid ${c.brH}`, boxShadow: "0 20px 80px rgba(0,0,0,0.65)", background: "#05070d" }}>
-            <iframe title="New Session" src={iframeUrl} style={{ width: "100%", height: "100%", border: "none" }} />
+            <iframe ref={iframeRef} onLoad={forceModalOnlyInIframe} title="New Session" src={iframeUrl} style={{ width: "100%", height: "100%", border: "none" }} />
           </div>
         </div>
       )}
