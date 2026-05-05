@@ -8462,14 +8462,14 @@ const TalariaV8bLive = () => {
             width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "flex-start",
             background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
             border: "none", cursor: "default", color: pressCol,
-            padding: 0, paddingLeft: railAccentPad + 2, paddingRight: t.dd ? 11 : 4,
+            padding: 0, paddingLeft: railAccentPad, paddingRight: t.dd ? 11 : 4,
             boxSizing: "border-box", touchAction: "manipulation",
             transition: "color 0.15s ease, background 0.12s, padding-left 0.12s", position: "relative", fontFamily: F,
           }}>
           {/* pointer-events:none on icon so the whole <button type="button"> hit box counts — SVG paths alone miss gaps between strokes */}
           {t.id === "pinbar"
-            ? <span style={{ display: "flex", pointerEvents: "none", transform: h && !act ? "rotate(-25deg) scale(1.15)" : "scale(1)", transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
-            : <span style={{ display: "flex", pointerEvents: "none" }}><I n={railIcon} s={17} cl={pressCol}/></span>
+            ? <span style={{ display: "flex", pointerEvents: "none", transform: `${h && !act ? "rotate(-25deg) scale(1.15)" : "scale(1)"} translateX(2px)`, transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
+            : <span style={{ display: "flex", pointerEvents: "none", transform: "translateX(2px)" }}><I n={railIcon} s={17} cl={pressCol}/></span>
           }
         </button>
         {act && <div style={{ position: "absolute", left: 0, top: "10%", bottom: "10%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 4px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
