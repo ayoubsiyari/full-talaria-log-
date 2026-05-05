@@ -187,7 +187,7 @@ export function BacktestView() {
 
   /* ── Actions ── */
   const goNew = () => {
-    setIframeUrl(`/talaria-v8b-design/index.html?newSession=1&v=${Date.now()}`);
+    setIframeUrl(`/talaria-v8b-design/index.html?newSession=1&modalOnly=1&v=${Date.now()}`);
   };
 
   const openSession = (s: Session) => {
