@@ -2559,14 +2559,43 @@ class Chart {
         const next = Math.min(prev * 2, 120000);
         this._sessionPatchBackoffMs = next;
         this._sessionPatchBackoffUntil = Date.now() + next;
-        console.warn(
-            `⚠️ Session state PATCH backoff ~${Math.round(next / 1000)}s (HTTP ${httpStatus || '?'} — upstream unavailable or overloaded)`
-        );
     }
 
     _clearSessionPatchBackoff() {
         this._sessionPatchBackoffMs = 2000;
         this._sessionPatchBackoffUntil = 0;
+        this._upstreamPatchWarnAt = 0;
+    }
+
+    /** One concise log per interval — avoids flooding DevTools with nginx HTML error pages. */
+    _truncateUpstreamErrorBody(text) {
+        const s = String(text || '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (!s) return '';
+        return s.length <= 160 ? s : `${s.slice(0, 160)}…`;
+    }
+
+    /**
+     * Explains HTTP 502/503/504 from nginx: chart FastAPI unreachable or timed out.
+     * Does not replace fixing docker/proxy — only reduces duplicate noise + clarifies cause.
+     */
+    _logUpstreamSessionPatchOnce(status, errBody, label) {
+        const now = Date.now();
+        const quietMs = 90000;
+        if (this._upstreamPatchWarnAt && now - this._upstreamPatchWarnAt < quietMs) return;
+        this._upstreamPatchWarnAt = now;
+        const backoffSec = this._sessionPatchBackoffUntil
+            ? Math.max(1, Math.round((this._sessionPatchBackoffUntil - now) / 1000))
+            : 0;
+        const snippet = this._truncateUpstreamErrorBody(errBody);
+        console.warn(
+            `[Session save — ${label}] HTTP ${status}: proxy/nginx cannot complete PATCH to chart API ` +
+            `(service down, wrong upstream, or timeout). Next retry in ~${backoffSec}s. State is kept in local backup. ` +
+            `Ops: confirm trading-chart:8000 / CHART_BACKEND is up; extend nginx proxy_*_timeout if commits are large.` +
+            (snippet ? ` Server text: ${snippet}` : '')
+        );
     }
 
     scheduleSessionStateSave(patch) {
@@ -2621,15 +2650,21 @@ class Chart {
             });
             if (!res.ok) {
                 const errText = await res.text().catch(() => '');
-                console.warn('⚠️ Critical session state PATCH failed', res.status, errText);
-                this._notifyJournalSaveFailed(res.status);
-                if (res.status === 503 || res.status === 502) {
+                if (res.status === 503 || res.status === 502 || res.status === 504) {
                     this._bumpSessionPatchBackoff(res.status);
+                    this._logUpstreamSessionPatchOnce(res.status, errText, 'critical');
                     this._pendingCriticalSessionStatePatch = Object.assign(
                         {},
                         patch,
                         this._pendingCriticalSessionStatePatch || {}
                     );
+                } else {
+                    console.warn(
+                        '⚠️ Critical session state PATCH failed',
+                        res.status,
+                        this._truncateUpstreamErrorBody(errText) || errText
+                    );
+                    this._notifyJournalSaveFailed(res.status);
                 }
                 if (res.status === 403) {
                     console.warn(
@@ -2696,11 +2731,17 @@ class Chart {
             });
             if (!res.ok) {
                 const errText = await res.text().catch(() => '');
-                console.warn('⚠️ Session state PATCH failed', res.status, errText);
-                this._notifyJournalSaveFailed(res.status);
-                if (res.status === 503 || res.status === 502) {
+                if (res.status === 503 || res.status === 502 || res.status === 504) {
                     this._bumpSessionPatchBackoff(res.status);
+                    this._logUpstreamSessionPatchOnce(res.status, errText, 'deferred');
                     this._pendingSessionStatePatch = Object.assign({}, patch, this._pendingSessionStatePatch || {});
+                } else {
+                    console.warn(
+                        '⚠️ Session state PATCH failed',
+                        res.status,
+                        this._truncateUpstreamErrorBody(errText) || errText
+                    );
+                    this._notifyJournalSaveFailed(res.status);
                 }
                 if (res.status === 403) {
                     console.warn(
