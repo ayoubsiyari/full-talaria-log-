@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import FlagSvg from "./backtestModal/FlagSvg";
 import { currencyCountry } from "./backtestModal/FlagSvg";
+import { JOURNAL_API_BASE } from "@/lib/journalApi";
 
 const F = "'Exo 2', sans-serif";
 
@@ -338,17 +339,29 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
 
   useEffect(() => {
     if (!open || myStrategies.length > 0) return;
-    const endpoints = ["/journal/api/strategies", "/api/strategies"];
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const strategyHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) strategyHeaders.Authorization = `Bearer ${token}`;
+    const endpoints = [
+      { url: `${JOURNAL_API_BASE}/strategies`, init: { headers: strategyHeaders } },
+      { url: "/journal/api/strategies", init: { credentials: "include" as const } },
+      { url: "/api/strategies", init: { credentials: "include" as const } },
+    ];
+
     void Promise.any(
-      endpoints.map((url) =>
-        fetch(url, { credentials: "include" }).then((r) => {
+      endpoints.map((ep) =>
+        fetch(ep.url, ep.init).then((r) => {
           if (!r.ok) throw new Error(String(r.status));
           return r.json();
         }),
       ),
     )
       .then((payload: any) => {
-        const list = Array.isArray(payload?.strategies) ? payload.strategies : [];
+        const list = Array.isArray(payload?.strategies)
+          ? payload.strategies
+          : Array.isArray(payload?.data?.strategies)
+            ? payload.data.strategies
+            : [];
         const options = list
           .map((s: any) => {
             const id = s?.id;
@@ -358,7 +371,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
             return { value: `strategy:${id}`, label: name, variables: vars } as StrategyOption;
           })
           .filter((x: StrategyOption | null): x is StrategyOption => !!x);
-        if (options.length) setMyStrategies(options);
+        setMyStrategies(options);
       })
       .catch(() => {
         // Keep modal usable if strategy service is unavailable; dropdown will show no strategies.
