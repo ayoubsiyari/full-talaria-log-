@@ -434,11 +434,18 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
     onClose();
   };
 
+  const selectedFilesForSession = availFiles.filter(f => newSessFiles.includes(f.id));
+  const fallbackFilesByTicker = newSessTickers
+    .map(t => availFiles.find(f => (f.ticker || "").toUpperCase() === String(t || "").toUpperCase()))
+    .filter((f): f is AvailFile => !!f);
+  const effectiveFiles = selectedFilesForSession.length > 0 ? selectedFilesForSession : fallbackFilesByTicker;
+  const primaryEffectiveFile = effectiveFiles[0] || null;
+
   const sessInfoDone = !!newSessName.trim();
   const sessSettingsDone = sessInfoDone && newSessTickers.length > 0 && !!newSessStart && !!newSessEnd;
   const lockedBox = { opacity: 0.35, pointerEvents: "none" as const, userSelect: "none" as const };
   const activeBox = {};
-  const isValid2 = !!(newSessName && newSessTickers.length > 0 && newSessStart && newSessEnd && newSessCapital);
+  const isValid2 = !!(newSessName && newSessTickers.length > 0 && newSessStart && newSessEnd && newSessCapital && primaryEffectiveFile);
 
   const TlChk = (on: boolean, hKey: string, label: string | null, toggle: any, accent?: string) => {
     const ac = accent || c.acL;
@@ -471,8 +478,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
   };
 
   function buildChartConfig(): Record<string, unknown> {
-    const selectedFilesArray = availFiles.filter(f => newSessFiles.includes(f.id));
-    const primaryFile = selectedFilesArray[0] || null;
+    const selectedFilesArray = effectiveFiles;
+    const primaryFile = primaryEffectiveFile;
     const primary = newSessTickers[0] || newSessSymbol || "NQ";
     const sessionName = newSessName.trim() || "Backtest Session";
     const startDate = (newSessStart || "").split("T")[0] || "";
@@ -487,9 +494,15 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
     const accountCurrency = newSessCurrency || "USD";
     const fileId = primaryFile ? Number(primaryFile.id) : null;
     const fileName = primaryFile?.name || "";
-    const symbols = newSessTickers.map(sym => ({ symbolName: sym, fileId }));
+    const symbols = newSessTickers.map(sym => {
+      const match = selectedFilesArray.find(f => (f.ticker || "").toUpperCase() === String(sym || "").toUpperCase());
+      const resolvedFileId = match ? Number(match.id) : fileId;
+      return { symbolName: sym, fileId: resolvedFileId };
+    });
     const instrumentsByTicker = instrRows.reduce((acc: Record<string, unknown>, row: any) => {
-      const fileRef = selectedFilesArray.find(f => f.ticker === row.ticker || f.id === row.id);
+      const fileRef = selectedFilesArray.find(
+        f => (f.ticker || "").toUpperCase() === String(row.ticker || "").toUpperCase() || String(f.id) === String(row.id),
+      );
       acc[row.ticker] = {
         fileId: fileRef ? Number(fileRef.id) : fileId,
         ticker: row.ticker,
@@ -504,6 +517,26 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
       };
       return acc;
     }, {});
+
+    if (Object.keys(instrumentsByTicker).length === 0) {
+      newSessTickers.forEach((ticker) => {
+        const fileRef = selectedFilesArray.find(f => (f.ticker || "").toUpperCase() === String(ticker || "").toUpperCase()) || primaryFile;
+        if (!fileRef) return;
+        const def = instrDefaults[fileRef.asset] || instrDefaults.Forex;
+        instrumentsByTicker[ticker] = {
+          fileId: Number(fileRef.id),
+          ticker,
+          timeframe: fileRef.tf || newSessTf,
+          spread: def.spread,
+          commission: def.commission,
+          pip_size: parseFloat(def.pipSize || "0"),
+          pip_value_per_lot: parseFloat(def.pipVal || "0"),
+          contract_size: parseFloat(def.contractSize || "0"),
+          min_lot: parseFloat(def.minLot || "0"),
+          lot_step: parseFloat(def.lotStep || "0"),
+        };
+      });
+    }
 
     return {
       type: modeType,
@@ -1200,6 +1233,11 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                                     ? `Available from selected datasets: ${availableStartIso} -> ${availableEndIso}`
                                     : "Select at least one dataset to enable real date bounds."}
                             </div>
+                            {!primaryEffectiveFile && (
+                              <div style={{marginTop:4,fontSize:9,color:c.rd,fontFamily:F}}>
+                                No dataset linked to selected trading pair(s). Select files in Configure Markets first.
+                              </div>
+                            )}
                           </div>
                           {/* ── Market sub-window ── */}
                             {newSessMarketOpen&&(
