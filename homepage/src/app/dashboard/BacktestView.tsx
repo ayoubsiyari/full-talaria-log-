@@ -202,18 +202,32 @@ export function BacktestView() {
     try {
       const doc = iframe.contentDocument;
       if (!doc) return;
-      const styleId = "tlr-force-modal-only";
-      if (doc.getElementById(styleId)) return;
-      const style = doc.createElement("style");
-      style.id = styleId;
-      style.textContent = `
-        body * { visibility: hidden !important; }
-        div[style*="z-index: 99999"],
-        div[style*="z-index:99999"],
-        div[style*="z-index: 99999"] *,
-        div[style*="z-index:99999"] * { visibility: visible !important; }
-      `;
-      doc.head.appendChild(style);
+      const keepOnlyModalBranch = () => {
+        const modal = doc.querySelector('div[style*="z-index: 99999"], div[style*="z-index:99999"]') as HTMLElement | null;
+        if (!modal) return false;
+
+        const keep = new Set<HTMLElement>();
+        let node: HTMLElement | null = modal;
+        while (node && node !== doc.body) {
+          keep.add(node);
+          node = node.parentElement as HTMLElement | null;
+        }
+
+        // Hide non-modal branches from body downward.
+        Array.from(doc.body.children).forEach((child) => {
+          if (!keep.has(child as HTMLElement)) (child as HTMLElement).style.display = "none";
+        });
+        keep.forEach((el) => {
+          const parent = el.parentElement;
+          if (!parent) return;
+          Array.from(parent.children).forEach((sib) => {
+            if (sib !== el && !keep.has(sib as HTMLElement)) (sib as HTMLElement).style.display = "none";
+          });
+        });
+        return true;
+      };
+
+      keepOnlyModalBranch();
 
       let seenModal = false;
       frameWithWatcher.__tlrCloseWatch = window.setInterval(() => {
@@ -221,6 +235,8 @@ export function BacktestView() {
         if (!liveDoc) return;
         const hasModal = !!liveDoc.querySelector('div[style*="z-index: 99999"], div[style*="z-index:99999"]');
         if (hasModal) {
+          // Re-apply pruning in case React rerender restored hidden siblings.
+          keepOnlyModalBranch();
           seenModal = true;
           return;
         }
