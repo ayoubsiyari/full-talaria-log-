@@ -202,6 +202,19 @@ export function BacktestView() {
     try {
       const doc = iframe.contentDocument;
       if (!doc) return;
+      const styleId = "tlr-modal-backdrop-fix";
+      if (!doc.getElementById(styleId)) {
+        const style = doc.createElement("style");
+        style.id = styleId;
+        style.textContent = `
+          div[style*="z-index: 99999"],
+          div[style*="z-index:99999"] {
+            background: rgba(7,8,14,0.98) !important;
+          }
+        `;
+        doc.head.appendChild(style);
+      }
+
       let seenModal = false;
       frameWithWatcher.__tlrCloseWatch = window.setInterval(() => {
         const liveDoc = iframe.contentDocument;
@@ -722,14 +735,8 @@ export function BacktestView() {
       {/* ── New session iframe overlay ── */}
       {iframeUrl && (
         <div style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(0,0,0,0.52)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div style={{ width: "min(980px, calc(100vw - 48px))", height: "min(690px, calc(100vh - 48px))", border: `1px solid ${c.brH}`, boxShadow: "0 20px 80px rgba(0,0,0,0.65)", background: "#05070d", position: "relative", overflow: "hidden" }}>
-            <iframe
-              ref={iframeRef}
-              onLoad={forceModalOnlyInIframe}
-              title="New Session"
-              src={iframeUrl}
-              style={{ position: "absolute", top: "50%", left: "50%", width: "100vw", height: "100vh", transform: "translate(-50%, -50%)", border: "none" }}
-            />
+          <div style={{ width: "min(980px, calc(100vw - 48px))", height: "min(690px, calc(100vh - 48px))", border: `1px solid ${c.brH}`, boxShadow: "0 20px 80px rgba(0,0,0,0.65)", background: "#05070d" }}>
+            <iframe ref={iframeRef} onLoad={forceModalOnlyInIframe} title="New Session" src={iframeUrl} style={{ width: "100%", height: "100%", border: "none" }} />
           </div>
         </div>
       )}
