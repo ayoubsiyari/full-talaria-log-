@@ -388,12 +388,27 @@ export function BacktestView() {
   const PR = 46, PC = 2 * Math.PI * PR;
   const profLen = (profPct / 100) * PC;
 
-  /* ── Trades bar chart ── */
-  const trBars = [...sessions].sort((a, b) => (kpis[b.id]?.trades || 0) - (kpis[a.id]?.trades || 0));
-  const trMax = (kpis[trBars[0]?.id]?.trades) || 1;
+  /* ── Trades bar chart (tile only): ≥5 trades per session, top 20 by volume — header total stays all-session sum */
+  const TRADE_CHART_MIN_TRADES = 5;
+  const TRADE_CHART_MAX_BARS = 20;
+  const trBars = [...sessions]
+    .filter(s => (kpis[s.id]?.trades || 0) >= TRADE_CHART_MIN_TRADES)
+    .sort((a, b) => (kpis[b.id]?.trades || 0) - (kpis[a.id]?.trades || 0))
+    .slice(0, TRADE_CHART_MAX_BARS);
+  const trMax = Math.max(1, ...trBars.map(s => kpis[s.id]?.trades || 0));
 
   /* ── Dot grid ── */
   const dotsN = Math.min(Math.ceil(totalDays / 30), 56);
+
+  const daysTestedDisplay = totalDays.toLocaleString();
+  /** Shrink headline figure as digit count grows so “Days Tested” stays one line in the narrow tile */
+  const daysTestedHeadPx =
+    daysTestedDisplay.length <= 7 ? 18
+      : daysTestedDisplay.length <= 9 ? 15
+        : daysTestedDisplay.length <= 11 ? 13
+          : daysTestedDisplay.length <= 13 ? 11
+            : daysTestedDisplay.length <= 15 ? 10
+              : 9;
 
   if (loading) {
     return (
@@ -585,9 +600,23 @@ export function BacktestView() {
             {/* Tile 4: Days Tested dots */}
             <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)` }} />
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
-                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const }}>Days Tested</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: c.tx, fontVariantNumeric: "tabular-nums" }}>{totalDays.toLocaleString()}</div>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 4, flexWrap: "nowrap" as const, minWidth: 0 }}>
+                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const, whiteSpace: "nowrap" as const, flexShrink: 0 }}>
+                  Days Tested
+                </div>
+                <div style={{
+                  fontSize: daysTestedHeadPx,
+                  fontWeight: 800,
+                  color: c.tx,
+                  fontVariantNumeric: "tabular-nums",
+                  whiteSpace: "nowrap" as const,
+                  lineHeight: 1.1,
+                  flexShrink: 1,
+                  minWidth: 0,
+                  textAlign: "right" as const,
+                }}>
+                  {daysTestedDisplay}
+                </div>
               </div>
               <div style={{ fontSize: 8, color: c.tm }}>{(totalDays / 365).toFixed(1)} yrs equivalent</div>
               <div style={{ flex: 1 }} />

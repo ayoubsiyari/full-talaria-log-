@@ -31,7 +31,16 @@ type NotifRow = {
   read_at?: string | null;
 };
 
-function DashboardNotificationBell({ isArabic }: { isArabic: boolean }) {
+function DashboardNotificationBell({
+  isArabic,
+  dropdownAnchorStart,
+  fullWidthButton,
+}: {
+  isArabic: boolean;
+  /** When true, align dropdown to the button’s start edge (for Profile flyout). */
+  dropdownAnchorStart?: boolean;
+  fullWidthButton?: boolean;
+}) {
   const [open, setOpen] = React.useState(false);
   const [count, setCount] = React.useState(0);
   const [items, setItems] = React.useState<NotifRow[]>([]);
@@ -105,7 +114,19 @@ function DashboardNotificationBell({ isArabic }: { isArabic: boolean }) {
       <button
         type="button"
         className="db-nav-link"
-        style={{ position: "relative" }}
+        style={{
+          position: "relative",
+          ...(fullWidthButton
+            ? {
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                gap: 8,
+                boxSizing: "border-box" as const,
+              }
+            : {}),
+        }}
         aria-label="Notifications"
         onClick={(e) => {
           e.stopPropagation();
@@ -144,7 +165,7 @@ function DashboardNotificationBell({ isArabic }: { isArabic: boolean }) {
           style={{
             position: "absolute",
             top: "calc(100% + 8px)",
-            ...(isArabic ? { left: 0 } : { right: 0 }),
+            ...(dropdownAnchorStart ? { left: 0 } : isArabic ? { left: 0 } : { right: 0 }),
             width: 340,
             maxHeight: 380,
             overflowY: "auto",
@@ -258,6 +279,8 @@ export default function DashboardLayout({
   const [user, setUser] = React.useState<User | null>(null);
   const [activeView, setActiveView] = React.useState<string>("dashboard");
   const [loadedViews, setLoadedViews] = React.useState<Record<string, boolean>>({});
+  const [profilePanelOpen, setProfilePanelOpen] = React.useState(false);
+  const profileWrapRef = React.useRef<HTMLDivElement>(null);
   const pathname = usePathname() || "";
   const router = useRouter();
 
@@ -276,6 +299,17 @@ export default function DashboardLayout({
     else if (pathname.startsWith("/dashboard/admin")) setActiveView("admin");
     else if (pathname.startsWith("/dashboard")) setActiveView("dashboard");
   }, [pathname]);
+
+  React.useEffect(() => {
+    if (!profilePanelOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (profileWrapRef.current && !profileWrapRef.current.contains(e.target as Node)) {
+        setProfilePanelOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [profilePanelOpen]);
 
   const handleNavClick = (id: string) => {
     setActiveView(id);
@@ -324,19 +358,13 @@ export default function DashboardLayout({
         </a>
         <div style={{ width: 1, height: 20, background: "rgba(140,160,255,0.18)", margin: "0 12px", flexShrink: 0 }} />
         <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.92)", flexShrink: 0 }}>{pageTitle}</span>
-        {/* Right side */}
+        {/* Right side — Alerts / email / Logout live under sidebar Profile */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, paddingRight: 16 }}>
-          <DashboardNotificationBell isArabic={isArabic} />
           {user?.role === "admin" && (
             <a href="/dashboard/admin/" style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.50)", textDecoration: "none", padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(140,160,255,0.12)", fontFamily: F }}>
               Admin
             </a>
           )}
-          {user && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.28)" }}>{user.email}</span>}
-          <button type="button" onClick={handleLogout}
-            style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,80,104,0.75)", background: "transparent", border: "1px solid rgba(255,80,104,0.15)", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: F }}>
-            {isArabic ? "تسجيل الخروج" : "Logout"}
-          </button>
         </div>
       </header>
 
@@ -357,11 +385,79 @@ export default function DashboardLayout({
             );
           })}
           <div style={{ flex: 1 }} />
-          {/* Profile at bottom */}
-          <div onClick={() => handleNavClick("support")}
-            style={{ width: "100%", height: 56, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer", color: activeView === "support" ? "#4A6AFF" : "rgba(255,255,255,0.40)", transition: "color 0.12s" }}>
-            <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-            <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase" as const, fontFamily: F }}>Profile</span>
+          {/* Profile — flyout: Alerts, email, Logout */}
+          <div ref={profileWrapRef} style={{ width: "100%", position: "relative", zIndex: profilePanelOpen ? 20 : 1 }}>
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                setProfilePanelOpen((o) => !o);
+              }}
+              style={{
+                width: "100%",
+                height: 56,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                cursor: "pointer",
+                color: profilePanelOpen ? "#4A6AFF" : "rgba(255,255,255,0.40)",
+                background: profilePanelOpen ? "rgba(38,67,247,0.08)" : "transparent",
+                transition: "color 0.12s, background 0.12s",
+              }}>
+              <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+              <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase" as const, fontFamily: F }}>Profile</span>
+            </div>
+            {profilePanelOpen ? (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: "fixed",
+                  ...(isArabic ? { right: 64 } : { left: 64 }),
+                  bottom: 8,
+                  width: 288,
+                  padding: "14px 14px 12px",
+                  background: "#111318",
+                  border: "1px solid rgba(140,160,255,0.14)",
+                  borderRadius: 10,
+                  boxShadow: "0 12px 40px rgba(0,0,0,0.55)",
+                  fontFamily: F,
+                }}>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", marginBottom: 10 }}>
+                  {isArabic ? "الحساب" : "Account"}
+                </div>
+                {user ? (
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.72)", wordBreak: "break-all", lineHeight: 1.35, marginBottom: 12 }}>
+                    {user.email}
+                  </div>
+                ) : null}
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ width: "100%" }}>
+                    <DashboardNotificationBell isArabic={isArabic} dropdownAnchorStart fullWidthButton />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfilePanelOpen(false);
+                      void handleLogout();
+                    }}
+                    style={{
+                      width: "100%",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "rgba(255,80,104,0.9)",
+                      background: "rgba(255,80,104,0.06)",
+                      border: "1px solid rgba(255,80,104,0.2)",
+                      borderRadius: 8,
+                      padding: "10px 12px",
+                      cursor: "pointer",
+                      fontFamily: F,
+                    }}>
+                    {isArabic ? "تسجيل الخروج" : "Logout"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </nav>
 
