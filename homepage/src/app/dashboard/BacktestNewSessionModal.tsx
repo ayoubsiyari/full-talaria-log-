@@ -203,6 +203,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
   const [availFiles, setAvailFiles] = useState<AvailFile[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
+  const [fileMetaLoaded, setFileMetaLoaded] = useState<Record<string, boolean>>({});
   const [myStrategies, setMyStrategies] = useState<string[]>([]);
 
   useEffect(() => {
@@ -277,6 +278,49 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
   }, [open, filesLoading, availFiles.length]);
 
   useEffect(() => {
+    if (!open || availFiles.length === 0 || newSessFiles.length === 0) return;
+    const pending = newSessFiles.filter(fid => !fileMetaLoaded[fid]);
+    if (pending.length === 0) return;
+
+    const toIsoDate = (ts: number | null | undefined) => {
+      if (!ts || !Number.isFinite(ts)) return "";
+      return new Date(ts).toISOString().slice(0, 10);
+    };
+    const pickBestTf = (timeframes: Record<string, { status?: string }> | undefined) => {
+      if (!timeframes) return "";
+      const prefer = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
+      const keys = Object.keys(timeframes).filter(k => timeframes[k]?.status === "ready");
+      if (!keys.length) return "";
+      for (const tf of prefer) {
+        const hit = keys.find(k => k.toLowerCase() === tf);
+        if (hit) return hit;
+      }
+      return keys[0];
+    };
+
+    pending.forEach(fid => {
+      void fetch(`/api/file/${encodeURIComponent(fid)}/meta`, { credentials: "include" })
+        .then(r => (r.ok ? r.json() : null))
+        .then((meta: any) => {
+          if (!meta) return;
+          setAvailFiles(prev => prev.map(f => {
+            if (f.id !== fid) return f;
+            const from = toIsoDate(meta.start_ts) || f.from;
+            const to = toIsoDate(meta.end_ts) || f.to;
+            const tf = pickBestTf(meta.timeframes) || f.tf;
+            return { ...f, from, to, tf };
+          }));
+        })
+        .catch(() => {
+          // Keep UI usable even when per-file metadata endpoint fails.
+        })
+        .finally(() => {
+          setFileMetaLoaded(prev => ({ ...prev, [fid]: true }));
+        });
+    });
+  }, [open, availFiles, newSessFiles, fileMetaLoaded]);
+
+  useEffect(() => {
     if (!open || myStrategies.length > 0) return;
     void fetch("/journal/api/strategies", { credentials: "include" })
       .then(r => (r.ok ? r.json() : null))
@@ -302,6 +346,18 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
     const def = instrDefaults[f.asset] || instrDefaults.Forex;
     return { ...f, ...def };
   }).filter(Boolean);
+
+  const selectedFiles = availFiles.filter(f => newSessFiles.includes(f.id));
+  const availableStartIso = selectedFiles
+    .map(f => f.from)
+    .filter(Boolean)
+    .sort()
+    .slice(-1)[0] || "";
+  const availableEndIso = selectedFiles
+    .map(f => f.to)
+    .filter(Boolean)
+    .sort()
+    .slice(0, 1)[0] || "";
 
   const resetFormToDefaults = useCallback(() => {
     setNewSessName("");
@@ -719,8 +775,9 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                         const applyD=(raw,setter)=>{
                           const s=raw.trim();
                           const todayIso=new Date().toISOString().slice(0,10);
-                          const minIso="1990-01-01";
-                          const clamp=iso=>iso<minIso?minIso:iso>todayIso?todayIso:iso;
+                          const minIso=availableStartIso||"1990-01-01";
+                          const maxIso=(availableEndIso&&availableEndIso<todayIso)?availableEndIso:todayIso;
+                          const clamp=iso=>iso<minIso?minIso:iso>maxIso?maxIso:iso;
                           // DD-Mon-YYYY
                           const m1=s.match(/^(\d{1,2})-([a-zA-Z]{3})-(\d{1,4})$/);
                           if(m1){const moIdx=MONS_D.indexOf(m1[2].toLowerCase());if(moIdx<0)return;const y=parseInt(m1[3]),dy=Math.min(parseInt(m1[1]),new Date(y,moIdx+1,0).getDate());if(y<1990||y>new Date().getFullYear())return;setter(clamp(`${y}-${String(moIdx+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
@@ -738,7 +795,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                         const applyPreset=(months,years)=>{const end=new Date(),start=new Date();if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(start));setNewSessStartInput(fd(start));setNewSessEnd(fi(end));setNewSessEndInput(fd(end));};
                         const presets=[{l:"1M",months:1},{l:"3M",months:3},{l:"6M",months:6},{l:"1Y",years:1},{l:"2Y",years:2},{l:"3Y",years:3},{l:"5Y",years:5},{l:"10Y",years:10}];
                         const unitMax={D:3650,M:120,Y:10};
-                        const randomRange=()=>{const today=new Date();today.setHours(0,0,0,0);let lenDays=newSessRandRangeUnit==="D"?newSessRandRangeVal:newSessRandRangeUnit==="M"?Math.round(newSessRandRangeVal*30.4375):Math.round(newSessRandRangeVal*365.25);const earliest=new Date(today);earliest.setFullYear(earliest.getFullYear()-20);const latest=new Date(today.getTime()-lenDays*86400000);if(latest<=earliest)return;const s=new Date(earliest.getTime()+Math.random()*(latest.getTime()-earliest.getTime()));const e2=new Date(s.getTime()+lenDays*86400000);const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(s));setNewSessStartInput(fd(s));setNewSessEnd(fi(e2));setNewSessEndInput(fd(e2));setNewSessActivePreset(null);};
+                        const randomRange=()=>{const today=new Date();today.setHours(0,0,0,0);let lenDays=newSessRandRangeUnit==="D"?newSessRandRangeVal:newSessRandRangeUnit==="M"?Math.round(newSessRandRangeVal*30.4375):Math.round(newSessRandRangeVal*365.25);const earliest=availableStartIso?new Date(availableStartIso+"T00:00:00"):new Date(today.getTime()-20*365*86400000);const maxEnd=availableEndIso?new Date(availableEndIso+"T00:00:00"):today;const latest=new Date(maxEnd.getTime()-lenDays*86400000);if(latest<=earliest)return;const s=new Date(earliest.getTime()+Math.random()*(latest.getTime()-earliest.getTime()));const e2=new Date(s.getTime()+lenDays*86400000);const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(s));setNewSessStartInput(fd(s));setNewSessEnd(fi(e2));setNewSessEndInput(fd(e2));setNewSessActivePreset(null);};
                         return(<>
                           {/* ─── Market + Random row ─── */}
                           <div style={{marginBottom:8,display:"flex",alignItems:"flex-end",gap:8}}>
@@ -1133,6 +1190,15 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                                   </div>
                                 );
                               })}
+                            </div>
+                            <div style={{marginTop:6,fontSize:9,color:c.tm,fontFamily:F}}>
+                              {filesLoading
+                                ? "Loading dataset metadata..."
+                                : filesError
+                                  ? filesError
+                                  : (availableStartIso && availableEndIso)
+                                    ? `Available from selected datasets: ${availableStartIso} -> ${availableEndIso}`
+                                    : "Select at least one dataset to enable real date bounds."}
                             </div>
                           </div>
                           {/* ── Market sub-window ── */}
