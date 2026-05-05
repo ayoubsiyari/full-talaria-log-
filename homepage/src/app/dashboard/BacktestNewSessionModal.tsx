@@ -203,6 +203,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
   const [availFiles, setAvailFiles] = useState<AvailFile[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
+  const [myStrategies, setMyStrategies] = useState<string[]>([]);
 
   useEffect(() => {
     if (!open || filesLoading || availFiles.length > 0) return;
@@ -274,6 +275,20 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
         setFilesLoading(false);
       });
   }, [open, filesLoading, availFiles.length]);
+
+  useEffect(() => {
+    if (!open || myStrategies.length > 0) return;
+    void fetch("/journal/api/strategies", { credentials: "include" })
+      .then(r => (r.ok ? r.json() : null))
+      .then((payload: any) => {
+        const list = Array.isArray(payload?.strategies) ? payload.strategies : [];
+        const names = list.map((s: any) => String(s?.name || "").trim()).filter(Boolean);
+        if (names.length) setMyStrategies(names);
+      })
+      .catch(() => {
+        // Keep modal usable if strategy service is unavailable.
+      });
+  }, [open, myStrategies.length]);
 
   const instrDefaults: Record<string, any> = {
     Forex: { spread: "1.2", commission: "0", pipSize: "0.0001", pipVal: "10", contractSize: "100000", minLot: "0.01", lotStep: "0.01" },
@@ -400,35 +415,80 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
   };
 
   function buildChartConfig(): Record<string, unknown> {
+    const selectedFilesArray = availFiles.filter(f => newSessFiles.includes(f.id));
+    const primaryFile = selectedFilesArray[0] || null;
     const primary = newSessTickers[0] || newSessSymbol || "NQ";
     const sessionName = newSessName.trim() || "Backtest Session";
     const startDate = (newSessStart || "").split("T")[0] || "";
     const endDate = (newSessEnd || "").split("T")[0] || "";
     const modeType = sessTradingMode === "prop" ? "propfirm" : "standard";
+    const strategy_id =
+      typeof newSessPlaybook === "string" && newSessPlaybook.startsWith("strategy:")
+        ? parseInt(newSessPlaybook.split(":")[1] || "", 10) || null
+        : null;
+    const playbook_display = newSessPlaybook || "General";
+    const startBalance = String(newSessCapital || "10000");
+    const accountCurrency = newSessCurrency || "USD";
+    const fileId = primaryFile ? Number(primaryFile.id) : null;
+    const fileName = primaryFile?.name || "";
+    const symbols = newSessTickers.map(sym => ({ symbolName: sym, fileId }));
+    const instrumentsByTicker = instrRows.reduce((acc: Record<string, unknown>, row: any) => {
+      const fileRef = selectedFilesArray.find(f => f.ticker === row.ticker || f.id === row.id);
+      acc[row.ticker] = {
+        fileId: fileRef ? Number(fileRef.id) : fileId,
+        ticker: row.ticker,
+        timeframe: row.tf,
+        spread: row.spread,
+        commission: row.commission,
+        pip_size: parseFloat(row.pipSize || row.pip_size || "0"),
+        pip_value_per_lot: parseFloat(row.pipVal || row.pip_value_per_lot || "0"),
+        contract_size: parseFloat(row.contractSize || row.contract_size || "0"),
+        min_lot: parseFloat(row.minLot || row.min_lot || "0"),
+        lot_step: parseFloat(row.lotStep || row.lot_step || "0"),
+      };
+      return acc;
+    }, {});
+
     return {
       type: modeType,
+      name: sessionName,
       sessionName,
+      projectName: sessionName,
       description: newSessDescription,
       playbook: newSessPlaybook || "",
+      playbook_display,
+      strategy_id,
+      strategy_variables: [],
       strategy_name: newSessPlaybook || "",
+      fileId,
+      fileName,
+      files: selectedFilesArray,
       tickers: newSessTickers,
       supporting_tickers: newSessSupportTickers,
       asset_class: newSessAssetClass,
       trading_mode: sessTradingMode,
       symbol: newSessTickers.length === 1 ? newSessTickers[0] : newSessTickers.length > 1 ? `${newSessTickers.length} symbols` : primary,
-      symbols: newSessTickers.map(sym => ({ symbolName: sym })),
+      symbols,
+      selectedSymbols: symbols,
+      activeFileIndex: 0,
+      instruments: instrumentsByTicker,
       startDate,
       endDate,
-      startBalance: String(newSessCapital || "10000"),
-      account_currency: newSessCurrency,
+      startBalance,
+      capital: parseFloat(startBalance) || 0,
+      created: new Date().toISOString(),
+      timeframe: newSessTf,
+      account_currency: accountCurrency,
+      accountCurrency,
       leverage: sessLeverage,
       margin_call_level: parseFloat(newSessMarginCall || "100"),
       stop_out_level: parseFloat(newSessStopOut || "50"),
       max_risk_per_trade_pct: parseFloat(newSessMaxRisk || "0") || null,
-      timeframe: newSessTf,
+      marketType: [String(newSessAssetClass || "Forex").toLowerCase()],
       defaultRiskType: sessRiskMode,
       defaultRisk: parseFloat(sessRiskVal || "1") || 1,
       allowBackNavigation: newSessRollback,
+      forwardTestingOnly: sessTradingMode === "prop",
       protectionPreset: newSessProtect,
       commission: newSessTradingCostsEnabled ? (sessCommission || "Per Lot") : "None",
       rollback_allowed: newSessRollback,
@@ -446,7 +506,18 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
         p1Amt: { dl: sessP1DailyLossAmt, dd: sessP1MaxDDAmt, pt: sessP1ProfitTargetAmt },
         p2Amt: { dl: sessP2DailyLossAmt, dd: sessP2MaxDDAmt, pt: sessP2ProfitTargetAmt },
       } : null,
-      instruments: instrRows,
+      challenge: sessTradingMode === "prop",
+      minTradingDays: parseInt(sessFutMinDays || "0", 10) || 0,
+      maxDailyLoss: {
+        percent: parseFloat(sessP1DailyLossPct || "0") || 0,
+        dollar: parseFloat(sessP1DailyLossAmt || "0") || 0,
+      },
+      maxTotalLoss: {
+        percent: parseFloat(sessP1TotalDDPct || "0") || 0,
+        dollar: parseFloat(sessP1MaxDDAmt || "0") || 0,
+      },
+      profitTarget: parseFloat(sessP1ProfitTargetAmt || sessP1ProfitTargetPct || "0") || 0,
+      daylightSavingTime: newSessDST ? "enabled" : "disabled",
     };
   }
 
@@ -495,9 +566,16 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
       } catch { /* ignore */ }
       await onSaved?.();
       closeNewSess();
-      const mode = sessTradingMode === "prop" ? "propfirm" : "backtest";
-      const q = id != null ? `?mode=${encodeURIComponent(mode)}&sessionId=${encodeURIComponent(String(id))}` : `?mode=${encodeURIComponent(mode)}`;
-      window.location.href = `/chart/index.html${q}`;
+      if (sessTradingMode === "prop") {
+        const target = id != null
+          ? `/backtest/challenge?sessionId=${encodeURIComponent(String(id))}`
+          : "/backtest/challenge";
+        window.location.href = target;
+      } else {
+        const mode = "backtest";
+        const q = id != null ? `?mode=${encodeURIComponent(mode)}&sessionId=${encodeURIComponent(String(id))}` : `?mode=${encodeURIComponent(mode)}`;
+        window.location.href = `/chart/index.html${q}`;
+      }
     } catch (e: any) {
       window.alert(`Failed to start session: ${e?.message || e}`);
     }
@@ -536,7 +614,9 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                       <div style={{border:`1px solid ${c.brH}`,padding:"12px 14px"}}>
                       {secH("Session Info")}
                       {(()=>{
-                        const myStrats=["EMA Crossover","London Breakout","VWAP Scalp","Golden Cross Trend","Volume Breakout"];
+                        const myStrats = myStrategies.length
+                          ? myStrategies
+                          : ["EMA Crossover","London Breakout","VWAP Scalp","Golden Cross Trend","Volume Breakout"];
                         const commStrats=["Momentum Surge","ICT Model A","SMC Liquidity Grab"];
                         const allGroups=[["My Strategies",myStrats],["Saved Strategies",commStrats]];
                         return(<>
