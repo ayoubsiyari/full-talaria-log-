@@ -206,6 +206,8 @@ export function BacktestView() {
         div[style*="z-index:99998"] { visibility: hidden !important; }
         div[style*="z-index: 99999"] { visibility: visible !important; }
         div[style*="z-index:99999"] { visibility: visible !important; }
+        div[style*="width:64"][style*="flex-direction:column"][style*="box-shadow:4px 0 20px"] { display: none !important; }
+        div[style*="width: 64"][style*="flex-direction: column"][style*="box-shadow: 4px 0 20px"] { display: none !important; }
       `;
       doc.head.appendChild(style);
     } catch {
