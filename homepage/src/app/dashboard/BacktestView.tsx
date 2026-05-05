@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 
 /* ── Design system tokens (dark mode) ── */
 const c = {
@@ -89,6 +89,7 @@ export function BacktestView() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [hov, setHov] = useState<string | null>(null);
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
+  const newSessionFrameRef = useRef<HTMLIFrameElement | null>(null);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -187,8 +188,28 @@ export function BacktestView() {
 
   /* ── Actions ── */
   const goNew = () => {
-    setIframeUrl(`/talaria-v8b-design/index.html?v=${Date.now()}`);
+    setIframeUrl(`/talaria-v8b-design/index.html?newSession=1&embed=1&v=${Date.now()}`);
   };
+
+  useEffect(() => {
+    if (!iframeUrl) return;
+    const timer = window.setInterval(() => {
+      try {
+        const href = newSessionFrameRef.current?.contentWindow?.location?.href || "";
+        if (!href) return;
+        if (
+          href.includes("/chart/index.html") ||
+          href.includes("/chart/dist-v9/index.html") ||
+          href.includes("/dashboard/sessions/analytics")
+        ) {
+          window.location.href = href;
+        }
+      } catch {
+        // Ignore transient frame access errors.
+      }
+    }, 400);
+    return () => window.clearInterval(timer);
+  }, [iframeUrl]);
 
   const openSession = (s: Session) => {
     try {
@@ -686,8 +707,17 @@ export function BacktestView() {
 
       {/* ── New session iframe overlay ── */}
       {iframeUrl && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 99999 }}>
-          <iframe title="New Session" src={iframeUrl} style={{ width: "100%", height: "100%", border: "none" }} />
+        <div style={{ position: "fixed", inset: 0, zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ position: "absolute", inset: 0, background: "rgba(4,5,10,0.72)", backdropFilter: "blur(2px)" }} />
+          <div style={{ position: "relative", width: "min(1180px,96vw)", height: "min(92vh,860px)", border: `1px solid ${c.brH}`, boxShadow: "0 24px 72px rgba(0,0,0,0.9)", background: c.sf }}>
+            <div
+              onClick={() => { setIframeUrl(null); loadSessions(); }}
+              style={{ position: "absolute", top: 10, right: 10, width: 28, height: 28, zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: c.ts, background: "rgba(0,0,0,0.22)", border: `1px solid ${c.br}` }}
+            >
+              ×
+            </div>
+            <iframe ref={newSessionFrameRef} title="New Session" src={iframeUrl} style={{ width: "100%", height: "100%", border: "none" }} />
+          </div>
         </div>
       )}
     </div>
