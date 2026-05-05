@@ -207,9 +207,12 @@ export function BacktestView() {
         const style = doc.createElement("style");
         style.id = styleId;
         style.textContent = `
-          div[style*="z-index: 99999"],
-          div[style*="z-index:99999"] {
-            background: rgba(7,8,14,0.98) !important;
+          /* Modal wrapper itself has no background in SessionsView;
+             the backdrop is a child div with absolute inset + blur. */
+          div[style*="position:absolute"][style*="inset:0"][style*="backdropFilter"] {
+            background: #07080E !important;
+            opacity: 1 !important;
+            backdrop-filter: none !important;
           }
         `;
         doc.head.appendChild(style);
