@@ -202,41 +202,12 @@ export function BacktestView() {
     try {
       const doc = iframe.contentDocument;
       if (!doc) return;
-      const keepOnlyModalBranch = () => {
-        const modal = doc.querySelector('div[style*="z-index: 99999"], div[style*="z-index:99999"]') as HTMLElement | null;
-        if (!modal) return false;
-
-        const keep = new Set<HTMLElement>();
-        let node: HTMLElement | null = modal;
-        while (node && node !== doc.body) {
-          keep.add(node);
-          node = node.parentElement as HTMLElement | null;
-        }
-
-        // Hide non-modal branches from body downward.
-        Array.from(doc.body.children).forEach((child) => {
-          if (!keep.has(child as HTMLElement)) (child as HTMLElement).style.display = "none";
-        });
-        keep.forEach((el) => {
-          const parent = el.parentElement;
-          if (!parent) return;
-          Array.from(parent.children).forEach((sib) => {
-            if (sib !== el && !keep.has(sib as HTMLElement)) (sib as HTMLElement).style.display = "none";
-          });
-        });
-        return true;
-      };
-
-      keepOnlyModalBranch();
-
       let seenModal = false;
       frameWithWatcher.__tlrCloseWatch = window.setInterval(() => {
         const liveDoc = iframe.contentDocument;
         if (!liveDoc) return;
         const hasModal = !!liveDoc.querySelector('div[style*="z-index: 99999"], div[style*="z-index:99999"]');
         if (hasModal) {
-          // Re-apply pruning in case React rerender restored hidden siblings.
-          keepOnlyModalBranch();
           seenModal = true;
           return;
         }
@@ -751,8 +722,14 @@ export function BacktestView() {
       {/* ── New session iframe overlay ── */}
       {iframeUrl && (
         <div style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(0,0,0,0.52)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div style={{ width: "min(980px, calc(100vw - 48px))", height: "min(690px, calc(100vh - 48px))", border: `1px solid ${c.brH}`, boxShadow: "0 20px 80px rgba(0,0,0,0.65)", background: "#05070d" }}>
-            <iframe ref={iframeRef} onLoad={forceModalOnlyInIframe} title="New Session" src={iframeUrl} style={{ width: "100%", height: "100%", border: "none" }} />
+          <div style={{ width: "min(980px, calc(100vw - 48px))", height: "min(690px, calc(100vh - 48px))", border: `1px solid ${c.brH}`, boxShadow: "0 20px 80px rgba(0,0,0,0.65)", background: "#05070d", position: "relative", overflow: "hidden" }}>
+            <iframe
+              ref={iframeRef}
+              onLoad={forceModalOnlyInIframe}
+              title="New Session"
+              src={iframeUrl}
+              style={{ position: "absolute", top: "50%", left: "50%", width: "100vw", height: "100vh", transform: "translate(-50%, -50%)", border: "none" }}
+            />
           </div>
         </div>
       )}
