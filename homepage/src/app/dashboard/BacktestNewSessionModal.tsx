@@ -122,7 +122,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
   const [newSessSymDropOpen, setNewSessSymDropOpen] = useState(false);
   const [newSessAssetDropOpen, setNewSessAssetDropOpen] = useState(false);
   const [newSessAssetHov, setNewSessAssetHov] = useState<any>(null);
-  const [newSessMarketOpen, setNewSessMarketOpen] = useState(false);
   const [newSessSupportTickers, setNewSessSupportTickers] = useState<string[]>([]);
   const [newSessSupportAssetClass, setNewSessSupportAssetClass] = useState("Forex");
   const [newSessSupportInput, setNewSessSupportInput] = useState("");
@@ -444,7 +443,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
     setNewSessStratDropOpen(false);
     setNewSessSymDropOpen(false);
     setNewSessAssetDropOpen(false);
-    setNewSessMarketOpen(false);
     setNewSessSymPickerOpen(false);
     setNewSessSupPickerOpen(false);
     setNewSessTradingCostsEnabled(false);
@@ -471,7 +469,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
     setNewSessStratDropOpen(false);
     setNewSessSymDropOpen(false);
     setNewSessAssetDropOpen(false);
-    setNewSessMarketOpen(false);
     setNewSessSupportInput("");
     setNewSessSupportFocus(false);
     setNewSessSupportDropOpen(false);
@@ -887,7 +884,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                           {sym:"CL",cat:"Futures"},{sym:"GC",cat:"Futures"},{sym:"SI",cat:"Futures"},{sym:"NG",cat:"Futures"},
                           {sym:"MNQ",cat:"Futures"},{sym:"MES",cat:"Futures"},{sym:"MYM",cat:"Futures"},{sym:"M2K",cat:"Futures"},
                           {sym:"MGC",cat:"Futures"},{sym:"MCL",cat:"Futures"},
-                          {sym:"BTCUSD",cat:"Crypto"},{sym:"ETHUSD",cat:"Crypto"},{sym:"BNBUSD",cat:"Crypto"},{sym:"SOLUSD",cat:"Crypto"},{sym:"ADAUSD",cat:"Crypto"},
                           {sym:"AAPL",cat:"Equities"},{sym:"TSLA",cat:"Equities"},{sym:"NVDA",cat:"Equities"},{sym:"MSFT",cat:"Equities"},{sym:"AMZN",cat:"Equities"},{sym:"GOOG",cat:"Equities"},
                         ];
                         const fileSymbols = availFiles
@@ -909,7 +905,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                           if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily="'Exo 2',sans-serif">{m.label}</text></svg>);}
                           const cryptoMap={BTCUSD:{bg:"#E8820C",fg:"#fff",label:"₿"},ETHUSD:{bg:"#3D4FC4",fg:"#fff",label:"Ξ"},BNBUSD:{bg:"#C99800",fg:"#000",label:"B"},SOLUSD:{bg:"#7B3FBE",fg:"#fff",label:"S"},ADAUSD:{bg:"#0033AD",fg:"#fff",label:"A"}};
                           if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily="'Exo 2',sans-serif">{cr.label}</text></svg>);}
-                          return(<div style={{borderRadius:1,overflow:"hidden",flexShrink:0,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><FlagSvg code="US" w={fw} h={fh}/></div>);
+                          const genericLabel=(sym||"").replace(/USDT|USDC|USD$/,"").replace(/[^A-Z0-9]/g,"").slice(0,3)||"?";
+                          return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill="#22324A"/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill="#D7E6FF" fontSize={fh*0.45} fontWeight="800" fontFamily="'Exo 2',sans-serif">{genericLabel}</text></svg>);
                         };
                         const mkCell=(t,onDel)=>(<div key={t} style={{display:"flex",alignItems:"center",padding:"2px 4px 2px 3px",background:c.sf,border:`1px solid ${c.brH}`,gap:3,minWidth:0}}>{mkFlags(t,10)}<span style={{fontSize:10,fontWeight:700,color:c.tx,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t}</span><span onClick={onDel} style={{fontSize:13,lineHeight:1,color:c.tm,cursor:"default",flexShrink:0,marginLeft:5,transition:"color 0.1s"}} onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span></div>);
                         /* ── date helpers (shared with grid below) ── */
@@ -1016,8 +1013,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                           {/* ─── Instruments + Date Range ─── */}
                           <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:4}}>
                             {/* ── Full-width symbol display rectangle ── */}
-                            <div style={{background:c.el,border:`1px solid ${newSessMarketOpen?c.acB:c.brH}`,display:"flex",flexDirection:"column",cursor:"default",transition:"border-color 0.12s",width:"100%",boxSizing:"border-box"}}
-                              onClick={()=>setNewSessMarketOpen(true)}>
+                            <div style={{background:c.el,border:`1px solid ${c.brH}`,display:"flex",flexDirection:"column",cursor:"default",transition:"border-color 0.12s",width:"100%",boxSizing:"border-box"}}>
                               {/* TRADING section */}
                               <div style={{padding:"5px 10px 0"}}>
                                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
@@ -1346,299 +1342,10 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                             </div>
                             {!primaryEffectiveFile && (
                               <div style={{marginTop:4,fontSize:9,color:c.rd,fontFamily:F}}>
-                                No dataset linked to selected trading pair(s). Select files in Configure Markets first.
+                                No dataset linked to selected trading pair(s). Use the + picker to select datasets.
                               </div>
                             )}
                           </div>
-                          {/* ── Market sub-window ── */}
-                            {newSessMarketOpen&&(
-                              <div style={{position:"fixed",inset:0,zIndex:100001,display:"flex",alignItems:"center",justifyContent:"center"}}
-                                onClick={()=>setNewSessMarketOpen(false)}>
-                                <div onClick={e=>e.stopPropagation()}
-                                  style={{position:"relative",width:860,height:480,background:c.sf,border:`1px solid ${c.brH}`,display:"flex",flexDirection:"column",animation:"tlrPopIn 0.18s ease",boxShadow:"0 24px 80px rgba(0,0,0,0.92)",fontFamily:F,overflow:"hidden"}}>
-                                  {/* Top accent */}
-                                  <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
-                                  {/* Header */}
-                                  <div style={{display:"flex",alignItems:"center",padding:"9px 14px",flexShrink:0}}>
-                                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" style={{marginRight:8,flexShrink:0}}><rect x="3" y="3" width="7" height="18" rx="0.8" stroke={c.acL} strokeWidth="1.5"/><rect x="14" y="8" width="7" height="13" rx="0.8" stroke={c.acL} strokeWidth="1.5"/><line x1="3" y1="12" x2="10" y2="12" stroke={c.acL} strokeWidth="1" opacity="0.45"/><line x1="14" y1="15" x2="21" y2="15" stroke={c.acL} strokeWidth="1" opacity="0.45"/></svg>
-                                    <span style={{fontSize:12,fontWeight:700,color:c.tx,flex:1}}>Configure Markets</span>
-                                    <div onClick={()=>setNewSessMarketOpen(false)}
-                                      onMouseEnter={()=>setHov("mktCfgX")} onMouseLeave={()=>setHov(null)}
-                                      style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:hov==="mktCfgX"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s"}}>
-                                      <I n="x" s={18} cl={hov==="mktCfgX"?c.rd:c.ts}/>
-                                    </div>
-                                  </div>
-                                  <div style={{height:1,background:c.br,flexShrink:0}}/>
-                                  {/* Body: two columns side by side */}
-                                  <div style={{flex:1,display:"flex",overflow:"hidden"}}>
-
-                                    {/* ── LEFT: TRADING ── */}
-                                    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-                                      {/* Column header */}
-                                      <div style={{height:34,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 14px",borderBottom:`1px solid ${c.br}`}}>
-                                        <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                          <div style={{width:2,height:11,background:c.acL,boxShadow:`0 0 5px ${c.acG}`}}/>
-                                          <span style={{fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.1em",textTransform:"uppercase",fontFamily:F}}>Trading</span>
-                                          <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}
-                                            onMouseEnter={()=>setNewSessInfoHov("cfg-trading")}
-                                            onMouseLeave={()=>setNewSessInfoHov(null)}>
-                                            <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={c.tm} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"block",cursor:"default",flexShrink:0}}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                                            {newSessInfoHov==="cfg-trading"&&(
-                                              <div style={{position:"absolute",left:0,top:"calc(100% + 6px)",background:c.el,border:`1px solid ${c.br}`,zIndex:200,whiteSpace:"nowrap",pointerEvents:"none"}}>
-                                                <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-                                                <div style={{padding:"5px 10px",fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>Instruments you will actively trade — orders and P&L are tracked</div>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                        <div style={{display:"flex",alignItems:"center",gap:10}}>
-                                          {newSessTickers.length>0&&(
-                                            <div onClick={()=>setNewSessTickers([])}
-                                              onMouseEnter={()=>setHov("mktTrdClr")} onMouseLeave={()=>setHov(null)}
-                                              style={{display:"flex",alignItems:"center",gap:3,cursor:"default",color:hov==="mktTrdClr"?c.rd:c.tm,transition:"color 0.1s"}}>
-                                              <I n="trashDraw" s={11} cl={hov==="mktTrdClr"?c.rd:c.tm}/>
-                                            </div>
-                                          )}
-                                          <span style={{fontSize:10,fontWeight:700,color:c.acL,fontFamily:F}}>{newSessTickers.length}<span style={{color:c.tm,fontWeight:500}}>/10</span></span>
-                                        </div>
-                                      </div>
-                                      {/* Selected chips strip — TRADING */}
-                                      <div style={{height:80,flexShrink:0,borderBottom:`1px solid ${c.br}`,padding:"6px 14px",display:"flex",flexWrap:"wrap",alignItems:"flex-start",alignContent:"flex-start",gap:4,overflow:"hidden"}}>
-                                        {newSessTickers.length===0?(
-                                          <span style={{fontSize:9,color:c.tm,fontFamily:F,fontStyle:"italic",whiteSpace:"nowrap"}}>No trading symbols selected</span>
-                                        ):newSessTickers.map(sym=>(
-                                          <div key={sym} style={{width:90,display:"flex",alignItems:"center",gap:3,padding:"2px 5px",background:"transparent",border:`1px solid rgba(140,160,255,0.28)`,flexShrink:0,overflow:"hidden"}}>
-                                            <div style={{flexShrink:0}}>{mkFlags(sym,10)}</div>
-                                            <span style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sym}</span>
-                                            <span onClick={()=>setNewSessTickers(p=>p.filter(x=>x!==sym))} style={{fontSize:12,lineHeight:1,color:c.tm,cursor:"default",transition:"color 0.1s",flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                      {/* Category tabs — locked to selected market */}
-                                      {(()=>{
-                                        const mktTabs=["Forex","Futures","Crypto","Stocks"];
-                                        const mktIdx=mktTabs.indexOf(newSessAssetClass);
-                                        return(
-                                          <div style={{position:"relative",display:"flex",borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
-                                            {mktTabs.map(a=>{
-                                              const isAct=newSessAssetClass===a;
-                                              const isLocked=!isAct;
-                                              return(
-                                                <div key={a}
-                                                  style={{flex:1,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:isAct?700:500,color:isAct?c.acL:"rgba(255,255,255,0.2)",cursor:"not-allowed",background:"transparent",transition:"color 0.12s",userSelect:"none",opacity:isLocked?0.45:1}}>
-                                                  {a}
-                                                </div>
-                                              );
-                                            })}
-                                            <div style={{position:"absolute",bottom:0,height:1.5,width:"25%",left:`${mktIdx*25}%`,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>
-                                          </div>
-                                        );
-                                      })()}
-                                      {/* Search */}
-                                      <div style={{padding:"7px 14px",flexShrink:0,borderBottom:`1px solid ${c.br}`}}>
-                                        <div style={{display:"flex",alignItems:"center",background:c.el,border:`1px solid ${newSessTickerFocus?c.acB:c.brH}`,height:25,padding:"0 8px",gap:5,transition:"border-color 0.12s"}}>
-                                          <svg width={9} height={9} viewBox="0 0 16 16" fill="none" style={{flexShrink:0,opacity:0.4}}><circle cx="7" cy="7" r="5" stroke={c.ts} strokeWidth="1.6"/><line x1="11" y1="11" x2="14" y2="14" stroke={c.ts} strokeWidth="1.6" strokeLinecap="round"/></svg>
-                                          <input value={newSessTickerInput} onChange={e=>setNewSessTickerInput(e.target.value.toUpperCase().replace(/[^A-Z0-9.]/g,""))}
-                                            onFocus={()=>setNewSessTickerFocus(true)} onBlur={()=>setNewSessTickerFocus(false)}
-                                            placeholder="Search…"
-                                            style={{flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0}}/>
-                                          {newSessTickerInput&&<div onClick={()=>setNewSessTickerInput("")} style={{fontSize:13,color:c.tm,cursor:"default",lineHeight:1}} onMouseEnter={e=>e.currentTarget.style.color=c.ts} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</div>}
-                                        </div>
-                                      </div>
-                                      {/* Symbol list */}
-                                      {(()=>{
-                                        const primCat=catMap[newSessAssetClass]||newSessAssetClass;
-                                        const primList=allSymbols.filter(s=>s.cat===primCat&&(newSessTickerInput.trim()?s.sym.includes(newSessTickerInput.trim()):true));
-                                        return(
-                                          <div style={{flex:1,overflowY:"auto"}} className="tlr-scroll">
-                                            {primList.length===0?<div style={{padding:"20px",fontSize:11,color:c.tm,textAlign:"center",fontFamily:F}}>No results</div>:primList.map(({sym})=>{
-                                              const isSel=newSessTickers.includes(sym);
-                                              const isOther=newSessSupportTickers.includes(sym);
-                                              const isMax=!isSel&&newSessTickers.length>=10;
-                                              const blocked=isOther||isMax;
-                                              return(
-                                                <div key={sym} onClick={()=>{if(blocked)return;if(isSel)setNewSessTickers(p=>p.filter(x=>x!==sym));else setNewSessTickers(p=>[...p,sym]);}}
-                                                  style={{display:"flex",alignItems:"center",padding:"5px 14px",cursor:blocked?"not-allowed":"default",position:"relative",background:"transparent",opacity:isOther?0.35:isMax?0.5:1,transition:"background 0.1s"}}
-                                                  onMouseEnter={e=>{if(!blocked)e.currentTarget.style.background="rgba(255,255,255,0.04)";}}
-                                                  onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
-                                                  {isSel&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                                                  <div style={{width:10,height:10,flexShrink:0,marginRight:8}}>
-                                                    <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
-                                                      <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={isSel?c.acL:"rgba(140,160,255,0.22)"} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                      <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={isSel?c.acL:"rgba(140,160,255,0.22)"} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                      {isSel&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/><circle cx={5} cy={5} r={1.6} fill={c.acL}/></>}
-                                                    </svg>
-                                                  </div>
-                                                  <div style={{marginRight:8,flexShrink:0}}>{mkFlags(sym,12)}</div>
-                                                  <span style={{flex:1,fontSize:11,fontWeight:isSel?700:500,color:isSel?c.acL:c.ts,fontFamily:F}}>{sym}</span>
-                                                  {isOther&&<span style={{fontSize:8,fontWeight:700,color:"rgba(232,194,82,0.65)",fontFamily:F,flexShrink:0}}>SUPPORTING</span>}
-                                                  {isMax&&!isOther&&<span style={{fontSize:8,fontWeight:600,color:c.tm,fontFamily:F,flexShrink:0}}>MAX</span>}
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        );
-                                      })()}
-                                    </div>
-
-                                    {/* Vertical divider */}
-                                    <div style={{width:1,flexShrink:0,background:`linear-gradient(180deg,transparent,${c.br} 12%,${c.br} 88%,transparent)`}}/>
-
-                                    {/* ── RIGHT: SUPPORTING ── */}
-                                    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-                                      {/* Column header */}
-                                      <div style={{height:34,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 14px",borderBottom:`1px solid ${c.br}`}}>
-                                        <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                          <div style={{width:2,height:11,background:newSessSupportEnabled?"rgba(232,194,82,0.85)":"rgba(140,160,255,0.15)",boxShadow:newSessSupportEnabled?`0 0 5px rgba(232,194,82,0.35)`:"none",transition:"background 0.15s"}}/>
-                                          {/* Enable/disable checkbox */}
-                                          {(()=>{
-                                            const isH=hov==="mktSupEnable";
-                                            const on=newSessSupportEnabled;
-                                            const bCol=on?"rgba(232,194,82,0.85)":isH?c.ts:"rgba(140,160,255,0.22)";
-                                            return(
-                                              <div onClick={()=>setNewSessSupportEnabled(v=>!v)}
-                                                onMouseEnter={()=>setHov("mktSupEnable")} onMouseLeave={()=>setHov(null)}
-                                                style={{width:10,height:10,flexShrink:0,cursor:"default"}}>
-                                                <svg width={10} height={10} style={{display:"block",overflow:"visible"}}>
-                                                  <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                  <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                  {!on&&isH&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/></>}
-                                                  {on&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.85)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.85)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill="rgba(232,194,82,0.85)" opacity={0.15}/><circle cx={5} cy={5} r={1.6} fill="rgba(232,194,82,0.85)"/></>}
-                                                </svg>
-                                              </div>
-                                            );
-                                          })()}
-                                          <span style={{fontSize:9,fontWeight:800,color:newSessSupportEnabled?"rgba(232,194,82,0.9)":c.tm,letterSpacing:"0.1em",textTransform:"uppercase",fontFamily:F,transition:"color 0.15s"}}>Supporting</span>
-                                          <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}
-                                            onMouseEnter={()=>setNewSessInfoHov("cfg-supporting")}
-                                            onMouseLeave={()=>setNewSessInfoHov(null)}>
-                                            <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={c.tm} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"block",cursor:"default",flexShrink:0}}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                                            {newSessInfoHov==="cfg-supporting"&&(
-                                              <div style={{position:"absolute",left:0,top:"calc(100% + 6px)",background:c.el,border:`1px solid ${c.br}`,zIndex:200,whiteSpace:"nowrap",pointerEvents:"none"}}>
-                                                <div style={{height:2,background:`linear-gradient(90deg,rgba(232,194,82,0.3),rgba(232,194,82,0.8),rgba(232,194,82,0.3))`}}/>
-                                                <div style={{padding:"5px 10px",fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>View-only instruments for context — no orders, no P&L tracking</div>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                        <div style={{display:"flex",alignItems:"center",gap:10}}>
-                                          {newSessSupportTickers.length>0&&(
-                                            <div onClick={()=>setNewSessSupportTickers([])}
-                                              onMouseEnter={()=>setHov("mktSupClr")} onMouseLeave={()=>setHov(null)}
-                                              style={{display:"flex",alignItems:"center",gap:3,cursor:"default",color:hov==="mktSupClr"?c.rd:c.tm,transition:"color 0.1s"}}>
-                                              <I n="trashDraw" s={11} cl={hov==="mktSupClr"?c.rd:c.tm}/>
-                                            </div>
-                                          )}
-                                          <span style={{fontSize:10,fontWeight:700,color:"rgba(232,194,82,0.9)",fontFamily:F}}>{newSessSupportTickers.length}<span style={{color:c.tm,fontWeight:500}}>/10</span></span>
-                                        </div>
-                                      </div>
-                                      {/* Column body — dimmed when supporting disabled */}
-                                      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",opacity:newSessSupportEnabled?1:0.3,pointerEvents:newSessSupportEnabled?"auto":"none",transition:"opacity 0.18s"}}>
-                                      {/* Selected chips strip — SUPPORTING */}
-                                      <div style={{height:80,flexShrink:0,borderBottom:`1px solid ${c.br}`,padding:"6px 14px",display:"flex",flexWrap:"wrap",alignItems:"flex-start",alignContent:"flex-start",gap:4,overflow:"hidden"}}>
-                                        {newSessSupportTickers.length===0?(
-                                          <span style={{fontSize:9,color:c.tm,fontFamily:F,fontStyle:"italic",whiteSpace:"nowrap"}}>No supporting symbols selected</span>
-                                        ):newSessSupportTickers.map(sym=>(
-                                          <div key={sym} style={{width:90,display:"flex",alignItems:"center",gap:3,padding:"2px 5px",background:"transparent",border:`1px solid rgba(232,194,82,0.3)`,flexShrink:0,overflow:"hidden"}}>
-                                            <div style={{flexShrink:0}}>{mkFlags(sym,10)}</div>
-                                            <span style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sym}</span>
-                                            <span onClick={()=>setNewSessSupportTickers(p=>p.filter(x=>x!==sym))} style={{fontSize:12,lineHeight:1,color:c.tm,cursor:"default",transition:"color 0.1s",flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                      {/* Category tabs — gold accent */}
-                                      {(()=>{
-                                        const supTabs=["Forex","Futures","Crypto","Stocks"];
-                                        const supIdx=supTabs.indexOf(newSessSupportAssetClass);
-                                        return(
-                                          <div style={{position:"relative",display:"flex",borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
-                                            {supTabs.map(a=>{
-                                              const isAct=newSessSupportAssetClass===a;
-                                              const hk=`mktSupTab-${a}`;
-                                              const isH=hov===hk;
-                                              return(
-                                                <div key={a} onClick={()=>{setNewSessSupportAssetClass(a);setNewSessSupportInput("");}}
-                                                  onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
-                                                  style={{flex:1,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:isAct?700:500,color:isAct?"rgba(232,194,82,0.9)":isH?c.tx:c.ts,cursor:"default",background:isH&&!isAct?"rgba(255,255,255,0.04)":"transparent",transition:"color 0.12s,background 0.12s"}}>
-                                                  {a}
-                                                </div>
-                                              );
-                                            })}
-                                            <div style={{position:"absolute",bottom:0,height:1.5,width:"25%",left:`${supIdx*25}%`,transition:"left 0.22s cubic-bezier(0.4,0,0.2,1)",background:`linear-gradient(90deg,transparent,rgba(232,194,82,0.85),transparent)`,boxShadow:`0 0 6px rgba(232,194,82,0.4)`,pointerEvents:"none"}}/>
-                                          </div>
-                                        );
-                                      })()}
-                                      {/* Search */}
-                                      <div style={{padding:"7px 14px",flexShrink:0,borderBottom:`1px solid ${c.br}`}}>
-                                        <div style={{display:"flex",alignItems:"center",background:c.el,border:`1px solid ${newSessSupportFocus?"rgba(232,194,82,0.5)":c.brH}`,height:25,padding:"0 8px",gap:5,transition:"border-color 0.12s"}}>
-                                          <svg width={9} height={9} viewBox="0 0 16 16" fill="none" style={{flexShrink:0,opacity:0.4}}><circle cx="7" cy="7" r="5" stroke={c.ts} strokeWidth="1.6"/><line x1="11" y1="11" x2="14" y2="14" stroke={c.ts} strokeWidth="1.6" strokeLinecap="round"/></svg>
-                                          <input value={newSessSupportInput} onChange={e=>setNewSessSupportInput(e.target.value.toUpperCase().replace(/[^A-Z0-9.]/g,""))}
-                                            onFocus={()=>setNewSessSupportFocus(true)} onBlur={()=>setNewSessSupportFocus(false)}
-                                            placeholder="Search…"
-                                            style={{flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0}}/>
-                                          {newSessSupportInput&&<div onClick={()=>setNewSessSupportInput("")} style={{fontSize:13,color:c.tm,cursor:"default",lineHeight:1}} onMouseEnter={e=>e.currentTarget.style.color=c.ts} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</div>}
-                                        </div>
-                                      </div>
-                                      {/* Symbol list */}
-                                      {(()=>{
-                                        const suppCat=catMap[newSessSupportAssetClass]||newSessSupportAssetClass;
-                                        const suppList=allSymbols.filter(s=>s.cat===suppCat&&(newSessSupportInput.trim()?s.sym.includes(newSessSupportInput.trim()):true));
-                                        return(
-                                          <div style={{flex:1,overflowY:"auto"}} className="tlr-scroll">
-                                            {suppList.length===0?<div style={{padding:"20px",fontSize:11,color:c.tm,textAlign:"center",fontFamily:F}}>No results</div>:suppList.map(({sym})=>{
-                                              const isSel=newSessSupportTickers.includes(sym);
-                                              const isOther=newSessTickers.includes(sym);
-                                              const isMax=!isSel&&newSessSupportTickers.length>=10;
-                                              const blocked=isOther||isMax;
-                                              return(
-                                                <div key={sym} onClick={()=>{if(blocked)return;if(isSel)setNewSessSupportTickers(p=>p.filter(x=>x!==sym));else setNewSessSupportTickers(p=>[...p,sym]);}}
-                                                  style={{display:"flex",alignItems:"center",padding:"5px 14px",cursor:blocked?"not-allowed":"default",position:"relative",background:"transparent",opacity:isOther?0.35:isMax?0.5:1,transition:"background 0.1s"}}
-                                                  onMouseEnter={e=>{if(!blocked)e.currentTarget.style.background="rgba(255,255,255,0.04)";}}
-                                                  onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
-                                                  {isSel&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,rgba(232,194,82,0.8),transparent)`,boxShadow:`0 0 6px rgba(232,194,82,0.4)`}}/>}
-                                                  <div style={{width:10,height:10,flexShrink:0,marginRight:8}}>
-                                                    <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
-                                                      <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={isSel?"rgba(232,194,82,0.85)":"rgba(140,160,255,0.22)"} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                      <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={isSel?"rgba(232,194,82,0.85)":"rgba(140,160,255,0.22)"} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                      {isSel&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.85)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.85)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill="rgba(232,194,82,0.85)" opacity={0.12}/><circle cx={5} cy={5} r={1.6} fill="rgba(232,194,82,0.85)"/></>}
-                                                    </svg>
-                                                  </div>
-                                                  <div style={{marginRight:8,flexShrink:0}}>{mkFlags(sym,12)}</div>
-                                                  <span style={{flex:1,fontSize:11,fontWeight:isSel?700:500,color:isSel?"rgba(232,194,82,0.9)":c.ts,fontFamily:F}}>{sym}</span>
-                                                  {isOther&&<span style={{fontSize:8,fontWeight:700,color:c.acL,fontFamily:F,flexShrink:0,opacity:0.7}}>TRADING</span>}
-                                                  {isMax&&!isOther&&<span style={{fontSize:8,fontWeight:600,color:c.tm,fontFamily:F,flexShrink:0}}>MAX</span>}
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        );
-                                      })()}
-                                      </div>{/* end body wrapper */}
-                                    </div>
-                                  </div>
-
-                                  {/* Bottom bar */}
-                                  <div style={{height:42,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderTop:`1px solid ${c.br}`,background:c.el}}>
-                                    <span style={{fontSize:10,color:c.tm,fontFamily:F}}>
-                                      {(newSessTickers.length+newSessSupportTickers.length)===0?"No markets selected":`${newSessTickers.length}/10 trading · ${newSessSupportTickers.length}/10 supporting`}
-                                    </span>
-                                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                                      <div onClick={()=>setNewSessMarketOpen(false)}
-                                        onMouseEnter={()=>setHov("mktCfgCancel")} onMouseLeave={()=>setHov(null)}
-                                        style={{height:27,padding:"0 14px",display:"flex",alignItems:"center",background:hov==="mktCfgCancel"?"rgba(255,255,255,0.07)":"transparent",border:`1px solid ${c.brH}`,cursor:"default",fontSize:10,fontWeight:600,color:hov==="mktCfgCancel"?c.tx:c.ts,letterSpacing:"0.04em",fontFamily:F,transition:"all 0.12s"}}>
-                                        Cancel
-                                      </div>
-                                      <div onClick={()=>setNewSessMarketOpen(false)}
-                                        onMouseEnter={()=>setHov("mktCfgDone")} onMouseLeave={()=>setHov(null)}
-                                        style={{height:27,padding:"0 16px",display:"flex",alignItems:"center",gap:5,background:`linear-gradient(135deg,${c.ac},${c.acL})`,cursor:"default",fontSize:10,fontWeight:700,color:"#fff",letterSpacing:"0.05em",fontFamily:F,boxShadow:"0 2px 10px rgba(38,67,247,0.35)",filter:hov==="mktCfgDone"?"brightness(1.15)":"brightness(1)",transition:"filter 0.12s"}}>
-                                        <svg width={11} height={11} viewBox="0 0 12 12" fill="none"><path d="M1.5,6 L4.5,9.5 L10.5,2.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                                        Done
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
                           {/* ─── Timezone row ─── */}
                           {(()=>{
                             const TZ_OPTS=[
@@ -1744,7 +1451,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                               if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily={F}>{m.label}</text></svg>);}
                               const cryptoMap={BTCUSD:{bg:"#E8820C",fg:"#fff",label:"₿"},ETHUSD:{bg:"#3D4FC4",fg:"#fff",label:"Ξ"},BNBUSD:{bg:"#C99800",fg:"#000",label:"B"},SOLUSD:{bg:"#7B3FBE",fg:"#fff",label:"S"},ADAUSD:{bg:"#0033AD",fg:"#fff",label:"A"}};
                               if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily={F}>{cr.label}</text></svg>);}
-                              return(<div style={{borderRadius:1,overflow:"hidden",flexShrink:0,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><FlagSvg code="US" w={fw} h={fh}/></div>);
+                              const genericLabel=(sym||"").replace(/USDT|USDC|USD$/,"").replace(/[^A-Z0-9]/g,"").slice(0,3)||"?";
+                              return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill="#22324A"/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill="#D7E6FF" fontSize={fh*0.45} fontWeight="800" fontFamily={F}>{genericLabel}</text></svg>);
                             };
                             const mkArrows=(onUp,onDown)=>(
                               <div style={{position:"absolute",right:0,top:0,bottom:0,width:16,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
@@ -1843,7 +1551,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                                         <div>
                                           <div style={{marginBottom:5,paddingBottom:4,borderBottom:`1px solid ${c.br}`}}><span style={{fontSize:9,fontWeight:700,color:c.tm,fontFamily:F,letterSpacing:"0.03em"}}>SPREAD</span><span style={{fontSize:8,fontWeight:500,fontStyle:"italic",color:c.tm,opacity:0.75,marginLeft:4,fontFamily:F}}>{meta.spreadUnit}</span></div>
                                           <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4}}>
-                                            {assetSyms.map(sym=>(<div key={sym} style={{display:"grid",gridTemplateColumns:"14px 1fr 48px",alignItems:"center",columnGap:3,background:c.bg,padding:"2px 5px",border:`1px solid ${c.br}`,height:24,boxSizing:"border-box",minWidth:0}}>{(()=>{const sz=8,fw=Math.round(sz*15/11),fh=sz;const pr=pairInfo2(sym);if(pr)return(<div style={{position:"relative",width:Math.round(sz*22/11),height:fh,flexShrink:0}}><div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",zIndex:2}}><FlagSvg code={pr.b} w={fw} h={fh}/></div><div style={{position:"absolute",left:Math.round(sz*7/11),top:0,borderRadius:1,overflow:"hidden",zIndex:1}}><FlagSvg code={pr.q} w={fw} h={fh}/></div></div>);const metalMap={XAUUSD:{bg:"#2B2200",fg:"#FFD700",label:"Au"},XAGUSD:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},GC:{bg:"#2B2200",fg:"#FFD700",label:"GC"},SI:{bg:"#1C2028",fg:"#C8D4E0",label:"SI"},CL:{bg:"#0D1A12",fg:"#4CAF50",label:"CL"},NG:{bg:"#0A1020",fg:"#64B5F6",label:"NG"},MGC:{bg:"#1A1200",fg:"#FFBA00",label:"mGC"},MCL:{bg:"#071510",fg:"#33CC66",label:"mCL"}};if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily={F}>{m.label}</text></svg>);}const cryptoMap={BTCUSD:{bg:"#E8820C",fg:"#fff",label:"₿"},ETHUSD:{bg:"#3D4FC4",fg:"#fff",label:"Ξ"},BNBUSD:{bg:"#C99800",fg:"#000",label:"B"},SOLUSD:{bg:"#7B3FBE",fg:"#fff",label:"S"},ADAUSD:{bg:"#0033AD",fg:"#fff",label:"A"}};if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35)}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily={F}>{cr.label}</text></svg>);}return(<div style={{borderRadius:1,overflow:"hidden",flexShrink:0}}><FlagSvg code="US" w={fw} h={fh}/></div>);})()}<span style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,letterSpacing:"0.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{sym}</span>{numCell(getSpread(sym),e=>setSpread(sym,e.target.value),meta.spreadStep,48)}</div>))}
+                                            {assetSyms.map(sym=>(<div key={sym} style={{display:"grid",gridTemplateColumns:"14px 1fr 48px",alignItems:"center",columnGap:3,background:c.bg,padding:"2px 5px",border:`1px solid ${c.br}`,height:24,boxSizing:"border-box",minWidth:0}}>{(()=>{const sz=8,fw=Math.round(sz*15/11),fh=sz;const pr=pairInfo2(sym);if(pr)return(<div style={{position:"relative",width:Math.round(sz*22/11),height:fh,flexShrink:0}}><div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",zIndex:2}}><FlagSvg code={pr.b} w={fw} h={fh}/></div><div style={{position:"absolute",left:Math.round(sz*7/11),top:0,borderRadius:1,overflow:"hidden",zIndex:1}}><FlagSvg code={pr.q} w={fw} h={fh}/></div></div>);const metalMap={XAUUSD:{bg:"#2B2200",fg:"#FFD700",label:"Au"},XAGUSD:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},GC:{bg:"#2B2200",fg:"#FFD700",label:"GC"},SI:{bg:"#1C2028",fg:"#C8D4E0",label:"SI"},CL:{bg:"#0D1A12",fg:"#4CAF50",label:"CL"},NG:{bg:"#0A1020",fg:"#64B5F6",label:"NG"},MGC:{bg:"#1A1200",fg:"#FFBA00",label:"mGC"},MCL:{bg:"#071510",fg:"#33CC66",label:"mCL"}};if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily={F}>{m.label}</text></svg>);}const cryptoMap={BTCUSD:{bg:"#E8820C",fg:"#fff",label:"₿"},ETHUSD:{bg:"#3D4FC4",fg:"#fff",label:"Ξ"},BNBUSD:{bg:"#C99800",fg:"#000",label:"B"},SOLUSD:{bg:"#7B3FBE",fg:"#fff",label:"S"},ADAUSD:{bg:"#0033AD",fg:"#fff",label:"A"}};if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35)}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily={F}>{cr.label}</text></svg>);}const genericLabel=(sym||"").replace(/USDT|USDC|USD$/,"").replace(/[^A-Z0-9]/g,"").slice(0,3)||"?";return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35)}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill="#22324A"/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill="#D7E6FF" fontSize={fh*0.45} fontWeight="800" fontFamily={F}>{genericLabel}</text></svg>);})()}<span style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,letterSpacing:"0.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{sym}</span>{numCell(getSpread(sym),e=>setSpread(sym,e.target.value),meta.spreadStep,48)}</div>))}
                                           </div>
                                         </div>
                                       ))}
