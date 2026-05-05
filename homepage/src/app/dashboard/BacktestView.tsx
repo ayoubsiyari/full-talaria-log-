@@ -217,11 +217,54 @@ export function BacktestView() {
         doc.head.appendChild(style);
       }
 
+      const isolateModalByTitle = (liveDoc: Document) => {
+        const root = liveDoc.getElementById("root");
+        if (!root) return false;
+
+        const titleNode = Array.from(liveDoc.querySelectorAll("div")).find((el) => {
+          const t = (el.textContent || "").trim();
+          return t === "New Backtest Session" || t === "Edit Session";
+        }) as HTMLElement | undefined;
+        if (!titleNode) return false;
+
+        // The title sits in modal header; climb to the nearest "panel-like" container.
+        let panel: HTMLElement | null = titleNode;
+        for (let i = 0; i < 8 && panel; i += 1) {
+          const st = panel.getAttribute("style") || "";
+          if (st.includes("position:relative") && st.includes("display:flex") && st.includes("flex-direction:column")) break;
+          panel = panel.parentElement;
+        }
+        if (!panel) return false;
+
+        const keep = new Set<Element>();
+        keep.add(panel);
+        panel.querySelectorAll("*").forEach((el) => keep.add(el));
+
+        let anc: Element | null = panel;
+        while (anc) {
+          keep.add(anc);
+          if (anc === root) break;
+          anc = anc.parentElement;
+        }
+
+        root.querySelectorAll("*").forEach((el) => {
+          const htmlEl = el as HTMLElement;
+          if (keep.has(el)) {
+            htmlEl.style.visibility = "visible";
+            htmlEl.style.pointerEvents = "";
+          } else {
+            htmlEl.style.visibility = "hidden";
+            htmlEl.style.pointerEvents = "none";
+          }
+        });
+        return true;
+      };
+
       let seenModal = false;
       frameWithWatcher.__tlrCloseWatch = window.setInterval(() => {
         const liveDoc = iframe.contentDocument;
         if (!liveDoc) return;
-        const hasModal = !!liveDoc.querySelector('div[style*="z-index: 99999"], div[style*="z-index:99999"]');
+        const hasModal = isolateModalByTitle(liveDoc) || !!liveDoc.querySelector('div[style*="z-index: 99999"], div[style*="z-index:99999"]');
         if (hasModal) {
           seenModal = true;
           return;
