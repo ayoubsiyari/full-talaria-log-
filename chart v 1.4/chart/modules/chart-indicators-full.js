@@ -5939,61 +5939,77 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         modal.style.left = '0';
         modal.style.width = '100%';
         modal.style.height = '100%';
-        modal.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        modal.style.backgroundColor = 'rgba(0, 0, 0, 0.55)';
         modal.style.zIndex = '2147483647'; // Maximum z-index
         modal.style.display = 'flex';
         modal.style.alignItems = 'center';
         modal.style.justifyContent = 'center';
         
         const dialog = document.createElement('div');
-        dialog.style.backgroundColor = 'white';
-        dialog.style.color = 'black';
-        dialog.style.padding = '30px';
-        dialog.style.borderRadius = '10px';
+        dialog.style.background = 'var(--sp-ui-chrome-bg, #131722)';
+        dialog.style.color = 'var(--sp-text, #d1d4dc)';
+        dialog.style.borderRadius = '0';
         dialog.style.minWidth = '400px';
-        dialog.style.maxWidth = '500px';
-        dialog.style.boxShadow = '0 10px 40px rgba(0, 0, 0, 0.5)';
-        dialog.style.border = '1px solid #ddd';
+        dialog.style.maxWidth = '560px';
+        dialog.style.width = 'min(92vw, 520px)';
+        dialog.style.maxHeight = '82vh';
+        dialog.style.display = 'flex';
+        dialog.style.flexDirection = 'column';
+        dialog.style.overflow = 'hidden';
+        dialog.style.boxShadow = '0 24px 64px rgba(0,0,0,0.85), 0 0 24px rgba(38,67,247,0.2)';
+        dialog.style.border = '1px solid var(--sp-ui-border, rgba(42,46,57,0.55))';
+        const topAccent = document.createElement('div');
+        topAccent.style.cssText = 'height:2px;flex-shrink:0;background:linear-gradient(90deg,var(--sp-accent,#2962ff),#6a8aff,var(--sp-accent,#2962ff));';
+        dialog.appendChild(topAccent);
         
         // Title with close button
         const header = document.createElement('div');
-        header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;';
+        header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));flex-shrink:0;';
         
         const title = document.createElement('h3');
         title.textContent = indicator.name + ' Settings';
         title.style.margin = '0';
-        title.style.color = '#333';
-        title.style.fontSize = '18px';
+        title.style.color = 'var(--sp-text, #d1d4dc)';
+        title.style.fontSize = '14px';
+        title.style.fontWeight = '700';
         
         const closeBtn = document.createElement('button');
         closeBtn.textContent = '×';
-        closeBtn.style.cssText = 'background: none; border: none; font-size: 24px; color: #666; cursor: pointer; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;';
+        closeBtn.style.cssText = 'width:26px;height:26px;border:none;background:transparent;color:var(--sp-text-muted,#8d93a1);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .12s, background .12s;';
         closeBtn.onclick = function() {
             modal.remove();
         };
-        closeBtn.onmouseenter = function() { closeBtn.style.color = '#000'; };
-        closeBtn.onmouseleave = function() { closeBtn.style.color = '#666'; };
+        closeBtn.onmouseenter = function() { closeBtn.style.color = 'var(--sp-text,#d1d4dc)'; closeBtn.style.background = 'rgba(255,255,255,0.06)'; };
+        closeBtn.onmouseleave = function() { closeBtn.style.color = 'var(--sp-text-muted,#8d93a1)'; closeBtn.style.background = 'transparent'; };
         
         header.appendChild(title);
         header.appendChild(closeBtn);
         dialog.appendChild(header);
         
         const form = document.createElement('div');
-        form.style.cssText = 'display: flex; flex-direction: column; gap: 15px;';
+        form.style.cssText = 'display:flex;flex-direction:column;gap:8px;overflow-y:auto;max-height:calc(82vh - 156px);padding:12px 14px 0 14px;';
         
         // Helper function to create input groups
         function createInputGroup(label, value, type) {
             const container = document.createElement('div');
-            container.style.cssText = 'display: flex; flex-direction: column; gap: 5px;';
+            container.style.cssText = 'display:flex;flex-direction:column;gap:5px;';
             
             const labelEl = document.createElement('label');
             labelEl.textContent = label;
-            labelEl.style.cssText = 'color: #333; font-size: 13px; font-weight: 500;';
+            labelEl.style.cssText = 'color:var(--sp-text,#d1d4dc);font-size:12px;font-weight:600;';
             
-            const input = document.createElement('input');
-            input.type = type;
-            input.value = value;
-            input.style.cssText = 'background: white; border: 1px solid #ccc; border-radius: 4px; padding: 8px 10px; color: #333; font-size: 14px;';
+            let input;
+            if (type === 'checkbox') {
+                input = document.createElement('input');
+                input.type = 'checkbox';
+                input.checked = !!value;
+                input.style.cssText = 'width:16px;height:16px;cursor:pointer;';
+            } else {
+                input = document.createElement('input');
+                input.type = type;
+                input.value = value;
+                input.style.cssText = 'background:var(--sp-ui-surface-bg,#1e2740);border:1px solid var(--sp-ui-border,rgba(42,46,57,0.55));border-radius:6px;padding:8px 10px;color:var(--sp-text,#d1d4dc);font-size:13px;';
+            }
             
             if (type === 'number') {
                 input.min = '1';
@@ -6006,135 +6022,42 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return { container: container, input: input };
         }
         
-        // Add inputs based on indicator type
-        const inputs = {};
-        
-        if (indicator.params.period !== undefined) {
-            const group = createInputGroup('Period', indicator.params.period, 'number');
-            form.appendChild(group.container);
-            inputs.period = group.input;
-        }
-        
-        if (indicator.params.stdDev !== undefined) {
-            const group = createInputGroup('Std Dev', indicator.params.stdDev, 'number');
-            form.appendChild(group.container);
-            inputs.stdDev = group.input;
-        }
-        
-        if (indicator.params.fast !== undefined) {
-            const group = createInputGroup('Fast', indicator.params.fast, 'number');
-            form.appendChild(group.container);
-            inputs.fast = group.input;
-        }
-        
-        if (indicator.params.slow !== undefined) {
-            const group = createInputGroup('Slow', indicator.params.slow, 'number');
-            form.appendChild(group.container);
-            inputs.slow = group.input;
-        }
-        
-        if (indicator.params.signal !== undefined) {
-            const group = createInputGroup('Signal', indicator.params.signal, 'number');
-            form.appendChild(group.container);
-            inputs.signal = group.input;
-        }
-        
-        if (indicator.params.smoothK !== undefined) {
-            const group = createInputGroup('Smooth K', indicator.params.smoothK, 'number');
-            form.appendChild(group.container);
-            inputs.smoothK = group.input;
-        }
-        
-        if (indicator.params.smoothD !== undefined) {
-            const group = createInputGroup('Smooth D', indicator.params.smoothD, 'number');
-            form.appendChild(group.container);
-            inputs.smoothD = group.input;
-        }
-        
-        // Color inputs
-        if (indicator.style.color !== undefined) {
-            const group = createInputGroup('Color', indicator.style.color, 'color');
-            form.appendChild(group.container);
-            inputs.color = group.input;
-        }
-        
-        // Volume indicator colors
-        if (indicator.style.upColor !== undefined) {
-            const group = createInputGroup('Up Volume Color', indicator.style.upColor, 'color');
-            form.appendChild(group.container);
-            inputs.upColor = group.input;
-        }
-        
-        if (indicator.style.downColor !== undefined) {
-            const group = createInputGroup('Down Volume Color', indicator.style.downColor, 'color');
-            form.appendChild(group.container);
-            inputs.downColor = group.input;
-        }
-        
-        if (indicator.style.upperColor !== undefined) {
-            const group = createInputGroup('Upper Color', indicator.style.upperColor, 'color');
-            form.appendChild(group.container);
-            inputs.upperColor = group.input;
-        }
-        
-        if (indicator.style.middleColor !== undefined) {
-            const group = createInputGroup('Middle Color', indicator.style.middleColor, 'color');
-            form.appendChild(group.container);
-            inputs.middleColor = group.input;
-        }
-        
-        if (indicator.style.lowerColor !== undefined) {
-            const group = createInputGroup('Lower Color', indicator.style.lowerColor, 'color');
-            form.appendChild(group.container);
-            inputs.lowerColor = group.input;
-        }
-        
-        if (indicator.style.macdColor !== undefined) {
-            const group = createInputGroup('MACD Color', indicator.style.macdColor, 'color');
-            form.appendChild(group.container);
-            inputs.macdColor = group.input;
-        }
-        
-        if (indicator.style.signalColor !== undefined) {
-            const group = createInputGroup('Signal Color', indicator.style.signalColor, 'color');
-            form.appendChild(group.container);
-            inputs.signalColor = group.input;
-        }
-        
-        if (indicator.style.histogramColor !== undefined) {
-            const group = createInputGroup('Histogram Color', indicator.style.histogramColor, 'color');
-            form.appendChild(group.container);
-            inputs.histogramColor = group.input;
-        }
-        
-        if (indicator.style.kColor !== undefined) {
-            const group = createInputGroup('%K Color', indicator.style.kColor, 'color');
-            form.appendChild(group.container);
-            inputs.kColor = group.input;
-        }
-        
-        if (indicator.style.dColor !== undefined) {
-            const group = createInputGroup('%D Color', indicator.style.dColor, 'color');
-            form.appendChild(group.container);
-            inputs.dColor = group.input;
-        }
+        // Add inputs dynamically from all params + style keys so no indicator setting is omitted.
+        const fields = [];
+        const toLabel = (key) => String(key || '').replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()).trim();
+        const addFields = (sourceName, obj) => {
+            if (!obj || typeof obj !== 'object') return;
+            Object.keys(obj).forEach((key) => {
+                const value = obj[key];
+                const keyL = String(key).toLowerCase();
+                let inputType = 'text';
+                if (typeof value === 'boolean') inputType = 'checkbox';
+                else if (typeof value === 'number') inputType = 'number';
+                else if (keyL.includes('color') || keyL.includes('fill')) inputType = 'color';
+                const group = createInputGroup(toLabel(key), value, inputType);
+                form.appendChild(group.container);
+                fields.push({ sourceName: sourceName, key: key, type: inputType, input: group.input });
+            });
+        };
+        addFields('params', indicator.params || {});
+        addFields('style', indicator.style || {});
         
         dialog.appendChild(form);
         
         // Buttons
         const buttons = document.createElement('div');
-        buttons.style.cssText = 'display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;';
+        buttons.style.cssText = 'display:flex;gap:8px;margin-top:12px;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));flex-shrink:0;';
         
         const cancelBtn = document.createElement('button');
         cancelBtn.textContent = 'Cancel';
-        cancelBtn.style.cssText = 'padding: 10px 20px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; color: #333; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s;';
+        cancelBtn.style.cssText = 'padding:8px 14px;min-width:110px;background:var(--sp-ui-surface-bg,#1e2740);border:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));border-radius:6px;color:var(--sp-text,#d1d4dc);cursor:pointer;font-size:13px;font-weight:600;transition:all .12s;';
         cancelBtn.onmouseenter = function() { 
-            cancelBtn.style.background = '#e0e0e0'; 
-            cancelBtn.style.borderColor = '#999';
+            cancelBtn.style.background = 'rgba(255,255,255,0.07)'; 
+            cancelBtn.style.borderColor = 'rgba(140,160,255,0.45)';
         };
         cancelBtn.onmouseleave = function() { 
-            cancelBtn.style.background = '#f0f0f0'; 
-            cancelBtn.style.borderColor = '#ccc';
+            cancelBtn.style.background = 'var(--sp-ui-surface-bg,#1e2740)'; 
+            cancelBtn.style.borderColor = 'var(--sp-ui-border, rgba(42,46,57,0.55))';
         };
         cancelBtn.onclick = function() {
             modal.remove();
@@ -6142,32 +6065,22 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         
         const applyBtn = document.createElement('button');
         applyBtn.textContent = 'Apply Changes';
-        applyBtn.style.cssText = 'padding: 10px 20px; background: var(--sp-accent, #2962ff); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s;';
+        applyBtn.style.cssText = 'padding:8px 16px;min-width:130px;background:linear-gradient(135deg,var(--sp-accent,#2962ff),#6a8aff);border:1px solid rgba(74,106,255,0.5);border-radius:6px;color:#fff;cursor:pointer;font-size:13px;font-weight:700;transition:background .12s,border-color .12s;';
         applyBtn.onmouseenter = function() { applyBtn.style.background = 'rgba(var(--sp-accent-rgb, 41,98,255), 0.8)'; };
         applyBtn.onmouseleave = function() { applyBtn.style.background = 'var(--sp-accent, #2962ff)'; };
         
         const self = this;
         applyBtn.onclick = function() {
             const newParams = {};
-            
-            if (inputs.period) newParams.period = parseInt(inputs.period.value);
-            if (inputs.stdDev) newParams.stdDev = parseFloat(inputs.stdDev.value);
-            if (inputs.fast) newParams.fast = parseInt(inputs.fast.value);
-            if (inputs.slow) newParams.slow = parseInt(inputs.slow.value);
-            if (inputs.signal) newParams.signal = parseInt(inputs.signal.value);
-            if (inputs.smoothK) newParams.smoothK = parseInt(inputs.smoothK.value);
-            if (inputs.smoothD) newParams.smoothD = parseInt(inputs.smoothD.value);
-            if (inputs.color) newParams.color = inputs.color.value;
-            if (inputs.upColor) newParams.upColor = inputs.upColor.value;
-            if (inputs.downColor) newParams.downColor = inputs.downColor.value;
-            if (inputs.upperColor) newParams.upperColor = inputs.upperColor.value;
-            if (inputs.middleColor) newParams.middleColor = inputs.middleColor.value;
-            if (inputs.lowerColor) newParams.lowerColor = inputs.lowerColor.value;
-            if (inputs.macdColor) newParams.macdColor = inputs.macdColor.value;
-            if (inputs.signalColor) newParams.signalColor = inputs.signalColor.value;
-            if (inputs.histogramColor) newParams.histogramColor = inputs.histogramColor.value;
-            if (inputs.kColor) newParams.kColor = inputs.kColor.value;
-            if (inputs.dColor) newParams.dColor = inputs.dColor.value;
+            fields.forEach((f) => {
+                let value;
+                if (f.type === 'checkbox') value = !!f.input.checked;
+                else if (f.type === 'number') {
+                    const n = parseFloat(f.input.value);
+                    value = Number.isFinite(n) ? n : 0;
+                } else value = f.input.value;
+                newParams[f.key] = value;
+            });
             self.updateIndicator(id, newParams);
             modal.remove();
         };
