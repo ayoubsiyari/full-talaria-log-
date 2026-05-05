@@ -11,6 +11,7 @@ import { renderMainApp } from './pages/MainApp';
 
 const TalariaV8b = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const viewToPath = { sessions: '/', dashboard: '/dashboard', stratbank: '/strategies', journal: '/journal', resources: '/resources' };
   const [loading, setLoading] = useState(false);
   const [loadFading, setLoadFading] = useState(false);
@@ -138,6 +139,7 @@ const TalariaV8b = () => {
   const [newSessNavEnabled, setNewSessNavEnabled] = useState(true);
   const [newSessFilePickerOpen, setNewSessFilePickerOpen] = useState(false);
   const [newSessOpen, setNewSessOpen] = useState(false);
+  const [newSessAutoOpened, setNewSessAutoOpened] = useState(false);
   const [editSessId, setEditSessId] = useState(null);
   const [newSessTickers, setNewSessTickers] = useState([]);
   const [newSessTickerInput, setNewSessTickerInput] = useState("");
@@ -178,6 +180,16 @@ const TalariaV8b = () => {
   const [newSessSupPickerOpen, setNewSessSupPickerOpen] = useState(false);
   const [newSessSupPickerSearch, setNewSessSupPickerSearch] = useState("");
   const [newSessSupPickerPos, setNewSessSupPickerPos] = useState({top:0,left:0});
+
+  useEffect(() => {
+    if (newSessAutoOpened) return;
+    const params = new URLSearchParams(location.search);
+    if (params.get("newSession") === "1") {
+      setSessView("sessions");
+      setNewSessOpen(true);
+      setNewSessAutoOpened(true);
+    }
+  }, [location.search, newSessAutoOpened]);
   const [newSessSupPickerCat, setNewSessSupPickerCat] = useState("Forex");
   const [newSessTradingCostsEnabled, setNewSessTradingCostsEnabled] = useState(false);
   const [newSessCosts, setNewSessCosts] = useState({
