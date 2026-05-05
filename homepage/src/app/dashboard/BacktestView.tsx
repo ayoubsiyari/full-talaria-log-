@@ -194,6 +194,11 @@ export function BacktestView() {
   const forceModalOnlyInIframe = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
+    const frameWithWatcher = iframe as HTMLIFrameElement & { __tlrCloseWatch?: number };
+    if (frameWithWatcher.__tlrCloseWatch) {
+      window.clearInterval(frameWithWatcher.__tlrCloseWatch);
+      delete frameWithWatcher.__tlrCloseWatch;
+    }
     try {
       const doc = iframe.contentDocument;
       if (!doc) return;
@@ -209,10 +214,29 @@ export function BacktestView() {
         div[style*="z-index:99999"] * { visibility: visible !important; }
       `;
       doc.head.appendChild(style);
+
+      let seenModal = false;
+      frameWithWatcher.__tlrCloseWatch = window.setInterval(() => {
+        const liveDoc = iframe.contentDocument;
+        if (!liveDoc) return;
+        const hasModal = !!liveDoc.querySelector('div[style*="z-index: 99999"], div[style*="z-index:99999"]');
+        if (hasModal) {
+          seenModal = true;
+          return;
+        }
+        if (seenModal) {
+          if (frameWithWatcher.__tlrCloseWatch) {
+            window.clearInterval(frameWithWatcher.__tlrCloseWatch);
+            delete frameWithWatcher.__tlrCloseWatch;
+          }
+          setIframeUrl(null);
+          loadSessions();
+        }
+      }, 180);
     } catch {
       // Ignore cross-document access failures.
     }
-  }, []);
+  }, [loadSessions]);
 
   const openSession = (s: Session) => {
     try {
