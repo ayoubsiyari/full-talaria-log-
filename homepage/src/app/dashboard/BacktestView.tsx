@@ -202,12 +202,11 @@ export function BacktestView() {
       const style = doc.createElement("style");
       style.id = styleId;
       style.textContent = `
-        div[style*="z-index: 99998"] { visibility: hidden !important; }
-        div[style*="z-index:99998"] { visibility: hidden !important; }
-        div[style*="z-index: 99999"] { visibility: visible !important; }
-        div[style*="z-index:99999"] { visibility: visible !important; }
-        div[style*="width:64"][style*="flex-direction:column"][style*="box-shadow:4px 0 20px"] { display: none !important; }
-        div[style*="width: 64"][style*="flex-direction: column"][style*="box-shadow: 4px 0 20px"] { display: none !important; }
+        body * { visibility: hidden !important; }
+        div[style*="z-index: 99999"],
+        div[style*="z-index:99999"],
+        div[style*="z-index: 99999"] *,
+        div[style*="z-index:99999"] * { visibility: visible !important; }
       `;
       doc.head.appendChild(style);
     } catch {
