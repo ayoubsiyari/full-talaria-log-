@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { BacktestNewSessionModal } from "./BacktestNewSessionModal";
+import { SymbolBadge } from "./backtestModal/SymbolBadge";
 
 /* ── Design system tokens (dark mode) ── */
 const c = {
@@ -113,6 +114,93 @@ function fmtMoney(n: number | null | undefined): string {
   return `${sign}$${Math.abs(n).toLocaleString()}`;
 }
 
+/** Backend sends win_rate as 0–1; tolerate legacy 0–100. */
+function fmtWinRate(w: number | null | undefined): string | null {
+  const f = winRateAsFrac(w);
+  if (f == null) return null;
+  return `${Math.round(f * 100)}%`;
+}
+
+function winRateAsFrac(w: number | null | undefined): number | null {
+  if (w == null || Number.isNaN(Number(w))) return null;
+  return w > 1 ? w / 100 : w;
+}
+
+function isAggregateSymbolLabel(s?: string): boolean {
+  return !!s && /^\d+\s*symbols?$/i.test(String(s).trim());
+}
+
+/** Tickers + per-symbol asset hints from saved session config (real API payload). */
+function sessionTickerRows(sess: Session): { sym: string; asset?: string }[] {
+  const cfg = sess.config as Record<string, unknown> | undefined;
+  const assetFallback =
+    cfg && typeof cfg.asset_class === "string" ? cfg.asset_class : undefined;
+  const instruments =
+    cfg?.instruments && typeof cfg.instruments === "object" && !Array.isArray(cfg.instruments)
+      ? (cfg.instruments as Record<string, Record<string, unknown>>)
+      : undefined;
+
+  const tickers = cfg?.tickers;
+  if (Array.isArray(tickers) && tickers.length > 0) {
+    return tickers
+      .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+      .map(sym => {
+        const row = instruments?.[sym];
+        const ac = row?.asset_class ?? row?.assetClass;
+        return {
+          sym,
+          asset: typeof ac === "string" ? ac : assetFallback,
+        };
+      });
+  }
+
+  if (instruments && Object.keys(instruments).length > 0) {
+    return Object.keys(instruments).map(sym => {
+      const row = instruments[sym];
+      const ac = row?.asset_class ?? row?.assetClass;
+      return {
+        sym,
+        asset: typeof ac === "string" ? ac : assetFallback,
+      };
+    });
+  }
+
+  if (sess.symbol && !isAggregateSymbolLabel(sess.symbol)) {
+    return [{ sym: sess.symbol, asset: assetFallback }];
+  }
+  return [];
+}
+
+function strategyDescription(sess: Session): string | undefined {
+  const cfg = sess.config as Record<string, unknown> | undefined;
+  if (!cfg) return undefined;
+  const d = cfg.description ?? cfg.playbook ?? cfg.playbook_display;
+  if (typeof d !== "string") return undefined;
+  const t = d.trim();
+  if (!t) return undefined;
+  const sn = typeof cfg.strategy_name === "string" ? cfg.strategy_name.trim() : "";
+  if (sn && t === sn) return undefined;
+  return t;
+}
+
+function parseYmdParts(d?: string): { y: string; mo: string; day: number } | null {
+  if (!d) return null;
+  const [y, mo, day] = d.split("-");
+  if (!y || !mo || !day) return null;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const mi = +mo - 1;
+  if (mi < 0 || mi > 11) return null;
+  return { y, mo: months[mi], day: Number(day) };
+}
+
+function durationLabelMonths(start?: string, end?: string): string | null {
+  if (!start || !end) return null;
+  const durMs = new Date(end).getTime() - new Date(start).getTime();
+  const durMo = Math.round(durMs / 1000 / 60 / 60 / 24 / 30.44);
+  if (durMo >= 12) return `${Math.round(durMo / 12)}y`;
+  return `${durMo}mo`;
+}
+
 /* ── Main component ── */
 export function BacktestView() {
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -125,6 +213,14 @@ export function BacktestView() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [hov, setHov] = useState<string | null>(null);
   const [newSessOpen, setNewSessOpen] = useState(false);
+  const [cardSortOpen, setCardSortOpen] = useState(false);
+  const cardSortRef = useRef<HTMLDivElement>(null);
+  type TradeTip = { sess: Session; bx: number; by: number; col: string };
+  const [tradeTip, setTradeTip] = useState<TradeTip | null>(null);
+  type ActMenu = { id: number; x: number; y: number };
+  const [actMenu, setActMenu] = useState<ActMenu | null>(null);
+  type StratPop = { id: number; x: number; y: number; name: string; desc: string };
+  const [stratPop, setStratPop] = useState<StratPop | null>(null);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -144,6 +240,16 @@ export function BacktestView() {
   }, []);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
+
+  useEffect(() => {
+    if (!cardSortOpen) return;
+    const close = (e: MouseEvent) => {
+      if (cardSortRef.current?.contains(e.target as Node)) return;
+      setCardSortOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [cardSortOpen]);
 
   /* ── Derived stats ── */
   const propSess = sessions.filter(s => s.session_type === "propfirm");
@@ -166,7 +272,15 @@ export function BacktestView() {
   }, 0);
 
   const tickerFreq: Record<string, number> = {};
-  sessions.forEach(s => { if (s.symbol) tickerFreq[s.symbol] = (tickerFreq[s.symbol] || 0) + 1; });
+  sessions.forEach(s => {
+    const rows = sessionTickerRows(s);
+    if (rows.length > 0) {
+      const uniq = [...new Set(rows.map(r => r.sym))];
+      uniq.forEach(t => { tickerFreq[t] = (tickerFreq[t] || 0) + 1; });
+    } else if (s.symbol && !isAggregateSymbolLabel(s.symbol)) {
+      tickerFreq[s.symbol] = (tickerFreq[s.symbol] || 0) + 1;
+    }
+  });
   const topTickers = Object.entries(tickerFreq).sort((a, b) => b[1] - a[1]).slice(0, 7);
   const tkMax = topTickers[0]?.[1] || 1;
 
@@ -188,7 +302,13 @@ export function BacktestView() {
       if (searchQ) {
         const q = searchQ.toLowerCase();
         const cfg = s.config as Record<string, string> | undefined;
-        if (!s.name.toLowerCase().includes(q) && !(s.symbol || "").toLowerCase().includes(q) && !(cfg?.strategy_name || "").toLowerCase().includes(q)) return false;
+        const tickStr = sessionTickerRows(s).map(t => t.sym).join(" ").toLowerCase();
+        if (
+          !s.name.toLowerCase().includes(q)
+          && !(s.symbol || "").toLowerCase().includes(q)
+          && !(cfg?.strategy_name || "").toLowerCase().includes(q)
+          && !tickStr.includes(q)
+        ) return false;
       }
       const p = getProgress(s, kpis[s.id]);
       if (filter === "not-started") return p === 0;
@@ -202,14 +322,22 @@ export function BacktestView() {
       if (!sortBy) return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
       const dir = sortDir === "asc" ? 1 : -1;
       let cmp = 0;
-      if (sortBy === "name")    cmp = a.name.localeCompare(b.name);
-      if (sortBy === "mode")    cmp = a.session_type.localeCompare(b.session_type);
-      if (sortBy === "capital") cmp = (a.start_balance || 0) - (b.start_balance || 0);
-      if (sortBy === "date")    cmp = new Date(a.start_date || 0).getTime() - new Date(b.start_date || 0).getTime();
-      if (sortBy === "pnl")     cmp = (kpis[a.id]?.net_pnl ?? -Infinity) - (kpis[b.id]?.net_pnl ?? -Infinity);
-      if (sortBy === "winRate") cmp = (kpis[a.id]?.win_rate ?? -1) - (kpis[b.id]?.win_rate ?? -1);
-      if (sortBy === "trades")  cmp = (kpis[a.id]?.trades || 0) - (kpis[b.id]?.trades || 0);
-      if (sortBy === "progress")cmp = getProgress(a, kpis[a.id]) - getProgress(b, kpis[b.id]);
+      const cfgA = a.config as Record<string, string> | undefined;
+      const cfgB = b.config as Record<string, string> | undefined;
+      const symA = sessionTickerRows(a)[0]?.sym || "";
+      const symB = sessionTickerRows(b)[0]?.sym || "";
+      if (sortBy === "name")     cmp = a.name.localeCompare(b.name);
+      if (sortBy === "strategy") cmp = (cfgA?.strategy_name || "").localeCompare(cfgB?.strategy_name || "");
+      if (sortBy === "mode")     cmp = a.session_type.localeCompare(b.session_type);
+      if (sortBy === "asset")    cmp = (cfgA?.asset_class || "").localeCompare(cfgB?.asset_class || "");
+      if (sortBy === "symbol")   cmp = symA.localeCompare(symB);
+      if (sortBy === "capital")  cmp = (a.start_balance || 0) - (b.start_balance || 0);
+      if (sortBy === "date")     cmp = new Date(a.start_date || 0).getTime() - new Date(b.start_date || 0).getTime();
+      if (sortBy === "pnl")      cmp = (kpis[a.id]?.net_pnl ?? -Infinity) - (kpis[b.id]?.net_pnl ?? -Infinity);
+      if (sortBy === "winRate")  cmp = (kpis[a.id]?.win_rate ?? -1) - (kpis[b.id]?.win_rate ?? -1);
+      if (sortBy === "avgRR")   cmp = (kpis[a.id]?.expectancy_r ?? -1) - (kpis[b.id]?.expectancy_r ?? -1);
+      if (sortBy === "trades")   cmp = (kpis[a.id]?.trades || 0) - (kpis[b.id]?.trades || 0);
+      if (sortBy === "progress") cmp = getProgress(a, kpis[a.id]) - getProgress(b, kpis[b.id]);
       return cmp * dir;
     });
 
@@ -232,6 +360,19 @@ export function BacktestView() {
 
   const openAnalytics = (s: Session) => {
     window.location.href = `/backtest/analytics?sessionId=${encodeURIComponent(String(s.id))}`;
+  };
+
+  const deleteSession = async (s: Session) => {
+    if (!globalThis.confirm(`Delete session “${s.name || s.id}”? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(String(s.id))}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      setActMenu(null);
+      await loadSessions();
+    } catch { /* ignore */ }
   };
 
   const toggleSort = (key: string) => {
@@ -337,6 +478,49 @@ export function BacktestView() {
                 <div style={{ fontSize: 18, fontWeight: 800, color: c.tx, fontVariantNumeric: "tabular-nums" }}>{totalTrades.toLocaleString()}</div>
               </div>
               <div style={{ flex: 1 }} />
+              {tradeTip && (
+                <div style={{
+                  position: "fixed",
+                  left: tradeTip.bx,
+                  top: tradeTip.by + 6,
+                  transform: "translateX(-50%)",
+                  zIndex: 99999,
+                  pointerEvents: "none",
+                  background: c.el,
+                  border: `1px solid ${c.brH}`,
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+                  overflow: "hidden",
+                  minWidth: 200,
+                }}>
+                  <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 2, background: tradeTip.col }} />
+                  <div style={{ padding: "8px 12px 8px 16px" }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: c.tx, marginBottom: 6, maxWidth: 188, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tradeTip.sess.name}</div>
+                    <div style={{ height: 1, background: c.brH, marginBottom: 6 }} />
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "3px 16px" }}>
+                      {[
+                        ["Trades", String(kpis[tradeTip.sess.id]?.trades ?? 0)],
+                        ["Mode", tradeTip.sess.session_type === "propfirm" ? "Prop Firm" : "Standard"],
+                        ["Strategy", (tradeTip.sess.config as Record<string, string> | undefined)?.strategy_name || "—"],
+                        ["Progress", `${getProgress(tradeTip.sess, kpis[tradeTip.sess.id])}%`],
+                        ["Starting Balance", tradeTip.sess.start_balance != null ? `$${tradeTip.sess.start_balance.toLocaleString()}` : "—"],
+                        ["Net P&L", kpis[tradeTip.sess.id]?.net_pnl != null ? fmtMoney(kpis[tradeTip.sess.id]!.net_pnl) : "—"],
+                        ["Win Rate", fmtWinRate(kpis[tradeTip.sess.id]?.win_rate) ?? "—"],
+                        ["Avg R:R", kpis[tradeTip.sess.id]?.expectancy_r != null ? `1:${kpis[tradeTip.sess.id]!.expectancy_r!.toFixed(1)}` : "—"],
+                      ].map(([label, val]) => (
+                        <div key={label} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                          <span style={{ fontSize: 7, color: c.tm, letterSpacing: "0.04em" }}>{label}</span>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: c.tx, fontVariantNumeric: "tabular-nums" }}>{val}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {(tradeTip.sess.start_date || tradeTip.sess.end_date) && (
+                      <div style={{ marginTop: 6, paddingTop: 5, borderTop: `1px solid ${c.brH}`, fontSize: 7.5, color: c.tm }}>
+                        {tradeTip.sess.start_date} → {tradeTip.sess.end_date}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               {(() => {
                 const svgW = 422, maxH = 96, barGap = 2;
                 const barsN = trBars.length || 1;
@@ -349,13 +533,16 @@ export function BacktestView() {
                       const t = kpis[s.id]?.trades || 0;
                       const h = t ? Math.max(3, Math.round((t / trMax) * maxH)) : 2;
                       const col = s.session_type === "propfirm" ? c.gold : c.acL;
-                      const isH = hov === `tr_${s.id}`;
+                      const isH = tradeTip?.sess.id === s.id;
                       return (
                         <rect key={s.id} x={ox + i * (barW + barGap)} y={maxH - h} width={barW} height={h}
                           fill={col} opacity={isH ? 1 : 0.82}
                           style={{ cursor: "default", filter: isH ? "brightness(1.6)" : "none" }}
-                          onMouseEnter={() => setHov(`tr_${s.id}`)}
-                          onMouseLeave={() => setHov(null)} />
+                          onMouseEnter={e => {
+                            const r = e.currentTarget.getBoundingClientRect();
+                            setTradeTip({ sess: s, bx: r.left + r.width / 2, by: r.bottom, col });
+                          }}
+                          onMouseLeave={() => setTradeTip(null)} />
                       );
                     })}
                   </svg>
@@ -378,8 +565,8 @@ export function BacktestView() {
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <svg width={90} height={90} viewBox="0 0 120 120">
                   {withPnl.length === 0 && <circle cx={60} cy={60} r={PR} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={10} />}
-                  {withPnl.length > 0 && <circle cx={60} cy={60} r={PR} fill="none" stroke={c.rd} strokeWidth={10} strokeDasharray={`${PC - profLen} ${PC}`} transform={`rotate(${-90 + profPct / 100 * 360},60,60)`} />}
-                  {withPnl.length > 0 && <circle cx={60} cy={60} r={PR} fill="none" stroke={c.gn} strokeWidth={10} strokeDasharray={`${profLen} ${PC}`} transform="rotate(-90,60,60)" />}
+                  {withPnl.length > 0 && <circle cx={60} cy={60} r={PR} fill="none" stroke={c.rd} strokeWidth={10} strokeDasharray={`${PC - profLen} ${PC}`} strokeLinecap="butt" transform={`rotate(${-90 + profPct / 100 * 360},60,60)`} />}
+                  {withPnl.length > 0 && <circle cx={60} cy={60} r={PR} fill="none" stroke={c.gn} strokeWidth={10} strokeDasharray={`${profLen} ${PC}`} strokeLinecap="butt" transform="rotate(-90,60,60)" />}
                   <text x={60} y={55} textAnchor="middle" style={{ fontSize: 22, fontWeight: 800, fill: profPct >= 50 ? c.gn : c.rd, fontFamily: F, fontVariantNumeric: "tabular-nums" } as React.CSSProperties}>{profPct}%</text>
                   <text x={60} y={70} textAnchor="middle" style={{ fontSize: 8, fontWeight: 600, fill: c.tm, fontFamily: F, letterSpacing: "0.06em" } as React.CSSProperties}>PROFITABLE</text>
                 </svg>
@@ -409,7 +596,7 @@ export function BacktestView() {
                 const rows = Math.ceil(dotsN / dcols) || 1;
                 const svgW = dcols * step - dg, svgH = rows * step - dg;
                 return (
-                  <svg width={svgW} height={svgH} style={{ display: "block", margin: "0 auto 8px" }}>
+                  <svg width={svgW} height={svgH} style={{ display: "block", margin: "0 auto 48px" }}>
                     {Array.from({ length: dotsN }).map((_, i) => (
                       <rect key={i} x={(i % dcols) * step} y={Math.floor(i / dcols) * step} width={ds} height={ds} fill={c.acL} opacity={0.75} />
                     ))}
@@ -452,9 +639,9 @@ export function BacktestView() {
             const tabCol = isA ? (isProp ? c.gold : c.acL) : c.ts;
             const tabBg  = isA ? (isProp ? "rgba(201,168,76,0.10)" : c.acD) : "transparent";
             return (
-              <div key={v} onClick={() => setFilter(v)}
-                onMouseEnter={e => { if (!isA) { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.06)"; } }}
-                onMouseLeave={e => { if (!isA) { (e.currentTarget as HTMLDivElement).style.background = "transparent"; } }}
+              <div key={v} onClick={() => { setFilter(v); setCardSortOpen(false); }}
+                onMouseEnter={e => { if (!isA) { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.06)"; (e.currentTarget as HTMLDivElement).style.color = c.tx; } }}
+                onMouseLeave={e => { if (!isA) { (e.currentTarget as HTMLDivElement).style.background = "transparent"; (e.currentTarget as HTMLDivElement).style.color = c.ts; } }}
                 style={{ position: "relative", height: 26, display: "flex", alignItems: "center", gap: 5, padding: "0 12px", cursor: "pointer", color: tabCol, background: tabBg, fontSize: 9, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase" as const, flexShrink: 0, userSelect: "none" }}>
                 {l}
                 <span style={{ fontSize: 8, fontWeight: 700, background: isA ? (isProp ? "rgba(201,168,76,0.18)" : "rgba(74,106,255,0.2)") : "rgba(255,255,255,0.07)", color: tabCol, padding: "1px 5px" }}>{getCount(v)}</span>
@@ -465,6 +652,63 @@ export function BacktestView() {
 
           {/* Right controls */}
           <div style={{ marginLeft: "auto", alignSelf: "center", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            {layoutMode === "cards" && (
+              <div ref={cardSortRef} style={{ position: "relative" }} onMouseDown={e => e.stopPropagation()}>
+                {(() => {
+                  const sortOpts = [["name", "Name"], ["strategy", "Strategy"], ["date", "Date Range"], ["capital", "Balance"], ["pnl", "Net P&L"], ["winRate", "Win Rate"], ["avgRR", "Avg R:R"], ["trades", "Trades"], ["progress", "Progress"]] as [string, string][];
+                  const activeLabel = sortBy ? (sortOpts.find(([k]) => k === sortBy)?.[1] ?? "Recent") : "Recent";
+                  const isBH = hov === "cardSortBtn";
+                  return (
+                    <>
+                      <div onClick={() => setCardSortOpen(v => !v)}
+                        onMouseEnter={() => setHov("cardSortBtn")}
+                        onMouseLeave={() => setHov(null)}
+                        style={{
+                          height: 28, padding: "0 8px", display: "flex", alignItems: "center", gap: 5, position: "relative", cursor: "pointer",
+                          background: cardSortOpen ? "rgba(74,106,255,0.08)" : isBH ? "rgba(255,255,255,0.05)" : "transparent",
+                          color: cardSortOpen ? c.acL : isBH ? c.tx : c.ts,
+                          fontSize: 9, fontWeight: 700, transition: "background 0.12s,color 0.12s", whiteSpace: "nowrap",
+                        }}>
+                        <svg width={9} height={9} viewBox="0 0 12 12" fill="none"><line x1="1" y1="3" x2="11" y2="3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><line x1="5" y1="9" x2="7" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                        {activeLabel}
+                        <svg width={6} height={6} viewBox="0 0 8 8" style={{ opacity: 0.55, flexShrink: 0 }}><polygon points={cardSortOpen ? "4,1 7,6 1,6" : "4,7 7,2 1,2"} fill="currentColor" /></svg>
+                        {cardSortOpen && <div style={{ position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "70%", height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acL}`, pointerEvents: "none" }} />}
+                      </div>
+                      {cardSortOpen && (
+                        <div style={{ position: "absolute", top: "calc(100% + 5px)", left: 0, background: c.sf, border: "1px solid rgba(140,160,255,0.22)", boxShadow: "0 4px 16px rgba(0,0,0,0.5)", zIndex: 300, minWidth: 148, overflow: "hidden" }}>
+                          <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }} />
+                          {sortOpts.map(([key, label]) => {
+                            const isAct = sortBy === key;
+                            const isIH = hov === `csort_${key}`;
+                            return (
+                              <div key={key}
+                                onMouseEnter={() => setHov(`csort_${key}`)}
+                                onMouseLeave={() => setHov(null)}
+                                onClick={() => {
+                                  if (sortBy === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+                                  else { setSortBy(key); setSortDir("asc"); }
+                                  setCardSortOpen(false);
+                                }}
+                                style={{
+                                  display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 12px", cursor: "pointer", position: "relative",
+                                  background: isAct ? c.acD : isIH ? "rgba(255,255,255,0.03)" : "transparent",
+                                  transition: "background 0.1s",
+                                }}>
+                                {isAct && <div style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acL}` }} />}
+                                <span style={{ fontSize: 9, fontWeight: isAct ? 700 : 500, color: isAct ? c.acL : isIH ? c.tx : c.ts }}>{label}</span>
+                                {isAct && (sortDir === "asc"
+                                  ? <svg width={7} height={7} viewBox="0 0 7 7"><polygon points="3.5,0 7,7 0,7" fill={c.acL} /></svg>
+                                  : <svg width={7} height={7} viewBox="0 0 7 7"><polygon points="3.5,7 7,0 0,0" fill={c.acL} /></svg>)}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
             {/* Layout toggle */}
             <div style={{ display: "flex", gap: 4 }}>
               {([
@@ -472,11 +716,15 @@ export function BacktestView() {
                 { mode: "rows" as LayoutMode,  icon: <svg width={13} height={13} viewBox="0 0 14 14" fill="none"><rect x="0" y="0" width="14" height="3" rx="0.5" fill="currentColor"/><rect x="0" y="5" width="14" height="3" rx="0.5" fill="currentColor"/><rect x="0" y="10" width="14" height="3" rx="0.5" fill="currentColor"/></svg> },
               ]).map(({ mode, icon }) => {
                 const isA = layoutMode === mode;
+                const isLm = hov === `lm_${mode}`;
                 return (
-                  <div key={mode} onClick={() => setLayoutMode(mode)}
-                    style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", cursor: "pointer", background: isA ? "rgba(74,106,255,0.08)" : "transparent", color: isA ? c.acL : c.ts, transition: "background 0.12s,color 0.12s" }}>
+                  <div key={mode} onClick={() => { setLayoutMode(mode); setCardSortOpen(false); }}
+                    onMouseEnter={() => setHov(`lm_${mode}`)}
+                    onMouseLeave={() => setHov(null)}
+                    style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", cursor: "pointer", background: isA ? "rgba(74,106,255,0.08)" : isLm ? "rgba(255,255,255,0.05)" : "transparent", color: isA ? c.acL : isLm ? c.tx : c.ts, transition: "background 0.12s,color 0.12s" }}>
                     {icon}
-                    {isA && <div style={{ position: "absolute", bottom: 0, left: "15%", right: "15%", height: 1.5, background: `linear-gradient(90deg,transparent,${c.acL},transparent)` }} />}
+                    {isA && <div style={{ position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "70%", height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acL}`, pointerEvents: "none" }} />}
+                    {!isA && isLm && <div style={{ position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "50%", height: 1, background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent)", pointerEvents: "none" }} />}
                   </div>
                 );
               })}
@@ -493,26 +741,39 @@ export function BacktestView() {
           </div>
         </div>
 
-        {/* ── Column headers (rows mode) ── */}
+        {/* ── Column headers (rows mode, sticky below filter) ── */}
         {filteredSessions.length > 0 && layoutMode === "rows" && (
-          <div style={{ background: c.bg, padding: "0 32px", display: "flex", alignItems: "center", height: 26, borderBottom: `1px solid ${c.brH}` }}>
+          <div style={{ position: "sticky", top: 40, zIndex: 4, background: c.bg, padding: "0 32px", display: "flex", alignItems: "center", height: 26, borderBottom: `1px solid ${c.brH}` }}>
             <div style={{ width: 96, flexShrink: 0 }} />
             {([
-              ["Session", 110, "name"],["Strategy", 100, null],["Mode", 74, "mode"],["Asset", 90, null],
-              ["Symbols", 120, null],["Date Range", 134, "date"],["Options", 102, null],
-              ["Starting Bal.", 88, "capital"],["Net P&L", 80, "pnl"],["Win %", 60, "winRate"],
-              ["Avg R:R", 62, null],["Trades", 56, "trades"],["Progress", 66, "progress"],["", 50, null],
+              ["Session", 110, "name"], ["Strategy", 100, "strategy"], ["Mode", 74, "mode"], ["Asset", 90, "asset"],
+              ["Symbols", 120, "symbol"], ["Date Range", 134, "date"], ["Options", 102, null],
+              ["Starting Bal.", 88, "capital"], ["Net P&L", 80, "pnl"], ["Win %", 60, "winRate"],
+              ["Avg R:R", 62, "avgRR"], ["Trades", 56, "trades"], ["Progress", 66, "progress"], ["", 50, null],
             ] as [string, number, string | null][]).map(([label, w, sk]) => {
-              const isActive = sk && sortBy === sk;
+              const isActive = !!(sk && sortBy === sk);
+              const isHov = sk && hov === `ch_${label}`;
               return (
-                <div key={label || "_act"} onClick={sk ? () => toggleSort(sk) : undefined}
-                  style={{ width: w, flexShrink: 0, fontSize: 8, fontWeight: 800, color: isActive ? c.acL : c.tm, textTransform: "uppercase" as const, letterSpacing: "0.08em", whiteSpace: "nowrap" as const, fontFamily: F, textAlign: "center" as const, cursor: sk ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", gap: 3, userSelect: "none" as const }}>
+                <div key={label || "_act"}
+                  onClick={sk ? () => toggleSort(sk) : undefined}
+                  onMouseEnter={() => { if (sk) setHov(`ch_${label}`); }}
+                  onMouseLeave={() => { if (sk) setHov(null); }}
+                  style={{
+                    width: w, flexShrink: 0, fontSize: 8, fontWeight: 800,
+                    color: isActive ? c.acL : isHov ? c.ts : c.tm,
+                    textTransform: "uppercase" as const, letterSpacing: "0.08em", whiteSpace: "nowrap" as const, fontFamily: F,
+                    textAlign: "center" as const, cursor: sk ? "pointer" : "default",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 3, userSelect: "none" as const,
+                    transition: "color 0.12s", background: isHov && !isActive ? "rgba(255,255,255,0.04)" : "transparent",
+                  }}>
                   {label}
-                  {sk && isActive && (
+                  {sk && (isActive ? (
                     sortDir === "asc"
                       ? <svg width={7} height={7} viewBox="0 0 7 7"><polygon points="3.5,0 7,7 0,7" fill="currentColor" /></svg>
                       : <svg width={7} height={7} viewBox="0 0 7 7"><polygon points="3.5,7 7,0 0,0" fill="currentColor" /></svg>
-                  )}
+                  ) : (
+                    isHov && <svg width={7} height={10} viewBox="0 0 7 10"><polygon points="3.5,0 7,4 0,4" fill="currentColor" opacity={0.7} /><polygon points="3.5,10 7,6 0,6" fill="currentColor" opacity={0.7} /></svg>
+                  ))}
                 </div>
               );
             })}
@@ -524,9 +785,9 @@ export function BacktestView() {
           {sessions.length === 0 ? (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "50vh", textAlign: "center" }}>
               <svg width={56} height={56} viewBox="0 0 24 24" fill="none" style={{ marginBottom: 18, color: c.tm, opacity: 0.5 }}><rect x="3" y="3" width="18" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.2" /><line x1="7" y1="8" x2="17" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><line x1="7" y1="12" x2="13" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
-              <div style={{ fontSize: 16, fontWeight: 700, color: c.ts, marginBottom: 8 }}>No sessions yet</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: c.ts, marginBottom: 8 }}>No saved sessions yet</div>
               <div style={{ fontSize: 13, color: c.tm, marginBottom: 24 }}>Create your first backtesting session to get started</div>
-              <div onClick={goNew} style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 38, padding: "0 22px", background: "linear-gradient(135deg,#1e38e8,#4A6AFF)", cursor: "pointer", fontSize: 12, fontWeight: 800, color: "rgba(255,255,255,0.96)", letterSpacing: "0.08em", boxShadow: "0 4px 18px rgba(38,67,247,0.4)" }}>
+              <div onClick={goNew} style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 38, padding: "0 22px", background: "linear-gradient(135deg,#1e38e8,#4A6AFF)", cursor: "pointer", fontSize: 12, fontWeight: 800, color: "rgba(255,255,255,0.96)", letterSpacing: "0.08em", boxShadow: "0 4px 18px rgba(38,67,247,0.4)", clipPath: "polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%)" }}>
                 + Create New Session
               </div>
             </div>
@@ -566,7 +827,7 @@ export function BacktestView() {
                         ["Strategy", cfg?.strategy_name || "—", c.ts],
                         ["Balance", sess.start_balance ? `$${sess.start_balance.toLocaleString()}` : "—", c.ts],
                         ["Net P&L", k ? fmtMoney(k.net_pnl) : "—", pnlCol],
-                        ["Win %", k?.win_rate != null ? `${(k.win_rate * 100).toFixed(1)}%` : "—", c.ts],
+                        ["Win %", fmtWinRate(k?.win_rate) ?? "—", (() => { const wf = winRateAsFrac(k?.win_rate); return wf != null ? (wf >= 0.5 ? c.gn : c.rd) : c.tm; })()],
                         ["Trades", k?.trades != null ? String(k.trades) : "—", c.ts],
                       ].map(([label, val, valCol]) => (
                         <div key={label as string} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -577,10 +838,15 @@ export function BacktestView() {
                     </div>
                     <div style={{ padding: "4px 10px 8px", display: "flex", alignItems: "center", gap: 8 }}>
                       <div style={{ flex: 1, height: 2, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
-                        <div style={{ width: `${Math.min(progress, 100)}%`, height: "100%", background: progress >= 100 ? c.gn : c.acL }} />
+                        <div style={{
+                          width: `${Math.min(progress, 100)}%`,
+                          height: "100%",
+                          background: progress >= 100 ? (isProp ? (pnlPos ? c.gn : c.rd) : c.gn) : c.acL,
+                          transition: "width 0.3s ease",
+                        }} />
                       </div>
-                      <span style={{ fontSize: 9, fontWeight: 800, color: progress >= 100 ? c.gn : progress > 0 ? c.acL : c.tm, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-                        {progress >= 100 ? "Done" : progress > 0 ? `${progress}%` : "0%"}
+                      <span style={{ fontSize: 9, fontWeight: 800, color: progress >= 100 ? (isProp ? (hasPnl && pnlPos ? c.gn : c.rd) : c.gn) : progress > 0 ? c.acL : c.tm, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+                        {progress >= 100 ? (isProp ? (hasPnl && pnlPos ? "Passed" : "Lost") : "Done") : progress > 0 ? `${progress}%` : "0%"}
                       </span>
                     </div>
                   </div>
@@ -600,7 +866,22 @@ export function BacktestView() {
                 const pnlCol = hasPnl ? (pnlPos ? c.gn : c.rd) : c.tm;
                 const isH = hov === `row_${sess.id}`;
                 const createdStr = sess.created_at ? new Date(sess.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
-                const cfg = sess.config as Record<string, string> | undefined;
+                const cfg = sess.config as Record<string, unknown> | undefined;
+                const cfgS = sess.config as Record<string, string> | undefined;
+                const stratDesc = strategyDescription(sess);
+                const tickerRows = sessionTickerRows(sess);
+                const costsOn = !!(cfgS?.commission && cfgS.commission !== "None")
+                  || (cfg?.trading_costs != null && cfg.trading_costs !== "");
+                const rb = cfg?.rollback_allowed ?? cfg?.allowBackNavigation;
+                const rollbackOn = rb === true || rb === "true" || rb === 1;
+                const wf = winRateAsFrac(k?.win_rate);
+                const winPctStr = fmtWinRate(k?.win_rate);
+                const progDoneCol = progress >= 100 ? (isProp ? (hasPnl ? (pnlPos ? c.gn : c.rd) : c.tm) : c.gn) : progress > 0 ? c.acL : c.tm;
+                const progBarBg = progress >= 100 ? (isProp ? (hasPnl ? (pnlPos ? c.gn : c.rd) : c.acL) : c.gn) : c.acL;
+                const progLabel = progress >= 100
+                  ? (isProp ? (hasPnl ? (pnlPos ? "Passed" : "Lost") : "Done") : "Done")
+                  : `${progress}%`;
+
                 const colCell = (val: string, w: number, valCol: string = c.ts) => (
                   <div style={{ width: w, flexShrink: 0, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: valCol, whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis", fontVariantNumeric: "tabular-nums", textAlign: "center" as const }}>{val}</div>
@@ -613,64 +894,100 @@ export function BacktestView() {
                     <div style={{ display: "flex", alignItems: "stretch", flex: 1 }}>
                       {/* Action buttons */}
                       <div style={{ width: 96, flexShrink: 0, display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: "0 10px" }}>
-                        <div onClick={() => openSession(sess)}
+                        <div onClick={e => { e.stopPropagation(); openSession(sess); }}
                           onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.filter = "brightness(1.2)"}
                           onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.filter = "brightness(1)"}
                           style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#1e38e8,#4A6AFF)", cursor: "pointer", boxShadow: "0 2px 8px rgba(38,67,247,0.35)", flexShrink: 0 }}>
                           <svg width={10} height={10} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="rgba(255,255,255,0.95)" /></svg>
                         </div>
-                        <div onClick={() => openAnalytics(sess)}
-                          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.12)"; }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.07)"; }}
+                        <div onClick={e => { e.stopPropagation(); openAnalytics(sess); }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.12)"; (e.currentTarget as HTMLDivElement).style.borderColor = c.brH; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.07)"; (e.currentTarget as HTMLDivElement).style.borderColor = c.br; }}
                           style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.07)", border: `1px solid ${c.br}`, cursor: "pointer", flexShrink: 0 }}>
                           <svg width={12} height={12} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill={c.ts} /><rect x="11" y="1" width="8" height="8" fill={c.ts} /><rect x="1" y="11" width="8" height="8" fill={c.ts} /><rect x="11" y="11" width="8" height="8" fill={c.ts} /></svg>
                         </div>
                       </div>
                       {/* Session name + date */}
                       <div style={{ width: 110, flexShrink: 0, padding: "0 10px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: c.ts, wordBreak: "break-word" as const, lineHeight: 1.3 }}>{sess.name || "—"}</div>
+                        <div style={{ fontSize: (sess.name || "").length > 24 ? 8 : (sess.name || "").length > 16 ? 9 : 10, fontWeight: 700, color: c.ts, wordBreak: "break-word" as const, lineHeight: 1.3 }}>{sess.name || "—"}</div>
                         <div style={{ fontSize: 7, color: c.tm }}>{createdStr}</div>
                       </div>
-                      {/* Strategy */}
-                      {colCell(cfg?.strategy_name || "—", 100)}
+                      {/* Strategy + info */}
+                      <div style={{ width: 100, flexShrink: 0, padding: "0 8px 0 10px", display: "flex", alignItems: "center", gap: 4, overflow: "hidden" }}>
+                        <div style={{ fontSize: (cfgS?.strategy_name || "").length > 20 ? 9 : (cfgS?.strategy_name || "").length > 13 ? 10 : 11, fontWeight: 600, color: c.ts, lineHeight: 1.35, wordBreak: "break-word" as const, flex: 1, minWidth: 0 }}>{cfgS?.strategy_name || "—"}</div>
+                        {stratDesc && (
+                          <div
+                            onClick={e => e.stopPropagation()}
+                            onMouseEnter={e => {
+                              const r = e.currentTarget.getBoundingClientRect();
+                              setStratPop({
+                                id: sess.id,
+                                x: r.right + 6,
+                                y: r.top,
+                                name: cfgS?.strategy_name || sess.name || "Strategy",
+                                desc: stratDesc,
+                              });
+                            }}
+                            onMouseLeave={() => setStratPop(null)}
+                            style={{ width: 14, height: 14, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "default", color: stratPop?.id === sess.id ? c.acL : c.ts, transition: "color 0.12s" }}>
+                            <svg width={12} height={12} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.4" /><line x1="8" y1="7" x2="8" y2="11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><circle cx="8" cy="5" r="0.8" fill="currentColor" /></svg>
+                          </div>
+                        )}
+                      </div>
                       {/* Mode */}
                       {colCell(isProp ? "Prop Firm" : "Standard", 74, isProp ? c.gold : c.acL)}
                       {/* Asset */}
-                      {colCell(cfg?.asset_class || "—", 90)}
+                      {colCell(cfgS?.asset_class || "—", 90)}
                       {/* Symbols */}
-                      <div style={{ width: 120, flexShrink: 0, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap" as const, gap: 2 }}>
-                        {sess.symbol ? (
-                          <span style={{ fontSize: 8, fontWeight: 700, color: c.ts, background: "rgba(255,255,255,0.07)", padding: "2px 5px", border: `1px solid ${c.br}` }}>{sess.symbol}</span>
-                        ) : <span style={{ fontSize: 10, color: c.tm }}>—</span>}
-                      </div>
-                      {/* Date Range */}
-                      <div style={{ width: 134, flexShrink: 0, padding: "0 10px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3 }}>
-                        {sess.start_date ? (
-                          <>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <span style={{ fontSize: 9, fontWeight: 700, color: c.tx }}>{fmtShortDate(sess.start_date)}</span>
-                              <div style={{ width: 28, height: 1.5, background: `linear-gradient(90deg,${c.acL},${c.acL}44)`, position: "relative" }}>
-                                <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translateY(-50%)", fontSize: 7, color: c.acL, fontWeight: 700 }} />
+                      <div style={{ width: 120, flexShrink: 0, padding: "0 8px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                        {tickerRows.length === 0 ? (
+                          sess.symbol ? (
+                            <span style={{ fontSize: 8, fontWeight: 700, color: c.ts, background: "rgba(255,255,255,0.07)", padding: "2px 6px", border: `1px solid ${c.br}`, whiteSpace: "nowrap" }}>{sess.symbol}</span>
+                          ) : <span style={{ fontSize: 10, color: c.tm }}>—</span>
+                        ) : (
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 4px", width: "100%" }}>
+                            {tickerRows.slice(0, 6).map(r => (
+                              <div key={r.sym} style={{ display: "flex", alignItems: "center", gap: 3, minWidth: 0 }}>
+                                <SymbolBadge sym={r.sym} asset={r.asset} w={12} h={12} fontFamily={F} />
+                                <span style={{ fontSize: 8, fontWeight: 600, color: c.ts, letterSpacing: "0.03em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.sym}</span>
                               </div>
-                              <span style={{ fontSize: 9, fontWeight: 700, color: c.tx }}>{fmtShortDate(sess.end_date)}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {/* Date Range — timeline */}
+                      <div style={{ width: 134, flexShrink: 0, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {sess.start_date && sess.end_date ? (() => {
+                          const s = parseYmdParts(sess.start_date);
+                          const e = parseYmdParts(sess.end_date);
+                          const durLabel = durationLabelMonths(sess.start_date, sess.end_date) || "";
+                          if (!s || !e) return <span style={{ fontSize: 9, color: c.tm }}>—</span>;
+                          return (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3, width: "100%", fontFamily: F, fontVariantNumeric: "tabular-nums" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                <span style={{ fontSize: 9, fontWeight: 700, color: c.ts }}>{s.mo} {s.day}</span>
+                                <span style={{ fontSize: 9, fontWeight: 700, color: c.ts }}>{e.mo} {e.day}</span>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <span style={{ fontSize: 8, fontWeight: 600, color: c.tm }}>{s.y}</span>
+                                <div style={{ flex: 1, position: "relative", height: 1, background: `linear-gradient(90deg,${c.tm},${c.acL},${c.tm})` }}>
+                                  <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", background: c.bg, padding: "0 3px", fontSize: 10, fontWeight: 800, color: c.acL, letterSpacing: "0.04em", lineHeight: 1.2, whiteSpace: "nowrap" }}>{durLabel}</div>
+                                </div>
+                                <span style={{ fontSize: 8, fontWeight: 600, color: c.tm }}>{e.y}</span>
+                              </div>
                             </div>
-                            {sess.start_date && sess.end_date && (
-                              <span style={{ fontSize: 7, color: c.tm, fontVariantNumeric: "tabular-nums" }}>
-                                {Math.round((new Date(sess.end_date).getTime() - new Date(sess.start_date).getTime()) / (86400000 * 30))}mo
-                              </span>
-                            )}
-                          </>
-                        ) : <span style={{ fontSize: 10, color: c.tm }}>—</span>}
+                          );
+                        })() : <span style={{ fontSize: 10, color: c.tm }}>—</span>}
                       </div>
                       {/* Options */}
-                      <div style={{ width: 102, flexShrink: 0, padding: "0 8px", display: "flex", flexDirection: "column", gap: 3, justifyContent: "center" }}>
+                      <div style={{ width: 102, flexShrink: 0, padding: "0 12px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}>
                         {[
-                          { label: "Rollback", on: !!(cfg?.rollback_allowed) },
-                          { label: "Costs", on: !!(cfg?.commission && cfg.commission !== "None") },
+                          { label: "Rollback", on: rollbackOn },
+                          { label: "Costs", on: costsOn },
                         ].map(({ label, on }) => (
-                          <div key={label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                            <div style={{ width: 4, height: 4, background: on ? c.gn : c.rd, transform: "rotate(45deg)", flexShrink: 0 }} />
-                            <span style={{ fontSize: 8, fontWeight: 600, color: on ? c.gn : c.rd }}>{label}</span>
+                          <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: F }}>
+                            <div style={{ width: 5, height: 5, borderRadius: "50%", background: on ? c.gn : c.rd, flexShrink: 0, boxShadow: on ? `0 0 4px ${c.gn}88` : `0 0 4px ${c.rd}88` }} />
+                            <div style={{ fontSize: 10, fontWeight: 600, color: on ? c.gn : c.rd, whiteSpace: "nowrap" }}>{label}</div>
                           </div>
                         ))}
                       </div>
@@ -679,23 +996,34 @@ export function BacktestView() {
                       {/* Net P&L */}
                       {colCell(k ? fmtMoney(k.net_pnl) : "—", 80, pnlCol)}
                       {/* Win % */}
-                      {colCell(k?.win_rate != null ? `${(k.win_rate * 100).toFixed(0)}%` : "—", 60, k?.win_rate != null ? (k.win_rate >= 0.5 ? c.gn : c.rd) : c.tm)}
+                      {colCell(winPctStr ?? "—", 60, wf != null ? (wf >= 0.5 ? c.gn : c.rd) : c.tm)}
                       {/* Avg R:R */}
                       {colCell(k?.expectancy_r != null ? `1:${k.expectancy_r.toFixed(1)}` : "—", 62)}
                       {/* Trades */}
                       {colCell(k?.trades != null ? String(k.trades) : "—", 56)}
                       {/* Progress */}
-                      <div style={{ width: 66, flexShrink: 0, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <span style={{ fontSize: 10, fontWeight: 800, color: progress >= 100 ? c.gn : progress > 0 ? c.acL : c.tm, fontVariantNumeric: "tabular-nums" }}>
-                          {progress >= 100 ? "Done" : progress > 0 ? `${progress}%` : "0%"}
-                        </span>
+                      <div style={{ width: 66, flexShrink: 0, padding: "0 8px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: progDoneCol, fontVariantNumeric: "tabular-nums", fontFamily: F }}>{progLabel}</span>
+                        <div style={{ width: "100%", height: 2, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+                          <div style={{ width: `${Math.min(progress, 100)}%`, height: "100%", background: progBarBg, transition: "width 0.3s ease" }} />
+                        </div>
                       </div>
                       {/* More */}
                       <div style={{ width: 50, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <div style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: c.ts }}
-                          onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.color = c.tx}
-                          onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.color = c.ts}>
-                          <svg width={16} height={16} viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="2.2" fill="currentColor" /><circle cx="12" cy="12" r="2.2" fill="currentColor" /><circle cx="19" cy="12" r="2.2" fill="currentColor" /></svg>
+                        <div
+                          className="sess-act-btn"
+                          onClick={e => {
+                            e.stopPropagation();
+                            const r = e.currentTarget.getBoundingClientRect();
+                            setActMenu(actMenu?.id === sess.id ? null : { id: sess.id, x: (r.left + r.right) / 2, y: r.bottom });
+                          }}
+                          style={{
+                            width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                            color: actMenu?.id === sess.id ? c.acL : c.ts,
+                            background: actMenu?.id === sess.id ? "rgba(255,255,255,0.08)" : "transparent",
+                            transition: "all 0.12s",
+                          }}>
+                          <svg width={18} height={18} viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="2.2" fill="currentColor" /><circle cx="12" cy="12" r="2.2" fill="currentColor" /><circle cx="19" cy="12" r="2.2" fill="currentColor" /></svg>
                         </div>
                       </div>
                     </div>
@@ -709,6 +1037,105 @@ export function BacktestView() {
           )}
         </div>
       </div>
+
+      {stratPop && (
+        <div
+          style={{
+            position: "fixed",
+            left: stratPop.x,
+            top: stratPop.y,
+            zIndex: 99999,
+            maxWidth: 280,
+            padding: "10px 12px",
+            background: c.sf,
+            border: `1px solid ${c.brH}`,
+            boxShadow: "0 8px 28px rgba(0,0,0,0.75)",
+            pointerEvents: "none",
+            fontFamily: F,
+          }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: c.tx, marginBottom: 6 }}>{stratPop.name}</div>
+          <div style={{ fontSize: 9, color: c.ts, lineHeight: 1.45 }}>{stratPop.desc}</div>
+        </div>
+      )}
+
+      {actMenu && (() => {
+        const ms = sessions.find(s => s.id === actMenu.id);
+        if (!ms) return null;
+        const progressAct = getProgress(ms, kpis[ms.id]);
+        type MenRow =
+          | { type: "item"; label: string; col: string; fn: () => void; danger?: boolean;
+              icon: React.ReactNode }
+          | { type: "div" };
+        const rows: MenRow[] = [
+          {
+            type: "item",
+            label: progressAct === 0 ? "Start" : "Resume",
+            col: c.acL,
+            fn: () => { openSession(ms); setActMenu(null); },
+            icon: <svg width={14} height={14} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="currentColor" /></svg>,
+          },
+          {
+            type: "item",
+            label: "Dashboard",
+            col: c.ts,
+            fn: () => { openAnalytics(ms); setActMenu(null); },
+            icon: <svg width={14} height={14} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill="currentColor" /><rect x="11" y="1" width="8" height="8" fill="currentColor" /><rect x="1" y="11" width="8" height="8" fill="currentColor" /><rect x="11" y="11" width="8" height="8" fill="currentColor" /></svg>,
+          },
+          { type: "div" },
+          {
+            type: "item",
+            label: "Delete",
+            col: c.rd,
+            danger: true,
+            fn: () => { void deleteSession(ms); },
+            icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+          },
+        ];
+        return (
+          <>
+            <div style={{ position: "fixed", inset: 0, zIndex: 99997 }} onClick={() => setActMenu(null)} />
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                position: "fixed",
+                top: actMenu.y + 6,
+                left: Math.max(8, actMenu.x - 80),
+                zIndex: 99998,
+                width: 160,
+                background: c.sf,
+                border: `1px solid ${c.brH}`,
+                boxShadow: "0 12px 40px rgba(0,0,0,0.8)",
+                fontFamily: F,
+              }}>
+              <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }} />
+              {rows.map((row, i) => {
+                if (row.type === "div") return <div key={`d_${i}`} style={{ height: 1, background: c.br, margin: "2px 0" }} />;
+                const { label, col, fn, danger, icon } = row;
+                return (
+                  <div key={label}
+                    onClick={() => fn()}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "8px 12px",
+                      cursor: "pointer",
+                      color: col,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      transition: "background 0.1s",
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = danger ? "rgba(255,80,104,0.12)" : "rgba(255,255,255,0.06)"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}>
+                    <span style={{ display: "flex", opacity: 0.9 }}>{icon}</span>
+                    {label}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        );
+      })()}
 
       <BacktestNewSessionModal open={newSessOpen} onClose={() => setNewSessOpen(false)} onSaved={loadSessions} />
     </div>
