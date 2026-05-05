@@ -15790,8 +15790,8 @@ const TalariaV8bLive = () => {
                           background:isAct?c.acD:isH?c.hv2:"transparent",
                           transition:"background 0.1s"}}>
                         {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                        <div style={{display:"flex",alignItems:"center",position:"relative",minWidth:28,height:12,flexShrink:0}}>
-                          <ChartSymbolBadge sym={normalizeSymForBadge(s.id)} asset={chartAssetFromSymbolObj(s)} w={14} h={12} fontFamily={F}/>
+                        <div style={{display:"flex",alignItems:"center",position:"relative",minWidth:34,height:14,flexShrink:0}}>
+                          <ChartSymbolBadge sym={normalizeSymForBadge(s.id)} asset={chartAssetFromSymbolObj(s)} w={18} h={14} fontFamily={F}/>
                         </div>
                         <div style={{flex:1}}>
                           <div style={{fontSize:12,fontWeight:isAct?700:600,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,lineHeight:1.2}}>{s.id}</div>
@@ -15852,8 +15852,8 @@ const TalariaV8bLive = () => {
         <div style={{ width: 1, height: 16, margin: "0 3px 0 0", background: "rgba(140,160,255,0.18)" }}/>
         <button type="button" onClick={(e) => { e.stopPropagation(); const was=symbolOpen; closeAll(); if(!was) setSymbolOpen(true); }} onMouseEnter={() => setHov("symbol")} onMouseLeave={() => setHov(null)}
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px", background: symbolOpen ? "rgba(74,106,255,0.08)" : hov==="symbol" ? c.hv : "transparent", border: "none", color: symbolOpen ? c.acL : hov==="symbol" ? c.tx : c.ts, cursor: "default", fontSize: 14, fontWeight: 700, fontFamily: F, position: "relative", width: 128, flexShrink: 0, transition: "color 0.12s, background 0.12s" }}>
-          <div style={{ display: "flex", alignItems: "center", position: "relative", minWidth: 34, height: 14, flexShrink: 0 }}>
-            <ChartSymbolBadge sym={normalizeSymForBadge(symbol)} asset={chartAssetFromSymbolObj(currentSymbol)} w={16} h={14} fontFamily={F}/>
+          <div style={{ display: "flex", alignItems: "center", position: "relative", minWidth: 42, height: 16, flexShrink: 0 }}>
+            <ChartSymbolBadge sym={normalizeSymForBadge(symbol)} asset={chartAssetFromSymbolObj(currentSymbol)} w={20} h={16} fontFamily={F}/>
           </div>
           {symbol}
           <div style={{transform:symbolOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s ease",lineHeight:0,flexShrink:0}}>
