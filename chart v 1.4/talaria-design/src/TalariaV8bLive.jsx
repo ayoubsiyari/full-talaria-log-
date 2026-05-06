@@ -3479,6 +3479,33 @@ const TalariaV8bLive = () => {
     return String(v).toLowerCase();
   };
 
+  const timeframeToMinutes = (v) => {
+    if (!v) return null;
+    const s = String(v).trim().toLowerCase();
+    const m = s.match(/^(\d+)\s*(mo|w|d|h|m)$/);
+    if (!m) return null;
+    const n = Number(m[1]);
+    const u = m[2];
+    if (!Number.isFinite(n) || n <= 0) return null;
+    if (u === "m") return n;
+    if (u === "h") return n * 60;
+    if (u === "d") return n * 1440;
+    if (u === "w") return n * 10080;
+    if (u === "mo") return n * 43200;
+    return null;
+  };
+
+  const replayIntervalOptions = useMemo(() => {
+    const all = ["1m", "5m", "15m", "30m", "1h", "4h", "1D", "1W"];
+    const curMin = timeframeToMinutes(tf);
+    if (!curMin) return ["Auto", ...all];
+    const smaller = all.filter((x) => {
+      const v = timeframeToMinutes(x);
+      return Number.isFinite(v) && v < curMin;
+    });
+    return ["Auto", ...smaller];
+  }, [tf]);
+
   // Poll replaySystem state and reflect into V9 (legacy hotkeys / clone toolbar
   // can change isPlaying/playbackMode/speed without going through V9 buttons).
   useEffect(() => {
@@ -3538,6 +3565,12 @@ const TalariaV8bLive = () => {
       console.warn("[V9 Replay] interval sync failed", e);
     }
   }, [replayInterval]);
+
+  useEffect(() => {
+    if (!replayIntervalOptions.includes(replayInterval)) {
+      setReplayInterval("Auto");
+    }
+  }, [replayIntervalOptions, replayInterval]);
 
   // Navigation integrity badge (#navIntegrityBadge) — after OHLC + change in .ohlc-stats during replay.
   useEffect(() => {
@@ -16404,7 +16437,7 @@ const TalariaV8bLive = () => {
                   <div style={{height:1,margin:"3px 10px",background:`linear-gradient(90deg,transparent,${c.brL},transparent)`}}/>
                   <div style={{padding:"4px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>INTERVAL</div>
                   <div style={{padding:"4px 10px 8px",display:"flex",gap:4,flexWrap:"wrap"}}>
-                    {["Auto","1m","5m","15m","30m"].map(t=>{const isA=replayInterval===t,isH=hov===`ri-${t}`;return(
+                    {replayIntervalOptions.map(t=>{const isA=replayInterval===t,isH=hov===`ri-${t}`;return(
                       <div key={t} onClick={(e)=>{e.stopPropagation();setReplayInterval(t);}}
                         onMouseEnter={()=>setHov(`ri-${t}`)} onMouseLeave={()=>setHov(null)}
                         style={{padding:"3px 8px",position:"relative",background:isA?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",color:isA?c.acL:isH?c.tx:c.ts,fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
