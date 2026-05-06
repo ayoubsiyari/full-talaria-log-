@@ -4522,22 +4522,21 @@ const TalariaV8bLive = () => {
     return () => { cancelAnimationFrame(r1); clearTimeout(r2); };
   }, [layoutPanels]);
 
-  // V9 sync toggles → panelManager.syncSettings + saveSyncSettings + legacy-parity side-effects
-  // (panel-manager setupSyncToggles): crosshair flags + hide/show, time/date-range/interval bootstrap,
-  // drawings on instances, indicators/chartType snapshot sync when enabling.
-  useEffect(() => {
-    const pm = window.panelManager;
-    if (!pm || !pm.syncSettings) return;
+  // V9 sync toggles → panelManager.syncSettings + parity side-effects.
+  // Important for V9: panelManager may initialize after React state changes,
+  // so we support both "diff push" and "force push" paths.
+  const applyLayoutSyncToPanelManager = useCallback((pm, forceAll = false) => {
+    if (!pm || !pm.syncSettings) return false;
     let changed = false;
     const fired = {};
     for (const [k, v] of Object.entries(layoutSync)) {
-      if (pm.syncSettings[k] !== v) {
+      if (forceAll || pm.syncSettings[k] !== v) {
         pm.syncSettings[k] = v;
         fired[k] = v;
         changed = true;
       }
     }
-    if (!changed) return;
+    if (!changed) return false;
     try { pm.saveSyncSettings?.(); } catch (_) {}
 
     if ("crosshair" in fired) {
@@ -4610,7 +4609,32 @@ const TalariaV8bLive = () => {
     if ("chartType" in fired && layoutSync.chartType) {
       try { pm.syncChartTypeNow?.(); } catch (_) {}
     }
+    return true;
   }, [layoutSync]);
+
+  useEffect(() => {
+    const pm = window.panelManager;
+    if (!pm) return;
+    applyLayoutSyncToPanelManager(pm, false);
+  }, [layoutSync, applyLayoutSyncToPanelManager]);
+
+  // Late-init bridge: if toggles were changed before panelManager exists,
+  // push current state as soon as it appears.
+  useEffect(() => {
+    let cancelled = false;
+    let tries = 0;
+    const pushWhenReady = () => {
+      if (cancelled) return;
+      const pm = window.panelManager;
+      if (pm && pm.syncSettings) {
+        applyLayoutSyncToPanelManager(pm, true);
+        return;
+      }
+      if (tries++ < 120) setTimeout(pushWhenReady, 100);
+    };
+    pushWhenReady();
+    return () => { cancelled = true; };
+  }, [applyLayoutSyncToPanelManager]);
 
   const [sessionDemoName, setSessionDemoName] = useState("Talaria V8b");
   const [settingsTab, setSettingsTab] = useState("chart");
