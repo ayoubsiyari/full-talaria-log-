@@ -597,9 +597,8 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               {(() => {
                 const vbW = 420;
                 const chartH = 72;
-                const barGap = barsN => (barsN <= 6 ? 6 : barsN <= 12 ? 4 : 2);
                 const barsN = Math.max(1, trBars.length);
-                const gap = barGap(barsN);
+                const gap = barsN <= 6 ? 6 : barsN <= 12 ? 4 : 2;
                 const barW = Math.max(4, Math.floor((vbW - gap * (barsN - 1)) / barsN));
                 const usedW = barsN * barW + gap * (barsN - 1);
                 const ox = Math.floor((vbW - usedW) / 2);
