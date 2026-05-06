@@ -14950,7 +14950,7 @@ const TalariaV8bLive = () => {
             <div {...modalPointerActivate(() => animClose(setSettingsOpen, "settings"))} onMouseEnter={()=>setSwHov("xSettings")} onMouseLeave={()=>setSwHov(null)} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xSettings"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}><I n="x" s={18} cl={swHov==="xSettings"?c.rd:c.ts}/></div>
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
-          <div className="tlr-scroll" style={{flex:1,overflowY:"auto",padding:"16px 18px"}}>
+          <div className="tlr-scroll" style={{flex:1,overflowY:"auto",padding:"16px 18px"}} onScroll={()=>setSettDrop(null)}>
 
             {/* ── CANDLE COLORS ─────────────────────────────── */}
             <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10}}>CANDLE COLORS</div>
@@ -15175,7 +15175,7 @@ const TalariaV8bLive = () => {
               boxShadow:`0 0 8px ${c.acG}`}}/>
           </div>
           {/* Content */}
-          <div className="tlr-scroll" style={{flex:1,overflowY:"auto",padding:"16px 18px"}}>
+          <div className="tlr-scroll" style={{flex:1,overflowY:"auto",padding:"16px 18px"}} onScroll={()=>setSettDrop(null)}>
             {profileTab==="account" && <>
               {/* Avatar + info */}
               <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:8}}>PROFILE PICTURE</div>
