@@ -14616,14 +14616,14 @@ const TalariaV8bLive = () => {
                   onClick={(e)=>{if(e.target.closest('[data-indaction]'))return;onIndicatorRowClick();}}
                   onMouseEnter={()=>setSwHov(`ind-${ind.id}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"pointer",position:"relative",
-                    background:isAct?"rgba(38,67,247,0.07)":isSel?"rgba(74,106,255,0.08)":indRowHov?"rgba(255,255,255,0.022)":"transparent",
+                    background:isAct?"rgba(38,67,247,0.07)":(isSel||indRowHov)?"rgba(255,255,255,0.022)":"transparent",
                     transition:"background 0.1s"}}>
-                  {(isAct||isSel)&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                  {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                   {/* abbr */}
-                  <span style={{minWidth:44,flexShrink:0,fontSize:14,fontWeight:800,color:(isAct||isSel)?c.acL:c.ts,fontFamily:F,letterSpacing:"0.02em"}}>{ind.abbr}</span>
+                  <span style={{minWidth:44,flexShrink:0,fontSize:14,fontWeight:800,color:isAct?c.acL:c.ts,fontFamily:F,letterSpacing:"0.02em"}}>{ind.abbr}</span>
                   {/* name + desc */}
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,fontWeight:(isAct||isSel)?700:500,color:(isAct||isSel)?c.acL:isH?c.tx:c.ts,lineHeight:1.3,transition:"color 0.1s"}}>{ind.name}</div>
+                    <div style={{fontSize:12,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,lineHeight:1.3,transition:"color 0.1s"}}>{ind.name}</div>
                     <div style={{fontSize:12,color:c.tm,lineHeight:1.3,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ind.desc}</div>
                   </div>
                   {/* pin */}
