@@ -11054,6 +11054,15 @@ class Chart {
                     this.fitToView();
                 }
                 this.render();
+                // Refresh partner-panel sync positions immediately after the
+                // new viewport settles.  Without this, _timeSyncLastTargetBar
+                // retains the stale bar-index from the previous timeframe and
+                // the first user scroll produces a large unexpected jump on
+                // same-pair panels even when time-sync is enabled.
+                // dispatchScrollSync is a no-op when all sync is disabled.
+                if (typeof this.dispatchScrollSync === 'function') {
+                    this.dispatchScrollSync();
+                }
             });
 
         } catch (error) {
