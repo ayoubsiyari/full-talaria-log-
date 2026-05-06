@@ -73,7 +73,16 @@ class PanelManager {
         try {
             const saved = userStorage.getItem('chart_panel_sync_settings');
             if (saved) {
-                this.syncSettings = { ...this.syncSettings, ...JSON.parse(saved) };
+                const parsed = JSON.parse(saved);
+                // One-time migration: the old default was time:true which caused
+                // unexpected viewport jumps on partner panels. Force it off for
+                // any settings object that was saved before this fix (_v absent).
+                if (!parsed._v) {
+                    parsed.time = false;
+                    parsed._v = 1;
+                    userStorage.setItem('chart_panel_sync_settings', JSON.stringify(parsed));
+                }
+                this.syncSettings = { ...this.syncSettings, ...parsed };
             }
         } catch (e) {
             console.warn('Failed to load sync settings:', e);
@@ -85,7 +94,7 @@ class PanelManager {
      */
     saveSyncSettings() {
         try {
-            userStorage.setItem('chart_panel_sync_settings', JSON.stringify(this.syncSettings));
+            userStorage.setItem('chart_panel_sync_settings', JSON.stringify({ ...this.syncSettings, _v: 1 }));
         } catch (e) {
             console.warn('Failed to save sync settings:', e);
         }
