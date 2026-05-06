@@ -61,7 +61,8 @@
             pointer-events: all;
             cursor: crosshair;
         }
-        /* Drawing hover: no global line/rect/circle :hover + drop-shadow (flash + jank). */
+        /* Drawing hover: do not mirror old line/rect/circle :hover + drop-shadow (sub-element
+           flash + jank). Selection + resize handles are driven in JS (drawing-tools-manager). */
         #chart-container #drawingSvg text {
             transition: opacity 0.15s ease;
             user-select: none;
@@ -263,15 +264,15 @@
             color: #d1d4dc;
             pointer-events: none;
             box-sizing: border-box;
+            /* max-width set per-frame in chart.js (_syncOhlcLegendMaxWidth) so legend stays left of price axis */
             max-width: min(560px, calc(100% - 96px));
         }
-        /* Stack symbol row above OHLC row (V8-style); row flex put O H L C beside “ES · 1m”. */
         #chart-container #chartWrapper .ohlc-header,
         #panels-container .ohlc-header {
             display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
         }
         #chart-container #chartWrapper .ohlc-stats,
         #panels-container .ohlc-stats {
@@ -279,13 +280,68 @@
             align-items: center;
             flex-wrap: wrap;
             gap: 6px;
-            max-width: 100%;
         }
         #chart-container #chartWrapper .ohlc-item,
         #panels-container .ohlc-item {
             display: inline-flex;
             align-items: center;
             gap: 2px;
+        }
+
+        /* Legend collapse control below studies; expanded chevron ^ , collapsed v */
+        #chart-container #chartWrapper .ohlc-legend-footer,
+        #panels-container .ohlc-legend-footer {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            margin-top: 3px;
+            padding: 0;
+            pointer-events: auto;
+        }
+        #chart-container #chartWrapper .ohlc-legend-chevron,
+        #panels-container .ohlc-legend-chevron {
+            appearance: none;
+            -webkit-appearance: none;
+            border: none;
+            margin: 0;
+            padding: 2px 4px;
+            background: transparent;
+            color: #787b86;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 3px;
+            line-height: 0;
+            flex-shrink: 0;
+            pointer-events: auto;
+            opacity: 0.88;
+            transition: color 0.12s, background 0.12s, opacity 0.12s;
+        }
+        #chart-container #chartWrapper .ohlc-legend-chevron:hover,
+        #panels-container .ohlc-legend-chevron:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: #b2b5be;
+            opacity: 1;
+        }
+        #chart-container #chartWrapper .ohlc-legend-chevron svg,
+        #panels-container .ohlc-legend-chevron svg {
+            width: 13px;
+            height: 13px;
+            transition: transform 0.15s ease;
+            flex-shrink: 0;
+        }
+        #chart-container #chartWrapper .ohlc-info:not(.collapsed) .ohlc-legend-chevron svg,
+        #panels-container .ohlc-info:not(.collapsed) .ohlc-legend-chevron svg {
+            transform: rotate(180deg);
+        }
+        #chart-container #chartWrapper .ohlc-info.collapsed .ohlc-legend-chevron svg,
+        #panels-container .ohlc-info.collapsed .ohlc-legend-chevron svg {
+            transform: rotate(0deg);
+        }
+        #chart-container #chartWrapper .ohlc-info.collapsed .ohlc-body,
+        #panels-container .ohlc-info.collapsed .ohlc-body {
+            display: none !important;
         }
 
         /* chart.js loads FlagCDN `w80` PNGs into #ohlcSymbolDot / #ohlcSymbolDot1 … */
@@ -435,7 +491,7 @@
            two duplicate toolbars on every drawing select. */
         #drawing-toolbar { display: none !important; }
 
-        /* Replay follow — V9 dark chrome; appearance:none avoids OS white button behind SVG. */
+        /* Replay follow — V9 chrome (matches dist-v9); resets native button so it isn’t white on Windows/Chrome. */
         body > button.replay-follow-float-btn[data-talaria-replay-follow="injected"],
         #chart-container #replayFollow.replay-follow-float-btn,
         #chart-container button#replayFollow,
@@ -512,7 +568,7 @@
             50% { transform: scale(1.05); opacity: 0.92; }
         }
 
-        /* Backtesting / replay loading overlay — visual parity with Design/src/pages/LoadingScreen.jsx */
+        /* Backtesting / replay loading overlay (same role as chart/legacy-index.html) */
         #backtestingLoader {
             position: fixed; inset: 0; z-index: 100000;
             display: none; align-items: center; justify-content: center;
@@ -523,110 +579,37 @@
         #backtestingLoader.active, html.bt-preload #backtestingLoader { display: flex; }
         html.bt-preload #root { visibility: hidden; }
         #backtestingLoader::before {
-            content: "";
-            position: absolute;
-            inset: 0;
+            content: ""; position: absolute; inset: 0;
             background-image:
                 radial-gradient(circle at 12% 18%, rgba(110,153,255,0.95) 0 1px, transparent 2px),
                 radial-gradient(circle at 24% 11%, rgba(255,255,255,0.85) 0 1px, transparent 2px),
                 radial-gradient(circle at 36% 28%, rgba(74,106,255,0.8) 0 1px, transparent 2px),
                 radial-gradient(circle at 48% 8%, rgba(110,153,255,0.95) 0 1px, transparent 2px),
                 radial-gradient(circle at 62% 22%, rgba(255,255,255,0.85) 0 1px, transparent 2px),
-                radial-gradient(circle at 78% 14%, rgba(74,106,255,0.8) 0 1px, transparent 2px),
-                radial-gradient(circle at 89% 31%, rgba(110,153,255,0.95) 0 1px, transparent 2px),
-                radial-gradient(circle at 8% 68%, rgba(74,106,255,0.8) 0 1px, transparent 2px),
-                radial-gradient(circle at 32% 74%, rgba(255,255,255,0.85) 0 1px, transparent 2px),
-                radial-gradient(circle at 52% 81%, rgba(110,153,255,0.95) 0 1px, transparent 2px),
-                radial-gradient(circle at 71% 64%, rgba(74,106,255,0.8) 0 1px, transparent 2px),
-                radial-gradient(circle at 88% 76%, rgba(255,255,255,0.85) 0 1px, transparent 2px);
-            opacity: 0.75;
-            animation: tlrLoaderStars 6s ease-in-out infinite;
-            pointer-events: none;
+                radial-gradient(circle at 78% 14%, rgba(74,106,255,0.8) 0 1px, transparent 2px);
+            opacity: 0.75; animation: tlrLoaderStars 6s ease-in-out infinite; pointer-events: none;
         }
-        .loader-content {
-            position: relative;
-            z-index: 1;
-            text-align: center;
-            width: min(760px, calc(100vw - 48px));
-            color: rgba(255,255,255,0.92);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
+        .loader-content { position: relative; z-index: 1; text-align: center; width: min(760px, calc(100vw - 48px)); color: rgba(255,255,255,0.92); display: flex; flex-direction: column; align-items: center; }
         .loader-brand-wrap { position: relative; margin-bottom: 10px; }
-        .loader-brand {
-            width: 440px;
-            max-width: min(440px, calc(100vw - 120px));
-            height: auto;
-            object-fit: contain;
-            display: block;
-            filter: brightness(1.05);
-            animation: tlrLoadPulse 8s ease-in-out infinite;
-        }
-        .loader-title {
-            font-size: 28px;
-            font-weight: 800;
-            letter-spacing: 0.24em;
-            margin: 0 0 12px;
-            color: rgba(255,255,255,0.92);
-            text-transform: none;
-        }
-        .loader-subtitle {
-            margin-top: 36px;
-            margin-bottom: 10px;
-            font-size: 12px;
-            font-weight: 600;
-            color: rgba(255,255,255,0.28);
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            min-height: 18px;
-        }
-        .loader-progress-container {
-            width: min(540px, calc(100vw - 80px));
-            height: 6px;
-            background: rgba(255,255,255,0.07);
-            border-radius: 3px;
-            overflow: hidden;
-            position: relative;
-        }
-        .loader-progress-bar {
-            height: 100%;
-            z-index: 1;
-            position: relative;
+        .loader-brand { width: 440px; max-width: min(440px, calc(100vw - 120px)); height: auto; object-fit: contain; display: block; filter: brightness(1.05); animation: tlrLoadPulse 8s ease-in-out infinite; }
+        .loader-title { font-size: 28px; font-weight: 800; letter-spacing: 0.24em; margin: 0 0 12px; color: rgba(255,255,255,0.92); text-transform: none; }
+        .loader-subtitle { margin-top: 36px; margin-bottom: 10px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.28); letter-spacing: 0.14em; text-transform: uppercase; min-height: 18px; }
+        .loader-progress-container { width: min(540px, calc(100vw - 80px)); height: 6px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; position: relative; }
+        .loader-progress-bar { height: 100%; z-index: 1; position: relative;
             background: linear-gradient(90deg, #2643f7 0%, #4a6aff 55%, #6a8aff 100%);
-            border-radius: 2px;
-            width: 0%;
-            transition: width 0.55s cubic-bezier(0.33, 1, 0.68, 1);
-            box-shadow: 0 0 8px rgba(74,106,255,0.7);
-        }
-        .loader-progress-shimmer {
-            position: absolute; inset: 0; z-index: 2;
-            pointer-events: none; overflow: hidden; border-radius: inherit;
-        }
-        .loader-progress-shimmer::before {
-            content: ""; position: absolute; top: 0; left: 0; bottom: 0; width: 42%;
+            border-radius: 2px; width: 0%; transition: width 0.55s cubic-bezier(0.33, 1, 0.68, 1); box-shadow: 0 0 8px rgba(74,106,255,0.7); }
+        .loader-progress-shimmer { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; border-radius: inherit; }
+        .loader-progress-shimmer::before { content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 42%;
             background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.35) 50%, transparent 100%);
-            animation: loaderShimmerSweep 3.6s linear infinite;
-        }
-        .loader-quote {
-            margin-top: 36px;
-            max-width: 520px;
-            padding: 0 24px;
-            font-size: 14px;
-            font-style: italic;
-            line-height: 1.65;
-            color: rgba(255,255,255,0.42);
-            min-height: 46px;
-        }
-        .loader-site {
-            position: absolute;
-            bottom: 24px;
-            font-size: 12px;
-            font-weight: 600;
-            color: rgba(255,255,255,0.22);
-            letter-spacing: 0.12em;
-        }
-        @keyframes loaderShimmerSweep { 0% { transform: translate3d(-100%,0,0); } 100% { transform: translate3d(400%,0,0); } }
+            animation: loaderShimmerSweep 3.6s linear infinite; will-change: transform; }
+        .loader-progress-shimmer::after { content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 28%;
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.14) 50%, transparent 100%);
+            animation: loaderShimmerSweep 5.8s linear infinite; animation-delay: -1.4s; will-change: transform; }
+        .loader-quote { margin-top: 36px; max-width: 520px; padding: 0 24px; font-size: 14px; font-style: italic; line-height: 1.65; color: rgba(255,255,255,0.42); min-height: 46px; }
+        .loader-quote-cursor { animation: tlrTypeCursor 0.7s ease-in-out infinite; }
+        @keyframes tlrTypeCursor { 0%, 100% { opacity: 0.15; } 50% { opacity: 1; } }
+        .loader-site { position: absolute; bottom: 24px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.22); letter-spacing: 0.12em; }
+        @keyframes loaderShimmerSweep { 0% { transform: translate3d(-100%, 0, 0); } 100% { transform: translate3d(400%, 0, 0); } }
         @keyframes tlrLoaderStars { 0%,100% { opacity: 0.58; } 50% { opacity: 0.9; } }
         @keyframes tlrLoadPulse { 0%,100% { transform: scale(0.985); filter: brightness(1); } 50% { transform: scale(1.02); filter: brightness(1.08); } }
     </style>
@@ -729,11 +712,11 @@
          ────────────────────────────────────────────────────────────── -->
 
     <!-- Tier A — preferences-sync MUST run before preferences-init (defines window.preferencesSync). -->
-    <script defer src="/chart/modules/preferences-sync.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/preferences-init.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/market-calculations.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/chart-env.defaults.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/chart-env.generated.js?v=20260505_timeaxis_dom_fallback"></script>
+    <script defer src="/chart/modules/preferences-sync.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/preferences-init.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/market-calculations.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/chart-env.defaults.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/chart-env.generated.js?v=bmotzqp46"></script>
 
     <!-- Drawing tool base classes + individual tool registrations.
          Order matters within this block:
@@ -741,68 +724,68 @@
          - Each drawing-tools-*.js registers tools into the global registry.
          - drawing-tools-ui.js provides shared UI helpers used by tools.
          - drawing-tools-manager.js orchestrates everything (loaded later). -->
-    <script defer src="/chart/modules/drawing-tools-base.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/drawing-tools-lines.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/drawing-tools-shapes.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/drawing-tools-fibonacci.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/drawing-tools-text.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/drawing-tools-emoji.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/drawing-tools-image.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/emoji-picker.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/emoji-picker-simple.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/drawing-tools-advanced-volume.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/drawing-tools-advanced.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/drawing-tools-extended.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/drawing-tools-patterns.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/drawing-tools-fib-gann.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/drawing-tools-channels.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/drawing-tools-ui.js?v=20260505_timeaxis_dom_fallback"></script>
+    <script defer src="/chart/modules/drawing-tools-base.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/drawing-tools-lines.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/drawing-tools-shapes.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/drawing-tools-fibonacci.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/drawing-tools-text.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/drawing-tools-emoji.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/drawing-tools-image.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/emoji-picker.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/emoji-picker-simple.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/drawing-tools-advanced-volume.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/drawing-tools-advanced.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/drawing-tools-extended.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/drawing-tools-patterns.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/drawing-tools-fib-gann.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/drawing-tools-channels.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/drawing-tools-ui.js?v=bmotzqp46"></script>
 
     <!-- Drawing-tool support (color picker, toolbar UI, undo/redo). -->
-    <script defer src="/chart/modules/color-picker.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/drawing-toolbar.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/undo-redo-manager.js?v=20260505_timeaxis_dom_fallback"></script>
+    <script defer src="/chart/modules/color-picker.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/drawing-toolbar.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/undo-redo-manager.js?v=bmotzqp46"></script>
 
     <!-- Drawing-tools manager — orchestrator. Must load AFTER all individual
          drawing-tools-*.js so the registry is populated before init. -->
-    <script defer src="/chart/modules/drawing-tools-manager.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/favorites-manager.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/keyboard-shortcuts.js?v=20260505_timeaxis_dom_fallback"></script>
+    <script defer src="/chart/modules/drawing-tools-manager.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/favorites-manager.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/keyboard-shortcuts.js?v=bmotzqp46"></script>
 
     <!-- Chart engine.
          chart.js exposes window.Chart synchronously and window.initializeChart
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=20260505_timeaxis_dom_fallback"></script>
+    <script defer src="/chart/chart.js?v=bmotzqp46"></script>
     <!-- V9 React theme panel → chart.chartSettings (shared with legacy-index.html). Must load after chart.js. -->
-    <script defer src="/chart/modules/v9-theme-bridge.js?v=20260505_timeaxis_dom_fallback"></script>
+    <script defer src="/chart/modules/v9-theme-bridge.js?v=bmotzqp46"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
-    <script defer src="/chart/modules/replay-system.js?v=20260505_timeaxis_dom_fallback"></script>
+    <script defer src="/chart/modules/replay-system.js?v=bmotzqp46"></script>
 
     <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->
-    <script defer src="/chart/modules/order-event-bus.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/order-service.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/order-manager.js?v=20260505_timeaxis_dom_fallback"></script>
-    <script defer src="/chart/modules/screenshot-manager.js?v=20260505_timeaxis_dom_fallback"></script>
+    <script defer src="/chart/modules/order-event-bus.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/order-service.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/order-manager.js?v=bmotzqp46"></script>
+    <script defer src="/chart/modules/screenshot-manager.js?v=bmotzqp46"></script>
 
     <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
-    <script defer src="/chart/modules/chart-indicators-full.js?v=20260505_timeaxis_dom_fallback"></script>
+    <script defer src="/chart/modules/chart-indicators-full.js?v=bmotzqp46"></script>
 
     <!-- Panel manager — multi-panel layouts. Must load AFTER chart.js so
          it can wire scroll-sync against window.chart. The legacy index.html
          instantiates this inline; V9's bootstrap below does the same. -->
-    <script defer src="/chart/modules/panel-manager.js?v=20260505_timeaxis_dom_fallback"></script>
+    <script defer src="/chart/modules/panel-manager.js?v=bmotzqp46"></script>
     <!-- Economic calendar: Finnhub via /api + chart time-axis markers (__economicCalendarForChart). -->
-    <script defer src="/chart/modules/economic-news-sidebar.js?v=20260505_timeaxis_dom_fallback"></script>
-  <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js?v=20260505_timeaxis_dom_fallback"></script>
+    <script defer src="/chart/modules/economic-news-sidebar.js?v=bmotzqp46"></script>
+  <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js?v=bmotzqp46"></script>
 </head>
 <body>
     <div id="backtestingLoader" aria-live="polite" aria-busy="true">
         <div class="loader-content">
             <div class="loader-brand-wrap">
-                <img class="loader-brand" src="/chart/modules/LOGO-07.png" alt="Talaria" />
+                <img class="loader-brand" src="/chart/modules/logo-04.png" alt="Talaria" />
             </div>
             <div class="loader-title">Talaria-Log</div>
             <div class="loader-subtitle">Loading chart data...</div>
@@ -810,10 +793,35 @@
                 <div class="loader-progress-bar" id="loaderProgress"></div>
                 <div class="loader-progress-shimmer" aria-hidden="true"></div>
             </div>
-            <div class="loader-quote">"The market rewards patience, precision, and preparation."</div>
+            <div class="loader-quote">"<span id="loaderTypedQuote"></span><span id="loaderQuoteCursor" class="loader-quote-cursor">|</span>"</div>
         </div>
         <div class="loader-site">www.talaria-log.com</div>
     </div>
+    <script>
+      (function initBacktestLoaderTypewriter() {
+        window.__talariaLoaderTypingDone = false;
+        var quote = "It's not whether you're right or wrong, but how much you make when you're right and how much you lose when you're wrong.";
+        var target = document.getElementById("loaderTypedQuote");
+        var cursor = document.getElementById("loaderQuoteCursor");
+        if (!target) {
+          window.__talariaLoaderTypingDone = true;
+          try { window.dispatchEvent(new Event("talariaLoaderTypingDone")); } catch (e) {}
+          return;
+        }
+        var i = 0;
+        var stepMs = 28;
+        var timer = setInterval(function () {
+          i += 1;
+          target.textContent = quote.slice(0, i);
+          if (i >= quote.length) {
+            clearInterval(timer);
+            if (cursor) cursor.style.opacity = "0";
+            window.__talariaLoaderTypingDone = true;
+            try { window.dispatchEvent(new Event("talariaLoaderTypingDone")); } catch (e) {}
+          }
+        }, stepMs);
+      })();
+    </script>
     <div id="root"></div>
     <!-- Off-screen target for economic-news-sidebar.js (list HTML + countdown ticks). V9 News UI is React. -->
     <div id="v9-economic-calendar-shim" aria-hidden="true" style="position:absolute;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none;">
@@ -895,6 +903,7 @@
                     pcChart.panel = panel;
                     pcChart.panelIndex = panel.index;
                     pcChart.isPanel = true;
+                    pcChart.syncCrosshair = true;
                     if (panel.timeframe) pcChart.currentTimeframe = panel.timeframe;
 
                     var main = window.chart;
@@ -938,10 +947,8 @@
                     if (main) {
                         pcChart.cursorType = main.cursorType || 'cross';
                         pcChart.showCrosshairLines = main.showCrosshairLines !== false;
-                        var pm0 = window.panelManager;
-                        var ss0 = pm0 && pm0.syncSettings;
-                        pcChart.syncCrosshair = ss0 ? !!ss0.crosshair : (main.syncCrosshair !== false);
-                        pcChart.syncDrawings = ss0 ? !!ss0.drawings : (main.syncDrawings !== false);
+                        pcChart.syncCrosshair = main.syncCrosshair !== false;
+                        pcChart.syncDrawings = main.syncDrawings !== false;
                         var mMode = main.magnetMode || window.magnetMode || 'off';
                         pcChart.magnetMode = mMode;
                         if (pcChart.drawingManager) pcChart.drawingManager.magnetMode = mMode;

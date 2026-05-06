@@ -651,6 +651,13 @@ class Chart {
                 this.scheduleRender();
             });
         }
+        // Runtime fallback for V9 settings panel when React bundle is stale:
+        // read Time Format / Time Zone text from the opened Settings modal and
+        // apply it to chartSettings + timezoneManager so axis/crosshair update.
+        if (!this.isPanel) {
+            this.syncV9TimeControlsFromDom();
+            this._v9TimeSyncTimer = setInterval(() => this.syncV9TimeControlsFromDom(), 600);
+        }
         
         // Check for backtesting mode from URL (only for main chart)
         if (!this.isPanel) {
@@ -1081,18 +1088,35 @@ class Chart {
     
     hideLoader() {
         const loader = document.getElementById('backtestingLoader');
+        const doHide = () => {
+            if (loader) {
+                setTimeout(() => {
+                    loader.classList.remove('active');
+                    try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
+                }, 180);
+            } else {
+                try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
+            }
+        };
         if (this._backtestLoaderSafetyTimer) {
             clearTimeout(this._backtestLoaderSafetyTimer);
             this._backtestLoaderSafetyTimer = null;
         }
-        if (loader) {
-            setTimeout(() => {
-                loader.classList.remove('active');
-                try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
-            }, 180);
-        } else {
-            try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
+        // When the custom loader runs a quote typewriter, keep the loader
+        // visible until typing completes (with a fallback timeout).
+        if (loader && window.__talariaLoaderTypingDone === false) {
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                try { window.removeEventListener('talariaLoaderTypingDone', finish); } catch (e) {}
+                doHide();
+            };
+            try { window.addEventListener('talariaLoaderTypingDone', finish, { once: true }); } catch (e) {}
+            setTimeout(finish, 7000);
+            return;
         }
+        doHide();
     }
 
     getGoToLoadingOverlay() {
@@ -12914,8 +12938,10 @@ class Chart {
         this.ctx.closePath();
         this.ctx.fill();
 
+        // Auto-contrast text so white/black price-line colors remain readable
+        const labelTextColor = this.isLightColor(bgColor) ? '#111111' : '#FFFFFF';
         // Draw price text centered in top section
-        this.ctx.fillStyle = '#FFFFFF';
+        this.ctx.fillStyle = labelTextColor;
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
         this.ctx.font = `500 ${this.chartSettings.scaleTextSize}px Roboto`;
@@ -12923,7 +12949,7 @@ class Chart {
 
         // Draw countdown text in bottom section if in replay mode
         if (inReplayMode) {
-            this.ctx.fillStyle = '#FFFFFF';
+            this.ctx.fillStyle = labelTextColor;
             this.ctx.font = `600 ${this.chartSettings.scaleTextSize - 1}px Roboto`;
             this.ctx.fillText(countdownText, labelX + labelWidth / 2, labelY + priceHeight + countdownHeight / 2);
         }
@@ -13020,6 +13046,49 @@ class Chart {
         return new Date(timestamp);
     }
 
+    mapV9TimezoneLabelToId(label) {
+        const map = {
+            'UTC': 'UTC',
+            'UTC+3 (Riyadh)': 'Europe/Moscow',
+            'UTC+4 (Dubai)': 'Asia/Dubai',
+            'UTC+5:30 (IST)': 'Asia/Kolkata',
+            'UTC+8 (Asia)': 'Asia/Singapore',
+            'UTC-5 (EST)': 'America/New_York',
+            'UTC-8 (PST)': 'America/Los_Angeles'
+        };
+        return map[label] || null;
+    }
+
+    syncV9TimeControlsFromDom() {
+        if (typeof document === 'undefined' || !this.chartSettings) return;
+        try {
+            const spans = Array.from(document.querySelectorAll('span'));
+            const getSettingValue = (label) => {
+                const labelEl = spans.find((el) => (el.textContent || '').trim() === label);
+                const row = labelEl && labelEl.parentElement;
+                if (!row) return null;
+                const rowSpans = row.querySelectorAll('span');
+                if (!rowSpans || rowSpans.length < 2) return null;
+                const val = (rowSpans[1].textContent || '').trim();
+                return val || null;
+            };
+            const tf = getSettingValue('Time Format');
+            if (tf === '12h' || tf === '24h') this.chartSettings.timeFormat = tf;
+            const tzLabel = getSettingValue('Time Zone');
+            if (tzLabel) {
+                this.chartSettings.timezone = tzLabel;
+                const tzId = this.mapV9TimezoneLabelToId(tzLabel);
+                if (tzId && window.timezoneManager && typeof window.timezoneManager.setTimezone === 'function') {
+                    const cur = window.timezoneManager.getTimezone ? window.timezoneManager.getTimezone() : null;
+                    if (!cur || cur.id !== tzId) {
+                        window.timezoneManager.setTimezone(tzId);
+                        this.scheduleRender();
+                    }
+                }
+            }
+        } catch (_) {}
+    }
+
     /**
      * Format time label based on timeframe and zoom level (TradingView style)
      */
@@ -13027,6 +13096,21 @@ class Chart {
         // Convert to selected timezone
         const tzDate = this.convertToTimezone(date.getTime());
         const timeframe = this.currentTimeframe || '1m';
+        const use12h = this.chartSettings && this.chartSettings.timeFormat === '12h';
+        const formatHourMinute = (d) => {
+            if (use12h) {
+                return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+            }
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            return `${hours}:${minutes}`;
+        };
+        const formatHourOnly = (d) => {
+            if (use12h) {
+                return d.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+            }
+            return String(d.getHours()).padStart(2, '0');
+        };
         
         // Format based on timeframe first, then adjust for zoom level
         if (timeframe === '1m') {
@@ -13035,13 +13119,10 @@ class Chart {
                 // Very zoomed out: show date and hour
                 const month = tzDate.toLocaleString('en-US', { month: 'short' });
                 const day = tzDate.getDate();
-                const hours = String(tzDate.getHours()).padStart(2, '0');
-                return `${month} ${day}, ${hours}`;
+                return `${month} ${day}, ${formatHourOnly(tzDate)}`;
             } else {
                 // Normal/zoomed in: show hour and minute (HH:MM format)
-                const hours = String(tzDate.getHours()).padStart(2, '0');
-                const minutes = String(tzDate.getMinutes()).padStart(2, '0');
-                return `${hours}:${minutes}`;
+                return formatHourMinute(tzDate);
             }
         } else if (timeframe === '5m') {
             // 5-minute timeframe: show time
@@ -13049,19 +13130,14 @@ class Chart {
                 // Zoomed out: show date and hour
                 const month = tzDate.toLocaleString('en-US', { month: 'short' });
                 const day = tzDate.getDate();
-                const hours = String(tzDate.getHours()).padStart(2, '0');
-                return `${month} ${day}, ${hours}`;
+                return `${month} ${day}, ${formatHourOnly(tzDate)}`;
             } else {
                 // Normal/zoomed in: show hour and minute
-                const hours = String(tzDate.getHours()).padStart(2, '0');
-                const minutes = String(tzDate.getMinutes()).padStart(2, '0');
-                return `${hours}:${minutes}`;
+                return formatHourMinute(tzDate);
             }
         } else if (timeframe === '15m' || timeframe === '30m') {
             // 15/30 minute timeframes - TradingView style
-            const hours = String(tzDate.getHours()).padStart(2, '0');
-            const minutes = String(tzDate.getMinutes()).padStart(2, '0');
-            return `${hours}:${minutes}`;
+            return formatHourMinute(tzDate);
         } else if (timeframe === '1h') {
             // 1-hour timeframe: show hours
             if (visibleBarsCount > 200) {
@@ -13073,10 +13149,10 @@ class Chart {
                 // Zoomed out: show date and hour
                 const month = tzDate.toLocaleString('en-US', { month: 'short' });
                 const day = tzDate.getDate();
-                const hours = String(tzDate.getHours()).padStart(2, '0');
-                return `${month} ${day}, ${hours}`;
+                return `${month} ${day}, ${formatHourOnly(tzDate)}`;
             } else {
                 // Normal/zoomed in: show hour only (HH:00 format)
+                if (use12h) return formatHourOnly(tzDate);
                 const hours = String(tzDate.getHours()).padStart(2, '0');
                 return `${hours}:00`;
             }
@@ -13091,8 +13167,7 @@ class Chart {
                 // Normal/zoomed in: show day and hour
                 const month = tzDate.toLocaleString('en-US', { month: 'short' });
                 const day = tzDate.getDate();
-                const hours = String(tzDate.getHours()).padStart(2, '0');
-                return `${month} ${day}, ${hours}`;
+                return `${month} ${day}, ${formatHourOnly(tzDate)}`;
             }
         } else if (timeframe === '1d') {
             // Daily timeframe
@@ -17608,7 +17683,8 @@ class Chart {
         const changePercent = ((candle.c - candle.o) / candle.o) * 100;
         const highLowRange = ((candle.h - candle.l) / candle.l) * 100;
         
-        const date = new Date(candle.t);
+        const date = this.convertToTimezone(candle.t);
+        const use12h = this.chartSettings && this.chartSettings.timeFormat === '12h';
         const dateStr = date.toLocaleDateString('en-US', { 
             weekday: 'short',
             year: 'numeric', 
@@ -17616,9 +17692,9 @@ class Chart {
             day: 'numeric' 
         });
         const timeStr = date.toLocaleTimeString('en-US', { 
-            hour: '2-digit', 
+            hour: use12h ? 'numeric' : '2-digit',
             minute: '2-digit',
-            hour12: false
+            hour12: !!use12h
         });
         
         const _tooltipDec = this.getPriceDecimals(
