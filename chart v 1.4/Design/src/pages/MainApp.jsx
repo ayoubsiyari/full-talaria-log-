@@ -6408,7 +6408,7 @@ export function renderMainApp(ctx) {
                     {items.map(([key,action],i,arr)=>(
                       <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px",borderBottom:i<arr.length-1?`1px solid ${c.br}`:"none"}}>
                         <span style={{fontSize:13,color:c.ts}}>{action}</span>
-                        <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",minWidth:52,height:18,padding:"0 6px",background:c.el,border:`1px solid ${c.brH}`,fontSize:key.length>6?6.5:key.length>4?7:8,fontWeight:700,color:c.tx,letterSpacing:"0.03em",whiteSpace:"nowrap",boxSizing:"border-box"}}>{key}</span>
+                        <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",minWidth:52,height:18,padding:"0 6px",background:c.el,border:`1px solid ${c.brH}`,fontSize:key.length>6?8:key.length>4?9:10,fontWeight:700,color:c.tx,letterSpacing:"0.03em",whiteSpace:"nowrap",boxSizing:"border-box"}}>{key}</span>
                       </div>
                     ))}
                   </div>
