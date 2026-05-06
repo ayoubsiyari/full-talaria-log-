@@ -668,8 +668,8 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
         </div>
 
         {/* ── Filter tabs + Layout toggle + Search ── */}
-        <div style={{ position: "sticky", top: 0, zIndex: 5, background: c.bg, borderBottom: `1px solid ${c.brH}` }}>
-          <div style={{ ...contentFrameStyle, display: "flex", alignItems: "flex-end", height: 40, gap: 5, padding: "0 32px" }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 5, background: c.bg }}>
+          <div style={{ ...contentFrameStyle, display: "flex", alignItems: "flex-end", height: 40, gap: 5, padding: "0 32px", borderBottom: `1px solid ${c.brH}` }}>
           {([["all","All"],["not-started","Not Started"],["active","Active"],["completed","Completed"],["standard","Standard"],["prop","Prop Firm"]] as [SessFilter, string][]).map(([v, l]) => {
             const isA = filter === v;
             const isProp = v === "prop";
@@ -781,7 +781,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
 
         {/* ── Column headers (rows mode, sticky below filter) ── */}
         {filteredSessions.length > 0 && layoutMode === "rows" && (
-          <div style={{ position: "sticky", top: 40, zIndex: 4, background: c.bg, borderBottom: `1px solid ${c.brH}` }}>
+          <div style={{ position: "sticky", top: 40, zIndex: 4, background: c.bg }}>
             <div style={{ ...contentFrameStyle, display: "flex", alignItems: "center", height: 26, padding: "0 32px" }}>
             <div style={{ width: 96, flexShrink: 0 }} />
             {([
