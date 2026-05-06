@@ -116,36 +116,43 @@ function tzOffsetSortRank(id, offsetMin) {
   return 50;
 }
 
+/** Exactly 26 curated IANA zones (TradingView-style short list); rows sorted west→east by offset at runtime. */
+const CHART_TIMEZONE_SELECT_IDS = Object.freeze([
+  "Pacific/Midway",
+  "Pacific/Honolulu",
+  "America/Anchorage",
+  "America/Los_Angeles",
+  "America/Denver",
+  "America/Chicago",
+  "America/New_York",
+  "America/Caracas",
+  "America/Sao_Paulo",
+  "Atlantic/South_Georgia",
+  "Atlantic/Azores",
+  "UTC",
+  "Etc/UTC",
+  "Europe/Paris",
+  "Europe/Athens",
+  "Europe/Moscow",
+  "Asia/Dubai",
+  "Asia/Karachi",
+  "Asia/Kolkata",
+  "Asia/Dhaka",
+  "Asia/Bangkok",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+  "Australia/Sydney",
+  "Pacific/Noumea",
+  "Pacific/Auckland",
+]);
+
 /**
  * Rows for Settings → Time zone: sorted west→east by offset; label `(UTC±HH:MM) Region/City`.
  * `referenceMs` should match chart context (e.g. bar time) so DST matches the session.
  */
 function getChartTimezoneSelectOptions(referenceMs) {
   const ref = Number.isFinite(referenceMs) ? referenceMs : Date.now();
-  let ids = [];
-  try {
-    if (typeof Intl !== "undefined" && typeof Intl.supportedValuesOf === "function") {
-      ids = Intl.supportedValuesOf("timeZone").slice();
-    }
-  } catch (_) {}
-  if (!ids.length) {
-    ids = [
-      "Pacific/Midway", "Pacific/Honolulu", "America/Anchorage", "America/Los_Angeles", "America/Denver",
-      "America/Chicago", "America/New_York", "America/Caracas", "America/Sao_Paulo", "Atlantic/South_Georgia",
-      "Atlantic/Azores", "UTC", "Etc/UTC", "Europe/Paris", "Europe/Athens", "Europe/Moscow", "Asia/Dubai", "Asia/Karachi",
-      "Asia/Kolkata", "Asia/Dhaka", "Asia/Bangkok", "Asia/Singapore", "Asia/Tokyo", "Australia/Sydney",
-      "Pacific/Noumea", "Pacific/Auckland",
-    ];
-  } else {
-    if (!ids.includes("UTC")) ids.push("UTC");
-    if (!ids.includes("Etc/UTC")) {
-      try {
-        new Intl.DateTimeFormat("en-US", { timeZone: "Etc/UTC" });
-        ids.push("Etc/UTC");
-      } catch (_) {}
-    }
-  }
-  ids = [...new Set(ids)];
+  const ids = CHART_TIMEZONE_SELECT_IDS;
 
   const rows = [];
   for (const id of ids) {
