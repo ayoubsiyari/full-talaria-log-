@@ -81,17 +81,15 @@ async function fetchKpisLegacyParallel(list: Session[]): Promise<Record<number, 
 }
 
 function fmtShortDate(d?: string): string {
-  if (!d) return "—";
-  const [, mo, day] = d.split("-");
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  return `${months[+mo - 1]} ${Number(day)}`;
+  const p = parseYmdParts(d);
+  if (!p) return "—";
+  return `${p.mo} ${p.day}`;
 }
 
 function fmtFullDate(d?: string): string {
-  if (!d) return "—";
-  const [y, mo, day] = d.split("-");
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  return `${months[+mo - 1]} ${Number(day)}, ${y}`;
+  const p = parseYmdParts(d);
+  if (!p) return "—";
+  return `${p.mo} ${p.day}, ${p.y}`;
 }
 
 function getProgress(sess: Session, k?: Kpis): number {
@@ -183,19 +181,28 @@ function strategyDescription(sess: Session): string | undefined {
 }
 
 function parseYmdParts(d?: string): { y: string; mo: string; day: number } | null {
-  if (!d) return null;
-  const [y, mo, day] = d.split("-");
-  if (!y || !mo || !day) return null;
+  if (!d || typeof d !== "string") return null;
+  const s = d.trim();
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const mi = +mo - 1;
-  if (mi < 0 || mi > 11) return null;
-  return { y, mo: months[mi], day: Number(day) };
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) {
+    const y = m[1];
+    const mi = Number(m[2]) - 1;
+    const day = Number(m[3]);
+    if (mi >= 0 && mi <= 11 && Number.isFinite(day) && day >= 1 && day <= 31) return { y, mo: months[mi], day };
+  }
+  const dt = new Date(s);
+  if (Number.isNaN(dt.getTime())) return null;
+  return { y: String(dt.getFullYear()), mo: months[dt.getMonth()], day: dt.getDate() };
 }
 
 function durationLabelMonths(start?: string, end?: string): string | null {
   if (!start || !end) return null;
-  const durMs = new Date(end).getTime() - new Date(start).getTime();
-  const durMo = Math.round(durMs / 1000 / 60 / 60 / 24 / 30.44);
+  const t0 = new Date(start).getTime();
+  const t1 = new Date(end).getTime();
+  if (!Number.isFinite(t0) || !Number.isFinite(t1) || t1 <= t0) return null;
+  const durMo = Math.round((t1 - t0) / 1000 / 60 / 60 / 24 / 30.44);
+  if (!Number.isFinite(durMo) || durMo < 0) return null;
   if (durMo >= 12) return `${Math.round(durMo / 12)}y`;
   return `${durMo}mo`;
 }
@@ -654,9 +661,9 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               <div key={v} onClick={() => { setFilter(v); setCardSortOpen(false); }}
                 onMouseEnter={e => { if (!isA) { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.06)"; (e.currentTarget as HTMLDivElement).style.color = c.tx; } }}
                 onMouseLeave={e => { if (!isA) { (e.currentTarget as HTMLDivElement).style.background = "transparent"; (e.currentTarget as HTMLDivElement).style.color = c.ts; } }}
-                style={{ position: "relative", height: 26, display: "flex", alignItems: "center", gap: 5, padding: "0 12px", cursor: "pointer", color: tabCol, background: tabBg, fontSize: 9, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase" as const, flexShrink: 0, userSelect: "none" }}>
+                style={{ position: "relative", height: 26, display: "flex", alignItems: "center", gap: 6, padding: "0 12px", cursor: "pointer", color: tabCol, background: tabBg, fontSize: 9, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase" as const, flexShrink: 0, userSelect: "none" }}>
+                <span style={{ fontSize: 8, fontWeight: 700, background: isA ? (isProp ? "rgba(201,168,76,0.18)" : "rgba(74,106,255,0.2)") : "rgba(255,255,255,0.07)", color: tabCol, padding: "2px 6px", minWidth: 18, textAlign: "center" as const, fontVariantNumeric: "tabular-nums" }}>{getCount(v)}</span>
                 {l}
-                <span style={{ fontSize: 8, fontWeight: 700, background: isA ? (isProp ? "rgba(201,168,76,0.18)" : "rgba(74,106,255,0.2)") : "rgba(255,255,255,0.07)", color: tabCol, padding: "1px 5px" }}>{getCount(v)}</span>
                 {isA && <div style={{ position: "absolute", bottom: 0, left: "10%", right: "10%", height: 1.5, background: `linear-gradient(90deg,transparent,${isProp ? c.gold : c.acL},transparent)` }} />}
               </div>
             );
@@ -757,11 +764,12 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
         {/* ── Column headers (rows mode, sticky below filter) ── */}
         {filteredSessions.length > 0 && layoutMode === "rows" && (
           <div style={{ position: "sticky", top: 40, zIndex: 4, background: c.bg }}>
-            <div style={{ ...contentFrameStyle, display: "flex", alignItems: "center", height: 26, padding: "0 32px" }}>
+            <div style={{ ...contentFrameStyle, display: "flex", alignItems: "center", height: 26, padding: "0 32px", position: "relative" }}>
+            <div style={{ position: "absolute", bottom: 0, left: 32, right: 32, height: 1, background: c.brH, pointerEvents: "none" }} />
             <div style={{ width: 96, flexShrink: 0 }} />
             {([
               ["Session", 110, "name"], ["Strategy", 100, "strategy"], ["Mode", 74, "mode"], ["Asset", 90, "asset"],
-              ["Symbols", 132, "symbol"], ["Date Range", 134, "date"], ["Options", 102, null],
+              ["Symbols", 120, "symbol"], ["Date Range", 134, "date"], ["Options", 102, null],
               ["Starting Bal.", 88, "capital"], ["Net P&L", 80, "pnl"], ["Win %", 60, "winRate"],
               ["Avg R:R", 62, "avgRR"], ["Trades", 56, "trades"], ["Progress", 66, "progress"], ["", 50, null],
             ] as [string, number, string | null][]).map(([label, w, sk]) => {
@@ -1155,56 +1163,81 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                       </div>
                       {/* Mode */}
                       {colCell(isProp ? "Prop Firm" : "Standard", 74, isProp ? c.gold : c.acL)}
-                      {/* Asset */}
-                      {colCell(cfgS?.asset_class || "—", 90)}
-                      {/* Symbols */}
+                      {/* Asset — prominent label (Design / market column parity) */}
                       <div style={{
-                        width: 132,
+                        width: 90,
+                        flexShrink: 0,
+                        padding: "0 10px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "flex-start",
+                        overflow: "hidden",
+                      }}>
+                        <span style={{
+                          fontSize: (cfgS?.asset_class || "").length > 14 ? 10 : 11,
+                          fontWeight: 800,
+                          color: c.tx,
+                          fontFamily: F,
+                          lineHeight: 1.25,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap" as const,
+                          textTransform: "capitalize" as const,
+                        }}>
+                          {cfgS?.asset_class || "—"}
+                        </span>
+                      </div>
+                      {/* Symbols — 2-column grid (`SessionsView.jsx` rows layout) */}
+                      <div style={{
+                        width: 120,
                         flexShrink: 0,
                         padding: "0 8px",
                         boxSizing: "border-box",
                         display: "flex",
-                        alignItems: "flex-start",
-                        justifyContent: "flex-start",
+                        alignItems: "center",
+                        justifyContent: "center",
                         overflow: "hidden",
                         alignSelf: "stretch",
                       }}>
                         {tickerRows.length === 0 ? (
                           sess.symbol ? (
                             <span style={{
-                              fontSize: 8,
-                              fontWeight: 700,
+                              fontSize: 9,
+                              fontWeight: 600,
                               color: c.ts,
-                              background: "rgba(255,255,255,0.07)",
-                              padding: "2px 6px",
-                              border: `1px solid ${c.br}`,
-                              overflowWrap: "anywhere",
-                              lineHeight: 1.3,
-                              maxWidth: "100%",
+                              fontFamily: F,
+                              letterSpacing: "0.04em",
+                              whiteSpace: "nowrap" as const,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              textAlign: "center" as const,
+                              width: "100%",
                             }}>{sess.symbol}</span>
-                          ) : <span style={{ fontSize: 10, color: c.tm }}>—</span>
+                          ) : (
+                            <span style={{ fontSize: 10, color: c.tm, fontFamily: F }}>—</span>
+                          )
                         ) : (
                           <div style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            justifyContent: "flex-start",
-                            alignContent: "flex-start",
-                            alignItems: "flex-start",
-                            gap: "4px 8px",
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: "1px 4px",
                             width: "100%",
-                            maxWidth: "100%",
                           }}>
-                            {tickerRows.slice(0, 6).map(r => (
+                            {tickerRows.map(r => (
                               <span
                                 key={r.sym}
                                 style={{
                                   fontSize: 8,
                                   fontWeight: 600,
                                   color: c.ts,
-                                  letterSpacing: "0.02em",
+                                  letterSpacing: "0.04em",
+                                  whiteSpace: "nowrap" as const,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  fontFamily: F,
+                                  lineHeight: 1.55,
+                                  textAlign: "center" as const,
                                   fontVariantNumeric: "tabular-nums",
-                                  lineHeight: 1.35,
-                                  overflowWrap: "anywhere",
                                 }}>
                                 {r.sym}
                               </span>
@@ -1228,7 +1261,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                 <span style={{ fontSize: 8, fontWeight: 600, color: c.tm }}>{s.y}</span>
                                 <div style={{ flex: 1, position: "relative", height: 1, background: `linear-gradient(90deg,${c.tm},${c.acL},${c.tm})` }}>
-                                  <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", background: c.bg, padding: "0 3px", fontSize: 10, fontWeight: 800, color: c.acL, letterSpacing: "0.04em", lineHeight: 1.2, whiteSpace: "nowrap" }}>{durLabel}</div>
+                                  <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", background: c.sf, padding: "0 3px", fontSize: 10, fontWeight: 800, color: "#3B82F6", letterSpacing: "0.04em", lineHeight: 1.2, whiteSpace: "nowrap", fontFamily: F }}>{durLabel}</div>
                                 </div>
                                 <span style={{ fontSize: 8, fontWeight: 600, color: c.tm }}>{e.y}</span>
                               </div>
