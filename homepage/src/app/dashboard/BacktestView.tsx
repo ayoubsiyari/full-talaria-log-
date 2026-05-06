@@ -618,7 +618,6 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                         const isH = tradeTip?.sess.id === s.id;
                         const x = ox + i * (barW + gap);
                         const y = baselineY - h;
-                        const rx = Math.min(4, Math.floor(barW / 4));
                         return (
                           <rect
                             key={s.id}
@@ -626,8 +625,6 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                             y={y}
                             width={barW}
                             height={h}
-                            rx={rx}
-                            ry={rx}
                             fill={col}
                             opacity={isH ? 1 : 0.88}
                             style={{ cursor: "default", filter: isH ? "brightness(1.55)" : "none" }}
