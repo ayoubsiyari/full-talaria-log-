@@ -126,38 +126,24 @@ function getSessionProgressDisplayed(sess: Session, k?: Kpis): number {
 }
 
 /**
- * Calendar days of simulated range that have actually elapsed — not the full configured span up-front.
- * Uses chart-persisted `replay_dashboard.elapsed_days` when present (furthest replay vs configured session dates).
+ * Simulated calendar days actually replayed (chart coverage vs configured session window).
+ * Sum across sessions for the aggregate tile — no wall-clock or “configured span” guessing.
  */
-function effectiveTestedDays(sess: Session, k: Kpis | undefined, nowMs: number): number {
-  if (!sess.start_date) return 0;
-
+function replayElapsedDaysFromDashboard(sess: Session): number {
   const dash = sess.replay_dashboard;
-  if (dash && typeof dash.elapsed_days === "number" && Number.isFinite(dash.elapsed_days) && dash.elapsed_days >= 0) {
+  if (!dash || typeof dash !== "object") return 0;
+
+  if (typeof dash.elapsed_days === "number" && Number.isFinite(dash.elapsed_days) && dash.elapsed_days >= 0) {
     return Math.round(dash.elapsed_days);
   }
 
-  if (!k || k.trades === 0) return 0;
-
-  const progress = getProgress(sess, k);
-  if (progress === 0) return 0;
-
-  const startMs = new Date(sess.start_date).getTime();
-  if (!Number.isFinite(startMs)) return 0;
-
-  const endCfgMs = sess.end_date ? new Date(sess.end_date).getTime() : NaN;
-
-  let endMs: number;
-  if (progress >= 100 && Number.isFinite(endCfgMs)) {
-    endMs = endCfgMs;
-  } else if (Number.isFinite(endCfgMs)) {
-    endMs = Math.min(nowMs, endCfgMs);
-  } else {
-    endMs = nowMs;
+  const furthest = Number(dash.furthest_replay_ts);
+  const cfgStart = Number(dash.configured_start_ts);
+  if (Number.isFinite(furthest) && Number.isFinite(cfgStart) && furthest >= cfgStart) {
+    return Math.max(0, Math.round((furthest - cfgStart) / 86400000));
   }
 
-  const days = Math.round((endMs - startMs) / 86400000);
-  return Math.max(0, days);
+  return 0;
 }
 
 function fmtMoney(n: number | null | undefined): string {
@@ -287,14 +273,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   const [actMenu, setActMenu] = useState<ActMenu | null>(null);
   type StratPop = { id: number; x: number; y: number; name: string; desc: string };
   const [stratPop, setStratPop] = useState<StratPop | null>(null);
-  /** Recompute elapsed “days tested” on a cadence so active sessions tick forward with real time. */
-  const [, setDayClock] = useState(0);
   const contentFrameStyle: React.CSSProperties = { width: "fit-content", minWidth: 1288, margin: "0 auto" };
-
-  useEffect(() => {
-    const id = window.setInterval(() => setDayClock((x) => x + 1), 60_000);
-    return () => window.clearInterval(id);
-  }, []);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -347,8 +326,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   const profSess = withPnl.filter(s => (kpis[s.id]?.net_pnl ?? 0) > 0).length;
   const profPct  = withPnl.length ? Math.round((profSess / withPnl.length) * 100) : 0;
 
-  const nowMs = Date.now();
-  const totalDays = sessions.reduce((a, s) => a + effectiveTestedDays(s, kpis[s.id], nowMs), 0);
+  const totalDays = sessions.reduce((a, s) => a + replayElapsedDaysFromDashboard(s), 0);
 
   const tickerFreq: Record<string, number> = {};
   sessions.forEach(s => {
@@ -680,7 +658,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                   </svg>
                 );
               })()}
-              <div style={{ fontSize: 8, color: c.tm, fontFamily: F, marginTop: 4 }}>each square ≈ 1 month of elapsed tested range</div>
+              <div style={{ fontSize: 8, color: c.tm, fontFamily: F, marginTop: 4 }}>each square ≈ 1 month of replay elapsed (summed sessions)</div>
             </div>
 
             {/* Tile 5: Tickers Tested — parity with dashboardV8.jsx */}
