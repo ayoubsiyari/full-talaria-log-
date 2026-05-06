@@ -10908,7 +10908,7 @@ class Chart {
         }
 
         // Trigger interval sync if enabled
-        if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
+        if (!this._suppressIntervalSync && window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
             const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
             if (sourcePanel) {
                 window.panelManager.syncInterval(sourcePanel, timeframe);

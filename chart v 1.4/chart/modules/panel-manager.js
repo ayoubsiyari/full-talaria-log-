@@ -632,20 +632,30 @@ class PanelManager {
      */
     syncInterval(sourcePanel, timeframe) {
         if (!this.syncSettings.interval || (this.panels || []).length <= 1) return;
+        if (this._syncingInterval) return;
+        this._syncingInterval = true;
         
-        this.panels.forEach(panel => {
-            if (panel.index === sourcePanel.index) return;
-            const pc = this._getPanelChartInstance(panel);
-            if (!pc) return;
-            panel.timeframe = timeframe;
-            pc.currentTimeframe = timeframe;
-            if (typeof pc.setTimeframe === 'function') {
-                pc.setTimeframe(timeframe);
-            }
-            if (typeof pc.updateChartOHLCSymbol === 'function') {
-                pc.updateChartOHLCSymbol(pc.currentSymbol);
-            }
-        });
+        try {
+            this.panels.forEach(panel => {
+                if (panel.index === sourcePanel.index) return;
+                const pc = this._getPanelChartInstance(panel);
+                if (!pc) return;
+                panel.timeframe = timeframe;
+                pc.currentTimeframe = timeframe;
+                // Prevent ping-pong recursion: setTimeframe() on follower panels
+                // must not re-enter panelManager.syncInterval().
+                pc._suppressIntervalSync = true;
+                if (typeof pc.setTimeframe === 'function') {
+                    pc.setTimeframe(timeframe);
+                }
+                pc._suppressIntervalSync = false;
+                if (typeof pc.updateChartOHLCSymbol === 'function') {
+                    pc.updateChartOHLCSymbol(pc.currentSymbol);
+                }
+            });
+        } finally {
+            this._syncingInterval = false;
+        }
     }
     
     /**
