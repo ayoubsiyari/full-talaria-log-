@@ -1738,6 +1738,7 @@ class Chart {
         const loadSeq = (this._panelFileLoadSeq = (this._panelFileLoadSeq || 0) + 1);
         const targetFileId = String(fileId);
         const mainChart = window.chart;
+        this._isLoadingOwnPairData = true;
         this._showPanelLoadingOverlay();
         try {
             const outgoingPanelFileId = this.currentFileId != null ? String(this.currentFileId) : null;
@@ -1973,6 +1974,7 @@ class Chart {
 
             return true;
         } catch (error) {
+            this._isLoadingOwnPairData = false;
             this._hidePanelLoadingOverlay();
             console.error('Failed to load panel file data:', error);
             if (typeof this.showNotification === 'function') {
@@ -19776,10 +19778,15 @@ class Chart {
             }
         });
         
-        // Broadcast to all other charts
+        // Broadcast to all other charts.
+        // For cross-pair panels pass null as sourceCandle so receiveCrosshairSync
+        // never injects this pair's OHLC values into a different instrument's header.
         allCharts.forEach(chart => {
             if (chart && chart !== this) {
-                chart.receiveCrosshairSync(timestamp, price, candleData);
+                const samePair = window.panelManager && typeof window.panelManager._isSamePair === 'function'
+                    ? window.panelManager._isSamePair(this, chart)
+                    : true;
+                chart.receiveCrosshairSync(timestamp, price, samePair ? candleData : null);
             }
         });
     }
