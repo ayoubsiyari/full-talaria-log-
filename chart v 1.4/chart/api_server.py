@@ -4343,7 +4343,11 @@ def _resample_candles(candles, tf_ms):
             if current_candle:
                 aggregated.append(current_candle)
             current_bucket = bucket
-            current_candle = {'t': bucket, 'o': c['o'], 'h': c['h'], 'l': c['l'], 'c': c['c'], 'v': c['v']}
+            # Use the first candle's actual open time rather than the floor-bucket
+            # midnight.  For FX daily bars the floor bucket (Sunday 00:00 UTC) maps
+            # to Saturday NY and is wrongly stripped by _filter_weekend_candles;
+            # using the real open time (Sunday 22:00 UTC = 17:00 NY) avoids that.
+            current_candle = {'t': c['t'], 'o': c['o'], 'h': c['h'], 'l': c['l'], 'c': c['c'], 'v': c['v']}
         else:
             current_candle['h'] = max(current_candle['h'], c['h'])
             current_candle['l'] = min(current_candle['l'], c['l'])
@@ -4368,7 +4372,8 @@ def _resample_candles_monthly(candles):
             if current_candle:
                 aggregated.append(current_candle)
             current_key = key
-            current_candle = {'t': bucket_ts, 'o': c['o'], 'h': c['h'], 'l': c['l'], 'c': c['c'], 'v': c['v']}
+            # Use actual open time (not month-start midnight) to survive weekend filter.
+            current_candle = {'t': c['t'], 'o': c['o'], 'h': c['h'], 'l': c['l'], 'c': c['c'], 'v': c['v']}
         else:
             current_candle['h'] = max(current_candle['h'], c['h'])
             current_candle['l'] = min(current_candle['l'], c['l'])
@@ -11587,7 +11592,12 @@ async def get_file_smart(
         raw_first_cursor = str(candles[0]['t']) if candles else None
         raw_last_cursor = str(candles[-1]['t']) if candles else None
 
-        candles = _filter_weekend_candles(candles)
+        # Skip weekend filter for pre-aggregated bars (1d/1w/1mo): the source
+        # 1m data was already filtered; applying it again to daily/weekly/monthly
+        # bars removes valid bars whose UTC bucket timestamp falls on a weekend
+        # (e.g. FX Sunday-open daily bar → Sunday 00:00 UTC → Saturday NY → dropped).
+        if timeframe not in ('1d', '1w', '1mo'):
+            candles = _filter_weekend_candles(candles)
         candles = _smooth_isolated_candle_spikes(candles)
 
         # ── Build cursors ──
@@ -11729,7 +11739,8 @@ async def get_file_candles(
         raw_prev_cursor = str(candles[0]['t']) if candles else None
         raw_next_cursor = str(candles[-1]['t']) if candles else None
 
-        candles = _filter_weekend_candles(candles)
+        if timeframe not in ('1d', '1w', '1mo'):
+            candles = _filter_weekend_candles(candles)
         candles = _smooth_isolated_candle_spikes(candles)
 
         prev_cursor = raw_prev_cursor
