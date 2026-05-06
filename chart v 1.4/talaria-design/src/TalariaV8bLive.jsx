@@ -3572,6 +3572,45 @@ const TalariaV8bLive = () => {
     }
   }, [replayIntervalOptions, replayInterval]);
 
+  // Replay system can appear after V9 mounts (refresh race). Ensure current V9
+  // mode + interval are pushed once rs is ready so first Play is correct.
+  useEffect(() => {
+    let cancelled = false;
+    let tries = 0;
+    const desiredMode = replayMode === "candle" ? "candle" : "tick";
+    const desiredInterval = replayIntervalToLegacyValue(replayInterval);
+
+    const apply = () => {
+      if (cancelled) return;
+      const rs = getReplaySystem();
+      if (!rs) {
+        if (tries++ < 80) setTimeout(apply, 100);
+        return;
+      }
+      try {
+        if (typeof rs.setPlaybackMode === "function") {
+          const curMode = typeof rs.getPlaybackMode === "function" ? rs.getPlaybackMode() : rs.playbackMode;
+          if (curMode !== desiredMode) rs.setPlaybackMode(desiredMode, { restartPlayback: false });
+        }
+        if (typeof rs.setStepTimeframe === "function") {
+          rs.setStepTimeframe(desiredInterval);
+        }
+        const tfSelect = rs.timeframeSelect || document.getElementById("replayTimeframe");
+        if (tfSelect && tfSelect.value !== desiredInterval) {
+          tfSelect.value = desiredInterval;
+          tfSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      } catch (e) {
+        console.warn("[V9 Replay] startup sync failed", e);
+      }
+    };
+
+    apply();
+    return () => {
+      cancelled = true;
+    };
+  }, [replayMode, replayInterval]);
+
   // Navigation integrity badge (#navIntegrityBadge) — after OHLC + change in .ohlc-stats during replay.
   useEffect(() => {
     let cancelled = false;
