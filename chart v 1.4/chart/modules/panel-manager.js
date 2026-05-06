@@ -615,7 +615,7 @@ class PanelManager {
         
         this.panels.forEach(panel => {
             if (panel.index === sourcePanel.index) return;
-            const pc = panel.chartInstance;
+            const pc = this._getPanelChartInstance(panel);
             if (!pc) return;
             if (String(pc.currentFileId) === String(fileId)) return;
 
@@ -635,7 +635,7 @@ class PanelManager {
         
         this.panels.forEach(panel => {
             if (panel.index === sourcePanel.index) return;
-            const pc = panel.chartInstance;
+            const pc = this._getPanelChartInstance(panel);
             if (!pc) return;
             panel.timeframe = timeframe;
             pc.currentTimeframe = timeframe;
@@ -676,6 +676,13 @@ class PanelManager {
         return fa === fb;
     }
 
+    _getPanelChartInstance(panel) {
+        if (!panel) return null;
+        if (panel.chartInstance) return panel.chartInstance;
+        if (panel.isMainChart && typeof window !== 'undefined' && window.chart) return window.chart;
+        return null;
+    }
+
     /**
      * Binary search: find index of candle closest to target timestamp.
      * Falls back to chart.findGoToTargetIndex if available.
@@ -704,11 +711,11 @@ class PanelManager {
 
         this._isSyncing = true;
         const toRelease = [];
-        const sourceChart = sourcePanel?.chartInstance;
+        const sourceChart = this._getPanelChartInstance(sourcePanel);
         try {
             this.panels.forEach(panel => {
                 if (panel.index === sourcePanel.index) return;
-                const chart = panel.chartInstance;
+                const chart = this._getPanelChartInstance(panel);
                 if (!chart?.data?.length) return;
                 // Skip cross-pair time sync — different instruments don't share a calendar.
                 if (!this._isSamePair(sourceChart, chart)) return;
@@ -744,7 +751,7 @@ class PanelManager {
      * TradingView-style: when a panel is selected, show its right-edge time on all others.
      */
     syncTimeToPanel(sourcePanel) {
-        const sourceChart = sourcePanel?.chartInstance;
+        const sourceChart = this._getPanelChartInstance(sourcePanel);
         if (!sourceChart?.data?.length) return;
 
         const endIndex = typeof sourceChart.getVisibleEndIndex === 'function'
@@ -775,10 +782,10 @@ class PanelManager {
         let anyChanged = false;
         const toUpdate = [];
 
-        const sourceChart = sourcePanel?.chartInstance;
+        const sourceChart = this._getPanelChartInstance(sourcePanel);
         this.panels.forEach(panel => {
             if (panel.index === sourcePanel.index) return;
-            const chart = panel.chartInstance;
+            const chart = this._getPanelChartInstance(panel);
             if (!chart?.data?.length) return;
             // Skip cross-pair time sync — different instruments don't share a calendar.
             if (!this._isSamePair(sourceChart, chart)) return;
@@ -852,7 +859,7 @@ class PanelManager {
         if (this._isSyncing) return;
         if (!this.syncSettings.dateRange || (this.panels || []).length <= 1) return;
 
-        const sourceChart = sourcePanel?.chartInstance;
+        const sourceChart = this._getPanelChartInstance(sourcePanel);
         if (!sourceChart?.data?.length) return;
         if (!Number.isFinite(startTimestamp) || !Number.isFinite(rangeEndExclusive)) return;
         if (rangeEndExclusive <= startTimestamp) return;
@@ -863,7 +870,7 @@ class PanelManager {
         try {
             this.panels.forEach(panel => {
                 if (panel.index === sourcePanel.index) return;
-                const chart = panel.chartInstance;
+                const chart = this._getPanelChartInstance(panel);
                 if (!chart?.data?.length) return;
                 // Skip cross-pair date-range sync — different instruments would scroll wildly.
                 if (!this._isSamePair(sourceChart, chart)) return;
@@ -937,7 +944,7 @@ class PanelManager {
     syncDateRange(sourcePanel, startTimestamp, endTimestampLastOpen) {
         if (!this.syncSettings.dateRange || (this.panels || []).length <= 1) return;
 
-        const sourceChart = sourcePanel.chartInstance;
+        const sourceChart = this._getPanelChartInstance(sourcePanel);
         if (!sourceChart?.data?.length) return;
         const barMs = typeof sourceChart.inferBarDurationMs === 'function'
             ? sourceChart.inferBarDurationMs()
@@ -952,13 +959,13 @@ class PanelManager {
     syncIndicatorsNow() {
         if (!this.syncSettings.indicators || (this.panels || []).length <= 1) return;
         const src = this.panels[this.selectedPanelIndex];
-        if (!src || !src.chartInstance) return;
-        const srcChart = src.chartInstance;
+        const srcChart = this._getPanelChartInstance(src);
+        if (!src || !srcChart) return;
         const srcIndicators = srcChart.indicators || [];
 
         this.panels.forEach(panel => {
             if (panel.index === src.index) return;
-            const pc = panel.chartInstance;
+            const pc = this._getPanelChartInstance(panel);
             if (!pc) return;
             pc.indicators = JSON.parse(JSON.stringify(srcIndicators));
             if (typeof pc.recalculateIndicators === 'function') {
@@ -974,14 +981,14 @@ class PanelManager {
     syncChartTypeNow() {
         if (!this.syncSettings.chartType || (this.panels || []).length <= 1) return;
         const src = this.panels[this.selectedPanelIndex];
-        if (!src || !src.chartInstance) return;
-        const srcChart = src.chartInstance;
+        const srcChart = this._getPanelChartInstance(src);
+        if (!src || !srcChart) return;
         const chartType = srcChart.chartSettings && srcChart.chartSettings.chartType
             ? srcChart.chartSettings.chartType : 'candlestick';
 
         this.panels.forEach(panel => {
             if (panel.index === src.index) return;
-            const pc = panel.chartInstance;
+            const pc = this._getPanelChartInstance(panel);
             if (!pc || !pc.chartSettings) return;
             pc.chartSettings.chartType = chartType;
             if (typeof pc.render === 'function') pc.render();
