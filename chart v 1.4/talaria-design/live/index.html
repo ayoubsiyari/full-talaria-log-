@@ -606,6 +606,8 @@
             background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.14) 50%, transparent 100%);
             animation: loaderShimmerSweep 5.8s linear infinite; animation-delay: -1.4s; will-change: transform; }
         .loader-quote { margin-top: 36px; max-width: 520px; padding: 0 24px; font-size: 14px; font-style: italic; line-height: 1.65; color: rgba(255,255,255,0.42); min-height: 46px; }
+        .loader-quote-cursor { animation: tlrTypeCursor 0.7s ease-in-out infinite; }
+        @keyframes tlrTypeCursor { 0%, 100% { opacity: 0.15; } 50% { opacity: 1; } }
         .loader-site { position: absolute; bottom: 24px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.22); letter-spacing: 0.12em; }
         @keyframes loaderShimmerSweep { 0% { transform: translate3d(-100%, 0, 0); } 100% { transform: translate3d(400%, 0, 0); } }
         @keyframes tlrLoaderStars { 0%,100% { opacity: 0.58; } 50% { opacity: 0.9; } }
@@ -790,10 +792,35 @@
                 <div class="loader-progress-bar" id="loaderProgress"></div>
                 <div class="loader-progress-shimmer" aria-hidden="true"></div>
             </div>
-            <div class="loader-quote">"The market rewards patience, precision, and preparation."</div>
+            <div class="loader-quote">"<span id="loaderTypedQuote"></span><span id="loaderQuoteCursor" class="loader-quote-cursor">|</span>"</div>
         </div>
         <div class="loader-site">www.talaria-log.com</div>
     </div>
+    <script>
+      (function initBacktestLoaderTypewriter() {
+        window.__talariaLoaderTypingDone = false;
+        var quote = "It's not whether you're right or wrong, but how much you make when you're right and how much you lose when you're wrong.";
+        var target = document.getElementById("loaderTypedQuote");
+        var cursor = document.getElementById("loaderQuoteCursor");
+        if (!target) {
+          window.__talariaLoaderTypingDone = true;
+          try { window.dispatchEvent(new Event("talariaLoaderTypingDone")); } catch (e) {}
+          return;
+        }
+        var i = 0;
+        var stepMs = 28;
+        var timer = setInterval(function () {
+          i += 1;
+          target.textContent = quote.slice(0, i);
+          if (i >= quote.length) {
+            clearInterval(timer);
+            if (cursor) cursor.style.opacity = "0";
+            window.__talariaLoaderTypingDone = true;
+            try { window.dispatchEvent(new Event("talariaLoaderTypingDone")); } catch (e) {}
+          }
+        }, stepMs);
+      })();
+    </script>
     <div id="root"></div>
     <!-- Off-screen target for economic-news-sidebar.js (list HTML + countdown ticks). V9 News UI is React. -->
     <div id="v9-economic-calendar-shim" aria-hidden="true" style="position:absolute;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none;">

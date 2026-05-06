@@ -1088,18 +1088,35 @@ class Chart {
     
     hideLoader() {
         const loader = document.getElementById('backtestingLoader');
+        const doHide = () => {
+            if (loader) {
+                setTimeout(() => {
+                    loader.classList.remove('active');
+                    try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
+                }, 180);
+            } else {
+                try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
+            }
+        };
         if (this._backtestLoaderSafetyTimer) {
             clearTimeout(this._backtestLoaderSafetyTimer);
             this._backtestLoaderSafetyTimer = null;
         }
-        if (loader) {
-            setTimeout(() => {
-                loader.classList.remove('active');
-                try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
-            }, 180);
-        } else {
-            try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
+        // When the custom loader runs a quote typewriter, keep the loader
+        // visible until typing completes (with a fallback timeout).
+        if (loader && window.__talariaLoaderTypingDone === false) {
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                try { window.removeEventListener('talariaLoaderTypingDone', finish); } catch (e) {}
+                doHide();
+            };
+            try { window.addEventListener('talariaLoaderTypingDone', finish, { once: true }); } catch (e) {}
+            setTimeout(finish, 7000);
+            return;
         }
+        doHide();
     }
 
     getGoToLoadingOverlay() {
