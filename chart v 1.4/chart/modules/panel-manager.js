@@ -935,7 +935,7 @@ class PanelManager {
      * Sync date range across all panels (same visible wall-clock window + fit zoom)
      */
     syncDateRange(sourcePanel, startTimestamp, endTimestampLastOpen) {
-        if (!this.syncSettings.dateRange || this.currentLayout === '1') return;
+        if (!this.syncSettings.dateRange || (this.panels || []).length <= 1) return;
 
         const sourceChart = sourcePanel.chartInstance;
         if (!sourceChart?.data?.length) return;

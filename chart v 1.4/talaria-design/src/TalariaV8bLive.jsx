@@ -4525,9 +4525,7 @@ const TalariaV8bLive = () => {
   // V9 sync toggles → panelManager.syncSettings + saveSyncSettings + legacy-parity side-effects
   // (panel-manager setupSyncToggles): crosshair flags + hide/show, time/date-range/interval bootstrap,
   // drawings on instances, indicators/chartType snapshot sync when enabling.
-  const layoutSyncFirstRef = useRef(true);
   useEffect(() => {
-    if (layoutSyncFirstRef.current) { layoutSyncFirstRef.current = false; return; }
     const pm = window.panelManager;
     if (!pm || !pm.syncSettings) return;
     let changed = false;
