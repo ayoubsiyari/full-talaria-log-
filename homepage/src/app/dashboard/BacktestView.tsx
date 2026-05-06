@@ -49,6 +49,9 @@ interface Kpis {
 type SessFilter = "all" | "not-started" | "active" | "completed" | "standard" | "prop";
 type LayoutMode = "rows" | "cards";
 
+/** Cap rows/cards rendering; filter badges still use full counts. */
+const SESSION_LIST_DISPLAY_MAX = 30;
+
 /* ── Helpers ── */
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { credentials: "include" });
@@ -68,6 +71,24 @@ async function fetchSessionsKpisBatch(): Promise<Record<number, Kpis>> {
     if (Number.isFinite(n) && k && typeof k === "object") map[n] = k;
   });
   return map;
+}
+
+/** Every session gets KPI row so 0-trade sessions still render (batch/legacy may omit keys). */
+function ensureKpisForSessions(list: Session[], map: Record<number, Kpis>): Record<number, Kpis> {
+  const out: Record<number, Kpis> = { ...map };
+  const base: Kpis = {
+    trades: 0,
+    win_rate: null,
+    net_pnl: 0,
+    expectancy_r: null,
+    start_balance: null,
+  };
+  for (const s of list) {
+    if (!out[s.id]) {
+      out[s.id] = { ...base, start_balance: s.start_balance ?? null };
+    }
+  }
+  return out;
 }
 
 async function fetchKpisLegacyParallel(list: Session[]): Promise<Record<number, Kpis>> {
@@ -287,7 +308,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
       } catch {
         map = await fetchKpisLegacyParallel(list);
       }
-      setKpis(map);
+      setKpis(ensureKpisForSessions(list, map));
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, []);
@@ -320,7 +341,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   const stdCompleted  = stdSess.filter(s => getSessionProgressDisplayed(s, kpis[s.id]) === 100).length;
   const stdActive     = stdSess.filter(s => { const p = getSessionProgressDisplayed(s, kpis[s.id]); return p > 0 && p < 100; }).length;
 
-  const totalTrades = Object.values(kpis).reduce((a, k) => a + (k.trades || 0), 0);
+  const totalTrades = sessions.reduce((a, s) => a + (kpis[s.id]?.trades || 0), 0);
 
   const withPnl = sessions.filter(s => kpis[s.id]?.net_pnl != null);
   const profSess = withPnl.filter(s => (kpis[s.id]?.net_pnl ?? 0) > 0).length;
@@ -354,7 +375,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
       return true;
     }).length;
 
-  const filteredSessions = [...sessions]
+  const filteredSessionsAll = [...sessions]
     .filter(s => {
       if (searchQ) {
         const q = searchQ.toLowerCase();
@@ -397,6 +418,9 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
       if (sortBy === "progress") cmp = getSessionProgressDisplayed(a, kpis[a.id]) - getSessionProgressDisplayed(b, kpis[b.id]);
       return cmp * dir;
     });
+
+  const filteredSessions = filteredSessionsAll.slice(0, SESSION_LIST_DISPLAY_MAX);
+  const sessionListTruncated = filteredSessionsAll.length > SESSION_LIST_DISPLAY_MAX;
 
   /* ── Actions ── */
   const goNew = () => setNewSessOpen(true);
@@ -824,7 +848,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
         </div>
 
         {/* ── Column headers (rows mode, sticky below filter) ── */}
-        {filteredSessions.length > 0 && layoutMode === "rows" && (
+        {filteredSessionsAll.length > 0 && layoutMode === "rows" && (
           <div style={{ position: "sticky", top: 40, zIndex: 4, background: c.bg }}>
             <div style={{ ...contentFrameStyle, display: "flex", alignItems: "center", height: 26, padding: "0 32px", position: "relative" }}>
             <div style={{ position: "absolute", bottom: 0, left: 32, right: 32, height: 1, background: c.brH, pointerEvents: "none" }} />
@@ -1138,8 +1162,13 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                   </div>
                 );
               })}
-              {filteredSessions.length === 0 && sessions.length > 0 && (
+              {filteredSessionsAll.length === 0 && sessions.length > 0 && (
                 <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "48px 0", color: c.tm, fontSize: 12 }}>No sessions match your filter</div>
+              )}
+              {sessionListTruncated && filteredSessionsAll.length > 0 && (
+                <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "8px 0 0", color: c.tm, fontSize: 11, fontFamily: F }}>
+                  Showing {SESSION_LIST_DISPLAY_MAX} of {filteredSessionsAll.length} sessions — refine search or filters to narrow the list
+                </div>
               )}
             </div>
           ) : (
@@ -1382,8 +1411,13 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                   </div>
                 );
               })}
-              {filteredSessions.length === 0 && sessions.length > 0 && (
+              {filteredSessionsAll.length === 0 && sessions.length > 0 && (
                 <div style={{ textAlign: "center", padding: "48px 0", color: c.tm, fontSize: 12 }}>No sessions match your filter</div>
+              )}
+              {sessionListTruncated && filteredSessionsAll.length > 0 && (
+                <div style={{ textAlign: "center", padding: "12px 0 0", color: c.tm, fontSize: 11, fontFamily: F }}>
+                  Showing {SESSION_LIST_DISPLAY_MAX} of {filteredSessionsAll.length} sessions — refine search or filters to narrow the list
+                </div>
               )}
             </div>
           )}
