@@ -34042,37 +34042,20 @@
     <style>
 
         /* Backtesting Loading Overlay */
-
         #backtestingLoader {
-
             position: fixed;
-
             top: 0;
-
             left: 0;
-
             width: 100%;
-
             height: 100%;
-
-            background: #000000;
-
-            backdrop-filter: blur(10px);
-
-            -webkit-backdrop-filter: blur(10px);
-
+            background: #07080e;
             display: none;
-
             justify-content: center;
-
             align-items: center;
-
             z-index: 10000;
-
             flex-direction: column;
-
-            gap: 30px;
-
+            font-family: 'Exo 2', sans-serif;
+            overflow: hidden;
         }
 
         
@@ -34096,20 +34079,37 @@
 
         
 
+        #backtestingLoader::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background-image:
+                radial-gradient(circle at 12% 18%, rgba(110,153,255,0.95) 0 1px, transparent 2px),
+                radial-gradient(circle at 24% 11%, rgba(255,255,255,0.85) 0 1px, transparent 2px),
+                radial-gradient(circle at 36% 28%, rgba(74,106,255,0.8) 0 1px, transparent 2px),
+                radial-gradient(circle at 48% 8%, rgba(110,153,255,0.95) 0 1px, transparent 2px),
+                radial-gradient(circle at 62% 22%, rgba(255,255,255,0.85) 0 1px, transparent 2px),
+                radial-gradient(circle at 78% 14%, rgba(74,106,255,0.8) 0 1px, transparent 2px),
+                radial-gradient(circle at 89% 31%, rgba(110,153,255,0.95) 0 1px, transparent 2px),
+                radial-gradient(circle at 8% 68%, rgba(74,106,255,0.8) 0 1px, transparent 2px),
+                radial-gradient(circle at 32% 74%, rgba(255,255,255,0.85) 0 1px, transparent 2px),
+                radial-gradient(circle at 52% 81%, rgba(110,153,255,0.95) 0 1px, transparent 2px),
+                radial-gradient(circle at 71% 64%, rgba(74,106,255,0.8) 0 1px, transparent 2px),
+                radial-gradient(circle at 88% 76%, rgba(255,255,255,0.85) 0 1px, transparent 2px);
+            opacity: 0.75;
+            animation: tlrLoaderStars 6s ease-in-out infinite;
+            pointer-events: none;
+        }
+
         .loader-content {
-
+            position: relative;
+            z-index: 1;
             text-align: center;
-
             color: #ffffff;
-
-            width: min(560px, calc(100vw - 40px));
-            padding: 30px 26px 24px;
-            border-radius: 14px;
-            border: 1px solid rgba(255, 255, 255, 0.09);
-            background: #000000;
-            box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
-            backdrop-filter: blur(6px);
-
+            width: min(760px, calc(100vw - 48px));
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
         
@@ -34132,49 +34132,19 @@
 
         }
 
+        .loader-brand-wrap {
+            position: relative;
+            margin-bottom: 10px;
+        }
+
         .loader-brand {
-            position: relative;
-            width: 120px;
-            height: 120px;
-            margin: 0 auto 18px;
-            display: grid;
-            place-items: center;
-        }
-
-        .loader-brand::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            border-radius: 50%;
-            border: 3px solid rgba(41, 98, 255, 0.28);
-            border-top-color: rgba(41, 98, 255, 0.88);
-            animation: loaderBrandSpin 1.5s linear infinite;
-        }
-
-        .loader-brand::after {
-            content: '';
-            position: absolute;
-            inset: 16px;
-            border-radius: 50%;
-            background: radial-gradient(circle at 50% 40%, rgba(41, 98, 255, 0.2), rgba(41, 98, 255, 0.04) 65%, transparent 78%);
-            animation: loaderPulse 2.4s ease-in-out infinite;
-        }
-
-        .loader-brand img {
-            width: 52px;
-            height: 52px;
-            position: relative;
-            z-index: 2;
-            filter: drop-shadow(0 0 10px rgba(41, 98, 255, 0.4));
-        }
-
-        @keyframes loaderBrandSpin {
-            to { transform: rotate(360deg); }
-        }
-
-        @keyframes loaderPulse {
-            0%, 100% { transform: scale(0.92); opacity: 0.65; }
-            50% { transform: scale(1.04); opacity: 1; }
+            width: 440px;
+            max-width: min(440px, calc(100vw - 120px));
+            height: auto;
+            object-fit: contain;
+            display: block;
+            filter: brightness(1.05);
+            animation: tlrLoadPulse 8s ease-in-out infinite;
         }
 
         
@@ -34188,47 +34158,35 @@
         
 
         .loader-title {
-
-            font-size: 23px;
-
-            font-weight: 700;
-
-            margin-bottom: 6px;
-
-            color: #f3f4f6;
-
-            letter-spacing: 0.01em;
-
+            font-size: 28px;
+            font-weight: 800;
+            margin: 0 0 12px;
+            color: rgba(255,255,255,0.92);
+            letter-spacing: 0.24em;
         }
 
         
 
         .loader-subtitle {
-
-            font-size: 13px;
-
-            color: #98a2b8;
-
-            margin-bottom: 18px;
-
+            margin-top: 36px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.28);
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            min-height: 18px;
         }
 
         
 
         .loader-progress-container {
-
-            width: 100%;
-
+            width: min(540px, calc(100vw - 80px));
             height: 6px;
-
-            background: rgba(255, 255, 255, 0.1);
-
-            border-radius: 999px;
-
+            background: rgba(255, 255, 255, 0.07);
+            border-radius: 3px;
             overflow: hidden;
-
             position: relative;
-
         }
 
         /* Fill width is updated by JS — keep shimmer on a separate layer so CSS animation never restarts */
@@ -34236,13 +34194,13 @@
 
             height: 100%;
 
-            background: linear-gradient(90deg, #2962ff 0%, #3b82f6 55%, #60a5fa 100%);
-
-            border-radius: 999px;
+            background: linear-gradient(90deg, #2643f7 0%, #4a6aff 55%, #6a8aff 100%);
+            border-radius: 2px;
 
             width: 0%;
 
             transition: width 0.55s cubic-bezier(0.33, 1, 0.68, 1);
+            box-shadow: 0 0 8px rgba(74,106,255,0.7);
 
             position: relative;
 
@@ -34269,7 +34227,7 @@
             background: linear-gradient(
                 90deg,
                 transparent 0%,
-                rgba(255, 255, 255, 0.45) 50%,
+                rgba(255, 255, 255, 0.35) 50%,
                 transparent 100%
             );
             animation: loaderShimmerSweep 3.6s linear infinite;
@@ -34294,9 +34252,37 @@
             will-change: transform;
         }
 
+        .loader-quote {
+            margin-top: 36px;
+            max-width: 520px;
+            padding: 0 24px;
+            font-size: 14px;
+            font-style: italic;
+            line-height: 1.65;
+            color: rgba(255,255,255,0.42);
+            min-height: 46px;
+        }
+
+        .loader-site {
+            position: absolute;
+            bottom: 24px;
+            font-size: 12px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.22);
+            letter-spacing: 0.12em;
+        }
+
         @keyframes loaderShimmerSweep {
             0% { transform: translate3d(-100%, 0, 0); }
             100% { transform: translate3d(400%, 0, 0); }
+        }
+        @keyframes tlrLoaderStars {
+            0%,100% { opacity: 0.58; }
+            50% { opacity: 0.9; }
+        }
+        @keyframes tlrLoadPulse {
+            0%,100% { transform: scale(0.985); filter: brightness(1); }
+            50% { transform: scale(1.02); filter: brightness(1.08); }
         }
 
         
@@ -37101,29 +37087,19 @@
     <!-- Backtesting Loading Overlay -->
 
     <div id="backtestingLoader">
-
         <div class="loader-content">
-
-            <div class="loader-brand">
-                <img src="modules/logo-08.png" alt="Talaria" />
+            <div class="loader-brand-wrap">
+                <img class="loader-brand" src="modules/LOGO-07.png" alt="Talaria" />
             </div>
-
-            <div class="loader-title">Initializing Replay Mode</div>
-
-            <div class="loader-subtitle">Preparing your backtesting session...</div>
-
-            
-
+            <div class="loader-title">Talaria-Log</div>
+            <div class="loader-subtitle">Loading chart data...</div>
             <div class="loader-progress-container">
-
                 <div class="loader-progress-bar" id="loaderProgress"></div>
-
                 <div class="loader-progress-shimmer" aria-hidden="true"></div>
-
             </div>
-
+            <div class="loader-quote">"The market rewards patience, precision, and preparation."</div>
         </div>
-
+        <div class="loader-site">www.talaria-log.com</div>
     </div>
 
     
