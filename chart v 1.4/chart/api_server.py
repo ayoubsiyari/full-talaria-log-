@@ -11592,12 +11592,7 @@ async def get_file_smart(
         raw_first_cursor = str(candles[0]['t']) if candles else None
         raw_last_cursor = str(candles[-1]['t']) if candles else None
 
-        # Skip weekend filter for pre-aggregated bars (1d/1w/1mo): the source
-        # 1m data was already filtered; applying it again to daily/weekly/monthly
-        # bars removes valid bars whose UTC bucket timestamp falls on a weekend
-        # (e.g. FX Sunday-open daily bar → Sunday 00:00 UTC → Saturday NY → dropped).
-        if timeframe not in ('1d', '1w', '1mo'):
-            candles = _filter_weekend_candles(candles)
+        candles = _filter_weekend_candles(candles)
         candles = _smooth_isolated_candle_spikes(candles)
 
         # ── Build cursors ──
@@ -11739,8 +11734,7 @@ async def get_file_candles(
         raw_prev_cursor = str(candles[0]['t']) if candles else None
         raw_next_cursor = str(candles[-1]['t']) if candles else None
 
-        if timeframe not in ('1d', '1w', '1mo'):
-            candles = _filter_weekend_candles(candles)
+        candles = _filter_weekend_candles(candles)
         candles = _smooth_isolated_candle_spikes(candles)
 
         prev_cursor = raw_prev_cursor
