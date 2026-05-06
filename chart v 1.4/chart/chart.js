@@ -12619,7 +12619,7 @@ class Chart {
             } else if (isDailyOrHigher) {
                 label = monthNames[month] + ' ' + day;
             } else {
-                label = String(tzDate.getHours()).padStart(2,'0') + ':' + String(tzDate.getMinutes()).padStart(2,'0');
+                label = this._formatSessionClock(tzDate, false);
             }
             candidates.push({ idx, isBoundary: useBoundaryLabel, label });
         }
@@ -12650,7 +12650,7 @@ class Chart {
                 const tz2 = this.convertToTimezone(last.t + (ri - lastRealIdx) * timeframeMs);
                 const lbl = isDailyOrHigher
                     ? monthNames[tz2.getMonth()] + ' ' + tz2.getDate()
-                    : String(tz2.getHours()).padStart(2,'0') + ':' + String(tz2.getMinutes()).padStart(2,'0');
+                    : this._formatSessionClock(tz2, false);
                 candidates.push({ idx: ri, isBoundary: false, label: lbl });
             }
         }
@@ -13226,6 +13226,27 @@ class Chart {
             return window.timezoneManager.convertToTimezone(timestamp);
         }
         return new Date(timestamp);
+    }
+
+    /**
+     * Intraday clock string respecting Settings → Time format (12h / 24h).
+     * @param {Date} tzDate already converted via convertToTimezone
+     * @param {boolean} withSeconds include seconds (crosshair); axis ticks omit for readability
+     */
+    _formatSessionClock(tzDate, withSeconds) {
+        if (!tzDate || typeof tzDate.getTime !== 'function') return '';
+        const use12h = this.chartSettings && this.chartSettings.timeFormat === '12h';
+        if (use12h) {
+            const o = { hour: 'numeric', minute: '2-digit', hour12: true };
+            if (withSeconds) o.second = '2-digit';
+            return tzDate.toLocaleTimeString('en-US', o);
+        }
+        const hh = String(tzDate.getHours()).padStart(2, '0');
+        const mm = String(tzDate.getMinutes()).padStart(2, '0');
+        if (withSeconds) {
+            return `${hh}:${mm}:${String(tzDate.getSeconds()).padStart(2, '0')}`;
+        }
+        return `${hh}:${mm}`;
     }
 
     mapV9TimezoneLabelToId(label) {
@@ -17691,18 +17712,15 @@ class Chart {
                 const month = months[tzDate.getMonth()];
                 const day = tzDate.getDate();
                 const year = tzDate.getFullYear();
-                const hours = String(tzDate.getHours()).padStart(2, '0');
-                const minutes = String(tzDate.getMinutes()).padStart(2, '0');
-                const seconds = String(tzDate.getSeconds()).padStart(2, '0');
-                
-                // Format based on timeframe - match x-axis label style
+
+                // Format based on timeframe - match x-axis label style + Settings time format
                 let timeStr;
                 const isDailyOrHigher = timeframeMs >= 86400000; // 1 day or more
                 if (isDailyOrHigher) {
                     // Match x-axis format: "Apr 28" (no year)
                     timeStr = `${month} ${day}`;
                 } else {
-                    timeStr = `${month} ${day}, ${year}, ${hours}:${minutes}:${seconds}`;
+                    timeStr = `${month} ${day}, ${year}, ${this._formatSessionClock(tzDate, true)}`;
                 }
                 
                 timeLabel.textContent = timeStr;
@@ -20123,14 +20141,11 @@ class Chart {
             const month = months[tzDate.getMonth()];
             const day = tzDate.getDate();
             const year = tzDate.getFullYear();
-            const hours = String(tzDate.getHours()).padStart(2, '0');
-            const minutes = String(tzDate.getMinutes()).padStart(2, '0');
-            const seconds = String(tzDate.getSeconds()).padStart(2, '0');
             let timeStr;
             if (timeframeMs >= 86400000) {
                 timeStr = `${month} ${day}`;
             } else {
-                timeStr = `${month} ${day}, ${year}, ${hours}:${minutes}:${seconds}`;
+                timeStr = `${month} ${day}, ${year}, ${this._formatSessionClock(tzDate, true)}`;
             }
             const timeLabelBottom = Math.max(2, Math.floor(m.b * 0.2));
             timeLabel.textContent = timeStr;
