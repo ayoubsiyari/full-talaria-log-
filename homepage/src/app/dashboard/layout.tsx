@@ -250,7 +250,7 @@ const F = "'Exo 2', sans-serif";
 const VIEW_TITLES: Record<string, string> = {
   dashboard: "Dashboard",
   journal: "Journal",
-  backtest: "Backtest",
+  backtest: "Backtesting Sessions",
   strategies: "Strategies",
   resources: "Resources",
   support: "Support",
@@ -371,20 +371,20 @@ export default function DashboardLayout({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 6,
-                height: 34,
-                padding: "0 16px",
+                gap: 7,
+                height: 36,
+                padding: "0 20px",
                 background: "linear-gradient(135deg,#1e38e8,#4A6AFF)",
                 border: "none",
-                borderRadius: 6,
                 cursor: "pointer",
                 fontFamily: F,
-                fontSize: 11,
+                fontSize: 13,
                 fontWeight: 800,
                 color: "rgba(255,255,255,0.96)",
-                letterSpacing: "0.07em",
+                letterSpacing: "0.08em",
                 boxShadow: "0 2px 10px rgba(38,67,247,0.35)",
                 flexShrink: 0,
+                marginRight: 20,
               }}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1.12)";
@@ -392,10 +392,7 @@ export default function DashboardLayout({
               onMouseLeave={(e) => {
                 (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1)";
               }}>
-              <svg width={11} height={11} viewBox="0 0 24 24" fill="none" aria-hidden>
-                <line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-              </svg>
+              <span style={{ fontSize: 15, lineHeight: 1, marginTop: -1 }}>+</span>
               New Session
             </button>
           ) : null}

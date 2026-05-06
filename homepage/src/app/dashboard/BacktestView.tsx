@@ -225,6 +225,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   const [actMenu, setActMenu] = useState<ActMenu | null>(null);
   type StratPop = { id: number; x: number; y: number; name: string; desc: string };
   const [stratPop, setStratPop] = useState<StratPop | null>(null);
+  const contentFrameStyle: React.CSSProperties = { width: "fit-content", minWidth: 1288, margin: "0 auto" };
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -441,8 +442,9 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
       <div className="tlr-scroll" style={{ flex: 1, overflowY: "auto" }}>
 
         {/* ── 5 Stats Tiles ── */}
-        <div style={{ padding: "16px 32px 12px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "260px 1fr 185px 165px 200px", gap: 8, alignItems: "stretch" }}>
+        <div style={contentFrameStyle}>
+          <div style={{ padding: "16px 32px 12px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "260px 1fr 185px 165px 200px", gap: 8, alignItems: "stretch" }}>
 
             {/* Tile 1: Sessions & Mode */}
             <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
@@ -661,11 +663,13 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               <div style={{ fontSize: 8, color: c.tm, marginTop: 4 }}>top {topTickers.length} by sessions used in</div>
             </div>
 
+            </div>
           </div>
         </div>
 
         {/* ── Filter tabs + Layout toggle + Search ── */}
-        <div style={{ position: "sticky", top: 0, zIndex: 5, background: c.bg, padding: "0 32px", display: "flex", alignItems: "flex-end", height: 40, gap: 5, borderBottom: `1px solid ${c.brH}` }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 5, background: c.bg, borderBottom: `1px solid ${c.brH}` }}>
+          <div style={{ ...contentFrameStyle, display: "flex", alignItems: "flex-end", height: 40, gap: 5, padding: "0 32px" }}>
           {([["all","All"],["not-started","Not Started"],["active","Active"],["completed","Completed"],["standard","Standard"],["prop","Prop Firm"]] as [SessFilter, string][]).map(([v, l]) => {
             const isA = filter === v;
             const isProp = v === "prop";
@@ -772,11 +776,13 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               {searchQ && <div onClick={() => setSearchQ("")} style={{ cursor: "pointer", fontSize: 14, color: c.tm, lineHeight: 1 }}>×</div>}
             </div>
           </div>
+          </div>
         </div>
 
         {/* ── Column headers (rows mode, sticky below filter) ── */}
         {filteredSessions.length > 0 && layoutMode === "rows" && (
-          <div style={{ position: "sticky", top: 40, zIndex: 4, background: c.bg, padding: "0 32px", display: "flex", alignItems: "center", height: 26, borderBottom: `1px solid ${c.brH}` }}>
+          <div style={{ position: "sticky", top: 40, zIndex: 4, background: c.bg, borderBottom: `1px solid ${c.brH}` }}>
+            <div style={{ ...contentFrameStyle, display: "flex", alignItems: "center", height: 26, padding: "0 32px" }}>
             <div style={{ width: 96, flexShrink: 0 }} />
             {([
               ["Session", 110, "name"], ["Strategy", 100, "strategy"], ["Mode", 74, "mode"], ["Asset", 90, "asset"],
@@ -810,11 +816,13 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                 </div>
               );
             })}
+            </div>
           </div>
         )}
 
         {/* ── Session list ── */}
-        <div style={{ padding: "0 32px 24px" }}>
+        <div style={contentFrameStyle}>
+          <div style={{ padding: "0 32px 24px" }}>
           {sessions.length === 0 ? (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "50vh", textAlign: "center" }}>
               <svg width={56} height={56} viewBox="0 0 24 24" fill="none" style={{ marginBottom: 18, color: c.tm, opacity: 0.5 }}><rect x="3" y="3" width="18" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.2" /><line x1="7" y1="8" x2="17" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><line x1="7" y1="12" x2="13" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
@@ -1309,6 +1317,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               )}
             </div>
           )}
+          </div>
         </div>
       </div>
 
