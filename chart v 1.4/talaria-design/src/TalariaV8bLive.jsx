@@ -87,25 +87,25 @@ function getV9ChartBarTimeMs(chart) {
 function formatV9HudDateLine(ms) {
   if (!Number.isFinite(ms)) return "—";
   const tm = typeof window !== "undefined" ? window.timezoneManager : null;
-  const useUtc = !tm || typeof tm.convertToTimezone !== "function";
-  const d = useUtc ? new Date(ms) : tm.convertToTimezone(ms);
+  const d =
+    tm && typeof tm.convertToTimezone === "function" ? tm.convertToTimezone(ms) : new Date(ms);
   const days = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
   const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-  const day = useUtc ? d.getUTCDate() : d.getDate();
-  const month = useUtc ? d.getUTCMonth() : d.getMonth();
-  const dow = useUtc ? d.getUTCDay() : d.getDay();
-  const year = useUtc ? d.getUTCFullYear() : d.getFullYear();
+  const day = d.getUTCDate();
+  const month = d.getUTCMonth();
+  const dow = d.getUTCDay();
+  const year = d.getUTCFullYear();
   return `${days[dow]} ${String(day).padStart(2, "0")} ${months[month]} '${String(year % 100).padStart(2, "0")}`;
 }
 
 function formatV9HudClock(ms, use12h) {
   if (!Number.isFinite(ms)) return "—";
   const tm = typeof window !== "undefined" ? window.timezoneManager : null;
-  const useUtc = !tm || typeof tm.convertToTimezone !== "function";
-  const d = useUtc ? new Date(ms) : tm.convertToTimezone(ms);
-  const hh = useUtc ? d.getUTCHours() : d.getHours();
-  const mm = useUtc ? d.getUTCMinutes() : d.getMinutes();
-  const ss = useUtc ? d.getUTCSeconds() : d.getSeconds();
+  const d =
+    tm && typeof tm.convertToTimezone === "function" ? tm.convertToTimezone(ms) : new Date(ms);
+  const hh = d.getUTCHours();
+  const mm = d.getUTCMinutes();
+  const ss = d.getUTCSeconds();
   const pad = (n) => String(n).padStart(2, "0");
   const raw = `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
   if (!use12h) return raw;

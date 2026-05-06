@@ -645,8 +645,8 @@ class Chart {
             this.render();
         }, 100);
         
-        // Listen for timezone changes (only for main chart)
-        if (!this.isPanel && window.timezoneManager) {
+        // Listen for timezone changes (main + panel charts so axes/crosshairs stay in sync)
+        if (window.timezoneManager) {
             window.timezoneManager.addListener(() => {
                 this.scheduleRender();
             });
@@ -9710,12 +9710,14 @@ class Chart {
                 // Convert to current timezone
                 const tm = window.timezoneManager;
                 const d = tm ? tm.convertToTimezone(currentBar.t) : new Date(currentBar.t);
-                const year = d.getFullYear();
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const day = String(d.getDate()).padStart(2, '0');
+                const year = tm ? d.getUTCFullYear() : d.getFullYear();
+                const month = String((tm ? d.getUTCMonth() : d.getMonth()) + 1).padStart(2, '0');
+                const day = String(tm ? d.getUTCDate() : d.getDate()).padStart(2, '0');
                 dateInput.value = `${year}-${month}-${day}`;
                 if (timeInput) {
-                    timeInput.value = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                    const hh = tm ? d.getUTCHours() : d.getHours();
+                    const mi = tm ? d.getUTCMinutes() : d.getMinutes();
+                    timeInput.value = `${String(hh).padStart(2,'0')}:${String(mi).padStart(2,'0')}`;
                 }
             }
         }
@@ -9735,9 +9737,8 @@ class Chart {
                 if (![year, month, day, hour, minute].every(Number.isFinite)) return;
 
                 const tm = window.timezoneManager;
-                const utcTimestamp = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
-                const targetTimestamp = tm
-                    ? (utcTimestamp - tm.getOffsetMs())
+                const targetTimestamp = tm && typeof tm.wallClockToUtcMillis === 'function'
+                    ? tm.wallClockToUtcMillis(year, month, day, hour, minute, 0)
                     : new Date(year, month - 1, day, hour, minute, 0).getTime();
                 
                 if (!Number.isNaN(targetTimestamp)) {
@@ -10797,9 +10798,8 @@ class Chart {
             }
 
             const tm = window.timezoneManager;
-            const utcTimestamp = Date.UTC(year, month - 1, day, hour, minute, second, 0);
-            const targetTimestamp = tm
-                ? (utcTimestamp - tm.getOffsetMs())
+            const targetTimestamp = tm && typeof tm.wallClockToUtcMillis === 'function'
+                ? tm.wallClockToUtcMillis(year, month, day, hour, minute, second)
                 : new Date(year, month - 1, day, hour, minute, second, 0).getTime();
             const targetDate = new Date(targetTimestamp);
 
@@ -12570,7 +12570,7 @@ class Chart {
             const candle = this.data[idx];
             if (!candle || !candle.t) continue;
             const tzDate = this.convertToTimezone(candle.t);
-            const day = tzDate.getDate(), month = tzDate.getMonth(), year = tzDate.getFullYear();
+            const day = tzDate.getUTCDate(), month = tzDate.getUTCMonth(), year = tzDate.getUTCFullYear();
 
             // Detect boundary
             let isBoundary = false, boundaryLabel = null;
@@ -12649,7 +12649,7 @@ class Chart {
                 const ri  = Math.round(futureIdx);
                 const tz2 = this.convertToTimezone(last.t + (ri - lastRealIdx) * timeframeMs);
                 const lbl = isDailyOrHigher
-                    ? monthNames[tz2.getMonth()] + ' ' + tz2.getDate()
+                    ? monthNames[tz2.getUTCMonth()] + ' ' + tz2.getUTCDate()
                     : this._formatSessionClock(tz2, false);
                 candidates.push({ idx: ri, isBoundary: false, label: lbl });
             }
@@ -13218,8 +13218,7 @@ class Chart {
     }
     
     /**
-     * Convert a date to the selected timezone
-     * Uses timezone manager if available, otherwise returns original date
+     * Session wall-clock time as a Date (UTC getters = selected IANA zone when timezoneManager exists).
      */
     convertToTimezone(timestamp) {
         if (window.timezoneManager) {
@@ -13230,21 +13229,21 @@ class Chart {
 
     /**
      * Intraday clock string respecting Settings → Time format (12h / 24h).
-     * @param {Date} tzDate already converted via convertToTimezone
+     * @param {Date} tzDate from convertToTimezone (UTC getters = session wall clock)
      * @param {boolean} withSeconds include seconds (crosshair); axis ticks omit for readability
      */
     _formatSessionClock(tzDate, withSeconds) {
         if (!tzDate || typeof tzDate.getTime !== 'function') return '';
         const use12h = this.chartSettings && this.chartSettings.timeFormat === '12h';
         if (use12h) {
-            const o = { hour: 'numeric', minute: '2-digit', hour12: true };
+            const o = { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'UTC' };
             if (withSeconds) o.second = '2-digit';
             return tzDate.toLocaleTimeString('en-US', o);
         }
-        const hh = String(tzDate.getHours()).padStart(2, '0');
-        const mm = String(tzDate.getMinutes()).padStart(2, '0');
+        const hh = String(tzDate.getUTCHours()).padStart(2, '0');
+        const mm = String(tzDate.getUTCMinutes()).padStart(2, '0');
         if (withSeconds) {
-            return `${hh}:${mm}:${String(tzDate.getSeconds()).padStart(2, '0')}`;
+            return `${hh}:${mm}:${String(tzDate.getUTCSeconds()).padStart(2, '0')}`;
         }
         return `${hh}:${mm}`;
     }
@@ -13302,17 +13301,17 @@ class Chart {
         const use12h = this.chartSettings && this.chartSettings.timeFormat === '12h';
         const formatHourMinute = (d) => {
             if (use12h) {
-                return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'UTC' });
             }
-            const hours = String(d.getHours()).padStart(2, '0');
-            const minutes = String(d.getMinutes()).padStart(2, '0');
+            const hours = String(d.getUTCHours()).padStart(2, '0');
+            const minutes = String(d.getUTCMinutes()).padStart(2, '0');
             return `${hours}:${minutes}`;
         };
         const formatHourOnly = (d) => {
             if (use12h) {
-                return d.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+                return d.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true, timeZone: 'UTC' });
             }
-            return String(d.getHours()).padStart(2, '0');
+            return String(d.getUTCHours()).padStart(2, '0');
         };
         
         // Format based on timeframe first, then adjust for zoom level
@@ -13320,8 +13319,8 @@ class Chart {
             // 1-minute timeframe: always show time
             if (visibleBarsCount > 200) {
                 // Very zoomed out: show date and hour
-                const month = tzDate.toLocaleString('en-US', { month: 'short' });
-                const day = tzDate.getDate();
+                const month = tzDate.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+                const day = tzDate.getUTCDate();
                 return `${month} ${day}, ${formatHourOnly(tzDate)}`;
             } else {
                 // Normal/zoomed in: show hour and minute (HH:MM format)
@@ -13331,8 +13330,8 @@ class Chart {
             // 5-minute timeframe: show time
             if (visibleBarsCount > 150) {
                 // Zoomed out: show date and hour
-                const month = tzDate.toLocaleString('en-US', { month: 'short' });
-                const day = tzDate.getDate();
+                const month = tzDate.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+                const day = tzDate.getUTCDate();
                 return `${month} ${day}, ${formatHourOnly(tzDate)}`;
             } else {
                 // Normal/zoomed in: show hour and minute
@@ -13345,66 +13344,66 @@ class Chart {
             // 1-hour timeframe: show hours
             if (visibleBarsCount > 200) {
                 // Very zoomed out: show date only
-                const month = tzDate.toLocaleString('en-US', { month: 'short' });
-                const day = tzDate.getDate();
+                const month = tzDate.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+                const day = tzDate.getUTCDate();
                 return `${month} ${day}`;
             } else if (visibleBarsCount > 100) {
                 // Zoomed out: show date and hour
-                const month = tzDate.toLocaleString('en-US', { month: 'short' });
-                const day = tzDate.getDate();
+                const month = tzDate.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+                const day = tzDate.getUTCDate();
                 return `${month} ${day}, ${formatHourOnly(tzDate)}`;
             } else {
                 // Normal/zoomed in: show hour only (HH:00 format)
                 if (use12h) return formatHourOnly(tzDate);
-                const hours = String(tzDate.getHours()).padStart(2, '0');
+                const hours = String(tzDate.getUTCHours()).padStart(2, '0');
                 return `${hours}:00`;
             }
         } else if (timeframe === '4h') {
             // 4-hour timeframe
             if (visibleBarsCount > 150) {
                 // Zoomed out: show month and day
-                const month = tzDate.toLocaleString('en-US', { month: 'short' });
-                const day = tzDate.getDate();
+                const month = tzDate.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+                const day = tzDate.getUTCDate();
                 return `${month} ${day}`;
             } else {
                 // Normal/zoomed in: show day and hour
-                const month = tzDate.toLocaleString('en-US', { month: 'short' });
-                const day = tzDate.getDate();
+                const month = tzDate.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+                const day = tzDate.getUTCDate();
                 return `${month} ${day}, ${formatHourOnly(tzDate)}`;
             }
         } else if (timeframe === '1d') {
             // Daily timeframe
             if (visibleBarsCount > 200) {
                 // Zoomed out: show month and year
-                const month = tzDate.toLocaleString('en-US', { month: 'short' });
-                const year = tzDate.getFullYear();
+                const month = tzDate.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+                const year = tzDate.getUTCFullYear();
                 return `${month} ${year}`;
             } else {
                 // Normal/zoomed in: show month and day
-                const month = tzDate.toLocaleString('en-US', { month: 'short' });
-                const day = tzDate.getDate();
+                const month = tzDate.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+                const day = tzDate.getUTCDate();
                 return `${month} ${day}`;
             }
         } else if (timeframe === '1w') {
             // Weekly timeframe
             if (visibleBarsCount > 100) {
                 // Zoomed out: show year
-                return String(tzDate.getFullYear());
+                return String(tzDate.getUTCFullYear());
             } else {
                 // Normal/zoomed in: show month and year
-                const month = tzDate.toLocaleString('en-US', { month: 'short' });
-                const year = tzDate.getFullYear();
+                const month = tzDate.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+                const year = tzDate.getUTCFullYear();
                 return `${month} ${year}`;
             }
         } else {
             // Monthly or other timeframes
             if (visibleBarsCount > 50) {
                 // Zoomed out: show year
-                return String(tzDate.getFullYear());
+                return String(tzDate.getUTCFullYear());
             } else {
                 // Normal/zoomed in: show month and year
-                const month = tzDate.toLocaleString('en-US', { month: 'short' });
-                const year = tzDate.getFullYear();
+                const month = tzDate.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+                const year = tzDate.getUTCFullYear();
                 return `${month} ${year}`;
             }
         }
@@ -14785,12 +14784,12 @@ class Chart {
 
     showEconomicCalendarTooltip(ev, clientX, clientY) {
         const el = this.ensureEconomicCalendarTooltipEl();
-        const tzDate = typeof this.convertToTimezone === 'function'
-            ? this.convertToTimezone(ev.t)
-            : new Date(ev.t);
-        const timeStr = tzDate.toLocaleString(undefined, {
+        const tm = typeof window !== 'undefined' ? window.timezoneManager : null;
+        const tzId = tm && tm.currentTimezone ? tm.currentTimezone.id : undefined;
+        const timeStr = new Date(ev.t).toLocaleString(undefined, {
             month: 'short', day: 'numeric', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
+            hour: '2-digit', minute: '2-digit',
+            ...(tzId ? { timeZone: tzId } : {})
         });
         const impactLabel = ev.impact === 'high' ? 'High' : (ev.impact === 'medium' ? 'Medium' : ev.impact || '—');
         const esc = (s) => this._escapeHtmlForEconTooltip(s);
@@ -17709,9 +17708,9 @@ class Chart {
             if (timestamp && timestamp > 0) {
                 const tzDate = this.convertToTimezone(timestamp);
                 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                const month = months[tzDate.getMonth()];
-                const day = tzDate.getDate();
-                const year = tzDate.getFullYear();
+                const month = months[tzDate.getUTCMonth()];
+                const day = tzDate.getUTCDate();
+                const year = tzDate.getUTCFullYear();
 
                 // Format based on timeframe - match x-axis label style + Settings time format
                 let timeStr;
@@ -17885,16 +17884,18 @@ class Chart {
         
         const date = this.convertToTimezone(candle.t);
         const use12h = this.chartSettings && this.chartSettings.timeFormat === '12h';
-        const dateStr = date.toLocaleDateString('en-US', { 
+        const dateStr = date.toLocaleDateString('en-US', {
             weekday: 'short',
-            year: 'numeric', 
-            month: 'short', 
-            day: 'numeric' 
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            timeZone: 'UTC'
         });
-        const timeStr = date.toLocaleTimeString('en-US', { 
+        const timeStr = date.toLocaleTimeString('en-US', {
             hour: use12h ? 'numeric' : '2-digit',
             minute: '2-digit',
-            hour12: !!use12h
+            hour12: !!use12h,
+            timeZone: 'UTC'
         });
         
         const _tooltipDec = this.getPriceDecimals(
@@ -20138,9 +20139,9 @@ class Chart {
             }
             const tzDate = this.convertToTimezone(labelTimestamp);
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const month = months[tzDate.getMonth()];
-            const day = tzDate.getDate();
-            const year = tzDate.getFullYear();
+            const month = months[tzDate.getUTCMonth()];
+            const day = tzDate.getUTCDate();
+            const year = tzDate.getUTCFullYear();
             let timeStr;
             if (timeframeMs >= 86400000) {
                 timeStr = `${month} ${day}`;
