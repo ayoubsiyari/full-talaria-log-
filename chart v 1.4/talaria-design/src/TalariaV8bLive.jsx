@@ -8618,7 +8618,7 @@ const TalariaV8bLive = () => {
                 e.currentTarget.classList.toggle("show-tooltip");
               }}
             >
-              <div className="nav-badge-icon" style={{ width: 40, height: 40 }}>
+              <div className="nav-badge-icon" style={{ width: 40, height: 40, border: "none", background: "transparent" }}>
                 {/* Exact replay-bar rollback icon */}
                 <svg className="nav-badge-go-back" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ width: 18, height: 18 }}>
                   <circle cx="12" cy="12" r="12" fill="currentColor" opacity="0.14" />
