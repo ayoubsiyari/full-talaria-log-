@@ -921,6 +921,7 @@
                             pcChart.rawData = main.rawData;
                             try { pcChart.data = pcChart.resampleData(main.rawData, panel.timeframe || '1m'); } catch(_){}
                             pcChart.currentSymbol = main.currentSymbol;
+                            pcChart.currentFileId = main.currentFileId;
                             pcChart.totalCandles = main.totalCandles;
                         }
                         // Carry over drawings.
@@ -1013,6 +1014,7 @@
                     if (!hasOwnPairData) {
                         if (chart && chart.currentSymbol) {
                             panel.chartInstance.currentSymbol = chart.currentSymbol;
+                            panel.chartInstance.currentFileId = chart.currentFileId;
                         }
                         panel.chartInstance.rawData = chart.rawData || [];
                         panel.chartInstance.data = panel.chartInstance.resampleData(
