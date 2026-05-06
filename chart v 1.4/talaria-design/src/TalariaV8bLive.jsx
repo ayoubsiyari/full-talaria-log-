@@ -4700,13 +4700,6 @@ const TalariaV8bLive = () => {
   }, [layoutSync.interval, layoutSync.time, layoutSync.symbol]);
 
   useEffect(() => {
-    if (!layoutSync.indicators) return;
-    const pm = window.panelManager;
-    if (!pm || typeof pm.syncIndicatorsNow !== "function" || (pm.panels || []).length <= 1) return;
-    try { pm.syncIndicatorsNow(); } catch (_) {}
-  }, [indActive, layoutSync.indicators]);
-
-  useEffect(() => {
     if (!layoutSync.chartType) return;
     const pm = window.panelManager;
     if (!pm || typeof pm.syncChartTypeNow !== "function" || (pm.panels || []).length <= 1) return;
