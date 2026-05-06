@@ -12481,6 +12481,17 @@ class Chart {
      *   4. Range-based heuristic for unregistered symbols.
      */
     getPriceDecimals(priceRange) {
+        const decimalsFromStep = (step) => {
+            const n = Number(step);
+            if (!Number.isFinite(n) || n <= 0) return null;
+            const s = String(n).toLowerCase();
+            if (s.includes('e-')) {
+                const e = parseInt(s.split('e-')[1], 10);
+                return Number.isFinite(e) ? e : null;
+            }
+            const dot = s.indexOf('.');
+            return dot === -1 ? 0 : (s.length - dot - 1);
+        };
         const override = this.chartSettings && this.chartSettings.pricePrecision;
         if (override && override !== 'default') {
             const n = parseInt(override, 10);
@@ -12519,6 +12530,45 @@ class Chart {
                     }
                 }
             } catch (_) { /* registry miss — fall through */ }
+        }
+        // If registry wasn't available/resolved (common in some V9 flows), derive precision
+        // from the active session instrument map to avoid coarse FX labels like 1.234 -> 1.235.
+        if (this.currentSymbol && this.orderService && this.orderService.multiInstrumentSession
+            && this.orderService.multiInstrumentSession.instruments) {
+            try {
+                const map = this.orderService.multiInstrumentSession.instruments;
+                const raw = String(this.currentSymbol || '').toUpperCase();
+                const compact = raw.replace(/[/\-\s]/g, '');
+                const segs = raw
+                    .split(/[/\-_.\s]+/)
+                    .map((x) => (x || '').toUpperCase())
+                    .filter((x) => /^[A-Z0-9]{2,}$/.test(x));
+                const candidates = [compact, raw, ...segs].filter(Boolean);
+                let inst = null;
+                for (const key of candidates) {
+                    if (map[key]) {
+                        inst = map[key];
+                        break;
+                    }
+                }
+                if (inst) {
+                    const p = decimalsFromStep(inst.precision);
+                    if (Number.isFinite(p) && p >= 0) {
+                        this._symbolPrecision = p;
+                        return p;
+                    }
+                    const fromTick = decimalsFromStep(inst.tick_size ?? inst.tickSize);
+                    if (Number.isFinite(fromTick) && fromTick >= 0) {
+                        this._symbolPrecision = fromTick;
+                        return fromTick;
+                    }
+                    const fromPip = decimalsFromStep(inst.pip_size ?? inst.pipSize);
+                    if (Number.isFinite(fromPip) && fromPip >= 0) {
+                        this._symbolPrecision = fromPip;
+                        return fromPip;
+                    }
+                }
+            } catch (_) { /* keep fallback */ }
         }
         if (Number.isFinite(this._symbolPrecision) && this._symbolPrecision >= 0) {
             return this._symbolPrecision;
