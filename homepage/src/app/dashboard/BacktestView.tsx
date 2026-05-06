@@ -683,7 +683,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
 
         {/* ── Filter tabs + Layout toggle + Search ── */}
         <div style={{ position: "sticky", top: 0, zIndex: 5, background: c.bg }}>
-          <div style={{ ...contentFrameStyle, display: "flex", alignItems: "flex-end", height: 40, gap: 5, padding: "0 32px", borderBottom: `1px solid ${c.brH}` }}>
+          <div style={{ ...contentFrameStyle, display: "flex", alignItems: "flex-end", height: 40, gap: 5, padding: "0 32px", borderBottom: `1px solid ${c.brH}`, direction: "ltr" }}>
           {([["all","All"],["not-started","Not Started"],["active","Active"],["completed","Completed"],["standard","Standard"],["prop","Prop Firm"]] as [SessFilter, string][]).map(([v, l]) => {
             const isA = filter === v;
             const isProp = v === "prop";
@@ -692,43 +692,34 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
             return (
               <div key={v} onClick={() => { setFilter(v); setCardSortOpen(false); }}
                 onMouseEnter={e => { if (!isA) { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.06)"; (e.currentTarget as HTMLDivElement).style.color = c.tx; } }}
-                onMouseLeave={e => { if (!isA) { (e.currentTarget as HTMLDivElement).style.background = "transparent"; (e.currentTarget as HTMLDivElement).style.color = c.ts; } }}
+                onMouseLeave={e => { if (!isA) { (e.currentTarget as HTMLDivElement).style.background = "transparent"; (e.currentTarget as HTMLDivElement).style.color = tabCol; } }}
                 style={{
                   height: 26,
                   display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "flex-end",
-                  alignItems: "flex-start",
+                  alignItems: "flex-end",
                   padding: "0 12px",
                   cursor: "pointer",
                   color: tabCol,
                   background: tabBg,
-                  fontSize: 9,
-                  fontWeight: 800,
-                  letterSpacing: "0.07em",
-                  textTransform: "uppercase" as const,
                   flexShrink: 0,
                   userSelect: "none",
                 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, position: "relative", width: "fit-content", paddingBottom: 3 }}>
+                {/* `inline-flex` + border-block-end: underline width === label + badge only (no absolute positioning / glow bleed). */}
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 9,
+                    fontWeight: 800,
+                    letterSpacing: "0.07em",
+                    textTransform: "uppercase" as const,
+                    paddingBottom: 4,
+                    borderBottom: isA ? `3px solid ${isProp ? c.gold : c.acL}` : "3px solid transparent",
+                    boxSizing: "border-box" as const,
+                  }}>
                   {l}
                   <span style={{ fontSize: 8, fontWeight: 700, background: isA ? (isProp ? "rgba(201,168,76,0.18)" : "rgba(74,106,255,0.2)") : "rgba(255,255,255,0.07)", color: isA ? (isProp ? "rgba(255,255,255,0.9)" : c.ts) : tabCol, padding: "2px 6px", minWidth: 18, textAlign: "center" as const, fontVariantNumeric: "tabular-nums" }}>{getCount(v)}</span>
-                  {isA ? (
-                    <div
-                      aria-hidden
-                      style={{
-                        position: "absolute",
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        height: 2,
-                        borderRadius: 1,
-                        background: isProp ? c.gold : c.acL,
-                        filter: `drop-shadow(0 2px 5px ${isProp ? "rgba(201,168,76,0.65)" : "rgba(74,106,255,0.55)"})`,
-                        pointerEvents: "none",
-                      }}
-                    />
-                  ) : null}
                 </div>
               </div>
             );
