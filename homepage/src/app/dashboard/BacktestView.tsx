@@ -105,6 +105,33 @@ function getProgress(sess: Session, k?: Kpis): number {
   return Math.min(99, Math.max(1, Math.round((elapsed / total) * 100)));
 }
 
+/**
+ * Calendar days of simulated range that have actually elapsed — not the full configured span up-front.
+ * Not-started sessions contribute 0; in-progress sessions grow toward the configured end date; finished sessions use full start→end.
+ */
+function effectiveTestedDays(sess: Session, k: Kpis | undefined, nowMs: number): number {
+  if (!sess.start_date) return 0;
+  const progress = getProgress(sess, k);
+  if (progress === 0) return 0;
+
+  const startMs = new Date(sess.start_date).getTime();
+  if (!Number.isFinite(startMs)) return 0;
+
+  const endCfgMs = sess.end_date ? new Date(sess.end_date).getTime() : NaN;
+
+  let endMs: number;
+  if (progress >= 100 && Number.isFinite(endCfgMs)) {
+    endMs = endCfgMs;
+  } else if (Number.isFinite(endCfgMs)) {
+    endMs = Math.min(nowMs, endCfgMs);
+  } else {
+    endMs = nowMs;
+  }
+
+  const days = Math.round((endMs - startMs) / 86400000);
+  return Math.max(0, days);
+}
+
 function fmtMoney(n: number | null | undefined): string {
   if (n == null) return "—";
   const sign = n >= 0 ? "+" : "";
@@ -232,7 +259,14 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   const [actMenu, setActMenu] = useState<ActMenu | null>(null);
   type StratPop = { id: number; x: number; y: number; name: string; desc: string };
   const [stratPop, setStratPop] = useState<StratPop | null>(null);
+  /** Recompute elapsed “days tested” on a cadence so active sessions tick forward with real time. */
+  const [, setDayClock] = useState(0);
   const contentFrameStyle: React.CSSProperties = { width: "fit-content", minWidth: 1288, margin: "0 auto" };
+
+  useEffect(() => {
+    const id = window.setInterval(() => setDayClock((x) => x + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -285,10 +319,8 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   const profSess = withPnl.filter(s => (kpis[s.id]?.net_pnl ?? 0) > 0).length;
   const profPct  = withPnl.length ? Math.round((profSess / withPnl.length) * 100) : 0;
 
-  const totalDays = sessions.reduce((a, s) => {
-    if (!s.start_date || !s.end_date) return a;
-    return a + Math.max(0, Math.round((new Date(s.end_date).getTime() - new Date(s.start_date).getTime()) / 86400000));
-  }, 0);
+  const nowMs = Date.now();
+  const totalDays = sessions.reduce((a, s) => a + effectiveTestedDays(s, kpis[s.id], nowMs), 0);
 
   const tickerFreq: Record<string, number> = {};
   sessions.forEach(s => {
@@ -620,7 +652,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                   </svg>
                 );
               })()}
-              <div style={{ fontSize: 8, color: c.tm, fontFamily: F, marginTop: 4 }}>each square ≈ 1 month</div>
+              <div style={{ fontSize: 8, color: c.tm, fontFamily: F, marginTop: 4 }}>each square ≈ 1 month of elapsed tested range</div>
             </div>
 
             {/* Tile 5: Tickers Tested — parity with dashboardV8.jsx */}
@@ -678,19 +710,21 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                   flexShrink: 0,
                   userSelect: "none",
                 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, position: "relative", paddingBottom: 2 }}>
-                  <span style={{ fontSize: 8, fontWeight: 700, background: isA ? (isProp ? "rgba(201,168,76,0.18)" : "rgba(74,106,255,0.2)") : "rgba(255,255,255,0.07)", color: tabCol, padding: "2px 6px", minWidth: 18, textAlign: "center" as const, fontVariantNumeric: "tabular-nums" }}>{getCount(v)}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, position: "relative", width: "fit-content", paddingBottom: 3 }}>
                   {l}
+                  <span style={{ fontSize: 8, fontWeight: 700, background: isA ? (isProp ? "rgba(201,168,76,0.18)" : "rgba(74,106,255,0.2)") : "rgba(255,255,255,0.07)", color: isA ? (isProp ? "rgba(255,255,255,0.9)" : c.ts) : tabCol, padding: "2px 6px", minWidth: 18, textAlign: "center" as const, fontVariantNumeric: "tabular-nums" }}>{getCount(v)}</span>
                   {isA ? (
                     <div
+                      aria-hidden
                       style={{
                         position: "absolute",
                         left: 0,
                         right: 0,
                         bottom: 0,
                         height: 2,
-                        background: `linear-gradient(90deg,transparent,${isProp ? c.gold : c.acL},transparent)`,
-                        boxShadow: `0 0 6px ${isProp ? c.gold : c.acL}`,
+                        borderRadius: 1,
+                        background: isProp ? c.gold : c.acL,
+                        filter: `drop-shadow(0 2px 5px ${isProp ? "rgba(201,168,76,0.65)" : "rgba(74,106,255,0.55)"})`,
                         pointerEvents: "none",
                       }}
                     />
