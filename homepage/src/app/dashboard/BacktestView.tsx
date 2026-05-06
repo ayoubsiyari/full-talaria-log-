@@ -661,10 +661,41 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               <div key={v} onClick={() => { setFilter(v); setCardSortOpen(false); }}
                 onMouseEnter={e => { if (!isA) { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.06)"; (e.currentTarget as HTMLDivElement).style.color = c.tx; } }}
                 onMouseLeave={e => { if (!isA) { (e.currentTarget as HTMLDivElement).style.background = "transparent"; (e.currentTarget as HTMLDivElement).style.color = c.ts; } }}
-                style={{ position: "relative", height: 26, display: "flex", alignItems: "center", gap: 6, padding: "0 12px", cursor: "pointer", color: tabCol, background: tabBg, fontSize: 9, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase" as const, flexShrink: 0, userSelect: "none" }}>
-                <span style={{ fontSize: 8, fontWeight: 700, background: isA ? (isProp ? "rgba(201,168,76,0.18)" : "rgba(74,106,255,0.2)") : "rgba(255,255,255,0.07)", color: tabCol, padding: "2px 6px", minWidth: 18, textAlign: "center" as const, fontVariantNumeric: "tabular-nums" }}>{getCount(v)}</span>
-                {l}
-                {isA && <div style={{ position: "absolute", bottom: 0, left: "10%", right: "10%", height: 1.5, background: `linear-gradient(90deg,transparent,${isProp ? c.gold : c.acL},transparent)` }} />}
+                style={{
+                  height: 26,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "flex-end",
+                  alignItems: "flex-start",
+                  padding: "0 12px",
+                  cursor: "pointer",
+                  color: tabCol,
+                  background: tabBg,
+                  fontSize: 9,
+                  fontWeight: 800,
+                  letterSpacing: "0.07em",
+                  textTransform: "uppercase" as const,
+                  flexShrink: 0,
+                  userSelect: "none",
+                }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, position: "relative", paddingBottom: 2 }}>
+                  <span style={{ fontSize: 8, fontWeight: 700, background: isA ? (isProp ? "rgba(201,168,76,0.18)" : "rgba(74,106,255,0.2)") : "rgba(255,255,255,0.07)", color: tabCol, padding: "2px 6px", minWidth: 18, textAlign: "center" as const, fontVariantNumeric: "tabular-nums" }}>{getCount(v)}</span>
+                  {l}
+                  {isA ? (
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: 2,
+                        background: `linear-gradient(90deg,transparent,${isProp ? c.gold : c.acL},transparent)`,
+                        boxShadow: `0 0 6px ${isProp ? c.gold : c.acL}`,
+                        pointerEvents: "none",
+                      }}
+                    />
+                  ) : null}
+                </div>
               </div>
             );
           })}
