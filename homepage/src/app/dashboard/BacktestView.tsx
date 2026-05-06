@@ -538,7 +538,11 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               {(() => {
                 const svgW = 422, maxH = 96, barGap = 2;
                 const barsN = trBars.length || 1;
-                const barW = Math.max(2, Math.floor((svgW - barGap * (barsN - 1)) / barsN));
+                const autoBarW = Math.floor((svgW - barGap * (barsN - 1)) / barsN);
+                // Prevent oversized bars when there are only a few sessions (1-6),
+                // while preserving dense rendering for larger counts.
+                const maxBarW = barsN <= 1 ? 26 : barsN <= 3 ? 22 : barsN <= 6 ? 16 : Number.POSITIVE_INFINITY;
+                const barW = Math.max(2, Math.min(autoBarW, maxBarW));
                 const usedW = barsN * barW + barGap * (barsN - 1);
                 const ox = Math.floor((svgW - usedW) / 2);
                 return (
