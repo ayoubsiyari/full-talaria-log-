@@ -551,7 +551,6 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                 <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const }}>Total Trades</div>
                 <div style={{ fontSize: 18, fontWeight: 800, color: c.tx, fontVariantNumeric: "tabular-nums" }}>{totalTrades.toLocaleString()}</div>
               </div>
-              <div style={{ flex: 1 }} />
               {tradeTip && (
                 <div style={{
                   position: "fixed",
@@ -596,34 +595,56 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                 </div>
               )}
               {(() => {
-                const svgW = 422, maxH = 96, barGap = 2;
-                const barsN = trBars.length || 1;
-                const autoBarW = Math.floor((svgW - barGap * (barsN - 1)) / barsN);
-                // Prevent oversized bars when there are only a few sessions (1-6),
-                // while preserving dense rendering for larger counts.
-                const maxBarW = barsN <= 1 ? 26 : barsN <= 3 ? 22 : barsN <= 6 ? 16 : Number.POSITIVE_INFINITY;
-                const barW = Math.max(2, Math.min(autoBarW, maxBarW));
-                const usedW = barsN * barW + barGap * (barsN - 1);
-                const ox = Math.floor((svgW - usedW) / 2);
+                const vbW = 420;
+                const chartH = 72;
+                const barGap = barsN => (barsN <= 6 ? 6 : barsN <= 12 ? 4 : 2);
+                const barsN = Math.max(1, trBars.length);
+                const gap = barGap(barsN);
+                const barW = Math.max(4, Math.floor((vbW - gap * (barsN - 1)) / barsN));
+                const usedW = barsN * barW + gap * (barsN - 1);
+                const ox = Math.floor((vbW - usedW) / 2);
+                const baselineY = chartH - 4;
+                const plotH = chartH - 6;
                 return (
-                  <svg width={svgW} height={maxH} style={{ display: "block", flex: "none", marginBottom: 2 }}>
-                    {trBars.map((s, i) => {
-                      const t = kpis[s.id]?.trades || 0;
-                      const h = t ? Math.max(3, Math.round((t / trMax) * maxH)) : 2;
-                      const col = s.session_type === "propfirm" ? c.gold : c.acL;
-                      const isH = tradeTip?.sess.id === s.id;
-                      return (
-                        <rect key={s.id} x={ox + i * (barW + barGap)} y={maxH - h} width={barW} height={h}
-                          fill={col} opacity={isH ? 1 : 0.82}
-                          style={{ cursor: "default", filter: isH ? "brightness(1.6)" : "none" }}
-                          onMouseEnter={e => {
-                            const r = e.currentTarget.getBoundingClientRect();
-                            setTradeTip({ sess: s, bx: r.left + r.width / 2, by: r.bottom, col });
-                          }}
-                          onMouseLeave={() => setTradeTip(null)} />
-                      );
-                    })}
-                  </svg>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", width: "100%", minHeight: 76 }}>
+                    <svg
+                      width="100%"
+                      height={chartH}
+                      viewBox={`0 0 ${vbW} ${chartH}`}
+                      preserveAspectRatio="xMidYMax meet"
+                      style={{ display: "block", flexShrink: 0 }}
+                    >
+                      <line x1={12} y1={baselineY} x2={vbW - 12} y2={baselineY} stroke="rgba(140,160,255,0.12)" strokeWidth={1} />
+                      {trBars.map((s, i) => {
+                        const t = kpis[s.id]?.trades || 0;
+                        const h = t ? Math.max(4, Math.round((t / trMax) * plotH)) : 3;
+                        const col = s.session_type === "propfirm" ? c.gold : c.acL;
+                        const isH = tradeTip?.sess.id === s.id;
+                        const x = ox + i * (barW + gap);
+                        const y = baselineY - h;
+                        const rx = Math.min(4, Math.floor(barW / 4));
+                        return (
+                          <rect
+                            key={s.id}
+                            x={x}
+                            y={y}
+                            width={barW}
+                            height={h}
+                            rx={rx}
+                            ry={rx}
+                            fill={col}
+                            opacity={isH ? 1 : 0.88}
+                            style={{ cursor: "default", filter: isH ? "brightness(1.55)" : "none" }}
+                            onMouseEnter={e => {
+                              const r = e.currentTarget.getBoundingClientRect();
+                              setTradeTip({ sess: s, bx: r.left + r.width / 2, by: r.bottom, col });
+                            }}
+                            onMouseLeave={() => setTradeTip(null)}
+                          />
+                        );
+                      })}
+                    </svg>
+                  </div>
                 );
               })()}
               <div style={{ display: "flex", gap: 12, marginTop: 5 }}>
