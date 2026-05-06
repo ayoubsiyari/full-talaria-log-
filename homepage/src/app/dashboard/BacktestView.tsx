@@ -15,6 +15,16 @@ const c = {
 const F = "'Exo 2', sans-serif";
 
 /* ── Types ── */
+/** Persisted from chart replay (`replay.dashboard` in session state) — actual bars reached vs configured dates. */
+interface ReplayDashboard {
+  furthest_replay_ts?: number;
+  configured_start_ts?: number;
+  configured_end_ts?: number;
+  progress_pct?: number;
+  elapsed_days?: number;
+  updated_at?: string;
+}
+
 interface Session {
   id: number;
   name: string;
@@ -25,6 +35,7 @@ interface Session {
   end_date?: string;
   created_at?: string;
   config?: Record<string, unknown>;
+  replay_dashboard?: ReplayDashboard | null;
 }
 
 interface Kpis {
@@ -105,12 +116,29 @@ function getProgress(sess: Session, k?: Kpis): number {
   return Math.min(99, Math.max(1, Math.round((elapsed / total) * 100)));
 }
 
+/** Prefer replay-derived progress when the chart saved `replay_dashboard` (works even with 0 trades). */
+function getSessionProgressDisplayed(sess: Session, k?: Kpis): number {
+  const dash = sess.replay_dashboard;
+  if (dash && typeof dash.progress_pct === "number" && Number.isFinite(dash.progress_pct)) {
+    return Math.min(100, Math.max(0, Math.round(dash.progress_pct)));
+  }
+  return getProgress(sess, k);
+}
+
 /**
  * Calendar days of simulated range that have actually elapsed — not the full configured span up-front.
- * Not-started sessions contribute 0; in-progress sessions grow toward the configured end date; finished sessions use full start→end.
+ * Uses chart-persisted `replay_dashboard.elapsed_days` when present (furthest replay vs configured session dates).
  */
 function effectiveTestedDays(sess: Session, k: Kpis | undefined, nowMs: number): number {
   if (!sess.start_date) return 0;
+
+  const dash = sess.replay_dashboard;
+  if (dash && typeof dash.elapsed_days === "number" && Number.isFinite(dash.elapsed_days) && dash.elapsed_days >= 0) {
+    return Math.round(dash.elapsed_days);
+  }
+
+  if (!k || k.trades === 0) return 0;
+
   const progress = getProgress(sess, k);
   if (progress === 0) return 0;
 
@@ -308,10 +336,10 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   const propSess = sessions.filter(s => s.session_type === "propfirm");
   const stdSess  = sessions.filter(s => s.session_type !== "propfirm");
 
-  const propCompleted = propSess.filter(s => getProgress(s, kpis[s.id]) === 100).length;
-  const propActive    = propSess.filter(s => { const p = getProgress(s, kpis[s.id]); return p > 0 && p < 100; }).length;
-  const stdCompleted  = stdSess.filter(s => getProgress(s, kpis[s.id]) === 100).length;
-  const stdActive     = stdSess.filter(s => { const p = getProgress(s, kpis[s.id]); return p > 0 && p < 100; }).length;
+  const propCompleted = propSess.filter(s => getSessionProgressDisplayed(s, kpis[s.id]) === 100).length;
+  const propActive    = propSess.filter(s => { const p = getSessionProgressDisplayed(s, kpis[s.id]); return p > 0 && p < 100; }).length;
+  const stdCompleted  = stdSess.filter(s => getSessionProgressDisplayed(s, kpis[s.id]) === 100).length;
+  const stdActive     = stdSess.filter(s => { const p = getSessionProgressDisplayed(s, kpis[s.id]); return p > 0 && p < 100; }).length;
 
   const totalTrades = Object.values(kpis).reduce((a, k) => a + (k.trades || 0), 0);
 
@@ -339,7 +367,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   const getCount = (v: string) =>
     v === "all" ? sessions.length :
     sessions.filter(s => {
-      const p = getProgress(s, kpis[s.id]);
+      const p = getSessionProgressDisplayed(s, kpis[s.id]);
       if (v === "not-started") return p === 0;
       if (v === "active")      return p > 0 && p < 100;
       if (v === "completed")   return p === 100;
@@ -361,7 +389,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
           && !tickStr.includes(q)
         ) return false;
       }
-      const p = getProgress(s, kpis[s.id]);
+      const p = getSessionProgressDisplayed(s, kpis[s.id]);
       if (filter === "not-started") return p === 0;
       if (filter === "active")      return p > 0 && p < 100;
       if (filter === "completed")   return p === 100;
@@ -388,7 +416,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
       if (sortBy === "winRate")  cmp = (kpis[a.id]?.win_rate ?? -1) - (kpis[b.id]?.win_rate ?? -1);
       if (sortBy === "avgRR")   cmp = (kpis[a.id]?.expectancy_r ?? -1) - (kpis[b.id]?.expectancy_r ?? -1);
       if (sortBy === "trades")   cmp = (kpis[a.id]?.trades || 0) - (kpis[b.id]?.trades || 0);
-      if (sortBy === "progress") cmp = getProgress(a, kpis[a.id]) - getProgress(b, kpis[b.id]);
+      if (sortBy === "progress") cmp = getSessionProgressDisplayed(a, kpis[a.id]) - getSessionProgressDisplayed(b, kpis[b.id]);
       return cmp * dir;
     });
 
@@ -545,7 +573,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                         ["Trades", String(kpis[tradeTip.sess.id]?.trades ?? 0)],
                         ["Mode", tradeTip.sess.session_type === "propfirm" ? "Prop Firm" : "Standard"],
                         ["Strategy", (tradeTip.sess.config as Record<string, string> | undefined)?.strategy_name || "—"],
-                        ["Progress", `${getProgress(tradeTip.sess, kpis[tradeTip.sess.id])}%`],
+                        ["Progress", `${getSessionProgressDisplayed(tradeTip.sess, kpis[tradeTip.sess.id])}%`],
                         ["Starting Balance", tradeTip.sess.start_balance != null ? `$${tradeTip.sess.start_balance.toLocaleString()}` : "—"],
                         ["Net P&L", kpis[tradeTip.sess.id]?.net_pnl != null ? fmtMoney(kpis[tradeTip.sess.id]!.net_pnl) : "—"],
                         ["Win Rate", fmtWinRate(kpis[tradeTip.sess.id]?.win_rate) ?? "—"],
@@ -877,7 +905,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               {filteredSessions.map(sess => {
                 const isProp = sess.session_type === "propfirm";
                 const k = kpis[sess.id];
-                const progress = getProgress(sess, k);
+                const progress = getSessionProgressDisplayed(sess, k);
                 const hasPnl = k?.net_pnl != null;
                 const pnlPos = hasPnl && (k?.net_pnl ?? 0) >= 0;
                 const stripeCol = isProp ? c.gold : c.acL;
@@ -1142,7 +1170,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               {filteredSessions.map(sess => {
                 const isProp = sess.session_type === "propfirm";
                 const k = kpis[sess.id];
-                const progress = getProgress(sess, k);
+                const progress = getSessionProgressDisplayed(sess, k);
                 const hasPnl = k?.net_pnl != null;
                 const pnlPos = hasPnl && (k?.net_pnl ?? 0) >= 0;
                 const stripeCol = isProp ? c.gold : c.acL;
@@ -1408,7 +1436,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
       {actMenu && (() => {
         const ms = sessions.find(s => s.id === actMenu.id);
         if (!ms) return null;
-        const progressAct = getProgress(ms, kpis[ms.id]);
+        const progressAct = getSessionProgressDisplayed(ms, kpis[ms.id]);
         type MenRow =
           | { type: "item"; label: string; col: string; fn: () => void; danger?: boolean;
               icon: React.ReactNode }

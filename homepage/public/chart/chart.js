@@ -2440,6 +2440,14 @@ class Chart {
 
             if (state.replay && typeof state.replay === 'object') {
                 this._pendingReplayState = state.replay;
+                const rd = state.replay.dashboard;
+                if (rd && typeof rd === 'object' && Number.isFinite(Number(rd.furthest_replay_ts))) {
+                    this._dashboardFurthestReplayHydratedTs = Number(rd.furthest_replay_ts);
+                    this._dashboardFurthestReplayTs = Number(rd.furthest_replay_ts);
+                } else {
+                    this._dashboardFurthestReplayHydratedTs = NaN;
+                    this._dashboardFurthestReplayTs = NaN;
+                }
                 if (this.replaySystem && this.replaySystem.isActive && typeof this.replaySystem.applyPersistedState === 'function') {
                     this.replaySystem.applyPersistedState(state.replay);
                     this._pendingReplayState = null;
@@ -2571,7 +2579,96 @@ class Chart {
     _sessionStatePatchAllowedBeforeHydrate(patch) {
         if (!patch || typeof patch !== 'object') return false;
         if (this._sessionStatePatchIsJournalRelated(patch)) return true;
-        return Object.prototype.hasOwnProperty.call(patch, 'drawings');
+        if (Object.prototype.hasOwnProperty.call(patch, 'drawings')) return true;
+        // Replay coverage metrics only — safe before GET /state hydrates (server merges replay shallow + dashboard deep).
+        if (patch.replay && typeof patch.replay === 'object') {
+            const rk = Object.keys(patch.replay);
+            if (rk.length === 1 && rk[0] === 'dashboard') return true;
+        }
+        return false;
+    }
+
+    /** Merge pending session PATCH blobs without clobbering nested `replay`. */
+    _mergeSessionStatePatches(prev, next) {
+        const a = prev && typeof prev === 'object' ? prev : {};
+        const b = next && typeof next === 'object' ? next : {};
+        const out = Object.assign({}, a, b);
+        if (a.replay && typeof a.replay === 'object' && b.replay && typeof b.replay === 'object') {
+            const ra = a.replay;
+            const rb = b.replay;
+            out.replay = Object.assign({}, ra, rb);
+            const da = ra.dashboard && typeof ra.dashboard === 'object' ? ra.dashboard : null;
+            const dbb = rb.dashboard && typeof rb.dashboard === 'object' ? rb.dashboard : null;
+            if (da || dbb) {
+                out.replay.dashboard = Object.assign({}, da || {}, dbb || {});
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Persist furthest replay virtual time vs configured session dates for the homepage backtest dashboard.
+     * Called from replay-dashboard-sync.js on replayVirtualTimeChanged (debounced).
+     */
+    _onReplayVirtualTimeForDashboard(detail) {
+        try {
+            if (!this.getActiveTradingSessionId()) return;
+            const ts = detail && Number.isFinite(Number(detail.timestamp)) ? Number(detail.timestamp) : NaN;
+            if (!Number.isFinite(ts)) return;
+            const dash = this._computeReplayDashboardCoverage(ts);
+            if (!dash) return;
+            this.scheduleSessionStateSave({ replay: { dashboard: dash } });
+        } catch (e) {
+            /* ignore */
+        }
+    }
+
+    _flushReplayDashboardCoverageNow() {
+        try {
+            const rs = this.replaySystem;
+            if (!rs || !rs.isActive || !this.getActiveTradingSessionId()) return;
+            const ts = Number.isFinite(Number(rs.replayTimestamp)) ? Number(rs.replayTimestamp) : NaN;
+            if (!Number.isFinite(ts)) return;
+            const dash = this._computeReplayDashboardCoverage(ts);
+            if (!dash) return;
+            // Merge synchronously so `pagehide` can flush in the same tick (avoid debounced timer).
+            this._pendingSessionStatePatch = this._mergeSessionStatePatches(this._pendingSessionStatePatch, {
+                replay: { dashboard: dash },
+            });
+            this._writeTradingSessionLocalBackup();
+        } catch (e) {
+            /* ignore */
+        }
+    }
+
+    _computeReplayDashboardCoverage(currentReplayTs) {
+        const session = this.backtestingSession;
+        if (!session || !session.startDate || !session.endDate) return null;
+        const cfgStart = new Date(session.startDate).getTime();
+        const cfgEnd = new Date(session.endDate).getTime();
+        if (!Number.isFinite(cfgStart) || !Number.isFinite(cfgEnd) || cfgEnd <= cfgStart) return null;
+
+        if (!Number.isFinite(this._dashboardFurthestReplayTs)) {
+            const hydrated = Number(this._dashboardFurthestReplayHydratedTs);
+            this._dashboardFurthestReplayTs = Number.isFinite(hydrated) ? hydrated : cfgStart;
+        }
+
+        const furthest = Math.min(cfgEnd, Math.max(this._dashboardFurthestReplayTs, currentReplayTs));
+        this._dashboardFurthestReplayTs = furthest;
+
+        const spanMs = cfgEnd - cfgStart;
+        const elapsedMs = Math.max(0, furthest - cfgStart);
+        const progressPct = spanMs > 0 ? Math.min(100, Math.round((elapsedMs / spanMs) * 10000) / 100) : 0;
+        const elapsedDays = Math.max(0, Math.round(elapsedMs / 86400000));
+
+        return {
+            furthest_replay_ts: furthest,
+            configured_start_ts: cfgStart,
+            configured_end_ts: cfgEnd,
+            progress_pct: progressPct,
+            elapsed_days: elapsedDays,
+            updated_at: new Date().toISOString(),
+        };
     }
 
     _sessionPatchBackoffActive() {
@@ -2628,7 +2725,7 @@ class Chart {
         if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchAllowedBeforeHydrate(patch)) return;
         if (!patch || typeof patch !== 'object') return;
 
-        this._pendingSessionStatePatch = Object.assign({}, this._pendingSessionStatePatch || {}, patch);
+        this._pendingSessionStatePatch = this._mergeSessionStatePatches(this._pendingSessionStatePatch, patch);
         this._writeTradingSessionLocalBackup();
 
         if (this._sessionStateSaveTimer) return;
@@ -2644,7 +2741,7 @@ class Chart {
         if (!sessionId) return;
         if (!patch || typeof patch !== 'object') return;
 
-        this._pendingCriticalSessionStatePatch = Object.assign({}, this._pendingCriticalSessionStatePatch || {}, patch);
+        this._pendingCriticalSessionStatePatch = this._mergeSessionStatePatches(this._pendingCriticalSessionStatePatch, patch);
         this._writeTradingSessionLocalBackup();
         if (this._criticalSessionStateSaveTimer) {
             clearTimeout(this._criticalSessionStateSaveTimer);
@@ -2844,8 +2941,9 @@ class Chart {
                     this._sessionStateUnloadHookInstalled = true;
                     window.addEventListener('pagehide', () => {
                         try {
-                            this.flushSessionStateSave();
-                            this.flushCriticalSessionStateSave();
+                            this._flushReplayDashboardCoverageNow();
+                            void this.flushSessionStateSave();
+                            void this.flushCriticalSessionStateSave();
                         } catch (e) {}
                     });
                 }

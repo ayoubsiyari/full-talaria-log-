@@ -10901,7 +10901,30 @@ async def list_trading_sessions(request: Request):
     try:
         q = db.query(TradingSession).filter(TradingSession.user_id == user.id)
         sessions = q.order_by(TradingSession.created_at.desc()).all()
-        return {"sessions": [_session_public_dict(s) for s in sessions]}
+        ids = [s.id for s in sessions]
+        state_by_sid: dict = {}
+        if ids:
+            for st in (
+                db.query(TradingSessionState)
+                .filter(TradingSessionState.session_id.in_(ids))
+                .all()
+            ):
+                state_by_sid[int(st.session_id)] = st
+        out = []
+        for s in sessions:
+            row = _session_public_dict(s)
+            st = state_by_sid.get(int(s.id))
+            if st:
+                try:
+                    state = _parse_json_dict(st.state_json)
+                    replay = state.get("replay") if isinstance(state.get("replay"), dict) else {}
+                    dash = replay.get("dashboard") if isinstance(replay.get("dashboard"), dict) else {}
+                    if dash:
+                        row["replay_dashboard"] = _sanitize_for_json(dash)
+                except Exception:
+                    pass
+            out.append(row)
+        return {"sessions": out}
     finally:
         db.close()
 
@@ -11212,7 +11235,14 @@ async def patch_trading_session_state(session_id: int, request: Request):
         if payload.order_counters is not None:
             state["order_counters"] = payload.order_counters
         if payload.replay is not None:
-            state["replay"] = payload.replay
+            prev_r = state.get("replay") if isinstance(state.get("replay"), dict) else {}
+            incoming_r = payload.replay if isinstance(payload.replay, dict) else {}
+            merged_r = {**prev_r, **incoming_r}
+            pd = prev_r.get("dashboard") if isinstance(prev_r.get("dashboard"), dict) else {}
+            idb = incoming_r.get("dashboard") if isinstance(incoming_r.get("dashboard"), dict) else {}
+            if pd or idb:
+                merged_r["dashboard"] = {**pd, **idb}
+            state["replay"] = merged_r
         if payload.chartView is not None:
             state["chartView"] = payload.chartView
         if payload.chartSettings is not None:

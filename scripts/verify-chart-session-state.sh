@@ -13,6 +13,9 @@
 #   3. If 401: sign in; open chart from backtest with ?sessionId=...
 #   4. If 403: set TRUSTED_ORIGINS on the chart API to your page origin, or fix Host / X-Forwarded-*.
 #   5. If (failed): same URL for HTML and /api (proxy), no mixed HTTP/HTTPS.
+#   6. Replay coverage: moving the replay scrubber emits replayVirtualTimeChanged → PATCH merges
+#      replay.dashboard (furthest bar vs session dates). Partial PATCH must not replace entire replay JSON
+#      (server shallow-merges replay + dashboard).
 
 set -euo pipefail
 
