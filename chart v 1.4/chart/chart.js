@@ -855,7 +855,7 @@ class Chart {
      */
     _isSessionBacktestStyle(session) {
         if (!session || typeof session !== 'object') return false;
-        if (session.startDate) return true;
+        if (session.startDate || session.start_date) return true;
         const t = session.type;
         return t === 'propfirm' || t === 'standard';
     }
@@ -867,7 +867,8 @@ class Chart {
             ? session.instrumentTickers[0]
             : null;
         if (firstTicker && session.instruments && session.instruments[firstTicker]) {
-            return session.instruments[firstTicker].fileId || session.instruments[firstTicker].datasetId || null;
+            const row = session.instruments[firstTicker];
+            return row.fileId || row.datasetId || row.sourceFileId || null;
         }
         return null;
     }
@@ -1207,10 +1208,24 @@ class Chart {
             this.updateLoaderStep(1, 'active');
             this.updateLoaderProgress(20, 'Loading chart data...');
 
-            const result = await this._fetchSmartWindow(fileId, replayRawTf, session);
+            let result = await this._fetchSmartWindow(fileId, replayRawTf, session);
 
             if (!this._smartResponseHasPayload(result)) {
-                throw new Error('No data in response');
+                const startR = session.startDate || session.start_date;
+                const endR = session.endDate || session.end_date;
+                if (startR || endR) {
+                    console.warn(
+                        '⚠️ /file/smart returned no candles with session date clamp; retrying without start_ts/end_ts',
+                        { fileId, startR, endR, meta: this._smartResponseMeta(result) }
+                    );
+                    result = await this._fetchSmartWindow(fileId, replayRawTf, session, undefined, null, {
+                        skipSessionDates: true,
+                    });
+                }
+            }
+
+            if (!this._smartResponseHasPayload(result)) {
+                throw new Error(this._smartEmptyResponseHint(result, fileId));
             }
 
             this.updateLoaderStep(1, 'completed');
@@ -1277,7 +1292,10 @@ class Chart {
     /**
      * Build query string for GET /file/{id}/smart (shared by fetch + prefetch).
      */
-    _buildSmartWindowParams(fileId, timeframe, session, anchor, windowRange = null) {
+    _buildSmartWindowParams(fileId, timeframe, session, anchor, windowRange = null, smartOpts = null) {
+        const opts = smartOpts && typeof smartOpts === 'object' ? smartOpts : {};
+        const skipSessionDates = !!opts.skipSessionDates;
+
         const isBacktest = this._isSessionBacktestStyle(session);
         if (!anchor) anchor = isBacktest ? 'start' : 'end';
 
@@ -1307,13 +1325,19 @@ class Chart {
             params.set('end_ts', String(Math.floor(explicitEndTs)));
         }
 
-        if (!Number.isFinite(explicitStartTs) && session && session.startDate) {
-            const ts = new Date(session.startDate).getTime();
-            if (!isNaN(ts)) params.set('start_ts', String(ts));
+        if (!skipSessionDates && !Number.isFinite(explicitStartTs) && session) {
+            const startRaw = session.startDate || session.start_date;
+            if (startRaw) {
+                const ts = new Date(startRaw).getTime();
+                if (!isNaN(ts)) params.set('start_ts', String(ts));
+            }
         }
-        if (!Number.isFinite(explicitEndTs) && session && session.endDate) {
-            const ts = new Date(session.endDate).getTime();
-            if (!isNaN(ts)) params.set('end_ts', String(ts));
+        if (!skipSessionDates && !Number.isFinite(explicitEndTs) && session) {
+            const endRaw = session.endDate || session.end_date;
+            if (endRaw) {
+                const ts = this._sessionEndToInclusiveUtcMs(endRaw);
+                if (!isNaN(ts)) params.set('end_ts', String(Math.floor(ts)));
+            }
         }
 
         return params;
@@ -1370,15 +1394,26 @@ class Chart {
     async _fetchSmartWindowWithParams(fileId, params) {
         const response = await fetch(`${this.apiUrl}/file/${fileId}/smart?${params.toString()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
+        const ct = (response.headers.get('content-type') || '').toLowerCase();
+        if (ct && !ct.includes('json')) {
+            const txt = await response.text().catch(() => '');
+            throw new Error(
+                `Expected JSON from /file/smart (got ${ct || 'unknown'}). Check /api proxy — ${String(txt).slice(0, 120)}`
+            );
+        }
+        const result = await response.json();
+        if (!result || typeof result !== 'object') {
+            throw new Error('Invalid JSON body from /file/smart');
+        }
+        return result;
     }
 
     /**
      * Fetch a window of candles from /smart endpoint.
      * Server reads binary tiles/mmap; response uses native candle array when response_format=candles.
      */
-    async _fetchSmartWindow(fileId, timeframe, session, anchor, windowRange = null) {
-        const params = this._buildSmartWindowParams(fileId, timeframe, session, anchor, windowRange);
+    async _fetchSmartWindow(fileId, timeframe, session, anchor, windowRange = null, smartOpts = null) {
+        const params = this._buildSmartWindowParams(fileId, timeframe, session, anchor, windowRange, smartOpts);
         return this._fetchSmartWindowWithParams(fileId, params);
     }
 
@@ -1468,6 +1503,42 @@ class Chart {
 
     _smartResponseHasPayload(result) {
         return !!(result && ((Array.isArray(result.candles) && result.candles.length > 0) || result.data));
+    }
+
+    _smartResponseMeta(result) {
+        if (!result || typeof result !== 'object') return {};
+        return {
+            returned: result.returned,
+            total: result.total,
+            source: result.source,
+            first_cursor: result.first_cursor,
+            last_cursor: result.last_cursor,
+            candleLen: Array.isArray(result.candles) ? result.candles.length : null,
+            hasDataStr: typeof result.data === 'string' ? result.data.length : null,
+        };
+    }
+
+    _smartEmptyResponseHint(result, fileId) {
+        const meta = this._smartResponseMeta(result);
+        const bits = [`fileId=${fileId}`];
+        if (meta.returned != null) bits.push(`returned=${meta.returned}`);
+        if (meta.total != null) bits.push(`total=${meta.total}`);
+        if (meta.source) bits.push(`source=${meta.source}`);
+        bits.push(
+            'Check dataset vs session dates (end-of-day), binary/tiles readiness for 1m, and Network → /api/file/…/smart'
+        );
+        return `No data in response (${bits.join(', ')})`;
+    }
+
+    /** Date-only YYYY-MM-DD end → inclusive UTC end-of-day ms (avoids clamping out that day’s bars). */
+    _sessionEndToInclusiveUtcMs(endRaw) {
+        const s = String(endRaw || '').trim();
+        const d = new Date(endRaw);
+        if (!Number.isFinite(d.getTime())) return NaN;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+            return d.getTime() + 86400000 - 1;
+        }
+        return d.getTime();
     }
 
     /**
