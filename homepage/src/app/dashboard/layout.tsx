@@ -354,7 +354,7 @@ export default function DashboardLayout({
       <header style={{ height: 64, flexShrink: 0, display: "flex", alignItems: "center", background: "#0F1119", boxShadow: "0 2px 18px rgba(0,0,0,0.5)", zIndex: 2 }}>
         {/* Logo slot */}
         <div style={{ width: 64, flexShrink: 0, height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <img src="/logo-04.png" style={{ width: 40, height: 40, objectFit: "contain" }} alt="" />
+          <img src="/logo-04.png" style={{ width: 50, height: 50, objectFit: "contain" }} alt="" />
         </div>
         {/* Brand + Page title */}
         <a href="/" style={{ display: "flex", alignItems: "center", textDecoration: "none", flexShrink: 0 }}>
