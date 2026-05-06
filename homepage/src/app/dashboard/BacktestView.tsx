@@ -603,7 +603,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
             </div>
 
             {/* Tile 4: Days Tested dots */}
-            <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
+            <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column", minHeight: 0 }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)` }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 4, minWidth: 0 }}>
                 <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const, whiteSpace: "nowrap" as const, flexShrink: 0 }}>
@@ -625,24 +625,26 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                   {daysTestedDisplay}
                 </div>
               </div>
-              <div style={{ fontSize: 8, color: c.tm }}>{(totalDays / 365).toFixed(1)} yrs equivalent</div>
-              {(() => {
-                const dcols = 20, ds = 5, dg = 2, step = ds + dg;
-                const rows = Math.ceil(dotsN / dcols) || 1;
-                const svgW = dcols * step - dg, svgH = rows * step - dg;
-                return (
-                  <svg width={svgW} height={svgH} style={{ display: "block", margin: "10px auto 6px", flexShrink: 0 }}>
-                    {Array.from({ length: dotsN }).map((_, i) => (
-                      <rect key={i} x={(i % dcols) * step} y={Math.floor(i / dcols) * step} width={ds} height={ds} fill={c.acL} opacity={0.75} />
-                    ))}
-                  </svg>
-                );
-              })()}
+              <div style={{ fontSize: 8, color: c.tm, marginBottom: 6 }}>{(totalDays / 365).toFixed(1)} yrs equivalent</div>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minHeight: 0 }}>
+                {(() => {
+                  const dcols = 20, ds = 5, dg = 2, step = ds + dg;
+                  const rows = Math.ceil(dotsN / dcols) || 1;
+                  const svgW = dcols * step - dg, svgH = rows * step - dg;
+                  return (
+                    <svg width={svgW} height={svgH} style={{ display: "block", margin: 0, flexShrink: 0 }}>
+                      {Array.from({ length: dotsN }).map((_, i) => (
+                        <rect key={i} x={(i % dcols) * step} y={Math.floor(i / dcols) * step} width={ds} height={ds} fill={c.acL} opacity={0.75} />
+                      ))}
+                    </svg>
+                  );
+                })()}
+              </div>
               <div style={{ fontSize: 8, color: c.tm, marginTop: 4 }}>each square ≈ 1 month</div>
             </div>
 
             {/* Tile 5: Tickers Tested */}
-            <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
+            <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column", minHeight: 0 }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)` }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
                 <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const }}>Tickers Tested</div>
