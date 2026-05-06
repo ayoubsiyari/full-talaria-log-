@@ -4601,6 +4601,7 @@ const TalariaV8bLive = () => {
   const [indOpen, setIndOpen] = useState(false);
   const [indPinned, setIndPinned] = useState([]);
   const [indActive, setIndActive] = useState([]);
+  const [indSelectedId, setIndSelectedId] = useState(null);
 
   // ─── SYNC V9 SETTINGS PANEL → chart.chartSettings ───────────────────────
   // V9 has its own native Settings/Profile UI which we keep as-is. But the
@@ -8259,7 +8260,7 @@ const TalariaV8bLive = () => {
     groupSelected,
   ]);
 
-  const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
+  const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelectedId(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   closeWindowsRef.current = closeWindows;
   // closeAll is triggered by backdrop/outside clicks — intentionally does NOT close the indicators window
   const closeAll = () => {
@@ -14466,7 +14467,7 @@ const TalariaV8bLive = () => {
       {(indOpen || closing.has("ind")) && (()=>{
         const indTabs=[["active","Active"],["pinned","Pinned"],["all","All"],["trend","Trend"],["momentum","Momentum"],["volatility","Volatility"],["volume","Volume"],["sessions","Sessions"],["others","Others"]];
         const indTabIdx=indTabs.findIndex(([id])=>id===indCat);
-        const closeInd=()=>{animClose(setIndOpen,"ind");setIndSearch("");};
+        const closeInd=()=>{animClose(setIndOpen,"ind");setIndSearch("");setIndSelectedId(null);};
         const tabAccent=(id)=> id==="active"?c.gn : id==="pinned"?c.gold : c.acL;
         const tabCount=(id)=> id==="active"?indActive.length : id==="pinned"?indPinned.length : id==="all"?indicatorData.length : indicatorData.filter(i=>i.cat===id).length;
         return (
@@ -14598,6 +14599,7 @@ const TalariaV8bLive = () => {
             )}
             {indFiltered.map(ind=>{
               const isAct=indActive.includes(ind.id);
+              const isSel=indSelectedId===ind.id;
               const isPinned=indPinned.includes(ind.id);
               const isH=swHov===`ind-${ind.id}`;
               const isPinHov=swHov===`pin-${ind.id}`;
@@ -14605,19 +14607,23 @@ const TalariaV8bLive = () => {
               const isAddDn=swHov===`add-${ind.id}_dn`;
               const indRowHov=isH||isPinHov||isAddHov||isAddDn;
               const toggleIndActive=()=>setIndActive(prev=>isAct?prev.filter(x=>x!==ind.id):[...prev,ind.id]);
+              const onIndicatorRowClick=()=>{
+                if (!isSel) { setIndSelectedId(ind.id); return; }
+                if (!isAct) setIndActive((prev)=>prev.includes(ind.id)?prev:[...prev,ind.id]);
+              };
               return (
                 <div key={ind.id}
-                  onClick={(e)=>{if(e.target.closest('[data-indaction]'))return;toggleIndActive();}}
+                  onClick={(e)=>{if(e.target.closest('[data-indaction]'))return;onIndicatorRowClick();}}
                   onMouseEnter={()=>setSwHov(`ind-${ind.id}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"pointer",position:"relative",
-                    background:isAct?"rgba(38,67,247,0.07)":indRowHov?"rgba(255,255,255,0.022)":"transparent",
+                    background:isAct?"rgba(38,67,247,0.07)":isSel?"rgba(74,106,255,0.08)":indRowHov?"rgba(255,255,255,0.022)":"transparent",
                     transition:"background 0.1s"}}>
-                  {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                  {(isAct||isSel)&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                   {/* abbr */}
-                  <span style={{minWidth:44,flexShrink:0,fontSize:14,fontWeight:800,color:isAct?c.acL:c.ts,fontFamily:F,letterSpacing:"0.02em"}}>{ind.abbr}</span>
+                  <span style={{minWidth:44,flexShrink:0,fontSize:14,fontWeight:800,color:(isAct||isSel)?c.acL:c.ts,fontFamily:F,letterSpacing:"0.02em"}}>{ind.abbr}</span>
                   {/* name + desc */}
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,lineHeight:1.3,transition:"color 0.1s"}}>{ind.name}</div>
+                    <div style={{fontSize:12,fontWeight:(isAct||isSel)?700:500,color:(isAct||isSel)?c.acL:isH?c.tx:c.ts,lineHeight:1.3,transition:"color 0.1s"}}>{ind.name}</div>
                     <div style={{fontSize:12,color:c.tm,lineHeight:1.3,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ind.desc}</div>
                   </div>
                   {/* pin */}
@@ -14632,7 +14638,7 @@ const TalariaV8bLive = () => {
                   </div>
                   {/* add/remove button */}
                   <div data-indaction="1"
-                    onClick={(e)=>{e.stopPropagation();toggleIndActive();}}
+                    onClick={(e)=>{e.stopPropagation();setIndSelectedId(ind.id);toggleIndActive();}}
                     onMouseEnter={()=>setSwHov(`add-${ind.id}`)} onMouseLeave={()=>setSwHov(`ind-${ind.id}`)}
                     onMouseDown={(e)=>{e.stopPropagation();setSwHov(`add-${ind.id}_dn`);}} onMouseUp={()=>setSwHov(`add-${ind.id}`)}
                     style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
@@ -15949,7 +15955,7 @@ const TalariaV8bLive = () => {
           {hov==="chartType" && !chartTypeOpen && <div style={{ position: "absolute", bottom: -1, left: "15%", right: "15%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "rgba(140,160,255,0.18)" }}/>
-        <button type="button" onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");}else{closeWindows();setSettingsOpen(false);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
+        <button type="button" onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");setIndSelectedId(null);}else{closeWindows();setSettingsOpen(false);setIndSelectedId(null);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
           style={{ padding: "3px 8px", display: "flex", alignItems: "center", gap: 4, background: indOpen ? "rgba(74,106,255,0.08)" : hov==="indicators" ? c.hv : "transparent", border: "none", fontFamily: F, color: indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts, fontSize: 13, fontWeight: indOpen ? 700 : 600, cursor: "default", position: "relative", transition: "background 0.12s, color 0.12s" }}>
           <I n="indicator" s={15} cl={indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts}/>Indicators
           {indOpen && <div style={{ position: "absolute", bottom: -1, left: "10%", right: "10%", height: 2, background: `linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
