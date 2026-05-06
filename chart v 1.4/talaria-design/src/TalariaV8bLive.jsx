@@ -4636,69 +4636,6 @@ const TalariaV8bLive = () => {
     return () => { cancelled = true; };
   }, [applyLayoutSyncToPanelManager]);
 
-  // V8 runtime bridge: ensure sync actions fire from V8-side events even when
-  // legacy panel-manager listeners are not triggered in this shell.
-  useEffect(() => {
-    const getSelectedPanelForSync = (pm) => {
-      if (!pm || !Array.isArray(pm.panels) || !pm.panels.length) return null;
-      const idx = Number.isFinite(pm.selectedPanelIndex) ? pm.selectedPanelIndex : 0;
-      const panel = pm.panels[idx] || pm.panels[0];
-      if (!panel) return null;
-      if (!panel.chartInstance && panel.isMainChart && window.chart) {
-        return { ...panel, chartInstance: window.chart };
-      }
-      return panel;
-    };
-
-    const onTimeframeChanged = (e) => {
-      if (!layoutSync.interval) return;
-      const pm = window.panelManager;
-      if (!pm || typeof pm.syncInterval !== "function" || (pm.panels || []).length <= 1) return;
-      const selectedPanel = getSelectedPanelForSync(pm);
-      if (!selectedPanel?.chartInstance) return;
-      const tfFromEvent = e?.detail?.timeframe;
-      const timeframe =
-        tfFromEvent ||
-        selectedPanel.timeframe ||
-        selectedPanel.chartInstance.currentTimeframe ||
-        "1m";
-      try { pm.syncInterval(selectedPanel, timeframe); } catch (_) {}
-    };
-
-    const onPanelSelected = () => {
-      if (!layoutSync.time) return;
-      const pm = window.panelManager;
-      if (!pm || typeof pm.syncTimeToPanel !== "function" || (pm.panels || []).length <= 1) return;
-      const selectedPanel = getSelectedPanelForSync(pm);
-      if (!selectedPanel) return;
-      try { pm.syncTimeToPanel(selectedPanel); } catch (_) {}
-    };
-
-    const onChartDataLoaded = () => {
-      if (!layoutSync.symbol) return;
-      const pm = window.panelManager;
-      if (!pm || typeof pm.syncSymbol !== "function" || (pm.panels || []).length <= 1) return;
-      const selectedPanel = getSelectedPanelForSync(pm);
-      const ch = selectedPanel?.chartInstance;
-      if (!selectedPanel || !ch) return;
-      const symbol = ch.currentSymbol;
-      const fileId = ch.currentFileId;
-      if (!symbol || fileId == null) return;
-      try { pm.syncSymbol(selectedPanel, symbol, fileId); } catch (_) {}
-    };
-
-    window.addEventListener("timeframeChanged", onTimeframeChanged);
-    window.addEventListener("panelTimeframeChanged", onTimeframeChanged);
-    window.addEventListener("panelSelected", onPanelSelected);
-    window.addEventListener("chartDataLoaded", onChartDataLoaded);
-    return () => {
-      window.removeEventListener("timeframeChanged", onTimeframeChanged);
-      window.removeEventListener("panelTimeframeChanged", onTimeframeChanged);
-      window.removeEventListener("panelSelected", onPanelSelected);
-      window.removeEventListener("chartDataLoaded", onChartDataLoaded);
-    };
-  }, [layoutSync.interval, layoutSync.time, layoutSync.symbol]);
-
   useEffect(() => {
     if (!layoutSync.chartType) return;
     const pm = window.panelManager;
