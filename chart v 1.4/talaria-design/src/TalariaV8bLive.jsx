@@ -8521,11 +8521,14 @@ const TalariaV8bLive = () => {
               }}
             >
               <div className="nav-badge-icon">
-                {/* Same glyph as legacy #replayGoBack (replay toolbar) */}
+                {/* Exact replay-bar rollback icon */}
                 <svg className="nav-badge-go-back" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="m9 6-6 6 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M3 12h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M21 19V5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <line x1="15" y1="4" x2="15" y2="7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  <rect x="12" y="7" width="6" height="10" rx="0.5" fill="currentColor" />
+                  <line x1="15" y1="17" x2="15" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  <line x1="12" y1="12" x2="4" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  <polyline points="7,9 4,12 7,15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <line x1="3" y1="4" x2="3" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                 </svg>
               </div>
               <div className="nav-badge-tooltip" id="navBadgeTooltip">
