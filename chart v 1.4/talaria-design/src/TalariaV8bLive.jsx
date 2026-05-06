@@ -8523,6 +8523,8 @@ const TalariaV8bLive = () => {
               <div className="nav-badge-icon">
                 {/* Exact replay-bar rollback icon */}
                 <svg className="nav-badge-go-back" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" fill="currentColor" opacity="0.14" />
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.2" />
                   <line x1="15" y1="4" x2="15" y2="7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                   <rect x="12" y="7" width="6" height="10" rx="0.5" fill="currentColor" />
                   <line x1="15" y1="17" x2="15" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
