@@ -6098,7 +6098,53 @@ const TalariaV8bLive = () => {
     "Arctic Frost":   {bullBody:"#80DEEA",bullBorder:"#80DEEA",bullWick:"#80DEEA",bearBody:"#FFAB40",bearBorder:"#FFAB40",bearWick:"#FFAB40",background:"#05080F",gridColor:"rgba(128,222,234,0.12)",textColor:"#D7F7FB",scaleLineColor:"rgba(128,210,230,0.45)"},
     "Cyber Green":    {bullBody:"#00E676",bullBorder:"#00E676",bullWick:"#00E676",bearBody:"#FF1744",bearBorder:"#FF1744",bearWick:"#FF1744",background:"#020A02",gridColor:"rgba(0,230,118,0.12)",textColor:"#A8FFD4",scaleLineColor:"rgba(0,220,130,0.5)"},
     "Rose Gold":      {bullBody:"#F48FB1",bullBorder:"#F48FB1",bullWick:"#F48FB1",bearBody:"#FFB74D",bearBorder:"#FFB74D",bearWick:"#FFB74D",background:"#0E0608",gridColor:"rgba(244,143,177,0.12)",textColor:"#FFE0EC",scaleLineColor:"rgba(244,170,195,0.45)"},
+    "TradingView Dark": {bullBody:"#089981",bullBorder:"#089981",bullWick:"#089981",bearBody:"#F23645",bearBorder:"#F23645",bearWick:"#F23645",background:"#1E222D",gridColor:"rgba(42,46,57,0.6)",textColor:"#D1D4DC",scaleLineColor:"#D1D4DC"},
+    "TradingView Light": {bullBody:"#089981",bullBorder:"#089981",bullWick:"#089981",bearBody:"#F23645",bearBorder:"#F23645",bearWick:"#F23645",background:"#FFFFFF",gridColor:"rgba(42,46,57,0.22)",textColor:"#000000",scaleLineColor:"#787B86"},
+    "Talaria Dark":   {bullBody:"#00D4AA",bullBorder:"#00D4AA",bullWick:"#00D4AA",bearBody:"#FF4757",bearBorder:"#FF4757",bearWick:"#FF4757",background:"#050028",gridColor:"rgba(41,98,255,0.1)",textColor:"#FFFFFF",scaleLineColor:"#2A2E39"},
+    "Ocean Blue":     {bullBody:"#00BCD4",bullBorder:"#00BCD4",bullWick:"#00BCD4",bearBody:"#FF6B6B",bearBorder:"#FF6B6B",bearWick:"#FF6B6B",background:"#0A1929",gridColor:"rgba(41,121,255,0.15)",textColor:"#E3F2FD",scaleLineColor:"#1976D2"},
+    "Forest Green":   {bullBody:"#4CAF50",bullBorder:"#4CAF50",bullWick:"#4CAF50",bearBody:"#FF9800",bearBorder:"#FF9800",bearWick:"#FF9800",background:"#0D2818",gridColor:"rgba(76,175,80,0.15)",textColor:"#E8F5E8",scaleLineColor:"#4CAF50"},
+    "Sunset Orange":  {bullBody:"#FF9800",bullBorder:"#FF9800",bullWick:"#FF9800",bearBody:"#E91E63",bearBorder:"#E91E63",bearWick:"#E91E63",background:"#2D1B0E",gridColor:"rgba(255,152,0,0.15)",textColor:"#FFF3E0",scaleLineColor:"#FF9800"},
+    "Royal Purple":   {bullBody:"#9C27B0",bullBorder:"#9C27B0",bullWick:"#9C27B0",bearBody:"#FF5722",bearBorder:"#FF5722",bearWick:"#FF5722",background:"#1A0033",gridColor:"rgba(156,39,176,0.15)",textColor:"#F3E5F5",scaleLineColor:"#9C27B0"},
+    "Ruby Red":       {bullBody:"#F44336",bullBorder:"#F44336",bullWick:"#F44336",bearBody:"#2196F3",bearBorder:"#2196F3",bearWick:"#2196F3",background:"#330011",gridColor:"rgba(244,67,54,0.15)",textColor:"#FFEBEE",scaleLineColor:"#F44336"},
+    "Emerald":        {bullBody:"#00E676",bullBorder:"#00E676",bullWick:"#00E676",bearBody:"#FF4081",bearBorder:"#FF4081",bearWick:"#FF4081",background:"#0A2E0A",gridColor:"rgba(0,230,118,0.15)",textColor:"#E8F5E9",scaleLineColor:"#00E676"},
+    "Aurora":         {bullBody:"#8A2BE2",bullBorder:"#8A2BE2",bullWick:"#8A2BE2",bearBody:"#FF1493",bearBorder:"#FF1493",bearWick:"#FF1493",background:"#0A0E27",gridColor:"rgba(138,43,226,0.15)",textColor:"#E6E6FA",scaleLineColor:"#8A2BE2"},
+    "Gold":           {bullBody:"#FFD700",bullBorder:"#FFD700",bullWick:"#FFD700",bearBody:"#C41E3A",bearBorder:"#C41E3A",bearWick:"#C41E3A",background:"#2C1810",gridColor:"rgba(255,215,0,0.15)",textColor:"#FFF8DC",scaleLineColor:"#DAA520"},
+    "Silver":         {bullBody:"#C0C0C0",bullBorder:"#C0C0C0",bullWick:"#C0C0C0",bearBody:"#FF6347",bearBorder:"#FF6347",bearWick:"#FF6347",background:"#1A1A1A",gridColor:"rgba(192,192,192,0.15)",textColor:"#F5F5F5",scaleLineColor:"#C0C0C0"},
+    "Bronze":         {bullBody:"#CD7F32",bullBorder:"#CD7F32",bullWick:"#CD7F32",bearBody:"#8B4513",bearBorder:"#8B4513",bearWick:"#8B4513",background:"#2E1A0E",gridColor:"rgba(205,127,50,0.15)",textColor:"#F4E4C1",scaleLineColor:"#CD7F32"},
+    "Platinum":       {bullBody:"#E5E4E2",bullBorder:"#E5E4E2",bullWick:"#E5E4E2",bearBody:"#FF69B4",bearBorder:"#FF69B4",bearWick:"#FF69B4",background:"#1E1E1E",gridColor:"rgba(229,228,226,0.15)",textColor:"#F8F8FF",scaleLineColor:"#E5E4E2"},
+    "Diamond":        {bullBody:"#B9F2FF",bullBorder:"#B9F2FF",bullWick:"#B9F2FF",bearBody:"#FF1744",bearBorder:"#FF1744",bearWick:"#FF1744",background:"#0F0F0F",gridColor:"rgba(185,242,255,0.15)",textColor:"#FFFFFF",scaleLineColor:"#B9F2FF"},
+    "Cyberpunk":      {bullBody:"#00FFFF",bullBorder:"#00FFFF",bullWick:"#00FFFF",bearBody:"#FF00FF",bearBorder:"#FF00FF",bearWick:"#FF00FF",background:"#0D0221",gridColor:"rgba(0,255,255,0.15)",textColor:"#FF00FF",scaleLineColor:"#00FFFF"},
+    "Matrix":         {bullBody:"#00FF00",bullBorder:"#00FF00",bullWick:"#00FF00",bearBody:"#FF0000",bearBorder:"#FF0000",bearWick:"#FF0000",background:"#000000",gridColor:"rgba(0,255,0,0.15)",textColor:"#00FF00",scaleLineColor:"#00FF00"},
   };
+  const defaultTpls = [
+    {n:"Dark Classic",cols:["#00D4A1","#FF5068","#2643F7"]},
+    {n:"Professional",cols:["#26A69A","#EF5350","#1565C0"]},
+    {n:"Ocean Night",cols:["#00BCD4","#FF4081","#00E5FF"]},
+    {n:"Amber Dusk",cols:["#FF9800","#F44336","#FFC107"]},
+    {n:"Forest Deep",cols:["#66BB6A","#81C784","#4CAF50"]},
+    {n:"Midnight",cols:["#42A5F5","#EF5350","#7E57C2"]},
+    {n:"Crimson",cols:["#F44336","#9C27B0","#E91E63"]},
+    {n:"Arctic Frost",cols:["#80DEEA","#FFAB40","#4FC3F7"]},
+    {n:"Cyber Green",cols:["#00E676","#FF1744","#76FF03"]},
+    {n:"Rose Gold",cols:["#F48FB1","#FFB74D","#CE93D8"]},
+    {n:"TradingView Dark",cols:["#089981","#F23645","#2962FF"]},
+    {n:"TradingView Light",cols:["#089981","#F23645","#111111"]},
+    {n:"Talaria Dark",cols:["#00D4AA","#FF4757","#2962FF"]},
+    {n:"Ocean Blue",cols:["#00BCD4","#FF6B6B","#2979FF"]},
+    {n:"Forest Green",cols:["#4CAF50","#FF9800","#8BC34A"]},
+    {n:"Sunset Orange",cols:["#FF9800","#E91E63","#FFC107"]},
+    {n:"Royal Purple",cols:["#9C27B0","#FF5722","#673AB7"]},
+    {n:"Ruby Red",cols:["#F44336","#2196F3","#E91E63"]},
+    {n:"Emerald",cols:["#00E676","#FF4081","#4CAF50"]},
+    {n:"Aurora",cols:["#8A2BE2","#FF1493","#9370DB"]},
+    {n:"Gold",cols:["#FFD700","#C41E3A","#FFED4E"]},
+    {n:"Silver",cols:["#C0C0C0","#FF6347","#D3D3D3"]},
+    {n:"Bronze",cols:["#CD7F32","#8B4513","#DAA520"]},
+    {n:"Platinum",cols:["#E5E4E2","#FF69B4","#DCDCDC"]},
+    {n:"Diamond",cols:["#B9F2FF","#FF1744","#64FFDA"]},
+    {n:"Cyberpunk",cols:["#00FFFF","#FF00FF","#FF00FF"]},
+    {n:"Matrix",cols:["#00FF00","#FF0000","#32CD32"]},
+  ];
   const CUSTOM_TPL_STORAGE_KEY = "v9CustomChartTemplates";
   const snapshotTemplateSettings = (src) => {
     const snap = { ...src };
@@ -14855,7 +14901,6 @@ const TalariaV8bLive = () => {
 
             {/* ── TEMPLATES ─────────────────────────────────── */}
             {(()=>{
-              const defaultTpls = [{n:"Dark Classic",cols:["#00D4A1","#FF5068","#2643F7"]},{n:"Professional",cols:["#26A69A","#EF5350","#1565C0"]},{n:"Ocean Night",cols:["#00BCD4","#FF4081","#00E5FF"]},{n:"Amber Dusk",cols:["#FF9800","#F44336","#FFC107"]},{n:"Forest Deep",cols:["#66BB6A","#81C784","#4CAF50"]},{n:"Midnight",cols:["#42A5F5","#EF5350","#7E57C2"]},{n:"Crimson",cols:["#F44336","#9C27B0","#E91E63"]},{n:"Arctic Frost",cols:["#80DEEA","#FFAB40","#4FC3F7"]},{n:"Cyber Green",cols:["#00E676","#FF1744","#76FF03"]},{n:"Rose Gold",cols:["#F48FB1","#FFB74D","#CE93D8"]}];
               const allTpls = [...customTemplates,...defaultTpls];
               const cur = allTpls.find(t=>t.n===settings.chartTemplate);
               return (
@@ -19704,7 +19749,7 @@ const TalariaV8bLive = () => {
       {opDotsOpen && <div onClick={()=>setOpDotsOpen(false)} style={{ position:"fixed", inset:0, zIndex:9199 }}/>}
 
       {settDrop && (()=>{
-        const defaultTplOpts = [{n:"Dark Classic",cols:["#00D4A1","#FF5068","#2643F7"]},{n:"Professional",cols:["#26A69A","#EF5350","#1565C0"]},{n:"Ocean Night",cols:["#00BCD4","#FF4081","#00E5FF"]},{n:"Amber Dusk",cols:["#FF9800","#F44336","#FFC107"]},{n:"Forest Deep",cols:["#66BB6A","#81C784","#4CAF50"]},{n:"Midnight",cols:["#42A5F5","#EF5350","#7E57C2"]},{n:"Crimson",cols:["#F44336","#9C27B0","#E91E63"]},{n:"Arctic Frost",cols:["#80DEEA","#FFAB40","#4FC3F7"]},{n:"Cyber Green",cols:["#00E676","#FF1744","#76FF03"]},{n:"Rose Gold",cols:["#F48FB1","#FFB74D","#CE93D8"]}];
+        const defaultTplOpts = defaultTpls;
         const tplOpts = [...(customTemplates.length>0?[{divider:"SAVED"},...customTemplates,{divider:"DEFAULT"}]:[]),...defaultTplOpts];
         const cfgMap = { gridStyle:{key:"gridLineStyle",type:"style"}, gridThick:{key:"gridLineThickness",type:"thick"}, priceStyle:{key:"priceLineStyle",type:"style"}, priceThick:{key:"priceLineThickness",type:"thick"}, chartTimeFormat:{key:"timeFormat",type:"select",opts:["24h","12h"]}, chartTimezone:{key:"timezone",type:"select",opts:["UTC","UTC+3 (Riyadh)","UTC+4 (Dubai)","UTC+5:30 (IST)","UTC+8 (Asia)","UTC-5 (EST)","UTC-8 (PST)"]}, chartPrecision:{key:"precision",type:"select",opts:["0.00000","0.0000","0.000","0.00","0.0"]}, chartTemplate:{key:"chartTemplate",type:"template",opts:tplOpts} };
         if (settDrop==="profLang") return <>
