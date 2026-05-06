@@ -3525,6 +3525,9 @@ const TalariaV8bLive = () => {
     const desired = replayIntervalToLegacyValue(replayInterval);
     try {
       const rs = getReplaySystem();
+      if (rs && typeof rs.setStepTimeframe === "function") {
+        rs.setStepTimeframe(desired);
+      }
       const tfSelect = (rs && rs.timeframeSelect) || document.getElementById("replayTimeframe");
       if (!tfSelect) return;
       if (tfSelect.value !== desired) {

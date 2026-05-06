@@ -40,6 +40,7 @@ class ReplaySystem {
         // This ensures consistent tick animation across all timeframes
         this.tickPathCache = {};  // { timestamp: [price0, ... priceN-1] } length === ticksPerCandle
         this.tickPathCacheBuilt = false;
+        this.stepTimeframeOverride = null; // 'sync' | '1m' | '5m' | ...
         this._prngSeed = 12345; // Seeded PRNG state
         this._nextCandleTimer = null; // Tracks the between-candle timer so it can be cancelled
         this.useConstantTickInterval = true; // Keeps replay cadence stable (prevents stop/run feel)
@@ -483,6 +484,24 @@ class ReplaySystem {
             this.tickElapsedMs = 0;
             this.play();
         }
+    }
+
+    /**
+     * Set replay step timeframe explicitly (used by V9 UI when hidden legacy
+     * select is not present in the DOM).
+     */
+    setStepTimeframe(timeframe) {
+        if (timeframe == null) {
+            this.stepTimeframeOverride = null;
+            return;
+        }
+        const raw = String(timeframe).trim();
+        if (!raw) {
+            this.stepTimeframeOverride = null;
+            return;
+        }
+        const lower = raw.toLowerCase();
+        this.stepTimeframeOverride = lower === 'auto' ? 'sync' : lower;
     }
     
     /**
@@ -2528,12 +2547,15 @@ class ReplaySystem {
             return this.fullRawData.length - 1;
         }
         
-        // Get timeframe from hidden select OR from the visible dropdown's selected option
-        let selectedTimeframe = null;
+        // Priority 0: explicit override (V9 can set this directly).
+        let selectedTimeframe = this.stepTimeframeOverride || null;
+        if (selectedTimeframe) {
+            selectedTimeframe = String(selectedTimeframe).trim();
+        }
         
         // Try hidden select first
         const hiddenSelect = this.timeframeSelect || document.getElementById('replayTimeframe');
-        if (hiddenSelect && hiddenSelect.value) {
+        if (!selectedTimeframe && hiddenSelect && hiddenSelect.value) {
             selectedTimeframe = hiddenSelect.value;
         }
         
