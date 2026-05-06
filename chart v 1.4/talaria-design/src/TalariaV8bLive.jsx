@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
 import { createPortal, flushSync } from "react-dom";
-import { applyV9ThemeSettingsToChart } from "./v9ThemeSync.js";
+import { applyV9ThemeSettingsToChart, resolveV9TimezoneToId } from "./v9ThemeSync.js";
 import { buildLiveTradeRowsFromOrderManager } from "./orderManagerTradeRows.js";
 import {
   FlagSvg,
@@ -65,6 +65,22 @@ function v9ActiveChartInstance() {
   } catch (_) {
     return typeof window !== "undefined" ? window.chart : null;
   }
+}
+
+/** Full IANA list for Settings → Time zone (Intl when supported). */
+function getAllChartTimezoneIds() {
+  try {
+    if (typeof Intl !== "undefined" && typeof Intl.supportedValuesOf === "function") {
+      return Intl.supportedValuesOf("timeZone").slice().sort((a, b) => a.localeCompare(b));
+    }
+  } catch (_) {}
+  return [
+    "Pacific/Midway", "Pacific/Honolulu", "America/Anchorage", "America/Los_Angeles", "America/Denver",
+    "America/Chicago", "America/New_York", "America/Caracas", "America/Sao_Paulo", "Atlantic/South_Georgia",
+    "Atlantic/Azores", "UTC", "Europe/Paris", "Europe/Athens", "Europe/Moscow", "Asia/Dubai", "Asia/Karachi",
+    "Asia/Kolkata", "Asia/Dhaka", "Asia/Bangkok", "Asia/Singapore", "Asia/Tokyo", "Australia/Sydney",
+    "Pacific/Noumea", "Pacific/Auckland",
+  ].sort((a, b) => a.localeCompare(b));
 }
 
 /** Bar / replay time (ms) for V9 bottom HUD — matches trade-row “now” semantics. */
@@ -4579,6 +4595,19 @@ const TalariaV8bLive = () => {
   const [swHov, setSwHov] = useState(null);
   const [settDrop, setSettDrop] = useState(null);
   const [settDropPos, setSettDropPos] = useState({ top: 0, left: 0, w: 0 });
+
+  useEffect(() => {
+    if (!settDrop) return;
+    const onDocDown = (e) => {
+      const node = e.target;
+      if (!(node instanceof Element)) return;
+      if (node.closest("[data-sett-drop-root=\"1\"]") || node.closest("[data-sett-drop-anchor=\"1\"]")) return;
+      setSettDrop(null);
+    };
+    document.addEventListener("mousedown", onDocDown, true);
+    return () => document.removeEventListener("mousedown", onDocDown, true);
+  }, [settDrop]);
+
   const [customTemplates, setCustomTemplates] = useState([]);
   const [tplNameInput, setTplNameInput] = useState("");
   const [settHdrTplDrop, setSettHdrTplDrop] = useState(false);
@@ -4614,6 +4643,13 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+
+  useEffect(() => {
+    setSettings((prev) => {
+      const id = resolveV9TimezoneToId(prev.timezone);
+      return id === prev.timezone ? prev : { ...prev, timezone: id };
+    });
+  }, []);
 
   useEffect(() => {
     const tick = () => {
@@ -5206,7 +5242,7 @@ const TalariaV8bLive = () => {
       if (!style) { style = document.createElement('style'); style.id = 'tlr-scrollbar-css'; document.head.appendChild(style); }
       const sbC = darkMode ? "rgba(140,160,255,0.22)" : "rgba(0,5,40,0.22)";
       const sbH = darkMode ? "rgba(140,160,255,0.44)" : "rgba(0,5,40,0.40)";
-      style.textContent = `*{user-select:none!important;-webkit-user-select:none!important;cursor:default}input,textarea{user-select:text!important;-webkit-user-select:text!important;cursor:text}.tlr-scroll::-webkit-scrollbar{width:3px;height:3px}.tlr-scroll::-webkit-scrollbar-track{background:transparent}.tlr-scroll::-webkit-scrollbar-thumb{background:${sbC};border-radius:2px}.tlr-scroll::-webkit-scrollbar-thumb:hover{background:${sbH}}.tlr-scroll{scrollbar-width:thin;scrollbar-color:${sbC} transparent}`;
+      style.textContent = `*{user-select:none!important;-webkit-user-select:none!important;cursor:default}input,textarea{user-select:text!important;-webkit-user-select:text!important;cursor:text}.tlr-scroll::-webkit-scrollbar{width:3px;height:3px}.tlr-scroll::-webkit-scrollbar-track{background:transparent}.tlr-scroll::-webkit-scrollbar-thumb{background:${sbC};border-radius:2px}.tlr-scroll::-webkit-scrollbar-thumb:hover{background:${sbH}}.tlr-scroll{scrollbar-width:thin;scrollbar-color:${sbC} transparent}.tlr-scroll-tz::-webkit-scrollbar{width:8px;height:8px}.tlr-scroll-tz::-webkit-scrollbar-track{background:rgba(0,0,0,0.12);border-radius:4px}.tlr-scroll-tz::-webkit-scrollbar-thumb{background:${sbH};border-radius:4px;min-height:28px}.tlr-scroll-tz::-webkit-scrollbar-thumb:hover{background:${darkMode?"rgba(180,195,255,0.55)":"rgba(40,55,120,0.55)"}}.tlr-scroll-tz{scrollbar-width:auto;scrollbar-color:${sbH} rgba(0,0,0,0.15)}`;
     }
   }, [darkMode]);
 
@@ -14874,7 +14910,7 @@ const TalariaV8bLive = () => {
                 return (
                   <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0"}}>
                     {Chk(settings.gridLinesOn,"gridLinesOn","chkGrid","Grid Lines")}
-                    <div onMouseEnter={()=>setSwHov("gsb")} onMouseLeave={()=>setSwHov(null)}
+                    <div data-sett-drop-anchor="1" onMouseEnter={()=>setSwHov("gsb")} onMouseLeave={()=>setSwHov(null)}
                       onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:120}));setSettDrop(settDrop==="gridStyle"?null:"gridStyle");}}
                       style={{display:"flex",alignItems:"center",gap:3,padding:"0 5px",height:20,position:"relative",background:settDrop==="gridStyle"?"rgba(74,106,255,0.08)":swHov==="gsb"?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
                       <svg width={24} height={10}><line x1={1} y1={5} x2={23} y2={5} stroke={c.ts} strokeWidth={1.2} strokeDasharray={gDash}/></svg>
@@ -14882,7 +14918,7 @@ const TalariaV8bLive = () => {
                       {settDrop==="gridStyle"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                       {settDrop!=="gridStyle"&&swHov==="gsb"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
                     </div>
-                    <div onMouseEnter={()=>setSwHov("gtb")} onMouseLeave={()=>setSwHov(null)}
+                    <div data-sett-drop-anchor="1" onMouseEnter={()=>setSwHov("gtb")} onMouseLeave={()=>setSwHov(null)}
                       onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:150}));setSettDrop(settDrop==="gridThick"?null:"gridThick");}}
                       style={{display:"flex",alignItems:"center",gap:3,padding:"0 5px",height:20,position:"relative",background:settDrop==="gridThick"?"rgba(74,106,255,0.08)":swHov==="gtb"?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
                       <svg width={24} height={Math.max(gH,10)}><line x1={1} y1={Math.max(gH,10)/2} x2={23} y2={Math.max(gH,10)/2} stroke={c.ts} strokeWidth={gThick*1.2} strokeLinecap="round"/></svg>
@@ -14909,7 +14945,7 @@ const TalariaV8bLive = () => {
                 return (
                   <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0"}}>
                     {Chk(settings.priceLine,"priceLine","chkPrice","Price Line")}
-                    <div onMouseEnter={()=>setSwHov("psb")} onMouseLeave={()=>setSwHov(null)}
+                    <div data-sett-drop-anchor="1" onMouseEnter={()=>setSwHov("psb")} onMouseLeave={()=>setSwHov(null)}
                       onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:120}));setSettDrop(settDrop==="priceStyle"?null:"priceStyle");}}
                       style={{display:"flex",alignItems:"center",gap:3,padding:"0 5px",height:20,position:"relative",background:settDrop==="priceStyle"?"rgba(74,106,255,0.08)":swHov==="psb"?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
                       <svg width={24} height={10}><line x1={1} y1={5} x2={23} y2={5} stroke={c.ts} strokeWidth={1.2} strokeDasharray={pDash}/></svg>
@@ -14917,7 +14953,7 @@ const TalariaV8bLive = () => {
                       {settDrop==="priceStyle"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                       {settDrop!=="priceStyle"&&swHov==="psb"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
                     </div>
-                    <div onMouseEnter={()=>setSwHov("ptb")} onMouseLeave={()=>setSwHov(null)}
+                    <div data-sett-drop-anchor="1" onMouseEnter={()=>setSwHov("ptb")} onMouseLeave={()=>setSwHov(null)}
                       onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:150}));setSettDrop(settDrop==="priceThick"?null:"priceThick");}}
                       style={{display:"flex",alignItems:"center",gap:3,padding:"0 5px",height:20,position:"relative",background:settDrop==="priceThick"?"rgba(74,106,255,0.08)":swHov==="ptb"?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
                       <svg width={24} height={Math.max(pH,10)}><line x1={1} y1={Math.max(pH,10)/2} x2={23} y2={Math.max(pH,10)/2} stroke={c.ts} strokeWidth={pThick*1.2} strokeLinecap="round"/></svg>
@@ -14936,13 +14972,13 @@ const TalariaV8bLive = () => {
             <div style={{height:1,background:c.br,marginBottom:14}}/>
             <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10}}>CHART</div>
             <div style={{background:c.bg,border:`1px solid ${c.br}`,padding:"2px 12px",marginBottom:18}}>
-              {[["Time Format","timeFormat","chartTimeFormat",70],["Time Zone","timezone","chartTimezone",130],["Precision","precision","chartPrecision",100]].map(([lbl,sKey,dropKey,w])=>(
+              {[["Time Format","timeFormat","chartTimeFormat",70],["Time Zone","timezone","chartTimezone",220],["Precision","precision","chartPrecision",100]].map(([lbl,sKey,dropKey,w])=>(
                 <div key={lbl} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0"}}>
                   <span style={{fontSize:13,color:c.ts}}>{lbl}</span>
-                  <div onMouseEnter={()=>setSwHov(dropKey)} onMouseLeave={()=>setSwHov(null)}
-                    onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:180,rightAlign:true,w:r.width/Z}));setSettDrop(settDrop===dropKey?null:dropKey);}}
-                    style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",height:22,width:w,position:"relative",background:settDrop===dropKey?"rgba(74,106,255,0.08)":swHov===dropKey?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
-                    <span style={{flex:1,fontSize:11,color:settDrop===dropKey?c.acL:c.ts,fontFamily:F,fontVariantNumeric:"tabular-nums"}}>{settings[sKey]}</span>
+                  <div data-sett-drop-anchor="1" onMouseEnter={()=>setSwHov(dropKey)} onMouseLeave={()=>setSwHov(null)}
+                    onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();const isTz=dropKey==="chartTimezone";const vpH=(typeof window!=="undefined"?window.innerHeight:800)/Z;const maxDrop=Math.min(340,Math.max(200,vpH-140));setSettDropPos(sdPos(r,isTz?{h:maxDrop,rightAlign:true,w:Math.max(r.width/Z,280)}:{h:180,rightAlign:true,w:r.width/Z}));setSettDrop(settDrop===dropKey?null:dropKey);}}
+                    style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",height:22,width:w,position:"relative",background:settDrop===dropKey?"rgba(74,106,255,0.08)":swHov===dropKey?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0,minWidth:dropKey==="chartTimezone"?Math.min(w,220):undefined}}>
+                    <span title={String(settings[sKey] ?? "")} style={{flex:1,fontSize:11,color:settDrop===dropKey?c.acL:c.ts,fontFamily:F,fontVariantNumeric:"tabular-nums",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{settings[sKey]}</span>
                     <svg width={7} height={5}><path d="M0,0 L3.5,4.5 L7,0" stroke={settDrop===dropKey?c.acL:c.tm} strokeWidth={1.2} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     {settDrop===dropKey&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                     {settDrop!==dropKey&&swHov===dropKey&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
@@ -14973,7 +15009,7 @@ const TalariaV8bLive = () => {
                   <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10}}>TEMPLATES</div>
 
                   {/* Active template picker */}
-                  <div onMouseEnter={()=>setSwHov("tplTrig")} onMouseLeave={()=>setSwHov(null)}
+                  <div data-sett-drop-anchor="1" onMouseEnter={()=>setSwHov("tplTrig")} onMouseLeave={()=>setSwHov(null)}
                     onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:300,w:r.width/Z}));setSettDrop(settDrop==="chartTemplate"?null:"chartTemplate");}}
                     style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",marginBottom:10,background:swHov==="tplTrig"||settDrop==="chartTemplate"?"rgba(140,160,255,0.10)":"rgba(140,160,255,0.05)",border:`1px solid ${swHov==="tplTrig"||settDrop==="chartTemplate"?"rgba(140,160,255,0.30)":"rgba(140,160,255,0.15)"}`,cursor:"default",transition:"all 0.12s"}}>
                     <span style={{flex:1,fontSize:13,color:c.tx,fontFamily:F,fontWeight:600}}>{settings.chartTemplate||"Select Template"}</span>
@@ -15110,7 +15146,7 @@ const TalariaV8bLive = () => {
                     <span style={{fontSize:13,color:c.ts,flexShrink:0,marginRight:10}}>{k}</span>
                     {k==="Language"
                       ? (()=>{const isAct=settDrop==="profLang"; const isH=swHov==="prof-lang-btn"; return(
-                          <div onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:100,rightAlign:true,w:r.width/Z}));setSettDrop(settDrop==="profLang"?null:"profLang");}}
+                          <div data-sett-drop-anchor="1" onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:100,rightAlign:true,w:r.width/Z}));setSettDrop(settDrop==="profLang"?null:"profLang");}}
                             onMouseEnter={()=>setSwHov("prof-lang-btn")} onMouseLeave={()=>setSwHov(null)}
                             style={{display:"flex",alignItems:"center",gap:5,padding:"4px 8px",cursor:"default",minWidth:90,justifyContent:"space-between",position:"relative",
                               background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
@@ -19815,9 +19851,10 @@ const TalariaV8bLive = () => {
       {settDrop && (()=>{
         const defaultTplOpts = defaultTpls;
         const tplOpts = [...(customTemplates.length>0?[{divider:"SAVED"},...customTemplates,{divider:"DEFAULT"}]:[]),...defaultTplOpts];
-        const cfgMap = { gridStyle:{key:"gridLineStyle",type:"style"}, gridThick:{key:"gridLineThickness",type:"thick"}, priceStyle:{key:"priceLineStyle",type:"style"}, priceThick:{key:"priceLineThickness",type:"thick"}, chartTimeFormat:{key:"timeFormat",type:"select",opts:["24h","12h"]}, chartTimezone:{key:"timezone",type:"select",opts:["UTC","UTC+3 (Riyadh)","UTC+4 (Dubai)","UTC+5:30 (IST)","UTC+8 (Asia)","UTC-5 (EST)","UTC-8 (PST)"]}, chartPrecision:{key:"precision",type:"select",opts:["0.00000","0.0000","0.000","0.00","0.0"]}, chartTemplate:{key:"chartTemplate",type:"template",opts:tplOpts} };
+        const tzScrollH = Math.min(320, Math.max(160, (typeof window !== "undefined" ? window.innerHeight : 720) / Z - 130));
+        const cfgMap = { gridStyle:{key:"gridLineStyle",type:"style"}, gridThick:{key:"gridLineThickness",type:"thick"}, priceStyle:{key:"priceLineStyle",type:"style"}, priceThick:{key:"priceLineThickness",type:"thick"}, chartTimeFormat:{key:"timeFormat",type:"select",opts:["24h","12h"]}, chartTimezone:{key:"timezone",type:"select",opts:getAllChartTimezoneIds(),scrollMaxPx:tzScrollH}, chartPrecision:{key:"precision",type:"select",opts:["0.00000","0.0000","0.000","0.00","0.0"]}, chartTemplate:{key:"chartTemplate",type:"template",opts:tplOpts} };
         if (settDrop==="profLang") return <>
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||140,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
+          <div data-sdrop="1" data-sett-drop-root="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||140,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
               <div style={{padding:"5px 12px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>LANGUAGE</div>
@@ -19838,7 +19875,7 @@ const TalariaV8bLive = () => {
           </div>
         </>;
         if (settDrop==="loadTemplate") return <>
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||150,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
+          <div data-sdrop="1" data-sett-drop-root="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||150,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
               <div style={{padding:"5px 12px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>SAVED TEMPLATES</div>
@@ -19870,11 +19907,31 @@ const TalariaV8bLive = () => {
         if (!cfg) return null;
         const styleOpts = [{val:"solid",dash:"none"},{val:"dashed",dash:"5,4"},{val:"dotted",dash:"1.5,4"},{val:"longDash",dash:"10,5"}];
         const thickOpts = [0.5,1,1.5,2,2.5,3];
+        const settDropWidthSx = settDrop === "chartTimezone"
+          ? { width: settDropPos.w || 300, minWidth: 280 }
+          : settDropPos.w ? { width: settDropPos.w } : { minWidth: 80 };
         return <>
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease",...(settDropPos.w?{width:settDropPos.w}:{minWidth:80})}}>
+          <div data-sdrop="1" data-sett-drop-root="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease",...settDropWidthSx}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
-              {cfg.type==="select" && cfg.opts.map(opt=>{
+              {cfg.type==="select" && (cfg.scrollMaxPx!=null ? (
+                <div className="tlr-scroll tlr-scroll-tz" style={{maxHeight:cfg.scrollMaxPx,overflowY:"auto",overflowX:"hidden"}}>
+                  {cfg.opts.map((opt) => {
+                    const selectedTz = resolveV9TimezoneToId(settings[cfg.key]);
+                    const active = selectedTz === opt;
+                    return (
+                      <div key={opt} onClick={()=>{updateSetting(cfg.key,opt);setSettDrop(null);}}
+                        onMouseEnter={()=>setSwHov("sdrop-"+opt)} onMouseLeave={()=>setSwHov(null)}
+                        style={{display:"flex",alignItems:"center",padding:"5px 14px",cursor:"default",gap:8,position:"relative",
+                          background:active?c.acD:swHov==="sdrop-"+opt?c.hv2:"transparent",
+                          transition:"background 0.1s"}}>
+                        {active&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                        <span style={{fontSize:12,fontFamily:F,color:active?c.acL:c.ts,fontWeight:active?700:500,flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={opt}>{opt}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : cfg.opts.map(opt=>{
                 const active = settings[cfg.key]===opt;
                 return (
                   <div key={opt} onClick={()=>{updateSetting(cfg.key,opt);setSettDrop(null);}}
@@ -19886,7 +19943,7 @@ const TalariaV8bLive = () => {
                     <span style={{fontSize:12,fontFamily:F,color:active?c.acL:c.ts,fontWeight:active?700:500,flex:1}}>{opt}</span>
                   </div>
                 );
-              })}
+              }))}
               {cfg.type==="template" && cfg.opts.map((tpl,idx)=>{
                 if (tpl.divider) return (
                   <div key={tpl.divider+idx} style={{padding:"5px 12px 3px",fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.07em",borderTop:idx>0?`1px solid ${c.br}`:"none"}}>{tpl.divider}</div>

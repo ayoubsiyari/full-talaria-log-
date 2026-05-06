@@ -55,17 +55,33 @@ function applyCanvasTheme(targetCs, settings) {
   return c;
 }
 
-function mapV9TimezoneToId(tzLabel) {
-  const map = {
-    "UTC": "UTC",
-    "UTC+3 (Riyadh)": "Europe/Moscow",
-    "UTC+4 (Dubai)": "Asia/Dubai",
-    "UTC+5:30 (IST)": "Asia/Kolkata",
-    "UTC+8 (Asia)": "Asia/Singapore",
-    "UTC-5 (EST)": "America/New_York",
-    "UTC-8 (PST)": "America/Los_Angeles",
-  };
-  return map[tzLabel] || "UTC";
+const LEGACY_V9_TIMEZONE_LABELS = {
+  UTC: "UTC",
+  "UTC+3 (Riyadh)": "Europe/Moscow",
+  "UTC+4 (Dubai)": "Asia/Dubai",
+  "UTC+5:30 (IST)": "Asia/Kolkata",
+  "UTC+8 (Asia)": "Asia/Singapore",
+  "UTC-5 (EST)": "America/New_York",
+  "UTC-8 (PST)": "America/Los_Angeles",
+};
+
+/** Legacy UI labels or any valid IANA zone id stored from Settings → Time zone */
+export function resolveV9TimezoneToId(value) {
+  if (value == null || value === "") return "UTC";
+  const v = String(value).trim();
+  if (Object.prototype.hasOwnProperty.call(LEGACY_V9_TIMEZONE_LABELS, v)) {
+    return LEGACY_V9_TIMEZONE_LABELS[v];
+  }
+  if (v === "UTC") return "UTC";
+  if (/^[A-Za-z_]+\/.+$/.test(v)) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: v });
+      return v;
+    } catch (_) {
+      /* fall through */
+    }
+  }
+  return "UTC";
 }
 
 /**
@@ -118,7 +134,7 @@ export function applyV9ThemeSettingsToChart(settings) {
   if (applyCanvasTheme(cs, settings)) changed = true;
   try {
     const tm = typeof window !== "undefined" ? window.timezoneManager : null;
-    const tzId = mapV9TimezoneToId(settings.timezone);
+    const tzId = resolveV9TimezoneToId(settings.timezone);
     if (tm && typeof tm.setTimezone === "function" && tm.getTimezone?.()?.id !== tzId) {
       tm.setTimezone(tzId);
       changed = true;

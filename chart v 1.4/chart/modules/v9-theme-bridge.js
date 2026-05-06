@@ -57,8 +57,8 @@
     return c;
   }
 
-  function mapV9TimezoneToId(tzLabel) {
-    var map = {
+  function resolveV9Tz(value) {
+    var LEGACY = {
       'UTC': 'UTC',
       'UTC+3 (Riyadh)': 'Europe/Moscow',
       'UTC+4 (Dubai)': 'Asia/Dubai',
@@ -67,7 +67,21 @@
       'UTC-5 (EST)': 'America/New_York',
       'UTC-8 (PST)': 'America/Los_Angeles'
     };
-    return map[tzLabel] || 'UTC';
+    if (value == null || value === '') return 'UTC';
+    var v = String(value).trim();
+    if (Object.prototype.hasOwnProperty.call(LEGACY, v)) return LEGACY[v];
+    if (v === 'UTC') return 'UTC';
+    if (/^[A-Za-z_]+\/.+$/.test(v)) {
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: v });
+        return v;
+      } catch (e0) { /* invalid */ }
+    }
+    return 'UTC';
+  }
+
+  function mapV9TimezoneToId(tzLabel) {
+    return resolveV9Tz(tzLabel);
   }
 
   /**
@@ -122,7 +136,7 @@
     if (applyCanvasTheme(cs, settings)) changed = true;
     try {
       var tm = typeof window !== 'undefined' ? window.timezoneManager : null;
-      var tzId = mapV9TimezoneToId(settings.timezone);
+      var tzId = resolveV9Tz(settings.timezone);
       if (tm && typeof tm.setTimezone === 'function') {
         var cur = tm.getTimezone && tm.getTimezone();
         if (!cur || cur.id !== tzId) {

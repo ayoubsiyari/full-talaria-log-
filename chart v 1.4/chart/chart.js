@@ -13249,6 +13249,7 @@ class Chart {
     }
 
     mapV9TimezoneLabelToId(label) {
+        if (!label || typeof label !== 'string') return null;
         const map = {
             'UTC': 'UTC',
             'UTC+3 (Riyadh)': 'Europe/Moscow',
@@ -13258,7 +13259,16 @@ class Chart {
             'UTC-5 (EST)': 'America/New_York',
             'UTC-8 (PST)': 'America/Los_Angeles'
         };
-        return map[label] || null;
+        if (map[label]) return map[label];
+        const v = label.trim();
+        if (v === 'UTC') return 'UTC';
+        if (/^[A-Za-z_]+\/.+$/.test(v)) {
+            try {
+                new Intl.DateTimeFormat('en-US', { timeZone: v });
+                return v;
+            } catch (_) {}
+        }
+        return null;
     }
 
     syncV9TimeControlsFromDom() {

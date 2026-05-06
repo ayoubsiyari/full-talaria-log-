@@ -55,6 +55,10 @@ class TimezoneManager {
             if (saved) {
                 const tz = this.timezones.find(t => t.id === saved);
                 if (tz) return tz;
+                try {
+                    new Intl.DateTimeFormat('en-US', { timeZone: saved });
+                    return { id: saved, label: saved.replace(/\//g, ' / '), offset: 0 };
+                } catch (_) { /* invalid stored id */ }
             }
         } catch (e) {
             console.warn('Failed to load timezone:', e);
@@ -98,15 +102,21 @@ class TimezoneManager {
      * Set timezone by ID
      */
     setTimezone(timezoneId) {
-        const tz = this.timezones.find(t => t.id === timezoneId);
-        if (tz) {
-            this.currentTimezone = tz;
-            this.saveTimezone(tz);
-            this.notifyListeners();
-            console.log('🌍 Timezone changed to:', tz.label);
-            return true;
+        if (!timezoneId || typeof timezoneId !== 'string') return false;
+        let tz = this.timezones.find(t => t.id === timezoneId);
+        if (!tz) {
+            try {
+                new Intl.DateTimeFormat('en-US', { timeZone: timezoneId });
+                tz = { id: timezoneId, label: timezoneId.replace(/\//g, ' / '), offset: 0 };
+            } catch (_) {
+                return false;
+            }
         }
-        return false;
+        this.currentTimezone = tz;
+        this.saveTimezone(tz);
+        this.notifyListeners();
+        console.log('🌍 Timezone changed to:', tz.label);
+        return true;
     }
     
     /**
