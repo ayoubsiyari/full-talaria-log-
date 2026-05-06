@@ -611,7 +611,7 @@ class PanelManager {
      * Sync symbol across all panels
      */
     syncSymbol(sourcePanel, symbol, fileId) {
-        if (!this.syncSettings.symbol || this.currentLayout === '1') return;
+        if (!this.syncSettings.symbol || (this.panels || []).length <= 1) return;
         
         this.panels.forEach(panel => {
             if (panel.index === sourcePanel.index) return;
@@ -631,7 +631,7 @@ class PanelManager {
      * Sync interval/timeframe across all panels
      */
     syncInterval(sourcePanel, timeframe) {
-        if (!this.syncSettings.interval || this.currentLayout === '1') return;
+        if (!this.syncSettings.interval || (this.panels || []).length <= 1) return;
         
         this.panels.forEach(panel => {
             if (panel.index === sourcePanel.index) return;
@@ -699,7 +699,7 @@ class PanelManager {
      * (0 = left edge, 0.5 = center, 1 = right edge). Each panel keeps its own zoom.
      */
     _positionOtherPanelsOnTimestamp(sourcePanel, timestamp, fraction) {
-        if (!this.syncSettings.time || this.currentLayout === '1') return;
+        if (!this.syncSettings.time || (this.panels || []).length <= 1) return;
         if (!Number.isFinite(timestamp)) return;
 
         this._isSyncing = true;
@@ -769,7 +769,7 @@ class PanelManager {
      */
     _discreteTimeSyncToRightEdge(sourcePanel, rightEdgeTimestamp) {
         if (this._isSyncing) return;
-        if (!this.syncSettings.time || this.currentLayout === '1') return;
+        if (!this.syncSettings.time || (this.panels || []).length <= 1) return;
         if (!Number.isFinite(rightEdgeTimestamp)) return;
 
         let anyChanged = false;
@@ -850,7 +850,7 @@ class PanelManager {
      */
     syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive) {
         if (this._isSyncing) return;
-        if (!this.syncSettings.dateRange || this.currentLayout === '1') return;
+        if (!this.syncSettings.dateRange || (this.panels || []).length <= 1) return;
 
         const sourceChart = sourcePanel?.chartInstance;
         if (!sourceChart?.data?.length) return;
@@ -950,7 +950,7 @@ class PanelManager {
      * Sync indicators from the selected panel to all others
      */
     syncIndicatorsNow() {
-        if (!this.syncSettings.indicators || this.currentLayout === '1') return;
+        if (!this.syncSettings.indicators || (this.panels || []).length <= 1) return;
         const src = this.panels[this.selectedPanelIndex];
         if (!src || !src.chartInstance) return;
         const srcChart = src.chartInstance;
@@ -972,7 +972,7 @@ class PanelManager {
      * Sync chart type (candle style) from selected panel to all others
      */
     syncChartTypeNow() {
-        if (!this.syncSettings.chartType || this.currentLayout === '1') return;
+        if (!this.syncSettings.chartType || (this.panels || []).length <= 1) return;
         const src = this.panels[this.selectedPanelIndex];
         if (!src || !src.chartInstance) return;
         const srcChart = src.chartInstance;
