@@ -391,6 +391,18 @@ const LOAD_QUOTES = [
   ["Trading is a probability game. You can't be a perfectionist and expect to be a great trader. The two are simply not compatible.", "Mark Douglas"],
 ];
 
+// Maps lyLines[n-1][li] visual variants to panelManager.applyLayout() key strings
+const LAYOUT_KEY_MAP = [
+  ['1'],
+  ['2v', '2h'],
+  ['3v', '3h', '3l', '3r', '3t', '3b'],
+  ['4', '4h', '4v', '4b', '4t', '4l', '4r', '4tl'],
+  ['5a', '5b', '5c', '5v', '5h'],
+  ['6', '6b', '6v', '6h'],
+  ['7a', '7v'],
+  ['8', '8b', '8v', '8h'],
+];
+
 const TalariaV8b = () => {
   const [loading, setLoading] = useState(false);
   const [loadFading, setLoadFading] = useState(false);
@@ -1293,6 +1305,49 @@ const TalariaV8b = () => {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Load initial sync settings and current layout from panelManager (it initialises asynchronously)
+  useEffect(() => {
+    const load = () => {
+      const pm = typeof window !== 'undefined' && window.panelManager;
+      if (!pm) return false;
+      if (pm.syncSettings) setLayoutSync(s => ({ ...s, ...pm.syncSettings }));
+      if (pm.currentLayout && pm.currentLayout !== '1') {
+        for (let n = 0; n < LAYOUT_KEY_MAP.length; n++) {
+          const li = LAYOUT_KEY_MAP[n].indexOf(pm.currentLayout);
+          if (li !== -1) { setLayoutPanels({ n: n + 1, li }); break; }
+        }
+      }
+      return true;
+    };
+    if (!load()) {
+      const t = setTimeout(load, 800);
+      return () => clearTimeout(t);
+    }
+  }, []);
+
+  // Propagate layoutSync changes → panelManager.syncSettings and trigger side effects
+  useEffect(() => {
+    const pm = typeof window !== 'undefined' && window.panelManager;
+    if (!pm || !pm.syncSettings) return;
+    const prev = { ...pm.syncSettings };
+    Object.assign(pm.syncSettings, layoutSync);
+    if (typeof pm.saveSyncSettings === 'function') pm.saveSyncSettings();
+    // crosshair: update per-chart flag
+    if (prev.crosshair !== layoutSync.crosshair) {
+      window.crosshairSyncEnabled = layoutSync.crosshair;
+      if (pm.panels) pm.panels.forEach(p => { if (p.chartInstance) p.chartInstance.syncCrosshair = layoutSync.crosshair; });
+    }
+    // drawings: update per-chart flag
+    if (prev.drawings !== layoutSync.drawings) {
+      if (pm.panels) pm.panels.forEach(p => { if (p.chartInstance) p.chartInstance.syncDrawings = layoutSync.drawings; });
+    }
+    // time: reset last-bar cache so next scroll immediately re-syncs
+    if (!prev.time && layoutSync.time) pm._timeSyncLastTargetBar = {};
+    // indicators / chartType: immediate one-shot sync
+    if (!prev.indicators && layoutSync.indicators && typeof pm.syncIndicatorsNow === 'function') pm.syncIndicatorsNow();
+    if (!prev.chartType && layoutSync.chartType && typeof pm.syncChartTypeNow === 'function') pm.syncChartTypeNow();
+  }, [layoutSync]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -3480,9 +3535,9 @@ const TalariaV8b = () => {
                                 {/* Plus button — tall (2 tag rows) */}
                                 <div style={{position:"relative",flexShrink:0}}>
                                   <div onClick={e=>{e.stopPropagation();if(newSessSymPickerOpen){setNewSessSymPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSymPickerPos({top:r.bottom/Z+2,left:r.left/Z});setNewSessSymPickerSearch("");setNewSessSymPickerOpen(true);}}}
-                                    onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");}} onMouseLeave={()=>setHov(null)}
-                                    style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(38,67,247,0.35)"}}
-                                    onMouseEnter={e=>{e.stopPropagation();e.currentTarget.style.filter="brightness(1.12)";}} onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}>
+                                    onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");e.currentTarget.style.filter="brightness(1.12)";}}
+                                    onMouseLeave={e=>{setHov(null);e.currentTarget.style.filter="brightness(1)";}}
+                                    style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(38,67,247,0.35)"}}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
                                       <line x1="6" y1="1" x2="6" y2="11" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                                       <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
@@ -14253,7 +14308,14 @@ const TalariaV8b = () => {
                                 const lineCol = isAct?c.acL:isH?"rgba(140,160,255,0.70)":"rgba(140,160,255,0.40)";
                                 return (
                                   <div key={li}
-                                    onClick={()=>setLayoutPanels({n,li})}
+                                    onClick={()=>{
+                                      setLayoutPanels({n,li});
+                                      if(typeof window!=='undefined'&&window.panelManager){
+                                        const k=LAYOUT_KEY_MAP[n-1];
+                                        const key=k&&k[li];
+                                        if(key) window.panelManager.applyLayout(key);
+                                      }
+                                    }}
                                     onMouseEnter={()=>setSwHov(`ly-${n}-${li}`)}
                                     onMouseLeave={()=>setSwHov(null)}
                                     style={{width:IW,height:IH,cursor:"default",flexShrink:0}}>
