@@ -3474,6 +3474,11 @@ const TalariaV8bLive = () => {
     return rs;
   };
 
+  const replayIntervalToLegacyValue = (v) => {
+    if (!v || v === "Auto") return "sync";
+    return String(v).toLowerCase();
+  };
+
   // Poll replaySystem state and reflect into V9 (legacy hotkeys / clone toolbar
   // can change isPlaying/playbackMode/speed without going through V9 buttons).
   useEffect(() => {
@@ -3513,6 +3518,23 @@ const TalariaV8bLive = () => {
       try { rs.setSpeed(speed); } catch(e) { console.warn('[V9 Replay] setSpeed failed', e); }
     }
   }, [speed]);
+
+  // Push V9 replay interval changes into legacy replay timeframe selector so
+  // candle-by-candle stepping uses the selected interval (Auto => current chart timeframe).
+  useEffect(() => {
+    const desired = replayIntervalToLegacyValue(replayInterval);
+    try {
+      const rs = getReplaySystem();
+      const tfSelect = (rs && rs.timeframeSelect) || document.getElementById("replayTimeframe");
+      if (!tfSelect) return;
+      if (tfSelect.value !== desired) {
+        tfSelect.value = desired;
+        tfSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    } catch (e) {
+      console.warn("[V9 Replay] interval sync failed", e);
+    }
+  }, [replayInterval]);
 
   // Navigation integrity badge (#navIntegrityBadge) — after OHLC + change in .ohlc-stats during replay.
   useEffect(() => {
