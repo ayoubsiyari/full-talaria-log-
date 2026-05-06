@@ -469,13 +469,10 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   const PR = 46, PC = 2 * Math.PI * PR;
   const profLen = (profPct / 100) * PC;
 
-  /* ── Trades bar chart (tile only): ≥5 trades per session, top 20 by volume — header total stays all-session sum */
-  const TRADE_CHART_MIN_TRADES = 5;
-  const TRADE_CHART_MAX_BARS = 20;
+  /* ── Trades bar chart: one bar per session (sorted by trades desc); cap matches session table — header is sum of trades across all sessions */
   const trBars = [...sessions]
-    .filter(s => (kpis[s.id]?.trades || 0) >= TRADE_CHART_MIN_TRADES)
     .sort((a, b) => (kpis[b.id]?.trades || 0) - (kpis[a.id]?.trades || 0))
-    .slice(0, TRADE_CHART_MAX_BARS);
+    .slice(0, SESSION_LIST_DISPLAY_MAX);
   const trMax = Math.max(1, ...trBars.map(s => kpis[s.id]?.trades || 0));
 
   /* ── Dot grid (Days Tested tile): matches dashboardV8.jsx ── */
