@@ -247,6 +247,18 @@ function DashboardNotificationBell({
 
 const F = "'Exo 2', sans-serif";
 
+/** Dark chrome tokens — parity with `chart v 1.4/Design` (`TalariaV8b` `c` map). */
+const DASH_C = {
+  el: "#0F1119",
+  bg: "#07080E",
+  tx: "rgba(255,255,255,0.92)",
+  ts: "rgba(255,255,255,0.55)",
+  acL: "#4A6AFF",
+  acD: "rgba(38,67,247,0.08)",
+  acG: "rgba(38,67,247,0.12)",
+  hv: "rgba(255,255,255,0.07)",
+} as const;
+
 const VIEW_TITLES: Record<string, string> = {
   dashboard: "Dashboard",
   journal: "Journal",
@@ -280,6 +292,8 @@ export default function DashboardLayout({
   const [activeView, setActiveView] = React.useState<string>("dashboard");
   const [loadedViews, setLoadedViews] = React.useState<Record<string, boolean>>({});
   const [profilePanelOpen, setProfilePanelOpen] = React.useState(false);
+  const [navHoverId, setNavHoverId] = React.useState<string | null>(null);
+  const [profileNavHov, setProfileNavHov] = React.useState(false);
   const profileWrapRef = React.useRef<HTMLDivElement>(null);
   const pathname = usePathname() || "";
   const router = useRouter();
@@ -347,23 +361,33 @@ export default function DashboardLayout({
   ];
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#07080E", fontFamily: F, color: "rgba(255,255,255,0.92)", display: "flex", flexDirection: "column", overflow: "hidden" }}
+    <div style={{ position: "fixed", inset: 0, background: DASH_C.bg, fontFamily: F, color: DASH_C.tx, display: "flex", flexDirection: "column", overflow: "hidden" }}
       dir={isArabic ? "rtl" : "ltr"}>
 
-      {/* ── Top Header ── */}
-      <header style={{ height: 64, flexShrink: 0, display: "flex", alignItems: "center", background: "#0F1119", boxShadow: "0 2px 18px rgba(0,0,0,0.5)", zIndex: 2 }}>
-        {/* Logo slot */}
+      {/* ── Top Header (parity with Design `SessionsView.jsx`) ── */}
+      <header style={{ height: 64, flexShrink: 0, display: "flex", alignItems: "center", gap: 0, background: DASH_C.el, boxShadow: "0 2px 18px rgba(0,0,0,0.5)", zIndex: 2 }}>
         <div style={{ width: 64, flexShrink: 0, height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <img src="/logo-04.png" style={{ width: 50, height: 50, objectFit: "contain" }} alt="" />
+          <img src="/LOGO-07.png" style={{ width: 52, height: 52, objectFit: "contain" }} alt="" />
         </div>
-        {/* Brand + Page title */}
-        <a href="/" style={{ display: "flex", alignItems: "center", textDecoration: "none", flexShrink: 0 }}>
-          <span style={{ fontSize: 15, fontWeight: 800, color: "rgba(255,255,255,0.92)", letterSpacing: "0.02em", fontFamily: F }}>Talaria-Log</span>
-        </a>
-        <div style={{ width: 1, height: 20, background: "rgba(140,160,255,0.18)", margin: "0 12px", flexShrink: 0 }} />
-        <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.92)", flexShrink: 0 }}>{pageTitle}</span>
-        {/* Right side — Alerts / email / Logout live under sidebar Profile */}
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, paddingRight: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", flexShrink: 0, gap: 14, paddingInlineEnd: 12 }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: DASH_C.tx, letterSpacing: "0.04em", fontFamily: F }}>
+            <a href="/" style={{ color: "inherit", textDecoration: "none" }}>Talaria-Log</a>
+          </div>
+          <div
+            style={{
+              width: 1.5,
+              height: 36,
+              flexShrink: 0,
+              background: `linear-gradient(180deg,transparent,${DASH_C.acL},transparent)`,
+              boxShadow: `0 0 6px ${DASH_C.acL}`,
+            }}
+          />
+          <div style={{ fontSize: 13, fontWeight: 700, color: DASH_C.ts, letterSpacing: "0.06em", fontFamily: F, position: "relative", top: 2 }}>
+            {pageTitle}
+          </div>
+        </div>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, paddingInlineEnd: 16 }}>
           {activeView === "backtest" ? (
             <button
               type="button"
@@ -384,20 +408,26 @@ export default function DashboardLayout({
                 letterSpacing: "0.08em",
                 boxShadow: "0 2px 10px rgba(38,67,247,0.35)",
                 flexShrink: 0,
-                marginRight: 20,
+                transition: "filter 0.12s",
+                marginInlineEnd: 20,
               }}
               onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1.12)";
+                e.currentTarget.style.filter = "brightness(1.12)";
               }}
               onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1)";
-              }}>
-              <span style={{ fontSize: 15, lineHeight: 1, marginTop: -1 }}>+</span>
-              New Session
+                e.currentTarget.style.filter = "brightness(1)";
+              }}
+              aria-label={isArabic ? "جلسة جديدة" : "New session"}
+            >
+              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" aria-hidden>
+                <line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              {isArabic ? "جلسة جديدة" : "New Session"}
             </button>
           ) : null}
           {user?.role === "admin" && (
-            <a href="/dashboard/admin/" style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.50)", textDecoration: "none", padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(140,160,255,0.12)", fontFamily: F }}>
+            <a href="/dashboard/admin/" style={{ fontSize: 11, fontWeight: 600, color: DASH_C.ts, textDecoration: "none", padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(140,160,255,0.12)", fontFamily: F }}>
               Admin
             </a>
           )}
@@ -408,13 +438,55 @@ export default function DashboardLayout({
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
         {/* Left Sidebar */}
-        <nav style={{ width: 64, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 0 6px", background: "#0F1119", gap: 1, boxShadow: "4px 0 20px rgba(0,0,0,0.45)", zIndex: 1 }}>
+        <nav style={{ width: 64, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 0 6px", background: DASH_C.el, gap: 1, boxShadow: "4px 0 20px rgba(0,0,0,0.45)", zIndex: 1 }}>
           {NAV_ITEMS.map(({ id, label, icon }) => {
             const active = activeView === id;
+            const hovered = navHoverId === id && !active;
+            const bg = active ? DASH_C.acD : hovered ? DASH_C.hv : "transparent";
+            const color = active ? DASH_C.acL : hovered ? DASH_C.tx : DASH_C.ts;
+            const railSide = isArabic ? "right" : "left";
             return (
-              <div key={id} onClick={() => handleNavClick(id)}
-                style={{ width: "100%", height: 56, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer", position: "relative", background: active ? "rgba(38,67,247,0.08)" : "transparent", color: active ? "#4A6AFF" : "rgba(255,255,255,0.55)", transition: "background 0.12s,color 0.12s" }}>
-                {active && <div style={{ position: "absolute", left: 0, top: "20%", bottom: "20%", width: 2, background: "linear-gradient(180deg,transparent,#4A6AFF,transparent)", boxShadow: "0 0 6px rgba(38,67,247,0.35)" }} />}
+              <div
+                key={id}
+                role="button"
+                tabIndex={0}
+                onClick={() => handleNavClick(id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleNavClick(id);
+                  }
+                }}
+                onMouseEnter={() => setNavHoverId(id)}
+                onMouseLeave={() => setNavHoverId((h) => (h === id ? null : h))}
+                style={{
+                  width: "100%",
+                  height: 56,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 4,
+                  cursor: "pointer",
+                  position: "relative",
+                  background: bg,
+                  color,
+                  transition: "background 0.12s,color 0.12s",
+                }}
+              >
+                {active ? (
+                  <div
+                    style={{
+                      position: "absolute",
+                      [railSide]: 0,
+                      top: "20%",
+                      bottom: "20%",
+                      width: 2,
+                      background: `linear-gradient(180deg,transparent,${DASH_C.acL},transparent)`,
+                      boxShadow: `0 0 6px ${DASH_C.acG}`,
+                    }}
+                  />
+                ) : null}
                 {icon}
                 <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase" as const, fontFamily: F }}>{label}</span>
               </div>
@@ -428,6 +500,8 @@ export default function DashboardLayout({
                 e.stopPropagation();
                 setProfilePanelOpen((o) => !o);
               }}
+              onMouseEnter={() => setProfileNavHov(true)}
+              onMouseLeave={() => setProfileNavHov(false)}
               style={{
                 width: "100%",
                 height: 56,
@@ -437,8 +511,8 @@ export default function DashboardLayout({
                 justifyContent: "center",
                 gap: 4,
                 cursor: "pointer",
-                color: profilePanelOpen ? "#4A6AFF" : "rgba(255,255,255,0.40)",
-                background: profilePanelOpen ? "rgba(38,67,247,0.08)" : "transparent",
+                color: profilePanelOpen || profileNavHov ? DASH_C.tx : DASH_C.ts,
+                background: profilePanelOpen || profileNavHov ? DASH_C.hv : "transparent",
                 transition: "color 0.12s, background 0.12s",
               }}>
               <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
@@ -498,7 +572,7 @@ export default function DashboardLayout({
         </nav>
 
         {/* Main content area */}
-        <main style={{ flex: 1, overflow: "hidden", background: "#07080E", position: "relative" }}>
+        <main style={{ flex: 1, overflow: "hidden", background: DASH_C.bg, position: "relative" }}>
 
           {/* Internal Next.js pages (dashboard, cot, support) */}
           <div style={{

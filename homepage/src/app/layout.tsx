@@ -34,7 +34,7 @@ export default function RootLayout({
     <html lang="ar" dir="rtl" className="dark" suppressHydrationWarning>
       <head>
         <link
-          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400;500;600;700&display=swap"
           rel="stylesheet"
         />
         <Script
