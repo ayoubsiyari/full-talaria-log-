@@ -409,16 +409,8 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
     .slice(0, TRADE_CHART_MAX_BARS);
   const trMax = Math.max(1, ...trBars.map(s => kpis[s.id]?.trades || 0));
 
-  const daysTestedDisplay = totalDays.toLocaleString();
-  /** Narrow tile: figure stays close to the 9px title (baseline row); scale down for long counts */
-  const daysTestedHeadPx =
-    daysTestedDisplay.length <= 5 ? 12
-      : daysTestedDisplay.length <= 7 ? 11
-        : daysTestedDisplay.length <= 9 ? 10
-          : daysTestedDisplay.length <= 11 ? 9
-            : daysTestedDisplay.length <= 13 ? 8
-              : daysTestedDisplay.length <= 15 ? 8
-                : 7;
+  /* ── Dot grid (Days Tested tile): matches dashboardV8.jsx ── */
+  const dotsN = Math.min(Math.ceil(totalDays / 30), 56);
 
   if (loading) {
     return (
@@ -599,52 +591,51 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               </div>
             </div>
 
-            {/* Tile 4: Days Tested (text only) */}
-            <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column", justifyContent: "center", minHeight: 0 }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)` }} />
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 4, minWidth: 0 }}>
-                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const, whiteSpace: "nowrap" as const, flexShrink: 0 }}>
-                  Days Tested
-                </div>
-                <div style={{
-                  fontSize: daysTestedHeadPx,
-                  fontWeight: 700,
-                  color: c.tx,
-                  fontVariantNumeric: "tabular-nums",
-                  whiteSpace: "nowrap" as const,
-                  lineHeight: 1.15,
-                  textAlign: "right" as const,
-                  flexShrink: 1,
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}>
-                  {daysTestedDisplay}
-                </div>
+            {/* Tile 4: Total Days Tested dot grid — parity with dashboardV8.jsx */}
+            <div style={{ background: c.sf, border: `1px solid ${c.brH}`, overflow: "hidden", position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)`, pointerEvents: "none" }} />
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
+                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, fontFamily: F, textTransform: "uppercase" as const }}>Days Tested</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: c.tx, fontFamily: F, fontVariantNumeric: "tabular-nums" }}>{totalDays.toLocaleString()}</div>
               </div>
-              <div style={{ fontSize: 8, color: c.tm }}>{(totalDays / 365).toFixed(1)} yrs equivalent</div>
+              <div style={{ fontSize: 8, color: c.tm, fontFamily: F }}>{(totalDays / 365).toFixed(1)} yrs equivalent</div>
+              <div style={{ flex: 1 }} />
+              {(() => {
+                const dcols = 20, ds = 5, dg = 2, step = ds + dg;
+                const rows = Math.ceil(dotsN / dcols) || 1;
+                const svgW = dcols * step - dg;
+                const svgH = rows * step - dg;
+                return (
+                  <svg width={svgW} height={svgH} style={{ display: "block", margin: "0 auto 64px" }}>
+                    {Array.from({ length: dotsN }).map((_, i) => (
+                      <rect key={i} x={(i % dcols) * step} y={Math.floor(i / dcols) * step} width={ds} height={ds} fill={c.acL} opacity={0.75} />
+                    ))}
+                  </svg>
+                );
+              })()}
+              <div style={{ fontSize: 8, color: c.tm, fontFamily: F, marginTop: 4 }}>each square ≈ 1 month</div>
             </div>
 
-            {/* Tile 5: Tickers Tested */}
-            <div style={{ background: c.sf, border: `1px solid ${c.brH}`, position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column", minHeight: 0 }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)` }} />
+            {/* Tile 5: Tickers Tested — parity with dashboardV8.jsx */}
+            <div style={{ background: c.sf, border: `1px solid ${c.brH}`, overflow: "hidden", position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)`, pointerEvents: "none" }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, textTransform: "uppercase" as const }}>Tickers Tested</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: c.tx, fontVariantNumeric: "tabular-nums" }}>{Object.keys(tickerFreq).length}</div>
+                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: c.tm, fontFamily: F, textTransform: "uppercase" as const }}>Tickers Tested</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: c.tx, fontFamily: F, fontVariantNumeric: "tabular-nums" }}>{Object.keys(tickerFreq).length}</div>
               </div>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3, justifyContent: "center" }}>
                 {topTickers.map(([ticker, count]) => (
                   <div key={ticker} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 8, fontWeight: 700, color: c.ts, width: 52, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{ticker}</span>
+                    <span style={{ fontSize: 8, fontWeight: 700, color: c.ts, fontFamily: F, width: 52, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{ticker}</span>
                     <div style={{ flex: 1, height: 4, background: "rgba(255,255,255,0.07)", position: "relative", overflow: "hidden" }}>
-                      <div style={{ position: "absolute", inset: 0, right: `${100 - (count / tkMax) * 100}%`, background: `linear-gradient(90deg,${c.acL}88,${c.acL})` }} />
+                      <div style={{ position: "absolute", inset: 0, right: `${100 - (count / tkMax) * 100}%`, background: `linear-gradient(90deg,${c.acL}88,${c.acL})`, transition: "right 0.3s ease" }} />
                     </div>
-                    <span style={{ fontSize: 8, color: c.tm, width: 16, textAlign: "right" as const, fontVariantNumeric: "tabular-nums" }}>{count}</span>
+                    <span style={{ fontSize: 8, color: c.tm, fontFamily: F, width: 16, textAlign: "right" as const, fontVariantNumeric: "tabular-nums" }}>{count}</span>
                   </div>
                 ))}
-                {topTickers.length === 0 && <span style={{ fontSize: 9, color: c.tm }}>No symbols yet</span>}
+                {topTickers.length === 0 && <span style={{ fontSize: 9, color: c.tm, fontFamily: F }}>No symbols yet</span>}
               </div>
-              <div style={{ fontSize: 8, color: c.tm, marginTop: 4 }}>top {topTickers.length} by sessions used in</div>
+              <div style={{ fontSize: 8, color: c.tm, fontFamily: F, marginTop: 4 }}>top {topTickers.length} by sessions used in</div>
             </div>
 
             </div>
