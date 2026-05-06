@@ -2643,9 +2643,11 @@ class Chart {
 
     _computeReplayDashboardCoverage(currentReplayTs) {
         const session = this.backtestingSession;
-        if (!session || !session.startDate || !session.endDate) return null;
-        const cfgStart = new Date(session.startDate).getTime();
-        const cfgEnd = new Date(session.endDate).getTime();
+        const startRaw = session && (session.startDate || session.start_date);
+        const endRaw = session && (session.endDate || session.end_date);
+        if (!session || !startRaw || !endRaw) return null;
+        const cfgStart = new Date(startRaw).getTime();
+        const cfgEnd = new Date(endRaw).getTime();
         if (!Number.isFinite(cfgStart) || !Number.isFinite(cfgEnd) || cfgEnd <= cfgStart) return null;
 
         if (!Number.isFinite(this._dashboardFurthestReplayTs)) {
