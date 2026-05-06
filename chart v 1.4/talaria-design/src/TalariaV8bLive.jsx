@@ -8590,7 +8590,7 @@ const TalariaV8bLive = () => {
             <span className="ohlc-separator">{" · "}</span>
             <span id="chartTimeframe" />
           </div>
-          <div className="ohlc-stats">
+          <div className="ohlc-stats" style={{ minHeight: 40, overflow: "visible", alignItems: "center" }}>
             <div className="ohlc-item">
               <span className="ohlc-label">O</span>
               <span className="ohlc-value" id="open">—</span>
@@ -8612,7 +8612,7 @@ const TalariaV8bLive = () => {
             <div
               id="navIntegrityBadge"
               className="nav-integrity-badge"
-              style={{ display: "none" }}
+              style={{ display: "none", flexShrink: 0, alignSelf: "center" }}
               onClick={(e) => {
                 e.stopPropagation();
                 e.currentTarget.classList.toggle("show-tooltip");
