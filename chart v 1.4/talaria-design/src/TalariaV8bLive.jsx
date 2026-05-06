@@ -67,20 +67,120 @@ function v9ActiveChartInstance() {
   }
 }
 
-/** Full IANA list for Settings → Time zone (Intl when supported). */
-function getAllChartTimezoneIds() {
+/** Minutes east of UTC for `timeZone` at instant `dateMs` (DST-aware). */
+function offsetMinutesForTimezone(timeZone, dateMs) {
+  const date = new Date(dateMs);
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(date);
+  const map = {};
+  for (const { type, value } of parts) {
+    if (type !== "literal") map[type] = value;
+  }
+  const y = +map.year;
+  const mo = +map.month - 1;
+  const d = +map.day;
+  const h = +map.hour;
+  const mi = +map.minute;
+  const s = +map.second;
+  const wallAsUtc = Date.UTC(y, mo, d, h, mi, s);
+  return Math.round((wallAsUtc - dateMs) / 60000);
+}
+
+/** TradingView-style `(UTC±HH:MM)` prefix (always two-digit hour and minute). */
+function formatTradingViewUtcOffset(offsetMin) {
+  const sign = offsetMin >= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMin);
+  const hh = String(Math.floor(abs / 60)).padStart(2, "0");
+  const mm = String(abs % 60).padStart(2, "0");
+  return `(UTC${sign}${hh}:${mm})`;
+}
+
+function friendlyTzIdLabel(id) {
+  return id.replace(/_/g, " ");
+}
+
+/** Sort key: UTC first, then Etc/UTC at offset 0 (TradingView-style twin UTC rows). */
+function tzOffsetSortRank(id, offsetMin) {
+  if (offsetMin !== 0) return 99;
+  if (id === "UTC") return 0;
+  if (id === "Etc/UTC") return 1;
+  return 50;
+}
+
+/**
+ * Rows for Settings → Time zone: sorted west→east by offset; label `(UTC±HH:MM) Region/City`.
+ * `referenceMs` should match chart context (e.g. bar time) so DST matches the session.
+ */
+function getChartTimezoneSelectOptions(referenceMs) {
+  const ref = Number.isFinite(referenceMs) ? referenceMs : Date.now();
+  let ids = [];
   try {
     if (typeof Intl !== "undefined" && typeof Intl.supportedValuesOf === "function") {
-      return Intl.supportedValuesOf("timeZone").slice().sort((a, b) => a.localeCompare(b));
+      ids = Intl.supportedValuesOf("timeZone").slice();
     }
   } catch (_) {}
-  return [
-    "Pacific/Midway", "Pacific/Honolulu", "America/Anchorage", "America/Los_Angeles", "America/Denver",
-    "America/Chicago", "America/New_York", "America/Caracas", "America/Sao_Paulo", "Atlantic/South_Georgia",
-    "Atlantic/Azores", "UTC", "Europe/Paris", "Europe/Athens", "Europe/Moscow", "Asia/Dubai", "Asia/Karachi",
-    "Asia/Kolkata", "Asia/Dhaka", "Asia/Bangkok", "Asia/Singapore", "Asia/Tokyo", "Australia/Sydney",
-    "Pacific/Noumea", "Pacific/Auckland",
-  ].sort((a, b) => a.localeCompare(b));
+  if (!ids.length) {
+    ids = [
+      "Pacific/Midway", "Pacific/Honolulu", "America/Anchorage", "America/Los_Angeles", "America/Denver",
+      "America/Chicago", "America/New_York", "America/Caracas", "America/Sao_Paulo", "Atlantic/South_Georgia",
+      "Atlantic/Azores", "UTC", "Etc/UTC", "Europe/Paris", "Europe/Athens", "Europe/Moscow", "Asia/Dubai", "Asia/Karachi",
+      "Asia/Kolkata", "Asia/Dhaka", "Asia/Bangkok", "Asia/Singapore", "Asia/Tokyo", "Australia/Sydney",
+      "Pacific/Noumea", "Pacific/Auckland",
+    ];
+  } else {
+    if (!ids.includes("UTC")) ids.push("UTC");
+    if (!ids.includes("Etc/UTC")) {
+      try {
+        new Intl.DateTimeFormat("en-US", { timeZone: "Etc/UTC" });
+        ids.push("Etc/UTC");
+      } catch (_) {}
+    }
+  }
+  ids = [...new Set(ids)];
+
+  const rows = [];
+  for (const id of ids) {
+    let offsetMin = 0;
+    try {
+      offsetMin = offsetMinutesForTimezone(id, ref);
+    } catch (_) {
+      continue;
+    }
+    rows.push({
+      id,
+      offsetMin,
+      label: `${formatTradingViewUtcOffset(offsetMin)} ${friendlyTzIdLabel(id)}`,
+    });
+  }
+
+  rows.sort((a, b) => {
+    if (a.offsetMin !== b.offsetMin) return a.offsetMin - b.offsetMin;
+    const ra = tzOffsetSortRank(a.id, a.offsetMin);
+    const rb = tzOffsetSortRank(b.id, b.offsetMin);
+    if (ra !== rb) return ra - rb;
+    return a.id.localeCompare(b.id);
+  });
+
+  return rows;
+}
+
+function formatChartTimezoneSettingDisplay(ianaId, referenceMs) {
+  const id = resolveV9TimezoneToId(ianaId);
+  const ref = Number.isFinite(referenceMs) ? referenceMs : Date.now();
+  let off = 0;
+  try {
+    off = offsetMinutesForTimezone(id, ref);
+  } catch (_) {}
+  return `${formatTradingViewUtcOffset(off)} ${friendlyTzIdLabel(id)}`;
 }
 
 /** Bar / replay time (ms) for V9 bottom HUD — matches trade-row “now” semantics. */
@@ -14972,13 +15072,13 @@ const TalariaV8bLive = () => {
             <div style={{height:1,background:c.br,marginBottom:14}}/>
             <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10}}>CHART</div>
             <div style={{background:c.bg,border:`1px solid ${c.br}`,padding:"2px 12px",marginBottom:18}}>
-              {[["Time Format","timeFormat","chartTimeFormat",70],["Time Zone","timezone","chartTimezone",220],["Precision","precision","chartPrecision",100]].map(([lbl,sKey,dropKey,w])=>(
+              {[["Time Format","timeFormat","chartTimeFormat",70],["Time Zone","timezone","chartTimezone",280],["Precision","precision","chartPrecision",100]].map(([lbl,sKey,dropKey,w])=>(
                 <div key={lbl} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0"}}>
                   <span style={{fontSize:13,color:c.ts}}>{lbl}</span>
                   <div data-sett-drop-anchor="1" onMouseEnter={()=>setSwHov(dropKey)} onMouseLeave={()=>setSwHov(null)}
-                    onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();const isTz=dropKey==="chartTimezone";const vpH=(typeof window!=="undefined"?window.innerHeight:800)/Z;const maxDrop=Math.min(340,Math.max(200,vpH-140));setSettDropPos(sdPos(r,isTz?{h:maxDrop,rightAlign:true,w:Math.max(r.width/Z,280)}:{h:180,rightAlign:true,w:r.width/Z}));setSettDrop(settDrop===dropKey?null:dropKey);}}
-                    style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",height:22,width:w,position:"relative",background:settDrop===dropKey?"rgba(74,106,255,0.08)":swHov===dropKey?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0,minWidth:dropKey==="chartTimezone"?Math.min(w,220):undefined}}>
-                    <span title={String(settings[sKey] ?? "")} style={{flex:1,fontSize:11,color:settDrop===dropKey?c.acL:c.ts,fontFamily:F,fontVariantNumeric:"tabular-nums",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{settings[sKey]}</span>
+                    onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();const isTz=dropKey==="chartTimezone";const vpH=(typeof window!=="undefined"?window.innerHeight:800)/Z;const maxDrop=Math.min(340,Math.max(200,vpH-140));setSettDropPos(sdPos(r,isTz?{h:maxDrop,rightAlign:true,w:Math.max(r.width/Z,340)}:{h:180,rightAlign:true,w:r.width/Z}));setSettDrop(settDrop===dropKey?null:dropKey);}}
+                    style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",height:22,width:w,position:"relative",background:settDrop===dropKey?"rgba(74,106,255,0.08)":swHov===dropKey?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0,minWidth:dropKey==="chartTimezone"?Math.min(w,260):undefined}}>
+                    <span title={dropKey==="chartTimezone"?formatChartTimezoneSettingDisplay(settings[sKey],getV9ChartBarTimeMs(v9ActiveChartInstance())):String(settings[sKey] ?? "")} style={{flex:1,fontSize:11,color:settDrop===dropKey?c.acL:c.ts,fontFamily:F,fontVariantNumeric:"tabular-nums",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dropKey==="chartTimezone"?formatChartTimezoneSettingDisplay(settings[sKey],getV9ChartBarTimeMs(v9ActiveChartInstance())):settings[sKey]}</span>
                     <svg width={7} height={5}><path d="M0,0 L3.5,4.5 L7,0" stroke={settDrop===dropKey?c.acL:c.tm} strokeWidth={1.2} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     {settDrop===dropKey&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                     {settDrop!==dropKey&&swHov===dropKey&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
@@ -19852,7 +19952,8 @@ const TalariaV8bLive = () => {
         const defaultTplOpts = defaultTpls;
         const tplOpts = [...(customTemplates.length>0?[{divider:"SAVED"},...customTemplates,{divider:"DEFAULT"}]:[]),...defaultTplOpts];
         const tzScrollH = Math.min(320, Math.max(160, (typeof window !== "undefined" ? window.innerHeight : 720) / Z - 130));
-        const cfgMap = { gridStyle:{key:"gridLineStyle",type:"style"}, gridThick:{key:"gridLineThickness",type:"thick"}, priceStyle:{key:"priceLineStyle",type:"style"}, priceThick:{key:"priceLineThickness",type:"thick"}, chartTimeFormat:{key:"timeFormat",type:"select",opts:["24h","12h"]}, chartTimezone:{key:"timezone",type:"select",opts:getAllChartTimezoneIds(),scrollMaxPx:tzScrollH}, chartPrecision:{key:"precision",type:"select",opts:["0.00000","0.0000","0.000","0.00","0.0"]}, chartTemplate:{key:"chartTemplate",type:"template",opts:tplOpts} };
+        const tzRefUiMs = getV9ChartBarTimeMs(v9ActiveChartInstance());
+        const cfgMap = { gridStyle:{key:"gridLineStyle",type:"style"}, gridThick:{key:"gridLineThickness",type:"thick"}, priceStyle:{key:"priceLineStyle",type:"style"}, priceThick:{key:"priceLineThickness",type:"thick"}, chartTimeFormat:{key:"timeFormat",type:"select",opts:["24h","12h"]}, chartTimezone:{key:"timezone",type:"select",opts:getChartTimezoneSelectOptions(tzRefUiMs),scrollMaxPx:tzScrollH}, chartPrecision:{key:"precision",type:"select",opts:["0.00000","0.0000","0.000","0.00","0.0"]}, chartTemplate:{key:"chartTemplate",type:"template",opts:tplOpts} };
         if (settDrop==="profLang") return <>
           <div data-sdrop="1" data-sett-drop-root="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||140,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
@@ -19908,7 +20009,7 @@ const TalariaV8bLive = () => {
         const styleOpts = [{val:"solid",dash:"none"},{val:"dashed",dash:"5,4"},{val:"dotted",dash:"1.5,4"},{val:"longDash",dash:"10,5"}];
         const thickOpts = [0.5,1,1.5,2,2.5,3];
         const settDropWidthSx = settDrop === "chartTimezone"
-          ? { width: settDropPos.w || 300, minWidth: 280 }
+          ? { width: settDropPos.w || 380, minWidth: 360 }
           : settDropPos.w ? { width: settDropPos.w } : { minWidth: 80 };
         return <>
           <div data-sdrop="1" data-sett-drop-root="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease",...settDropWidthSx}}>
@@ -19917,16 +20018,18 @@ const TalariaV8bLive = () => {
               {cfg.type==="select" && (cfg.scrollMaxPx!=null ? (
                 <div className="tlr-scroll tlr-scroll-tz" style={{maxHeight:cfg.scrollMaxPx,overflowY:"auto",overflowX:"hidden"}}>
                   {cfg.opts.map((opt) => {
+                    const tzRow = typeof opt === "object" && opt != null && opt.id != null ? opt : { id: opt, label: String(opt) };
+                    const tid = tzRow.id;
                     const selectedTz = resolveV9TimezoneToId(settings[cfg.key]);
-                    const active = selectedTz === opt;
+                    const active = selectedTz === tid;
                     return (
-                      <div key={opt} onClick={()=>{updateSetting(cfg.key,opt);setSettDrop(null);}}
-                        onMouseEnter={()=>setSwHov("sdrop-"+opt)} onMouseLeave={()=>setSwHov(null)}
+                      <div key={tid} onClick={()=>{updateSetting(cfg.key,tid);setSettDrop(null);}}
+                        onMouseEnter={()=>setSwHov("sdrop-"+tid)} onMouseLeave={()=>setSwHov(null)}
                         style={{display:"flex",alignItems:"center",padding:"5px 14px",cursor:"default",gap:8,position:"relative",
-                          background:active?c.acD:swHov==="sdrop-"+opt?c.hv2:"transparent",
+                          background:active?c.acD:swHov==="sdrop-"+tid?c.hv2:"transparent",
                           transition:"background 0.1s"}}>
                         {active&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                        <span style={{fontSize:12,fontFamily:F,color:active?c.acL:c.ts,fontWeight:active?700:500,flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={opt}>{opt}</span>
+                        <span style={{fontSize:12,fontFamily:F,color:active?c.acL:c.ts,fontWeight:active?700:500,flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={`${tid} — ${tzRow.label || tid}`}>{tzRow.label || tid}</span>
                       </div>
                     );
                   })}
