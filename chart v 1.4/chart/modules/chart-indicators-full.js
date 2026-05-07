@@ -4662,6 +4662,8 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     const m = this.margin;
     const totalHeight = this.h;
     const chartWidth = this.w - m.l - m.r;
+    const panelPlotRight = this.w - m.r;
+    const panelFullRight = this.w;
     
     let panelHeights = this._getSeparatePanelHeights(separateIndicators);
     if (this._separatePanelResize && Array.isArray(this._separatePanelResize.activeHeights) &&
@@ -4688,12 +4690,20 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             : '') ||
         '#131722';
     ctx.fillStyle = panelBackgroundColor;
-    ctx.fillRect(m.l, panelTop, chartWidth, totalPanelHeight);
+    // Extend separate panels to the far right so each panel owns its Y-axis strip.
+    ctx.fillRect(m.l, panelTop, panelFullRight - m.l, totalPanelHeight);
+    // Divider between plot area and panel Y-axis strip (TradingView-like).
+    ctx.strokeStyle = 'rgba(120, 123, 134, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(panelPlotRight, panelTop);
+    ctx.lineTo(panelPlotRight, panelBottom);
+    ctx.stroke();
 
     // Clip all indicator geometry to this stack so lines/labels never bleed into the time axis.
     ctx.save();
     ctx.beginPath();
-    ctx.rect(m.l, panelTop, this.w - m.l - m.r, totalPanelHeight);
+    ctx.rect(m.l, panelTop, panelFullRight - m.l, totalPanelHeight);
     ctx.clip();
     
     // Outer top separator — solid divider line matching panel borders
@@ -4705,7 +4715,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(m.l, panelTop);
-    ctx.lineTo(this.w - m.r, panelTop);
+    ctx.lineTo(panelFullRight, panelTop);
     ctx.stroke();
     const topHandleMidX = this.w - m.r - 18;
     ctx.strokeStyle = _gripColor;
@@ -4755,7 +4765,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             ctx.setLineDash([]);
             ctx.beginPath();
             ctx.moveTo(m.l, indBottom);
-            ctx.lineTo(this.w - m.r, indBottom);
+            ctx.lineTo(panelFullRight, indBottom);
             ctx.stroke();
             const handleMidX = this.w - m.r - 18;
             ctx.strokeStyle = _gripColor;
