@@ -4479,7 +4479,7 @@
             if (y === null) continue;
             ctx.beginPath();
             ctx.moveTo(m.l, y);
-            ctx.lineTo(this.w - m.r, y);
+            ctx.lineTo(this.w, y);
             ctx.stroke();
             ctx.fillStyle = '#787b86';
             ctx.font = '10px Roboto';
@@ -4909,7 +4909,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
             ctx.beginPath();
             ctx.moveTo(m.l, y);
-            ctx.lineTo(this.w - m.r, y);
+            ctx.lineTo(this.w, y);
             ctx.stroke();
             
             // Y-axis label
@@ -4957,7 +4957,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
                     ctx.setLineDash([3, 3]);
                     ctx.beginPath();
                     ctx.moveTo(m.l, ry);
-                    ctx.lineTo(this.w - m.r, ry);
+                    ctx.lineTo(this.w, ry);
                     ctx.stroke();
                     ctx.setLineDash([]);
                     ctx.fillStyle = col;
@@ -4976,7 +4976,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
                     ctx.setLineDash([3, 3]);
                     ctx.beginPath();
                     ctx.moveTo(m.l, ry);
-                    ctx.lineTo(this.w - m.r, ry);
+                    ctx.lineTo(this.w, ry);
                     ctx.stroke();
                     ctx.setLineDash([]);
                     ctx.fillStyle = col;
@@ -4994,7 +4994,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
                 ctx.setLineDash([3, 3]);
                 ctx.beginPath();
                 ctx.moveTo(m.l, zy);
-                ctx.lineTo(this.w - m.r, zy);
+                ctx.lineTo(this.w, zy);
                 ctx.stroke();
                 ctx.setLineDash([]);
                 ctx.fillStyle = 'rgba(255,255,255,0.35)';
@@ -5056,7 +5056,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             ctx.setLineDash([3, 3]);
             ctx.beginPath();
             ctx.moveTo(m.l, currentY);
-            ctx.lineTo(this.w - m.r, currentY);
+            ctx.lineTo(this.w, currentY);
             ctx.stroke();
             ctx.setLineDash([]);
             
@@ -5123,7 +5123,7 @@ Chart.prototype.drawSeparatePanelCrosshair = function(ctx, m, panelTop, panelBot
     // Draw horizontal crosshair line
     ctx.beginPath();
     ctx.moveTo(m.l, mouseY);
-    ctx.lineTo(this.w - m.r, mouseY);
+    ctx.lineTo(this.w, mouseY);
     ctx.stroke();
     ctx.setLineDash([]);
     
@@ -6217,7 +6217,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(tickY)) continue;
             ctx.beginPath();
             ctx.moveTo(m.l, tickY);
-            ctx.lineTo(this.w - m.r, tickY);
+            ctx.lineTo(this.w, tickY);
             ctx.stroke();
             ctx.fillText(tickVal.toFixed(d), this.w - 6, tickY + 3);
         }
@@ -6259,7 +6259,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ctx.setLineDash([]);
             ctx.beginPath();
             ctx.moveTo(m.l, zeroY);
-            ctx.lineTo(this.w - m.r, zeroY);
+            ctx.lineTo(this.w, zeroY);
             ctx.stroke();
         }
 
@@ -6378,7 +6378,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ctx.setLineDash([4, 4]);
             ctx.beginPath();
             ctx.moveTo(m.l, zy);
-            ctx.lineTo(this.w - m.r, zy);
+            ctx.lineTo(this.w, zy);
             ctx.stroke();
             ctx.setLineDash([]);
         }
@@ -6428,7 +6428,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ctx.setLineDash([4, 4]);
             ctx.beginPath();
             ctx.moveTo(m.l, zy);
-            ctx.lineTo(this.w - m.r, zy);
+            ctx.lineTo(this.w, zy);
             ctx.stroke();
             ctx.setLineDash([]);
         }
@@ -6499,7 +6499,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ctx.setLineDash([4, 4]);
             ctx.beginPath();
             ctx.moveTo(m.l, zy);
-            ctx.lineTo(this.w - m.r, zy);
+            ctx.lineTo(this.w, zy);
             ctx.stroke();
             ctx.setLineDash([]);
         }
@@ -6544,7 +6544,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 ctx.setLineDash([3, 3]);
                 ctx.beginPath();
                 ctx.moveTo(m.l, ry);
-                ctx.lineTo(this.w - m.r, ry);
+                ctx.lineTo(this.w, ry);
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
@@ -6580,7 +6580,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 ctx.setLineDash([3, 3]);
                 ctx.beginPath();
                 ctx.moveTo(m.l, ry);
-                ctx.lineTo(this.w - m.r, ry);
+                ctx.lineTo(this.w, ry);
                 ctx.stroke();
                 ctx.setLineDash([]);
                 ctx.fillStyle = col;
@@ -6663,7 +6663,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ctx.setLineDash([3, 3]);
             ctx.beginPath();
             ctx.moveTo(m.l, thY);
-            ctx.lineTo(this.w - m.r, thY);
+            ctx.lineTo(this.w, thY);
             ctx.stroke();
             ctx.setLineDash([]);
             ctx.fillStyle = 'rgba(255,255,255,0.35)';
@@ -6710,7 +6710,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ctx.setLineDash([3, 3]);
             ctx.beginPath();
             ctx.moveTo(m.l, thY);
-            ctx.lineTo(this.w - m.r, thY);
+            ctx.lineTo(this.w, thY);
             ctx.stroke();
             ctx.setLineDash([]);
             ctx.fillStyle = 'rgba(255,255,255,0.3)';
@@ -6755,7 +6755,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 ctx.setLineDash([3, 3]);
                 ctx.beginPath();
                 ctx.moveTo(m.l, ry);
-                ctx.lineTo(this.w - m.r, ry);
+                ctx.lineTo(this.w, ry);
                 ctx.stroke();
                 ctx.setLineDash([]);
                 ctx.fillStyle = col;
@@ -6800,7 +6800,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 ctx.setLineDash([3, 3]);
                 ctx.beginPath();
                 ctx.moveTo(m.l, ry);
-                ctx.lineTo(this.w - m.r, ry);
+                ctx.lineTo(this.w, ry);
                 ctx.stroke();
                 ctx.setLineDash([]);
                 ctx.fillStyle = col;
