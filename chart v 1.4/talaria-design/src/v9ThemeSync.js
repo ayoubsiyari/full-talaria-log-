@@ -55,6 +55,21 @@ function applyCanvasTheme(targetCs, settings) {
   return c;
 }
 
+function resolveV9Precision(settingsPrecision) {
+  if (settingsPrecision == null) return null;
+  const raw = String(settingsPrecision).trim();
+  if (!raw) return null;
+  if (raw.toLowerCase() === "default") return { precision: "Default", pricePrecision: "default" };
+  if (/^\d+$/.test(raw)) return { precision: raw, pricePrecision: raw };
+  const dot = raw.indexOf(".");
+  if (dot >= 0) {
+    const decimals = Math.max(0, raw.length - dot - 1);
+    const v = String(decimals);
+    return { precision: v, pricePrecision: v };
+  }
+  return null;
+}
+
 const LEGACY_V9_TIMEZONE_LABELS = {
   UTC: "UTC",
   "UTC+3 (Riyadh)": "Europe/Moscow",
@@ -131,6 +146,17 @@ export function applyV9ThemeSettingsToChart(settings) {
     cs.unifiedBarColor = settings.unifiedBarColorVal;
     changed = true;
   }
+  const p = resolveV9Precision(settings.precision);
+  if (p) {
+    if (cs.precision !== p.precision) {
+      cs.precision = p.precision;
+      changed = true;
+    }
+    if (cs.pricePrecision !== p.pricePrecision) {
+      cs.pricePrecision = p.pricePrecision;
+      changed = true;
+    }
+  }
   if (applyCanvasTheme(cs, settings)) changed = true;
   try {
     const tm = typeof window !== "undefined" ? window.timezoneManager : null;
@@ -162,6 +188,10 @@ export function applyV9ThemeSettingsToChart(settings) {
       }
       if (pcs.unifiedBarColorEnabled !== wantUnified) pcs.unifiedBarColorEnabled = wantUnified;
       if (settings.unifiedBarColorVal) pcs.unifiedBarColor = settings.unifiedBarColorVal;
+      if (p) {
+        pcs.precision = p.precision;
+        pcs.pricePrecision = p.pricePrecision;
+      }
       applyCanvasTheme(pcs, settings);
       try {
         pc.applyChartSettings?.();
