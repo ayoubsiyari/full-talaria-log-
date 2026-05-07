@@ -4575,7 +4575,7 @@ Chart.prototype._persistSeparatePanelHeights = function(indicators, heights, sav
     }
 };
 
-Chart.prototype.getSeparatePanelResizeHandleAt = function(x, y, tolerance = 6) {
+Chart.prototype.getSeparatePanelResizeHandleAt = function(x, y, tolerance = 10) {
     if (!this.separatePanelInfo || !this.separatePanelInfo.resizeHandles) return null;
     const m = this.margin || { l: 0, r: 0 };
     if (x < m.l || x > this.w - m.r) return null;
@@ -4722,17 +4722,17 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     const hoverHandleY = this._separatePanelHoverHandle && Number.isFinite(this._separatePanelHoverHandle.y)
         ? this._separatePanelHoverHandle.y
         : null;
-    ctx.strokeStyle = hoverHandleY !== null && Math.abs(hoverHandleY - panelTop) <= 1 ? _hoverColor : _sepColorStrong;
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = hoverHandleY !== null && Math.abs(hoverHandleY - panelTop) <= 2 ? _hoverColor : _sepColorStrong;
+    ctx.lineWidth = 3;
     ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(m.l, panelTop);
     ctx.lineTo(panelFullRight, panelTop);
     ctx.stroke();
     const topHandleMidX = this.w - m.r - 18;
-    const topHandleHover = hoverHandleY !== null && Math.abs(hoverHandleY - panelTop) <= 1;
+    const topHandleHover = hoverHandleY !== null && Math.abs(hoverHandleY - panelTop) <= 2;
     ctx.strokeStyle = topHandleHover ? _hoverColor : _gripColor;
-    ctx.lineWidth = topHandleHover ? 2 : 1.5;
+    ctx.lineWidth = topHandleHover ? 3 : 2;
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(topHandleMidX - 8, panelTop);
@@ -4781,9 +4781,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
 
         // Separator between slots — soft divider
         if (idx > 0) {
-            const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - indBottom) <= 1;
+            const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - indBottom) <= 2;
             ctx.strokeStyle = isHoverSep ? _hoverColor : _sepColor;
-            ctx.lineWidth = 1;
+            ctx.lineWidth = 3;
             ctx.setLineDash([]);
             ctx.beginPath();
             ctx.moveTo(m.l, indBottom);
@@ -4791,7 +4791,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             ctx.stroke();
             const handleMidX = this.w - m.r - 18;
             ctx.strokeStyle = isHoverSep ? _hoverColor : _gripColor;
-            ctx.lineWidth = isHoverSep ? 2 : 1.5;
+            ctx.lineWidth = isHoverSep ? 3 : 2;
             ctx.lineCap = 'round';
             ctx.beginPath();
             ctx.moveTo(handleMidX - 8, indBottom);
@@ -6861,9 +6861,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 split.style.cssText = [
                     'position:absolute',
                     'left:' + axisLeft + 'px',
-                    'top:' + (topSlot.top - 0.5) + 'px',
+                    'top:' + (topSlot.top - 1.5) + 'px',
                     'width:' + m.r + 'px',
-                    'height:1px',
+                    'height:3px',
                     'background:rgba(120, 123, 134, 0.42)',
                     'z-index:10',
                     'pointer-events:none'
@@ -6878,7 +6878,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             // Keep a safety gap under the split line so indicator axis values
             // never overlap with the main price-axis labels.
             const isTopIndicatorSlot = !!(slot && Array.isArray(panelSlots) && slot.index === panelSlots.length - 1);
-            const boundaryGap = isTopIndicatorSlot ? 24 : 8;
+            const boundaryGap = isTopIndicatorSlot ? 18 : 8;
             const topBound = slot ? slot.top + boundaryGap : 0;
             const bottomBound = slot ? slot.bottom - 8 : Number.MAX_SAFE_INTEGER;
             const tags = Array.isArray(indicator._axisLabelTags) && indicator._axisLabelTags.length
