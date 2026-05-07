@@ -3756,12 +3756,14 @@ const TalariaV8bLive = () => {
       badge.classList.toggle("enabled", allowBack);
       badge.classList.toggle("disabled", !allowBack);
       if (tooltip) {
-        tooltip.style.color = navStateColor;
+        tooltip.style.setProperty("color", navStateColor, "important");
         tooltip.classList.toggle("enabled-tip", allowBack);
         tooltip.classList.toggle("disabled-tip", !allowBack);
         tooltip.innerHTML = allowBack
           ? "<strong>You can navigate</strong>"
           : "<strong>You can not navigate</strong>";
+        const ttStrong = tooltip.querySelector("strong");
+        if (ttStrong) ttStrong.style.setProperty("color", navStateColor, "important");
       }
     };
     sync();
