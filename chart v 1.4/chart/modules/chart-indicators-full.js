@@ -5037,6 +5037,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         indicator._displayColor = color;
         indicator._displayLabel = displayValue !== null && displayValue !== undefined ? displayValue.toFixed(4) : '—';
         
+        indicator._axisLabelTags = [];
         // Draw current value label on right axis
         if (currentValue !== null && currentValue !== undefined && !isNaN(currentValue)) {
             const currentY = scaleY(currentValue);
@@ -6586,6 +6587,36 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         for (let i = Math.min(visibleEnd - 1, kArr.length - 1); i >= visibleStart; i--) {
             if (kArr[i] !== null && !isNaN(kArr[i])) { lastK = kArr[i]; lastD = dArr[i]; break; }
         }
+        const stochTags = [];
+        if (lastK !== null && Number.isFinite(lastK)) {
+            const yK = scaleY(lastK);
+            if (Number.isFinite(yK)) stochTags.push({ y: yK, text: lastK.toFixed(2), color: indicator.style.kColor || '#2962ff' });
+        }
+        if (lastD !== null && Number.isFinite(lastD)) {
+            const yD = scaleY(lastD);
+            if (Number.isFinite(yD)) stochTags.push({ y: yD, text: lastD.toFixed(2), color: indicator.style.dColor || '#f23645' });
+        }
+        stochTags.sort(function(a, b) { return a.y - b.y; });
+        for (let i = 1; i < stochTags.length; i++) {
+            if (stochTags[i].y - stochTags[i - 1].y < 18) stochTags[i].y = stochTags[i - 1].y + 18;
+        }
+        for (let i = stochTags.length - 2; i >= 0; i--) {
+            if (stochTags[i + 1].y > panelBottom - 8) {
+                stochTags[i + 1].y = panelBottom - 8;
+                if (stochTags[i + 1].y - stochTags[i].y < 18) stochTags[i].y = stochTags[i + 1].y - 18;
+            }
+            if (stochTags[i].y < panelTop + 8) stochTags[i].y = panelTop + 8;
+        }
+        indicator._axisLabelTags = stochTags;
+        if (stochTags.length > 0) {
+            indicator._axisLabelY = stochTags[0].y;
+            indicator._axisLabelText = stochTags[0].text;
+            indicator._axisLabelColor = stochTags[0].color;
+        } else {
+            indicator._axisLabelY = null;
+            indicator._axisLabelText = '';
+            indicator._axisLabelColor = '';
+        }
         indicator._displayColor = indicator.style.kColor || '#2962ff';
         indicator._displayLabel = lastK !== null ? 'K:' + lastK.toFixed(2) + (lastD !== null ? '  D:' + lastD.toFixed(2) : '') : '';
     };
@@ -6791,6 +6822,62 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         });
     };
 
+    /** Keep persistent right-axis tags in sync during replay/crosshair updates. */
+    Chart.prototype._syncSeparatePanelAxisTags = function(overlay, indicators, panelSlots) {
+        if (!overlay || !Array.isArray(indicators)) return;
+        overlay.querySelectorAll('[data-talaria-sp-axis-tag]').forEach(function(n) { n.remove(); });
+
+        const slotById = {};
+        if (Array.isArray(panelSlots)) {
+            panelSlots.forEach(function(slot) {
+                if (slot && slot.indicator) slotById[String(slot.indicator.id)] = slot;
+            });
+        }
+
+        indicators.forEach(function(indicator) {
+            if (indicator.type === 'volume' || indicator.isVolume) return;
+            const slot = slotById[String(indicator.id)];
+            const topBound = slot ? slot.top + 8 : 0;
+            const bottomBound = slot ? slot.bottom - 8 : Number.MAX_SAFE_INTEGER;
+            const tags = Array.isArray(indicator._axisLabelTags) && indicator._axisLabelTags.length
+                ? indicator._axisLabelTags
+                : (Number.isFinite(indicator._axisLabelY) ? [{
+                    y: indicator._axisLabelY,
+                    text: indicator._axisLabelText,
+                    color: indicator._axisLabelColor || indicator._displayColor || indicator.style.color || '#2962ff'
+                }] : []);
+
+            tags.forEach(function(tag) {
+                if (!Number.isFinite(tag.y)) return;
+                const y = Math.max(topBound, Math.min(bottomBound, tag.y));
+                const axisTag = document.createElement('div');
+                axisTag.setAttribute('data-talaria-sp-axis-tag', '1');
+                axisTag.style.cssText = [
+                    'position:absolute',
+                    'right:2px',
+                    'top:' + (y - 8) + 'px',
+                    'height:16px',
+                    'min-width:52px',
+                    'padding:0 6px',
+                    'display:flex',
+                    'align-items:center',
+                    'justify-content:center',
+                    'border-radius:2px',
+                    'font:600 10px Roboto,sans-serif',
+                    'line-height:16px',
+                    'font-variant-numeric:tabular-nums',
+                    'color:#000',
+                    'background:' + (tag.color || indicator._displayColor || indicator.style.color || '#2962ff'),
+                    'z-index:11',
+                    'pointer-events:none',
+                    'box-sizing:border-box'
+                ].join(';');
+                axisTag.textContent = (tag.text !== undefined && tag.text !== null && tag.text !== '') ? String(tag.text) : '—';
+                overlay.appendChild(axisTag);
+            });
+        });
+    };
+
     // Build/refresh indicator label pills for each separate panel slot (matches OHLC panel style)
     Chart.prototype._updateSeparatePanelLabels = function(panelSlots, indicators, m) {
         const canvas = this.ctx && this.ctx.canvas;
@@ -6809,6 +6896,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         let overlay = wrapper.querySelector('#separatePanelsOverlay');
         if (overlay && overlay._structureKey === structureKey) {
             this._syncSeparatePanelOverlayValues(overlay, indicators);
+            this._syncSeparatePanelAxisTags(overlay, indicators, panelSlots);
             return;
         }
 
@@ -6934,43 +7022,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             bar.appendChild(actions);
             overlay.appendChild(bar);
 
-            // Persistent right-axis value tag (always visible, not only on mouse move)
-            const tags = Array.isArray(indicator._axisLabelTags) && indicator._axisLabelTags.length
-                ? indicator._axisLabelTags
-                : (Number.isFinite(indicator._axisLabelY) ? [{
-                    y: indicator._axisLabelY,
-                    text: indicator._axisLabelText,
-                    color: indicator._axisLabelColor || color
-                }] : []);
-            tags.forEach(function(tag) {
-                if (!Number.isFinite(tag.y)) return;
-                const axisTag = document.createElement('div');
-                axisTag.style.cssText = [
-                    'position:absolute',
-                    'right:2px',
-                    'top:' + (tag.y - 8) + 'px',
-                    'height:16px',
-                    'min-width:52px',
-                    'padding:0 6px',
-                    'display:flex',
-                    'align-items:center',
-                    'justify-content:center',
-                    'border-radius:2px',
-                    'font:600 10px Roboto,sans-serif',
-                    'line-height:16px',
-                    'font-variant-numeric:tabular-nums',
-                    'color:#000',
-                    'background:' + (tag.color || color),
-                    'z-index:11',
-                    'pointer-events:none',
-                    'box-sizing:border-box'
-                ].join(';');
-                axisTag.textContent = (tag.text !== undefined && tag.text !== null && tag.text !== '')
-                    ? String(tag.text)
-                    : '—';
-                overlay.appendChild(axisTag);
-            });
         });
+        this._syncSeparatePanelAxisTags(overlay, indicators, panelSlots);
     };
 
     // Mark as loaded
