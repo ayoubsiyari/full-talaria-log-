@@ -14623,8 +14623,7 @@ const TalariaV8bLive = () => {
               style={{display:"flex",alignItems:"center",padding:"6px 10px 5px",cursor:"move",userSelect:"none",flexShrink:0}}>
               <I n="emoji" s={13} cl={c.acL}/>
               <span style={{fontSize:11,fontWeight:700,color:c.tx,flex:1,marginLeft:6}}>Emojis & Stickers</span>
-              <div onClick={e=>{e.stopPropagation();setEmojiPanelOpen(false);}}
-                onPointerDown={e=>e.stopPropagation()}
+              <div {...modalPointerActivate(() => setEmojiPanelOpen(false))}
                 onMouseEnter={()=>setHov("emoji-x")} onMouseLeave={()=>setHov(null)}
                 style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",
                         background:hov==="emoji-x"?"rgba(255,80,80,0.1)":"transparent",transition:"background 0.12s"}}>
@@ -16734,7 +16733,7 @@ const TalariaV8bLive = () => {
                   <div style={{display:"flex",alignItems:"center",padding:"9px 14px 8px",flexShrink:0}}>
                     <I n="goto" s={16} cl={c.acL}/>
                     <span style={{fontSize:15,fontWeight:700,color:c.tx,marginLeft:8,flex:1}}>Go To</span>
-                    <div onClick={e=>{e.stopPropagation();closePopup(setGotoOpen,"goto");setGotoAddType(null);}}
+                    <div {...modalPointerActivate(() => { closePopup(setGotoOpen,"goto"); setGotoAddType(null); })}
                       onMouseEnter={()=>setHov("goto-x")} onMouseLeave={()=>setHov(null)}
                       style={{cursor:"default",padding:4,display:"flex",alignItems:"center"}}>
                       <I n="x" s={16} cl={hov==="goto-x"?c.rd:c.ts}/>
@@ -17664,7 +17663,7 @@ const TalariaV8bLive = () => {
           <div style={{ padding: "6px 10px", display: "flex", alignItems: "center" }}>
             <I n={rightPanel==="layout"?"layout":rightPanel==="layers"?"tree":"news"} s={15} cl={c.acL}/>
             <span style={{ fontSize: 14, fontWeight: 700, flex: 1, marginLeft: 7 }}>{rightPanel==="layout"?"Layout":rightPanel==="news"?"News":"Objects Tree"}</span>
-            <div onClick={() => setRightPanel(null)} onMouseEnter={()=>setSwHov("xRightPanel")} onMouseLeave={()=>setSwHov(null)} style={{ cursor: "default", padding: 2 }}><I n="x" s={17} cl={swHov==="xRightPanel"?c.rd:c.ts}/></div>
+            <div {...modalPointerActivate(() => setRightPanel(null))} onMouseEnter={()=>setSwHov("xRightPanel")} onMouseLeave={()=>setSwHov(null)} style={{ cursor: "default", padding: 2 }}><I n="x" s={17} cl={swHov==="xRightPanel"?c.rd:c.ts}/></div>
           </div>
           <div style={{ height: 1, background: c.br, flexShrink: 0 }}/>
           {rightPanel==="layers"&&(
@@ -17682,7 +17681,7 @@ const TalariaV8bLive = () => {
                   style={{flex:1,background:"none",border:"none",outline:"none",fontFamily:F,fontSize:11,color:c.tx,caretColor:c.acL}}
                 />
                 {layersSearch&&(
-                  <div onClick={()=>setLayersSearch("")} style={{cursor:"default",opacity:0.5,lineHeight:0,flexShrink:0}}>
+                  <div {...modalPointerActivate(() => setLayersSearch(""))} style={{cursor:"default",opacity:0.5,lineHeight:0,flexShrink:0}}>
                     <I n="x" s={12} cl={c.ts}/>
                   </div>
                 )}
@@ -18422,7 +18421,7 @@ const TalariaV8bLive = () => {
               </div>
             ); })()}
             {/* Close */}
-            <div onClick={()=>setOrderPanelOpen(false)}
+            <div {...modalPointerActivate(() => setOrderPanelOpen(false))}
               onMouseEnter={()=>setSwHov("op-close")} onMouseLeave={()=>setSwHov(null)}
               style={{ width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0, position:"relative",
                        color:swHov==="op-close"?c.rd:c.ts, background:swHov==="op-close"?"rgba(255,80,104,0.06)":"transparent",
@@ -20164,7 +20163,7 @@ const TalariaV8bLive = () => {
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div style={{display:"flex",alignItems:"center",padding:"7px 10px 6px"}}>
             <span style={{fontSize:13,fontWeight:700,color:c.tx,flex:1}}>Date</span>
-            <div onClick={e=>{e.stopPropagation();setGotoCalOpen(false);setGotoCalMode("days");}} onMouseEnter={()=>setHov("gcal-x")} onMouseLeave={()=>setHov(null)} style={{cursor:"default",padding:3,display:"flex",alignItems:"center"}}>
+            <div {...modalPointerActivate(() => { setGotoCalOpen(false); setGotoCalMode("days"); })} onMouseEnter={()=>setHov("gcal-x")} onMouseLeave={()=>setHov(null)} style={{cursor:"default",padding:3,display:"flex",alignItems:"center"}}>
               <I n="x" s={14} cl={hov==="gcal-x"?c.rd:c.ts}/>
             </div>
           </div>
@@ -20765,9 +20764,9 @@ const TalariaV8bLive = () => {
           setTradeActPopup(null);
         };
         return(
-        <div onClick={()=>setTradeActPopup(null)}
+        <div onClick={()=>setTradeActPopup(null)} onPointerDown={(e)=>{ if(e.target===e.currentTarget) setTradeActPopup(null); }}
           style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>
-          <div onClick={e=>e.stopPropagation()}
+          <div onClick={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()}
             style={{width:660,maxHeight:"88vh",background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 28px 70px rgba(0,0,0,0.8), 0 0 30px rgba(74,106,255,0.12)`,display:"flex",flexDirection:"column",fontFamily:F,animation:"tlrWinIn 0.2s ease"}}>
             {/* Top accent */}
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
@@ -20780,7 +20779,7 @@ const TalariaV8bLive = () => {
               <span style={{fontSize:9,fontWeight:800,color:isLong?c.gn:c.rd,background:isLong?c.gnD:c.rdD,padding:"2px 7px",letterSpacing:"0.07em"}}>{isLong?"LONG":"SHORT"}</span>
               <span style={{fontSize:9,color:c.ts,background:c.hv,border:`1px solid ${c.br}`,padding:"2px 6px"}}>{r.type}</span>
               <div style={{flex:1}}/>
-              <div onClick={()=>setTradeActPopup(null)} onMouseEnter={()=>setSwHov("tap-x")} onMouseLeave={()=>setSwHov(null)}
+              <div {...modalPointerActivate(() => setTradeActPopup(null))} onMouseEnter={()=>setSwHov("tap-x")} onMouseLeave={()=>setSwHov(null)}
                 style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="tap-x"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s"}}>
                 <I n="x" s={15} cl={swHov==="tap-x"?c.rd:c.ts}/>
               </div>
@@ -20936,7 +20935,7 @@ const TalariaV8bLive = () => {
                 <span style={{fontSize:9,color:c.tm,fontVariantNumeric:"tabular-nums"}}>{tSession} · {tDayName} {tDay} {tMon} · {tTime}</span>
               </div>
               {(()=>{ const isH=swHov==="tap-skip"; return(
-                <div onClick={()=>setTradeActPopup(null)}
+                <div {...modalPointerActivate(() => setTradeActPopup(null))}
                   onMouseEnter={()=>setSwHov("tap-skip")} onMouseLeave={()=>setSwHov(null)}
                   style={{position:"relative",cursor:"default",fontSize:11,fontWeight:700,color:isH?c.tx:c.ts,letterSpacing:"0.06em",padding:"0 6px",transition:"color 0.12s"}}>
                   SKIP
@@ -20982,9 +20981,9 @@ const TalariaV8bLive = () => {
       )}
 
       {viewingScreenshot&&(
-        <div onClick={()=>setViewingScreenshot(null)}
+        <div onClick={()=>setViewingScreenshot(null)} onPointerDown={(e)=>{ if(e.target===e.currentTarget) setViewingScreenshot(null); }}
           style={{position:"fixed",inset:0,zIndex:100001,background:"rgba(0,0,0,0.93)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",padding:16,boxSizing:"border-box"}}>
-          <div onClick={e=>e.stopPropagation()} style={{
+          <div onClick={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()} style={{
             width:"min(96vw, 1600px)",
             height:"min(90vh, 1000px)",
             display:"flex",
@@ -21002,7 +21001,7 @@ const TalariaV8bLive = () => {
                 boxShadow:"0 8px 48px rgba(0,0,0,0.9)",
               }}/>
           </div>
-          <div onClick={()=>setViewingScreenshot(null)} onMouseEnter={()=>setHov("ss-lb-x")} onMouseLeave={()=>setHov(null)}
+          <div {...modalPointerActivate(() => setViewingScreenshot(null))} onMouseEnter={()=>setHov("ss-lb-x")} onMouseLeave={()=>setHov(null)}
             style={{position:"absolute",top:16,right:16,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
               background:hov==="ss-lb-x"?"rgba(255,80,80,0.15)":"rgba(255,255,255,0.06)",border:`1px solid ${hov==="ss-lb-x"?"rgba(255,80,80,0.4)":"rgba(255,255,255,0.12)"}`,
               transition:"all 0.12s",cursor:"default"}}>

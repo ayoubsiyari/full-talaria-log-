@@ -13475,7 +13475,6 @@ class Chart {
         if (!this.chartSettings.showVolume) return;
         
         const m = this.margin;
-        const candleSpacing = this.getCandleSpacing();
         
         // Get volume indicator colors and MA settings if available
         let upColor = this.chartSettings.volumeUpColor;
@@ -13505,22 +13504,32 @@ class Chart {
         this.ctx.rect(m.l, m.t, this.w - m.l - m.r, this.h - m.t - m.b);
         this.ctx.clip();
         
-        visible.forEach((d, i) => {
-            // Use the actual sequential index from visibleStartIndex
-            const idx = this.visibleStartIndex + i;
-            
-            // Use dataIndexToPixel for consistent positioning
+        const MAX_VOL_LOD = 2000;
+        const volLod = this._aggregateVisibleOhlcvBuckets(visible, MAX_VOL_LOD);
+        const volScaleLod = volLod
+            ? d3.scaleLinear()
+                .domain([0, Math.max(1, ...volLod.map((b) => b.vSum))])
+                .range(this.volumeScale.range())
+            : null;
+
+        const drawVolBar = (volVal, idx, isGreen) => {
             const x = this.dataIndexToPixel(idx);
             if (x < m.l - 10 || x > this.w - m.r + 10) return;
-            
-            const volumeY = this.volumeScale(d.v);
+            const vs = volScaleLod || this.volumeScale;
+            const volumeY = vs(volVal);
             const volumeHeight = (this.h - m.b) - volumeY;
-            
-            const isGreen = d.c >= d.o;
             this.ctx.fillStyle = isGreen ? upColor : downColor;
-            // Use candleWidth for the bar width but maintain fixed spacing
             this.ctx.fillRect(x - this.candleWidth / 2, volumeY, this.candleWidth, volumeHeight);
-        });
+        };
+
+        if (volLod) {
+            volLod.forEach((b) => drawVolBar(b.vSum, b.midIdx, b.c >= b.o));
+        } else {
+            visible.forEach((d, i) => {
+                const idx = this.visibleStartIndex + i;
+                drawVolBar(d.v, idx, d.c >= d.o);
+            });
+        }
         
         // Draw Volume MA if enabled
         if (showMA && this.data && this.data.length >= maPeriod) {
@@ -13545,8 +13554,9 @@ class Chart {
             
             let started = false;
             const startIdx = this.visibleStartIndex || 0;
-            
-            for (let i = 0; i < visible.length; i++) {
+            const maStride = visible.length > 2500 ? Math.ceil(visible.length / 2000) : 1;
+
+            for (let i = 0; i < visible.length; i += maStride) {
                 const dataIdx = startIdx + i;
                 const maValue = volumeMA[dataIdx];
                 
@@ -14018,6 +14028,40 @@ class Chart {
     }
     
     /**
+     * Zoomed-out views can have thousands of bars in `visible`; drawing each one stalls pan/zoom.
+     * Compress to at most `maxBuckets` synthetic OHLC candles (plus summed volume for volume LOD).
+     * @returns {null | Array<{o:number,h:number,l:number,c:number,vSum:number,midIdx:number}>}
+     */
+    _aggregateVisibleOhlcvBuckets(visible, maxBuckets) {
+        if (!visible || visible.length <= maxBuckets) return null;
+        const n = visible.length;
+        const numBuckets = Math.min(maxBuckets, n);
+        const step = n / numBuckets;
+        const buckets = [];
+        const base = this.visibleStartIndex || 0;
+        for (let b = 0; b < numBuckets; b++) {
+            const i0 = Math.floor(b * step);
+            const i1 = Math.min(n - 1, Math.floor((b + 1) * step) - 1);
+            if (i0 > i1) continue;
+            const first = visible[i0];
+            let h = first.h;
+            let l = first.l;
+            let volSum = 0;
+            for (let k = i0; k <= i1; k++) {
+                const row = visible[k];
+                if (row.h > h) h = row.h;
+                if (row.l < l) l = row.l;
+                volSum += Number(row.v) || 0;
+            }
+            const o = first.o;
+            const c = visible[i1].c;
+            const midIdx = base + Math.floor((i0 + i1) / 2);
+            buckets.push({ o, h, l, c, vSum: volSum, midIdx });
+        }
+        return buckets.length ? buckets : null;
+    }
+
+    /**
      * Draw Candlesticks (regular or hollow)
      */
     drawCandlesticks(visible, isHollow = false) {
@@ -14026,14 +14070,14 @@ class Chart {
         let skipped = 0;
         const useUnifiedBarColor = !!this.chartSettings.unifiedBarColorEnabled;
         const unifiedBarColor = this.chartSettings.unifiedBarColor || this.chartSettings.bodyUpColor || '#089981';
-        
-        // Use getCandleSpacing for consistency
-        const candleSpacing = this.getCandleSpacing();
-        
-        visible.forEach((d, i) => {
-            // Use the actual sequential index from visibleStartIndex
-            const idx = this.visibleStartIndex + i;
-            
+
+        const MAX_LOD_CANDLES = 2000;
+        const lod = this._aggregateVisibleOhlcvBuckets(visible, MAX_LOD_CANDLES);
+        const drawSeries = lod
+            ? lod.map((b) => ({ d: { o: b.o, h: b.h, l: b.l, c: b.c }, idx: b.midIdx }))
+            : visible.map((d, i) => ({ d, idx: (this.visibleStartIndex || 0) + i }));
+
+        drawSeries.forEach(({ d, idx }) => {
             // Calculate X position using our helper method
             const x = this.dataIndexToPixel(idx);
             
@@ -14148,8 +14192,8 @@ class Chart {
             drawn++;
         });
         
-        if (drawn === 0 && visible.length > 0) {
-            console.warn('⚠️ No candles drawn! All', visible.length, 'candles are outside viewport. Skipped:', skipped);
+        if (drawn === 0 && drawSeries.length > 0) {
+            console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
         }
     }
 
