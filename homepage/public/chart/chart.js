@@ -17645,7 +17645,7 @@ class Chart {
 
         let crosshairPrice = this.yScale ? this.yScale.invert(y) : null;
 
-        // Price readout: magnet + tick snap (line stays at lineY = y)
+        // Price readout: magnet + Ctrl → nearest OHLC; tick snap when not actively drawing
         const magnetMode = (this.drawingManager && this.drawingManager.magnetMode) || this.magnetMode || 'off';
         const magnetActive = magnetMode === 'weak' || magnetMode === 'strong' || magnetMode === true;
         const ctrlHeld = e.ctrlKey || e.metaKey;
@@ -17688,6 +17688,22 @@ class Chart {
                 }
             }
         }
+
+        // Horizontal line Y: match snapped price on canvas (magnet / Ctrl→OHLC / tick).
+        // Otherwise the label shows snapped values but the line stays on raw cursor Y (TradingView-style snap).
+        let hLineRenderY = lineY;
+        {
+            const spiSlot = this.separatePanelInfo && Array.isArray(this.separatePanelInfo.panelSlots)
+                ? this.separatePanelInfo.panelSlots.find((s) => y >= s.top && y <= s.bottom)
+                : null;
+            const inIndicatorSubPanel = !!(spiSlot && spiSlot.indicator);
+            if (!inIndicatorSubPanel && this.yScale && Number.isFinite(crosshairPrice)) {
+                const py = this.yScale(crosshairPrice);
+                if (Number.isFinite(py)) {
+                    hLineRenderY = py;
+                }
+            }
+        }
         
         // Show crosshair lines for 'cross' cursor type, eraser, drawing tool active, or drawing selected/moved
         // DON'T show lines for 'dot' or 'arrow' cursor types. Respect chartSettings.showCrosshair (V9 theme panel).
@@ -17721,7 +17737,7 @@ class Chart {
             hLine.style.left = m.l + 'px';
             hLine.style.right = 'auto';
             hLine.style.width = plotW + 'px';
-            hLine.style.top = (lineY - crossWidth * 0.5) + 'px';
+            hLine.style.top = (hLineRenderY - crossWidth * 0.5) + 'px';
             hLine.style.height = crossWidth + 'px';
             hLine.style.display = showLines ? 'block' : 'none';
             hLine.style.background = hBg;
@@ -17784,7 +17800,7 @@ class Chart {
             const _axisW = _axisLeft ? m.l : m.r;
             priceLabel.style.left = (_axisLeft ? 2 : (this.w - m.r)) + 'px';
             priceLabel.style.right = 'auto';
-            priceLabel.style.top = lineY + 'px';
+            priceLabel.style.top = hLineRenderY + 'px';
             priceLabel.style.transform = 'translateY(-50%)';
             priceLabel.style.width = (_axisW - 4) + 'px';
             priceLabel.style.textAlign = 'center';
