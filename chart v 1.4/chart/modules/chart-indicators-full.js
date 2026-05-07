@@ -4484,7 +4484,7 @@
             ctx.fillStyle = '#787b86';
             ctx.font = '10px Roboto';
             ctx.textAlign = 'right';
-            ctx.fillText(val.toFixed(2), this.w - m.r + 45, y + 3);
+            ctx.fillText(val.toFixed(2), this.w - 6, y + 3);
         }
 
         plots.forEach(function(plot) {
@@ -4880,7 +4880,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             
             // Y-axis label
             ctx.fillStyle = '#787b86';
-            ctx.fillText(val.toFixed(2), this.w - m.r + 45, y + 3);
+            ctx.fillText(val.toFixed(2), this.w - 6, y + 3);
         }
         
         // Draw the indicator line
@@ -4929,7 +4929,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
                     ctx.fillStyle = col;
                     ctx.font = '9px Roboto';
                     ctx.textAlign = 'right';
-                    ctx.fillText(lvl, this.w - m.r - 2, ry - 2);
+                    ctx.fillText(lvl, this.w - 6, ry - 2);
                 }
             });
             ctx.textAlign = 'left';
@@ -4948,7 +4948,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
                     ctx.fillStyle = col;
                     ctx.font = '9px Roboto';
                     ctx.textAlign = 'right';
-                    ctx.fillText(lvl, this.w - m.r - 2, ry - 2);
+                    ctx.fillText(lvl, this.w - 6, ry - 2);
                 }
             });
             ctx.textAlign = 'left';
@@ -4966,7 +4966,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
                 ctx.fillStyle = 'rgba(255,255,255,0.35)';
                 ctx.font = '9px Roboto';
                 ctx.textAlign = 'right';
-                ctx.fillText('0', this.w - m.r - 2, zy - 2);
+                ctx.fillText('0', this.w - 6, zy - 2);
             }
             ctx.textAlign = 'left';
         }
@@ -6470,7 +6470,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 ctx.fillStyle = col;
                 ctx.font = '9px Roboto';
                 ctx.textAlign = 'right';
-                ctx.fillText(lvl, this.w - m.r - 2, ry - 2);
+                ctx.fillText(lvl, this.w - 6, ry - 2);
             }
         });
 
@@ -6522,7 +6522,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ctx.fillStyle = 'rgba(255,255,255,0.35)';
             ctx.font = '9px Roboto';
             ctx.textAlign = 'right';
-            ctx.fillText('25', this.w - m.r - 2, thY - 2);
+            ctx.fillText('25', this.w - 6, thY - 2);
         }
 
         this._drawPanelLine(ctx, m, plusArr, indicator.style.plusDIColor || '#00e676', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
@@ -6568,7 +6568,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ctx.fillStyle = 'rgba(255,255,255,0.3)';
             ctx.font = '9px Roboto';
             ctx.textAlign = 'right';
-            ctx.fillText('70', this.w - m.r - 2, thY - 2);
+            ctx.fillText('70', this.w - 6, thY - 2);
         }
 
         this._drawPanelLine(ctx, m, upArr, indicator.style.upColor || '#00e676', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
@@ -6612,7 +6612,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 ctx.fillStyle = col;
                 ctx.font = '9px Roboto';
                 ctx.textAlign = 'right';
-                ctx.fillText(String(lvl), this.w - m.r - 2, ry - 2);
+                ctx.fillText(String(lvl), this.w - 6, ry - 2);
             }
         });
 
@@ -6656,7 +6656,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 ctx.fillStyle = col;
                 ctx.font = '9px Roboto';
                 ctx.textAlign = 'right';
-                ctx.fillText(String(lvl), this.w - m.r - 2, ry - 2);
+                ctx.fillText(String(lvl), this.w - 6, ry - 2);
             }
         });
 
