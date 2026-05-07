@@ -6836,6 +6836,32 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         indicator._displayLabel = last !== null ? last.toFixed(2) : '';
     };
 
+    Chart.prototype._renderSeparatePanelLegendValue = function(el, ind) {
+        if (!el || !ind) return;
+        el.innerHTML = '';
+        const tags = Array.isArray(ind._axisLabelTags) ? ind._axisLabelTags : [];
+        if (tags.length > 1) {
+            tags.forEach(function(tag, i) {
+                const sp = document.createElement('span');
+                sp.textContent = String(tag && tag.text != null ? tag.text : '—');
+                sp.style.cssText = 'color:' + (tag && tag.color ? tag.color : '#9ca3af') + ';';
+                el.appendChild(sp);
+                if (i < tags.length - 1) {
+                    const gap = document.createElement('span');
+                    gap.textContent = ' ';
+                    gap.style.cssText = 'color:#6b7280;';
+                    el.appendChild(gap);
+                }
+            });
+            return;
+        }
+        const t = (ind._displayLabel !== undefined && ind._displayLabel !== '') ? String(ind._displayLabel) : '—';
+        const sp = document.createElement('span');
+        sp.textContent = t;
+        sp.style.cssText = 'color:' + (ind._displayColor || '#9ca3af') + ';';
+        el.appendChild(sp);
+    };
+
     /** Update crosshair-driven values on separate-panel legend rows without rebuilding DOM. */
     Chart.prototype._syncSeparatePanelOverlayValues = function(overlay, indicators) {
         if (!overlay || !Array.isArray(indicators)) return;
@@ -6847,9 +6873,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (ind.type === 'volume' || ind.isVolume) return;
             const el = byId[String(ind.id)];
             if (!el) return;
-            const t = (ind._displayLabel !== undefined && ind._displayLabel !== '') ? String(ind._displayLabel) : '—';
-            if (el.textContent !== t) el.textContent = t;
-        });
+            this._renderSeparatePanelLegendValue(el, ind);
+        }, this);
     };
 
     /** Keep persistent right-axis tags in sync during replay/crosshair updates. */
@@ -7043,7 +7068,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const self = this;
         // Use accent color cached by applyChartSettings — avoids getComputedStyle in the hot render path
         const accentColor = this._cachedAccentColor || '#2962ff';
-        const chip = getTalariaChipStyles();
 
         indicators.forEach(function(indicator, idx) {
             if (indicator.type === 'volume' || indicator.isVolume) return;
@@ -7051,7 +7075,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!slot) return;
             const slotTop = slot.top;
             const color   = indicator._displayColor || indicator.style.color || '#2962ff';
-            const label   = indicator._displayLabel  || '';
             const visible = indicator.visible !== false;
 
             // Full plot-width row so action icons stay pinned to the right (TradingView-style).
@@ -7059,28 +7082,20 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             bar.className = 'talaria-ind-legend-row';
             bar.style.cssText = [
                 'position:absolute',
-                'top:' + (slotTop + 5) + 'px',
+                'top:' + (slotTop + 4) + 'px',
                 'left:' + (m.l + 6) + 'px',
                 'right:' + (m.r + 6) + 'px',
                 'width:auto',
                 'box-sizing:border-box',
                 'display:flex',
                 'align-items:center',
-                'gap:6px',
+                'gap:5px',
                 'min-width:0',
                 'z-index:10',
                 'pointer-events:auto',
                 'user-select:none',
                 'font-family:Roboto,sans-serif'
-            ].join(';') + ';' + chip.chipCss + ';margin:0;width:auto;max-width:none;';
-            bar.onmouseenter = function() {
-                bar.style.background = chip.bgHover;
-                if (chip.borderDefault !== 'transparent') bar.style.borderColor = chip.borderHover;
-            };
-            bar.onmouseleave = function() {
-                bar.style.background = chip.bg;
-                if (chip.borderDefault !== 'transparent') bar.style.borderColor = chip.borderDefault;
-            };
+            ].join(';') + ';margin:0;width:auto;max-width:none;background:transparent;border:none;border-radius:0;padding:0;';
 
             const strip = createIndLegendSwatch(color);
             strip.style.opacity = visible ? '1' : '0.4';
@@ -7088,15 +7103,15 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const nameEl = document.createElement('span');
             nameEl.textContent = indicator.name;
-            nameEl.style.cssText = 'color:#d1d4dc;font-size:11px;font-weight:500;user-select:none;opacity:' + (visible ? '1' : '0.4') +
+            nameEl.style.cssText = 'color:#d1d4dc;font-size:12px;font-weight:500;user-select:none;opacity:' + (visible ? '1' : '0.45') +
                 ';flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
             bar.appendChild(nameEl);
 
             const valEl = document.createElement('span');
             valEl.setAttribute('data-talaria-sp-val', String(indicator.id));
-            valEl.style.cssText = 'color:#d1d4dc;font-size:11px;font-variant-numeric:tabular-nums;text-align:right;' +
-                'min-width:11ch;flex-shrink:0;';
-            valEl.textContent = label || '—';
+            valEl.style.cssText = 'font-size:11px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;' +
+                'min-width:9ch;flex-shrink:0;display:inline-flex;gap:2px;align-items:center;';
+            self._renderSeparatePanelLegendValue(valEl, indicator);
             bar.appendChild(valEl);
 
             const actions = document.createElement('span');
@@ -7105,12 +7120,12 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const eyeBtn = document.createElement('span');
             eyeBtn.title = visible ? 'Hide' : 'Show';
-            eyeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;opacity:' + (visible ? '1' : '0.5') + ';';
+            eyeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;padding:0;border-radius:3px;cursor:pointer;color:#9ca3af;background:rgba(17,24,39,0.72);border:1px solid rgba(107,114,128,0.45);transition:background 0.2s,color 0.2s,border-color 0.2s;opacity:' + (visible ? '1' : '0.55') + ';';
             eyeBtn.innerHTML = visible
                 ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
                 : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
-            eyeBtn.onmouseenter = function() { eyeBtn.style.background = 'rgba(120, 123, 134, 0.2)'; };
-            eyeBtn.onmouseleave = function() { eyeBtn.style.background = 'transparent'; };
+            eyeBtn.onmouseenter = function() { eyeBtn.style.background = 'rgba(31,41,55,0.95)'; eyeBtn.style.color = '#e5e7eb'; eyeBtn.style.borderColor = 'rgba(148,163,184,0.7)'; };
+            eyeBtn.onmouseleave = function() { eyeBtn.style.background = 'rgba(17,24,39,0.72)'; eyeBtn.style.color = '#9ca3af'; eyeBtn.style.borderColor = 'rgba(107,114,128,0.45)'; };
             eyeBtn.onclick = function(e) {
                 e.stopPropagation();
                 indicator.visible = (indicator.visible === false) ? true : false;
@@ -7121,15 +7136,17 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const setBtn = document.createElement('span');
             setBtn.title = 'Settings';
-            setBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;';
+            setBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;padding:0;border-radius:3px;cursor:pointer;color:#9ca3af;background:rgba(17,24,39,0.72);border:1px solid rgba(107,114,128,0.45);transition:background 0.2s,color 0.2s,border-color 0.2s;';
             setBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
             setBtn.onmouseenter = function() {
                 setBtn.style.color = '#ffffff';
                 setBtn.style.background = accentColor;
+                setBtn.style.borderColor = accentColor;
             };
             setBtn.onmouseleave = function() {
-                setBtn.style.color = '#787b86';
-                setBtn.style.background = 'transparent';
+                setBtn.style.color = '#9ca3af';
+                setBtn.style.background = 'rgba(17,24,39,0.72)';
+                setBtn.style.borderColor = 'rgba(107,114,128,0.45)';
             };
             setBtn.onclick = function(e) {
                 e.preventDefault();
@@ -7141,9 +7158,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const delBtn = document.createElement('span');
             delBtn.textContent = '×';
             delBtn.title = 'Remove indicator';
-            delBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#f23645;font-size:13px;font-weight:700;transition:background 0.2s;';
-            delBtn.onmouseenter = function() { delBtn.style.background = 'rgba(242, 54, 69, 0.18)'; };
-            delBtn.onmouseleave = function() { delBtn.style.background = 'transparent'; };
+            delBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;padding:0;border-radius:3px;cursor:pointer;color:#f87171;background:rgba(17,24,39,0.72);border:1px solid rgba(127,29,29,0.45);font-size:13px;font-weight:700;transition:background 0.2s,color 0.2s,border-color 0.2s;';
+            delBtn.onmouseenter = function() { delBtn.style.background = 'rgba(127,29,29,0.35)'; delBtn.style.color = '#fecaca'; delBtn.style.borderColor = 'rgba(248,113,113,0.8)'; };
+            delBtn.onmouseleave = function() { delBtn.style.background = 'rgba(17,24,39,0.72)'; delBtn.style.color = '#f87171'; delBtn.style.borderColor = 'rgba(127,29,29,0.45)'; };
             delBtn.onclick = function(e) {
                 e.stopPropagation();
                 if (typeof self.removeIndicator === 'function') self.removeIndicator(indicator.id);
