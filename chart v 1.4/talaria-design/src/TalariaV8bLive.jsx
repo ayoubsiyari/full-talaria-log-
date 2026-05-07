@@ -8696,7 +8696,7 @@ const TalariaV8bLive = () => {
             <span className="ohlc-separator">{" · "}</span>
             <span id="chartTimeframe" />
           </div>
-          <div className="ohlc-stats" style={{ minHeight: 40, overflow: "visible", alignItems: "center" }}>
+          <div className="ohlc-stats" style={{ minHeight: 22, overflow: "visible", alignItems: "center", gap: 10, paddingLeft: 4 }}>
             <div className="ohlc-item">
               <span className="ohlc-label">O</span>
               <span className="ohlc-value" id="open">—</span>
@@ -8747,7 +8747,7 @@ const TalariaV8bLive = () => {
           <div
             id="ohlcIndicators"
             className="ohlc-indicators"
-            style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 1, marginTop: 2, width: "100%", maxWidth: "100%", fontSize: 11, pointerEvents: "auto", position: "relative", zIndex: 100 }}
+            style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 0, marginTop: 0, width: "100%", maxWidth: "100%", fontSize: 10.5, lineHeight: 1.2, pointerEvents: "auto", position: "relative", zIndex: 100 }}
           />
         </div>
         <div className="ohlc-legend-footer">
@@ -8851,6 +8851,14 @@ const TalariaV8bLive = () => {
         .ohlc-info:not(.collapsed) .ohlc-legend-chevron svg{transform:rotate(180deg)}
         .ohlc-info.collapsed .ohlc-legend-chevron svg{transform:rotate(0deg)}
         .ohlc-info.collapsed .ohlc-body{display:none !important}
+        .ohlc-header{display:flex !important;align-items:center !important;flex-wrap:wrap !important;column-gap:10px !important;row-gap:2px !important}
+        .ohlc-symbol-block{font-size:13px !important;line-height:1.25 !important}
+        .ohlc-stats{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important}
+        .ohlc-item{display:inline-flex !important;align-items:center !important;gap:3px !important}
+        .ohlc-label{font-size:12px !important;font-weight:600 !important;opacity:0.82 !important}
+        .ohlc-value{font-size:12px !important;font-weight:600 !important}
+        .ohlc-change{font-size:12px !important;font-weight:600 !important;margin-left:2px !important}
+        .ohlc-body{margin-top:1px !important}
         .ohlc-indicators{min-width:0}
         .ohlc-indicators > div{max-width:100%}
         .nav-badge-tooltip{background:transparent !important;border:none !important;box-shadow:none !important;padding:0 !important}
