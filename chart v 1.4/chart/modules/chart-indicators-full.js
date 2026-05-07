@@ -6841,6 +6841,12 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (!overlay || !Array.isArray(indicators)) return;
         overlay.querySelectorAll('[data-talaria-sp-axis-tag]').forEach(function(n) { n.remove(); });
         overlay.querySelectorAll('[data-talaria-sp-axis-tick]').forEach(function(n) { n.remove(); });
+        const m = this.margin || { r: 56 };
+        const axisLeft = this.w - m.r;
+        const axisWidth = Math.max(30, m.r - 4);
+        const scaleTextSize = (this.chartSettings && Number.isFinite(this.chartSettings.scaleTextSize))
+            ? this.chartSettings.scaleTextSize
+            : 11;
 
         const slotById = {};
         if (Array.isArray(panelSlots)) {
@@ -6876,14 +6882,14 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                         tick.setAttribute('data-talaria-sp-axis-tick', '1');
                         tick.style.cssText = [
                             'position:absolute',
-                            'right:6px',
-                            'top:' + (y - 7) + 'px',
-                            'height:14px',
+                            'right:4px',
+                            'top:' + (y - 8) + 'px',
+                            'height:16px',
                             'display:flex',
                             'align-items:center',
                             'justify-content:flex-end',
-                            'font:500 10px Roboto,sans-serif',
-                            'line-height:14px',
+                            'font:500 ' + scaleTextSize + 'px Roboto,sans-serif',
+                            'line-height:16px',
                             'font-variant-numeric:tabular-nums',
                             'color:#787b86',
                             'z-index:10',
@@ -6910,22 +6916,24 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 const y = Math.max(topBound, Math.min(bottomBound, tag.y));
                 const axisTag = document.createElement('div');
                 axisTag.setAttribute('data-talaria-sp-axis-tag', '1');
+                const bg = (tag.color || indicator._displayColor || indicator.style.color || '#2962ff');
+                const textColor = (typeof this.isLightColor === 'function' && this.isLightColor(bg)) ? '#111111' : '#ffffff';
                 axisTag.style.cssText = [
                     'position:absolute',
-                    'right:2px',
-                    'top:' + (y - 8) + 'px',
-                    'height:16px',
-                    'min-width:52px',
-                    'padding:0 6px',
+                    'left:' + (axisLeft + 2) + 'px',
+                    'top:' + (y - 10) + 'px',
+                    'width:' + axisWidth + 'px',
+                    'height:20px',
+                    'padding:0',
                     'display:flex',
                     'align-items:center',
                     'justify-content:center',
                     'border-radius:2px',
-                    'font:600 10px Roboto,sans-serif',
-                    'line-height:16px',
+                    'font:500 ' + scaleTextSize + 'px Roboto,sans-serif',
+                    'line-height:20px',
                     'font-variant-numeric:tabular-nums',
-                    'color:#000',
-                    'background:' + (tag.color || indicator._displayColor || indicator.style.color || '#2962ff'),
+                    'color:' + textColor,
+                    'background:' + bg,
                     'z-index:11',
                     'pointer-events:none',
                     'box-sizing:border-box'
