@@ -4681,6 +4681,8 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     const panelBottom = totalHeight - m.b;
     const panelTop = panelBottom - totalPanelHeight;
     
+    const _isLightBg = document.body.classList.contains('light-mode');
+
     // Draw full panel background using the same chart background color
     // so separate indicator panes stay visually synced with the main chart.
     const panelBackgroundColor =
@@ -4712,7 +4714,6 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     ctx.clip();
     
     // Outer top separator — solid divider line matching panel borders
-    const _isLightBg = document.body.classList.contains('light-mode');
     const _sepColor = _isLightBg ? 'rgba(119,130,150,0.45)' : 'rgba(110,122,145,0.38)';
     const _sepColorStrong = _isLightBg ? 'rgba(80,96,122,0.6)' : 'rgba(145,160,190,0.52)';
     const _gripColor = _isLightBg ? 'rgba(0, 0, 0, 0.30)' : 'rgba(150, 170, 210, 0.55)';
