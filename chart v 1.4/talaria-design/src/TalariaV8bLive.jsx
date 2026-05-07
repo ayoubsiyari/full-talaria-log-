@@ -3751,10 +3751,12 @@ const TalariaV8bLive = () => {
       const tooltip = document.getElementById("navBadgeTooltip");
       if (!badge) return;
       badge.style.display = replayOn ? "inline-flex" : "none";
-      badge.style.color = allowBack ? "#22c55e" : "#ef4444";
+      const navStateColor = allowBack ? "#22c55e" : "#ef4444";
+      badge.style.color = navStateColor;
       badge.classList.toggle("enabled", allowBack);
       badge.classList.toggle("disabled", !allowBack);
       if (tooltip) {
+        tooltip.style.color = navStateColor;
         tooltip.classList.toggle("enabled-tip", allowBack);
         tooltip.classList.toggle("disabled-tip", !allowBack);
         tooltip.innerHTML = allowBack
