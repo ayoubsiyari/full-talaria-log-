@@ -6875,6 +6875,16 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         indicators.forEach(function(indicator) {
             if (indicator.type === 'volume' || indicator.isVolume) return;
             const slot = slotById[String(indicator.id)];
+            const topBound = slot ? slot.top + 8 : 0;
+            const bottomBound = slot ? slot.bottom - 8 : Number.MAX_SAFE_INTEGER;
+            const tags = Array.isArray(indicator._axisLabelTags) && indicator._axisLabelTags.length
+                ? indicator._axisLabelTags
+                : (Number.isFinite(indicator._axisLabelY) ? [{
+                    y: indicator._axisLabelY,
+                    text: indicator._axisLabelText,
+                    color: indicator._axisLabelColor || indicator._displayColor || indicator.style.color || '#2962ff'
+                }] : []);
+
             if (slot) {
                 const b0 = Number(indicator._panelBaseMin);
                 const b1 = Number(indicator._panelBaseMax);
@@ -6895,6 +6905,13 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                         const v = d0 + (d1 - d0) * (i / tickCount);
                         const y = slot.bottom - 5 - ((v - d0) / span) * (slot.height - 10);
                         if (!Number.isFinite(y)) continue;
+                        // Keep a small gap so tick labels don't overlap colored live-value tags.
+                        const tooCloseToTag = tags.some(function(tag) {
+                            if (!Number.isFinite(tag.y)) return false;
+                            const tagY = Math.max(topBound, Math.min(bottomBound, tag.y));
+                            return Math.abs(y - tagY) < 14;
+                        });
+                        if (tooCloseToTag) continue;
                         const tick = document.createElement('div');
                         tick.setAttribute('data-talaria-sp-axis-tick', '1');
                         tick.style.cssText = [
@@ -6919,16 +6936,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                     }
                 }
             }
-            const topBound = slot ? slot.top + 8 : 0;
-            const bottomBound = slot ? slot.bottom - 8 : Number.MAX_SAFE_INTEGER;
-            const tags = Array.isArray(indicator._axisLabelTags) && indicator._axisLabelTags.length
-                ? indicator._axisLabelTags
-                : (Number.isFinite(indicator._axisLabelY) ? [{
-                    y: indicator._axisLabelY,
-                    text: indicator._axisLabelText,
-                    color: indicator._axisLabelColor || indicator._displayColor || indicator.style.color || '#2962ff'
-                }] : []);
-
             tags.forEach(function(tag) {
                 if (!Number.isFinite(tag.y)) return;
                 const y = Math.max(topBound, Math.min(bottomBound, tag.y));
