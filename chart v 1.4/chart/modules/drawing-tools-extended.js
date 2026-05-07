@@ -2,8 +2,6 @@
  * Drawing Tools - Extended Shapes Module
  * Implements: Highlighter, Arrow Markers, Circle, Arc, Curve, Double Curve, Rotated Rectangle
  */
-console.log('🔧 Loading drawing-tools-extended.js...');
-
 // ============================================================================
 // Highlighter Tool (Freehand semi-transparent highlighting)
 // ============================================================================
