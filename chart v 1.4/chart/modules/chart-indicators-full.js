@@ -4541,6 +4541,22 @@ Chart.prototype._getVisibleSeparateIndicators = function() {
         const isVisible = ind.visible !== false;
         return isSeparate && isVisible;
     });
+
+    // Final separator pass: redraw every inter-panel boundary full-width so it
+    // stays visible (including through the right indicator-axis strip).
+    if (panelSlots.length > 1) {
+        panelSlots.slice(0, -1).forEach((slot) => {
+            const y = slot.top;
+            const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - y) <= 2;
+            ctx.strokeStyle = isHoverSep ? _hoverColor : _sepColorStrong;
+            ctx.lineWidth = 3;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(m.l, y);
+            ctx.lineTo(panelFullRight, y);
+            ctx.stroke();
+        });
+    }
 };
 
 Chart.prototype._getSeparatePanelHeights = function(indicators) {
