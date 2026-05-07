@@ -4855,6 +4855,71 @@ const TalariaV8bLive = () => {
     return () => clearInterval(id);
   }, [settings]);
 
+  // Single source of truth: indicator menu rows + chart.js runtime type.
+  // This keeps V9 menu and chart engine in sync (no missing/unsupported duplicates).
+  const INDICATOR_CATALOG = [
+    // Trend
+    { id:"SMA", type:"sma", name:"Simple Moving Average", abbr:"SMA", cat:"trend", desc:"Smoothed average of closing prices over N periods" },
+    { id:"EMA", type:"ema", name:"Exponential Moving Average", abbr:"EMA", cat:"trend", desc:"Gives more weight to recent prices" },
+    { id:"WMA", type:"wma", name:"Weighted Moving Average", abbr:"WMA", cat:"trend", desc:"Linearly weighted average, emphasises recency" },
+    { id:"DEMA", type:"dema", name:"Double EMA", abbr:"DEMA", cat:"trend", desc:"Reduces lag with a double-smoothed EMA" },
+    { id:"TEMA", type:"tema", name:"Triple EMA", abbr:"TEMA", cat:"trend", desc:"Further reduces lag using triple smoothing" },
+    { id:"HMA", type:"hma", name:"Hull Moving Average", abbr:"HMA", cat:"trend", desc:"Nearly eliminates lag while maintaining smoothness" },
+    { id:"SUPERTREND", type:"supertrend", name:"Supertrend", abbr:"ST", cat:"trend", desc:"ATR-based trend-following overlay with signals" },
+    { id:"BB", type:"bb", name:"Bollinger Bands", abbr:"BB", cat:"trend", desc:"Dynamic bands from moving average" },
+    { id:"DC", type:"donchian", name:"Donchian Channel", abbr:"DC", cat:"trend", desc:"High/low channel over N periods" },
+    { id:"KC", type:"keltner", name:"Keltner Channel", abbr:"KC", cat:"trend", desc:"ATR-based envelope around EMA" },
+    { id:"PSAR", type:"psar", name:"Parabolic SAR", abbr:"PSAR", cat:"trend", desc:"Trailing stop and reversal signal dots" },
+    { id:"AROON", type:"aroon", name:"Aroon", abbr:"AROON", cat:"trend", desc:"Identifies trend changes and strength" },
+
+    // Momentum
+    { id:"RSI", type:"rsi", name:"Relative Strength Index", abbr:"RSI", cat:"momentum", desc:"Oscillator measuring overbought/oversold conditions" },
+    { id:"MACD", type:"macd", name:"MACD", abbr:"MACD", cat:"momentum", desc:"Moving average convergence/divergence histogram" },
+    { id:"STOCH", type:"stoch", name:"Stochastic", abbr:"STOCH", cat:"momentum", desc:"Compares closing price to price range over N periods" },
+    { id:"STOCHRSI", type:"stochrsi", name:"Stochastic RSI", abbr:"StRSI", cat:"momentum", desc:"Stochastic applied to RSI values for sensitivity" },
+    { id:"CCI", type:"cci", name:"Commodity Channel Index", abbr:"CCI", cat:"momentum", desc:"Measures deviation from statistical mean" },
+    { id:"MOM", type:"mom", name:"Momentum", abbr:"MOM", cat:"momentum", desc:"Raw price change over N periods" },
+    { id:"ROC", type:"roc", name:"Rate of Change", abbr:"ROC", cat:"momentum", desc:"Percentage change in price over N periods" },
+    { id:"WPR", type:"williams", name:"Williams %R", abbr:"%R", cat:"momentum", desc:"Overbought/oversold oscillator in -100 to 0 range" },
+    { id:"PPO", type:"ppo", name:"Percentage Price Oscillator", abbr:"PPO", cat:"momentum", desc:"MACD expressed as a percentage" },
+    { id:"DPO", type:"dpo", name:"Detrended Price Oscillator", abbr:"DPO", cat:"momentum", desc:"Removes trend to isolate cycles" },
+    { id:"AO", type:"ao", name:"Awesome Oscillator", abbr:"AO", cat:"momentum", desc:"5/34 period midpoint SMA difference" },
+    { id:"UO", type:"uo", name:"Ultimate Oscillator", abbr:"UO", cat:"momentum", desc:"Multi-period momentum oscillator" },
+    { id:"TRIX", type:"trix", name:"TRIX", abbr:"TRIX", cat:"momentum", desc:"Triple-smoothed momentum oscillator" },
+    { id:"COPPOCK", type:"coppock", name:"Coppock Curve", abbr:"COP", cat:"momentum", desc:"Long-term momentum curve" },
+    { id:"RVI", type:"rvi", name:"Relative Vigor Index", abbr:"RVI", cat:"momentum", desc:"Momentum based on close-open relation" },
+    { id:"ELDERRAY", type:"elderray", name:"Elder Ray", abbr:"ER", cat:"momentum", desc:"Bull/Bear power from EMA baseline" },
+    { id:"MASSINDEX", type:"massindex", name:"Mass Index", abbr:"MI", cat:"momentum", desc:"Measures range expansion to detect reversals" },
+
+    // Volatility
+    { id:"ATR", type:"atr", name:"Average True Range", abbr:"ATR", cat:"volatility", desc:"Average of true range over N periods" },
+    { id:"STDDEV", type:"stddev", name:"Standard Deviation", abbr:"STD", cat:"volatility", desc:"Volatility of price around mean" },
+    { id:"VORTEX", type:"vortex", name:"Vortex Indicator", abbr:"VI", cat:"volatility", desc:"Trend direction and strength lines" },
+
+    // Volume
+    { id:"VWAP", type:"vwap", name:"VWAP", abbr:"VWAP", cat:"volume", desc:"Volume-weighted average price benchmark" },
+    { id:"VOLUME", type:"volume", name:"Volume", abbr:"VOL", cat:"volume", desc:"Volume bars with optional MA" },
+    { id:"OBV", type:"obv", name:"On Balance Volume", abbr:"OBV", cat:"volume", desc:"Cumulative volume direction indicator" },
+    { id:"CMF", type:"cmf", name:"Chaikin Money Flow", abbr:"CMF", cat:"volume", desc:"Money flow oscillator over N periods" },
+    { id:"MFI", type:"mfi", name:"Money Flow Index", abbr:"MFI", cat:"volume", desc:"RSI-like oscillator incorporating volume" },
+
+    // Sessions
+    { id:"SESS", type:"sessions", name:"Session Boxes", abbr:"SESS", cat:"sessions", desc:"Highlights major trading sessions" },
+    { id:"SESSPLUS", type:"sessionsplus", name:"Sessions+", abbr:"SESS+", cat:"sessions", desc:"Extended sessions module with labels" },
+    { id:"KILLZONES", type:"killzones", name:"ICT Kill Zones", abbr:"ICT KZ", cat:"sessions", desc:"ICT session windows and opens" },
+    { id:"OR", type:"openingrange", name:"Opening Range", abbr:"OR", cat:"sessions", desc:"Session opening range high/low levels" },
+
+    // Others
+    { id:"ADX", type:"adx", name:"Average Directional Index", abbr:"ADX", cat:"others", desc:"Measures trend strength, not direction" },
+    { id:"ADR", type:"adr", name:"Average Daily Range", abbr:"ADR", cat:"others", desc:"Average daily high-low range" },
+    { id:"SEASONALITY", type:"seasonality", name:"Seasonality", abbr:"SEAS", cat:"others", desc:"Seasonal tendency visualisation" },
+    { id:"COT", type:"cotnet", name:"COT Net (Commercial vs Non-Commercial)", abbr:"COT", cat:"others", desc:"Commitments of Traders net positioning" },
+  ];
+  const ID_TO_TYPE = INDICATOR_CATALOG.reduce((acc, row) => {
+    acc[row.id] = row.type;
+    return acc;
+  }, {});
+
   // ─── SYNC INDICATORS → chart.js ──────────────────────────────────────────
   // V9's indActive (array of V9 indicator IDs like "SMA", "RSI") drives
   // chart.js's chart.addIndicator(type) / chart.removeIndicator(id).
@@ -4863,24 +4928,6 @@ const TalariaV8bLive = () => {
   // Placed AFTER `indActive`'s useState because the dep array `[indActive]` is
   // evaluated at render time and would TDZ if hoisted above.
   useEffect(() => {
-    const ID_TO_TYPE = {
-      // Trend
-      SMA: "sma", EMA: "ema", WMA: "wma", DEMA: "dema", TEMA: "tema",
-      HMA: "hma", SUPERTREND: "supertrend",
-      // Momentum
-      RSI: "rsi", MACD: "macd", STOCH: "stoch", CCI: "cci", MOM: "mom",
-      ROC: "roc", WPR: "williams", DPO: "dpo", PPO: "ppo", AO: "ao",
-      STOCHRSI: "stochrsi",
-      // Volatility
-      BB: "bb", ATR: "atr", KC: "keltner", DC: "donchian",
-      // Volume
-      VWAP: "vwap", OBV: "obv", CMF: "cmf", MFI: "mfi",
-      // Sessions
-      SESS: "sessions",
-      // Others
-      PSAR: "psar", ADX: "adx", AROON: "aroon",
-    };
-
     console.log("[V9 ind] useEffect fired, indActive =", indActive);
     let cancelled = false;
     let attempts = 0;
@@ -6635,64 +6682,7 @@ const TalariaV8bLive = () => {
     };
   }, [cpDragging, cpDragRect]);
 
-  const indicatorData = [
-    // Trend
-    {id:"SMA",name:"Simple Moving Average",abbr:"SMA",cat:"trend",desc:"Smoothed average of closing prices over N periods"},
-    {id:"EMA",name:"Exponential Moving Average",abbr:"EMA",cat:"trend",desc:"Gives more weight to recent prices"},
-    {id:"WMA",name:"Weighted Moving Average",abbr:"WMA",cat:"trend",desc:"Linearly weighted average, emphasises recency"},
-    {id:"DEMA",name:"Double EMA",abbr:"DEMA",cat:"trend",desc:"Reduces lag with a double-smoothed EMA"},
-    {id:"TEMA",name:"Triple EMA",abbr:"TEMA",cat:"trend",desc:"Further reduces lag using triple smoothing"},
-    {id:"HMA",name:"Hull Moving Average",abbr:"HMA",cat:"trend",desc:"Nearly eliminates lag while maintaining smoothness"},
-    {id:"VWMA",name:"Volume Weighted MA",abbr:"VWMA",cat:"trend",desc:"MA weighted by volume at each bar"},
-    {id:"ALMA",name:"Arnaud Legoux MA",abbr:"ALMA",cat:"trend",desc:"Low-noise Gaussian-weighted moving average"},
-    {id:"SUPERTREND",name:"Supertrend",abbr:"ST",cat:"trend",desc:"ATR-based trend-following overlay with signals"},
-    {id:"ICHIMOKU",name:"Ichimoku Cloud",abbr:"ICHI",cat:"trend",desc:"Multi-component Japanese trend & support system"},
-    // Momentum
-    {id:"RSI",name:"Relative Strength Index",abbr:"RSI",cat:"momentum",desc:"Oscillator measuring overbought/oversold conditions"},
-    {id:"MACD",name:"MACD",abbr:"MACD",cat:"momentum",desc:"Moving average convergence/divergence histogram"},
-    {id:"STOCH",name:"Stochastic",abbr:"STOCH",cat:"momentum",desc:"Compares closing price to price range over N periods"},
-    {id:"CCI",name:"Commodity Channel Index",abbr:"CCI",cat:"momentum",desc:"Measures deviation from statistical mean"},
-    {id:"MOM",name:"Momentum",abbr:"MOM",cat:"momentum",desc:"Raw price change over N periods"},
-    {id:"ROC",name:"Rate of Change",abbr:"ROC",cat:"momentum",desc:"Percentage change in price over N periods"},
-    {id:"WPR",name:"Williams %R",abbr:"%R",cat:"momentum",desc:"Overbought/oversold oscillator in -100 to 0 range"},
-    {id:"TSI",name:"True Strength Index",abbr:"TSI",cat:"momentum",desc:"Double-smoothed momentum oscillator"},
-    {id:"KST",name:"Know Sure Thing",abbr:"KST",cat:"momentum",desc:"Summed & smoothed rate-of-change oscillator"},
-    {id:"DPO",name:"Detrended Price Oscillator",abbr:"DPO",cat:"momentum",desc:"Removes trend to isolate cycles"},
-    {id:"PPO",name:"Percentage Price Oscillator",abbr:"PPO",cat:"momentum",desc:"MACD expressed as a percentage"},
-    {id:"AO",name:"Awesome Oscillator",abbr:"AO",cat:"momentum",desc:"5/34 period SMA midpoint difference"},
-    {id:"STOCHRSI",name:"Stochastic RSI",abbr:"StRSI",cat:"momentum",desc:"Stochastic applied to RSI values for sensitivity"},
-    // Volatility
-    {id:"BB",name:"Bollinger Bands",abbr:"BB",cat:"volatility",desc:"Dynamic bands 2 standard deviations from SMA"},
-    {id:"ATR",name:"Average True Range",abbr:"ATR",cat:"volatility",desc:"Average of true range over N periods"},
-    {id:"KC",name:"Keltner Channel",abbr:"KC",cat:"volatility",desc:"ATR-based envelope around EMA"},
-    {id:"DC",name:"Donchian Channel",abbr:"DC",cat:"volatility",desc:"High/low channel over N periods"},
-    {id:"ATRP",name:"ATR Percentage",abbr:"ATRP",cat:"volatility",desc:"ATR expressed as a percentage of price"},
-    {id:"HV",name:"Historical Volatility",abbr:"HV",cat:"volatility",desc:"Annualised standard deviation of log returns"},
-    {id:"NATR",name:"Normalized ATR",abbr:"NATR",cat:"volatility",desc:"ATR normalised by closing price"},
-    {id:"VHF",name:"Vertical Horizontal Filter",abbr:"VHF",cat:"volatility",desc:"Measures trending vs ranging conditions"},
-    // Volume
-    {id:"VWAP",name:"VWAP",abbr:"VWAP",cat:"volume",desc:"Intraday volume-weighted average price benchmark"},
-    {id:"OBV",name:"On Balance Volume",abbr:"OBV",cat:"volume",desc:"Cumulative volume direction indicator"},
-    {id:"CMF",name:"Chaikin Money Flow",abbr:"CMF",cat:"volume",desc:"Money flow oscillator over N periods"},
-    {id:"MFI",name:"Money Flow Index",abbr:"MFI",cat:"volume",desc:"RSI-like oscillator incorporating volume"},
-    {id:"VROC",name:"Volume Rate of Change",abbr:"VROC",cat:"volume",desc:"Percentage change in volume over N periods"},
-    {id:"AD",name:"Accumulation/Distribution",abbr:"A/D",cat:"volume",desc:"Cumulative money flow line"},
-    {id:"PVT",name:"Price Volume Trend",abbr:"PVT",cat:"volume",desc:"Combines price change percentage with volume"},
-    {id:"KLINGER",name:"Klinger Volume Oscillator",abbr:"KVO",cat:"volume",desc:"Long/short volume force oscillator"},
-    // Sessions
-    {id:"SESS",name:"Session Boxes",abbr:"SESS",cat:"sessions",desc:"Highlights all major trading sessions with boxes"},
-    {id:"ASIA",name:"Asia Session",abbr:"ASIA",cat:"sessions",desc:"Highlights the Asian session range"},
-    {id:"LON",name:"London Session",abbr:"LON",cat:"sessions",desc:"Highlights the London session range"},
-    {id:"NY",name:"New York Session",abbr:"NY",cat:"sessions",desc:"Highlights the New York session range"},
-    // Others
-    {id:"PIVOT",name:"Pivot Points",abbr:"PIVOT",cat:"others",desc:"Daily/weekly/monthly S/R pivot levels"},
-    {id:"PSAR",name:"Parabolic SAR",abbr:"PSAR",cat:"others",desc:"Trailing stop and reversal signal dots"},
-    {id:"ADX",name:"Average Directional Index",abbr:"ADX",cat:"others",desc:"Measures trend strength, not direction"},
-    {id:"AROON",name:"Aroon",abbr:"AROON",cat:"others",desc:"Identifies trend changes and strength"},
-    {id:"ZZ",name:"Zig Zag",abbr:"ZZ",cat:"others",desc:"Filters noise to highlight significant price swings"},
-    {id:"FVGBULL",name:"Bullish Fair Value Gap",abbr:"FVG+",cat:"others",desc:"Marks up-side imbalances in price action"},
-    {id:"FVGBEAR",name:"Bearish Fair Value Gap",abbr:"FVG−",cat:"others",desc:"Marks down-side imbalances in price action"},
-  ];
+  const indicatorData = INDICATOR_CATALOG;
 
   const indFiltered = indicatorData
     .filter(i => indCat === "all" ? true : indCat === "pinned" ? indPinned.includes(i.id) : indCat === "active" ? indActive.includes(i.id) : i.cat === indCat)
