@@ -5941,7 +5941,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
             const applyEyeState = () => {
                 const on = indicator.visible !== false;
-                visibilityBtn.style.cssText = baseActionStyle + 'color:' + (on ? '#8ea5ff' : '#787b86') + ';background:' + (on ? 'rgba(74,106,255,0.10)' : 'transparent') + ';opacity:1;';
+                visibilityBtn.style.cssText = baseActionStyle + 'color:' + (on ? '#d1d4dc' : '#787b86') + ';background:transparent;opacity:1;';
             };
             applyEyeState();
             visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
@@ -5984,8 +5984,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             settingsBtn.style.cssText = baseActionStyle + 'color:#787b86;background:transparent;border:none;box-shadow:none;';
             settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
-                settingsBtn.style.color = '#ffffff';
-                settingsBtn.style.background = self._cachedAccentColor || '#2962ff';
+                settingsBtn.style.color = '#d1d4dc';
+                settingsBtn.style.background = 'rgba(255, 255, 255, 0.08)';
             };
             settingsBtn.onmouseleave = function() {
                 settingsBtn.style.color = '#787b86';
@@ -7182,7 +7182,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             eyeBtn.title = showPlot ? 'Hide indicator' : 'Show indicator';
             const applyPlotEyeState = () => {
                 const on = indicator.hidePlot === true;
-                eyeBtn.style.cssText = baseActionStyle + 'color:' + (on ? '#8ea5ff' : '#787b86') + ';background:' + (on ? 'rgba(74,106,255,0.10)' : 'transparent') + ';opacity:1;';
+                eyeBtn.style.cssText = baseActionStyle + 'color:' + (on ? '#d1d4dc' : '#787b86') + ';background:transparent;opacity:1;';
             };
             applyPlotEyeState();
             eyeBtn.innerHTML = showPlot
@@ -7205,8 +7205,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             setBtn.style.cssText = baseActionStyle + 'color:#787b86;background:transparent;border:none;box-shadow:none;';
             setBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-.33-1 1.65 1.65 0 0 0-1-.6 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1-.33H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1-.33 1.65 1.65 0 0 0 .6-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 .33 1 1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.23.6.62.6 1s.24.77.6 1a1.65 1.65 0 0 0 1 .33H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1 .33c-.36.23-.6.62-.6 1z"/></svg>';
             setBtn.onmouseenter = function() {
-                setBtn.style.color = '#ffffff';
-                setBtn.style.background = accentColor;
+                setBtn.style.color = '#d1d4dc';
+                setBtn.style.background = 'rgba(255, 255, 255, 0.08)';
             };
             setBtn.onmouseleave = function() {
                 setBtn.style.color = '#787b86';
