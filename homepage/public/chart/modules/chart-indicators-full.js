@@ -6869,6 +6869,25 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             panelSlots.forEach(function(slot) {
                 if (slot && slot.indicator) slotById[String(slot.indicator.id)] = slot;
             });
+            // Draw all inter-panel separators on axis overlay so they are always visible.
+            if (panelSlots.length > 1) {
+                panelSlots.slice(0, -1).forEach(function(slot) {
+                    if (!slot || !Number.isFinite(slot.top)) return;
+                    const sep = document.createElement('div');
+                    sep.setAttribute('data-talaria-sp-axis-tick', '1');
+                    sep.style.cssText = [
+                        'position:absolute',
+                        'left:' + axisLeft + 'px',
+                        'top:' + (slot.top - 1.5) + 'px',
+                        'width:' + m.r + 'px',
+                        'height:3px',
+                        'background:rgba(120, 123, 134, 0.42)',
+                        'z-index:10',
+                        'pointer-events:none'
+                    ].join(';');
+                    overlay.appendChild(sep);
+                });
+            }
             // Divider between main price-axis region and indicator-axis region.
             const topSlot = panelSlots[panelSlots.length - 1];
             if (topSlot && Number.isFinite(topSlot.top)) {
