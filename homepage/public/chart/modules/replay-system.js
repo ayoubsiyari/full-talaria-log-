@@ -4412,9 +4412,9 @@ class ReplaySystem {
      */
     ensureReplayFollowButton() {
         const followIconSvg =
-            '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
-            '<path d="M7.5 7l4.5 5-4.5 5"/>' +
-            '<path d="M12 7l4.5 5-4.5 5"/>' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M6.8 6.8l4.9 5.2-4.9 5.2"/>' +
+            '<path d="M12.3 6.8l4.9 5.2-4.9 5.2"/>' +
             '</svg>';
         let btn = this.followBtn;
         if (btn && document.body.contains(btn)) return btn;
