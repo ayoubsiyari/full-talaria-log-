@@ -3753,6 +3753,8 @@ const TalariaV8bLive = () => {
       badge.style.display = replayOn ? "inline-flex" : "none";
       const navStateColor = allowBack ? "#22c55e" : "#ef4444";
       badge.style.color = navStateColor;
+      const navSvg = badge.querySelector(".nav-badge-go-back");
+      if (navSvg) navSvg.style.setProperty("color", navStateColor, "important");
       badge.classList.toggle("enabled", allowBack);
       badge.classList.toggle("disabled", !allowBack);
       if (tooltip) {
