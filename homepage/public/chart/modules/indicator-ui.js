@@ -2314,7 +2314,6 @@ function setupIndicatorUI(chartInstance) {
             const visibilityBtn = document.createElement('span');
             visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';  // SVG eye icons
             visibilityBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
-            visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
             visibilityBtn.onmouseenter = function() {
                 visibilityBtn.style.background = 'rgba(255, 255, 255, 0.08)';
             };
@@ -2329,7 +2328,6 @@ function setupIndicatorUI(chartInstance) {
                 // Update icon
                 visibilityBtn.innerHTML = indicator.visible ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
                 visibilityBtn.style.opacity = indicator.visible ? '1' : '0.5';
-                visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
                 
                 setTalariaIndChipNameEl(nameSpan, indicator.visible);
                 
@@ -2372,7 +2370,6 @@ function setupIndicatorUI(chartInstance) {
             const settingsBtn = document.createElement('span');
             settingsBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
             settingsBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;';
-            settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#8ea5ff';
                 settingsBtn.style.background = 'rgba(74,106,255,0.08)';
@@ -2406,7 +2403,6 @@ function setupIndicatorUI(chartInstance) {
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
             removeBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;';
-            removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
                 removeBtn.style.background = 'rgba(242, 54, 69, 0.2)';
             };
@@ -2421,7 +2417,6 @@ function setupIndicatorUI(chartInstance) {
 
             item.appendChild(actions);
 
-            item.title = 'Click to edit, click "×" to remove';
 
             div.appendChild(item);
         }
@@ -2734,7 +2729,6 @@ if (typeof Chart !== 'undefined') {
             const visibilityBtn = document.createElement('span');
             visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';  // SVG eye icons
             visibilityBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
-            visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
             visibilityBtn.onmouseenter = function() {
                 visibilityBtn.style.background = 'rgba(255, 255, 255, 0.08)';
             };
@@ -2749,7 +2743,6 @@ if (typeof Chart !== 'undefined') {
                 // Update icon
                 visibilityBtn.innerHTML = indicator.visible ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
                 visibilityBtn.style.opacity = indicator.visible ? '1' : '0.5';
-                visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
                 
                 setTalariaIndChipNameEl(nameSpan, indicator.visible);
                 
@@ -2792,7 +2785,6 @@ if (typeof Chart !== 'undefined') {
             const settingsBtn = document.createElement('span');
             settingsBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
             settingsBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;';
-            settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#8ea5ff';
                 settingsBtn.style.background = 'rgba(74,106,255,0.08)';
@@ -2826,7 +2818,6 @@ if (typeof Chart !== 'undefined') {
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
             removeBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;';
-            removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
                 removeBtn.style.background = 'rgba(242, 54, 69, 0.2)';
             };
@@ -2840,7 +2831,6 @@ if (typeof Chart !== 'undefined') {
             actions.appendChild(removeBtn);
 
             item.appendChild(actions);
-            item.title = 'Click to edit, click "×" to remove';
             div.appendChild(item);
         }
     };

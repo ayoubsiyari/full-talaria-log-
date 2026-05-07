@@ -5982,7 +5982,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const settingsBtn = document.createElement('span');
             settingsBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-.33-1 1.65 1.65 0 0 0-1-.6 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1-.33H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1-.33 1.65 1.65 0 0 0 .6-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 .33 1 1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.23.6.62.6 1s.24.77.6 1a1.65 1.65 0 0 0 1 .33H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1 .33c-.36.23-.6.62-.6 1z"/></svg>';
             settingsBtn.style.cssText = baseActionStyle + 'color:#787b86;background:transparent;border:none;box-shadow:none;';
-            settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#d1d4dc';
                 settingsBtn.style.background = 'rgba(255, 255, 255, 0.08)';
@@ -6005,7 +6004,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
             removeBtn.style.cssText = baseActionStyle + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;background:transparent;';
-            removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
                 removeBtn.style.background = 'rgba(242, 54, 69, 0.2)';
             };
@@ -6020,7 +6018,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             actions.appendChild(removeBtn);
 
             item.appendChild(actions);
-            item.title = 'Click to edit, click "×" to remove';
             div.appendChild(item);
         }
 
@@ -7201,7 +7198,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             actions.appendChild(eyeBtn);
 
             const setBtn = document.createElement('span');
-            setBtn.title = 'Settings';
             setBtn.style.cssText = baseActionStyle + 'color:#787b86;background:transparent;border:none;box-shadow:none;';
             setBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-.33-1 1.65 1.65 0 0 0-1-.6 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1-.33H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1-.33 1.65 1.65 0 0 0 .6-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 .33 1 1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.23.6.62.6 1s.24.77.6 1a1.65 1.65 0 0 0 1 .33H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1 .33c-.36.23-.6.62-.6 1z"/></svg>';
             setBtn.onmouseenter = function() {
@@ -7221,7 +7217,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const delBtn = document.createElement('span');
             delBtn.textContent = '×';
-            delBtn.title = 'Remove indicator';
             delBtn.style.cssText = baseActionStyle + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;background:transparent;';
             delBtn.onmouseenter = function() { delBtn.style.background = 'rgba(242, 54, 69, 0.2)'; };
             delBtn.onmouseleave = function() { delBtn.style.color = '#f23645'; delBtn.style.background = 'transparent'; };
