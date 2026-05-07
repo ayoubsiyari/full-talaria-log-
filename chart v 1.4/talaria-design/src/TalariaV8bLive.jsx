@@ -8686,10 +8686,25 @@ const TalariaV8bLive = () => {
 
   const ddItems = getDdItems();
 
+  const ohlcBg = parseColor(settings?.background || c.bg || "#000000");
+  const ohlcLuma = (0.2126 * ohlcBg.r + 0.7152 * ohlcBg.g + 0.0722 * ohlcBg.b) / 255;
+  const ohlcUseLightText = ohlcLuma < 0.5;
+  const ohlcTextColor = ohlcUseLightText ? "#ffffff" : "#0f172a";
+  const ohlcMutedTextColor = ohlcUseLightText ? "rgba(255,255,255,0.82)" : "rgba(15,23,42,0.82)";
+  const ohlcIndicatorTextColor = ohlcUseLightText ? "rgba(255,255,255,0.72)" : "rgba(15,23,42,0.72)";
+
   /* Same DOM shape as panel-manager.js (flag dot + single-line OHLC + change); chart.js owns ids #open … #chartChange */
   const mainOhlcInfoEl = useMemo(
     () => (
-      <div id="ohlcInfo" className="ohlc-info">
+      <div
+        id="ohlcInfo"
+        className="ohlc-info"
+        style={{
+          "--ohlc-fg": ohlcTextColor,
+          "--ohlc-muted": ohlcMutedTextColor,
+          "--ohlc-ind": ohlcIndicatorTextColor,
+        }}
+      >
         <div className="ohlc-header">
           <div className="ohlc-symbol-block" style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
             <span id="chartSymbol" className="ohlc-symbol-text" />
@@ -8765,7 +8780,7 @@ const TalariaV8bLive = () => {
         </div>
       </div>
     ),
-    []
+    [ohlcTextColor, ohlcMutedTextColor, ohlcIndicatorTextColor]
   );
 
   // Repaint indicator chips after OHLC host exists (race vs chart init).
@@ -8852,14 +8867,16 @@ const TalariaV8bLive = () => {
         .ohlc-info.collapsed .ohlc-legend-chevron svg{transform:rotate(0deg)}
         .ohlc-info.collapsed .ohlc-body{display:none !important}
         .ohlc-header{display:flex !important;align-items:center !important;flex-wrap:wrap !important;column-gap:10px !important;row-gap:2px !important}
-        .ohlc-symbol-block{font-size:13px !important;line-height:1.25 !important}
+        .ohlc-symbol-block{font-size:13px !important;line-height:1.25 !important;color:var(--ohlc-fg,#fff) !important}
+        .ohlc-symbol-block #chartTimeframe{color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important}
         .ohlc-stats{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important}
         .ohlc-item{display:inline-flex !important;align-items:center !important;gap:3px !important}
-        .ohlc-label{font-size:12px !important;font-weight:600 !important;opacity:0.82 !important}
-        .ohlc-value{font-size:12px !important;font-weight:600 !important}
-        .ohlc-change{font-size:12px !important;font-weight:600 !important;margin-left:2px !important}
+        .ohlc-label{font-size:12px !important;font-weight:600 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;opacity:1 !important}
+        .ohlc-value{font-size:12px !important;font-weight:600 !important;color:var(--ohlc-fg,#fff) !important}
+        .ohlc-change{font-size:12px !important;font-weight:600 !important;color:var(--ohlc-fg,#fff) !important;margin-left:2px !important}
         .ohlc-body{margin-top:1px !important}
-        .ohlc-indicators{min-width:0}
+        .ohlc-indicators{min-width:0;color:var(--ohlc-ind,rgba(255,255,255,0.72)) !important}
+        .ohlc-indicators *{color:inherit}
         .ohlc-indicators > div{max-width:100%}
         .nav-badge-tooltip{background:transparent !important;border:none !important;box-shadow:none !important;padding:0 !important}
         .nav-badge-tooltip::before{display:none !important}
