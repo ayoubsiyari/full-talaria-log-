@@ -11908,28 +11908,22 @@ class Chart {
     }
 
     /**
-     * Schedule a render using requestAnimationFrame for throttling.
-     * During pan / inertia / time-axis zoom / replay playback, render immediately so time-axis
-     * overlays (economic calendar flags, etc.) stay glued to candles instead of lagging one frame.
+     * Schedule a render using requestAnimationFrame for throttling (see animate()).
+     * Immediate render only when overlays must stay glued: time-axis zoom drag, replay playback,
+     * inertia, and wheel bursts. Chart pan is coalesced to one paint per frame to avoid jank.
      */
     scheduleRender() {
         const replayPlaying = this.replaySystem && this.replaySystem.isPlaying;
-        const panOrZoomAxis =
+        const timeAxisZoomDrag =
             this.drag &&
             this.drag.active &&
-            (this.drag.type === 'pan' || this.drag.type === 'timeAxis');
+            this.drag.type === 'timeAxis';
         const inertialPan = this.inertia && this.inertia.active;
         const wheelBurst =
             typeof this._wheelBurstUntil === 'number' &&
             performance.now() < this._wheelBurstUntil;
 
-        if (
-            this.selectedDrawing !== null ||
-            replayPlaying ||
-            panOrZoomAxis ||
-            inertialPan ||
-            wheelBurst
-        ) {
+        if (replayPlaying || timeAxisZoomDrag || inertialPan || wheelBurst) {
             this.renderPending = false;
             this.render();
             return;
@@ -15325,8 +15319,9 @@ class Chart {
             this.mouseX = mx;
             this.mouseY = my;
             
-            // Re-render for indicator panel
-            if (this.separatePanelInfo) {
+            // Separate indicator panel: full chart render on hover is expensive; during any drag
+            // the drag branch already schedules render — avoid double work per mousemove.
+            if (this.separatePanelInfo && !this.drag.active) {
                 this.scheduleRender();
             }
             
@@ -15539,8 +15534,11 @@ class Chart {
                 }
             }
             
-            this.updateCrosshair(e);
-            this.updateTooltip(e);
+            // Crosshair + tooltip do heavy DOM/layout work; skip during chart pan to keep pan responsive.
+            if (!(this.drag.active && this.drag.type === 'pan')) {
+                this.updateCrosshair(e);
+                this.updateTooltip(e);
+            }
         });
 
         // ═══════════════════════════════════════════════════════════════════
@@ -15688,6 +15686,11 @@ class Chart {
             this.movement.isDragging = false;
             this.isZooming = false;
             this._rightMouseDragged = false;
+
+            if (wasDragging && dragType === 'pan') {
+                if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
+                if (typeof this.updateTooltip === 'function') this.updateTooltip(e);
+            }
             
             if (!this.tool) {
                 this.canvas.style.cursor = this.getCurrentCursorStyle();

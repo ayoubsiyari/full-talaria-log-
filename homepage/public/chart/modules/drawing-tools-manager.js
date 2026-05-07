@@ -1743,9 +1743,16 @@ class DrawingToolsManager {
         this._lastLiveEditBroadcast = now;
 
         const ensuredId = this._ensureDrawingId(drawing);
-        const payload = (typeof drawing.toJSON === 'function')
-            ? drawing.toJSON()
-            : JSON.parse(JSON.stringify(drawing));
+        const payload = (() => {
+            try {
+                return (typeof drawing.toJSON === 'function')
+                    ? drawing.toJSON()
+                    : JSON.parse(JSON.stringify(drawing));
+            } catch (_err) {
+                return null;
+            }
+        })();
+        if (!payload) return;
         payload.id = drawing.id || payload.id || ensuredId;
         if (!payload.id) return;
         if (Array.isArray(pointsOverride)) payload.points = pointsOverride.map(p => ({ ...p }));
@@ -3194,6 +3201,10 @@ class DrawingToolsManager {
      * For freehand tools (path, brush, highlighter), uses continuous coordinates for smooth curves
      */
     getDataPoint(event, toolTypeOverride = this.currentTool) {
+        if (!this.chart || !this.chart.yScale || typeof this.chart.yScale.invert !== 'function') {
+            return { x: NaN, y: NaN };
+        }
+
         let [screenX, screenY] = this._eventCanvasLocalXY(event);
         const activeToolType = toolTypeOverride || this.currentTool;
 

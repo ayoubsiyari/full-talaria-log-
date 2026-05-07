@@ -915,10 +915,14 @@ class CoordinateUtils {
      * @param {boolean} continuous - If true, don't round x to allow smooth freehand drawing
      */
     static screenToData(screenX, screenY, scales, chart = null, continuous = false) {
+        if (!scales || !scales.yScale || typeof scales.yScale.invert !== 'function') {
+            return { x: NaN, y: NaN };
+        }
+        const hasXInvert = scales.xScale && typeof scales.xScale.invert === 'function';
         // Use chart's helper methods if available for accurate index calculation
         const rawX = chart && chart.pixelToDataIndex ? 
             chart.pixelToDataIndex(screenX) : 
-            scales.xScale.invert(screenX);
+            (hasXInvert ? scales.xScale.invert(screenX) : NaN);
             
         return {
             x: continuous ? rawX : Math.round(rawX),  // Keep fractional for freehand, snap for others
@@ -931,10 +935,13 @@ class CoordinateUtils {
      * Note: dataX should be candle INDEX, not timestamp
      */
     static dataToScreen(dataX, dataY, scales, chart = null) {
+        if (!scales || !scales.yScale || typeof scales.yScale !== 'function') {
+            return { x: NaN, y: NaN };
+        }
         // Use chart's helper methods if available for accurate pixel calculation
         const x = chart && chart.dataIndexToPixel ? 
             chart.dataIndexToPixel(dataX) : 
-            scales.xScale(dataX);
+            (scales.xScale && typeof scales.xScale === 'function' ? scales.xScale(dataX) : NaN);
             
         return {
             x: x,
