@@ -6202,6 +6202,27 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (started) ctx.stroke();
     };
 
+    // Shared right-axis ticks + grid for separate indicator panels.
+    Chart.prototype._drawPanelAxisTicks = function(ctx, m, min, max, scaleY, decimals) {
+        const d = Number.isFinite(decimals) ? decimals : 2;
+        ctx.font = '10px Roboto';
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#787b86';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+        const numGridLines = 4;
+        for (let i = 0; i <= numGridLines; i++) {
+            const tickVal = min + (max - min) * (i / numGridLines);
+            const tickY = scaleY(tickVal);
+            if (!Number.isFinite(tickY)) continue;
+            ctx.beginPath();
+            ctx.moveTo(m.l, tickY);
+            ctx.lineTo(this.w - m.r, tickY);
+            ctx.stroke();
+            ctx.fillText(tickVal.toFixed(d), this.w - 6, tickY + 3);
+        }
+    };
+
     // ---- MACD panel: histogram bars + MACD line + signal line + zero line ----
     Chart.prototype._renderMACDPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
         if (!data.macd || !data.signal || !data.histogram) return;
@@ -6228,23 +6249,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
 
-        // Right-axis ticks/labels for MACD panel (TradingView-like dedicated panel scale)
-        ctx.font = '10px Roboto';
-        ctx.textAlign = 'right';
-        ctx.fillStyle = '#787b86';
-        const numGridLines = 4;
-        for (let i = 0; i <= numGridLines; i++) {
-            const tickVal = min + (max - min) * (i / numGridLines);
-            const tickY = scaleY(tickVal);
-            if (!Number.isFinite(tickY)) continue;
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(m.l, tickY);
-            ctx.lineTo(this.w - m.r, tickY);
-            ctx.stroke();
-            ctx.fillText(tickVal.toFixed(4), this.w - 6, tickY + 3);
-        }
+        this._drawPanelAxisTicks(ctx, m, min, max, scaleY, 4);
 
         // Zero line
         const zeroY = scaleY(0);
@@ -6363,6 +6368,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(y)) return null;
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
+        this._drawPanelAxisTicks(ctx, m, min, max, scaleY, 2);
         this._drawPanelLine(ctx, m, a, indicator.style.plusColor || '#00e676', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
         this._drawPanelLine(ctx, m, b, indicator.style.minusColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
         const zy = scaleY(1);
@@ -6414,6 +6420,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(y)) return null;
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
+        this._drawPanelAxisTicks(ctx, m, min, max, scaleY, 2);
         const zy = scaleY(0);
         if (zy !== null && zy > panelTop && zy < panelBottom) {
             ctx.strokeStyle = 'rgba(255,255,255,0.22)';
@@ -6484,6 +6491,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(y)) return null;
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
+        this._drawPanelAxisTicks(ctx, m, min, max, scaleY, 2);
         const zy = scaleY(0);
         if (zy !== null && zy > panelTop && zy < panelBottom) {
             ctx.strokeStyle = 'rgba(0,0,0,0.45)';
@@ -6525,6 +6533,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(y)) return null;
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
+        this._drawPanelAxisTicks(ctx, m, sMin, sMax, scaleY, 2);
         [[70, 'rgba(239,83,80,0.45)'], [50, 'rgba(120,123,134,0.3)'], [30, 'rgba(38,166,154,0.45)']].forEach(function(row) {
             const lvl = row[0];
             const col = row[1];
@@ -6561,6 +6570,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(y)) return null;
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
+        this._drawPanelAxisTicks(ctx, m, sMin, sMax, scaleY, 2);
 
         [[80, 'rgba(239,83,80,0.5)'], [50, 'rgba(120,123,134,0.3)'], [20, 'rgba(38,166,154,0.5)']].forEach(([lvl, col]) => {
             const ry = scaleY(lvl);
@@ -6643,6 +6653,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(y)) return null;
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
+        this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 2);
 
         // 25 threshold line
         const thY = scaleY(25);
@@ -6690,6 +6701,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(y)) return null;
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
+        this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 0);
 
         const thY = scaleY(70);
         if (thY !== null && thY > panelTop && thY < panelBottom) {
@@ -6733,6 +6745,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(y)) return null;
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
+        this._drawPanelAxisTicks(ctx, m, wMin, wMax, scaleY, 0);
 
         [[-20, 'rgba(239,83,80,0.45)'], [-50, 'rgba(120,123,134,0.25)'], [-80, 'rgba(38,166,154,0.45)']].forEach(([lvl, col]) => {
             const ry = scaleY(lvl);
@@ -6777,6 +6790,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(y)) return null;
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
+        this._drawPanelAxisTicks(ctx, m, sMin, sMax, scaleY, 2);
 
         [[80, 'rgba(239,83,80,0.5)'], [50, 'rgba(120,123,134,0.3)'], [20, 'rgba(38,166,154,0.5)']].forEach(([lvl, col]) => {
             const ry = scaleY(lvl);
