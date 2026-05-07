@@ -4411,6 +4411,11 @@ class ReplaySystem {
      * `document.body` so it cannot be removed by React re-renders inside `#chartWrapper`.
      */
     ensureReplayFollowButton() {
+        const followIconSvg =
+            '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M7.5 7l4.5 5-4.5 5"/>' +
+            '<path d="M12 7l4.5 5-4.5 5"/>' +
+            '</svg>';
         let btn = this.followBtn;
         if (btn && document.body.contains(btn)) return btn;
 
@@ -4428,11 +4433,7 @@ class ReplaySystem {
             btn.className = 'replay-follow-float-btn';
             btn.title = 'Follow replay — scroll with playback';
             btn.setAttribute('aria-label', 'Follow replay candle');
-            btn.innerHTML =
-                '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round">' +
-                '<path d="M21 4v16" fill="none" stroke-width="2"/>' +
-                '<path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/>' +
-                '</svg>';
+            btn.innerHTML = followIconSvg;
             Object.assign(btn.style, {
                 display: 'none',
                 alignItems: 'center',
@@ -4460,6 +4461,11 @@ class ReplaySystem {
         }
 
         if (!btn) return null;
+
+        // Keep icon in sync even when button comes from React (#replayFollow).
+        if (btn.innerHTML !== followIconSvg) {
+            btn.innerHTML = followIconSvg;
+        }
 
         if (!btn.dataset.replayFollowBound) {
             btn.dataset.replayFollowBound = '1';

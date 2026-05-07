@@ -16513,9 +16513,9 @@ const TalariaV8bLive = () => {
                 title="Follow replay — scroll with playback (click after panning to catch up)"
                 aria-label="Follow replay candle"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth={0.5} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 4v16" fill="none" strokeWidth={2} />
-                  <path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z" />
+                <svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M7.5 7l4.5 5-4.5 5" />
+                  <path d="M12 7l4.5 5-4.5 5" />
                 </svg>
               </button>
             </div>
