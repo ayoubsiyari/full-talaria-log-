@@ -1821,7 +1821,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     panel.appendChild(topAccent);
 
     const titleBar = document.createElement('div');
-    titleBar.style.cssText = 'display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));flex-shrink:0;user-select:none;';
+    titleBar.style.cssText = 'display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));background:var(--sp-ui-chrome-bg, #131722);flex-shrink:0;user-select:none;';
 
     const title = document.createElement('div');
     title.className = 'settings-section-title';
@@ -1854,7 +1854,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     const form = document.createElement('div');
     form.style.display = 'flex';
     form.style.flexDirection = 'column';
-    form.style.gap = '6px';
+    form.style.gap = '8px';
     form.style.overflowY = 'auto';
     form.style.maxHeight = 'calc(82vh - 156px)';
     form.style.padding = '12px 14px 0 14px';
@@ -1890,10 +1890,32 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     def.params.forEach(param => {
         const wrapper = document.createElement('div');
         wrapper.className = 'settings-input-row';
+        wrapper.style.cssText = `
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:12px;
+            padding:7px 10px;
+            min-height:34px;
+            background:var(--sp-ui-surface-bg, #1e2740);
+            border:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
+            box-sizing:border-box;
+            transition:border-color .12s, background .12s;
+        `;
+        wrapper.onmouseenter = () => { wrapper.style.borderColor = 'rgba(140,160,255,0.34)'; };
+        wrapper.onmouseleave = () => { wrapper.style.borderColor = 'var(--sp-ui-border, rgba(42,46,57,0.55))'; };
 
         const label = document.createElement('label');
         label.className = 'settings-input-label';
         label.textContent = param.label;
+        label.style.cssText = `
+            font-size:12px;
+            font-weight:600;
+            color:var(--sp-text-muted, #9aa2b1);
+            letter-spacing:0.02em;
+            flex:1;
+            min-width:0;
+        `;
         wrapper.appendChild(label);
 
         let input;
@@ -1907,7 +1929,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             input.min = param.min || 1;
             if (param.max) input.max = param.max;
             if (param.step) input.step = param.step;
-            input.style.width = '160px';
+            input.style.cssText = 'width:160px;height:26px;padding:0 8px;background:var(--sp-ui-chrome-bg, #131722);color:var(--sp-text, #d1d4dc);border:1px solid var(--sp-input-border, rgba(255,255,255,0.14));outline:none;box-sizing:border-box;';
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
@@ -1924,21 +1946,22 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             input.type = 'checkbox';
             input.className = 'tv-native-checkbox';
             input.checked = currentValue !== false;
-            input.style.cursor = 'pointer';
+            input.style.cssText = 'cursor:pointer;width:16px;height:16px;accent-color:var(--sp-accent,#2962ff);';
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
         } else if (param.type === 'select' && Array.isArray(param.options)) {
             input = document.createElement('select');
             input.className = 'settings-input';
-            input.style.width = '100%';
-            input.style.maxWidth = '100%';
-            input.style.padding = '8px 10px';
-            input.style.borderRadius = '6px';
+            input.style.width = '160px';
+            input.style.maxWidth = '160px';
+            input.style.padding = '0 8px';
+            input.style.height = '26px';
+            input.style.borderRadius = '0';
             input.style.cursor = 'pointer';
-            input.style.background = 'var(--sp-ui-surface-bg, #1e2740)';
+            input.style.background = 'var(--sp-ui-chrome-bg, #131722)';
             input.style.color = 'var(--sp-text, #d1d4dc)';
-            input.style.border = '1px solid var(--sp-ui-border, rgba(42,46,57,0.55))';
+            input.style.border = '1px solid var(--sp-input-border, rgba(255,255,255,0.14))';
             param.options.forEach(opt => {
                 const o = document.createElement('option');
                 o.value = opt.value;
@@ -1962,12 +1985,12 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             input.style.fontSize = '11px';
             input.style.lineHeight = '1.35';
             input.style.padding = '10px';
-            input.style.borderRadius = '6px';
+            input.style.borderRadius = '0';
             input.style.resize = 'vertical';
             input.style.minHeight = '220px';
-            input.style.background = 'var(--sp-ui-surface-bg, #1e2740)';
+            input.style.background = 'var(--sp-ui-chrome-bg, #131722)';
             input.style.color = 'var(--sp-text, #d1d4dc)';
-            input.style.border = '1px solid var(--sp-ui-border, rgba(42,46,57,0.55))';
+            input.style.border = '1px solid var(--sp-input-border, rgba(255,255,255,0.14))';
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
@@ -1976,7 +1999,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             input.type = 'time';
             input.className = 'settings-input';
             input.value = currentValue || param.default;
-            input.style.width = '160px';
+            input.style.cssText = 'width:160px;height:26px;padding:0 8px;background:var(--sp-ui-chrome-bg, #131722);color:var(--sp-text, #d1d4dc);border:1px solid var(--sp-input-border, rgba(255,255,255,0.14));outline:none;box-sizing:border-box;';
             input.style.cursor = 'pointer';
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
@@ -1999,10 +2022,20 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             input.type = 'text';
             input.className = 'settings-input';
             input.value = currentValue;
-            input.style.width = '160px';
+            input.style.cssText = 'width:160px;height:26px;padding:0 8px;background:var(--sp-ui-chrome-bg, #131722);color:var(--sp-text, #d1d4dc);border:1px solid var(--sp-input-border, rgba(255,255,255,0.14));outline:none;box-sizing:border-box;';
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
+        }
+        if (input && ['number','text','time','select','textarea'].includes(param.type)) {
+            input.onfocus = () => {
+                input.style.borderColor = 'var(--sp-accent, #2962ff)';
+                wrapper.style.borderColor = 'rgba(var(--sp-accent-rgb, 41,98,255), 0.55)';
+            };
+            input.onblur = () => {
+                input.style.borderColor = 'var(--sp-input-border, rgba(255,255,255,0.14))';
+                wrapper.style.borderColor = 'var(--sp-ui-border, rgba(42,46,57,0.55))';
+            };
         }
         form.appendChild(wrapper);
     });
@@ -2022,11 +2055,13 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     // Buttons
     const buttonWrapper = document.createElement('div');
     buttonWrapper.className = 'settings-actions';
-    buttonWrapper.style.cssText = 'display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:12px;padding:10px 14px;border-top:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));flex-shrink:0;';
+    buttonWrapper.style.cssText = 'display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:12px;padding:10px 14px;border-top:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));background:var(--sp-ui-chrome-bg, #131722);flex-shrink:0;';
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'settings-btn settings-btn-save';
-    saveBtn.style.cssText = 'flex:0 0 auto;min-width:130px;width:auto;padding:8px 16px;';
+    saveBtn.style.cssText = 'flex:0 0 auto;min-width:130px;width:auto;height:28px;padding:0 14px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;border:1px solid rgba(74,106,255,0.5);background:linear-gradient(135deg,var(--sp-accent,#2962ff),#6a8aff);color:#fff;font-size:13px;font-weight:700;cursor:pointer;transition:background .12s,border-color .12s,box-shadow .12s;';
+    saveBtn.onmouseenter = () => { saveBtn.style.background = 'linear-gradient(135deg,#6a8aff,var(--sp-accent,#2962ff))'; saveBtn.style.boxShadow = '0 0 10px rgba(74,106,255,0.35)'; };
+    saveBtn.onmouseleave = () => { saveBtn.style.background = 'linear-gradient(135deg,var(--sp-accent,#2962ff),#6a8aff)'; saveBtn.style.boxShadow = 'none'; };
     saveBtn.textContent = existingIndicator ? 'Apply Changes' : 'Add Indicator';
     const closePanel = () => {
         document.removeEventListener('click', handleOutsideClick, true);
@@ -2147,7 +2182,9 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'settings-btn settings-btn-close';
-    cancelBtn.style.cssText = 'flex:0 0 auto;min-width:110px;width:auto;padding:8px 14px;';
+    cancelBtn.style.cssText = 'flex:0 0 auto;min-width:110px;width:auto;height:28px;padding:0 14px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;border:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));background:var(--sp-ui-surface-bg, #1e2740);color:var(--sp-text,#d1d4dc);font-size:13px;font-weight:600;cursor:pointer;transition:background .12s,border-color .12s,color .12s;';
+    cancelBtn.onmouseenter = () => { cancelBtn.style.background = 'var(--sp-hover-bg, rgba(255,255,255,0.07))'; cancelBtn.style.borderColor = 'rgba(140,160,255,0.45)'; cancelBtn.style.color = 'var(--sp-text,#fff)'; };
+    cancelBtn.onmouseleave = () => { cancelBtn.style.background = 'var(--sp-ui-surface-bg, #1e2740)'; cancelBtn.style.borderColor = 'var(--sp-ui-border, rgba(42,46,57,0.55))'; cancelBtn.style.color = 'var(--sp-text,#d1d4dc)'; };
     cancelBtn.textContent = 'Cancel';
     cancelBtn.onclick = () => {
         closePanel();
