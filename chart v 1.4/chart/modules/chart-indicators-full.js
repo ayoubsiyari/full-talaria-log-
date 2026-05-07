@@ -5043,6 +5043,11 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             indicator._axisLabelY = currentY;
             indicator._axisLabelText = currentValue.toFixed(2);
             indicator._axisLabelColor = color;
+            indicator._axisLabelTags = [{
+                y: currentY,
+                text: currentValue.toFixed(2),
+                color: color
+            }];
             
             // Dashed line at current value
             ctx.strokeStyle = color;
@@ -6278,24 +6283,48 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
 
         // Show latest MACD value tag on the right axis strip
+        const macdTags = [];
         if (lastM !== null && Number.isFinite(lastM)) {
-            const currentY = scaleY(lastM);
-            if (Number.isFinite(currentY)) {
-                const tagColor = indicator.style.macdColor || '#2962ff';
-                const label = lastM.toFixed(4);
-                indicator._axisLabelY = currentY;
-                indicator._axisLabelText = label;
-                indicator._axisLabelColor = tagColor;
-                const labelWidth = 58;
-                const labelHeight = 16;
-                ctx.fillStyle = tagColor;
-                ctx.fillRect(this.w - m.r + 2, currentY - labelHeight / 2, labelWidth, labelHeight);
-                ctx.fillStyle = '#000';
-                ctx.font = 'bold 10px Roboto';
-                ctx.textAlign = 'center';
-                ctx.fillText(label, this.w - m.r + 2 + labelWidth / 2, currentY + 4);
+            const yM = scaleY(lastM);
+            if (Number.isFinite(yM)) {
+                const mColor = indicator.style.macdColor || '#2962ff';
+                macdTags.push({ y: yM, text: lastM.toFixed(4), color: mColor });
             }
         }
+        if (lastS !== null && Number.isFinite(lastS)) {
+            const yS = scaleY(lastS);
+            if (Number.isFinite(yS)) {
+                const sColor = indicator.style.signalColor || '#f23645';
+                macdTags.push({ y: yS, text: lastS.toFixed(4), color: sColor });
+            }
+        }
+        macdTags.sort(function(a, b) { return a.y - b.y; });
+        for (let i = 1; i < macdTags.length; i++) {
+            if (macdTags[i].y - macdTags[i - 1].y < 18) macdTags[i].y = macdTags[i - 1].y + 18;
+        }
+        for (let i = macdTags.length - 2; i >= 0; i--) {
+            if (macdTags[i + 1].y > panelBottom - 8) {
+                macdTags[i + 1].y = panelBottom - 8;
+                if (macdTags[i + 1].y - macdTags[i].y < 18) macdTags[i].y = macdTags[i + 1].y - 18;
+            }
+            if (macdTags[i].y < panelTop + 8) macdTags[i].y = panelTop + 8;
+        }
+        indicator._axisLabelTags = macdTags;
+        if (macdTags.length > 0) {
+            indicator._axisLabelY = macdTags[0].y;
+            indicator._axisLabelText = macdTags[0].text;
+            indicator._axisLabelColor = macdTags[0].color;
+        }
+        macdTags.forEach((tag) => {
+            const labelWidth = 58;
+            const labelHeight = 16;
+            ctx.fillStyle = tag.color;
+            ctx.fillRect(this.w - m.r + 2, tag.y - labelHeight / 2, labelWidth, labelHeight);
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 10px Roboto';
+            ctx.textAlign = 'center';
+            ctx.fillText(tag.text, this.w - m.r + 2 + labelWidth / 2, tag.y + 4);
+        });
 
         indicator._displayColor = indicator.style.macdColor || '#2962ff';
         indicator._displayLabel = lastM !== null ? 'M:' + lastM.toFixed(5) + (lastS !== null ? '  S:' + lastS.toFixed(5) : '') : '';
@@ -6906,12 +6935,20 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             overlay.appendChild(bar);
 
             // Persistent right-axis value tag (always visible, not only on mouse move)
-            if (Number.isFinite(indicator._axisLabelY)) {
+            const tags = Array.isArray(indicator._axisLabelTags) && indicator._axisLabelTags.length
+                ? indicator._axisLabelTags
+                : (Number.isFinite(indicator._axisLabelY) ? [{
+                    y: indicator._axisLabelY,
+                    text: indicator._axisLabelText,
+                    color: indicator._axisLabelColor || color
+                }] : []);
+            tags.forEach(function(tag) {
+                if (!Number.isFinite(tag.y)) return;
                 const axisTag = document.createElement('div');
                 axisTag.style.cssText = [
                     'position:absolute',
                     'right:2px',
-                    'top:' + (indicator._axisLabelY - 8) + 'px',
+                    'top:' + (tag.y - 8) + 'px',
                     'height:16px',
                     'min-width:52px',
                     'padding:0 6px',
@@ -6923,16 +6960,16 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                     'line-height:16px',
                     'font-variant-numeric:tabular-nums',
                     'color:#000',
-                    'background:' + (indicator._axisLabelColor || color),
+                    'background:' + (tag.color || color),
                     'z-index:11',
                     'pointer-events:none',
                     'box-sizing:border-box'
                 ].join(';');
-                axisTag.textContent = (indicator._axisLabelText !== undefined && indicator._axisLabelText !== null && indicator._axisLabelText !== '')
-                    ? String(indicator._axisLabelText)
+                axisTag.textContent = (tag.text !== undefined && tag.text !== null && tag.text !== '')
+                    ? String(tag.text)
                     : '—';
                 overlay.appendChild(axisTag);
-            }
+            });
         });
     };
 
