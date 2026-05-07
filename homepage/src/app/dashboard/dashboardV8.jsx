@@ -2217,11 +2217,12 @@ const TalariaV8b = () => {
     setNewSessOpen(true);
   };
 
-  // closeAll is triggered by backdrop/outside clicks — intentionally does NOT close the indicators window
+  // closeAll is triggered by backdrop/outside clicks.
   const closeAll = () => {
     setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false);
     setSDrop(null); setColorPicker(null); setSettDrop(null);
     setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setScreenshotOpen(false); setLayersOpen(false); setProfileOpen(false);
+    setIndOpen(false); setIndSearch(""); setIndSelectedId(null);
     if(logoMenu) closePopup(setLogoMenu, "logoMenu");
     if(replayOpts) closePopup(setReplayOpts, "replayOpts");
     if(gotoOpen) closePopup(setGotoOpen, "goto");

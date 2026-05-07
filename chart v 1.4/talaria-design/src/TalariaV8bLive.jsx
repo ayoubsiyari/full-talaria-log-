@@ -8455,11 +8455,12 @@ const TalariaV8bLive = () => {
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelectedId(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   closeWindowsRef.current = closeWindows;
-  // closeAll is triggered by backdrop/outside clicks — intentionally does NOT close the indicators window
+  // closeAll is triggered by backdrop/outside clicks.
   const closeAll = () => {
     setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false);
     setSDrop(null); setColorPicker(null); setSettDrop(null);
     setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setScreenshotOpen(false); setLayersOpen(false); setProfileOpen(false);
+    setIndOpen(false); setIndSearch(""); setIndSelectedId(null);
     if(logoMenu) closePopup(setLogoMenu, "logoMenu");
     if(replayOpts) closePopup(setReplayOpts, "replayOpts");
     if(gotoOpen) closePopup(setGotoOpen, "goto");
@@ -16429,6 +16430,14 @@ const TalariaV8bLive = () => {
               this node (Safari can disagree canvas vs overlay rects when the chart area is flex-sized). */}
           <div style={{ flex: 1, position: "relative", background: c.bg, minHeight: 0 }}>
             <div ref={chartCanvasRef} id="chart-container"
+              onMouseDown={(e) => {
+                if (!indOpen) return;
+                const t = e.target;
+                if (t && typeof t.closest === "function" && t.closest("[data-sdrop]")) return;
+                animClose(setIndOpen, "ind");
+                setIndSearch("");
+                setIndSelectedId(null);
+              }}
               style={{
                 position: "absolute",
                 top: 0,
