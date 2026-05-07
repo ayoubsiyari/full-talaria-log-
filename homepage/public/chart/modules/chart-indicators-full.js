@@ -5040,6 +5040,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         // Draw current value label on right axis
         if (currentValue !== null && currentValue !== undefined && !isNaN(currentValue)) {
             const currentY = scaleY(currentValue);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = currentValue.toFixed(2);
+            indicator._axisLabelColor = color;
             
             // Dashed line at current value
             ctx.strokeStyle = color;
@@ -6280,6 +6283,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (Number.isFinite(currentY)) {
                 const tagColor = indicator.style.macdColor || '#2962ff';
                 const label = lastM.toFixed(4);
+                indicator._axisLabelY = currentY;
+                indicator._axisLabelText = label;
+                indicator._axisLabelColor = tagColor;
                 const labelWidth = 58;
                 const labelHeight = 16;
                 ctx.fillStyle = tagColor;
@@ -6898,6 +6904,35 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             bar.appendChild(actions);
             overlay.appendChild(bar);
+
+            // Persistent right-axis value tag (always visible, not only on mouse move)
+            if (Number.isFinite(indicator._axisLabelY)) {
+                const axisTag = document.createElement('div');
+                axisTag.style.cssText = [
+                    'position:absolute',
+                    'right:2px',
+                    'top:' + (indicator._axisLabelY - 8) + 'px',
+                    'height:16px',
+                    'min-width:52px',
+                    'padding:0 6px',
+                    'display:flex',
+                    'align-items:center',
+                    'justify-content:center',
+                    'border-radius:2px',
+                    'font:600 10px Roboto,sans-serif',
+                    'line-height:16px',
+                    'font-variant-numeric:tabular-nums',
+                    'color:#000',
+                    'background:' + (indicator._axisLabelColor || color),
+                    'z-index:11',
+                    'pointer-events:none',
+                    'box-sizing:border-box'
+                ].join(';');
+                axisTag.textContent = (indicator._axisLabelText !== undefined && indicator._axisLabelText !== null && indicator._axisLabelText !== '')
+                    ? String(indicator._axisLabelText)
+                    : '—';
+                overlay.appendChild(axisTag);
+            }
         });
     };
 
