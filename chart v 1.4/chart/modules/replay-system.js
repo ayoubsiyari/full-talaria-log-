@@ -4606,10 +4606,9 @@ class ReplaySystem {
     updateAutoScrollIndicator() {
         const btn = this.ensureReplayFollowButton();
         const hideChrome = !this.isActive || this.isPickingPoint;
-        const needsCatchUp = !this.autoScrollEnabled || !this.isLastCandleVisible();
         const chartSurfaceOk = this._isReplayFollowChartSurfaceVisible();
-        // TradingView-style: only show when user left the live edge or disabled auto-follow — not for entire replay session.
-        const showFollow = !hideChrome && needsCatchUp && chartSurfaceOk;
+        // Keep follow button visible for the full replay session; hide only when replay UI is hidden.
+        const showFollow = !hideChrome && chartSurfaceOk;
 
         if (btn) {
             if (!showFollow) {
@@ -4645,10 +4644,8 @@ class ReplaySystem {
                     return;
                 }
 
-                const panelNeedsCatchUp =
-                    !this.autoScrollEnabled || !this.isLastCandleVisible(pc);
                 const panelSurfaceOk = this._isReplayFollowPanelSurfaceVisible(panel);
-                const showPanelFollow = panelNeedsCatchUp && panelSurfaceOk;
+                const showPanelFollow = panelSurfaceOk;
 
                 if (!showPanelFollow) {
                     pBtn.style.display = 'none';
