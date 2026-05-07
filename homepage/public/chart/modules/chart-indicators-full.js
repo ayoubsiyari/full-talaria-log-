@@ -7089,6 +7089,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 'display:flex',
                 'align-items:center',
                 'gap:4px',
+                'justify-content:flex-start',
                 'min-width:0',
                 'z-index:10',
                 'pointer-events:auto',
@@ -7099,19 +7100,19 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const nameEl = document.createElement('span');
             nameEl.textContent = '- ' + indicator.name;
             nameEl.style.cssText = 'color:#d1d4dc;font-size:11px;font-weight:500;user-select:none;opacity:' + (visible ? '1' : '0.45') +
-                ';flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                ';flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40%;';
             bar.appendChild(nameEl);
 
             const valEl = document.createElement('span');
             valEl.setAttribute('data-talaria-sp-val', String(indicator.id));
             valEl.style.cssText = 'font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;' +
-                'min-width:10ch;flex-shrink:0;display:inline-flex;gap:3px;align-items:center;opacity:' + (visible ? '1' : '0.5') + ';';
+                'min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:' + (visible ? '1' : '0.5') + ';';
             self._renderSeparatePanelLegendValue(valEl, indicator);
             bar.appendChild(valEl);
 
             const actions = document.createElement('span');
             actions.className = 'talaria-ind-actions';
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:0;margin-left:auto;flex-shrink:0;';
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:2px;flex:0 0 auto;';
 
             const eyeBtn = document.createElement('span');
             eyeBtn.title = visible ? 'Hide' : 'Show';
