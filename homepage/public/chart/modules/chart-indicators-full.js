@@ -5930,7 +5930,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const actions = document.createElement('span');
             actions.className = 'talaria-ind-actions';
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;padding:1px 2px;background:rgba(7,12,26,0.95);border:1px solid rgba(54,72,124,0.55);border-radius:2px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.03);';
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;padding:0;background:transparent;border:none;box-shadow:none;';
 
             const self = this;
             const id = indicator.id;
@@ -5980,20 +5980,16 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             actions.appendChild(visibilityBtn);
 
             const settingsBtn = document.createElement('span');
-            settingsBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-            settingsBtn.style.cssText = baseActionStyle + 'color:#5b84ff;background:rgba(33,70,255,0.16);border:1px solid rgba(66,110,255,0.75);box-shadow:0 0 10px rgba(50,92,255,0.35), inset 0 0 0 1px rgba(156,186,255,0.22);';
+            settingsBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-.33-1 1.65 1.65 0 0 0-1-.6 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1-.33H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1-.33 1.65 1.65 0 0 0 .6-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 .33 1 1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.23.6.62.6 1s.24.77.6 1a1.65 1.65 0 0 0 1 .33H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1 .33c-.36.23-.6.62-.6 1z"/></svg>';
+            settingsBtn.style.cssText = baseActionStyle + 'color:#787b86;background:transparent;border:none;box-shadow:none;';
             settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#ffffff';
                 settingsBtn.style.background = self._cachedAccentColor || '#2962ff';
-                settingsBtn.style.border = '1px solid rgba(143,177,255,0.95)';
-                settingsBtn.style.boxShadow = '0 0 12px rgba(50,92,255,0.5), inset 0 0 0 1px rgba(205,222,255,0.35)';
             };
             settingsBtn.onmouseleave = function() {
-                settingsBtn.style.color = '#5b84ff';
-                settingsBtn.style.background = 'rgba(33,70,255,0.16)';
-                settingsBtn.style.border = '1px solid rgba(66,110,255,0.75)';
-                settingsBtn.style.boxShadow = '0 0 10px rgba(50,92,255,0.35), inset 0 0 0 1px rgba(156,186,255,0.22)';
+                settingsBtn.style.color = '#787b86';
+                settingsBtn.style.background = 'transparent';
             };
             settingsBtn.onclick = function(e) {
                 e.stopPropagation();
@@ -7179,7 +7175,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const actions = document.createElement('span');
             actions.className = 'talaria-ind-actions';
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex:0 0 auto;padding:1px 2px;background:rgba(7,12,26,0.95);border:1px solid rgba(54,72,124,0.55);border-radius:2px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.03);';
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex:0 0 auto;padding:0;background:transparent;border:none;box-shadow:none;';
             const baseActionStyle = getTalariaActionBtnStyle();
 
             const eyeBtn = document.createElement('span');
@@ -7206,19 +7202,15 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const setBtn = document.createElement('span');
             setBtn.title = 'Settings';
-            setBtn.style.cssText = baseActionStyle + 'color:#5b84ff;background:rgba(33,70,255,0.16);border:1px solid rgba(66,110,255,0.75);box-shadow:0 0 10px rgba(50,92,255,0.35), inset 0 0 0 1px rgba(156,186,255,0.22);';
-            setBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+            setBtn.style.cssText = baseActionStyle + 'color:#787b86;background:transparent;border:none;box-shadow:none;';
+            setBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-.33-1 1.65 1.65 0 0 0-1-.6 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1-.33H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1-.33 1.65 1.65 0 0 0 .6-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 .33 1 1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.23.6.62.6 1s.24.77.6 1a1.65 1.65 0 0 0 1 .33H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1 .33c-.36.23-.6.62-.6 1z"/></svg>';
             setBtn.onmouseenter = function() {
                 setBtn.style.color = '#ffffff';
                 setBtn.style.background = accentColor;
-                setBtn.style.border = '1px solid rgba(143,177,255,0.95)';
-                setBtn.style.boxShadow = '0 0 12px rgba(50,92,255,0.5), inset 0 0 0 1px rgba(205,222,255,0.35)';
             };
             setBtn.onmouseleave = function() {
-                setBtn.style.color = '#5b84ff';
-                setBtn.style.background = 'rgba(33,70,255,0.16)';
-                setBtn.style.border = '1px solid rgba(66,110,255,0.75)';
-                setBtn.style.boxShadow = '0 0 10px rgba(50,92,255,0.35), inset 0 0 0 1px rgba(156,186,255,0.22)';
+                setBtn.style.color = '#787b86';
+                setBtn.style.background = 'transparent';
             };
             setBtn.onclick = function(e) {
                 e.preventDefault();
