@@ -16129,8 +16129,8 @@ const TalariaV8bLive = () => {
         ); })()}
         <div style={{ width: 1, height: 16, margin: "0 3px 0 0", background: "rgba(140,160,255,0.18)" }}/>
         <button type="button" onClick={(e) => { e.stopPropagation(); const was=symbolOpen; closeAll(); if(!was) setSymbolOpen(true); }} onMouseEnter={() => setHov("symbol")} onMouseLeave={() => setHov(null)}
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 8px", background: symbolOpen ? "rgba(74,106,255,0.08)" : hov==="symbol" ? c.hv : "transparent", border: "none", color: symbolOpen ? c.acL : hov==="symbol" ? c.tx : c.ts, cursor: "default", fontSize: 14, fontWeight: 700, fontFamily: F, position: "relative", minWidth: 72, maxWidth: 128, width: "fit-content", flexShrink: 0, transition: "color 0.12s, background 0.12s" }}>
-          <div style={{ display: "flex", alignItems: "center", position: "relative", minWidth: 42, height: 16, flexShrink: 0 }}>
+          style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", background: symbolOpen ? "rgba(74,106,255,0.08)" : hov==="symbol" ? c.hv : "transparent", border: "none", color: symbolOpen ? c.acL : hov==="symbol" ? c.tx : c.ts, cursor: "default", fontSize: 14, fontWeight: 700, fontFamily: F, position: "relative", minWidth: 52, maxWidth: 128, width: "fit-content", flexShrink: 0, transition: "color 0.12s, background 0.12s" }}>
+          <div style={{ display: "flex", alignItems: "center", position: "relative", width: 20, height: 16, flexShrink: 0 }}>
             <ChartSymbolBadge sym={normalizeSymForBadge(symbol)} asset={headerBadgeAsset} w={20} h={16} fontFamily={F}/>
           </div>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{symbol}</span>
