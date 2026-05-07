@@ -5857,55 +5857,95 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return ind.overlay !== false;
         });
         
+        const formatOverlayValues = function(indicator, valuesStore) {
+            if (!valuesStore) return [];
+            const out = [];
+            const pushToken = function(val, color, decimals) {
+                if (!Number.isFinite(val)) return;
+                out.push({
+                    text: Number(val).toFixed(decimals),
+                    color: color || '#9ca3af'
+                });
+            };
+            if (Array.isArray(valuesStore)) {
+                for (let i = valuesStore.length - 1; i >= 0; i--) {
+                    if (Number.isFinite(valuesStore[i])) {
+                        pushToken(valuesStore[i], indicator.style && indicator.style.color, 4);
+                        break;
+                    }
+                }
+                return out;
+            }
+            if (typeof valuesStore === 'object') {
+                const keys = ['upper', 'middle', 'lower', 'ema1', 'ema2', 'ema3', 'fast', 'slow'];
+                keys.forEach(function(k) {
+                    const arr = valuesStore[k];
+                    if (!Array.isArray(arr)) return;
+                    for (let i = arr.length - 1; i >= 0; i--) {
+                        if (Number.isFinite(arr[i])) {
+                            const colorKey = k + 'Color';
+                            pushToken(arr[i], indicator.style && indicator.style[colorKey], 4);
+                            break;
+                        }
+                    }
+                });
+                if (out.length > 0) return out;
+            }
+            return out;
+        };
+
         for (let i = 0; i < overlayIndicators.length; i++) {
             const indicator = overlayIndicators[i];
-            const chip = getTalariaChipStyles();
             const item = document.createElement('div');
             item.className = 'talaria-ind-legend-row';
-            item.style.cssText = chip.chipCss + 'pointer-events:auto;';
-
-            item.onmouseenter = function() {
-                item.style.background = chip.bgHover;
-                if (chip.borderDefault !== 'transparent') item.style.borderColor = chip.borderHover;
-            };
-            item.onmouseleave = function() {
-                item.style.background = chip.bg;
-                if (chip.borderDefault !== 'transparent') item.style.borderColor = chip.borderDefault;
-            };
-
-            const displayColor = indicator.style.color || indicator.style.middleColor || indicator.style.highColor || '#2962ff';
-            item.appendChild(createIndLegendSwatch(displayColor));
+            item.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:4px;background:transparent;border:none;border-radius:0;padding:0;font-family:Roboto,sans-serif;';
 
             const nameSpan = document.createElement('span');
-            nameSpan.textContent = indicator.name;
-            nameSpan.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
-            nameSpan.className = 'talaria-ind-chip-name' + (indicator.visible === false ? ' talaria-ind-chip-name--hidden' : '');
+            nameSpan.textContent = '- ' + indicator.name;
+            nameSpan.style.cssText = 'color:#d1d4dc;font-size:11px;font-weight:500;user-select:none;opacity:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;max-width:40%;';
             nameSpan.title = indicator.name;
             item.appendChild(nameSpan);
 
+            const valuesSpan = document.createElement('span');
+            valuesSpan.style.cssText = 'font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:1;';
+            const valueTokens = formatOverlayValues(indicator, this.indicators && this.indicators.data ? this.indicators.data[indicator.id] : null);
+            if (valueTokens.length === 0) {
+                const dash = document.createElement('span');
+                dash.textContent = '—';
+                dash.style.cssText = 'color:#9ca3af;';
+                valuesSpan.appendChild(dash);
+            } else {
+                valueTokens.forEach(function(tok) {
+                    const t = document.createElement('span');
+                    t.textContent = tok.text;
+                    t.style.cssText = 'color:' + (tok.color || '#9ca3af') + ';';
+                    valuesSpan.appendChild(t);
+                });
+            }
+            item.appendChild(valuesSpan);
+
             const actions = document.createElement('span');
             actions.className = 'talaria-ind-actions';
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:0;margin-left:2px;flex-shrink:0;';
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:2px;flex-shrink:0;';
 
             const self = this;
             const id = indicator.id;
 
             const visibilityBtn = document.createElement('span');
             visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
-            visibilityBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            visibilityBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;padding:0;border-radius:0;cursor:pointer;color:#9ca3af;transition:color 0.2s;background:transparent;border:none;opacity:1;';
             visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
             visibilityBtn.onmouseenter = function() {
-                visibilityBtn.style.background = 'rgba(120, 123, 134, 0.2)';
+                visibilityBtn.style.color = '#e5e7eb';
             };
             visibilityBtn.onmouseleave = function() {
-                visibilityBtn.style.background = 'transparent';
+                visibilityBtn.style.color = '#9ca3af';
             };
             visibilityBtn.onclick = function(e) {
                 e.stopPropagation();
                 indicator.visible = indicator.visible === false ? true : false;
                 visibilityBtn.innerHTML = indicator.visible ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
-                visibilityBtn.style.opacity = indicator.visible ? '1' : '0.5';
-                nameSpan.className = 'talaria-ind-chip-name' + (indicator.visible ? '' : ' talaria-ind-chip-name--hidden');
+                visibilityBtn.style.opacity = '1';
                 if (!indicator.visible) {
                     if (indicator.data) {
                         indicator._hiddenData = indicator.data;
@@ -5931,14 +5971,14 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const settingsBtn = document.createElement('span');
             settingsBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-            settingsBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;';
+            settingsBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;padding:0;border-radius:0;cursor:pointer;color:#9ca3af;transition:color 0.2s;background:transparent;border:none;opacity:0.9;';
             settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#ffffff';
-                settingsBtn.style.background = self._cachedAccentColor || '#2962ff';
+                settingsBtn.style.background = 'transparent';
             };
             settingsBtn.onmouseleave = function() {
-                settingsBtn.style.color = '#787b86';
+                settingsBtn.style.color = '#9ca3af';
                 settingsBtn.style.background = 'transparent';
             };
             settingsBtn.onclick = function(e) {
@@ -5954,13 +5994,13 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
-            removeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#f23645;font-size:13px;font-weight:700;transition:background 0.2s;';
+            removeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;padding:0;border-radius:0;cursor:pointer;color:#f87171;font-size:12px;font-weight:700;transition:color 0.2s;background:transparent;border:none;opacity:0.9;';
             removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
-                removeBtn.style.background = 'rgba(242, 54, 69, 0.18)';
+                removeBtn.style.color = '#fecaca';
             };
             removeBtn.onmouseleave = function() {
-                removeBtn.style.background = 'transparent';
+                removeBtn.style.color = '#f87171';
             };
             removeBtn.onclick = function(e) {
                 e.stopPropagation();
@@ -7111,14 +7151,14 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const nameEl = document.createElement('span');
             nameEl.textContent = '- ' + indicator.name;
-            nameEl.style.cssText = 'color:#d1d4dc;font-size:11px;font-weight:500;user-select:none;opacity:' + (visible ? '1' : '0.45') +
+            nameEl.style.cssText = 'color:#d1d4dc;font-size:11px;font-weight:500;user-select:none;opacity:1' +
                 ';flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40%;';
             bar.appendChild(nameEl);
 
             const valEl = document.createElement('span');
             valEl.setAttribute('data-talaria-sp-val', String(indicator.id));
             valEl.style.cssText = 'font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;' +
-                'min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:' + ((visible && showValues) ? '1' : '0.25') + ';';
+                'min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:1;';
             self._renderSeparatePanelLegendValue(valEl, indicator);
             bar.appendChild(valEl);
 
@@ -7128,7 +7168,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const eyeBtn = document.createElement('span');
             eyeBtn.title = showPlot ? 'Hide indicator' : 'Show indicator';
-            eyeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;padding:0;border-radius:0;cursor:pointer;color:#9ca3af;background:transparent;border:none;transition:color 0.2s;opacity:' + (showPlot ? '1' : '0.55') + ';';
+            eyeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;padding:0;border-radius:0;cursor:pointer;color:#9ca3af;background:transparent;border:none;transition:color 0.2s;opacity:1;';
             eyeBtn.innerHTML = showPlot
                 ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
                 : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
