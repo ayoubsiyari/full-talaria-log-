@@ -6853,6 +6853,23 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             panelSlots.forEach(function(slot) {
                 if (slot && slot.indicator) slotById[String(slot.indicator.id)] = slot;
             });
+            // Divider between main price-axis region and indicator-axis region.
+            const topSlot = panelSlots[panelSlots.length - 1];
+            if (topSlot && Number.isFinite(topSlot.top)) {
+                const split = document.createElement('div');
+                split.setAttribute('data-talaria-sp-axis-tick', '1');
+                split.style.cssText = [
+                    'position:absolute',
+                    'left:' + axisLeft + 'px',
+                    'top:' + (topSlot.top - 0.5) + 'px',
+                    'width:' + m.r + 'px',
+                    'height:1px',
+                    'background:rgba(120, 123, 134, 0.42)',
+                    'z-index:10',
+                    'pointer-events:none'
+                ].join(';');
+                overlay.appendChild(split);
+            }
         }
 
         indicators.forEach(function(indicator) {
@@ -6882,12 +6899,13 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                         tick.setAttribute('data-talaria-sp-axis-tick', '1');
                         tick.style.cssText = [
                             'position:absolute',
-                            'right:4px',
+                            'left:' + (axisLeft + 2) + 'px',
                             'top:' + (y - 8) + 'px',
                             'height:16px',
+                            'width:' + axisWidth + 'px',
                             'display:flex',
                             'align-items:center',
-                            'justify-content:flex-end',
+                            'justify-content:center',
                             'font:500 ' + scaleTextSize + 'px Roboto,sans-serif',
                             'line-height:16px',
                             'font-variant-numeric:tabular-nums',
