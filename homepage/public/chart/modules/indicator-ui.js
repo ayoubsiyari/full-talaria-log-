@@ -817,7 +817,7 @@ function setTalariaIndChipNameEl(el, visible) {
     el.className = 'talaria-ind-chip-name' + (visible ? '' : ' talaria-ind-chip-name--hidden');
 }
 const TALARIA_IND_ACTION_BTN =
-    'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:2px;cursor:pointer;transition:background .15s,color .15s;flex-shrink:0;';
+    'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:2px;cursor:pointer;transition:background .12s,color .12s,box-shadow .12s;flex-shrink:0;background:transparent;';
 
 if (typeof window !== 'undefined') {
     window.TALARIA_INDICATOR_CHIP_CSS = TALARIA_INDICATOR_CHIP_CSS;
@@ -2374,12 +2374,14 @@ function setupIndicatorUI(chartInstance) {
             settingsBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;';
             settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
-                settingsBtn.style.color = '#ffffff';
-                settingsBtn.style.background = self._cachedAccentColor || '#2962ff';
+                settingsBtn.style.color = '#8ea5ff';
+                settingsBtn.style.background = 'rgba(74,106,255,0.08)';
+                settingsBtn.style.boxShadow = 'inset 0 0 0 1px rgba(74,106,255,0.25)';
             };
             settingsBtn.onmouseleave = function() {
                 settingsBtn.style.color = '#787b86';
                 settingsBtn.style.background = 'transparent';
+                settingsBtn.style.boxShadow = 'none';
             };
             settingsBtn.onclick = function(e) {
                 e.stopPropagation();
@@ -2792,12 +2794,14 @@ if (typeof Chart !== 'undefined') {
             settingsBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;';
             settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
-                settingsBtn.style.color = '#ffffff';
-                settingsBtn.style.background = self._cachedAccentColor || '#2962ff';
+                settingsBtn.style.color = '#8ea5ff';
+                settingsBtn.style.background = 'rgba(74,106,255,0.08)';
+                settingsBtn.style.boxShadow = 'inset 0 0 0 1px rgba(74,106,255,0.25)';
             };
             settingsBtn.onmouseleave = function() {
                 settingsBtn.style.color = '#787b86';
                 settingsBtn.style.background = 'transparent';
+                settingsBtn.style.boxShadow = 'none';
             };
             settingsBtn.onclick = function(e) {
                 e.stopPropagation();
