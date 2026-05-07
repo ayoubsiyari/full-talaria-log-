@@ -6840,6 +6840,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     Chart.prototype._syncSeparatePanelAxisTags = function(overlay, indicators, panelSlots) {
         if (!overlay || !Array.isArray(indicators)) return;
         overlay.querySelectorAll('[data-talaria-sp-axis-tag]').forEach(function(n) { n.remove(); });
+        overlay.querySelectorAll('[data-talaria-sp-axis-tick]').forEach(function(n) { n.remove(); });
 
         const slotById = {};
         if (Array.isArray(panelSlots)) {
@@ -6851,6 +6852,49 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         indicators.forEach(function(indicator) {
             if (indicator.type === 'volume' || indicator.isVolume) return;
             const slot = slotById[String(indicator.id)];
+            if (slot) {
+                const b0 = Number(indicator._panelBaseMin);
+                const b1 = Number(indicator._panelBaseMax);
+                let d0 = b0;
+                let d1 = b1;
+                if (Number.isFinite(b0) && Number.isFinite(b1) && b1 > b0 && typeof this._applyIndicatorPanelDomain === 'function') {
+                    const dom = this._applyIndicatorPanelDomain(b0, b1, indicator);
+                    if (dom && Number.isFinite(dom.min) && Number.isFinite(dom.max) && dom.max > dom.min) {
+                        d0 = dom.min;
+                        d1 = dom.max;
+                    }
+                }
+                if (Number.isFinite(d0) && Number.isFinite(d1) && d1 > d0) {
+                    const span = Math.max(1e-12, d1 - d0);
+                    const decimals = span >= 100 ? 0 : (span >= 10 ? 2 : 4);
+                    const tickCount = 4;
+                    for (let i = 0; i <= tickCount; i++) {
+                        const v = d0 + (d1 - d0) * (i / tickCount);
+                        const y = slot.bottom - 5 - ((v - d0) / span) * (slot.height - 10);
+                        if (!Number.isFinite(y)) continue;
+                        const tick = document.createElement('div');
+                        tick.setAttribute('data-talaria-sp-axis-tick', '1');
+                        tick.style.cssText = [
+                            'position:absolute',
+                            'right:6px',
+                            'top:' + (y - 7) + 'px',
+                            'height:14px',
+                            'display:flex',
+                            'align-items:center',
+                            'justify-content:flex-end',
+                            'font:500 10px Roboto,sans-serif',
+                            'line-height:14px',
+                            'font-variant-numeric:tabular-nums',
+                            'color:#787b86',
+                            'z-index:10',
+                            'pointer-events:none',
+                            'white-space:nowrap'
+                        ].join(';');
+                        tick.textContent = v.toFixed(decimals);
+                        overlay.appendChild(tick);
+                    }
+                }
+            }
             const topBound = slot ? slot.top + 8 : 0;
             const bottomBound = slot ? slot.bottom - 8 : Number.MAX_SAFE_INTEGER;
             const tags = Array.isArray(indicator._axisLabelTags) && indicator._axisLabelTags.length
@@ -6889,7 +6933,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 axisTag.textContent = (tag.text !== undefined && tag.text !== null && tag.text !== '') ? String(tag.text) : '—';
                 overlay.appendChild(axisTag);
             });
-        });
+        }, this);
     };
 
     // Build/refresh indicator label pills for each separate panel slot (matches OHLC panel style)
