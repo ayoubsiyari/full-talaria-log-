@@ -15,6 +15,9 @@ class HighlighterTool extends BaseDrawing {
         this.style.stroke = style.stroke || 'rgba(255, 235, 59, 0.7)';
         this.style.strokeWidth = style.strokeWidth || 20;
         this.style.opacity = style.opacity || 0.5;
+        // Highlighter is always a continuous solid semi-transparent stroke.
+        this.style.dashArray = '';
+        this.style.strokeDasharray = '';
     }
 
     render(container, scales) {
@@ -43,7 +46,7 @@ class HighlighterTool extends BaseDrawing {
             .attr('d', pathData)
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', this.style.strokeWidth)
-            .attr('stroke-dasharray', this.style.strokeDasharray || null)
+            .attr('stroke-dasharray', null)
             .attr('fill', 'none')
             .attr('opacity', this.style.opacity)
             .attr('stroke-linecap', 'round')
