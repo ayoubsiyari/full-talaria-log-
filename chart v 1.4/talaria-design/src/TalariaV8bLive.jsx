@@ -8873,7 +8873,7 @@ const TalariaV8bLive = () => {
         .ohlc-stats{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important}
         .ohlc-item{display:inline-flex !important;align-items:center !important;gap:3px !important}
         .ohlc-label{font-size:12px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;opacity:1 !important}
-        .ohlc-value{font-size:12px !important;font-weight:200 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important}
+        .ohlc-value{font-size:12px !important;font-weight:80 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important}
         .ohlc-change{font-size:12px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;margin-left:2px !important}
         .ohlc-body{margin-top:1px !important}
         .ohlc-indicators{min-width:0;color:var(--ohlc-ind,rgba(255,255,255,0.72)) !important}
