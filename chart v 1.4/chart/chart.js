@@ -363,6 +363,9 @@ class Chart {
         this.isLoadingChunk = false;
         this.renderPending = false;
         this.renderThrottleTimer = null;
+        /** Coalesce crosshair + tooltip to one paint per rAF during hover (reduces INP on chartCanvas). */
+        this._crosshairTooltipRaf = null;
+        this._pendingCrosshairMoveEvent = null;
         
         // Performance metrics
         this.lastFrameTime = performance.now();
@@ -11931,6 +11934,23 @@ class Chart {
         this.renderPending = true;
     }
 
+    /**
+     * Batch updateCrosshair + updateTooltip to at most once per animation frame during pointer move.
+     */
+    _scheduleCrosshairTooltipFromEvent(e) {
+        this._pendingCrosshairMoveEvent = e;
+        if (this._crosshairTooltipRaf != null) return;
+        this._crosshairTooltipRaf = requestAnimationFrame(() => {
+            this._crosshairTooltipRaf = null;
+            const ev = this._pendingCrosshairMoveEvent;
+            this._pendingCrosshairMoveEvent = null;
+            if (!ev) return;
+            if (this.drag && this.drag.active && this.drag.type === 'pan') return;
+            if (typeof this.updateCrosshair === 'function') this.updateCrosshair(ev);
+            if (typeof this.updateTooltip === 'function') this.updateTooltip(ev);
+        });
+    }
+
     bumpDataVersion() {
         this.dataVersion = (this.dataVersion ?? 0) + 1;
     }
@@ -15528,8 +15548,7 @@ class Chart {
                         }
                         this.canvas.style.cursor = 'ns-resize';
                         if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
-                        this.updateCrosshair(e);
-                        this.updateTooltip(e);
+                        this._scheduleCrosshairTooltipFromEvent(e);
                         return;
                     }
                     if (this._separatePanelHoverHandle) {
@@ -15578,10 +15597,9 @@ class Chart {
                 }
             }
             
-            // Crosshair + tooltip do heavy DOM/layout work; skip during chart pan to keep pan responsive.
+            // Crosshair + tooltip: heavy DOM work — coalesce to one update per frame (skip during chart pan).
             if (!(this.drag.active && this.drag.type === 'pan')) {
-                this.updateCrosshair(e);
-                this.updateTooltip(e);
+                this._scheduleCrosshairTooltipFromEvent(e);
             }
         });
 

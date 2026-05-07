@@ -57,8 +57,12 @@ class DrawingToolsManager {
         /** One SVG temp preview per frame while placing poly-point tools (trend line, RR, etc.). */
         this._tempPreviewRaf = null;
         this._pendingTempPreviewPoints = null;
-        /** Throttle crosshair during active placement strokes — updateCrosshair triggers heavy chart work. */
-        this._lastCrosshairBrushAt = 0;
+        /** Coalesce chart.updateCrosshair from SVG moves to one per rAF (reduces svg#drawingSvg INP). */
+        this._drawingCrosshairRaf = null;
+        this._drawingCrosshairPendingEvent = null;
+        /** Coalesce expensive findDrawingsAtPoint hover to one per rAF. */
+        this._proximityCheckRaf = null;
+        this._proximityPendingEvent = null;
 
         /** Remote sync (session PATCH + cloud API) lags localStorage; drives toolbar save indicator */
         this._drawingsPendingTargets = { session: false, api: false };
@@ -1067,7 +1071,14 @@ class DrawingToolsManager {
             const onChartWrapperMouseMove = (event) => {
                 if (this.currentTool || this.isRectSelecting) return;
                 if (this.drawingState && this.drawingState.isDrawing) return;
-                this.checkDrawingProximity(event);
+                this._proximityPendingEvent = event;
+                if (this._proximityCheckRaf != null) return;
+                this._proximityCheckRaf = requestAnimationFrame(() => {
+                    this._proximityCheckRaf = null;
+                    const ev = this._proximityPendingEvent;
+                    this._proximityPendingEvent = null;
+                    if (ev) this.checkDrawingProximity(ev);
+                });
             };
             chartWrapper.addEventListener('mousemove', onChartWrapperMouseMove, { passive: true });
             chartWrapper.__drawingToolsProximityMove = onChartWrapperMouseMove;
@@ -1739,7 +1750,7 @@ class DrawingToolsManager {
 
         // Throttle: max ~60 fps for live edit broadcasts to keep UI responsive
         const now = performance.now();
-        if (this._lastLiveEditBroadcast && (now - this._lastLiveEditBroadcast) < 16) return;
+        if (this._lastLiveEditBroadcast && (now - this._lastLiveEditBroadcast) < 24) return;
         this._lastLiveEditBroadcast = now;
 
         const ensuredId = this._ensureDrawingId(drawing);
@@ -2630,6 +2641,23 @@ class DrawingToolsManager {
     }
 
     /**
+     * Schedule at most one chart.updateCrosshair per animation frame while drawing / selection is active.
+     */
+    _scheduleChartCrosshairFromDrawingEvent(event) {
+        if (!this.chart || typeof this.chart.updateCrosshair !== 'function') return;
+        this._drawingCrosshairPendingEvent = event;
+        if (this._drawingCrosshairRaf != null) return;
+        this._drawingCrosshairRaf = requestAnimationFrame(() => {
+            this._drawingCrosshairRaf = null;
+            const ev = this._drawingCrosshairPendingEvent;
+            this._drawingCrosshairPendingEvent = null;
+            if (!ev || !this.chart) return;
+            if (this.chart.drag && this.chart.drag.active && this.chart.drag.type === 'pan') return;
+            this.chart.updateCrosshair(ev);
+        });
+    }
+
+    /**
      * Handle mouse move event
      */
     handleMouseMove(event) {
@@ -2638,19 +2666,9 @@ class DrawingToolsManager {
             this._lastMouseEvent = event;
         }
 
-        // During placement (any tool), updateCrosshair every move forces full chart work — throttle ~30fps.
         if (this.chart && typeof this.chart.updateCrosshair === 'function' &&
             (this.currentTool || this.selectedDrawing || this.isDragging || this.isDrawing || this.isResizing)) {
-            const placementStroke = this.drawingState && this.drawingState.isDrawing && !this.isRectSelecting;
-            if (placementStroke) {
-                const now = performance.now();
-                if (!this._lastCrosshairBrushAt || now - this._lastCrosshairBrushAt >= 33) {
-                    this._lastCrosshairBrushAt = now;
-                    this.chart.updateCrosshair(event);
-                }
-            } else {
-                this.chart.updateCrosshair(event);
-            }
+            this._scheduleChartCrosshairFromDrawingEvent(event);
         }
 
         if (this.currentTool && this.isRectSelecting) {
