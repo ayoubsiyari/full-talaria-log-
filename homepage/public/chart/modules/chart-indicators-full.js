@@ -6839,6 +6839,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     Chart.prototype._renderSeparatePanelLegendValue = function(el, ind) {
         if (!el || !ind) return;
         el.innerHTML = '';
+        if (ind.hideValues === true) return;
         const tags = Array.isArray(ind._axisLabelTags) ? ind._axisLabelTags : [];
         if (tags.length > 1) {
             tags.forEach(function(tag, i) {
@@ -6948,6 +6949,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                     text: indicator._axisLabelText,
                     color: indicator._axisLabelColor || indicator._displayColor || indicator.style.color || '#2962ff'
                 }] : []);
+            if (indicator.hideValues === true) return;
 
             if (slot) {
                 const b0 = Number(indicator._panelBaseMin);
@@ -7075,6 +7077,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!slot) return;
             const slotTop = slot.top;
             const visible = indicator.visible !== false;
+            const showValues = indicator.hideValues !== true;
 
             // Full plot-width row so action icons stay pinned to the right (TradingView-style).
             const bar = document.createElement('div');
@@ -7106,7 +7109,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const valEl = document.createElement('span');
             valEl.setAttribute('data-talaria-sp-val', String(indicator.id));
             valEl.style.cssText = 'font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;' +
-                'min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:' + (visible ? '1' : '0.5') + ';';
+                'min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:' + ((visible && showValues) ? '1' : '0.25') + ';';
             self._renderSeparatePanelLegendValue(valEl, indicator);
             bar.appendChild(valEl);
 
@@ -7115,17 +7118,16 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:2px;flex:0 0 auto;';
 
             const eyeBtn = document.createElement('span');
-            eyeBtn.title = visible ? 'Hide' : 'Show';
-            eyeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;padding:0;border-radius:0;cursor:pointer;color:#9ca3af;background:transparent;border:none;transition:color 0.2s;opacity:' + (visible ? '1' : '0.55') + ';';
-            eyeBtn.innerHTML = visible
+            eyeBtn.title = showValues ? 'Hide values' : 'Show values';
+            eyeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;padding:0;border-radius:0;cursor:pointer;color:#9ca3af;background:transparent;border:none;transition:color 0.2s;opacity:' + (showValues ? '1' : '0.55') + ';';
+            eyeBtn.innerHTML = showValues
                 ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
                 : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
             eyeBtn.onmouseenter = function() { eyeBtn.style.color = '#e5e7eb'; };
             eyeBtn.onmouseleave = function() { eyeBtn.style.color = '#9ca3af'; };
             eyeBtn.onclick = function(e) {
                 e.stopPropagation();
-                indicator.visible = (indicator.visible === false) ? true : false;
-                self._updateIndicatorPanelHeight();
+                indicator.hideValues = !indicator.hideValues;
                 if (typeof self.render === 'function') self.render();
             };
             actions.appendChild(eyeBtn);
