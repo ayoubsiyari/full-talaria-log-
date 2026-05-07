@@ -6875,7 +6875,11 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         indicators.forEach(function(indicator) {
             if (indicator.type === 'volume' || indicator.isVolume) return;
             const slot = slotById[String(indicator.id)];
-            const topBound = slot ? slot.top + 8 : 0;
+            // Keep a safety gap under the split line so indicator axis values
+            // never overlap with the main price-axis labels.
+            const isTopIndicatorSlot = !!(slot && Array.isArray(panelSlots) && slot.index === panelSlots.length - 1);
+            const boundaryGap = isTopIndicatorSlot ? 24 : 8;
+            const topBound = slot ? slot.top + boundaryGap : 0;
             const bottomBound = slot ? slot.bottom - 8 : Number.MAX_SAFE_INTEGER;
             const tags = Array.isArray(indicator._axisLabelTags) && indicator._axisLabelTags.length
                 ? indicator._axisLabelTags
@@ -6905,6 +6909,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                         const v = d0 + (d1 - d0) * (i / tickCount);
                         const y = slot.bottom - 5 - ((v - d0) / span) * (slot.height - 10);
                         if (!Number.isFinite(y)) continue;
+                        if (y < topBound || y > bottomBound) continue;
                         // Keep a small gap so tick labels don't overlap colored live-value tags.
                         const tooCloseToTag = tags.some(function(tag) {
                             if (!Number.isFinite(tag.y)) return false;

@@ -712,11 +712,11 @@
          ────────────────────────────────────────────────────────────── -->
 
     <!-- Tier A — preferences-sync MUST run before preferences-init (defines window.preferencesSync). -->
-    <script defer src="/chart/modules/preferences-sync.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/preferences-init.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/market-calculations.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/chart-env.defaults.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/chart-env.generated.js?v=bmou24axisgap"></script>
+    <script defer src="/chart/modules/preferences-sync.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/preferences-init.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/market-calculations.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/chart-env.defaults.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/chart-env.generated.js?v=bmou25axisboundarygap"></script>
 
     <!-- Drawing tool base classes + individual tool registrations.
          Order matters within this block:
@@ -724,64 +724,64 @@
          - Each drawing-tools-*.js registers tools into the global registry.
          - drawing-tools-ui.js provides shared UI helpers used by tools.
          - drawing-tools-manager.js orchestrates everything (loaded later). -->
-    <script defer src="/chart/modules/drawing-tools-base.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/drawing-tools-lines.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/drawing-tools-shapes.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/drawing-tools-fibonacci.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/drawing-tools-text.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/drawing-tools-emoji.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/drawing-tools-image.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/emoji-picker.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/emoji-picker-simple.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/drawing-tools-advanced-volume.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/drawing-tools-advanced.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/drawing-tools-extended.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/drawing-tools-patterns.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/drawing-tools-fib-gann.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/drawing-tools-channels.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/drawing-tools-ui.js?v=bmou24axisgap"></script>
+    <script defer src="/chart/modules/drawing-tools-base.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/drawing-tools-lines.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/drawing-tools-shapes.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/drawing-tools-fibonacci.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/drawing-tools-text.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/drawing-tools-emoji.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/drawing-tools-image.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/emoji-picker.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/emoji-picker-simple.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/drawing-tools-advanced-volume.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/drawing-tools-advanced.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/drawing-tools-extended.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/drawing-tools-patterns.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/drawing-tools-fib-gann.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/drawing-tools-channels.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/drawing-tools-ui.js?v=bmou25axisboundarygap"></script>
 
     <!-- Drawing-tool support (color picker, toolbar UI, undo/redo). -->
-    <script defer src="/chart/modules/color-picker.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/drawing-toolbar.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/undo-redo-manager.js?v=bmou24axisgap"></script>
+    <script defer src="/chart/modules/color-picker.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/drawing-toolbar.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/undo-redo-manager.js?v=bmou25axisboundarygap"></script>
 
     <!-- Drawing-tools manager — orchestrator. Must load AFTER all individual
          drawing-tools-*.js so the registry is populated before init. -->
-    <script defer src="/chart/modules/drawing-tools-manager.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/favorites-manager.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/keyboard-shortcuts.js?v=bmou24axisgap"></script>
+    <script defer src="/chart/modules/drawing-tools-manager.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/favorites-manager.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/keyboard-shortcuts.js?v=bmou25axisboundarygap"></script>
 
-    <script defer src="/chart/modules/timezone-manager.js?v=bmou24axisgap"></script>
+    <script defer src="/chart/modules/timezone-manager.js?v=bmou25axisboundarygap"></script>
 
     <!-- Chart engine.
          chart.js exposes window.Chart synchronously and window.initializeChart
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=bmou24axisgap"></script>
+    <script defer src="/chart/chart.js?v=bmou25axisboundarygap"></script>
     <!-- V9 React theme panel → chart.chartSettings (shared with legacy-index.html). Must load after chart.js. -->
-    <script defer src="/chart/modules/v9-theme-bridge.js?v=bmou24axisgap"></script>
+    <script defer src="/chart/modules/v9-theme-bridge.js?v=bmou25axisboundarygap"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
-    <script defer src="/chart/modules/replay-system.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/replay-dashboard-sync.js?v=bmou24axisgap"></script>
+    <script defer src="/chart/modules/replay-system.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/replay-dashboard-sync.js?v=bmou25axisboundarygap"></script>
 
     <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->
-    <script defer src="/chart/modules/order-event-bus.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/order-service.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/order-manager.js?v=bmou24axisgap"></script>
-    <script defer src="/chart/modules/screenshot-manager.js?v=bmou24axisgap"></script>
+    <script defer src="/chart/modules/order-event-bus.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/order-service.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/order-manager.js?v=bmou25axisboundarygap"></script>
+    <script defer src="/chart/modules/screenshot-manager.js?v=bmou25axisboundarygap"></script>
 
     <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
-    <script defer src="/chart/modules/chart-indicators-full.js?v=bmou24axisgap"></script>
+    <script defer src="/chart/modules/chart-indicators-full.js?v=bmou25axisboundarygap"></script>
 
     <!-- Panel manager — multi-panel layouts. Must load AFTER chart.js so
          it can wire scroll-sync against window.chart. The legacy index.html
          instantiates this inline; V9's bootstrap below does the same. -->
-    <script defer src="/chart/modules/panel-manager.js?v=bmou24axisgap"></script>
+    <script defer src="/chart/modules/panel-manager.js?v=bmou25axisboundarygap"></script>
     <!-- Economic calendar: Finnhub via /api + chart time-axis markers (__economicCalendarForChart). -->
-    <script defer src="/chart/modules/economic-news-sidebar.js?v=bmou24axisgap"></script>
+    <script defer src="/chart/modules/economic-news-sidebar.js?v=bmou25axisboundarygap"></script>
 </head>
 <body>
     <div id="backtestingLoader" aria-live="polite" aria-busy="true">
