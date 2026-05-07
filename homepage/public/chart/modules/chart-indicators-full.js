@@ -6219,6 +6219,24 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
 
+        // Right-axis ticks/labels for MACD panel (TradingView-like dedicated panel scale)
+        ctx.font = '10px Roboto';
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#787b86';
+        const numGridLines = 4;
+        for (let i = 0; i <= numGridLines; i++) {
+            const tickVal = min + (max - min) * (i / numGridLines);
+            const tickY = scaleY(tickVal);
+            if (!Number.isFinite(tickY)) continue;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(m.l, tickY);
+            ctx.lineTo(this.w - m.r, tickY);
+            ctx.stroke();
+            ctx.fillText(tickVal.toFixed(4), this.w - 6, tickY + 3);
+        }
+
         // Zero line
         const zeroY = scaleY(0);
         if (zeroY !== null && zeroY > panelTop && zeroY < panelBottom) {
@@ -6255,6 +6273,24 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         for (let i = Math.min(visibleEnd - 1, macdArr.length - 1); i >= visibleStart; i--) {
             if (macdArr[i] !== null && !isNaN(macdArr[i])) { lastM = macdArr[i]; lastS = signalArr[i]; break; }
         }
+
+        // Show latest MACD value tag on the right axis strip
+        if (lastM !== null && Number.isFinite(lastM)) {
+            const currentY = scaleY(lastM);
+            if (Number.isFinite(currentY)) {
+                const tagColor = indicator.style.macdColor || '#2962ff';
+                const label = lastM.toFixed(4);
+                const labelWidth = 58;
+                const labelHeight = 16;
+                ctx.fillStyle = tagColor;
+                ctx.fillRect(this.w - m.r + 2, currentY - labelHeight / 2, labelWidth, labelHeight);
+                ctx.fillStyle = '#000';
+                ctx.font = 'bold 10px Roboto';
+                ctx.textAlign = 'center';
+                ctx.fillText(label, this.w - m.r + 2 + labelWidth / 2, currentY + 4);
+            }
+        }
+
         indicator._displayColor = indicator.style.macdColor || '#2962ff';
         indicator._displayLabel = lastM !== null ? 'M:' + lastM.toFixed(5) + (lastS !== null ? '  S:' + lastS.toFixed(5) : '') : '';
     };
