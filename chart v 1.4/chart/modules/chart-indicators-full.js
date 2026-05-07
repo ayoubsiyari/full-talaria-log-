@@ -55,6 +55,10 @@
         };
     }
 
+    function getTalariaActionBtnStyle() {
+        return 'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:2px;cursor:pointer;transition:background .15s,color .15s;flex-shrink:0;';
+    }
+
     /** Framed color tile — matches V9 sidebar buttons; prefers indicator-ui factory when loaded. */
     function createIndLegendSwatch(displayColor) {
         const w = global;
@@ -5931,15 +5935,15 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const self = this;
             const id = indicator.id;
 
-            const baseActionStyle = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;transition:background 0.12s,color 0.12s;';
+            const baseActionStyle = getTalariaActionBtnStyle();
 
             const visibilityBtn = document.createElement('span');
             visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
-            visibilityBtn.style.cssText = baseActionStyle + 'color:#787b86;background:transparent;';
+            visibilityBtn.style.cssText = baseActionStyle + 'color:#787b86;background:transparent;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
             visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
             visibilityBtn.onmouseenter = function() {
-                visibilityBtn.style.color = '#d1d4dc';
-                visibilityBtn.style.background = 'rgba(120, 123, 134, 0.20)';
+                visibilityBtn.style.color = '#787b86';
+                visibilityBtn.style.background = 'rgba(255, 255, 255, 0.08)';
             };
             visibilityBtn.onmouseleave = function() {
                 visibilityBtn.style.color = '#787b86';
@@ -5998,11 +6002,10 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
-            removeBtn.style.cssText = baseActionStyle + 'color:#f23645;font-size:13px;font-weight:700;background:transparent;';
+            removeBtn.style.cssText = baseActionStyle + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;background:transparent;';
             removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
-                removeBtn.style.color = '#fda4af';
-                removeBtn.style.background = 'rgba(242, 54, 69, 0.18)';
+                removeBtn.style.background = 'rgba(242, 54, 69, 0.2)';
             };
             removeBtn.onmouseleave = function() {
                 removeBtn.style.color = '#f23645';
@@ -7171,15 +7174,15 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const actions = document.createElement('span');
             actions.className = 'talaria-ind-actions';
             actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:2px;flex:0 0 auto;';
-            const baseActionStyle = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;transition:background 0.12s,color 0.12s;';
+            const baseActionStyle = getTalariaActionBtnStyle();
 
             const eyeBtn = document.createElement('span');
             eyeBtn.title = showPlot ? 'Hide indicator' : 'Show indicator';
-            eyeBtn.style.cssText = baseActionStyle + 'color:#787b86;background:transparent;opacity:1;';
+            eyeBtn.style.cssText = baseActionStyle + 'color:#787b86;background:transparent;opacity:' + (showPlot ? '1' : '0.5') + ';';
             eyeBtn.innerHTML = showPlot
                 ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
                 : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
-            eyeBtn.onmouseenter = function() { eyeBtn.style.color = '#d1d4dc'; eyeBtn.style.background = 'rgba(120, 123, 134, 0.20)'; };
+            eyeBtn.onmouseenter = function() { eyeBtn.style.background = 'rgba(255, 255, 255, 0.08)'; };
             eyeBtn.onmouseleave = function() { eyeBtn.style.color = '#787b86'; eyeBtn.style.background = 'transparent'; };
             eyeBtn.onclick = function(e) {
                 e.stopPropagation();
@@ -7212,8 +7215,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const delBtn = document.createElement('span');
             delBtn.textContent = '×';
             delBtn.title = 'Remove indicator';
-            delBtn.style.cssText = baseActionStyle + 'color:#f23645;font-size:13px;font-weight:700;background:transparent;';
-            delBtn.onmouseenter = function() { delBtn.style.color = '#fda4af'; delBtn.style.background = 'rgba(242, 54, 69, 0.18)'; };
+            delBtn.style.cssText = baseActionStyle + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;background:transparent;';
+            delBtn.onmouseenter = function() { delBtn.style.background = 'rgba(242, 54, 69, 0.2)'; };
             delBtn.onmouseleave = function() { delBtn.style.color = '#f23645'; delBtn.style.background = 'transparent'; };
             delBtn.onclick = function(e) {
                 e.stopPropagation();
