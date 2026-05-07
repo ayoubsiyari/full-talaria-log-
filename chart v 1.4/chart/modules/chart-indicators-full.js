@@ -4708,9 +4708,15 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     
     // Outer top separator — solid divider line matching panel borders
     const _isLightBg = document.body.classList.contains('light-mode');
-    const _sepColor = _isLightBg ? '#d6dce6' : '#2a2e39';
-    const _gripColor = _isLightBg ? 'rgba(0, 0, 0, 0.22)' : 'rgba(120, 123, 134, 0.45)';
-    ctx.strokeStyle = _sepColor;
+    const _sepColor = _isLightBg ? 'rgba(119,130,150,0.45)' : 'rgba(110,122,145,0.38)';
+    const _sepColorStrong = _isLightBg ? 'rgba(80,96,122,0.6)' : 'rgba(145,160,190,0.52)';
+    const _gripColor = _isLightBg ? 'rgba(0, 0, 0, 0.30)' : 'rgba(150, 170, 210, 0.55)';
+    const _hoverColor = _isLightBg ? 'rgba(41,98,255,0.60)' : 'rgba(106,138,255,0.72)';
+    const _hoverGlow = _isLightBg ? 'rgba(41,98,255,0.22)' : 'rgba(106,138,255,0.30)';
+    const hoverHandleY = this._separatePanelHoverHandle && Number.isFinite(this._separatePanelHoverHandle.y)
+        ? this._separatePanelHoverHandle.y
+        : null;
+    ctx.strokeStyle = hoverHandleY !== null && Math.abs(hoverHandleY - panelTop) <= 1 ? _hoverColor : _sepColorStrong;
     ctx.lineWidth = 1;
     ctx.setLineDash([]);
     ctx.beginPath();
@@ -4718,13 +4724,22 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     ctx.lineTo(panelFullRight, panelTop);
     ctx.stroke();
     const topHandleMidX = this.w - m.r - 18;
-    ctx.strokeStyle = _gripColor;
-    ctx.lineWidth = 1.5;
+    const topHandleHover = hoverHandleY !== null && Math.abs(hoverHandleY - panelTop) <= 1;
+    ctx.strokeStyle = topHandleHover ? _hoverColor : _gripColor;
+    ctx.lineWidth = topHandleHover ? 2 : 1.5;
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(topHandleMidX - 8, panelTop);
     ctx.lineTo(topHandleMidX + 8, panelTop);
     ctx.stroke();
+    if (topHandleHover) {
+        ctx.strokeStyle = _hoverGlow;
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(topHandleMidX - 10, panelTop);
+        ctx.lineTo(topHandleMidX + 10, panelTop);
+        ctx.stroke();
+    }
     ctx.lineCap = 'butt';
     
     // Visible indices (set in render() from plot left/right); keep in sync with overlay drawIndicators.
@@ -4760,7 +4775,8 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
 
         // Separator between slots — soft divider
         if (idx > 0) {
-            ctx.strokeStyle = _sepColor;
+            const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - indBottom) <= 1;
+            ctx.strokeStyle = isHoverSep ? _hoverColor : _sepColor;
             ctx.lineWidth = 1;
             ctx.setLineDash([]);
             ctx.beginPath();
@@ -4768,13 +4784,21 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             ctx.lineTo(panelFullRight, indBottom);
             ctx.stroke();
             const handleMidX = this.w - m.r - 18;
-            ctx.strokeStyle = _gripColor;
-            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = isHoverSep ? _hoverColor : _gripColor;
+            ctx.lineWidth = isHoverSep ? 2 : 1.5;
             ctx.lineCap = 'round';
             ctx.beginPath();
             ctx.moveTo(handleMidX - 8, indBottom);
             ctx.lineTo(handleMidX + 8, indBottom);
             ctx.stroke();
+            if (isHoverSep) {
+                ctx.strokeStyle = _hoverGlow;
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.moveTo(handleMidX - 10, indBottom);
+                ctx.lineTo(handleMidX + 10, indBottom);
+                ctx.stroke();
+            }
             ctx.lineCap = 'butt';
         }
         

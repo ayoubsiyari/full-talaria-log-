@@ -15482,11 +15482,20 @@ class Chart {
                 if (typeof this.getSeparatePanelResizeHandleAt === 'function') {
                     const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my);
                     if (resizeHandle) {
+                        const prevY = this._separatePanelHoverHandle && this._separatePanelHoverHandle.y;
+                        if (prevY !== resizeHandle.y) {
+                            this._separatePanelHoverHandle = resizeHandle;
+                            this.scheduleRender();
+                        }
                         this.canvas.style.cursor = 'ns-resize';
                         if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
                         this.updateCrosshair(e);
                         this.updateTooltip(e);
                         return;
+                    }
+                    if (this._separatePanelHoverHandle) {
+                        this._separatePanelHoverHandle = null;
+                        this.scheduleRender();
                     }
                 }
                 // Update cursor based on mode
@@ -15707,6 +15716,7 @@ class Chart {
 
             this.drag.active = false;
             this.drag.type = null;
+            this._separatePanelHoverHandle = null;
             this.boxZoom.active = false;
             this.inertia.active = false;
             const dm = this.drawingManager;
