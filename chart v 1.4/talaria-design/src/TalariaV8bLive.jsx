@@ -16153,11 +16153,11 @@ const TalariaV8bLive = () => {
         ); })()}
         <div style={{ width: 1, height: 16, margin: "0 3px 0 0", background: "rgba(140,160,255,0.18)" }}/>
         <button type="button" onClick={(e) => { e.stopPropagation(); const was=symbolOpen; closeAll(); if(!was) setSymbolOpen(true); }} onMouseEnter={() => setHov("symbol")} onMouseLeave={() => setHov(null)}
-          style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", background: symbolOpen ? "rgba(74,106,255,0.08)" : hov==="symbol" ? c.hv : "transparent", border: "none", color: symbolOpen ? c.acL : hov==="symbol" ? c.tx : c.ts, cursor: "default", fontSize: 14, fontWeight: 700, fontFamily: F, position: "relative", minWidth: 52, maxWidth: 128, width: "fit-content", flexShrink: 0, transition: "color 0.12s, background 0.12s" }}>
-          <div style={{ display: "flex", alignItems: "center", position: "relative", width: 20, height: 16, flexShrink: 0 }}>
-            <ChartSymbolBadge sym={normalizeSymForBadge(symbol)} asset={headerBadgeAsset} w={20} h={16} fontFamily={F}/>
+          style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px", background: symbolOpen ? "rgba(74,106,255,0.08)" : hov==="symbol" ? c.hv : "transparent", border: "none", color: symbolOpen ? c.acL : hov==="symbol" ? c.tx : c.ts, cursor: "default", fontSize: 13, fontWeight: 600, lineHeight: 1.1, fontFamily: F, position: "relative", minWidth: 52, maxWidth: 132, width: "fit-content", flexShrink: 0, transition: "color 0.12s, background 0.12s" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", position: "relative", width: 22, height: 16, flexShrink: 0, overflow: "hidden" }}>
+            <ChartSymbolBadge sym={normalizeSymForBadge(symbol)} asset={headerBadgeAsset} w={18} h={14} fontFamily={F}/>
           </div>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{symbol}</span>
+          <span style={{ display: "block", minWidth: 0, maxWidth: 78, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{symbol}</span>
           <div style={{transform:symbolOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s ease",lineHeight:0,flexShrink:0}}>
             <svg width={10} height={6} viewBox="0 0 10 6"><path d="M1,1 L5,5 L9,1" stroke={symbolOpen ? c.acL : hov==="symbol" ? c.tx : c.ts} strokeWidth={1.8} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </div>
