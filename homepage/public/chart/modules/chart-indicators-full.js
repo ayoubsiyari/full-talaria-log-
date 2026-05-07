@@ -5939,21 +5939,23 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const visibilityBtn = document.createElement('span');
             visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
-            visibilityBtn.style.cssText = baseActionStyle + 'color:#787b86;background:transparent;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            const applyEyeState = () => {
+                const on = indicator.visible !== false;
+                visibilityBtn.style.cssText = baseActionStyle + 'color:' + (on ? '#8ea5ff' : '#787b86') + ';background:' + (on ? 'rgba(74,106,255,0.10)' : 'transparent') + ';opacity:1;';
+            };
+            applyEyeState();
             visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
             visibilityBtn.onmouseenter = function() {
-                visibilityBtn.style.color = '#787b86';
                 visibilityBtn.style.background = 'rgba(255, 255, 255, 0.08)';
             };
             visibilityBtn.onmouseleave = function() {
-                visibilityBtn.style.color = '#787b86';
-                visibilityBtn.style.background = 'transparent';
+                applyEyeState();
             };
             visibilityBtn.onclick = function(e) {
                 e.stopPropagation();
                 indicator.visible = indicator.visible === false ? true : false;
                 visibilityBtn.innerHTML = indicator.visible ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
-                visibilityBtn.style.opacity = '1';
+                applyEyeState();
                 if (!indicator.visible) {
                     if (indicator.data) {
                         indicator._hiddenData = indicator.data;
@@ -7178,17 +7180,22 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const eyeBtn = document.createElement('span');
             eyeBtn.title = showPlot ? 'Hide indicator' : 'Show indicator';
-            eyeBtn.style.cssText = baseActionStyle + 'color:#787b86;background:transparent;opacity:' + (showPlot ? '1' : '0.5') + ';';
+            const applyPlotEyeState = () => {
+                const on = indicator.hidePlot === true;
+                eyeBtn.style.cssText = baseActionStyle + 'color:' + (on ? '#8ea5ff' : '#787b86') + ';background:' + (on ? 'rgba(74,106,255,0.10)' : 'transparent') + ';opacity:1;';
+            };
+            applyPlotEyeState();
             eyeBtn.innerHTML = showPlot
                 ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
                 : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
             eyeBtn.onmouseenter = function() { eyeBtn.style.background = 'rgba(255, 255, 255, 0.08)'; };
-            eyeBtn.onmouseleave = function() { eyeBtn.style.color = '#787b86'; eyeBtn.style.background = 'transparent'; };
+            eyeBtn.onmouseleave = function() { applyPlotEyeState(); };
             eyeBtn.onclick = function(e) {
                 e.stopPropagation();
                 const nextHidden = !(indicator.hidePlot === true);
                 indicator.hidePlot = nextHidden;
                 indicator.hideValues = nextHidden;
+                applyPlotEyeState();
                 if (typeof self.render === 'function') self.render();
             };
             actions.appendChild(eyeBtn);
