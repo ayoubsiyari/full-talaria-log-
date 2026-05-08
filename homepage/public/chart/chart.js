@@ -17654,13 +17654,18 @@ class Chart {
         const magnetActive = magnetMode === 'weak' || magnetMode === 'strong' || magnetMode === true;
         const ctrlHeld = e.ctrlKey || e.metaKey;
         const shiftHeld = e.shiftKey;
-        const placementSnapYs = (_dm && typeof _dm.getActivePlacementSnapPrices === 'function')
+        const shiftPreviewY = (shiftHeld && _dm && typeof _dm.getShiftConstrainedPreviewPrice === 'function')
+            ? _dm.getShiftConstrainedPreviewPrice(e)
+            : null;
+        const useShiftPreviewSnap = Number.isFinite(shiftPreviewY);
+        const placementSnapYs = (!useShiftPreviewSnap && _dm && typeof _dm.getActivePlacementSnapPrices === 'function')
             ? _dm.getActivePlacementSnapPrices()
             : [];
         const placementSnapActive = !!(shiftHeld && placementSnapYs.length > 0);
         const shouldSnapCrosshair = this.yScale && hasSnappedCandle && Number.isFinite(crosshairPrice)
             && (magnetActive || ctrlHeld)
-            && !placementSnapActive;
+            && !placementSnapActive
+            && !useShiftPreviewSnap;
         if (shouldSnapCrosshair) {
             const candle = snappedCandle;
             const ohlc = [candle.o, candle.h, candle.l, candle.c];
@@ -17677,8 +17682,10 @@ class Chart {
             }
         }
 
-        // Shift → snap horizontal crosshair to Y of anchors in the drawing being placed (like TradingView).
-        if (placementSnapActive && this.yScale && Number.isFinite(crosshairPrice)) {
+        // Shift → preview endpoint (trend line / channel — tracks 45°/90° drag) or nearest anchor Y (brush, etc.).
+        if (useShiftPreviewSnap && this.yScale && Number.isFinite(shiftPreviewY)) {
+            crosshairPrice = shiftPreviewY;
+        } else if (placementSnapActive && this.yScale && Number.isFinite(crosshairPrice)) {
             let best = placementSnapYs[0];
             let bestAbs = Math.abs(crosshairPrice - best);
             for (let si = 1; si < placementSnapYs.length; si++) {

@@ -2681,6 +2681,65 @@ class DrawingToolsManager {
     }
 
     /**
+     * Y price of the live placement preview when Shift is held — matches handleMouseMove constraints
+     * so the horizontal crosshair rides the trend line (45°/90°/etc.) like TradingView.
+     * @param {MouseEvent|object} event same object passed to chart.updateCrosshair
+     * @returns {number|null}
+     */
+    getShiftConstrainedPreviewPrice(event) {
+        if (!event || !event.shiftKey) return null;
+        if (!this.drawingState || !this.drawingState.isDrawing || !this.currentTool) return null;
+
+        let point = this.getDataPoint(event);
+
+        if (this.angleSnapTools.includes(this.currentTool) && this.drawingState.tempPoints.length > 0) {
+            const referencePoint = this.drawingState.tempPoints[this.drawingState.tempPoints.length - 1];
+            point = this.constrainToAngle(referencePoint, point);
+            return Number.isFinite(point.y) ? point.y : null;
+        }
+
+        if (this.currentTool === 'parallel-channel' && this.drawingState.tempPoints.length === 2) {
+            const p0 = this.drawingState.tempPoints[0];
+            const p1 = this.drawingState.tempPoints[1];
+            const baseX = p1.x - p0.x;
+            const baseY = p1.y - p0.y;
+            const baseLen = Math.sqrt(baseX * baseX + baseY * baseY);
+            if (baseLen > 0) {
+                const perpX = -baseY / baseLen;
+                const perpY = baseX / baseLen;
+                const toMouseX = point.x - p0.x;
+                const toMouseY = point.y - p0.y;
+                const perpDist = toMouseX * perpX + toMouseY * perpY;
+                point = { x: p0.x + perpX * perpDist, y: p0.y + perpY * perpDist };
+            } else {
+                point = { x: p0.x, y: point.y };
+            }
+            return Number.isFinite(point.y) ? point.y : null;
+        }
+
+        if (this.currentTool === 'flat-top-bottom' && this.drawingState.tempPoints.length === 2) {
+            const p2 = this.drawingState.tempPoints[1];
+            point = { x: p2.x, y: point.y };
+            return Number.isFinite(point.y) ? point.y : null;
+        }
+
+        if (this.currentTool === 'disjoint-channel' && this.drawingState.tempPoints.length === 2) {
+            const p0 = this.drawingState.tempPoints[0];
+            point = { x: p0.x, y: point.y };
+            return Number.isFinite(point.y) ? point.y : null;
+        }
+
+        if (this.currentTool === 'date-price-range' && this.drawingState.tempPoints.length > 0) {
+            const anchorPoint = this.drawingState.tempPoints[0];
+            const rangeMode = this.getRangeToolMode();
+            point = this.constrainDatePriceRangePoint(point, anchorPoint, rangeMode);
+            return Number.isFinite(point.y) ? point.y : null;
+        }
+
+        return null;
+    }
+
+    /**
      * Schedule at most one chart.updateCrosshair per animation frame while drawing / selection is active.
      */
     _scheduleChartCrosshairFromDrawingEvent(event) {

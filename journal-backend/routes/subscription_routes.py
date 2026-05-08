@@ -1269,20 +1269,79 @@ def get_public_plans():
         return jsonify({'error': 'Internal server error'}), 500
 
 
+def _reconcile_user_stripe_subscriptions_from_stripe(user_id, user):
+    """
+    Pull latest subscription status from Stripe and update our DB.
+    Refresh /my-subscription must not rely on stale rows when webhooks were missed.
+    """
+    if not STRIPE_AVAILABLE or not getattr(stripe, 'api_key', None):
+        return
+    if not user or not user.stripe_customer_id:
+        return
+    subs = Subscription.query.filter(
+        Subscription.user_id == user_id,
+        Subscription.stripe_subscription_id.isnot(None),
+    ).all()
+    if not subs:
+        return
+    for sub in subs:
+        try:
+            ss = stripe.Subscription.retrieve(sub.stripe_subscription_id)
+            if isinstance(ss, dict):
+                status = ss.get('status')
+                cps = ss.get('current_period_start') or 0
+                cpe = ss.get('current_period_end') or 0
+                catpe = ss.get('cancel_at_period_end', False)
+            else:
+                status = getattr(ss, 'status', None)
+                cps = getattr(ss, 'current_period_start', None) or 0
+                cpe = getattr(ss, 'current_period_end', None) or 0
+                catpe = getattr(ss, 'cancel_at_period_end', False)
+            period_start = datetime.fromtimestamp(int(cps))
+            period_end = datetime.fromtimestamp(int(cpe))
+            sub.status = status
+            sub.started_at = period_start
+            sub.ends_at = period_end
+            sub.current_period_start = period_start
+            sub.current_period_end = period_end
+            sub.cancel_at_period_end = bool(catpe)
+        except Exception as e:
+            current_app.logger.warning(
+                'Stripe reconcile failed for subscription %s: %s',
+                getattr(sub, 'stripe_subscription_id', None),
+                e,
+            )
+    u = User.query.get(user_id)
+    if u and u.stripe_customer_id:
+        u.has_journal_access = user_entitles_journal(u)
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Subscription reconcile commit failed: {e}')
+
+
 @subscription_bp.route('/my-subscription', methods=['GET'])
 @jwt_required()
 def get_my_subscription():
     """Get current user's subscription status"""
     try:
         user_id = get_jwt_identity()
-        user = User.query.get(user_id)
+        try:
+            uid = int(user_id)
+        except (TypeError, ValueError):
+            uid = user_id
+        user = User.query.get(uid)
         
         if not user:
             return jsonify({'error': 'User not found'}), 404
+
+        _reconcile_user_stripe_subscriptions_from_stripe(uid, user)
+        user = User.query.get(uid)
         
         # Get active subscription
         subscription = Subscription.query.filter(
-            Subscription.user_id == user_id,
+            Subscription.user_id == uid,
             Subscription.status.in_(['active', 'trialing'])
         ).first()
         
