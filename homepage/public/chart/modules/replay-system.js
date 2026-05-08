@@ -4759,8 +4759,9 @@ class ReplaySystem {
     /**
      * Handle timeframe change during replay
      * Uses VIRTUAL TIME to maintain consistent price across all timeframes
+     * @param {Object} [initiatorChart] - Chart instance that called setTimeframe (defaults to main {@link #chart})
      */
-    onTimeframeChange() {
+    onTimeframeChange(initiatorChart) {
         if (!this.isActive) {
             return;
         }
@@ -4768,9 +4769,37 @@ class ReplaySystem {
         if (this._timeframeChanging) {
             return;
         }
-        
-        const newTimeframe = this.chart.currentTimeframe;
-        
+
+        const initiator = initiatorChart || this.chart;
+
+        // Follower panel (not the ReplaySystem's main chart ref): only resample/scroll that tile.
+        // The previous implementation always ran updateChartData + main-chart centering, which
+        // rewrote main while the panel's TF changed — jumpy/hidden candles on 1h+ in multi-panel.
+        if (initiator !== this.chart) {
+            this._timeframeChanging = true;
+            try {
+                if (typeof this.syncPanelCharts === 'function') {
+                    this.syncPanelCharts(true);
+                }
+                if (this.autoScrollEnabled) {
+                    const st = this.getReplayAutoScrollState(initiator);
+                    if (st) initiator.offsetX = st.offsetX;
+                }
+                if (typeof initiator.constrainOffset === 'function') {
+                    initiator.constrainOffset();
+                }
+                initiator.renderPending = true;
+                if (typeof initiator.render === 'function') {
+                    initiator.render();
+                }
+            } catch (e) {
+                console.warn('replay onTimeframeChange (follower panel):', e);
+            } finally {
+                this._timeframeChanging = false;
+            }
+            return;
+        }
+
         // === CRITICAL: LOCK THE STATE DURING TIMEFRAME CHANGE ===
         this._timeframeChanging = true;
         
@@ -4854,10 +4883,20 @@ class ReplaySystem {
                 }
             }
             
-            // Position view
-            const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() : 
-                                    (this.chart.candleWidth + (this.chart.candleGap || 2));
-            this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
+            // Position view — align with replay follow viewport (same as updateChartData), not dead-center,
+            // so 1h/daily switches do not shove the playhead off-screen or rubber-band jump.
+            const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() :
+                (this.chart.candleWidth + (this.chart.candleGap || 2));
+            if (this.autoScrollEnabled) {
+                const st = this.getReplayAutoScrollState(this.chart);
+                if (st) {
+                    this.chart.offsetX = st.offsetX;
+                } else {
+                    this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
+                }
+            } else {
+                this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
+            }
             this.chart.priceOffset = savedPriceOffset;
             this.chart.priceZoom = savedPriceZoom;
             

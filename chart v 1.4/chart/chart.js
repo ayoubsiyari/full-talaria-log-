@@ -11168,7 +11168,7 @@ class Chart {
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
-            this.replaySystem.onTimeframeChange();
+            this.replaySystem.onTimeframeChange(this);
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 requestAnimationFrame(() => this.compareOverlay.refreshForTimeframe(timeframe));
             }
