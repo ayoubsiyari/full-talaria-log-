@@ -213,6 +213,9 @@ class Chart {
         this._sessionStateLoadedFor = null;
         this._pendingSessionStatePatch = null;
         this._sessionStateSaveTimer = null;
+        /** Prevents overlapping PATCH /api/sessions/.../state (parallel fetches + 503 spam → main-thread jank). */
+        this._sessionStatePatchInFlight = false;
+        this._sessionPatchFlushQueued = false;
         this._pendingChartViewSanityCheck = false;
 
         // ═══════════════════════════════════════════════════════════════════
@@ -2833,10 +2836,15 @@ class Chart {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
         if (this._sessionPatchBackoffActive()) return;
+        if (this._sessionStatePatchInFlight) {
+            this._sessionPatchFlushQueued = true;
+            return;
+        }
         const patch = this._pendingCriticalSessionStatePatch;
         if (!patch) return;
         this._pendingCriticalSessionStatePatch = null;
 
+        this._sessionStatePatchInFlight = true;
         try {
             this._writeTradingSessionLocalBackup();
             // Do NOT use fetch({ keepalive: true }) here — Chromium limits keepalive bodies to ~64KB.
@@ -2882,7 +2890,32 @@ class Chart {
             } catch (_) {}
             console.warn('⚠️ Failed to save critical trading session state', e, patchUrl ? `(PATCH ${patchUrl})` : '');
             this._notifyJournalNetworkError();
+            this._bumpSessionPatchBackoff(503);
+            this._pendingCriticalSessionStatePatch = Object.assign(
+                {},
+                patch,
+                this._pendingCriticalSessionStatePatch || {}
+            );
+        } finally {
+            this._sessionStatePatchInFlight = false;
+            this._drainSessionPatchQueueMicrotask();
         }
+    }
+
+    /** After one PATCH completes, run the next pending critical/deferred flush (single flight). */
+    _drainSessionPatchQueueMicrotask() {
+        if (this._sessionPatchDrainQueued) return;
+        this._sessionPatchDrainQueued = true;
+        queueMicrotask(() => {
+            this._sessionPatchDrainQueued = false;
+            this._sessionPatchFlushQueued = false;
+            if (this._sessionStatePatchInFlight || this._sessionPatchBackoffActive()) return;
+            if (this._pendingCriticalSessionStatePatch) {
+                void this.flushCriticalSessionStateSave();
+            } else if (this._pendingSessionStatePatch) {
+                void this.flushSessionStateSave();
+            }
+        });
     }
 
     /** Log only — no chart toast (operators use DevTools Network + server logs). */
@@ -2913,6 +2946,10 @@ class Chart {
             }
             return;
         }
+        if (this._sessionStatePatchInFlight) {
+            this._sessionPatchFlushQueued = true;
+            return;
+        }
         const patch = this._pendingSessionStatePatch;
         if (!patch) return;
         if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchAllowedBeforeHydrate(patch)) return;
@@ -2920,6 +2957,7 @@ class Chart {
         const hadDrawings = !!(patch && patch.drawings != null);
         this._pendingSessionStatePatch = null;
 
+        this._sessionStatePatchInFlight = true;
         try {
             this._writeTradingSessionLocalBackup();
             const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
@@ -2959,12 +2997,16 @@ class Chart {
             } catch (_) {}
             console.warn('⚠️ Failed to save trading session state', e, patchUrl ? `(PATCH ${patchUrl})` : '');
             this._notifyJournalNetworkError();
+            this._bumpSessionPatchBackoff(503);
+            this._pendingSessionStatePatch = Object.assign({}, patch, this._pendingSessionStatePatch || {});
         } finally {
             if (hadDrawings && this.drawingManager && typeof this.drawingManager._onSessionDrawingsSaveFinished === 'function') {
                 try {
                     this.drawingManager._onSessionDrawingsSaveFinished();
                 } catch (_) { /* ignore */ }
             }
+            this._sessionStatePatchInFlight = false;
+            this._drainSessionPatchQueueMicrotask();
         }
     }
     

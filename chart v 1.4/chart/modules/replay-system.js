@@ -2332,9 +2332,6 @@ class ReplaySystem {
                 }
             };
             this.chart.scheduleSessionStateSave(replayPatch);
-            if (typeof this.chart.queueCriticalSessionStateSave === 'function') {
-                this.chart.queueCriticalSessionStateSave(replayPatch);
-            }
         }
         
     }
@@ -3309,9 +3306,6 @@ class ReplaySystem {
                 }
             };
             this.chart.scheduleSessionStateSave(replayPatch);
-            if (typeof this.chart.queueCriticalSessionStateSave === 'function') {
-                this.chart.queueCriticalSessionStateSave(replayPatch);
-            }
         }
     }
     
