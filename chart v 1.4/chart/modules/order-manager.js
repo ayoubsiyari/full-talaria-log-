@@ -542,7 +542,26 @@ class OrderManager {
         const pt = this._positionTicker(position);
         if (pt) {
             const cs = chart.currentSymbol ? this._normalizeTicker(chart.currentSymbol) : '';
-            return !!cs && pt === cs;
+            if (!cs || pt !== cs) return false;
+
+            // Multi-panel: trades without sourceFileId used to match every tile sharing a ticker,
+            // even when panels pointed at different uploads — journal overlays then fought wrong OHLC.
+            // Restrict symbol-only matches to charts that share the focused panel's dataset when possible.
+            if (this._isMultiPanelLayout() && chartFile && !posFile) {
+                let activeFile = '';
+                try {
+                    const active = typeof window !== 'undefined' && typeof window.getActiveChart === 'function'
+                        ? window.getActiveChart()
+                        : null;
+                    if (active && active.currentFileId != null && String(active.currentFileId) !== '') {
+                        activeFile = String(active.currentFileId);
+                    }
+                } catch (_) {}
+                if (activeFile && chartFile !== activeFile) {
+                    return false;
+                }
+            }
+            return true;
         }
         // No dataset id and no ticker — do not paint this trade on arbitrary charts (was: main chart only).
         return false;
@@ -32899,6 +32918,24 @@ class OrderManager {
         const x = chart.dataIndexToPixel(idx);
         const lo = Math.min(candle.l, candle.h);
         const hi = Math.max(candle.l, candle.h);
+        const barSpan = Math.max(hi - lo, Number.EPSILON);
+
+        // Heikin-Ashi bars can disagree with raw journal prices — keep markers there.
+        const chartType = chart.chartSettings && chart.chartSettings.chartType;
+        if (chartType !== 'heikinashi') {
+            const tol = Math.max(1e-12, Math.abs(hi) * 1e-10, barSpan * 1e-8);
+            const inside = price >= lo - tol && price <= hi + tol;
+            if (!inside) {
+                const gapBelow = lo - price;
+                const gapAbove = price - hi;
+                const gap = Math.max(gapBelow > 0 ? gapBelow : 0, gapAbove > 0 ? gapAbove : 0);
+                const maxGap = Math.max(barSpan * 0.25, Math.abs(price) * 1e-6, tol * 100);
+                if (gap > maxGap) {
+                    return null;
+                }
+            }
+        }
+
         const barClamped = Math.max(lo, Math.min(hi, price));
 
         const yPrice = yPxForPrice(barClamped);
