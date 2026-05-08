@@ -4988,6 +4988,17 @@ class ReplaySystem {
         const mainChart = this.chart;
         if (!mainChart || !Array.isArray(slicedRawData) || slicedRawData.length === 0) return;
         try {
+            mainChart.priceZoom = 1;
+            mainChart.priceOffset = 0;
+            mainChart.autoScale = true;
+            if (mainChart.priceScale) {
+                mainChart.priceScale.autoScale = true;
+                mainChart.priceScale.locked = false;
+            }
+            mainChart.manualCenterPrice = null;
+            mainChart.manualRange = null;
+            mainChart._pendingChartViewSanityCheck = true;
+
             mainChart.rawData = slicedRawData;
             mainChart.data = mainChart.resampleData(slicedRawData, mainChart.currentTimeframe);
             if (typeof mainChart.bumpDataVersion === 'function') mainChart.bumpDataVersion();

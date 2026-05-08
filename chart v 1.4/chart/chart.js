@@ -13045,7 +13045,26 @@ class Chart {
                 }
             }
 
-            if (Number.isFinite(replayPrice)) price = replayPrice;
+            const displayRef = (this.data && this.data.length > 0 && Number.isFinite(this.data[this.data.length - 1].c))
+                ? this.data[this.data.length - 1].c
+                : (lastVisible && Number.isFinite(lastVisible.c) ? lastVisible.c : null);
+
+            if (Number.isFinite(replayPrice)) {
+                if (!Number.isFinite(displayRef)) {
+                    price = replayPrice;
+                } else {
+                    const refMag = Math.abs(displayRef) || 1;
+                    const relDiff = Math.abs(replayPrice - displayRef) / refMag;
+                    // Pan-merge / index drift can make fullRawData[currentIndex] disagree with the
+                    // bars actually drawn — resolveEffectiveCurrentPrice then blows the Y domain and
+                    // candles look "hidden" at one edge. Trust the displayed series when disagreement is large.
+                    if (relDiff <= 0.12) {
+                        price = replayPrice;
+                    } else {
+                        price = displayRef;
+                    }
+                }
+            }
         }
 
         return Number.isFinite(price) ? price : null;
