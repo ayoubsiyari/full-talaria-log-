@@ -3776,13 +3776,15 @@ class ReplaySystem {
             
             try {
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
+                let appliedSlice = false;
 
                 if (hasOwnData) {
                     const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
                     const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
                     pc.rawData = panelSlice;
                     pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
-                } else {
+                    appliedSlice = true;
+                } else if (this._panelSharesMainReplayDataset(pc, mainChart)) {
                     if (mainSymbol && pc.currentSymbol !== mainSymbol) {
                         pc.currentSymbol = mainSymbol;
                         if (mainChart) pc.currentFileId = mainChart.currentFileId;
@@ -3796,8 +3798,13 @@ class ReplaySystem {
                     }
                     pc.rawData = [...slicedRaw];
                     pc.data = pc.resampleData(slicedRaw, pc.currentTimeframe);
+                    appliedSlice = true;
                 }
-                
+
+                if (!appliedSlice) {
+                    return;
+                }
+
                 if (this.tickProgress % 18 === 0 && typeof pc.recalculateIndicators === 'function') {
                     try { pc.recalculateIndicators(); } catch (e) {}
                 }
@@ -4978,6 +4985,19 @@ class ReplaySystem {
     }
 
     /**
+     * Follower tiles should only ingest {@link #fullRawData} when they represent the **same dataset**
+     * as `window.chart`. Otherwise sync used to overwrite a second pair with the main pair's bars
+     * whenever `_panelFullRawData` was still empty — mixed prices and a collapsed Y-axis.
+     */
+    _panelSharesMainReplayDataset(pc, mainChart) {
+        if (!pc || !mainChart) return false;
+        const pf = pc.currentFileId != null && String(pc.currentFileId) !== '' ? String(pc.currentFileId) : '';
+        const mf = mainChart.currentFileId != null && String(mainChart.currentFileId) !== '' ? String(mainChart.currentFileId) : '';
+        if (pf && mf) return pf === mf;
+        return false;
+    }
+
+    /**
      * Re-apply the replay prefix slice to the main chart (window.chart / panel 0).
      * refitMultiPanelViewports, layout open, and other hooks call {@link #syncPanelCharts} without
      * going through updateChartData — if we only update secondary panels, the main can keep a
@@ -5058,19 +5078,20 @@ class ReplaySystem {
             
             try {
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
+                let appliedSlice = false;
 
                 if (hasOwnData) {
                     const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
                     const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
                     pc.rawData = panelSlice;
                     pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
-                } else {
+                    appliedSlice = true;
+                } else if (this._panelSharesMainReplayDataset(pc, mainChart)) {
                     if (mainSymbol && pc.currentSymbol !== mainSymbol) {
                         pc.currentSymbol = mainSymbol;
                         pc.currentFileId = mainFileId;
                         if (typeof pc.updateChartTitle === 'function') pc.updateChartTitle(mainSymbol);
                         if (typeof pc.updateChartOHLCSymbol === 'function') pc.updateChartOHLCSymbol(mainSymbol);
-                        // Reset Y-axis scale for the new pair's price range
                         pc.priceZoom = 1;
                         pc.priceOffset = 0;
                         pc.autoScale = true;
@@ -5081,8 +5102,13 @@ class ReplaySystem {
                     }
                     pc.rawData = slicedRawData;
                     pc.data = pc.resampleData(slicedRawData, pc.currentTimeframe);
+                    appliedSlice = true;
                 }
-                
+
+                if (!appliedSlice) {
+                    return;
+                }
+
                 if (typeof pc.bumpDataVersion === 'function') pc.bumpDataVersion();
                 
                 if (typeof pc.recalculateIndicators === 'function') {
