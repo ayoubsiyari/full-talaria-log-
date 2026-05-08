@@ -3,6 +3,271 @@
  * Allows splitting the chart view into multiple panels with different timeframes
  */
 
+/**
+ * Layout configuration registry — canonical source is panel-layouts.js.
+ * Defined here so panel-manager.js is self-contained regardless of script-load order.
+ */
+const PANEL_LAYOUTS = {
+    '1': [{ width: '100%', height: '100%' }],
+    '2v': [
+        { width: '50%', height: '100%', left: '0' },
+        { width: '50%', height: '100%', left: '50%' }
+    ],
+    '2h': [
+        { width: '100%', height: '50%', top: '0' },
+        { width: '100%', height: '50%', top: '50%' }
+    ],
+    '3v': [
+        { width: '33.33%', height: '100%', left: '0' },
+        { width: '33.33%', height: '100%', left: '33.33%' },
+        { width: '33.33%', height: '100%', left: '66.66%' }
+    ],
+    '3h': [
+        { width: '100%', height: '33.33%', top: '0' },
+        { width: '100%', height: '33.33%', top: '33.33%' },
+        { width: '100%', height: '33.33%', top: '66.66%' }
+    ],
+    '3l': [
+        { width: '50%', height: '100%', left: '0' },
+        { width: '50%', height: '50%', left: '50%', top: '0' },
+        { width: '50%', height: '50%', left: '50%', top: '50%' }
+    ],
+    '3r': [
+        { width: '50%', height: '50%', left: '0', top: '0' },
+        { width: '50%', height: '50%', left: '0', top: '50%' },
+        { width: '50%', height: '100%', left: '50%', top: '0' }
+    ],
+    '3t': [
+        { width: '100%', height: '50%', left: '0', top: '0' },
+        { width: '50%', height: '50%', left: '0', top: '50%' },
+        { width: '50%', height: '50%', left: '50%', top: '50%' }
+    ],
+    '3b': [
+        { width: '50%', height: '50%', left: '0', top: '0' },
+        { width: '50%', height: '50%', left: '50%', top: '0' },
+        { width: '100%', height: '50%', left: '0', top: '50%' }
+    ],
+    '4': [
+        { width: '50%', height: '50%', left: '0', top: '0' },
+        { width: '50%', height: '50%', left: '50%', top: '0' },
+        { width: '50%', height: '50%', left: '0', top: '50%' },
+        { width: '50%', height: '50%', left: '50%', top: '50%' }
+    ],
+    '4v': [
+        { width: '25%', height: '100%', left: '0' },
+        { width: '25%', height: '100%', left: '25%' },
+        { width: '25%', height: '100%', left: '50%' },
+        { width: '25%', height: '100%', left: '75%' }
+    ],
+    '4h': [
+        { width: '100%', height: '25%', top: '0' },
+        { width: '100%', height: '25%', top: '25%' },
+        { width: '100%', height: '25%', top: '50%' },
+        { width: '100%', height: '25%', top: '75%' }
+    ],
+    '4t': [
+        { width: '100%', height: '50%', left: '0', top: '0' },
+        { width: '33.33%', height: '50%', left: '0', top: '50%' },
+        { width: '33.33%', height: '50%', left: '33.33%', top: '50%' },
+        { width: '33.33%', height: '50%', left: '66.66%', top: '50%' }
+    ],
+    '4b': [
+        { width: '33.33%', height: '50%', left: '0', top: '0' },
+        { width: '33.33%', height: '50%', left: '33.33%', top: '0' },
+        { width: '33.33%', height: '50%', left: '66.66%', top: '0' },
+        { width: '100%', height: '50%', left: '0', top: '50%' }
+    ],
+    '4r': [
+        { width: '50%', height: '33.33%', left: '0', top: '0' },
+        { width: '50%', height: '33.33%', left: '0', top: '33.33%' },
+        { width: '50%', height: '33.33%', left: '0', top: '66.66%' },
+        { width: '50%', height: '100%', left: '50%', top: '0' }
+    ],
+    '4l': [
+        { width: '50%', height: '100%', left: '0', top: '0' },
+        { width: '50%', height: '33.33%', left: '50%', top: '0' },
+        { width: '50%', height: '33.33%', left: '50%', top: '33.33%' },
+        { width: '50%', height: '33.33%', left: '50%', top: '66.66%' }
+    ],
+    '4tl': [
+        { width: '66.66%', height: '60%', left: '0', top: '0' },
+        { width: '33.33%', height: '60%', left: '66.66%', top: '0' },
+        { width: '50%', height: '40%', left: '0', top: '60%' },
+        { width: '50%', height: '40%', left: '50%', top: '60%' }
+    ],
+    '5a': [
+        { width: '50%', height: '50%', left: '0', top: '0' },
+        { width: '50%', height: '50%', left: '50%', top: '0' },
+        { width: '33.33%', height: '50%', left: '0', top: '50%' },
+        { width: '33.33%', height: '50%', left: '33.33%', top: '50%' },
+        { width: '33.33%', height: '50%', left: '66.66%', top: '50%' }
+    ],
+    '5b': [
+        { width: '33.33%', height: '50%', left: '0', top: '0' },
+        { width: '33.33%', height: '50%', left: '33.33%', top: '0' },
+        { width: '33.33%', height: '50%', left: '66.66%', top: '0' },
+        { width: '50%', height: '50%', left: '0', top: '50%' },
+        { width: '50%', height: '50%', left: '50%', top: '50%' }
+    ],
+    '5c': [
+        { width: '50%', height: '50%', left: '0', top: '0' },
+        { width: '50%', height: '50%', left: '0', top: '50%' },
+        { width: '50%', height: '33.33%', left: '50%', top: '0' },
+        { width: '50%', height: '33.33%', left: '50%', top: '33.33%' },
+        { width: '50%', height: '33.33%', left: '50%', top: '66.66%' }
+    ],
+    '5v': [
+        { width: '20%', height: '100%', left: '0' },
+        { width: '20%', height: '100%', left: '20%' },
+        { width: '20%', height: '100%', left: '40%' },
+        { width: '20%', height: '100%', left: '60%' },
+        { width: '20%', height: '100%', left: '80%' }
+    ],
+    '5h': [
+        { width: '100%', height: '20%', top: '0' },
+        { width: '100%', height: '20%', top: '20%' },
+        { width: '100%', height: '20%', top: '40%' },
+        { width: '100%', height: '20%', top: '60%' },
+        { width: '100%', height: '20%', top: '80%' }
+    ],
+    '6': [
+        { width: '33.33%', height: '50%', left: '0', top: '0' },
+        { width: '33.33%', height: '50%', left: '33.33%', top: '0' },
+        { width: '33.33%', height: '50%', left: '66.66%', top: '0' },
+        { width: '33.33%', height: '50%', left: '0', top: '50%' },
+        { width: '33.33%', height: '50%', left: '33.33%', top: '50%' },
+        { width: '33.33%', height: '50%', left: '66.66%', top: '50%' }
+    ],
+    '6b': [
+        { width: '50%', height: '33.33%', left: '0', top: '0' },
+        { width: '50%', height: '33.33%', left: '50%', top: '0' },
+        { width: '50%', height: '33.33%', left: '0', top: '33.33%' },
+        { width: '50%', height: '33.33%', left: '50%', top: '33.33%' },
+        { width: '50%', height: '33.33%', left: '0', top: '66.66%' },
+        { width: '50%', height: '33.33%', left: '50%', top: '66.66%' }
+    ],
+    '6v': [
+        { width: '16.66%', height: '100%', left: '0' },
+        { width: '16.66%', height: '100%', left: '16.66%' },
+        { width: '16.66%', height: '100%', left: '33.33%' },
+        { width: '16.66%', height: '100%', left: '50%' },
+        { width: '16.66%', height: '100%', left: '66.66%' },
+        { width: '16.66%', height: '100%', left: '83.33%' }
+    ],
+    '6h': [
+        { width: '100%', height: '16.66%', top: '0' },
+        { width: '100%', height: '16.66%', top: '16.66%' },
+        { width: '100%', height: '16.66%', top: '33.33%' },
+        { width: '100%', height: '16.66%', top: '50%' },
+        { width: '100%', height: '16.66%', top: '66.66%' },
+        { width: '100%', height: '16.66%', top: '83.33%' }
+    ],
+    '7v': [
+        { width: '14.28%', height: '100%', left: '0' },
+        { width: '14.28%', height: '100%', left: '14.28%' },
+        { width: '14.28%', height: '100%', left: '28.56%' },
+        { width: '14.28%', height: '100%', left: '42.84%' },
+        { width: '14.28%', height: '100%', left: '57.12%' },
+        { width: '14.28%', height: '100%', left: '71.4%' },
+        { width: '14.28%', height: '100%', left: '85.68%' }
+    ],
+    '7a': [
+        { width: '33.33%', height: '33.33%', left: '0', top: '0' },
+        { width: '33.33%', height: '33.33%', left: '33.33%', top: '0' },
+        { width: '33.33%', height: '33.33%', left: '66.66%', top: '0' },
+        { width: '33.33%', height: '33.33%', left: '0', top: '33.33%' },
+        { width: '33.33%', height: '33.33%', left: '33.33%', top: '33.33%' },
+        { width: '33.33%', height: '33.33%', left: '66.66%', top: '33.33%' },
+        { width: '100%', height: '33.33%', left: '0', top: '66.66%' }
+    ],
+    '8': [
+        { width: '25%', height: '50%', left: '0', top: '0' },
+        { width: '25%', height: '50%', left: '25%', top: '0' },
+        { width: '25%', height: '50%', left: '50%', top: '0' },
+        { width: '25%', height: '50%', left: '75%', top: '0' },
+        { width: '25%', height: '50%', left: '0', top: '50%' },
+        { width: '25%', height: '50%', left: '25%', top: '50%' },
+        { width: '25%', height: '50%', left: '50%', top: '50%' },
+        { width: '25%', height: '50%', left: '75%', top: '50%' }
+    ],
+    '8b': [
+        { width: '50%', height: '25%', left: '0', top: '0' },
+        { width: '50%', height: '25%', left: '50%', top: '0' },
+        { width: '50%', height: '25%', left: '0', top: '25%' },
+        { width: '50%', height: '25%', left: '50%', top: '25%' },
+        { width: '50%', height: '25%', left: '0', top: '50%' },
+        { width: '50%', height: '25%', left: '50%', top: '50%' },
+        { width: '50%', height: '25%', left: '0', top: '75%' },
+        { width: '50%', height: '25%', left: '50%', top: '75%' }
+    ],
+    '8v': [
+        { width: '12.5%', height: '100%', left: '0' },
+        { width: '12.5%', height: '100%', left: '12.5%' },
+        { width: '12.5%', height: '100%', left: '25%' },
+        { width: '12.5%', height: '100%', left: '37.5%' },
+        { width: '12.5%', height: '100%', left: '50%' },
+        { width: '12.5%', height: '100%', left: '62.5%' },
+        { width: '12.5%', height: '100%', left: '75%' },
+        { width: '12.5%', height: '100%', left: '87.5%' }
+    ],
+    '8h': [
+        { width: '100%', height: '12.5%', top: '0' },
+        { width: '100%', height: '12.5%', top: '12.5%' },
+        { width: '100%', height: '12.5%', top: '25%' },
+        { width: '100%', height: '12.5%', top: '37.5%' },
+        { width: '100%', height: '12.5%', top: '50%' },
+        { width: '100%', height: '12.5%', top: '62.5%' },
+        { width: '100%', height: '12.5%', top: '75%' },
+        { width: '100%', height: '12.5%', top: '87.5%' }
+    ]
+};
+
+/**
+ * Sync utility functions — canonical source is panel-sync-utils.js.
+ * Defined here so panel-manager.js is self-contained regardless of script-load order.
+ */
+const PanelSyncUtils = {
+    bsearchTimestamp(data, ts) {
+        if (!data || data.length === 0) return 0;
+        let lo = 0, hi = data.length - 1;
+        while (lo < hi) {
+            const mid = (lo + hi) >>> 1;
+            if ((data[mid].t || 0) < ts) lo = mid + 1;
+            else hi = mid;
+        }
+        if (lo > 0 && Math.abs((data[lo - 1].t || 0) - ts) < Math.abs((data[lo].t || 0) - ts)) {
+            return lo - 1;
+        }
+        return lo;
+    },
+    findLastIndexAtOrBefore(data, ts) {
+        if (!data || data.length === 0) return 0;
+        if (!Number.isFinite(ts)) return 0;
+        let lo = 0, hi = data.length - 1, ans = 0;
+        while (lo <= hi) {
+            const mid = (lo + hi) >>> 1;
+            const t = data[mid]?.t || 0;
+            if (t <= ts) { ans = mid; lo = mid + 1; }
+            else          { hi = mid - 1; }
+        }
+        return Math.max(0, Math.min(ans, data.length - 1));
+    },
+    isSamePair(a, b) {
+        if (!a || !b) return false;
+        if (a === b) return true;
+        const fa = a.currentFileId != null ? String(a.currentFileId) : null;
+        const fb = b.currentFileId != null ? String(b.currentFileId) : null;
+        if (!fa || !fb) return false;
+        return fa === fb;
+    },
+    getPanelChartInstance(panel) {
+        if (!panel) return null;
+        if (panel.chartInstance) return panel.chartInstance;
+        if (panel.isMainChart && typeof window !== 'undefined' && window.chart) return window.chart;
+        return null;
+    }
+};
+
 /** Chart look + settings UI colors: always follow `window.chart` for extra panels (index > 0). */
 const PANEL_CHART_APPEARANCE_KEYS = [
     'backgroundColor', 'backgroundStyle',
