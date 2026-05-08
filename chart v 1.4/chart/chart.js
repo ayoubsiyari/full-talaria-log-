@@ -8354,6 +8354,19 @@ class Chart {
         if (this._chartViewRestored) {
             return;
         }
+
+        // Replay: never use the non-replay branch below that sets offsetX = 0 when "all candles fit"
+        // — on a zoomed-out candle width the entire backtest slice fits on screen and Y auto-scale
+        // spans the full loaded history (years of FX range) while the playhead price sits near the top.
+        const replay = this.replaySystem;
+        if (replay && replay.isActive && typeof replay.getReplayAutoScrollState === 'function') {
+            const st = replay.getReplayAutoScrollState(this);
+            if (st && Number.isFinite(st.offsetX)) {
+                this.offsetX = st.offsetX;
+                this.constrainOffset();
+                return;
+            }
+        }
         
         const m = this.margin;
         const cw = this.w - m.l - m.r;

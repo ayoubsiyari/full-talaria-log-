@@ -2167,8 +2167,6 @@ class ReplaySystem {
 
     getReplayAutoScrollState(chartInstance = this.chart) {
         if (!chartInstance || !Array.isArray(chartInstance.data)) return null;
-        const cw = chartInstance.w || 0;
-        if (cw < 80) return null;
 
         const candleSpacing = chartInstance.getCandleSpacing
             ? chartInstance.getCandleSpacing()
@@ -2176,8 +2174,26 @@ class ReplaySystem {
 
         if (!Number.isFinite(candleSpacing) || candleSpacing <= 0) return null;
 
+        // Internal layout width can lag the visible DOM (multi-panel split, first resize frame).
+        // Returning null used to leave offsetX at 0 → viewport on the *left* of a long backtest
+        // slice so min/max OHLC across the whole loaded window "explodes" the Y-axis (~years of FX range).
+        let effectiveW = Number(chartInstance.w) || 0;
+        if (effectiveW < 80) {
+            try {
+                const canvas = chartInstance.canvas;
+                const el = canvas && canvas.parentElement;
+                const rw = el ? el.getBoundingClientRect().width : 0;
+                if (Number.isFinite(rw) && rw >= 80) effectiveW = rw;
+            } catch (_e) { /* ignore */ }
+        }
+        // Conservative default: slightly underestimate width → scroll a touch further right so the
+        // playhead sits near the edge instead of leaving the chart squashed to the full history range.
+        if (effectiveW < 80) {
+            effectiveW = 320;
+        }
+
         const m = chartInstance.margin || { l: 0, r: 70 };
-        const chartAreaW = Math.max(0, (chartInstance.w || 0) - (m.l || 0) - (m.r || 0));
+        const chartAreaW = Math.max(0, effectiveW - (m.l || 0) - (m.r || 0));
         const numVisibleCandles = Math.max(1, Math.floor(chartAreaW / candleSpacing));
 
         const configuredGapCandles = Math.max(
