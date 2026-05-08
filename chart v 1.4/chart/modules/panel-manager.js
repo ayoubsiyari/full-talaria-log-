@@ -1136,6 +1136,17 @@ class PanelManager {
             } catch (e) {
                 console.warn('refitMultiPanelViewports: syncPanelCharts failed', e);
             }
+            try {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        const rs = typeof window !== 'undefined' && window.chart && window.chart.replaySystem;
+                        const ch = typeof window !== 'undefined' ? window.chart : null;
+                        if (rs && rs.isActive && ch && (ch.w || 0) >= 80 && typeof rs.updateChartData === 'function') {
+                            rs.updateChartData(true);
+                        }
+                    });
+                });
+            } catch (_e) { /* ignore */ }
         } else {
             this.panels.forEach((panel) => {
                 const pc = panel.chartInstance;

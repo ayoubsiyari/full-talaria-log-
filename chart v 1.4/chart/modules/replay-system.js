@@ -2167,6 +2167,8 @@ class ReplaySystem {
 
     getReplayAutoScrollState(chartInstance = this.chart) {
         if (!chartInstance || !Array.isArray(chartInstance.data)) return null;
+        const cw = chartInstance.w || 0;
+        if (cw < 80) return null;
 
         const candleSpacing = chartInstance.getCandleSpacing
             ? chartInstance.getCandleSpacing()

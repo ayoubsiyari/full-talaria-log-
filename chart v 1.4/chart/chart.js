@@ -1255,7 +1255,16 @@ class Chart {
             // skipIndicators: enterReplayMode will recalculate on the 10% slice — no need on 100k
             this._ingestSmartWindowResult(result, { skipIndicators: true, skipFitToView: true });
             this.loadedRanges.set(0, result.returned);
-            this._scheduleSmartPrefetchOthers(fileId, replayRawTf, session);
+            // Defer prefetch of other session instruments until after replay + layout settle —
+            // parallel /smart for EUR/GBP/… competes with enterReplayMode and blanks panel 0 when half-width.
+            const selfBt = this;
+            const scheduledFor = fileId;
+            setTimeout(() => {
+                if (String(selfBt.currentFileId) !== String(scheduledFor)) return;
+                if (typeof selfBt._scheduleSmartPrefetchOthers === 'function') {
+                    selfBt._scheduleSmartPrefetchOthers(fileId, replayRawTf, session);
+                }
+            }, 14000);
 
             this.updateLoaderProgress(70, 'Preparing chart...');
 
