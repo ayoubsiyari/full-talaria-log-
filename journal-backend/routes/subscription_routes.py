@@ -14,7 +14,7 @@ import json
 import re
 
 from security_redirects import append_checkout_session_placeholder, is_allowed_stripe_redirect_url
-from subscription_access import user_entitles_journal
+from subscription_access import admin_extension_entitles, user_entitles_journal
 
 try:
     import stripe
@@ -312,7 +312,15 @@ def get_subscriptions():
         for sub in pagination.items:
             user = User.query.get(sub.user_id)
             plan = SubscriptionPlan.query.get(sub.plan_id) if sub.plan_id else None
-            
+            st = (sub.status or '').lower()
+            needs_payment = st in ('past_due', 'unpaid')
+            ext_active = bool(
+                user
+                and user.access_expires_at
+                and datetime.utcnow() < user.access_expires_at
+            )
+            journal_ok = user_entitles_journal(user) if user else False
+
             subscriptions.append({
                 'id': sub.id,
                 'user_id': sub.user_id,
@@ -324,7 +332,11 @@ def get_subscriptions():
                 'current_period_end': sub.current_period_end.isoformat() if sub.current_period_end else None,
                 'cancel_at_period_end': sub.cancel_at_period_end,
                 'stripe_subscription_id': sub.stripe_subscription_id,
-                'created_at': sub.created_at.isoformat() if sub.created_at else None
+                'created_at': sub.created_at.isoformat() if sub.created_at else None,
+                'needs_payment': needs_payment,
+                'access_expires_at': user.access_expires_at.isoformat() if (user and user.access_expires_at) else None,
+                'admin_extension_active': ext_active,
+                'journal_access_effective': journal_ok,
             })
         
         return jsonify({
@@ -340,6 +352,62 @@ def get_subscriptions():
         
     except Exception as e:
         current_app.logger.error(f"Error getting subscriptions: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@subscription_bp.route('/admin/users/<int:user_id>/grant-access-extension', methods=['POST'])
+@jwt_required()
+@admin_required
+def grant_access_extension(user_id):
+    """Extend temporary journal login access (admin goodwill). Adds days to User.access_expires_at."""
+    try:
+        data = request.get_json() or {}
+        days = int(data.get('days', 7))
+        if days < 1 or days > 366:
+            return jsonify({'error': 'days must be between 1 and 366'}), 400
+
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        base = datetime.utcnow()
+        if user.access_expires_at and user.access_expires_at > base:
+            base = user.access_expires_at
+        user.access_expires_at = base + timedelta(days=days)
+        user.has_journal_access = user_entitles_journal(user)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'access_expires_at': user.access_expires_at.isoformat(),
+            'has_journal_access': user.has_journal_access,
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'grant_access_extension: {e}')
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@subscription_bp.route('/admin/users/<int:user_id>/clear-access-extension', methods=['POST'])
+@jwt_required()
+@admin_required
+def clear_access_extension(user_id):
+    """Remove admin-granted extension window."""
+    try:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        user.access_expires_at = None
+        user.has_journal_access = user_entitles_journal(user)
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'access_expires_at': None,
+            'has_journal_access': user.has_journal_access,
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'clear_access_extension: {e}')
         return jsonify({'error': 'Internal server error'}), 500
 
 
@@ -404,6 +472,14 @@ def get_subscription_stats():
             Subscription.created_at >= start_of_month
         ).count()
         
+        needs_payment = Subscription.query.filter(
+            Subscription.status.in_(['past_due', 'unpaid'])
+        ).count()
+        admin_extension_users = User.query.filter(
+            User.access_expires_at.isnot(None),
+            User.access_expires_at > datetime.utcnow()
+        ).count()
+
         return jsonify({
             'success': True,
             'stats': {
@@ -416,7 +492,9 @@ def get_subscription_stats():
                 'total_revenue': round(total_revenue, 2),
                 'monthly_revenue': round(monthly_revenue, 2),
                 'failed_payments_30d': failed_payments,
-                'new_subscriptions_month': new_subs_month
+                'new_subscriptions_month': new_subs_month,
+                'needs_payment_count': needs_payment,
+                'admin_extension_active_count': admin_extension_users,
             }
         }), 200
         
@@ -943,9 +1021,8 @@ def handle_subscription_updated(sub_data):
             subscription.cancel_at_period_end = sub_data.get('cancel_at_period_end', False)
 
             user = User.query.get(subscription.user_id)
-            if user and user.stripe_customer_id:
-                st = sub_data.get('status')
-                user.has_journal_access = st in ('active', 'trialing')
+            if user:
+                user.has_journal_access = user_entitles_journal(user)
 
     except Exception as e:
         current_app.logger.error(f"Error handling subscription updated: {e}")
@@ -965,7 +1042,7 @@ def handle_subscription_deleted(sub_data):
             # Optionally revoke journal access
             user = User.query.get(subscription.user_id)
             if user:
-                user.has_journal_access = False
+                user.has_journal_access = user_entitles_journal(user)
             
     except Exception as e:
         current_app.logger.error(f"Error handling subscription deleted: {e}")
@@ -1023,8 +1100,8 @@ def handle_payment_failed(invoice_data):
         )
         db.session.add(payment)
 
-        if user and user.stripe_customer_id:
-            user.has_journal_access = False
+        if user:
+            user.has_journal_access = user_entitles_journal(user)
 
     except Exception as e:
         current_app.logger.error(f"Error handling payment failed: {e}")
@@ -1312,7 +1389,7 @@ def _reconcile_user_stripe_subscriptions_from_stripe(user_id, user):
                 e,
             )
     u = User.query.get(user_id)
-    if u and u.stripe_customer_id:
+    if u:
         u.has_journal_access = user_entitles_journal(u)
     try:
         db.session.commit()
@@ -1327,6 +1404,16 @@ def _lapsed_subscription_summary(sub):
     return {
         'status': sub.status,
         'current_period_end': sub.current_period_end.isoformat() if sub.current_period_end else None,
+    }
+
+
+def _user_extension_json(user):
+    if not user:
+        return {'access_extension_until': None, 'has_admin_extension_active': False}
+    active = admin_extension_entitles(user)
+    return {
+        'access_extension_until': user.access_expires_at.isoformat() if active else None,
+        'has_admin_extension_active': active,
     }
 
 
@@ -1404,6 +1491,7 @@ def get_my_subscription():
                 'subscription': None,
                 'plan': None,
                 **denial,
+                **_user_extension_json(user),
             }), 200
         
         plan = SubscriptionPlan.query.get(subscription.plan_id) if subscription.plan_id else None
@@ -1445,7 +1533,8 @@ def get_my_subscription():
                 'price_yearly': plan.price_yearly if hasattr(plan, 'price_yearly') else 0,
                 'interval': plan.interval,
                 'features': _parse_features(plan.features)
-            } if plan else None
+            } if plan else None,
+            **_user_extension_json(user),
         }), 200
         
     except Exception as e:

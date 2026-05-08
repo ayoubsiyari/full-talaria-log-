@@ -19,7 +19,8 @@ import {
   ChevronUp,
   Search,
   Filter,
-  Download
+  Download,
+  Timer,
 } from 'lucide-react';
 
 export default function SubscriptionManager() {
@@ -32,6 +33,7 @@ export default function SubscriptionManager() {
   const [webhookLogs, setWebhookLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [extensionActionUser, setExtensionActionUser] = useState(null);
   
   // Plan form state
   const [showPlanModal, setShowPlanModal] = useState(false);
@@ -100,7 +102,7 @@ export default function SubscriptionManager() {
 
   const fetchSubscriptions = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/subscriptions/`, {
+      const res = await fetch(`${API_BASE_URL}/subscriptions/?per_page=200`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -202,6 +204,67 @@ export default function SubscriptionManager() {
     }
   };
 
+  const grantExtension = async (userId, days) => {
+    setExtensionActionUser(userId);
+    setError('');
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/subscriptions/admin/users/${userId}/grant-access-extension`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ days }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        await fetchSubscriptions();
+        await fetchStats();
+      } else {
+        setError(data.error || 'Could not grant extension');
+      }
+    } catch (err) {
+      setError('Could not grant extension');
+    } finally {
+      setExtensionActionUser(null);
+    }
+  };
+
+  const clearExtension = async (userId) => {
+    if (
+      !window.confirm(
+        'Remove admin access extension? The user may lose app access immediately if their Stripe subscription is not active.'
+      )
+    ) {
+      return;
+    }
+    setExtensionActionUser(userId);
+    setError('');
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/subscriptions/admin/users/${userId}/clear-access-extension`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        await fetchSubscriptions();
+        await fetchStats();
+      } else {
+        setError(data.error || 'Could not clear extension');
+      }
+    } catch (err) {
+      setError('Could not clear extension');
+    } finally {
+      setExtensionActionUser(null);
+    }
+  };
+
   const handleRefund = async (paymentId) => {
     if (!window.confirm('Are you sure you want to refund this payment?')) return;
     try {
@@ -233,7 +296,9 @@ export default function SubscriptionManager() {
       active: 'bg-green-500/20 text-green-400 border-green-500/30',
       trialing: 'bg-cyan-500/20 text-cyan-300 border-cyan-400/30',
       cancelled: 'bg-red-500/20 text-red-400 border-red-500/30',
+      canceled: 'bg-red-500/20 text-red-400 border-red-500/30',
       past_due: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+      unpaid: 'bg-orange-500/20 text-orange-300 border-orange-500/35',
       succeeded: 'bg-green-500/20 text-green-400 border-green-500/30',
       failed: 'bg-red-500/20 text-red-400 border-red-500/30',
       pending: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
@@ -352,7 +417,7 @@ export default function SubscriptionManager() {
           </div>
 
           {/* Secondary Metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="bg-[#0a1628] rounded-lg border border-[#2d4a6f] p-4">
               <p className="text-gray-400 text-xs mb-1">Monthly Revenue</p>
               <p className="text-white text-lg font-semibold">{formatCurrency(stats?.monthly_revenue || 0)}</p>
@@ -368,6 +433,22 @@ export default function SubscriptionManager() {
             <div className="bg-[#0a1628] rounded-lg border border-[#2d4a6f] p-4">
               <p className="text-gray-400 text-xs mb-1">Failed Payments (30d)</p>
               <p className="text-white text-lg font-semibold">{stats?.failed_payments_30d || 0}</p>
+            </div>
+            <div className="bg-[#0a1628] rounded-lg border border-amber-500/25 p-4">
+              <p className="text-gray-400 text-xs mb-1 flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                Needs payment
+              </p>
+              <p className="text-amber-300 text-lg font-semibold">{stats?.needs_payment_count ?? 0}</p>
+              <p className="text-[10px] text-gray-500 mt-1">past_due / unpaid</p>
+            </div>
+            <div className="bg-[#0a1628] rounded-lg border border-cyan-500/25 p-4">
+              <p className="text-gray-400 text-xs mb-1 flex items-center gap-1">
+                <Timer className="w-3.5 h-3.5 text-cyan-400" />
+                Admin extensions
+              </p>
+              <p className="text-cyan-200 text-lg font-semibold">{stats?.admin_extension_active_count ?? 0}</p>
+              <p className="text-[10px] text-gray-500 mt-1">temporary login access</p>
             </div>
           </div>
         </div>
@@ -421,46 +502,132 @@ export default function SubscriptionManager() {
       {/* Subscriptions Tab */}
       {activeTab === 'subscriptions' && (
         <div className="space-y-4">
-          <h3 className="text-sm font-medium text-white">Active Subscriptions</h3>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-medium text-white">Subscriptions</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Highlighted rows: Stripe reports payment required. Use extension to grant temporary access while the customer updates their card.
+              </p>
+            </div>
+          </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[900px]">
               <thead>
                 <tr className="text-left text-gray-400 border-b border-gray-700">
                   <th className="pb-2 font-medium">User</th>
                   <th className="pb-2 font-medium">Plan</th>
-                  <th className="pb-2 font-medium">Status</th>
-                  <th className="pb-2 font-medium">Period End</th>
-                  <th className="pb-2 font-medium">Actions</th>
+                  <th className="pb-2 font-medium">Stripe status</th>
+                  <th className="pb-2 font-medium">Payment</th>
+                  <th className="pb-2 font-medium">Admin extension</th>
+                  <th className="pb-2 font-medium">Access</th>
+                  <th className="pb-2 font-medium">Period end</th>
+                  <th className="pb-2 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {subscriptions.map(sub => (
-                  <tr key={sub.id} className="border-b border-gray-700/50">
-                    <td className="py-3">
-                      <div>
-                        <p className="text-white">{sub.user_name}</p>
-                        <p className="text-gray-400 text-xs">{sub.user_email}</p>
-                      </div>
-                    </td>
-                    <td className="py-3 text-white">{sub.plan_name}</td>
-                    <td className="py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs border ${getStatusBadge(sub.status)}`}>
-                        {sub.status}
-                      </span>
-                    </td>
-                    <td className="py-3 text-gray-400">
-                      {sub.current_period_end ? new Date(sub.current_period_end).toLocaleDateString() : '-'}
-                    </td>
-                    <td className="py-3">
-                      <button className="text-gray-400 hover:text-red-400 transition-colors">
-                        <XCircle className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {subscriptions.map(sub => {
+                  const busy = extensionActionUser === sub.user_id;
+                  const rowAlert = sub.needs_payment && !sub.admin_extension_active;
+                  return (
+                    <tr
+                      key={sub.id}
+                      className={`border-b border-gray-700/50 ${rowAlert ? 'bg-amber-950/25' : ''}`}
+                    >
+                      <td className="py-3">
+                        <div>
+                          <p className="text-white">{sub.user_name}</p>
+                          <p className="text-gray-400 text-xs">{sub.user_email}</p>
+                          <p className="text-[10px] text-gray-600 mt-0.5">user #{sub.user_id}</p>
+                        </div>
+                      </td>
+                      <td className="py-3 text-white">{sub.plan_name}</td>
+                      <td className="py-3">
+                        <span className={`px-2 py-0.5 rounded text-xs border ${getStatusBadge(sub.status)}`}>
+                          {sub.status}
+                        </span>
+                      </td>
+                      <td className="py-3">
+                        {sub.needs_payment ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs border bg-amber-500/15 text-amber-200 border-amber-500/40">
+                            <AlertCircle className="w-3 h-3 shrink-0" />
+                            Must pay / fix card
+                          </span>
+                        ) : (
+                          <span className="text-gray-500 text-xs">OK</span>
+                        )}
+                      </td>
+                      <td className="py-3 text-gray-300">
+                        {sub.admin_extension_active && sub.access_expires_at ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-cyan-200">
+                            <Timer className="w-3.5 h-3.5" />
+                            until {new Date(sub.access_expires_at).toLocaleString()}
+                          </span>
+                        ) : sub.access_expires_at ? (
+                          <span className="text-gray-600 text-xs">
+                            ended {new Date(sub.access_expires_at).toLocaleDateString()}
+                          </span>
+                        ) : (
+                          <span className="text-gray-600">—</span>
+                        )}
+                      </td>
+                      <td className="py-3">
+                        {sub.journal_access_effective ? (
+                          <span className="text-xs text-emerald-400 flex items-center gap-1">
+                            <CheckCircle className="w-3.5 h-3.5" /> Allowed
+                          </span>
+                        ) : (
+                          <span className="text-xs text-red-400 flex items-center gap-1">
+                            <XCircle className="w-3.5 h-3.5" /> Blocked
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 text-gray-400">
+                        {sub.current_period_end ? new Date(sub.current_period_end).toLocaleDateString() : '-'}
+                      </td>
+                      <td className="py-3 text-right">
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => grantExtension(sub.user_id, 7)}
+                            className="px-2 py-1 rounded text-[11px] border border-cyan-500/35 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-40"
+                          >
+                            +7d
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => grantExtension(sub.user_id, 14)}
+                            className="px-2 py-1 rounded text-[11px] border border-cyan-500/35 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-40"
+                          >
+                            +14d
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => grantExtension(sub.user_id, 30)}
+                            className="px-2 py-1 rounded text-[11px] border border-cyan-500/35 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-40"
+                          >
+                            +30d
+                          </button>
+                          {(sub.admin_extension_active || sub.access_expires_at) && (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => clearExtension(sub.user_id)}
+                              className="px-2 py-1 rounded text-[11px] border border-red-500/35 text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                            >
+                              Clear ext.
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {subscriptions.length === 0 && (
                   <tr>
-                    <td colSpan="5" className="py-8 text-center text-gray-400">
+                    <td colSpan="8" className="py-8 text-center text-gray-400">
                       No subscriptions found
                     </td>
                   </tr>

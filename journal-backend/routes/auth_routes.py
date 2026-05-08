@@ -9,7 +9,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import os
 
-from subscription_access import subscription_entitles_journal, user_entitles_journal
+from subscription_access import user_entitles_journal
 
 # Security settings
 MAX_FAILED_ATTEMPTS = 10  # Block after 10 failed attempts
@@ -220,18 +220,15 @@ def login_user():
         record_failed_login(client_ip, email)
         return jsonify({"error": "Incorrect password. Please try again or reset your password if you've forgotten it."}), 401
 
-    # Journal entitlement (Stripe must be active/trialing; legacy flag for non-Stripe comps)
+    # Journal entitlement (Stripe, admin extension, legacy comps)
     has_journal_access = user_entitles_journal(user)
 
-    # Keep User.has_journal_access aligned with Stripe subscription status for API consistency
-    if user.stripe_customer_id:
-        sub_ok = subscription_entitles_journal(user.id)
-        if user.has_journal_access != sub_ok:
-            user.has_journal_access = sub_ok
-            try:
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
+    if user.has_journal_access != has_journal_access:
+        user.has_journal_access = has_journal_access
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
     
     # Successful login - clear failed attempts for this IP
     clear_failed_attempts(client_ip)
