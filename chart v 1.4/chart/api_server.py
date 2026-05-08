@@ -4293,9 +4293,10 @@ def _resolve_dataset_filter_policy(original_name: str | None):
     weekend_filter = EXCLUDE_WEEKEND_CANDLES
     spike_filter = SPIKE_FILTER_ENABLED
     if provider == "firstrate":
-        # Keep FirstRate bars as-is so session gaps remain exactly as delivered.
+        # Keep FirstRate session gaps intact, but still smooth isolated bad ticks
+        # so one corrupted bar cannot explode y-scale on mixed-pair layouts.
         weekend_filter = False
-        spike_filter = False
+        spike_filter = SPIKE_FILTER_ENABLED
     return {
         "provider": provider,
         "weekend_filter": bool(weekend_filter),
