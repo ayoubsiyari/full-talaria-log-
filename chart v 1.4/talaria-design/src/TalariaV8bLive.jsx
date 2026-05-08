@@ -2713,6 +2713,8 @@ const TalariaV8bLive = () => {
   const btmDragRef = useRef({startY:0, startH:0, curH:Math.round((window.innerHeight/1.05-92)*0.25)});
   const btmPanelRef = useRef(null);
   const [tf, setTf] = useState("1m");
+  // Prevent panel-focus events from writing the previous toolbar TF into the newly focused panel.
+  const suppressNextTfApplyRef = useRef(false);
   const [sizeMode, setSizeMode] = useState("$");
   const [riskVal, setRiskVal] = useState("100");
   const [riskBasis, setRiskBasis] = useState("balance");
@@ -3453,6 +3455,10 @@ const TalariaV8bLive = () => {
 
     const apply = () => {
       if (cancelled) return;
+      if (suppressNextTfApplyRef.current) {
+        suppressNextTfApplyRef.current = false;
+        return;
+      }
       const chart = window.chart;
       if (!chart || typeof chart.setTimeframe !== "function") {
         if (attempts++ < 60) setTimeout(apply, 200);
@@ -3535,13 +3541,19 @@ const TalariaV8bLive = () => {
       }
       const cTf = (ci && ci.currentTimeframe) || d.timeframe;
       const mapped = chartTfToV9(cTf);
-      if (mapped) setTf(mapped);
+      if (mapped) {
+        suppressNextTfApplyRef.current = true;
+        setTf(mapped);
+      }
     };
 
     const onPanelTimeframeChanged = (e) => {
       const cTf = e?.detail?.timeframe;
       const mapped = chartTfToV9(cTf);
-      if (mapped) setTf(mapped);
+      if (mapped) {
+        suppressNextTfApplyRef.current = true;
+        setTf(mapped);
+      }
     };
 
     window.addEventListener("panelSelected", onPanelSelected);
