@@ -255,6 +255,15 @@ const PanelSyncUtils = {
     isSamePair(a, b) {
         if (!a || !b) return false;
         if (a === b) return true;
+        const normalizeSymbol = (value) => {
+            if (value == null) return '';
+            return String(value).replace(/\s+/g, '').toUpperCase();
+        };
+        const sa = normalizeSymbol(a.currentSymbol);
+        const sb = normalizeSymbol(b.currentSymbol);
+        // Hard cross-pair guard: if both symbols are known and differ, treat as different
+        // even when file ids are stale during async pair/timeframe loading.
+        if (sa && sb && sa !== sb) return false;
         const fa = a.currentFileId != null ? String(a.currentFileId) : null;
         const fb = b.currentFileId != null ? String(b.currentFileId) : null;
         if (!fa || !fb) return false;
