@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Loader2,
   Check,
@@ -37,16 +37,18 @@ export default function Pricing() {
   const [couponValidating, setCouponValidating] = useState(false);
   const [couponResult, setCouponResult] = useState(null);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const browseMode = searchParams.get('browse') === '1';
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const token = localStorage.getItem('token');
-      // Logged-in users without active entitlement should see the billing / renew page,
-      // not this marketing pricing screen (public route bypasses ProtectedLayout).
+      // Without ?browse=1, logged-in users without entitlement go to subscription-status.
+      // With ?browse=1 (from billing page), they may compare plans and see their lapsed plan.
       if (token) {
         setIsLoggedIn(true);
-        const redirected = await checkAuthAndMaybeRedirectSubscriptionPage(token);
+        const redirected = await checkAuthAndMaybeRedirectSubscriptionPage(token, browseMode);
         if (cancelled || redirected) return;
       }
       await fetchPlans();
@@ -55,10 +57,10 @@ export default function Pricing() {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [navigate, browseMode]);
 
   /** @returns {Promise<boolean>} true if navigating away */
-  const checkAuthAndMaybeRedirectSubscriptionPage = async (token) => {
+  const checkAuthAndMaybeRedirectSubscriptionPage = async (token, allowPricingBrowse) => {
     try {
       const res = await fetch(`${API_BASE_URL}/subscriptions/my-subscription`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -80,7 +82,7 @@ export default function Pricing() {
         (data.has_subscription &&
           ['active', 'trialing'].includes(data.subscription?.status)) ||
         data.has_journal_access === true;
-      if (!entitled) {
+      if (!entitled && !allowPricingBrowse) {
         navigate('/subscription-status', { replace: true });
         return true;
       }
@@ -139,10 +141,11 @@ export default function Pricing() {
     setCheckoutLoading(planId);
     try {
       const token = localStorage.getItem('token');
+      const cancelQs = browseMode ? '?browse=1' : '';
       const body = {
         plan_id: planId,
         success_url: window.location.origin + '/journal/subscription/success',
-        cancel_url: window.location.origin + '/journal/pricing'
+        cancel_url: `${window.location.origin}/journal/pricing${cancelQs}`
       };
       if (couponResult?.valid && couponResult.discount?.code) body.coupon_code = couponResult.discount.code;
       const res = await fetch(`${API_BASE_URL}/subscriptions/checkout`, {
@@ -175,6 +178,16 @@ export default function Pricing() {
     return Math.round(((monthly * 12 - yearly) / (monthly * 12)) * 100);
   };
 
+  const hasActivePaidPlan =
+    !!currentSubscription?.has_subscription &&
+    ['active', 'trialing'].includes(currentSubscription?.subscription?.status ?? '');
+  const lapsedInfo = currentSubscription?.lapsed_subscription;
+  const showResumeBanner =
+    isLoggedIn &&
+    currentSubscription &&
+    !hasActivePaidPlan &&
+    (lapsedInfo?.plan_name || lapsedInfo?.status || currentSubscription?.billing_issue);
+
   const faqs = [
     { q: 'Can I change my plan at any time?', a: 'Yes. Upgrade or downgrade whenever you like. Changes are prorated and take effect immediately.' },
     { q: 'Is there a free trial?', a: 'Paid plans include a free trial period. No credit card required to start exploring.' },
@@ -206,6 +219,32 @@ export default function Pricing() {
           )}
         </div>
       </nav>
+
+      {showResumeBanner && (
+        <div className="relative z-10 max-w-2xl mx-auto px-5 mt-6 rounded-xl border border-amber-500/35 bg-amber-500/[0.07] px-4 py-3.5 text-left">
+          <p className="text-[13px] text-amber-100/95 leading-relaxed">
+            <span className="font-semibold text-white">Your plan</span>
+            {lapsedInfo?.plan_name ? (
+              <>
+                : <span className="text-white font-medium">{lapsedInfo.plan_name}</span>
+              </>
+            ) : (
+              <span className="text-white/80"> (previous subscription)</span>
+            )}
+            {lapsedInfo?.status && (
+              <span className="text-amber-200/85">
+                {' '}
+                · Stripe: {String(lapsedInfo.status).replace(/_/g, ' ')}
+              </span>
+            )}
+            {currentSubscription?.billing_issue && (
+              <span className="block mt-1.5 text-[12px] text-amber-200/75">
+                Payment required to restore access. Use checkout below to renew this plan, or update your card from the billing page.
+              </span>
+            )}
+          </p>
+        </div>
+      )}
 
       {/* Header */}
       <div className="relative z-10 pt-16 sm:pt-24 pb-10 text-center px-5">
@@ -298,7 +337,15 @@ export default function Pricing() {
               'sm:grid-cols-2 lg:grid-cols-3'
             }`}>
               {plans.map((plan, index) => {
-                const isCurrentPlan = currentSubscription?.plan?.id === plan.id;
+                const isCurrentPlan =
+                  hasActivePaidPlan && currentSubscription?.plan?.id === plan.id;
+                const isYourLapsedPlan =
+                  !hasActivePaidPlan &&
+                  !!lapsedInfo &&
+                  ((lapsedInfo.plan_id && plan.id === lapsedInfo.plan_id) ||
+                    (lapsedInfo.plan_name &&
+                      plan.name &&
+                      String(lapsedInfo.plan_name).toLowerCase() === String(plan.name).toLowerCase()));
                 const isPro = plan.is_popular || plan.name.toLowerCase().includes('pro');
                 const price = getPrice(plan);
                 const savings = getSavings(plan);
@@ -307,7 +354,9 @@ export default function Pricing() {
                   <div
                     key={plan.id || index}
                     className={`relative rounded-2xl flex flex-col transition-all duration-300 ${
-                      isPro
+                      isYourLapsedPlan
+                        ? 'bg-[#0d1025] ring-2 ring-amber-500/40 shadow-[0_0_36px_-10px_rgba(245,158,11,0.25)]'
+                        : isPro
                         ? 'bg-[#0d1025] ring-1 ring-blue-500/20 shadow-[0_0_40px_-12px_rgba(59,130,246,0.15)]'
                         : 'bg-cyan-950/40/[0.02] ring-1 ring-white/[0.06] hover:ring-white/[0.1]'
                     }`}
@@ -322,11 +371,18 @@ export default function Pricing() {
                         <span className={`text-[13px] font-semibold tracking-wide uppercase ${isPro ? 'text-cyan-300' : 'text-white/30'}`}>
                           {plan.name}
                         </span>
-                        {isPro && (
-                          <span className="text-[10px] font-bold tracking-wider uppercase text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded">
-                            Popular
-                          </span>
-                        )}
+                        <div className="flex flex-col items-end gap-1">
+                          {isYourLapsedPlan && (
+                            <span className="text-[10px] font-bold tracking-wider uppercase text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded border border-amber-500/30">
+                              Your plan
+                            </span>
+                          )}
+                          {isPro && !isYourLapsedPlan && (
+                            <span className="text-[10px] font-bold tracking-wider uppercase text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded">
+                              Popular
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Price */}
@@ -354,7 +410,7 @@ export default function Pricing() {
                           onClick={() => handleSubscribe(plan.id)}
                           disabled={checkoutLoading === plan.id}
                           className={`w-full py-2.5 rounded-lg text-[13px] font-medium transition-all flex items-center justify-center gap-1.5 mb-6 disabled:opacity-40 ${
-                            isPro
+                            isYourLapsedPlan || isPro
                               ? 'bg-cyan-600 hover:bg-cyan-500/100 text-white'
                               : 'bg-cyan-950/40/[0.06] hover:bg-cyan-950/40/[0.1] text-white/70 hover:text-white'
                           }`}
@@ -362,7 +418,14 @@ export default function Pricing() {
                           {checkoutLoading === plan.id ? (
                             <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Processing...</>
                           ) : (
-                            <>{plan.trial_days > 0 ? 'Start free trial' : 'Get started'} <ArrowRight className="w-3.5 h-3.5" /></>
+                            <>
+                              {isYourLapsedPlan
+                                ? 'Renew this plan'
+                                : plan.trial_days > 0
+                                  ? 'Start free trial'
+                                  : 'Get started'}{' '}
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </>
                           )}
                         </button>
                       )}

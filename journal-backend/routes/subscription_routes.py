@@ -1401,8 +1401,15 @@ def _reconcile_user_stripe_subscriptions_from_stripe(user_id, user):
 def _lapsed_subscription_summary(sub):
     if not sub:
         return None
+    plan_name = None
+    if sub.plan_id:
+        pl = SubscriptionPlan.query.get(sub.plan_id)
+        if pl:
+            plan_name = pl.name
     return {
         'status': sub.status,
+        'plan_id': sub.plan_id,
+        'plan_name': plan_name,
         'current_period_end': sub.current_period_end.isoformat() if sub.current_period_end else None,
     }
 

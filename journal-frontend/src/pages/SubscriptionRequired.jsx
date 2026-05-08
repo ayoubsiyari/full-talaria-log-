@@ -10,6 +10,9 @@ import {
 } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 
+/** Lets logged-in users without access view plans instead of being bounced back to billing. */
+const PRICING_BROWSE = '/pricing?browse=1';
+
 /**
  * Full-page billing / access state (TradingView / SaaS style) when the user
  * is signed in but no longer entitled — not a generic marketing pricing dump.
@@ -99,8 +102,8 @@ export default function SubscriptionRequired() {
           'Your Talaria Log access is paused until the latest invoice is paid. Update your card or billing details in a secure Stripe window — the same flow used by major trading platforms.',
         primary: hasStripe
           ? { label: 'Update payment method', show: true, action: 'portal' }
-          : { label: 'View plans & pricing', to: '/pricing', show: true, action: 'link' },
-        secondary: hasStripe ? { label: 'View plans & pricing', to: '/pricing' } : null,
+          : { label: 'View plans & pricing', to: PRICING_BROWSE, show: true, action: 'link' },
+        secondary: hasStripe ? { label: 'View plans & pricing', to: PRICING_BROWSE } : null,
         icon: AlertTriangle,
       };
     }
@@ -111,7 +114,7 @@ export default function SubscriptionRequired() {
           periodEnd
             ? `Your plan ended after ${new Date(periodEnd).toLocaleDateString(undefined, { dateStyle: 'medium' })}. Resubscribe to restore full journal and analytics access.`
             : 'Resubscribe to restore full journal and analytics access.',
-        primary: { label: 'View plans & resubscribe', to: '/pricing', show: true, action: 'link' },
+        primary: { label: 'View plans & resubscribe', to: PRICING_BROWSE, show: true, action: 'link' },
         secondary: hasStripe
           ? { label: 'Billing history & invoices', show: true, action: 'portal' }
           : null,
@@ -124,7 +127,7 @@ export default function SubscriptionRequired() {
         subtitle:
           'Your account is no longer in an active billing state. Open the customer portal to review your plan, or choose a new plan below.',
         primary: { label: 'Manage subscription', show: hasStripe, action: 'portal' },
-        secondary: { label: 'Compare plans', to: '/pricing' },
+        secondary: { label: 'Compare plans', to: PRICING_BROWSE },
         icon: CreditCard,
       };
     }
@@ -132,7 +135,7 @@ export default function SubscriptionRequired() {
       title: 'Subscription required',
       subtitle:
         'Talaria Log journal, analytics, and pro tools are available on a paid plan. Choose a plan to continue — you can use secure checkout in seconds.',
-      primary: { label: 'View plans & subscribe', to: '/pricing', show: true, action: 'link' },
+      primary: { label: 'View plans & subscribe', to: PRICING_BROWSE, show: true, action: 'link' },
       secondary: null,
       icon: Sparkles,
     };
@@ -168,7 +171,7 @@ export default function SubscriptionRequired() {
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_0%,rgba(34,211,238,0.12),transparent_55%)]" />
       <header className="relative z-10 border-b border-cyan-500/10 bg-[#050a10]/80 backdrop-blur-md">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
-          <Link to="/pricing" className="text-sm font-medium text-cyan-200/90 hover:text-cyan-100">
+          <Link to={PRICING_BROWSE} className="text-sm font-medium text-cyan-200/90 hover:text-cyan-100">
             ← Plans & pricing
           </Link>
           <button
@@ -176,7 +179,7 @@ export default function SubscriptionRequired() {
             onClick={() => {
               localStorage.removeItem('token');
               localStorage.removeItem('talaria_current_user');
-              window.location.href = '/login/?next=' + encodeURIComponent('/journal/pricing');
+              window.location.href = '/login/?next=' + encodeURIComponent('/journal/pricing?browse=1');
             }}
             className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1.5"
           >
