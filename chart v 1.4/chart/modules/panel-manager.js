@@ -410,7 +410,7 @@ class PanelManager {
             if (!panel) return;
 
             // Date Range: continuous full-window sync (scroll + zoom locked).
-            if (this.syncSettings.dateRange
+            if (this.syncSettings.dateRange === true
                 && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
                 && startTimestamp > 0 && endTimestamp > startTimestamp) {
                 this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
@@ -418,7 +418,7 @@ class PanelManager {
             // Time: discrete range-by-range sync. Each TARGET panel jumps only when
             // the bar IT would show at its right edge changes — so a 5m target jumps
             // once every 5 min of scrolling, a 1m target jumps once per minute.
-            else if (this.syncSettings.time
+            else if (this.syncSettings.time === true
                 && Number.isFinite(endTimestamp) && endTimestamp > 0) {
                 const ts = Number.isFinite(d.timeSyncEndTimestamp) && d.timeSyncEndTimestamp > 0
                     ? d.timeSyncEndTimestamp : endTimestamp;
@@ -973,7 +973,7 @@ class PanelManager {
      * (0 = left edge, 0.5 = center, 1 = right edge). Each panel keeps its own zoom.
      */
     _positionOtherPanelsOnTimestamp(sourcePanel, timestamp, fraction) {
-        if (!this.syncSettings.time || (this.panels || []).length <= 1) return;
+        if (this.syncSettings.time !== true || (this.panels || []).length <= 1) return;
         if (!Number.isFinite(timestamp)) return;
 
         this._isSyncing = true;
@@ -1043,7 +1043,7 @@ class PanelManager {
      */
     _discreteTimeSyncToRightEdge(sourcePanel, rightEdgeTimestamp) {
         if (this._isSyncing) return;
-        if (!this.syncSettings.time || (this.panels || []).length <= 1) return;
+        if (this.syncSettings.time !== true || (this.panels || []).length <= 1) return;
         if (!Number.isFinite(rightEdgeTimestamp)) return;
 
         let anyChanged = false;
@@ -1105,7 +1105,7 @@ class PanelManager {
      */
     syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive) {
         if (this._isSyncing) return;
-        if (!this.syncSettings.dateRange || (this.panels || []).length <= 1) return;
+        if (this.syncSettings.dateRange !== true || (this.panels || []).length <= 1) return;
 
         const sourceChart = this._getPanelChartInstance(sourcePanel);
         if (!sourceChart?.data?.length) return;
@@ -1190,7 +1190,7 @@ class PanelManager {
      * Sync date range across all panels (same visible wall-clock window + fit zoom)
      */
     syncDateRange(sourcePanel, startTimestamp, endTimestampLastOpen) {
-        if (!this.syncSettings.dateRange || (this.panels || []).length <= 1) return;
+        if (this.syncSettings.dateRange !== true || (this.panels || []).length <= 1) return;
 
         const sourceChart = this._getPanelChartInstance(sourcePanel);
         if (!sourceChart?.data?.length) return;
@@ -2135,7 +2135,7 @@ class PanelManager {
             console.log(`📊 Panel ${index} selected (TF: ${liveTimeframe})`);
 
             // Time sync: navigate all other panels to the same center point in time
-            if (this.syncSettings.time) {
+            if (this.syncSettings.time === true) {
                 this.syncTimeToPanel(panel);
             }
             

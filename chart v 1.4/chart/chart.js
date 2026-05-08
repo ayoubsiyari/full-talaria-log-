@@ -1970,7 +1970,7 @@ class Chart {
             // Copying main scroll onto a new pair often lands on an empty X window (no bars in
             // slice → calculateScales keeps old Y domain → blank chart + "LOCKED" legend).
             let alignScrollToMain = !!(pm && pm.syncSettings
-                && (pm.syncSettings.time || pm.syncSettings.dateRange)
+                && (pm.syncSettings.time === true || pm.syncSettings.dateRange === true)
                 && mainChart && mainChart !== this && mainChart.data && mainChart.data.length > 0
                 && this.data && this.data.length > 0);
             if (pairSwitched) alignScrollToMain = false;
@@ -15820,7 +15820,7 @@ class Chart {
                     // Time sync (TradingView): click on bar → other panels show same date/time
                     if (!vpHandled) {
                         const pm = window.panelManager;
-                        if (pm && pm.syncSettings && pm.syncSettings.time && pm.currentLayout !== '1'
+                        if (pm && pm.syncSettings && pm.syncSettings.time === true && pm.currentLayout !== '1'
                             && this.data && this.data.length) {
                             const [mx, my] = this._eventCanvasLocalXY(e);
                             const mode = detectCursorMode(mx, my);
