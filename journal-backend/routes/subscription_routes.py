@@ -14,6 +14,7 @@ import json
 import re
 
 from security_redirects import append_checkout_session_placeholder, is_allowed_stripe_redirect_url
+from subscription_access import user_entitles_journal
 
 try:
     import stripe
@@ -940,7 +941,12 @@ def handle_subscription_updated(sub_data):
             subscription.current_period_start = period_start
             subscription.current_period_end = period_end
             subscription.cancel_at_period_end = sub_data.get('cancel_at_period_end', False)
-            
+
+            user = User.query.get(subscription.user_id)
+            if user and user.stripe_customer_id:
+                st = sub_data.get('status')
+                user.has_journal_access = st in ('active', 'trialing')
+
     except Exception as e:
         current_app.logger.error(f"Error handling subscription updated: {e}")
 
@@ -1016,7 +1022,10 @@ def handle_payment_failed(invoice_data):
             description=f"Failed: Invoice {invoice_data.get('number', 'N/A')}"
         )
         db.session.add(payment)
-        
+
+        if user and user.stripe_customer_id:
+            user.has_journal_access = False
+
     except Exception as e:
         current_app.logger.error(f"Error handling payment failed: {e}")
 
@@ -1281,7 +1290,7 @@ def get_my_subscription():
             return jsonify({
                 'success': True,
                 'has_subscription': False,
-                'has_journal_access': bool(user.has_journal_access),
+                'has_journal_access': user_entitles_journal(user),
                 'subscription': None,
                 'plan': None
             }), 200
@@ -1300,7 +1309,7 @@ def get_my_subscription():
         return jsonify({
             'success': True,
             'has_subscription': True,
-            'has_journal_access': bool(user.has_journal_access),
+            'has_journal_access': user_entitles_journal(user),
             'subscription': {
                 'id': subscription.id,
                 'status': subscription.status,

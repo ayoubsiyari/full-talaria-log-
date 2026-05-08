@@ -3,11 +3,13 @@
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.security import check_password_hash, generate_password_hash
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
-from models import db, User, Profile, BlockedIP, SecurityLog, FailedLoginAttempt, Subscription
+from models import db, User, Profile, BlockedIP, SecurityLog, FailedLoginAttempt
 from email_service import send_verification_email, send_password_reset_email, send_welcome_email
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import os
+
+from subscription_access import subscription_entitles_journal, user_entitles_journal
 
 # Security settings
 MAX_FAILED_ATTEMPTS = 10  # Block after 10 failed attempts
@@ -15,29 +17,6 @@ BLOCK_DURATION_HOURS = 24  # Block for 24 hours
 FAILED_ATTEMPT_WINDOW_HOURS = 1  # Count attempts within 1 hour
 ALERT_THRESHOLD = 5  # Send alert after 5 failed attempts (before block)
 ADMIN_EMAIL = os.environ.get('ADMIN_ALERT_EMAIL', 'contact@talaria.services')
-
-
-def _has_active_or_grace_subscription(user_id):
-    now = datetime.utcnow()
-    active_statuses = ['active', 'trialing']
-    grace_statuses = ['past_due', 'cancelled', 'canceled', 'unpaid']
-
-    active_subscription = Subscription.query.filter(
-        Subscription.user_id == user_id,
-        Subscription.status.in_(active_statuses)
-    ).first()
-    if active_subscription:
-        return True
-
-    grace_threshold = now - timedelta(days=3)
-    grace_subscription = Subscription.query.filter(
-        Subscription.user_id == user_id,
-        Subscription.status.in_(grace_statuses),
-        Subscription.current_period_end.isnot(None),
-        Subscription.current_period_end >= grace_threshold
-    ).first()
-
-    return grace_subscription is not None
 
 
 def send_security_alert(subject, message, ip_address, event_type='attack_detected'):
@@ -241,17 +220,18 @@ def login_user():
         record_failed_login(client_ip, email)
         return jsonify({"error": "Incorrect password. Please try again or reset your password if you've forgotten it."}), 401
 
-    # Journal entitlement check (for UI + secure route gating)
-    has_subscription_access = _has_active_or_grace_subscription(user.id)
-    has_journal_access = bool(user.is_admin or user.has_journal_access or has_subscription_access)
+    # Journal entitlement (Stripe must be active/trialing; legacy flag for non-Stripe comps)
+    has_journal_access = user_entitles_journal(user)
 
-    # Auto-heal legacy flag if subscription is active/grace but access flag wasn't synced
-    if has_subscription_access and not user.has_journal_access:
-        user.has_journal_access = True
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
+    # Keep User.has_journal_access aligned with Stripe subscription status for API consistency
+    if user.stripe_customer_id:
+        sub_ok = subscription_entitles_journal(user.id)
+        if user.has_journal_access != sub_ok:
+            user.has_journal_access = sub_ok
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
     
     # Successful login - clear failed attempts for this IP
     clear_failed_attempts(client_ip)
@@ -543,11 +523,7 @@ def validate_token():
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        has_journal_access = bool(
-            user.is_admin or
-            user.has_journal_access or
-            _has_active_or_grace_subscription(user.id)
-        )
+        has_journal_access = user_entitles_journal(user)
             
         return jsonify({
             "valid": True,
@@ -579,10 +555,6 @@ def check_email_verified():
         # Return same shape to prevent user enumeration
         return jsonify({"verified": False, "has_journal_access": False}), 200
 
-    has_journal_access = bool(
-        user.is_admin or
-        user.has_journal_access or
-        _has_active_or_grace_subscription(user.id)
-    )
+    has_journal_access = user_entitles_journal(user)
 
     return jsonify({"verified": True, "has_journal_access": has_journal_access}), 200

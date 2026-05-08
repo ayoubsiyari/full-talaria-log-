@@ -13,34 +13,11 @@ Modules:
 
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
-from datetime import datetime, timedelta
-from models import User, Subscription
+from models import User
+from subscription_access import user_entitles_journal
 
 # Create the main journal blueprint
 journal_bp = Blueprint('journal', __name__)
-
-
-def _has_active_or_grace_subscription(user_id):
-    now = datetime.utcnow()
-    active_statuses = ['active', 'trialing']
-    grace_statuses = ['past_due', 'cancelled', 'canceled', 'unpaid']
-
-    active_subscription = Subscription.query.filter(
-        Subscription.user_id == user_id,
-        Subscription.status.in_(active_statuses)
-    ).first()
-    if active_subscription:
-        return True
-
-    grace_threshold = now - timedelta(days=3)
-    grace_subscription = Subscription.query.filter(
-        Subscription.user_id == user_id,
-        Subscription.status.in_(grace_statuses),
-        Subscription.current_period_end.isnot(None),
-        Subscription.current_period_end >= grace_threshold
-    ).first()
-
-    return grace_subscription is not None
 
 
 @journal_bp.before_request
@@ -71,7 +48,7 @@ def enforce_journal_access():
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
-    if user.is_admin or user.has_journal_access or _has_active_or_grace_subscription(user.id):
+    if user_entitles_journal(user):
         return None
 
     return jsonify({

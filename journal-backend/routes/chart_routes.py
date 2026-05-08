@@ -4,9 +4,12 @@ import copy
 
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from models import db, ChartDrawing, ChartSettings, UserPreferences, User, Subscription
-from datetime import datetime, timedelta
+from datetime import datetime
+
+from models import db, ChartDrawing, ChartSettings, UserPreferences, User
 from functools import wraps
+
+from subscription_access import user_entitles_journal
 
 chart_bp = Blueprint('chart', __name__)
 
@@ -46,29 +49,6 @@ def _sanitize_chart_settings_for_role(settings, is_admin):
     return out
 
 
-def _has_active_or_grace_subscription(user_id):
-    now = datetime.utcnow()
-    active_statuses = ['active', 'trialing']
-    grace_statuses = ['past_due', 'cancelled', 'canceled', 'unpaid']
-
-    active_subscription = Subscription.query.filter(
-        Subscription.user_id == user_id,
-        Subscription.status.in_(active_statuses)
-    ).first()
-    if active_subscription:
-        return True
-
-    grace_threshold = now - timedelta(days=3)
-    grace_subscription = Subscription.query.filter(
-        Subscription.user_id == user_id,
-        Subscription.status.in_(grace_statuses),
-        Subscription.current_period_end.isnot(None),
-        Subscription.current_period_end >= grace_threshold
-    ).first()
-
-    return grace_subscription is not None
-
-
 def journal_access_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -82,7 +62,7 @@ def journal_access_required(f):
         if not user:
             return jsonify({'success': False, 'error': 'User not found'}), 404
 
-        if user.role == 'admin' or user.has_journal_access or _has_active_or_grace_subscription(user.id):
+        if user_entitles_journal(user):
             return f(*args, **kwargs)
 
         return jsonify({
