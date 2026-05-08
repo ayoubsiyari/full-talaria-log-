@@ -2172,11 +2172,106 @@ class PanelManager {
     }
     
     /**
+     * Snapshot a panel chart's viewport-defining state. Used by selectPanel()
+     * to detect (and undo) accidental cross-panel writes when no sync is on.
+     */
+    _snapshotPanelViewport(pc) {
+        if (!pc) return null;
+        return {
+            offsetX: pc.offsetX,
+            candleWidth: pc.candleWidth,
+            priceZoom: pc.priceZoom,
+            priceOffset: pc.priceOffset,
+            autoScale: pc.autoScale,
+            manualCenterPrice: pc.manualCenterPrice,
+            manualRange: pc.manualRange,
+            currentTimeframe: pc.currentTimeframe,
+            zoomCandleWidthIndex: (pc.zoomLevel && pc.zoomLevel.candleWidthIndex)
+        };
+    }
+
+    /**
+     * Compare two viewport snapshots. Returns the list of fields that drifted.
+     */
+    _viewportSnapshotDrift(before, after) {
+        if (!before || !after) return [];
+        const keys = ['offsetX', 'candleWidth', 'priceZoom', 'priceOffset',
+            'autoScale', 'manualCenterPrice', 'manualRange', 'currentTimeframe',
+            'zoomCandleWidthIndex'];
+        const drifted = [];
+        for (const k of keys) {
+            const a = before[k];
+            const b = after[k];
+            if (a === b) continue;
+            if (typeof a === 'number' && typeof b === 'number'
+                && Number.isFinite(a) && Number.isFinite(b)) {
+                if (Math.abs(a - b) < 1e-9) continue;
+            }
+            drifted.push(k);
+        }
+        return drifted;
+    }
+
+    /**
+     * Restore a viewport snapshot onto a panel chart and re-render. Used as a
+     * last-resort guard so OTHER panels stay frozen when the user clicks one
+     * panel with all cross-panel sync toggles off.
+     */
+    _restorePanelViewport(pc, snap) {
+        if (!pc || !snap) return;
+        if (Number.isFinite(snap.offsetX)) pc.offsetX = snap.offsetX;
+        if (Number.isFinite(snap.candleWidth) && snap.candleWidth > 0) pc.candleWidth = snap.candleWidth;
+        if (Number.isFinite(snap.priceZoom) && snap.priceZoom > 0) pc.priceZoom = snap.priceZoom;
+        if (Number.isFinite(snap.priceOffset)) pc.priceOffset = snap.priceOffset;
+        if (typeof snap.autoScale === 'boolean') pc.autoScale = snap.autoScale;
+        if (snap.manualCenterPrice == null || Number.isFinite(snap.manualCenterPrice)) {
+            pc.manualCenterPrice = snap.manualCenterPrice;
+        }
+        if (snap.manualRange == null || Number.isFinite(snap.manualRange)) {
+            pc.manualRange = snap.manualRange;
+        }
+        if (typeof snap.currentTimeframe === 'string' && snap.currentTimeframe) {
+            pc.currentTimeframe = snap.currentTimeframe;
+        }
+        if (pc.zoomLevel && Number.isFinite(snap.zoomCandleWidthIndex)) {
+            pc.zoomLevel.candleWidthIndex = snap.zoomCandleWidthIndex;
+        }
+        if (typeof pc.constrainOffset === 'function') {
+            try { pc.constrainOffset(); } catch (_e) {}
+        }
+        if (typeof pc.scheduleRender === 'function') {
+            try { pc.scheduleRender(); } catch (_e) { try { pc.render && pc.render(); } catch (_e2) {} }
+        } else if (typeof pc.render === 'function') {
+            try { pc.render(); } catch (_e) {}
+        }
+    }
+
+    /**
      * Select a panel to control with timeframe buttons
      */
     selectPanel(index) {
         this._timeSyncLastTargetBar = {};
         this._timeSyncLastTargetPosition = {};
+
+        // Snapshot every OTHER panel's viewport BEFORE any selection work runs.
+        // When all cross-panel sync (time/dateRange) is off, no chart-level state
+        // on any non-clicked panel should change as a result of the click. We
+        // compare against this snapshot at the end of the rAF chain and restore
+        // any drifted fields. Without this guard, listeners reacting to the
+        // dispatched `panelSelected` event (V9 React `setTf`/`setSymbol`,
+        // ResizeObserver flutter from the .panel-selected CSS, and stale sync
+        // paths under FirstRate datasets where panels share currentFileId)
+        // were still moving sibling panels even with all sync toggles off,
+        // surfacing as a jump+compress on click and a price-axis copy.
+        const sync = this.syncSettings || {};
+        const freezeOthers = (sync.time !== true) && (sync.dateRange !== true);
+        const otherSnapshots = freezeOthers
+            ? this.panels
+                .map((p, i) => (i === index || !p || !p.chartInstance)
+                    ? null
+                    : { i, pc: p.chartInstance, snap: this._snapshotPanelViewport(p.chartInstance) })
+                .filter(Boolean)
+            : [];
 
         // Deselect all panels
         this.panels.forEach((panel, i) => {
@@ -2266,6 +2361,41 @@ class PanelManager {
                     });
                 }
             } catch (_e) { /* ignore */ }
+
+            // ── Cross-panel freeze guard ────────────────────────────────────
+            // After all synchronous and rAF-deferred panelSelected listeners
+            // have run, restore any non-selected panel viewport that drifted
+            // while sync is off. This is the user-facing contract: with all
+            // SYNC IN LAYOUT toggles off, clicking a panel must not move any
+            // other panel (no jump, no candle compression, no price-axis
+            // copy). 2 rAFs cover the rAF chains used by setTimeframe /
+            // _loadTimeframeFromServer / refreshDraftPreviewForActivePanel.
+            if (freezeOthers && otherSnapshots.length > 0) {
+                const debug = (typeof window !== 'undefined') && !!window.__panelDebug;
+                const restoreDrifted = () => {
+                    for (const entry of otherSnapshots) {
+                        if (!entry || !entry.pc) continue;
+                        const after = this._snapshotPanelViewport(entry.pc);
+                        const drifted = this._viewportSnapshotDrift(entry.snap, after);
+                        if (drifted.length === 0) continue;
+                        if (debug) {
+                            console.warn(
+                                `[panel-freeze] restoring panel ${entry.i} drifted fields after click on panel ${index}:`,
+                                drifted,
+                                'before=', entry.snap, 'after=', after
+                            );
+                        }
+                        this._restorePanelViewport(entry.pc, entry.snap);
+                    }
+                };
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        try { restoreDrifted(); } catch (e) {
+                            if (debug) console.warn('[panel-freeze] restore failed', e);
+                        }
+                    });
+                });
+            }
         }
     }
     

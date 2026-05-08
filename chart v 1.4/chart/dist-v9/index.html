@@ -932,7 +932,12 @@
                                 var se = Math.max((rs.currentIndex | 0) + 1, 1);
                                 rawSeed = rs.fullRawData.slice(0, se);
                             } else {
-                                rawSeed = main.rawData;
+                                // CRITICAL: never share main.rawData by reference. Pan-loads, live
+                                // candle merges, and timeframe switches mutate this array; sharing
+                                // makes every panel walk the same data so a click/pan on one panel
+                                // visibly rescales sibling panels (price axis copies between tiles,
+                                // candles compress/jump on click). Always copy.
+                                rawSeed = main.rawData.slice();
                             }
                             pcChart.rawData = rawSeed;
                             try { pcChart.data = pcChart.resampleData(rawSeed, panel.timeframe || '1m'); } catch(_){}
@@ -1038,7 +1043,10 @@
                             var se2 = Math.max((rsys.currentIndex | 0) + 1, 1);
                             rseed = rsys.fullRawData.slice(0, se2);
                         } else {
-                            rseed = chart.rawData || [];
+                            // Same reasoning as initPanelChart above: never share chart.rawData
+                            // by reference — pan-loads / live merges mutate it and would propagate
+                            // to every panel that holds the same array.
+                            rseed = (chart.rawData || []).slice();
                         }
                         panel.chartInstance.rawData = rseed;
                         panel.chartInstance.data = panel.chartInstance.resampleData(

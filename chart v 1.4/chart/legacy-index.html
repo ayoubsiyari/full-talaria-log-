@@ -47544,9 +47544,16 @@
 
                         if (chart.rawData && chart.rawData.length > 0) {
 
-                            panelChart.rawData = chart.rawData;
+                            // CRITICAL: never share chart.rawData by reference. Pan-loads, live
+                            // candle merges, and timeframe switches mutate this array; sharing
+                            // makes every panel walk the same data so a click/pan on one panel
+                            // visibly rescales sibling panels (price axis copies between tiles,
+                            // candles compress/jump on click). Always copy.
+                            const rawSeed = chart.rawData.slice();
 
-                            panelChart.data = panelChart.resampleData(chart.rawData, panel.timeframe || '1m');
+                            panelChart.rawData = rawSeed;
+
+                            panelChart.data = panelChart.resampleData(rawSeed, panel.timeframe || '1m');
 
                             panelChart.currentSymbol = chart.currentSymbol;
 
@@ -47758,7 +47765,10 @@
 
                         
 
-                        panel.chartInstance.rawData = chart.rawData || [];
+                        // Same reasoning as initPanelChart above: never share chart.rawData
+                        // by reference — pan-loads / live merges mutate it and would propagate
+                        // to every panel that holds the same array.
+                        panel.chartInstance.rawData = (chart.rawData || []).slice();
 
                         panel.chartInstance.data = panel.chartInstance.resampleData(
 
