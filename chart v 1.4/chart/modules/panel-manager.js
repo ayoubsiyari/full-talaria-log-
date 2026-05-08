@@ -1108,6 +1108,60 @@ class PanelManager {
     }
 
     /**
+     * After a multi-panel layout is applied, chart width/height change but scroll offsets
+     * (offsetX) are still from the single-panel pixel space. The same offset can leave
+     * *no* candles in the visible X range (blank panel) while OHLC still shows the last bar.
+     * Secondary panels get fitToView during init; panel 0 (main) historically did not — refit all here.
+     */
+    refitMultiPanelViewports() {
+        if (this.currentLayout === '1' || !this.panels || this.panels.length === 0) return;
+
+        const replay = typeof window !== 'undefined' && window.chart && window.chart.replaySystem;
+        const replayActive = !!(replay && replay.isActive);
+
+        this.panels.forEach((panel) => {
+            const pc = panel.chartInstance;
+            if (!pc) return;
+            if (pc._lastResizeDpr !== undefined) pc._lastResizeDpr = 0;
+            if (typeof pc.resize === 'function') pc.resize();
+        });
+
+        if (replayActive && typeof replay.syncPanelCharts === 'function') {
+            try {
+                replay.syncPanelCharts();
+            } catch (e) {
+                console.warn('refitMultiPanelViewports: syncPanelCharts failed', e);
+            }
+        } else {
+            this.panels.forEach((panel) => {
+                const pc = panel.chartInstance;
+                if (!pc) return;
+                pc._chartViewRestored = false;
+                if (typeof pc.fitToView === 'function') {
+                    try {
+                        pc.fitToView();
+                    } catch (_e) { /* ignore */ }
+                }
+            });
+        }
+
+        this.panels.forEach((panel) => {
+            const pc = panel.chartInstance;
+            if (!pc) return;
+            if (typeof pc.constrainOffset === 'function') {
+                try {
+                    pc.constrainOffset();
+                } catch (_e) { /* ignore */ }
+            }
+            if (typeof pc.render === 'function') {
+                try {
+                    pc.render();
+                } catch (_e) { /* ignore */ }
+            }
+        });
+    }
+
+    /**
      * Apply selected layout
      */
     applyLayout(layout) {
@@ -1683,6 +1737,13 @@ class PanelManager {
                 console.log(`🖱️ Synced cursor type '${window.chart.cursorType}' to all panels`);
             }
         });
+
+        // Recalculate scroll/view using new panel dimensions (fixes blank main panel + bogus scales).
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                this.refitMultiPanelViewports();
+            });
+        });
         
         window.dispatchEvent(new CustomEvent('panelsCreated', {
             detail: { panels: this.panels, layout: layout }
@@ -1712,6 +1773,7 @@ class PanelManager {
         // bails out once and never revisits. One delayed pass catches real dimensions.
         setTimeout(() => {
             if (typeof this.resizePanels === 'function') this.resizePanels();
+            this.refitMultiPanelViewports();
         }, 350);
     }
     
