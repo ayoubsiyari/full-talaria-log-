@@ -2641,6 +2641,46 @@ class DrawingToolsManager {
     }
 
     /**
+     * Data-space Y prices for Shift+crosshair snap while placing a drawing (TradingView-style).
+     * Uses committed anchors in tempPoints; subsamples long brush strokes; includes RR preview vertices when active.
+     */
+    getActivePlacementSnapPrices() {
+        const ys = [];
+        const pushY = (y) => {
+            if (y !== undefined && y !== null && Number.isFinite(Number(y))) ys.push(Number(y));
+        };
+
+        if (this.riskRewardPreview && Array.isArray(this.riskRewardPreview.previewPoints)) {
+            for (const p of this.riskRewardPreview.previewPoints) {
+                if (p) pushY(p.y);
+            }
+        }
+
+        if (this.drawingState && this.drawingState.isDrawing && Array.isArray(this.drawingState.tempPoints)) {
+            const pts = this.drawingState.tempPoints;
+            if (this.isDrawingPath && pts.length > 96) {
+                const step = Math.ceil(pts.length / 96);
+                for (let i = 0; i < pts.length; i += step) pushY(pts[i]?.y);
+                pushY(pts[pts.length - 1]?.y);
+            } else {
+                for (const p of pts) {
+                    if (p) pushY(p.y);
+                }
+            }
+        }
+
+        const out = [];
+        const seen = new Set();
+        for (const y of ys) {
+            const key = Math.round(y * 1e9) / 1e9;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push(y);
+        }
+        return out;
+    }
+
+    /**
      * Schedule at most one chart.updateCrosshair per animation frame while drawing / selection is active.
      */
     _scheduleChartCrosshairFromDrawingEvent(event) {

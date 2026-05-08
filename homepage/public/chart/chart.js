@@ -9190,11 +9190,12 @@ class Chart {
         
         document.addEventListener('keydown', (e) => {
             // Track CTRL key for tooltip showing
-            if (e.key === 'Control' || e.key === 'Meta') {
+            if (e.key === 'Control' || e.key === 'Meta' || e.key === 'Shift') {
                 this.ctrlPressed = e.ctrlKey || e.metaKey;
                 this.refreshCrosshairFromLastPointer({
                     ctrlKey: e.ctrlKey,
-                    metaKey: e.metaKey
+                    metaKey: e.metaKey,
+                    shiftKey: e.shiftKey
                 });
             }
             
@@ -9295,11 +9296,12 @@ class Chart {
         
         // Track CTRL key release - hide tooltip when CTRL is released
         document.addEventListener('keyup', (e) => {
-            if (e.key === 'Control' || e.key === 'Meta') {
+            if (e.key === 'Control' || e.key === 'Meta' || e.key === 'Shift') {
                 this.ctrlPressed = e.ctrlKey || e.metaKey;
                 this.refreshCrosshairFromLastPointer({
                     ctrlKey: e.ctrlKey,
-                    metaKey: e.metaKey
+                    metaKey: e.metaKey,
+                    shiftKey: e.shiftKey
                 });
                 if (!this.ctrlPressed) {
                     this.hideTooltip();
@@ -17571,7 +17573,8 @@ class Chart {
             clientX: rect.left + this.mouseX * z,
             clientY: rect.top + this.mouseY * z,
             ctrlKey: keyState.ctrlKey !== undefined ? !!keyState.ctrlKey : !!this._lastCrosshairCtrlKey,
-            metaKey: keyState.metaKey !== undefined ? !!keyState.metaKey : !!this._lastCrosshairMetaKey
+            metaKey: keyState.metaKey !== undefined ? !!keyState.metaKey : !!this._lastCrosshairMetaKey,
+            shiftKey: keyState.shiftKey !== undefined ? !!keyState.shiftKey : !!this._lastCrosshairShiftKey
         };
 
         this.updateCrosshair(syntheticEvent);
@@ -17604,6 +17607,7 @@ class Chart {
         this.mouseY = y;
         this._lastCrosshairCtrlKey = !!e.ctrlKey;
         this._lastCrosshairMetaKey = !!e.metaKey;
+        this._lastCrosshairShiftKey = !!e.shiftKey;
         
         if (x < m.l || x > this.w - m.r || y < m.t || y > this.h - m.b) {
             this.hideCrosshair();
@@ -17649,8 +17653,14 @@ class Chart {
         const magnetMode = (this.drawingManager && this.drawingManager.magnetMode) || this.magnetMode || 'off';
         const magnetActive = magnetMode === 'weak' || magnetMode === 'strong' || magnetMode === true;
         const ctrlHeld = e.ctrlKey || e.metaKey;
+        const shiftHeld = e.shiftKey;
+        const placementSnapYs = (_dm && typeof _dm.getActivePlacementSnapPrices === 'function')
+            ? _dm.getActivePlacementSnapPrices()
+            : [];
+        const placementSnapActive = !!(shiftHeld && placementSnapYs.length > 0);
         const shouldSnapCrosshair = this.yScale && hasSnappedCandle && Number.isFinite(crosshairPrice)
-            && (magnetActive || ctrlHeld);
+            && (magnetActive || ctrlHeld)
+            && !placementSnapActive;
         if (shouldSnapCrosshair) {
             const candle = snappedCandle;
             const ohlc = [candle.o, candle.h, candle.l, candle.c];
@@ -17665,6 +17675,21 @@ class Chart {
             if (forceSnap || pxDist <= 30) {
                 crosshairPrice = closest;
             }
+        }
+
+        // Shift → snap horizontal crosshair to Y of anchors in the drawing being placed (like TradingView).
+        if (placementSnapActive && this.yScale && Number.isFinite(crosshairPrice)) {
+            let best = placementSnapYs[0];
+            let bestAbs = Math.abs(crosshairPrice - best);
+            for (let si = 1; si < placementSnapYs.length; si++) {
+                const py = placementSnapYs[si];
+                const d = Math.abs(crosshairPrice - py);
+                if (d < bestAbs) {
+                    bestAbs = d;
+                    best = py;
+                }
+            }
+            crosshairPrice = best;
         }
 
         if (this.yScale && Number.isFinite(crosshairPrice)

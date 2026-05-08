@@ -330,12 +330,13 @@ class KeyboardShortcutsManager {
         this.modifiers.shift = e.shiftKey;
         this.modifiers.meta = e.metaKey;
 
-        if ((e.key === 'Control' || e.key === 'Meta')
+        if ((e.key === 'Control' || e.key === 'Meta' || e.key === 'Shift')
             && this.chart
             && typeof this.chart.refreshCrosshairFromLastPointer === 'function') {
             this.chart.refreshCrosshairFromLastPointer({
                 ctrlKey: e.ctrlKey,
-                metaKey: e.metaKey
+                metaKey: e.metaKey,
+                shiftKey: e.shiftKey
             });
         }
         
@@ -382,12 +383,13 @@ class KeyboardShortcutsManager {
         this.modifiers.shift = e.shiftKey;
         this.modifiers.meta = e.metaKey;
 
-        if ((e.key === 'Control' || e.key === 'Meta')
+        if ((e.key === 'Control' || e.key === 'Meta' || e.key === 'Shift')
             && this.chart
             && typeof this.chart.refreshCrosshairFromLastPointer === 'function') {
             this.chart.refreshCrosshairFromLastPointer({
                 ctrlKey: e.ctrlKey,
-                metaKey: e.metaKey
+                metaKey: e.metaKey,
+                shiftKey: e.shiftKey
             });
         }
     }
