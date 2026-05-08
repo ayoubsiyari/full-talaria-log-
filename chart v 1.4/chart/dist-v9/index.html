@@ -760,7 +760,7 @@
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=bmox1lzri"></script>
+    <script defer src="/chart/chart.js?v=bmox8sync2"></script>
     <!-- V9 React theme panel → chart.chartSettings (shared with legacy-index.html). Must load after chart.js. -->
     <script defer src="/chart/modules/v9-theme-bridge.js?v=bmox1lzri"></script>
 
@@ -780,10 +780,10 @@
     <!-- Panel manager — multi-panel layouts. Must load AFTER chart.js so
          it can wire scroll-sync against window.chart. The legacy index.html
          instantiates this inline; V9's bootstrap below does the same. -->
-    <script defer src="/chart/modules/panel-manager.js?v=bmox1lzri"></script>
+    <script defer src="/chart/modules/panel-manager.js?v=bmox8sync2"></script>
     <!-- Economic calendar: Finnhub via /api + chart time-axis markers (__economicCalendarForChart). -->
     <script defer src="/chart/modules/economic-news-sidebar.js?v=bmox1lzri"></script>
-  <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js?v=bmox1lzri"></script>
+  <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js?v=bmox8sync2"></script>
 </head>
 <body>
     <div id="backtestingLoader" aria-live="polite" aria-busy="true">
@@ -833,7 +833,7 @@
             <div class="news-items" id="newsItems"></div>
         </div>
     </div>
-    <!-- Module scripts are deferred too, so this runs AFTER all defers above. -->
+    <!-- Module scripts are deferred too, so this runs AFTER all defers above. -->
 
     <!-- ──────────────────────────────────────────────────────────────────
          PANEL MANAGER BOOTSTRAP

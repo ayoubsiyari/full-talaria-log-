@@ -1125,9 +1125,11 @@ class PanelManager {
             const targetPos = this._resolveFractionalTargetPosition(chart, rightEdgeTimestamp);
             const targetIdx = Math.max(0, Math.min(chart.data.length - 1, Math.round(targetPos)));
             const lastPos = this._timeSyncLastTargetPosition[panel.index];
-            const posDelta = Number.isFinite(lastPos) ? Math.abs(targetPos - lastPos) : Infinity;
-            // Tiny threshold avoids noisy re-renders while still allowing smooth high-TF movement.
-            if (posDelta < 0.02) return;
+            const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
+            // Throttle by pixel movement (not bar fraction). A fixed bar threshold can still freeze
+            // high-TF followers (e.g. 1m -> 1d where bar-fraction deltas are naturally tiny).
+            const deltaPx = Number.isFinite(lastPos) ? Math.abs(targetPos - lastPos) * Math.max(0.0001, spacing) : Infinity;
+            if (deltaPx < 0.25) return;
 
             this._timeSyncLastTargetPosition[panel.index] = targetPos;
             this._timeSyncLastTargetBar[panel.index] = targetIdx;
