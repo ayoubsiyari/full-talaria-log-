@@ -429,10 +429,13 @@ class PanelManager {
             if (!sourcePanel) return;
             const sourceChart = this._getPanelChartInstance(sourcePanel);
             if (!sourceChart) return;
+            const sourceFileId = sourceChart.currentFileId != null ? String(sourceChart.currentFileId) : '';
+            const sourceSymbol = sourceChart.currentSymbol != null ? String(sourceChart.currentSymbol).trim() : '';
+            if (!sourceFileId || !sourceSymbol) return;
 
             // Reject stale or mismatched event payloads that can happen during
             // rapid pair/timeframe transitions.
-            if (d.chart && d.chart !== sourceChart) return;
+            if (!d.chart || d.chart !== sourceChart) return;
             if (sourceChart._isLoadingOwnPairData || sourceChart.isLoading) return;
 
             // Date Range: continuous full-window sync (scroll + zoom locked).
