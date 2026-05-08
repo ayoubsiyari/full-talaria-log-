@@ -63,6 +63,7 @@ import ProfileSelectionPage from './pages/ProfileSelectionPage';
 import ManageProfilePage from './pages/ManageProfilePage';
 import SubscriptionSuccess from './pages/SubscriptionSuccess';
 import Onboarding from './pages/Onboarding';
+import SubscriptionRequired from './pages/SubscriptionRequired';
 import SubscriptionGuard from './components/SubscriptionGuard';
 
 // Import filter components
@@ -531,10 +532,7 @@ function ProtectedLayout() {
   }
 
   if (!hasAccess) {
-    if (typeof window !== 'undefined') {
-      window.location.replace('/journal/pricing');
-    }
-    return null;
+    return <Navigate to="/subscription-status" replace />;
   }
 
   return <LayoutWithSidebar />;
@@ -561,7 +559,8 @@ function AppRoutes() {
     location.pathname === '/terms' ||
     location.pathname === '/cookie-policy' ||
     location.pathname === '/disclaimer' ||
-    location.pathname === '/legal'
+    location.pathname === '/legal' ||
+    location.pathname === '/subscription-status'
 
   // Authenticated users on root or login → send to dashboard (ProtectedLayout handles access check)
   if (isInitialized && token && (location.pathname === '/' || location.pathname === '/login')) {
@@ -599,6 +598,7 @@ function AppRoutes() {
             <Route path="/cookie-policy" element={<CookiePolicy />} />
             <Route path="/disclaimer" element={<Disclaimer />} />
             <Route path="/legal" element={<Legal />} />
+            <Route path="/subscription-status" element={<SubscriptionRequired />} />
             <Route path="/" element={<Home />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

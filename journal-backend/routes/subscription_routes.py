@@ -1321,6 +1321,56 @@ def _reconcile_user_stripe_subscriptions_from_stripe(user_id, user):
         current_app.logger.error(f'Subscription reconcile commit failed: {e}')
 
 
+def _lapsed_subscription_summary(sub):
+    if not sub:
+        return None
+    return {
+        'status': sub.status,
+        'current_period_end': sub.current_period_end.isoformat() if sub.current_period_end else None,
+    }
+
+
+def _access_denial_context(user, uid):
+    """
+    When the user has no active/trialing subscription, describe why (for professional UI).
+    """
+    latest = (
+        Subscription.query.filter(Subscription.user_id == uid)
+        .order_by(Subscription.id.desc())
+        .first()
+    )
+    st = (latest.status or '').lower() if latest else ''
+    has_stripe = bool(user.stripe_customer_id)
+    billing_issue = st in ('past_due', 'unpaid')
+    if billing_issue:
+        return {
+            'billing_issue': True,
+            'has_stripe_customer': has_stripe,
+            'access_denial_reason': 'payment_required',
+            'lapsed_subscription': _lapsed_subscription_summary(latest),
+        }
+    if latest and has_stripe:
+        if st in ('canceled', 'cancelled', 'canceled'):
+            return {
+                'billing_issue': False,
+                'has_stripe_customer': True,
+                'access_denial_reason': 'subscription_ended',
+                'lapsed_subscription': _lapsed_subscription_summary(latest),
+            }
+        return {
+            'billing_issue': False,
+            'has_stripe_customer': True,
+            'access_denial_reason': 'subscription_inactive',
+            'lapsed_subscription': _lapsed_subscription_summary(latest),
+        }
+    return {
+        'billing_issue': False,
+        'has_stripe_customer': has_stripe,
+        'access_denial_reason': 'no_plan',
+        'lapsed_subscription': _lapsed_subscription_summary(latest) if latest else None,
+    }
+
+
 @subscription_bp.route('/my-subscription', methods=['GET'])
 @jwt_required()
 def get_my_subscription():
@@ -1346,12 +1396,14 @@ def get_my_subscription():
         ).first()
         
         if not subscription:
+            denial = _access_denial_context(user, uid)
             return jsonify({
                 'success': True,
                 'has_subscription': False,
                 'has_journal_access': user_entitles_journal(user),
                 'subscription': None,
-                'plan': None
+                'plan': None,
+                **denial,
             }), 200
         
         plan = SubscriptionPlan.query.get(subscription.plan_id) if subscription.plan_id else None
@@ -1369,6 +1421,10 @@ def get_my_subscription():
             'success': True,
             'has_subscription': True,
             'has_journal_access': user_entitles_journal(user),
+            'billing_issue': False,
+            'has_stripe_customer': bool(user.stripe_customer_id),
+            'access_denial_reason': None,
+            'lapsed_subscription': None,
             'subscription': {
                 'id': subscription.id,
                 'status': subscription.status,
