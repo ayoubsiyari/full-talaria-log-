@@ -11204,11 +11204,25 @@ class Chart {
         // Empty rawData is normal during sync/replay races; still refetch when this panel is tied to a server file.
         if (!hasData && !this.currentFileId) return;
 
+        // Idempotency guard: callers in V9 (panelTimeframeChanged listener), panel-manager
+        // (syncInterval / updateSelectedPanelTimeframe) and replay paths can re-enter
+        // setTimeframe with the timeframe the chart already has. Without this guard
+        // _loadTimeframeFromServer would clear data, call fitToView and (for higher TFs)
+        // re-clamp candleWidth via _restorePositionToTimestamp — visible to the user as a
+        // jump to the right edge plus apparent candle compression on a sibling panel.
+        // Only short-circuit when we already have rendered data for that TF; with no
+        // data yet (e.g. fresh panel hydrated from session) we still need to fetch.
+        const normalizedTf = String(timeframe || '1m').toLowerCase().trim();
+        const haveCurrentTfData = (this.currentTimeframe === normalizedTf)
+            && Array.isArray(this.data) && this.data.length > 0
+            && !this._panLoading;
+        if (haveCurrentTfData) return;
+
         if (this.drawingManager && this.drawings && this.drawings.length > 0) {
             this.drawingManager.saveDrawings();
         }
         
-        this.currentTimeframe = String(timeframe || '1m').toLowerCase().trim();
+        this.currentTimeframe = normalizedTf;
         timeframe = this.currentTimeframe;
         this.scheduleChartViewSave();
         this._emitTimeframeChanged();
