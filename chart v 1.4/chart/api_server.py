@@ -11735,6 +11735,54 @@ async def get_file_smart(
         candles = _filter_weekend_candles(candles)
         candles = _smooth_isolated_candle_spikes(candles)
 
+        # Recovery path: some legacy/stale prebuilt aggregates can yield an empty
+        # tile/bin window even though the canonical CSV still has data (observed on
+        # long-running FirstRate imports). If that happens, fall back to a direct
+        # CSV read+resample for this request so higher-TF views stay usable.
+        if not candles and source in {"tiles", "binary", "custom-tf-resample"}:
+            try:
+                file_path = _resolve_dataset_csv_for_file(db_file)
+                if file_path.exists() and not BINARY_ONLY_RUNTIME:
+                    csv_candles = _parse_candles_from_csv(file_path)
+                    if timeframe == "1mo":
+                        csv_candles = _resample_candles_monthly(csv_candles)
+                    elif timeframe != "1m":
+                        csv_candles = _resample_candles(csv_candles, _parse_tf_ms(timeframe))
+
+                    if start_ts is not None or end_ts is not None:
+                        csv_candles = [
+                            c for c in csv_candles
+                            if (start_ts is None or c['t'] >= start_ts)
+                            and (end_ts is None or c['t'] <= end_ts)
+                        ]
+
+                    csv_total = len(csv_candles)
+                    csv_has_more_left = False
+                    csv_has_more_right = False
+                    if csv_total > limit:
+                        if anchor == "start":
+                            csv_candles = csv_candles[:limit]
+                            csv_has_more_right = True
+                        else:
+                            csv_candles = csv_candles[-limit:]
+                            csv_has_more_left = True
+
+                    csv_candles = _filter_weekend_candles(csv_candles)
+                    csv_candles = _smooth_isolated_candle_spikes(csv_candles)
+                    if csv_candles:
+                        candles = csv_candles
+                        total_candles = csv_total
+                        has_more_left = csv_has_more_left
+                        has_more_right = csv_has_more_right
+                        source = f"{source}+csv-recover"
+            except Exception:
+                # Keep original empty response if fallback path fails.
+                pass
+
+        # Recompute cursors after weekend/spike filtering and any recovery path.
+        raw_first_cursor = str(candles[0]['t']) if candles else None
+        raw_last_cursor = str(candles[-1]['t']) if candles else None
+
         # ── Build cursors ──
         first_cursor = raw_first_cursor
         last_cursor = raw_last_cursor
@@ -11876,6 +11924,38 @@ async def get_file_candles(
 
         candles = _filter_weekend_candles(candles)
         candles = _smooth_isolated_candle_spikes(candles)
+
+        # Same recovery as /smart: if a stale tile/bin aggregate returns an empty
+        # window, rebuild this response from canonical CSV for correctness.
+        if not candles and (tile_meta is not None or (binary_ready and bin_path.exists())):
+            try:
+                file_path = _resolve_dataset_csv_for_file(db_file)
+                if file_path.exists() and not BINARY_ONLY_RUNTIME:
+                    raw = _parse_candles_from_csv(file_path)
+                    if timeframe == "1mo":
+                        recovered = _resample_candles_monthly(raw)
+                    elif timeframe != "1m":
+                        recovered = _resample_candles(raw, _parse_tf_ms(timeframe))
+                    else:
+                        recovered = raw
+
+                    if cursor_ts is not None:
+                        if direction == "backward":
+                            recovered = [c for c in recovered if c['t'] < cursor_ts][-limit:]
+                        else:
+                            recovered = [c for c in recovered if c['t'] > cursor_ts][:limit]
+                    elif len(recovered) > limit:
+                        recovered = recovered[-limit:]
+
+                    recovered = _filter_weekend_candles(recovered)
+                    recovered = _smooth_isolated_candle_spikes(recovered)
+                    if recovered:
+                        candles = recovered
+            except Exception:
+                pass
+
+        raw_prev_cursor = str(candles[0]['t']) if candles else None
+        raw_next_cursor = str(candles[-1]['t']) if candles else None
 
         prev_cursor = raw_prev_cursor
         next_cursor = raw_next_cursor
