@@ -3666,6 +3666,51 @@ def _tiles_read_window(file_id: int, tf: str, meta: dict,
     """Read up to `limit` candles from tiles, honouring anchor + optional date filter."""
     tiles = meta["tiles"]
     total = meta["total"]
+    if not tiles or limit <= 0:
+        return [], 0, False, False
+
+    # Fast path: common viewport boot load asks for latest/earliest N bars with no
+    # date filter. Avoid scanning every tile; read only the minimum tail/head slices.
+    if start_ts is None and end_ts is None:
+        if anchor == "start":
+            out = []
+            remaining = limit
+            for ti in range(0, len(tiles)):
+                if remaining <= 0:
+                    break
+                tp = _tile_path(file_id, tf, ti)
+                n = int(tiles[ti]["count"])
+                take = min(remaining, n)
+                if take > 0:
+                    out.extend(_mmap_read_range(tp, 0, take))
+                    remaining -= take
+            has_more_left = False
+            has_more_right = total > len(out)
+            return out, total, has_more_left, has_more_right
+
+        # anchor=end (default)
+        parts = []
+        remaining = limit
+        for ti in range(len(tiles) - 1, -1, -1):
+            if remaining <= 0:
+                break
+            tp = _tile_path(file_id, tf, ti)
+            n = int(tiles[ti]["count"])
+            take = min(remaining, n)
+            if take <= 0:
+                continue
+            start_idx = max(0, n - take)
+            chunk = _mmap_read_range(tp, start_idx, take)
+            if chunk:
+                parts.append(chunk)
+                remaining -= len(chunk)
+
+        out = []
+        for part in reversed(parts):
+            out.extend(part)
+        has_more_left = total > len(out)
+        has_more_right = False
+        return out, total, has_more_left, has_more_right
 
     # Find tile range that overlaps the requested date window
     first_tile = 0
