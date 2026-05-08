@@ -4226,7 +4226,53 @@ def _smooth_isolated_candle_spikes(candles):
     print(f"🧹 Spike filter adjusted {adjusted}/{len(filtered)} candles ({adjusted_ratio:.2%})")
     return filtered
 
-def _canonicalize_candles(candles):
+def _infer_dataset_provider_from_name(original_name: str | None) -> str:
+    n = str(original_name or "").strip().lower()
+    if not n:
+        return "unknown"
+    if "firstrate" in n:
+        return "firstrate"
+    if "dukascopy" in n or "-m1-bid-" in n:
+        return "dukascopy"
+    if "binance" in n:
+        return "binance"
+    return "unknown"
+
+
+def _resolve_dataset_filter_policy(original_name: str | None):
+    """
+    Decide weekend/spike filtering behavior per dataset source.
+    Preserve raw market/session structure for FirstRate datasets.
+    """
+    provider = _infer_dataset_provider_from_name(original_name)
+    weekend_filter = EXCLUDE_WEEKEND_CANDLES
+    spike_filter = SPIKE_FILTER_ENABLED
+    if provider == "firstrate":
+        # Keep FirstRate bars as-is so session gaps remain exactly as delivered.
+        weekend_filter = False
+        spike_filter = False
+    return {
+        "provider": provider,
+        "weekend_filter": bool(weekend_filter),
+        "spike_filter": bool(spike_filter),
+    }
+
+
+def _apply_dataset_filters(candles, *, original_name: str | None, apply_spike: bool = True):
+    if not candles:
+        return candles
+    policy = _resolve_dataset_filter_policy(original_name)
+    out = candles
+    if policy["weekend_filter"]:
+        out = _filter_weekend_candles(out)
+    if not out:
+        return []
+    if apply_spike and policy["spike_filter"]:
+        out = _smooth_isolated_candle_spikes(out)
+    return out
+
+
+def _canonicalize_candles(candles, *, original_name: str | None = None):
     """Normalize candles into ascending timestamp order and merge duplicate timestamps."""
     if not candles:
         return []
@@ -4241,7 +4287,7 @@ def _canonicalize_candles(candles):
         return []
 
     cleaned.sort(key=lambda x: x['t'])
-    cleaned = _filter_weekend_candles(cleaned)
+    cleaned = _apply_dataset_filters(cleaned, original_name=original_name, apply_spike=False)
     if not cleaned:
         return []
 
@@ -4255,9 +4301,12 @@ def _canonicalize_candles(candles):
             prev['v'] += c['v']
         else:
             merged.append(c)
-    return _smooth_isolated_candle_spikes(merged)
+    policy = _resolve_dataset_filter_policy(original_name)
+    if policy["spike_filter"]:
+        return _smooth_isolated_candle_spikes(merged)
+    return merged
 
-def _parse_candles_from_csv(file_path):
+def _parse_candles_from_csv(file_path, original_name: str | None = None):
     """Parse a CSV file into a list of candle dicts {t,o,h,l,c,v}."""
     import csv as csv_mod
     candles = []
@@ -4321,7 +4370,7 @@ def _parse_candles_from_csv(file_path):
                 })
             except Exception:
                 continue
-    return _canonicalize_candles(candles)
+    return _canonicalize_candles(candles, original_name=original_name)
 
 def _parse_tf_ms(tf: str) -> int:
     """Parse any timeframe string (e.g. '3m','2h','45m') to milliseconds."""
@@ -4951,7 +5000,7 @@ def build_binary_for_file(file_id: int, file_path, original_filename: str, run_a
 
             # Parse source CSV once
             print(f"📦 Parsing CSV for file {file_id} ({original_filename})...")
-            candles = _parse_candles_from_csv(file_path)
+            candles = _parse_candles_from_csv(file_path, original_name=original_filename)
             if not candles:
                 all_ok = False
                 db.query(CSVAggregate).filter(
@@ -5003,6 +5052,16 @@ def build_binary_for_file(file_id: int, file_path, original_filename: str, run_a
                     db.query(CSVAggregate).filter(
                         CSVAggregate.file_id == file_id,
                         CSVAggregate.timeframe == tf
+                    ).update({"status": "failed"})
+                    db.commit()
+
+            if all_ok:
+                integrity_ok, integrity_issues = _dataset_binary_integrity(db, file_id)
+                if not integrity_ok:
+                    all_ok = False
+                    print(f"❌ Binary integrity check failed for file {file_id}: {integrity_issues}")
+                    db.query(CSVAggregate).filter(
+                        CSVAggregate.file_id == file_id
                     ).update({"status": "failed"})
                     db.commit()
 
@@ -5778,6 +5837,13 @@ async def get_conversion_status(file_id: int):
         elif job_status == "failed":
             overall = "failed"
 
+        integrity_ok = True
+        integrity_issues = []
+        if overall == "ready":
+            integrity_ok, integrity_issues = _dataset_binary_integrity(db, file_id)
+            if not integrity_ok:
+                overall = "failed"
+
         payload = {
             "status": overall,
             "progress": round(completed / total * 100) if total else 0,
@@ -5786,6 +5852,8 @@ async def get_conversion_status(file_id: int):
             "pending": pending,
             "total": total,
             "timeframes": {a.timeframe: a.status for a in aggs},
+            "integrity_ok": integrity_ok,
+            "integrity_issues": integrity_issues,
         }
         if latest_job:
             payload["job_status"] = job_status
@@ -11709,7 +11777,7 @@ async def get_file_smart(
                 if not file_path.exists():
                     raise HTTPException(status_code=404, detail="File not found on disk")
 
-                candles = _parse_candles_from_csv(file_path)
+                candles = _parse_candles_from_csv(file_path, original_name=db_file.original_name)
                 if timeframe == "1mo":
                     candles = _resample_candles_monthly(candles)
                 elif timeframe != "1m":
@@ -11732,8 +11800,7 @@ async def get_file_smart(
         raw_first_cursor = str(candles[0]['t']) if candles else None
         raw_last_cursor = str(candles[-1]['t']) if candles else None
 
-        candles = _filter_weekend_candles(candles)
-        candles = _smooth_isolated_candle_spikes(candles)
+        candles = _apply_dataset_filters(candles, original_name=db_file.original_name)
 
         # Recovery path: some legacy/stale prebuilt aggregates can yield an empty
         # tile/bin window even though the canonical CSV still has data (observed on
@@ -11743,7 +11810,7 @@ async def get_file_smart(
             try:
                 file_path = _resolve_dataset_csv_for_file(db_file)
                 if file_path.exists() and not BINARY_ONLY_RUNTIME:
-                    csv_candles = _parse_candles_from_csv(file_path)
+                    csv_candles = _parse_candles_from_csv(file_path, original_name=db_file.original_name)
                     if timeframe == "1mo":
                         csv_candles = _resample_candles_monthly(csv_candles)
                     elif timeframe != "1m":
@@ -11767,8 +11834,7 @@ async def get_file_smart(
                             csv_candles = csv_candles[-limit:]
                             csv_has_more_left = True
 
-                    csv_candles = _filter_weekend_candles(csv_candles)
-                    csv_candles = _smooth_isolated_candle_spikes(csv_candles)
+                    csv_candles = _apply_dataset_filters(csv_candles, original_name=db_file.original_name)
                     if csv_candles:
                         candles = csv_candles
                         total_candles = csv_total
@@ -11904,7 +11970,7 @@ async def get_file_candles(
             file_path = _resolve_dataset_csv_for_file(db_file)
             if not file_path.exists():
                 raise HTTPException(status_code=404, detail="File not found on disk")
-            raw = _parse_candles_from_csv(file_path)
+            raw = _parse_candles_from_csv(file_path, original_name=db_file.original_name)
             if timeframe == "1mo":
                 candles = _resample_candles_monthly(raw)
             elif timeframe != "1m":
@@ -11922,8 +11988,7 @@ async def get_file_candles(
         raw_prev_cursor = str(candles[0]['t']) if candles else None
         raw_next_cursor = str(candles[-1]['t']) if candles else None
 
-        candles = _filter_weekend_candles(candles)
-        candles = _smooth_isolated_candle_spikes(candles)
+        candles = _apply_dataset_filters(candles, original_name=db_file.original_name)
 
         # Same recovery as /smart: if a stale tile/bin aggregate returns an empty
         # window, rebuild this response from canonical CSV for correctness.
@@ -11931,7 +11996,7 @@ async def get_file_candles(
             try:
                 file_path = _resolve_dataset_csv_for_file(db_file)
                 if file_path.exists() and not BINARY_ONLY_RUNTIME:
-                    raw = _parse_candles_from_csv(file_path)
+                    raw = _parse_candles_from_csv(file_path, original_name=db_file.original_name)
                     if timeframe == "1mo":
                         recovered = _resample_candles_monthly(raw)
                     elif timeframe != "1m":
@@ -11947,8 +12012,7 @@ async def get_file_candles(
                     elif len(recovered) > limit:
                         recovered = recovered[-limit:]
 
-                    recovered = _filter_weekend_candles(recovered)
-                    recovered = _smooth_isolated_candle_spikes(recovered)
+                    recovered = _apply_dataset_filters(recovered, original_name=db_file.original_name)
                     if recovered:
                         candles = recovered
             except Exception:

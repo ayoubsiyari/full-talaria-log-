@@ -325,6 +325,9 @@ class PanelManager {
         this._syncingDateRange = false;
         /** Prevent nested symbol fan-out when follower loads rebroadcast syncSymbol. */
         this._syncingSymbol = false;
+        /** rAF coalescing for date-range sync during drag scroll storms. */
+        this._dateRangeSyncRaf = null;
+        this._pendingDateRangeSync = null;
 
         /** Per-target-panel last bar index so each follower only jumps when ITS own right-edge bar changes. */
         this._timeSyncLastTargetBar = {};
@@ -446,7 +449,7 @@ class PanelManager {
             if (this.syncSettings.dateRange === true
                 && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
                 && startTimestamp > 0 && endTimestamp > startTimestamp) {
-                this.syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, endTimestamp);
+                this._scheduleDateRangeSync(sourcePanel, startTimestamp, endTimestamp);
             }
             // Time: discrete range-by-range sync. Each TARGET panel jumps only when
             // the bar IT would show at its right edge changes — so a 5m target jumps
@@ -941,6 +944,11 @@ class PanelManager {
     syncSymbol(sourcePanel, symbol, fileId) {
         if (!this.syncSettings.symbol || (this.panels || []).length <= 1) return;
         if (this._syncingSymbol) return;
+        const sourceChart = this._getPanelChartInstance(sourcePanel);
+        const normalizedFileId = sourceChart && sourceChart.currentFileId != null
+            ? String(sourceChart.currentFileId)
+            : String(fileId || '').trim();
+        if (!normalizedFileId) return;
         this._syncingSymbol = true;
         
         try {
@@ -948,20 +956,36 @@ class PanelManager {
                 if (panel.index === sourcePanel.index) return;
                 const pc = this._getPanelChartInstance(panel);
                 if (!pc) return;
-                if (String(pc.currentFileId) === String(fileId)) return;
+                if (String(pc.currentFileId) === normalizedFileId) return;
 
                 // Follower loads are programmatic fan-out; they must not emit a second
                 // syncSymbol wave back to other panels (pair-change cascade/storm).
                 pc._suppressNextSymbolBroadcast = true;
                 if (panel.isMainChart && window.chart && typeof window.chart.loadFileData === 'function') {
-                    window.chart.loadFileData(fileId);
+                    window.chart.loadFileData(normalizedFileId);
                 } else if (typeof pc.loadPanelFileData === 'function') {
-                    pc.loadPanelFileData(fileId);
+                    pc.loadPanelFileData(normalizedFileId);
                 }
             });
         } finally {
             this._syncingSymbol = false;
         }
+    }
+
+    _scheduleDateRangeSync(sourcePanel, startTimestamp, rangeEndExclusive) {
+        this._pendingDateRangeSync = { sourcePanel, startTimestamp, rangeEndExclusive };
+        if (this._dateRangeSyncRaf != null) return;
+        this._dateRangeSyncRaf = requestAnimationFrame(() => {
+            this._dateRangeSyncRaf = null;
+            const pending = this._pendingDateRangeSync;
+            this._pendingDateRangeSync = null;
+            if (!pending) return;
+            this.syncScrollByVisibleTimeRange(
+                pending.sourcePanel,
+                pending.startTimestamp,
+                pending.rangeEndExclusive
+            );
+        });
     }
     
     /**

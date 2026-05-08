@@ -361,6 +361,9 @@ class Chart {
         this._smartPrefetchCache = new Map(); // LRU-ish cache for other symbols' /smart payloads
         /** Incremented on each symbol switch; stale async responses must not overwrite the chart. */
         this._symbolLoadSeq = 0;
+        /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
+        this._scrollSyncRaf = null;
+        this._lastScrollSyncAt = 0;
         this.chunkSize = 5000; // Load data in chunks
         this.bufferSize = 1000; // Buffer size for smooth scrolling
         this.isLoadingChunk = false;
@@ -7340,11 +7343,32 @@ class Chart {
             }
         }
 
-        return entries;
+        return this._dedupeSymbolEntries(entries);
     }
 
     _ssdNormalize(s) {
         return String(s || '').toLowerCase().replace(/[\s\-_\/\.]/g, '');
+    }
+
+    _dedupeSymbolEntries(entries) {
+        if (!Array.isArray(entries) || entries.length <= 1) return entries || [];
+        const byTicker = new Map();
+        const keyOf = (e) => this._ssdNormalize(e && e.ticker ? e.ticker : '');
+        const fileIdNum = (e) => {
+            const n = Number(e && e.fileId);
+            return Number.isFinite(n) ? n : -1;
+        };
+
+        entries.forEach((entry) => {
+            const key = keyOf(entry);
+            if (!key) return;
+            const existing = byTicker.get(key);
+            if (!existing || fileIdNum(entry) > fileIdNum(existing)) {
+                byTicker.set(key, entry);
+            }
+        });
+
+        return Array.from(byTicker.values());
     }
 
     _symbolMatches(entry, query) {
@@ -8474,7 +8498,7 @@ class Chart {
     /**
      * Dispatch scroll/zoom sync event for panel synchronization
      */
-    dispatchScrollSync() {
+    dispatchScrollSync(force = false) {
         if (!this.data || this.data.length === 0) return;
         // Allow main chart (panel 0) to sync to other panels too
         if (!window.panelManager || window.panelManager.currentLayout === '1') return;
@@ -8484,6 +8508,19 @@ class Chart {
         if (this._suppressPanelScrollSync) return;
         if (window.panelManager._isSyncing) return;
         if (window.panelManager._syncingDateRange) return;
+        if (!force && this.drag && this.drag.active && this.drag.type === 'pan') {
+            const now = performance.now();
+            if (now - this._lastScrollSyncAt < 16) {
+                if (this._scrollSyncRaf == null) {
+                    this._scrollSyncRaf = requestAnimationFrame(() => {
+                        this._scrollSyncRaf = null;
+                        this.dispatchScrollSync(true);
+                    });
+                }
+                return;
+            }
+            this._lastScrollSyncAt = now;
+        }
 
         // Visible range: use same helpers as UI so timestamps match actual viewport (multi-TF sync).
         const startIndex = typeof this.getVisibleStartIndex === 'function'
