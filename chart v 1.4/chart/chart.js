@@ -8496,7 +8496,21 @@ class Chart {
         const rightEdgePx = this.w - m.r;
         const idxAtRight = (rightEdgePx - m.l - this.offsetX) / spacing;
         const rightEdgeBarIndex = Math.max(0, Math.min(this.data.length - 1, Math.floor(idxAtRight)));
-        const timeSyncEndTimestamp = (this.data[rightEdgeBarIndex]?.t ?? 0) + barMs;
+        // Fractional right-edge timestamp avoids high-TF "freeze then jump" behavior.
+        // Using a floored bar index updates only when crossing whole bars; 1h/4h/1d then
+        // appears stuck while 1m moves continuously.
+        const i0 = Math.max(0, Math.min(this.data.length - 1, Math.floor(idxAtRight)));
+        const i1 = Math.max(i0, Math.min(this.data.length - 1, i0 + 1));
+        const t0 = Number(this.data[i0]?.t);
+        const t1 = Number(this.data[i1]?.t);
+        let rightEdgeTimestamp = t0;
+        if (Number.isFinite(t0) && Number.isFinite(t1) && i1 !== i0 && t1 > t0) {
+            const frac = Math.max(0, Math.min(1, idxAtRight - i0));
+            rightEdgeTimestamp = t0 + (t1 - t0) * frac;
+        } else if (!Number.isFinite(rightEdgeTimestamp)) {
+            rightEdgeTimestamp = Number(this.data[rightEdgeBarIndex]?.t) || 0;
+        }
+        const timeSyncEndTimestamp = rightEdgeTimestamp + barMs;
         
         // Find which panel this chart belongs to
         let sourcePanel = this.panel || null;
@@ -17888,11 +17902,12 @@ class Chart {
             vLine.style.display = showLines ? 'block' : 'none';
             vLine.style.background = vBg;
         }
+        const safeHLineY = Number.isFinite(hLineRenderY) ? hLineRenderY : lineY;
         if (hLine) {
             hLine.style.left = m.l + 'px';
             hLine.style.right = 'auto';
             hLine.style.width = plotW + 'px';
-            hLine.style.top = (hLineRenderY - crossWidth * 0.5) + 'px';
+            hLine.style.top = (safeHLineY - crossWidth * 0.5) + 'px';
             hLine.style.height = crossWidth + 'px';
             hLine.style.display = showLines ? 'block' : 'none';
             hLine.style.background = hBg;
