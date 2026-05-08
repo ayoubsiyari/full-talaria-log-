@@ -3472,8 +3472,19 @@ const TalariaV8bLive = () => {
       ) {
         const sel = pm.getSelectedPanel?.();
         const pci = sel?.chartInstance;
-        const curTf = pci?.currentTimeframe ?? chart.currentTimeframe;
-        if (curTf === target) return;
+        // Never fall back to window.chart here — that compares the main tile's TF and
+        // overwrites a secondary panel (e.g. 15m) with the main's TF (e.g. 1h).
+        if (!pci) {
+          if (attempts++ < 60) setTimeout(apply, 200);
+          return;
+        }
+        const rawTf = pci.currentTimeframe || sel?.timeframe;
+        if (!rawTf) {
+          if (attempts++ < 60) setTimeout(apply, 200);
+          return;
+        }
+        const curNorm = String(rawTf).trim().toLowerCase();
+        if (curNorm === target) return;
         try {
           pm.updateSelectedPanelTimeframe(target);
         } catch (err) {
@@ -3507,8 +3518,16 @@ const TalariaV8bLive = () => {
       let cTf = d.timeframe;
       if (!cTf) {
         const active = v9ActiveChartInstance();
-        cTf = active?.currentTimeframe ?? window.chart?.currentTimeframe;
+        cTf = active?.currentTimeframe;
+        if (!cTf) {
+          try {
+            const pm = window.panelManager;
+            const sp = pm?.getSelectedPanel?.();
+            cTf = sp?.timeframe;
+          } catch (_) {}
+        }
       }
+      if (!cTf) return;
       const mapped = chartTfToV9(cTf);
       if (mapped) setTf(mapped);
     };
@@ -3539,7 +3558,7 @@ const TalariaV8bLive = () => {
           if (sym) setSymbol(sym);
         }
       }
-      const cTf = (ci && ci.currentTimeframe) || d.timeframe;
+      const cTf = (ci && ci.currentTimeframe) || panel?.timeframe || d.timeframe;
       const mapped = chartTfToV9(cTf);
       if (mapped) {
         suppressNextTfApplyRef.current = true;
