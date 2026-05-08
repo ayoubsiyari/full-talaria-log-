@@ -2065,11 +2065,12 @@ select { cursor: pointer; }
               <option value="trialing">Trialing</option>
               <option value="canceled">Canceled</option>
               <option value="past_due">Past Due</option>
+              <option value="unpaid">Unpaid</option>
             </select>
           </div>
           <div class="card-body" style="padding:0;max-height:500px;overflow-y:auto">
             <table>
-              <thead><tr><th>User</th><th>Plan</th><th>Status</th><th>Type</th><th>Period End</th><th>Actions</th></tr></thead>
+              <thead><tr><th>User</th><th>Plan</th><th>Status</th><th>Type</th><th>Payment</th><th>Extension</th><th>Access</th><th>Period End</th><th>Actions</th></tr></thead>
               <tbody id="subsBody"></tbody>
             </table>
             <div class="empty-state" id="emptySubs" style="display:none">
@@ -5825,6 +5826,16 @@ function renderSubStats() {
       <div class="label">Journal Users</div>
       <div class="value">${s.journal_access_users || 0}</div>
     </div>
+    <div class="stat-card warn">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+      <div class="label">Needs payment</div>
+      <div class="value">${s.needs_payment_count ?? 0}</div>
+    </div>
+    <div class="stat-card accent">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+      <div class="label">Admin extensions</div>
+      <div class="value">${s.admin_extension_active_count ?? 0}</div>
+    </div>
   `;
 }
 
@@ -5862,7 +5873,8 @@ function renderSubscriptions() {
   tbody.innerHTML = filtered.map(s => {
     const statusMap = {
       active: 'badge-active', trialing: 'badge-admin',
-      canceled: 'badge-banned', past_due: 'badge-expired'
+      canceled: 'badge-banned', past_due: 'badge-expired',
+      unpaid: 'badge-expired'
     };
     const statusCls = statusMap[s.status] || 'badge-user';
     const typeBadge = s.is_manual
@@ -5872,14 +5884,36 @@ function renderSubscriptions() {
       ? new Date(s.current_period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : '∞';
     const canCancel = s.status === 'active' || s.status === 'trialing';
-    return `<tr>
-      <td><div style="font-weight:600">${esc(s.user_name)}</div><div style="font-size:11px;color:var(--text-muted)">${esc(s.user_email)}</div></td>
+    const payBadge = s.needs_payment
+      ? '<span class="badge badge-expired" style="background:var(--warn-subtle);color:var(--warn)">Must pay</span>'
+      : '<span style="font-size:11px;color:var(--text-muted)">OK</span>';
+    let extCell = '<span style="font-size:11px;color:var(--text-muted)">—</span>';
+    if (s.admin_extension_active && s.access_expires_at) {
+      extCell = `<span style="font-size:11px;color:var(--accent)">Until ${new Date(s.access_expires_at).toLocaleString()}</span>`;
+    } else if (s.access_expires_at) {
+      extCell = `<span style="font-size:11px;color:var(--text-muted)">${new Date(s.access_expires_at).toLocaleDateString()}</span>`;
+    }
+    const accessBadge = s.journal_access_effective
+      ? '<span class="badge badge-active">Allowed</span>'
+      : '<span class="badge badge-expired">Blocked</span>';
+    const uid = s.user_id;
+    const extBtns = `
+      <button class="btn sm" onclick="grantAccessExtension(${uid},7)">+7d</button>
+      <button class="btn sm" onclick="grantAccessExtension(${uid},14)">+14d</button>
+      <button class="btn sm" onclick="grantAccessExtension(${uid},30)">+30d</button>
+      ${(s.admin_extension_active || s.access_expires_at) ? `<button class="btn sm danger" onclick="clearAccessExtension(${uid})">Clear ext.</button>` : ''}`;
+    return `<tr style="${s.needs_payment && !s.admin_extension_active ? 'background:rgba(245,158,11,0.06)' : ''}">
+      <td><div style="font-weight:600">${esc(s.user_name)}</div><div style="font-size:11px;color:var(--text-muted)">${esc(s.user_email)}</div><div style="font-size:10px;color:var(--text-muted);opacity:0.8">#${uid}</div></td>
       <td style="font-size:12px;font-weight:500">${esc(s.plan_name)}</td>
       <td><span class="badge ${statusCls}">${esc(s.status)}</span></td>
       <td>${typeBadge}</td>
+      <td>${payBadge}</td>
+      <td>${extCell}</td>
+      <td>${accessBadge}</td>
       <td style="font-size:12px;color:var(--text-secondary)">${periodEnd}</td>
-      <td><div style="display:flex;gap:4px">
+      <td><div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;max-width:220px;margin-left:auto">
         ${canCancel ? `<button class="btn sm danger" onclick="cancelSubscription(${s.id},'${esc(s.user_name)}')">Cancel</button>` : ''}
+        ${extBtns}
       </div></td>
     </tr>`;
   }).join('');
@@ -5959,6 +5993,27 @@ async function cancelSubscription(id, name) {
   if (!confirm(`Cancel subscription for ${name}?`)) return;
   try { await api(`/api/admin/subscriptions/${id}/cancel`, { method: 'POST' }); toast('Subscription canceled', 'ok'); await loadSubscriptionData(); }
   catch (e) { toast(e.message, 'err'); }
+}
+
+async function grantAccessExtension(userId, days) {
+  try {
+    await api(`/api/admin/users/${userId}/grant-access-extension`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ days }),
+    });
+    toast(`Extended access by ${days} day(s)`, 'ok');
+    await loadSubscriptionData();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function clearAccessExtension(userId) {
+  if (!confirm('Remove admin extension? User may lose access immediately if Stripe is not active.')) return;
+  try {
+    await api(`/api/admin/users/${userId}/clear-access-extension`, { method: 'POST' });
+    toast('Extension cleared', 'ok');
+    await loadSubscriptionData();
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 // ─── Coupon Management ───────────────────────────────────────

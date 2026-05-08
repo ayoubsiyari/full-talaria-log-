@@ -1634,8 +1634,8 @@ async def auth_middleware(request: Request, call_next):
     if user is not None:
         # Gate backtest / replay UI (including ?mode=backtest on main chart) behind subscription
         if _request_requires_journal_for_backtest(path, request):
-            if user.role != "admin" and not getattr(user, "has_journal_access", False):
-                return RedirectResponse(url="/journal/pricing")
+            if not _user_has_chart_journal_access(user):
+                return RedirectResponse(url="/journal/subscription-status")
         return await call_next(request)
 
     if path.startswith("/api/"):
@@ -9115,10 +9115,52 @@ async def admin_delete_plan(plan_id: int, request: Request):
 #  ADMIN — Subscriptions
 # ═══════════════════════════════════════════════════════════════════
 
+def _user_entitles_journal_db(db, user: User) -> bool:
+    """Align with journal-backend: active/trialing, admin extension window, or manual (no Stripe)."""
+    if not user:
+        return False
+    if (user.role or "") == "admin":
+        return True
+    if user.access_expires_at and datetime.utcnow() < user.access_expires_at:
+        return True
+    if (
+        db.query(Subscription)
+        .filter(
+            Subscription.user_id == user.id,
+            Subscription.status.in_(["active", "trialing"]),
+        )
+        .first()
+    ):
+        return True
+    if user.has_journal_access and not (user.stripe_customer_id or ""):
+        return True
+    return False
+
+
+def _user_has_chart_journal_access(user: User) -> bool:
+    """Chart middleware / session checks (uses a fresh read from DB)."""
+    if not user:
+        return False
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.id == user.id).first()
+        if not u:
+            return False
+        return _user_entitles_journal_db(db, u)
+    finally:
+        db.close()
+
+
 def _sub_public_dict(s, db):
     user = db.query(User).filter(User.id == s.user_id).first()
     plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.id == s.plan_id).first() if s.plan_id else None
     period_end = s.current_period_end or s.ends_at
+    st = (s.status or "").lower()
+    needs_payment = st in ("past_due", "unpaid")
+    ext_active = bool(
+        user and user.access_expires_at and datetime.utcnow() < user.access_expires_at
+    )
+    journal_ok = _user_entitles_journal_db(db, user) if user else False
     return {
         "id": s.id,
         "user_id": s.user_id,
@@ -9134,6 +9176,10 @@ def _sub_public_dict(s, db):
         "cancel_at_period_end": bool(s.cancel_at_period_end),
         "cancelled_at": s.cancelled_at.isoformat() if s.cancelled_at else None,
         "created_at": s.created_at.isoformat() if s.created_at else None,
+        "needs_payment": needs_payment,
+        "access_expires_at": user.access_expires_at.isoformat() if user and user.access_expires_at else None,
+        "admin_extension_active": ext_active,
+        "journal_access_effective": journal_ok,
     }
 
 @app.get("/api/admin/subscriptions")
@@ -9174,12 +9220,14 @@ async def admin_assign_subscription(user_id: int, payload: _ManualSubIn, request
             current_period_end=ends,
         )
         db.add(sub)
+        db.flush()
 
-        user.has_journal_access = True
         if ends:
             user.access_expires_at = ends
+        user.has_journal_access = _user_entitles_journal_db(db, user)
 
         db.commit()
+        db.refresh(sub)
         return {"success": True, "subscription": _sub_public_dict(sub, db)}
     except HTTPException:
         raise
@@ -9203,13 +9251,7 @@ async def admin_cancel_subscription(sub_id: int, request: Request):
 
         user = db.query(User).filter(User.id == sub.user_id).first()
         if user:
-            active = db.query(Subscription).filter(
-                Subscription.user_id == user.id,
-                Subscription.id != sub.id,
-                Subscription.status.in_(["active", "trialing"])
-            ).count()
-            if active == 0:
-                user.has_journal_access = False
+            user.has_journal_access = _user_entitles_journal_db(db, user)
 
         db.commit()
         return {"success": True}
@@ -9220,6 +9262,65 @@ async def admin_cancel_subscription(sub_id: int, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
+
+
+@app.post("/api/admin/users/{user_id}/grant-access-extension")
+async def admin_grant_access_extension(user_id: int, request: Request):
+    """Temporary journal login (shared DB with journal-backend). Stackable from current extension end."""
+    _require_admin(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    days = int(body.get("days", 7))
+    if days < 1 or days > 366:
+        raise HTTPException(status_code=400, detail="days must be 1–366")
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        base = datetime.utcnow()
+        if user.access_expires_at and user.access_expires_at > base:
+            base = user.access_expires_at
+        user.access_expires_at = base + timedelta(days=days)
+        user.has_journal_access = _user_entitles_journal_db(db, user)
+        db.commit()
+        return {
+            "success": True,
+            "access_expires_at": user.access_expires_at.isoformat(),
+            "has_journal_access": user.has_journal_access,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/users/{user_id}/clear-access-extension")
+async def admin_clear_access_extension(user_id: int, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user.access_expires_at = None
+        user.has_journal_access = _user_entitles_journal_db(db, user)
+        db.commit()
+        return {"success": True, "access_expires_at": None, "has_journal_access": user.has_journal_access}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  ADMIN — Coupons & Promo Codes (Stripe direct)
@@ -9982,6 +10083,13 @@ async def admin_subscription_stats(request: Request):
 
         plan_count = db.query(SubscriptionPlan).filter(SubscriptionPlan.is_active == True).count()
         journal_users = db.query(User).filter(User.has_journal_access == True).count()
+        needs_payment_count = db.query(Subscription).filter(
+            Subscription.status.in_(["past_due", "unpaid"])
+        ).count()
+        admin_extension_active_count = db.query(User).filter(
+            User.access_expires_at.isnot(None),
+            User.access_expires_at > datetime.utcnow(),
+        ).count()
 
         return {
             "total_subscriptions": total_subs,
@@ -9994,6 +10102,8 @@ async def admin_subscription_stats(request: Request):
             "mrr": round(float(mrr_payments), 2),
             "active_plans": plan_count,
             "journal_access_users": journal_users,
+            "needs_payment_count": needs_payment_count,
+            "admin_extension_active_count": admin_extension_active_count,
         }
     finally:
         db.close()
@@ -10967,7 +11077,7 @@ async def list_strategies_chart_shim(request: Request):
 @app.post("/api/sessions")
 async def create_trading_session(payload: TradingSessionCreateIn, request: Request):
     user = _require_user(request)
-    if user.role != "admin" and not getattr(user, "has_journal_access", False):
+    if not _user_has_chart_journal_access(user):
         raise HTTPException(status_code=403, detail="Active subscription required to create backtest sessions")
     name = (payload.name or "").strip()
     session_type = (payload.session_type or "").strip().lower()
