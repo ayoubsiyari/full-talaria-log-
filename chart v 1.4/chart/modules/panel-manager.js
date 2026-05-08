@@ -679,51 +679,14 @@ class PanelManager {
      * where a single source pan can map to a far-away bar in the target.
      * Returns true when the two charts represent the same pair.
      */
-    _isSamePair(a, b) {
-        if (!a || !b) return false;
-        if (a === b) return true;
-        // Strict pair identity: REQUIRE both fileIds to be set and equal.
-        // The previous version fell back to symbol comparison whenever either
-        // side lacked a fileId. On higher timeframes the active panel can
-        // briefly clear `currentFileId` while waiting for the aggregate to
-        // build/load; during that window the symbol fallback could match two
-        // different instruments (e.g., both panels reporting a stale symbol
-        // from `window.chart`) and the panel manager would push panel0's
-        // `offsetX` into the next pair's calendar — causing the chart to
-        // slide off-screen. Symbol-only fallback also misfires when two panels
-        // legitimately show the same symbol from different uploaded files
-        // (different brokers / sessions). Strict fileId match avoids both
-        // cases; cross-pair sync is correctly skipped.
-        const fa = a.currentFileId != null ? String(a.currentFileId) : null;
-        const fb = b.currentFileId != null ? String(b.currentFileId) : null;
-        if (!fa || !fb) return false;
-        return fa === fb;
-    }
+    /** @see PanelSyncUtils.isSamePair — kept for external callers (e.g. chart.js uses window.panelManager._isSamePair) */
+    _isSamePair(a, b) { return PanelSyncUtils.isSamePair(a, b); }
 
-    _getPanelChartInstance(panel) {
-        if (!panel) return null;
-        if (panel.chartInstance) return panel.chartInstance;
-        if (panel.isMainChart && typeof window !== 'undefined' && window.chart) return window.chart;
-        return null;
-    }
+    /** @see PanelSyncUtils.getPanelChartInstance */
+    _getPanelChartInstance(panel) { return PanelSyncUtils.getPanelChartInstance(panel); }
 
-    /**
-     * Binary search: find index of candle closest to target timestamp.
-     * Falls back to chart.findGoToTargetIndex if available.
-     */
-    _bsearchTimestamp(data, ts) {
-        if (!data || data.length === 0) return 0;
-        let lo = 0, hi = data.length - 1;
-        while (lo < hi) {
-            const mid = (lo + hi) >>> 1;
-            if ((data[mid].t || 0) < ts) lo = mid + 1;
-            else hi = mid;
-        }
-        if (lo > 0 && Math.abs((data[lo - 1].t || 0) - ts) < Math.abs((data[lo].t || 0) - ts)) {
-            return lo - 1;
-        }
-        return lo;
-    }
+    /** @see PanelSyncUtils.bsearchTimestamp */
+    _bsearchTimestamp(data, ts) { return PanelSyncUtils.bsearchTimestamp(data, ts); }
 
     /**
      * Position a timestamp on all follower panels at a given fraction across the chart width
@@ -852,27 +815,8 @@ class PanelManager {
         }
     }
 
-    /**
-     * Last data index with candle time <= ts (ascending by .t). Used for date-range scroll alignment.
-     */
-    _findLastIndexAtOrBefore(data, ts) {
-        if (!data || data.length === 0) return 0;
-        if (!Number.isFinite(ts)) return 0;
-        let lo = 0;
-        let hi = data.length - 1;
-        let ans = 0;
-        while (lo <= hi) {
-            const mid = (lo + hi) >>> 1;
-            const t = data[mid]?.t || 0;
-            if (t <= ts) {
-                ans = mid;
-                lo = mid + 1;
-            } else {
-                hi = mid - 1;
-            }
-        }
-        return Math.max(0, Math.min(ans, data.length - 1));
-    }
+    /** @see PanelSyncUtils.findLastIndexAtOrBefore */
+    _findLastIndexAtOrBefore(data, ts) { return PanelSyncUtils.findLastIndexAtOrBefore(data, ts); }
 
     /**
      * Date-range sync: every panel shows the same wall-clock window [start, rangeEndExclusive).
@@ -1415,221 +1359,8 @@ class PanelManager {
         this.container.innerHTML = '';
         this.panels = [];
 
-        // Create panels based on layout
-        const layouts = {
-            '1': [{ width: '100%', height: '100%' }],
-            '2v': [
-                { width: '50%', height: '100%', left: '0' },
-                { width: '50%', height: '100%', left: '50%' }
-            ],
-            '2h': [
-                { width: '100%', height: '50%', top: '0' },
-                { width: '100%', height: '50%', top: '50%' }
-            ],
-            '3v': [
-                { width: '33.33%', height: '100%', left: '0' },
-                { width: '33.33%', height: '100%', left: '33.33%' },
-                { width: '33.33%', height: '100%', left: '66.66%' }
-            ],
-            '3h': [
-                { width: '100%', height: '33.33%', top: '0' },
-                { width: '100%', height: '33.33%', top: '33.33%' },
-                { width: '100%', height: '33.33%', top: '66.66%' }
-            ],
-            '3l': [
-                { width: '50%', height: '100%', left: '0' },
-                { width: '50%', height: '50%', left: '50%', top: '0' },
-                { width: '50%', height: '50%', left: '50%', top: '50%' }
-            ],
-            '3r': [
-                { width: '50%', height: '50%', left: '0', top: '0' },
-                { width: '50%', height: '50%', left: '0', top: '50%' },
-                { width: '50%', height: '100%', left: '50%', top: '0' }
-            ],
-            '3t': [
-                { width: '100%', height: '50%', left: '0', top: '0' },
-                { width: '50%', height: '50%', left: '0', top: '50%' },
-                { width: '50%', height: '50%', left: '50%', top: '50%' }
-            ],
-            '3b': [
-                { width: '50%', height: '50%', left: '0', top: '0' },
-                { width: '50%', height: '50%', left: '50%', top: '0' },
-                { width: '100%', height: '50%', left: '0', top: '50%' }
-            ],
-            '4': [
-                { width: '50%', height: '50%', left: '0', top: '0' },
-                { width: '50%', height: '50%', left: '50%', top: '0' },
-                { width: '50%', height: '50%', left: '0', top: '50%' },
-                { width: '50%', height: '50%', left: '50%', top: '50%' }
-            ],
-            '4v': [
-                { width: '25%', height: '100%', left: '0' },
-                { width: '25%', height: '100%', left: '25%' },
-                { width: '25%', height: '100%', left: '50%' },
-                { width: '25%', height: '100%', left: '75%' }
-            ],
-            '4h': [
-                { width: '100%', height: '25%', top: '0' },
-                { width: '100%', height: '25%', top: '25%' },
-                { width: '100%', height: '25%', top: '50%' },
-                { width: '100%', height: '25%', top: '75%' }
-            ],
-            '4t': [ // Top 1 + bottom 3
-                { width: '100%', height: '50%', left: '0', top: '0' },
-                { width: '33.33%', height: '50%', left: '0', top: '50%' },
-                { width: '33.33%', height: '50%', left: '33.33%', top: '50%' },
-                { width: '33.33%', height: '50%', left: '66.66%', top: '50%' }
-            ],
-            '4b': [ // Top 3 + bottom 1
-                { width: '33.33%', height: '50%', left: '0', top: '0' },
-                { width: '33.33%', height: '50%', left: '33.33%', top: '0' },
-                { width: '33.33%', height: '50%', left: '66.66%', top: '0' },
-                { width: '100%', height: '50%', left: '0', top: '50%' }
-            ],
-            '4r': [ // Left 3 + right 1
-                { width: '50%', height: '33.33%', left: '0', top: '0' },
-                { width: '50%', height: '33.33%', left: '0', top: '33.33%' },
-                { width: '50%', height: '33.33%', left: '0', top: '66.66%' },
-                { width: '50%', height: '100%', left: '50%', top: '0' }
-            ],
-            '4l': [ // 1 left + 3 right
-                { width: '50%', height: '100%', left: '0', top: '0' },
-                { width: '50%', height: '33.33%', left: '50%', top: '0' },
-                { width: '50%', height: '33.33%', left: '50%', top: '33.33%' },
-                { width: '50%', height: '33.33%', left: '50%', top: '66.66%' }
-            ],
-            '4tl': [ // 1 big top-left + 1 right + 2 bottom
-                { width: '66.66%', height: '60%', left: '0', top: '0' },
-                { width: '33.33%', height: '60%', left: '66.66%', top: '0' },
-                { width: '50%', height: '40%', left: '0', top: '60%' },
-                { width: '50%', height: '40%', left: '50%', top: '60%' }
-            ],
-            '5a': [ // Top 2 + bottom 3
-                { width: '50%', height: '50%', left: '0', top: '0' },
-                { width: '50%', height: '50%', left: '50%', top: '0' },
-                { width: '33.33%', height: '50%', left: '0', top: '50%' },
-                { width: '33.33%', height: '50%', left: '33.33%', top: '50%' },
-                { width: '33.33%', height: '50%', left: '66.66%', top: '50%' }
-            ],
-            '5b': [ // Top 3 + bottom 2
-                { width: '33.33%', height: '50%', left: '0', top: '0' },
-                { width: '33.33%', height: '50%', left: '33.33%', top: '0' },
-                { width: '33.33%', height: '50%', left: '66.66%', top: '0' },
-                { width: '50%', height: '50%', left: '0', top: '50%' },
-                { width: '50%', height: '50%', left: '50%', top: '50%' }
-            ],
-            '5c': [ // Left 2 + right 3
-                { width: '50%', height: '50%', left: '0', top: '0' },
-                { width: '50%', height: '50%', left: '0', top: '50%' },
-                { width: '50%', height: '33.33%', left: '50%', top: '0' },
-                { width: '50%', height: '33.33%', left: '50%', top: '33.33%' },
-                { width: '50%', height: '33.33%', left: '50%', top: '66.66%' }
-            ],
-            '5v': [
-                { width: '20%', height: '100%', left: '0' },
-                { width: '20%', height: '100%', left: '20%' },
-                { width: '20%', height: '100%', left: '40%' },
-                { width: '20%', height: '100%', left: '60%' },
-                { width: '20%', height: '100%', left: '80%' }
-            ],
-            '5h': [
-                { width: '100%', height: '20%', top: '0' },
-                { width: '100%', height: '20%', top: '20%' },
-                { width: '100%', height: '20%', top: '40%' },
-                { width: '100%', height: '20%', top: '60%' },
-                { width: '100%', height: '20%', top: '80%' }
-            ],
-            '6': [ // 2x3 grid
-                { width: '33.33%', height: '50%', left: '0', top: '0' },
-                { width: '33.33%', height: '50%', left: '33.33%', top: '0' },
-                { width: '33.33%', height: '50%', left: '66.66%', top: '0' },
-                { width: '33.33%', height: '50%', left: '0', top: '50%' },
-                { width: '33.33%', height: '50%', left: '33.33%', top: '50%' },
-                { width: '33.33%', height: '50%', left: '66.66%', top: '50%' }
-            ],
-            '6b': [ // 3x2 grid
-                { width: '50%', height: '33.33%', left: '0', top: '0' },
-                { width: '50%', height: '33.33%', left: '50%', top: '0' },
-                { width: '50%', height: '33.33%', left: '0', top: '33.33%' },
-                { width: '50%', height: '33.33%', left: '50%', top: '33.33%' },
-                { width: '50%', height: '33.33%', left: '0', top: '66.66%' },
-                { width: '50%', height: '33.33%', left: '50%', top: '66.66%' }
-            ],
-            '6v': [
-                { width: '16.66%', height: '100%', left: '0' },
-                { width: '16.66%', height: '100%', left: '16.66%' },
-                { width: '16.66%', height: '100%', left: '33.33%' },
-                { width: '16.66%', height: '100%', left: '50%' },
-                { width: '16.66%', height: '100%', left: '66.66%' },
-                { width: '16.66%', height: '100%', left: '83.33%' }
-            ],
-            '6h': [
-                { width: '100%', height: '16.66%', top: '0' },
-                { width: '100%', height: '16.66%', top: '16.66%' },
-                { width: '100%', height: '16.66%', top: '33.33%' },
-                { width: '100%', height: '16.66%', top: '50%' },
-                { width: '100%', height: '16.66%', top: '66.66%' },
-                { width: '100%', height: '16.66%', top: '83.33%' }
-            ],
-            '7v': [
-                { width: '14.28%', height: '100%', left: '0' },
-                { width: '14.28%', height: '100%', left: '14.28%' },
-                { width: '14.28%', height: '100%', left: '28.56%' },
-                { width: '14.28%', height: '100%', left: '42.84%' },
-                { width: '14.28%', height: '100%', left: '57.12%' },
-                { width: '14.28%', height: '100%', left: '71.4%' },
-                { width: '14.28%', height: '100%', left: '85.68%' }
-            ],
-            '7a': [ // Top 3 + middle 3 + bottom 1
-                { width: '33.33%', height: '33.33%', left: '0', top: '0' },
-                { width: '33.33%', height: '33.33%', left: '33.33%', top: '0' },
-                { width: '33.33%', height: '33.33%', left: '66.66%', top: '0' },
-                { width: '33.33%', height: '33.33%', left: '0', top: '33.33%' },
-                { width: '33.33%', height: '33.33%', left: '33.33%', top: '33.33%' },
-                { width: '33.33%', height: '33.33%', left: '66.66%', top: '33.33%' },
-                { width: '100%', height: '33.33%', left: '0', top: '66.66%' }
-            ],
-            '8': [ // 2x4 grid
-                { width: '25%', height: '50%', left: '0', top: '0' },
-                { width: '25%', height: '50%', left: '25%', top: '0' },
-                { width: '25%', height: '50%', left: '50%', top: '0' },
-                { width: '25%', height: '50%', left: '75%', top: '0' },
-                { width: '25%', height: '50%', left: '0', top: '50%' },
-                { width: '25%', height: '50%', left: '25%', top: '50%' },
-                { width: '25%', height: '50%', left: '50%', top: '50%' },
-                { width: '25%', height: '50%', left: '75%', top: '50%' }
-            ],
-            '8b': [ // 4x2 grid
-                { width: '50%', height: '25%', left: '0', top: '0' },
-                { width: '50%', height: '25%', left: '50%', top: '0' },
-                { width: '50%', height: '25%', left: '0', top: '25%' },
-                { width: '50%', height: '25%', left: '50%', top: '25%' },
-                { width: '50%', height: '25%', left: '0', top: '50%' },
-                { width: '50%', height: '25%', left: '50%', top: '50%' },
-                { width: '50%', height: '25%', left: '0', top: '75%' },
-                { width: '50%', height: '25%', left: '50%', top: '75%' }
-            ],
-            '8v': [
-                { width: '12.5%', height: '100%', left: '0' },
-                { width: '12.5%', height: '100%', left: '12.5%' },
-                { width: '12.5%', height: '100%', left: '25%' },
-                { width: '12.5%', height: '100%', left: '37.5%' },
-                { width: '12.5%', height: '100%', left: '50%' },
-                { width: '12.5%', height: '100%', left: '62.5%' },
-                { width: '12.5%', height: '100%', left: '75%' },
-                { width: '12.5%', height: '100%', left: '87.5%' }
-            ],
-            '8h': [
-                { width: '100%', height: '12.5%', top: '0' },
-                { width: '100%', height: '12.5%', top: '12.5%' },
-                { width: '100%', height: '12.5%', top: '25%' },
-                { width: '100%', height: '12.5%', top: '37.5%' },
-                { width: '100%', height: '12.5%', top: '50%' },
-                { width: '100%', height: '12.5%', top: '62.5%' },
-                { width: '100%', height: '12.5%', top: '75%' },
-                { width: '100%', height: '12.5%', top: '87.5%' }
-            ]
-        };
+        // Create panels based on layout — config lives in panel-layouts.js (PANEL_LAYOUTS)
+        const layouts = PANEL_LAYOUTS;
         
         const panelConfig = layouts[layout] || layouts['1'];
         
