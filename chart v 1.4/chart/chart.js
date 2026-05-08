@@ -1761,8 +1761,12 @@ class Chart {
                 if (typeof this.orderManager.updatePositionsPanel === 'function') this.orderManager.updatePositionsPanel();
             }
 
-            // Trigger symbol sync if enabled
-            if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.symbol) {
+            // Trigger symbol sync if enabled. Programmatic follower loads set
+            // `_suppressNextSymbolBroadcast` to avoid recursive fan-out storms.
+            const suppressSymbolBroadcast = !!this._suppressNextSymbolBroadcast;
+            this._suppressNextSymbolBroadcast = false;
+            if (!suppressSymbolBroadcast
+                && window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.symbol) {
                 const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
                 if (sourcePanel) {
                     window.panelManager.syncSymbol(sourcePanel, this.currentSymbol, targetFileId);
@@ -2050,8 +2054,12 @@ class Chart {
                 mainOm.syncOrderVisualsToActiveChart();
             }
 
-            // Trigger symbol sync if enabled
-            if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.symbol) {
+            // Trigger symbol sync if enabled. Programmatic follower loads set
+            // `_suppressNextSymbolBroadcast` to avoid recursive fan-out storms.
+            const suppressSymbolBroadcast = !!this._suppressNextSymbolBroadcast;
+            this._suppressNextSymbolBroadcast = false;
+            if (!suppressSymbolBroadcast
+                && window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.symbol) {
                 const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
                 if (sourcePanel) {
                     window.panelManager.syncSymbol(sourcePanel, this.currentSymbol, targetFileId);

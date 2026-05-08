@@ -323,6 +323,8 @@ class PanelManager {
 
         /** True while applying date-range sync so charts don't re-dispatch scroll storms */
         this._syncingDateRange = false;
+        /** Prevent nested symbol fan-out when follower loads rebroadcast syncSymbol. */
+        this._syncingSymbol = false;
 
         /** Per-target-panel last bar index so each follower only jumps when ITS own right-edge bar changes. */
         this._timeSyncLastTargetBar = {};
@@ -938,19 +940,28 @@ class PanelManager {
      */
     syncSymbol(sourcePanel, symbol, fileId) {
         if (!this.syncSettings.symbol || (this.panels || []).length <= 1) return;
+        if (this._syncingSymbol) return;
+        this._syncingSymbol = true;
         
-        this.panels.forEach(panel => {
-            if (panel.index === sourcePanel.index) return;
-            const pc = this._getPanelChartInstance(panel);
-            if (!pc) return;
-            if (String(pc.currentFileId) === String(fileId)) return;
+        try {
+            this.panels.forEach(panel => {
+                if (panel.index === sourcePanel.index) return;
+                const pc = this._getPanelChartInstance(panel);
+                if (!pc) return;
+                if (String(pc.currentFileId) === String(fileId)) return;
 
-            if (panel.isMainChart && window.chart && typeof window.chart.loadFileData === 'function') {
-                window.chart.loadFileData(fileId);
-            } else if (typeof pc.loadPanelFileData === 'function') {
-                pc.loadPanelFileData(fileId);
-            }
-        });
+                // Follower loads are programmatic fan-out; they must not emit a second
+                // syncSymbol wave back to other panels (pair-change cascade/storm).
+                pc._suppressNextSymbolBroadcast = true;
+                if (panel.isMainChart && window.chart && typeof window.chart.loadFileData === 'function') {
+                    window.chart.loadFileData(fileId);
+                } else if (typeof pc.loadPanelFileData === 'function') {
+                    pc.loadPanelFileData(fileId);
+                }
+            });
+        } finally {
+            this._syncingSymbol = false;
+        }
     }
     
     /**
