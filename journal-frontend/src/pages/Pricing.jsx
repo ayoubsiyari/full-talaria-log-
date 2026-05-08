@@ -38,19 +38,56 @@ export default function Pricing() {
   const [couponResult, setCouponResult] = useState(null);
   const navigate = useNavigate();
 
-  useEffect(() => { fetchPlans(); checkAuth(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const token = localStorage.getItem('token');
+      // Logged-in users without active entitlement should see the billing / renew page,
+      // not this marketing pricing screen (public route bypasses ProtectedLayout).
+      if (token) {
+        setIsLoggedIn(true);
+        const redirected = await checkAuthAndMaybeRedirectSubscriptionPage(token);
+        if (cancelled || redirected) return;
+      }
+      await fetchPlans();
+      if (!cancelled) setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
-  const checkAuth = async () => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      setIsLoggedIn(true);
+  /** @returns {Promise<boolean>} true if navigating away */
+  const checkAuthAndMaybeRedirectSubscriptionPage = async (token) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/subscriptions/my-subscription`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      setCurrentSubscription(data);
+
+      let isAdmin = false;
       try {
-        const res = await fetch(`${API_BASE_URL}/subscriptions/my-subscription`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.ok) setCurrentSubscription(await res.json());
-      } catch (e) { /* silent */ }
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        isAdmin = payload.is_admin === true || payload.role === 'admin';
+      } catch (e) {
+        /* ignore */
+      }
+      if (isAdmin) return false;
+
+      const entitled =
+        (data.has_subscription &&
+          ['active', 'trialing'].includes(data.subscription?.status)) ||
+        data.has_journal_access === true;
+      if (!entitled) {
+        navigate('/subscription-status', { replace: true });
+        return true;
+      }
+    } catch (e) {
+      /* silent — show pricing if API fails */
     }
+    return false;
   };
 
   const fetchPlans = async () => {
@@ -59,11 +96,12 @@ export default function Pricing() {
       if (res.ok) {
         const data = await res.json();
         if (data.plans?.length > 0) {
-          setPlans(data.plans.map(p => ({ ...p, features: parseFeatures(p.features) })));
+          setPlans(data.plans.map((p) => ({ ...p, features: parseFeatures(p.features) })));
         }
       }
-    } catch (e) { /* silent */ }
-    finally { setLoading(false); }
+    } catch (e) {
+      /* silent */
+    }
   };
 
   const handleValidateCoupon = async () => {
