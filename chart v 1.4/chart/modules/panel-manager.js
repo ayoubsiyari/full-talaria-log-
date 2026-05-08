@@ -326,6 +326,8 @@ class PanelManager {
 
         /** Per-target-panel last bar index so each follower only jumps when ITS own right-edge bar changes. */
         this._timeSyncLastTargetBar = {};
+        /** Per-target-panel last fractional target position for smooth mixed-timeframe time sync. */
+        this._timeSyncLastTargetPosition = {};
         
         // Sync settings — time is opt-in (default off) to prevent unexpected viewport
         // jumps on partner panels when switching timeframes or clicking bars.
@@ -835,6 +837,7 @@ class PanelManager {
                 e.stopPropagation();
                 this.syncSettings.time = e.target.checked;
                 this._timeSyncLastTargetBar = {};
+                this._timeSyncLastTargetPosition = {};
                 this.saveSyncSettings();
 
                 if (e.target.checked && this.panels.length > 1) {
@@ -1066,9 +1069,42 @@ class PanelManager {
     }
     
     /**
-     * Per-target discrete Time sync: for each follower panel, compute which bar index
-     * the source's right-edge timestamp maps to in THAT panel's data. Only update
-     * when that target bar index changes (so 5m targets jump every 5 minutes, 1m every minute).
+     * Fractional target position for a timestamp in chart.data.
+     * Integer bar-index sync makes high TF panels (1h/4h/1d) appear frozen, then jump.
+     * This returns a float index so followers move continuously as source time advances.
+     */
+    _resolveFractionalTargetPosition(chart, timestamp) {
+        const data = chart?.data;
+        if (!Array.isArray(data) || data.length === 0 || !Number.isFinite(timestamp)) return 0;
+        const n = data.length;
+        if (n === 1) return 0;
+
+        const nearestIdx = chart.findGoToTargetIndex
+            ? chart.findGoToTargetIndex(data, timestamp)
+            : this._bsearchTimestamp(data, timestamp);
+        const idx = Math.max(0, Math.min(n - 1, Number.isFinite(nearestIdx) ? nearestIdx : 0));
+        const tIdx = Number(data[idx]?.t);
+        if (!Number.isFinite(tIdx) || timestamp === tIdx) return idx;
+
+        const rightIdx = Math.min(n - 1, idx + 1);
+        const leftIdx = Math.max(0, idx - 1);
+        const tRight = Number(data[rightIdx]?.t);
+        const tLeft = Number(data[leftIdx]?.t);
+
+        if (timestamp > tIdx && rightIdx !== idx && Number.isFinite(tRight) && tRight > tIdx) {
+            const frac = Math.max(0, Math.min(1, (timestamp - tIdx) / (tRight - tIdx)));
+            return idx + frac;
+        }
+        if (timestamp < tIdx && leftIdx !== idx && Number.isFinite(tLeft) && tIdx > tLeft) {
+            const frac = Math.max(0, Math.min(1, (timestamp - tLeft) / (tIdx - tLeft)));
+            return leftIdx + frac;
+        }
+        return idx;
+    }
+
+    /**
+     * Time sync to source right edge.
+     * Uses fractional target position to keep high-TF followers fluid (no freeze/jump walling).
      */
     _discreteTimeSyncToRightEdge(sourcePanel, rightEdgeTimestamp) {
         if (this._isSyncing) return;
@@ -1086,23 +1122,24 @@ class PanelManager {
             // Skip cross-pair time sync — different instruments don't share a calendar.
             if (!this._isSamePair(sourceChart, chart)) return;
 
-            const targetIdx = chart.findGoToTargetIndex
-                ? chart.findGoToTargetIndex(chart.data, rightEdgeTimestamp)
-                : this._bsearchTimestamp(chart.data, rightEdgeTimestamp);
+            const targetPos = this._resolveFractionalTargetPosition(chart, rightEdgeTimestamp);
+            const targetIdx = Math.max(0, Math.min(chart.data.length - 1, Math.round(targetPos)));
+            const lastPos = this._timeSyncLastTargetPosition[panel.index];
+            const posDelta = Number.isFinite(lastPos) ? Math.abs(targetPos - lastPos) : Infinity;
+            // Tiny threshold avoids noisy re-renders while still allowing smooth high-TF movement.
+            if (posDelta < 0.02) return;
 
-            const lastIdx = this._timeSyncLastTargetBar[panel.index];
-            if (lastIdx === targetIdx) return;
-
+            this._timeSyncLastTargetPosition[panel.index] = targetPos;
             this._timeSyncLastTargetBar[panel.index] = targetIdx;
             anyChanged = true;
-            toUpdate.push({ chart, targetIdx });
+            toUpdate.push({ chart, targetPos });
         });
 
         if (!anyChanged) return;
 
         this._isSyncing = true;
         try {
-            toUpdate.forEach(({ chart, targetIdx }) => {
+            toUpdate.forEach(({ chart, targetPos }) => {
                 chart._suppressPanelScrollSync = true;
 
                 const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
@@ -1110,7 +1147,7 @@ class PanelManager {
                 const chartWidth = chart.w - m.l - m.r;
                 const visibleCandles = Math.max(1, Math.floor(chartWidth / spacing));
 
-                chart.offsetX = -(targetIdx - visibleCandles + 1) * spacing;
+                chart.offsetX = -(targetPos - visibleCandles + 1) * spacing;
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();
             });
@@ -2102,6 +2139,7 @@ class PanelManager {
      */
     selectPanel(index) {
         this._timeSyncLastTargetBar = {};
+        this._timeSyncLastTargetPosition = {};
 
         // Deselect all panels
         this.panels.forEach((panel, i) => {
