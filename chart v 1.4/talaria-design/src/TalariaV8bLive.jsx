@@ -40,31 +40,21 @@ function cpBuildColor(r, g, b, a) {
   return a>=1 ? `#${toHex2(r)}${toHex2(g)}${toHex2(b)}` : `rgba(${r},${g},${b},${+a.toFixed(2)})`;
 }
 
-/** Multi-panel layouts (≠ single tile): V9 header symbol/TF follows `panelManager` selection. */
+/**
+ * Multi-panel layouts have been removed from the codebase. The V9 build is
+ * single-chart only, so this always returns false and every guarded code
+ * path that was previously routing through panelManager falls back to
+ * window.chart. Kept as a function (not an inlined `false`) so the dozens
+ * of callers below don't all need touching, and so a future re-enable is
+ * a one-line change.
+ */
 function v9IsMultiPanelLayoutActive() {
-  try {
-    const pm = typeof window !== "undefined" ? window.panelManager : null;
-    if (!pm) return false;
-    const lay = pm.getCurrentLayout?.() || pm.currentLayout || "1";
-    if (lay !== "1") return true;
-    return Array.isArray(pm.panels) && pm.panels.length > 1;
-  } catch (_) {
-    return false;
-  }
+  return false;
 }
 
 /** Chart instance that should drive the V9 pair + timeframe display. */
 function v9ActiveChartInstance() {
-  try {
-    const pm = typeof window !== "undefined" ? window.panelManager : null;
-    if (!pm || !v9IsMultiPanelLayoutActive()) {
-      return typeof window !== "undefined" ? window.chart : null;
-    }
-    return pm.getSelectedPanel?.()?.chartInstance
-      || (typeof window !== "undefined" ? window.chart : null);
-  } catch (_) {
-    return typeof window !== "undefined" ? window.chart : null;
-  }
+  return typeof window !== "undefined" ? (window.chart || null) : null;
 }
 
 /** Minutes east of UTC for `timeZone` at instant `dateMs` (DST-aware). */
@@ -16391,7 +16381,8 @@ const TalariaV8bLive = () => {
           <span style={{ fontSize: 13, fontWeight: 700, color: "#fff", WebkitFontSmoothing: "antialiased" }}>Place Order</span>
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: c.br }}/>
-        {[{id:"layout",icon:"layout",label:"Layout"},{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
+        {/* "layout" entry removed — multi-panel/layout system has been deleted from the codebase. */}
+        {[{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
           <button type="button" key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
               background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),

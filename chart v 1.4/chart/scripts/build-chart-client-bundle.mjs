@@ -47,7 +47,12 @@ const CHART_CLIENT_PART1 = [
   'modules/drawing-tools-manager.js',
   'modules/favorites-manager.js',
   'modules/keyboard-shortcuts.js',
-  'modules/panel-manager.js',
+  // modules/panel-manager.js removed — multi-panel layout system has been
+  // deleted. window.panelManager will be undefined; the surrounding code in
+  // chart.js / modules already null-checks for that, so the panel feature
+  // is silently disabled. See also: removal of initPanelChart /
+  // renderPanelChart / panelTimeframeChanged listeners in the index HTMLs
+  // and the layout-selector UI in TalariaV8bLive.jsx.
   'settings-panel.js',
   'settings-panel-ext.js',
   'modules/timeframe-favorites.js',
