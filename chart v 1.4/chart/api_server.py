@@ -518,6 +518,8 @@ SPIKE_FILTER_NEIGHBOR_GAP_PCT = float(os.getenv("SPIKE_FILTER_NEIGHBOR_GAP_PCT",
 SPIKE_FILTER_MIN_DEVIATION_PCT = float(os.getenv("SPIKE_FILTER_MIN_DEVIATION_PCT", "0.0035"))
 SPIKE_FILTER_MAX_ADJUST_RATIO = float(os.getenv("SPIKE_FILTER_MAX_ADJUST_RATIO", "0.10"))
 EXCLUDE_WEEKEND_CANDLES = os.getenv("EXCLUDE_WEEKEND_CANDLES", "true").strip().lower() in {"1", "true", "yes", "on"}
+FIRSTRATE_EXTREME_RATIO_FILTER = os.getenv("FIRSTRATE_EXTREME_RATIO_FILTER", "true").strip().lower() in {"1", "true", "yes", "on"}
+FIRSTRATE_EXTREME_RATIO_MAX = float(os.getenv("FIRSTRATE_EXTREME_RATIO_MAX", "5.0"))
 
 # Scale/runtime controls
 BINARY_ONLY_RUNTIME = os.getenv("BINARY_ONLY_RUNTIME", "false").strip().lower() in {"1", "true", "yes", "on"}
@@ -4313,9 +4315,82 @@ def _apply_dataset_filters(candles, *, original_name: str | None, apply_spike: b
         out = _filter_weekend_candles(out)
     if not out:
         return []
+    out = _drop_extreme_outlier_candles(out, original_name=original_name)
+    if not out:
+        return []
     if apply_spike and policy["spike_filter"]:
         out = _smooth_isolated_candle_spikes(out)
     return out
+
+
+def _drop_extreme_outlier_candles(candles, *, original_name: str | None):
+    """
+    Guard against malformed vendor ticks that can explode chart y-scale
+    (e.g. FX around 1.21 with one accidental candle near 110).
+    Only active for FirstRate FX/crypto datasets.
+    """
+    if not candles or not FIRSTRATE_EXTREME_RATIO_FILTER:
+        return candles
+    policy = _resolve_dataset_filter_policy(original_name)
+    if policy.get("provider") != "firstrate":
+        return candles
+
+    ticker = _firstrate_extract_ticker_from_filename(str(original_name or ""))
+    cls = _firstrate_classify_ticker(ticker) if ticker else None
+    if cls not in {"fx", "crypto"}:
+        return candles
+
+    ratio_max = max(1.5, float(FIRSTRATE_EXTREME_RATIO_MAX))
+    kept = []
+    dropped = 0
+
+    for i, c in enumerate(candles):
+        try:
+            o = float(c.get("o", 0))
+            h = float(c.get("h", 0))
+            l = float(c.get("l", 0))
+            cl = float(c.get("c", 0))
+        except Exception:
+            dropped += 1
+            continue
+
+        low = min(o, h, l, cl)
+        high = max(o, h, l, cl)
+        if low <= 0:
+            dropped += 1
+            continue
+
+        prev_close = None
+        next_close = None
+        if i > 0:
+            try:
+                prev_close = float(candles[i - 1].get("c", 0))
+            except Exception:
+                prev_close = None
+        if i + 1 < len(candles):
+            try:
+                next_close = float(candles[i + 1].get("c", 0))
+            except Exception:
+                next_close = None
+
+        refs = [r for r in (prev_close, next_close) if r is not None and r > 0]
+        ref = (sum(refs) / len(refs)) if refs else cl
+        if not (isinstance(ref, (int, float)) and math.isfinite(ref) and ref > 0):
+            kept.append(c)
+            continue
+
+        # Extreme relative jump OR impossible wick ratio for FX/crypto stream.
+        extreme_vs_ref = (high / ref > ratio_max) or (ref / low > ratio_max)
+        extreme_wick = (high / low > ratio_max * 1.2)
+        if extreme_vs_ref or extreme_wick:
+            dropped += 1
+            continue
+
+        kept.append(c)
+
+    if dropped > 0:
+        print(f"🧯 Dropped {dropped}/{len(candles)} extreme outlier candles for {original_name}")
+    return kept
 
 
 def _canonicalize_candles(candles, *, original_name: str | None = None):
