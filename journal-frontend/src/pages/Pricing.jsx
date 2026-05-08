@@ -231,12 +231,6 @@ export default function Pricing() {
             ) : (
               <span className="text-white/80"> (previous subscription)</span>
             )}
-            {lapsedInfo?.status && (
-              <span className="text-amber-200/85">
-                {' '}
-                · Stripe: {String(lapsedInfo.status).replace(/_/g, ' ')}
-              </span>
-            )}
             {currentSubscription?.billing_issue && (
               <span className="block mt-1.5 text-[12px] text-amber-200/75">
                 Payment required to restore access. Use checkout below to renew this plan, or update your card from the billing page.
