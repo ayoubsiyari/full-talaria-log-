@@ -47,10 +47,14 @@ class PanelManager {
         /** Per-target-panel last bar index so each follower only jumps when ITS own right-edge bar changes. */
         this._timeSyncLastTargetBar = {};
         
-        // Sync settings - time is opt-in (default off) to prevent unexpected viewport
+        // Sync settings — time is opt-in (default off) to prevent unexpected viewport
         // jumps on partner panels when switching timeframes or clicking bars.
+        //
+        // Same instrument + different timeframes per tile: enable Symbol (every tile loads
+        // the same file via loadPanelFileData; each keeps its own currentTimeframe) and keep
+        // Interval OFF so changing TF on one panel does not overwrite others (see syncInterval).
         this.syncSettings = {
-            symbol: false,
+            symbol: true,
             interval: false,
             crosshair: true,
             time: false,
@@ -280,11 +284,11 @@ class PanelManager {
             <!-- Sync Settings -->
             <div class="sync-settings-section sync-section">
                 <div class="sync-title">SYNC IN LAYOUT</div>
-                <div class="sync-row">
+                <div class="sync-row" title="When on, loading or changing symbol on one tile loads the same dataset (file id) on every tile. Each tile still uses its own timeframe unless Interval sync is on.">
                     <div class="sync-label"><span>Symbol</span></div>
                     <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="symbol-sync-toggle"></label>
                 </div>
-                <div class="sync-row">
+                <div class="sync-row" title="When on, all tiles switch to the same timeframe. Turn off for multi-timeframe layouts (e.g. 1m + 15m) while Symbol stays on for one pair.">
                     <div class="sync-label"><span>Interval</span></div>
                     <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="interval-sync-toggle"></label>
                 </div>
