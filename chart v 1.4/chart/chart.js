@@ -2545,7 +2545,14 @@ class Chart {
             // Restore chart view (pan/zoom position)
             if (state.chartView && typeof state.chartView === 'object') {
                 const v = state.chartView;
-                if (typeof v.offsetX === 'number' && Number.isFinite(v.offsetX)) {
+                // Replay uses virtual time + auto-scroll to pin the playhead; restoring saved chart pan
+                // from the same session blob overwrote that alignment — footer showed 21:10 while the
+                // viewport stayed hours earlier on 1m (15m looked "fine" because one aggregated candle).
+                const replayOwnsHorizontalPan =
+                    state.replay &&
+                    typeof state.replay === 'object' &&
+                    Object.keys(state.replay).length > 0;
+                if (typeof v.offsetX === 'number' && Number.isFinite(v.offsetX) && !replayOwnsHorizontalPan) {
                     this.offsetX = v.offsetX;
                 }
                 if (typeof v.candleWidth === 'number' && Number.isFinite(v.candleWidth)) {

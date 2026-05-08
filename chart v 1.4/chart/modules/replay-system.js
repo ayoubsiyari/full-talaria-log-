@@ -153,7 +153,8 @@ class ReplaySystem {
                 if (typeof window.updateSpeedDisplay === 'function') {
                     window.updateSpeedDisplay(this.speed);
                 }
-                this.updateChartData(false);
+                // Align viewport with restored playhead (false left stale chart pan from session chartView).
+                this.updateChartData(true);
             }
         } catch (e) {
             console.warn('⚠️ Failed to apply persisted replay state', e);
