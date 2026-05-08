@@ -34,7 +34,11 @@ export default function SubscriptionManager() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [extensionActionUser, setExtensionActionUser] = useState(null);
-  
+  const [manualAssignUserId, setManualAssignUserId] = useState('');
+  const [manualAssignPlanId, setManualAssignPlanId] = useState('');
+  const [manualAssignDays, setManualAssignDays] = useState('30');
+  const [manualAssignBusy, setManualAssignBusy] = useState(false);
+
   // Plan form state
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [planForm, setPlanForm] = useState({
@@ -201,6 +205,47 @@ export default function SubscriptionManager() {
       }
     } catch (err) {
       setError('Error creating coupon');
+    }
+  };
+
+  const assignManualSubscription = async () => {
+    const uid = parseInt(String(manualAssignUserId).trim(), 10);
+    if (!uid || uid < 1) {
+      setError('Enter a valid user ID');
+      return;
+    }
+    const days = Math.max(1, parseInt(String(manualAssignDays), 10) || 30);
+    const pidRaw = String(manualAssignPlanId).trim();
+    const planId = pidRaw ? parseInt(pidRaw, 10) : null;
+    if (pidRaw && (!planId || planId < 1)) {
+      setError('Invalid plan selection');
+      return;
+    }
+    setManualAssignBusy(true);
+    setError('');
+    try {
+      const body = { duration_days: days };
+      if (planId) body.plan_id = planId;
+      const res = await fetch(`${API_BASE_URL}/subscriptions/users/${uid}/subscription`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setManualAssignUserId('');
+        await fetchSubscriptions();
+        await fetchStats();
+      } else {
+        setError(data.error || 'Could not assign subscription');
+      }
+    } catch (err) {
+      setError('Could not assign subscription');
+    } finally {
+      setManualAssignBusy(false);
     }
   };
 
@@ -508,6 +553,56 @@ export default function SubscriptionManager() {
               <p className="text-xs text-gray-500 mt-0.5">
                 Highlighted rows: Stripe reports payment required. Use extension to grant temporary access while the customer updates their card.
               </p>
+            </div>
+          </div>
+          <div className="rounded-lg border border-violet-500/25 bg-[#0a1628] p-4">
+            <h4 className="text-sm font-medium text-white mb-1">Manual subscription</h4>
+            <p className="text-xs text-gray-500 mb-3">
+              For users with no subscription row or who cannot complete checkout (e.g. card fails). Creates an active manual subscription and grants access. Use the numeric user ID from your admin user list.
+            </p>
+            <div className="flex flex-wrap gap-3 items-end">
+              <label className="flex flex-col gap-1 text-xs text-gray-400 min-w-[100px]">
+                User ID
+                <input
+                  type="number"
+                  min={1}
+                  value={manualAssignUserId}
+                  onChange={e => setManualAssignUserId(e.target.value)}
+                  placeholder="e.g. 42"
+                  className="bg-[#050d18] border border-gray-600 rounded px-2 py-1.5 text-sm text-white w-28"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-gray-400 min-w-[160px]">
+                Plan
+                <select
+                  value={manualAssignPlanId}
+                  onChange={e => setManualAssignPlanId(e.target.value)}
+                  className="bg-[#050d18] border border-gray-600 rounded px-2 py-1.5 text-sm text-white max-w-[200px]"
+                >
+                  <option value="">— Optional —</option>
+                  {plans.filter(p => p.is_active).map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-gray-400 min-w-[72px]">
+                Days
+                <input
+                  type="number"
+                  min={1}
+                  value={manualAssignDays}
+                  onChange={e => setManualAssignDays(e.target.value)}
+                  className="bg-[#050d18] border border-gray-600 rounded px-2 py-1.5 text-sm text-white w-20"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={manualAssignBusy}
+                onClick={assignManualSubscription}
+                className="px-3 py-1.5 rounded text-sm border border-violet-500/40 text-violet-200 hover:bg-violet-500/15 disabled:opacity-40"
+              >
+                {manualAssignBusy ? 'Saving…' : 'Grant access'}
+              </button>
             </div>
           </div>
           <div className="overflow-x-auto">
