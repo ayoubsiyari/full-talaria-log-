@@ -11673,8 +11673,38 @@ class Chart {
         return true;
     }
     
+    /**
+     * Sort ascending by time and coerce OHLCV so higher-TF aggregation (1h, 1d, …) never merges
+     * buckets out of order — unsorted raw rows produced giant bogus daily wicks (bad max/min across wrong days).
+     */
+    _prepareBarsForResampling(data) {
+        if (!Array.isArray(data) || data.length === 0) return [];
+        const out = [];
+        for (let i = 0; i < data.length; i++) {
+            const row = data[i];
+            const t = typeof row.t === 'number' ? row.t : Number(row.t);
+            if (!Number.isFinite(t)) continue;
+            let o = Number(row.o);
+            let h = Number(row.h);
+            let l = Number(row.l);
+            let c = Number(row.c);
+            if (![o, h, l, c].every(Number.isFinite)) continue;
+            const hi = Math.max(o, c, h, l);
+            const lo = Math.min(o, c, h, l);
+            let v = Number(row.v);
+            if (!Number.isFinite(v)) v = 0;
+            out.push({ t, o, h: hi, l: lo, c, v });
+        }
+        if (out.length === 0) return [];
+        out.sort((a, b) => a.t - b.t);
+        return out;
+    }
+
     resampleData(data, timeframe) {
-        if (data.length === 0) return [];
+        if (!Array.isArray(data) || data.length === 0) return [];
+
+        const prepared = this._prepareBarsForResampling(data);
+        if (prepared.length === 0) return [];
 
         const normalizedTf = String(timeframe || '').toLowerCase().trim();
         const monthMatch = normalizedTf.match(/^(\d+)mo$/);
@@ -11684,8 +11714,8 @@ class Chart {
             let currentCandle = null;
             let currentBucketKey = null;
 
-            for (let i = 0; i < data.length; i++) {
-                const candle = data[i];
+            for (let i = 0; i < prepared.length; i++) {
+                const candle = prepared[i];
                 const dt = new Date(candle.t);
                 if (!Number.isFinite(dt.getTime())) continue;
 
@@ -11731,10 +11761,10 @@ class Chart {
         const resampled = [];
         
         let currentCandle = null;
-        let currentBucketStart = Math.floor(data[0].t / timeframeMs) * timeframeMs;
+        let currentBucketStart = Math.floor(prepared[0].t / timeframeMs) * timeframeMs;
         
-        for (let i = 0; i < data.length; i++) {
-            const candle = data[i];
+        for (let i = 0; i < prepared.length; i++) {
+            const candle = prepared[i];
             const candleBucket = Math.floor(candle.t / timeframeMs) * timeframeMs;
             
             if (candleBucket !== currentBucketStart) {
