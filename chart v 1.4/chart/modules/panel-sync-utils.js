@@ -72,19 +72,25 @@ const PanelSyncUtils = {
     isSamePair(a, b) {
         if (!a || !b) return false;
         if (a === b) return true;
+        if (a._isLoadingOwnPairData || b._isLoadingOwnPairData || a.isLoading || b.isLoading) {
+            return false;
+        }
         const normalizeSymbol = (value) => {
             if (value == null) return '';
             return String(value).replace(/\s+/g, '').toUpperCase();
         };
         const sa = normalizeSymbol(a.currentSymbol);
         const sb = normalizeSymbol(b.currentSymbol);
-        // Hard cross-pair guard: if both symbols are known and differ, treat as different
-        // even when file ids are stale during async pair/timeframe loading.
+        // Hard cross-pair guard: if symbols are known and differ, never sync.
         if (sa && sb && sa !== sb) return false;
         const fa = a.currentFileId != null ? String(a.currentFileId) : null;
         const fb = b.currentFileId != null ? String(b.currentFileId) : null;
+        // If we know both symbols and both file ids, require both to match.
+        if (sa && sb && fa && fb) return sa === sb && fa === fb;
+        // Without fully resolved ids on both sides, default to not-same to avoid
+        // accidental cross-panel jumps during async transitions.
         if (!fa || !fb) return false;
-        return fa === fb;
+        return fa === fb && (!sa || !sb || sa === sb);
     },
 
     /**

@@ -8470,6 +8470,9 @@ class Chart {
         if (!this.data || this.data.length === 0) return;
         // Allow main chart (panel 0) to sync to other panels too
         if (!window.panelManager || window.panelManager.currentLayout === '1') return;
+        const syncSettings = window.panelManager && window.panelManager.syncSettings;
+        // Hard gate: with Time + Date range both off, no scroll-sync event should fire.
+        if (!syncSettings || (syncSettings.time !== true && syncSettings.dateRange !== true)) return;
         if (this._suppressPanelScrollSync) return;
         if (window.panelManager._isSyncing) return;
         if (window.panelManager._syncingDateRange) return;

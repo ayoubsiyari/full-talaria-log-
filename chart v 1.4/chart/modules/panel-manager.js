@@ -255,19 +255,25 @@ const PanelSyncUtils = {
     isSamePair(a, b) {
         if (!a || !b) return false;
         if (a === b) return true;
+        if (a._isLoadingOwnPairData || b._isLoadingOwnPairData || a.isLoading || b.isLoading) {
+            return false;
+        }
         const normalizeSymbol = (value) => {
             if (value == null) return '';
             return String(value).replace(/\s+/g, '').toUpperCase();
         };
         const sa = normalizeSymbol(a.currentSymbol);
         const sb = normalizeSymbol(b.currentSymbol);
-        // Hard cross-pair guard: if both symbols are known and differ, treat as different
-        // even when file ids are stale during async pair/timeframe loading.
+        // Hard cross-pair guard: if symbols are known and differ, never sync.
         if (sa && sb && sa !== sb) return false;
         const fa = a.currentFileId != null ? String(a.currentFileId) : null;
         const fb = b.currentFileId != null ? String(b.currentFileId) : null;
+        // If we know both symbols and both file ids, require both to match.
+        if (sa && sb && fa && fb) return sa === sb && fa === fb;
+        // Without fully resolved ids on both sides, default to not-same to avoid
+        // accidental cross-panel jumps during async transitions.
         if (!fa || !fb) return false;
-        return fa === fb;
+        return fa === fb && (!sa || !sb || sa === sb);
     },
     getPanelChartInstance(panel) {
         if (!panel) return null;
@@ -417,12 +423,23 @@ class PanelManager {
             const d = e.detail || {};
             const { panel, startTimestamp, endTimestamp } = d;
             if (!panel) return;
+            if (this.syncSettings.time !== true && this.syncSettings.dateRange !== true) return;
+
+            const sourcePanel = (this.panels || []).find(p => p && p.index === panel.index);
+            if (!sourcePanel) return;
+            const sourceChart = this._getPanelChartInstance(sourcePanel);
+            if (!sourceChart) return;
+
+            // Reject stale or mismatched event payloads that can happen during
+            // rapid pair/timeframe transitions.
+            if (d.chart && d.chart !== sourceChart) return;
+            if (sourceChart._isLoadingOwnPairData || sourceChart.isLoading) return;
 
             // Date Range: continuous full-window sync (scroll + zoom locked).
             if (this.syncSettings.dateRange === true
                 && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
                 && startTimestamp > 0 && endTimestamp > startTimestamp) {
-                this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
+                this.syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, endTimestamp);
             }
             // Time: discrete range-by-range sync. Each TARGET panel jumps only when
             // the bar IT would show at its right edge changes — so a 5m target jumps
@@ -431,7 +448,7 @@ class PanelManager {
                 && Number.isFinite(endTimestamp) && endTimestamp > 0) {
                 const ts = Number.isFinite(d.timeSyncEndTimestamp) && d.timeSyncEndTimestamp > 0
                     ? d.timeSyncEndTimestamp : endTimestamp;
-                this._discreteTimeSyncToRightEdge(panel, ts);
+                this._discreteTimeSyncToRightEdge(sourcePanel, ts);
             }
         });
     }
