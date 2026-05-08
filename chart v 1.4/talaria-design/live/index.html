@@ -771,7 +771,7 @@
     <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->
     <script defer src="/chart/modules/order-event-bus.js?v=bmou62patch"></script>
     <script defer src="/chart/modules/order-service.js?v=bmou62patch"></script>
-    <script defer src="/chart/modules/order-manager.js?v=bmou62patch"></script>
+    <script defer src="/chart/modules/order-manager.js?v=bmou63patch"></script>
     <script defer src="/chart/modules/screenshot-manager.js?v=bmou62patch"></script>
 
     <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
@@ -780,7 +780,7 @@
     <!-- Panel manager — multi-panel layouts. Must load AFTER chart.js so
          it can wire scroll-sync against window.chart. The legacy index.html
          instantiates this inline; V9's bootstrap below does the same. -->
-    <script defer src="/chart/modules/panel-manager.js?v=bmou62patch"></script>
+    <script defer src="/chart/modules/panel-manager.js?v=bmou63patch"></script>
     <!-- Economic calendar: Finnhub via /api + chart time-axis markers (__economicCalendarForChart). -->
     <script defer src="/chart/modules/economic-news-sidebar.js?v=bmou62patch"></script>
 </head>
@@ -922,8 +922,20 @@
                         if (main.replaySystem) pcChart.replaySystem = main.replaySystem;
                         if (main.orderManager) pcChart.orderManager = main.orderManager;
                         if (main.rawData && main.rawData.length > 0) {
-                            pcChart.rawData = main.rawData;
-                            try { pcChart.data = pcChart.resampleData(main.rawData, panel.timeframe || '1m'); } catch(_){}
+                            // During active replay, main.rawData is a prefix slice; seed from the same
+                            // fullRawData cut as replay.syncPanelCharts() so a new panel never briefly
+                            // copies a stale full window or desyncs before the first refit.
+                            var rs = main.replaySystem;
+                            var useReplaySlice = rs && rs.isActive && Array.isArray(rs.fullRawData) && rs.fullRawData.length > 0;
+                            var rawSeed;
+                            if (useReplaySlice) {
+                                var se = Math.max((rs.currentIndex | 0) + 1, 1);
+                                rawSeed = rs.fullRawData.slice(0, se);
+                            } else {
+                                rawSeed = main.rawData;
+                            }
+                            pcChart.rawData = rawSeed;
+                            try { pcChart.data = pcChart.resampleData(rawSeed, panel.timeframe || '1m'); } catch(_){}
                             pcChart.currentSymbol = main.currentSymbol;
                             pcChart.currentFileId = main.currentFileId;
                             pcChart.totalCandles = main.totalCandles;
@@ -1020,7 +1032,15 @@
                             panel.chartInstance.currentSymbol = chart.currentSymbol;
                             panel.chartInstance.currentFileId = chart.currentFileId;
                         }
-                        panel.chartInstance.rawData = chart.rawData || [];
+                        var rsys = chart && chart.replaySystem;
+                        var rseed;
+                        if (rsys && rsys.isActive && Array.isArray(rsys.fullRawData) && rsys.fullRawData.length > 0) {
+                            var se2 = Math.max((rsys.currentIndex | 0) + 1, 1);
+                            rseed = rsys.fullRawData.slice(0, se2);
+                        } else {
+                            rseed = chart.rawData || [];
+                        }
+                        panel.chartInstance.rawData = rseed;
                         panel.chartInstance.data = panel.chartInstance.resampleData(
                             panel.chartInstance.rawData,
                             panel.timeframe || '1m'
@@ -1043,6 +1063,10 @@
                     if (window.chart && window.chart.orderManager
                         && typeof window.chart.orderManager.syncOrderVisualsToActiveChart === 'function') {
                         try { window.chart.orderManager.syncOrderVisualsToActiveChart(); } catch(_){}
+                    }
+                    var replay = window.chart && window.chart.replaySystem;
+                    if (replay && replay.isActive && typeof replay.syncPanelCharts === 'function') {
+                        try { replay.syncPanelCharts(); } catch (_){}
                     }
                 }, 200);
             });

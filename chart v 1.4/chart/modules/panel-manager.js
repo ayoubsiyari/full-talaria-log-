@@ -1779,6 +1779,16 @@ class PanelManager {
             if (typeof this.resizePanels === 'function') this.resizePanels();
             this.refitMultiPanelViewports();
         }, 350);
+        // Secondary panels are created async (panelsCreated → initPanelChart ~200ms). An extra pass
+        // after chart instances exist keeps replay slices aligned with the main chart.
+        setTimeout(() => {
+            const rs = typeof window !== 'undefined' && window.chart && window.chart.replaySystem;
+            if (rs && rs.isActive && typeof rs.syncPanelCharts === 'function') {
+                try {
+                    rs.syncPanelCharts();
+                } catch (_e) { /* ignore */ }
+            }
+        }, 520);
     }
     
     /**
