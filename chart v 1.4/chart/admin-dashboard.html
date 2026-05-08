@@ -1520,7 +1520,7 @@ select { cursor: pointer; }
 
       <!-- ════════ DATASETS SECTION ════════ -->
       <div class="section" id="sec-datasets">
-        <!-- FirstRate Data — sole dataset source -->
+        <!-- FirstRate Data — primary vendor; Dukascopy card below for quick M1 samples -->
         <div class="card" style="margin-bottom:16px">
           <div class="card-hdr">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1699,6 +1699,51 @@ select { cursor: pointer; }
             </div>
           </div>
         </div>
+
+        <!-- Dukascopy: server-side M1 CSV (dukascopy-node) — no FirstRate account needed -->
+        <div class="card" id="dukascopyFetchCard" style="margin-bottom:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <div class="card-title">Download sample data (Dukascopy M1)</div>
+          </div>
+          <div class="card-body">
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 14px;line-height:1.55">
+              Fetches <strong>bid M1</strong> CSV through the server, merges it into a chart dataset, and shows up in the list below. Handy to validate the pipeline without FirstRate. Large ranges are split into chunks server-side (may take several minutes).
+            </p>
+            <div id="dk_cat_tabs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+              <button type="button" class="btn sm dk-cat-tab primary" data-group="us_indices" onclick="setDukascopyGroup('us_indices')">US indices</button>
+              <button type="button" class="btn sm dk-cat-tab" data-group="energy" onclick="setDukascopyGroup('energy')">Energy</button>
+              <button type="button" class="btn sm dk-cat-tab" data-group="world_indices" onclick="setDukascopyGroup('world_indices')">World indices</button>
+              <button type="button" class="btn sm dk-cat-tab" data-group="forex" onclick="setDukascopyGroup('forex')">Forex</button>
+            </div>
+            <input type="hidden" id="dk_pair" value="eurusd" />
+            <div class="form-grid">
+              <div class="field fg-full">
+                <label for="dk_instrument_select">Instrument</label>
+                <select id="dk_instrument_select" class="input" onchange="onDukascopySelectChange()">
+                  <option disabled selected>(loading…)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="dk_from">From</label>
+                <input type="date" id="dk_from" class="input">
+              </div>
+              <div class="field">
+                <label for="dk_to">To</label>
+                <input type="date" id="dk_to" class="input">
+              </div>
+              <div class="field">
+                <label>Timeframe</label>
+                <input type="text" class="input" value="M1 (fixed)" disabled style="opacity:0.85">
+              </div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:14px;align-items:center">
+              <span id="dukaProgress" style="font-size:12px;color:var(--text-muted);flex:1;min-width:160px"></span>
+              <button type="button" class="btn sm primary" id="dkFetchBtn" onclick="fetchDukascopy()">Fetch &amp; save dataset</button>
+            </div>
+          </div>
+        </div>
+
         <!-- Live FirstRate import status (polls VPS job files) -->
         <div class="card" id="frLiveImportCard" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 35%, var(--border))">
           <div class="card-hdr">
@@ -3848,7 +3893,7 @@ async function uploadFile(file) {
   } catch (e) { label.textContent = 'Upload failed'; toast(e.message, 'err'); }
 }
 
-// Dukascopy (panel removed in FirstRate-only mode; guard to avoid null crashes).
+// Dukascopy M1 fetch (datasets section card).
 function setDefaultDukascopyDates() {
   const fromEl = $('dk_from');
   const toEl = $('dk_to');
@@ -3875,16 +3920,17 @@ function setDukascopyGroup(group) {
 
 function renderDukascopySelect(resetToFirst) {
   const sel = $('dk_instrument_select');
-  if (!sel) return;
+  const pairEl = $('dk_pair');
+  if (!sel || !pairEl) return;
   const list = dukaGroups[dukaActiveGroup];
   if (!list || !list.length) {
     sel.innerHTML = '<option disabled>(loading…)</option>';
     return;
   }
   if (resetToFirst) {
-    $('dk_pair').value = list[0].id;
+    pairEl.value = list[0].id;
   }
-  const cur = ($('dk_pair').value || '').trim().toLowerCase();
+  const cur = (pairEl.value || '').trim().toLowerCase();
   sel.innerHTML = list.map(function (row) {
     const id = row.id || '';
     const label = row.label || id;
@@ -3893,13 +3939,14 @@ function renderDukascopySelect(resetToFirst) {
   }).join('');
   const has = list.some(function (r) { return (r.id || '').toLowerCase() === cur; });
   if (has) sel.value = cur;
-  else if (list.length) { $('dk_pair').value = list[0].id; sel.value = list[0].id; }
+  else if (list.length) { pairEl.value = list[0].id; sel.value = list[0].id; }
 }
 
 function onDukascopySelectChange() {
   const sel = $('dk_instrument_select');
-  if (!sel) return;
-  $('dk_pair').value = sel.value;
+  const pairEl = $('dk_pair');
+  if (!sel || !pairEl) return;
+  pairEl.value = sel.value;
 }
 
 async function loadDukascopyInstrumentGroups() {
@@ -4104,12 +4151,18 @@ async function waitForYahooCmeJob(jobId) {
 }
 
 async function fetchDukascopy() {
-  const instrument = $('dk_pair').value.trim().toLowerCase();
-  const fromDate = $('dk_from').value;
-  const toDate = $('dk_to').value;
+  const pairEl = $('dk_pair');
+  const fromEl = $('dk_from');
+  const toEl = $('dk_to');
+  const btn = $('dkFetchBtn');
+  const prog = $('dukaProgress');
+  if (!pairEl || !fromEl || !toEl) return toast('Dukascopy form is not available', 'err');
+  const instrument = pairEl.value.trim().toLowerCase();
+  const fromDate = fromEl.value;
+  const toDate = toEl.value;
   if (!instrument || !fromDate || !toDate) return toast('Fill in all Dukascopy fields', 'err');
-  $('dkFetchBtn').disabled = true;
-  $('dukaProgress').textContent = 'Starting...';
+  if (btn) btn.disabled = true;
+  if (prog) prog.textContent = 'Starting…';
   try {
     const data = await api('/api/admin/datasets/fetch-dukascopy', {
       method: 'POST',
@@ -4125,7 +4178,7 @@ async function fetchDukascopy() {
   } catch (e) {
     toast(e.message, 'err');
   } finally {
-    $('dkFetchBtn').disabled = false;
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -4137,18 +4190,20 @@ async function waitForDukascopyJob(jobId) {
       const status = await api(`/api/admin/datasets/fetch-dukascopy/${jobId}/status`);
       const st = status.state || status.status;
       if (st === 'done' || st === 'completed') {
-        label.textContent = 'Done!';
+        if (label) label.textContent = 'Done.';
         toast('Dukascopy fetch complete', 'ok');
         await loadDatasets();
         return;
       } else if (st === 'failed' || st === 'error') {
-        label.textContent = 'Failed: ' + (status.error || 'Unknown error');
+        if (label) label.textContent = 'Failed: ' + (status.error || 'Unknown error');
         toast('Dukascopy fetch failed', 'err');
         return;
       }
-      label.textContent = status.message || st || 'Processing...';
+      if (label) label.textContent = status.message || st || 'Processing…';
     } catch (e) { break; }
   }
+  if (label) label.textContent = 'Stopped polling (job may still run on server — refresh datasets).';
+  toast('Browser watch timed out (server may still be working).', 'err');
 }
 
 async function syncFirstrateFx() {
