@@ -4426,7 +4426,9 @@ const TalariaV8bLive = () => {
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [layoutPos, setLayoutPos] = useState({ x: 0, y: 0 });
   const [layoutPanels, setLayoutPanels] = useState({n:1,li:0});
-  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: true, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
+  // Keep V9 defaults aligned with panel-manager.js defaults to avoid startup
+  // races re-enabling sync modes (especially `time`) unexpectedly.
+  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: true, interval: false, dateRange: false, indicators: false, chartType: false });
   const [layoutTab, setLayoutTab] = useState("panels");
 
   /** Same keys as the legacy News country filter (economic-news-sidebar.js). */
