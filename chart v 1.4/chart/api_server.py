@@ -11707,26 +11707,7 @@ async def get_files():
     the multichart sandbox can warn the user when two selected files have
     non-overlapping date ranges (which would make crosshair / visible-range
     sync silently no-op across them).
-
-    v10.3.2 hardening: `start_ts` / `end_ts` are Float columns and can hold
-    NaN/Inf in some legacy rows. Python's default JSON encoder serialises
-    NaN as the literal `NaN` token, which is NOT valid JSON and makes
-    `response.json()` in the browser throw — that surfaced as both per-panel
-    file dropdowns showing "— /api/files error —" with no fetched data.
-    Coerce every numeric to `float` and substitute `None` for non-finite
-    values so the response is guaranteed JSON-safe.
     """
-    import math
-
-    def _safe_float(x):
-        try:
-            v = float(x)
-        except (TypeError, ValueError):
-            return None
-        if not math.isfinite(v):
-            return None
-        return v
-
     db = next(get_db())
     try:
         files = db.query(CSVFile).order_by(CSVFile.upload_date.desc()).all()
@@ -11737,26 +11718,16 @@ async def get_files():
                 {
                     "id": f.id,
                     "original_name": f.original_name,
-                    "upload_date": f.upload_date.isoformat() if f.upload_date else None,
+                    "upload_date": f.upload_date.isoformat(),
                     "row_count": f.row_count,
                     "description": f.description,
                     "ticker": ticker,
                     "asset_class": asset_class,
-                    "start_ts": _safe_float(f.start_ts),
-                    "end_ts": _safe_float(f.end_ts),
+                    "start_ts": f.start_ts,
+                    "end_ts": f.end_ts,
                 }
             )
         return {"files": out_files}
-    except Exception as e:
-        # v10.3.2: never let a single bad row take down the whole list.
-        # Log the failure so we can see it server-side, but return an empty
-        # files array with an error marker so the client can render a
-        # useful "no files" state instead of a generic fetch error.
-        try:
-            print(f"[/api/files] failed: {e!r}", flush=True)
-        except Exception:
-            pass
-        return {"files": [], "error": str(e)}
     finally:
         db.close()
 
