@@ -69,55 +69,118 @@
         return (map && map[tf]) || 60;
     }
 
-    /** Synthesised setVisibleTimeRange — see engine-api-audit.md §2. */
+    /**
+     * Apply a sync'd visible time-range to the recipient chart.
+     *
+     * Modeled after chart.js's own internal cross-panel sync (chart.js:2015-
+     * 2053). Key safety properties:
+     *
+     *   • Never sets candleWidth so small that candles disappear (MIN_BARS).
+     *   • Always centres on the closest candle to the synced midpoint.
+     *   • If post-alignment the visible bar count would be 0 (e.g. midpoint
+     *     fell outside this chart's data range), falls back to fitToView()
+     *     so the user always sees SOMETHING. Without this guard, panning
+     *     chart A (1m) by a small delta would leave chart B (1h) showing an
+     *     empty canvas — which is exactly the "jump and hide" bug.
+     *   • Forces autoScale=true so the recipient's price axis re-fits its OWN
+     *     newly-visible candles. NEVER reads min/max from the source chart.
+     *
+     * @param {object} chart   recipient chart instance
+     * @param {number} startSec  inclusive start of source visible window (seconds)
+     * @param {number} endSec    exclusive end of source visible window (seconds)
+     */
     function setVisibleTimeRange(chart, startSec, endSec) {
         if (!chart || !chart.data || chart.data.length === 0) return;
-        const widthPx = (chart.w || (chart.canvas && chart.canvas.width) || 800)
-            - (chart.margin ? (chart.margin.l + chart.margin.r) : 60);
-        if (widthPx <= 0) return;
-        const spanSec = Math.max(1, endSec - startSec);
+        if (!chart.canvas) return;
 
-        // Bar duration in seconds of the recipient chart.
+        const m = chart.margin || { l: 60, r: 60 };
+        const widthPx = (chart.w || chart.canvas.width || 800) - (m.l + m.r);
+        if (widthPx <= 0) return;
+
+        // Bar duration of THIS chart (recipient), in seconds.
         let barSec = 60;
         try {
             const ms = chart.inferBarDurationMs ? chart.inferBarDurationMs() : 60000;
             if (Number.isFinite(ms) && ms > 0) barSec = Math.max(1, Math.floor(ms / 1000));
         } catch (_) {}
 
-        // bars to fit
-        const bars = Math.max(1, spanSec / barSec);
-        // candleSpacing = candleWidth + gap. chart.js: spacing = candleWidth (gap small/zero).
-        const targetCandleWidth = Math.max(0.2, Math.min(60, widthPx / bars));
+        // How many recipient-bars are in the source's visible window?
+        const spanSec = Math.max(1, endSec - startSec);
+        const desiredBars = spanSec / barSec;
+        // Floor so we always show enough candles to be visually useful.
+        // E.g. 30-min source window on a 1h recipient = 0.5 bars; clamping to
+        // 30 gives the user 30 hours of context centred on the midpoint instead
+        // of an essentially empty chart.
+        const MIN_BARS_TO_SHOW = 30;
+        const MAX_BARS_TO_SHOW = chart.data.length;
+        const targetBars = Math.max(MIN_BARS_TO_SHOW, Math.min(MAX_BARS_TO_SHOW, desiredBars));
 
-        // Apply width FIRST (this changes spacing), then jump centered.
-        chart.candleWidth = targetCandleWidth;
-        if (chart.zoomLevel) {
-            // pick nearest allowed width for snap-to-grid feel
-            const allowed = chart.zoomLevel.allowedWidths || [targetCandleWidth];
+        // Compute the candleWidth that would fit targetBars in widthPx pixels.
+        const idealCandleWidth = widthPx / targetBars;
+
+        // Snap to the chart's allowed zoom levels (TradingView-style discrete
+        // zoom rungs). Keeps the chart's own zoom state consistent with what a
+        // user could reach via the wheel.
+        if (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths)
+            && chart.zoomLevel.allowedWidths.length > 0) {
+            const allowed = chart.zoomLevel.allowedWidths;
             let nearestIdx = 0, best = Infinity;
             for (let i = 0; i < allowed.length; i++) {
-                const d = Math.abs(allowed[i] - targetCandleWidth);
+                const d = Math.abs(allowed[i] - idealCandleWidth);
                 if (d < best) { best = d; nearestIdx = i; }
             }
             chart.zoomLevel.candleWidthIndex = nearestIdx;
             chart.candleWidth = allowed[nearestIdx];
+        } else {
+            chart.candleWidth = Math.max(0.5, Math.min(80, idealCandleWidth));
         }
 
-        // Center on midpoint
-        const midSec = Math.floor((startSec + endSec) / 2);
-        if (typeof chart.jumpToTimestamp === 'function') {
-            // Don't await — local data, no server round-trip.
-            try {
-                chart.jumpToTimestamp(toMillis(midSec), {
-                    skipWindowFetch: true,
-                    showLoadingOverlay: false,
-                    forceWindowReload: false,
-                });
-            } catch (_) {}
+        // Find the recipient candle closest to the midpoint of the source's
+        // visible window. Linear scan — chart.data is small (≤20k) and this
+        // runs at most once per rAF on the recipient.
+        const midMs = ((startSec + endSec) / 2) * 1000;
+        let bestIdx = 0;
+        let bestDiff = Infinity;
+        for (let i = 0; i < chart.data.length; i++) {
+            const t = +chart.data[i].t;
+            if (!Number.isFinite(t)) continue;
+            const d = Math.abs(t - midMs);
+            if (d < bestDiff) { bestDiff = d; bestIdx = i; }
         }
 
-        // Force price autoScale ON so the price axis recomputes from this
-        // chart's OWN visible candles. NEVER set min/max from outside.
+        // Position offsetX so bestIdx is at the horizontal CENTER of the chart
+        // drawing area. Same arithmetic chart.js uses in its own jumpToTimestamp
+        // (chart.js:11167-11172) and cross-panel align (chart.js:2041).
+        const cw = (chart.w || widthPx) - m.l - m.r;
+        const candleSpacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (candleSpacing > 0 && cw > 0) {
+            const centerX = cw / 2;
+            const candleX = bestIdx * candleSpacing;
+            chart.offsetX = centerX - candleX;
+            if (typeof chart.constrainOffset === 'function') {
+                try { chart.constrainOffset(); } catch (_) {}
+            }
+        }
+
+        // Safety net (mirrors chart.js:2050-2053): if our alignment left zero
+        // bars on screen, fall back to fitToView so we never produce a blank
+        // chart. This is the actual fix for the "jump and hide" report.
+        const visibleBarCount = function () {
+            const cs = (typeof chart.getCandleSpacing === 'function')
+                ? chart.getCandleSpacing() : chart.candleWidth;
+            if (cs <= 0 || cw <= 0) return chart.data.length;
+            const i0 = Math.max(0, -Math.floor(chart.offsetX / cs));
+            const i1 = Math.min(chart.data.length, i0 + Math.ceil(cw / cs));
+            return Math.max(0, i1 - i0);
+        };
+        if (visibleBarCount() === 0) {
+            try { chart.fitToView && chart.fitToView(); } catch (_) {}
+        }
+
+        // Force price autoScale ON so the recipient's price axis recomputes
+        // from its OWN newly-visible candles. NEVER set min/max from outside.
         if (chart.priceScale) chart.priceScale.autoScale = true;
         chart.autoScale = true;
 
