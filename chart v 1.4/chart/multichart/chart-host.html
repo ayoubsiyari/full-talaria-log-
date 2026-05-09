@@ -188,32 +188,44 @@
         // Drawing tools / replay / order / compare / indicators are NOT loaded in
         // the sandbox. chart.js checks `typeof X !== 'undefined'` for most of these,
         // but a couple of paths (initDrawingTools) call `new DrawingToolsManager(this)`
-        // unconditionally inside try/catch. Stub a minimal class so it constructs OK.
+        // unconditionally inside try/catch. Stub minimal classes whose instances
+        // accept ANY method call as a no-op (Proxy) — that way we never have to
+        // chase down "missing method X" loops in chart.js's render path again.
+        function makeNoopProxy(seed) {
+            const target = Object.assign({
+                drawings: [],
+                drawingsGroup: null,
+                currentTool: null,
+                selectedDrawing: null,
+                isActive: false,
+                favoritesManager: null,
+                objectTreeManager: null,
+            }, seed || {});
+            return new Proxy(target, {
+                get: function (obj, prop) {
+                    if (prop in obj) return obj[prop];
+                    if (typeof prop === 'symbol') return undefined;
+                    // Any unknown method: return a no-op function. Any unknown
+                    // field: return undefined. chart.js checks both patterns.
+                    return function () { return undefined; };
+                },
+                set: function (obj, prop, val) { obj[prop] = val; return true; },
+                has: function () { return true; },
+            });
+        }
         window.DrawingToolsManager = function (chart) {
-            this.chart = chart;
-            this.drawings = [];
-            this.currentTool = null;
+            return makeNoopProxy({ chart: chart });
         };
-        window.DrawingToolsManager.prototype = {
-            saveDrawings:   function () {},
-            loadDrawings:   function () {},
-            renderDrawing:  function () {},
-            clearDrawings:  function () {},
-            destroy:        function () {},
-        };
-        // ReplaySystem stays undefined on purpose; chart.js logs a warning but the
-        // chart still works. To silence that one error too, provide a no-op:
         window.ReplaySystem = function (chart) {
-            this.chart = chart;
-            this.isActive = false;
+            return makeNoopProxy({ chart: chart, isActive: false });
         };
-        window.ReplaySystem.prototype = {
-            onTimeframeChange: function () {},
-            getReplayAutoScrollState: function () { return null; },
-        };
-        // OrderManager — only referenced when ReplaySystem.isActive, but stub it for safety:
-        window.OrderManager = function () {};
-        window.OrderManager.prototype = {};
+        window.OrderManager = function () { return makeNoopProxy({}); };
+        // Optional ones used in init paths via typeof checks:
+        window.ObjectTreeManager   = function () { return makeNoopProxy({}); };
+        window.FavoritesManager    = function () { return makeNoopProxy({}); };
+        window.CompareOverlay      = function () { return makeNoopProxy({}); };
+        window.TimeframeFavorites  = function () { return makeNoopProxy({}); };
+        window.ScreenshotManager   = function () { return makeNoopProxy({}); };
     </script>
 
     <!-- engine -->
