@@ -34,7 +34,7 @@
  *     right-panel layout tab.
  */
 
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 // ─── parent-side bridge loader ──────────────────────────────────────────────
 //
@@ -231,6 +231,83 @@ function buildIframeSrc({ panelId, fileId, tf /*, mode — intentionally NOT for
     return "/chart/dist-v9/index.html?" + params.toString();
 }
 
+// ─── loading overlay keyframes (injected once into parent /chart/ head) ─────
+//
+// TradingView-style 3-dot pulsing indicator + soft chart skeleton silhouette
+// behind it. Lives in the PARENT page (not the iframe) because the iframe
+// content is exactly what we're hiding while it boots.
+const LOADING_STYLE_ID = "multichart-loading-style";
+const LOADING_STYLE_CSS = `
+@keyframes tlrMultichartDot {
+  0%, 80%, 100% { opacity: 0.28; transform: scale(0.82); }
+  40%           { opacity: 1;    transform: scale(1);
+                  box-shadow: 0 0 8px rgba(74,106,255,0.55); }
+}
+@keyframes tlrMultichartSkeletonShimmer {
+  0%   { transform: translateX(-30%); }
+  100% { transform: translateX(130%); }
+}
+.multichart-loading-overlay {
+    position: absolute; inset: 0; z-index: 5;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: linear-gradient(180deg, #0b0c14 0%, #0d1018 100%);
+    pointer-events: none;
+    overflow: hidden;
+    transition: opacity 0.18s ease;
+}
+.multichart-loading-overlay::before {
+    /* Faint horizontal grid-line skeleton — hints that this is a chart. */
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+        linear-gradient(rgba(140,160,255,0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(140,160,255,0.025) 1px, transparent 1px);
+    background-size: 60px 40px, 60px 40px;
+    opacity: 0.6;
+}
+.multichart-loading-overlay::after {
+    /* Sweeping shimmer band over the skeleton. */
+    content: "";
+    position: absolute; top: 0; bottom: 0; left: 0; width: 30%;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(140,160,255,0.06) 50%,
+        transparent 100%);
+    animation: tlrMultichartSkeletonShimmer 2.6s linear infinite;
+    will-change: transform;
+}
+.multichart-loading-dots {
+    position: relative; z-index: 1;
+    display: flex; gap: 8px;
+}
+.multichart-loading-dots > span {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #4a6aff;
+    opacity: 0.28;
+    animation: tlrMultichartDot 1.35s ease-in-out infinite both;
+}
+.multichart-loading-dots > span:nth-child(2) { animation-delay: 0.18s; }
+.multichart-loading-dots > span:nth-child(3) { animation-delay: 0.36s; }
+.multichart-loading-label {
+    position: relative; z-index: 1;
+    margin-top: 14px;
+    font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: rgba(255,255,255,0.32);
+    font-family: 'Exo 2', system-ui, sans-serif;
+}
+`;
+
+function ensureLoadingStyleInjected() {
+    if (typeof document === "undefined") return;
+    if (document.getElementById(LOADING_STYLE_ID)) return;
+    const s = document.createElement("style");
+    s.id = LOADING_STYLE_ID;
+    s.textContent = LOADING_STYLE_CSS;
+    document.head.appendChild(s);
+}
+
 // ─── component ──────────────────────────────────────────────────────────────
 export default function MultichartGrid({
     layoutId,
@@ -238,30 +315,45 @@ export default function MultichartGrid({
     layoutSync,
     initialFileId,
     initialTimeframe,
-    initialMode,
+    initialMode, // currently unused — see buildIframeSrc note
     focusedPanelId,
     setFocusedPanelId,
 }) {
     const containerRef = useRef(null);
     const cellRefs = useRef({});             // panelId -> cell <div>
     const managerRef = useRef(null);
-    const registeredIdsRef = useRef(new Set());
+    const [managerReady, setManagerReady] = useState(false);
+    const [readyPanels, setReadyPanels] = useState(() => new Set());
+
+    // Capture initial context in refs so the per-tile add closure always
+    // uses the LATEST values when a new tile is added (e.g. user opens
+    // file X, splits to 2 panels, switches to file Y in the parent, then
+    // splits to 4 — tiles C and D should boot with file Y).
+    const initialFileIdRef    = useRef(initialFileId);
+    const initialTimeframeRef = useRef(initialTimeframe);
+    useEffect(() => { initialFileIdRef.current    = initialFileId;    }, [initialFileId]);
+    useEffect(() => { initialTimeframeRef.current = initialTimeframe; }, [initialTimeframe]);
 
     const layout = useMemo(
         () => resolveLayout(layoutId, panelCount),
         [layoutId, panelCount]
     );
 
-    // ─── Mount/dispose the MultichartManager when layout actually changes ─
+    // Inject the loading-overlay CSS once (idempotent — checks for existing
+    // <style> tag by id).
+    useEffect(() => { ensureLoadingStyleInjected(); }, []);
+
+    // ─── Mount the MultichartManager ONCE on first render of the grid ───
     //
-    // We tear down on every layout id change so the manager (and all its
-    // iframes) are completely fresh — avoids stale registrations and
-    // mismatched panel ids when going e.g. 2v → 4 → 3l in quick succession.
-    // The lazy script loader caches scripts, so subsequent mounts only pay
-    // the manager construction cost.
+    // The manager outlives layout changes (2v → 4 → 3l etc); switching
+    // layout only adds/removes individual charts via the diff effect
+    // below, so panels that exist in both old and new layouts keep
+    // their iframes alive (no flicker, no reload, no lost crosshair sync).
+    //
+    // Manager + iframes are torn down only when MultichartGrid unmounts
+    // entirely (i.e. the user picks layout 1 from the dropdown).
     useEffect(() => {
         let cancelled = false;
-        let manager = null;
 
         loadParentBridge().then(() => {
             if (cancelled) return;
@@ -271,7 +363,7 @@ export default function MultichartGrid({
                 return;
             }
 
-            manager = new window.MultichartManager({
+            const manager = new window.MultichartManager({
                 container: containerRef.current,
                 iframeSrcBuilder: function (cfg) {
                     return buildIframeSrc({
@@ -292,56 +384,82 @@ export default function MultichartGrid({
                         console.error("[multichart-mgr] PRICE-AXIS ASSERTION FAIL:", msg);
                     }
                 },
+                onChartReady: function (id) {
+                    setReadyPanels((prev) => {
+                        if (prev.has(id)) return prev;
+                        const next = new Set(prev);
+                        next.add(id);
+                        return next;
+                    });
+                },
             });
             managerRef.current = manager;
-
-            // Apply any sync-mode toggles already in state before the iframes
-            // start posting messages.
-            try {
-                manager.setSyncMode({
-                    crosshair:    !!(layoutSync && layoutSync.crosshair),
-                    visibleRange: !!(layoutSync && (layoutSync.dateRange || layoutSync.time)),
-                    symbol:       !!(layoutSync && layoutSync.symbol),
-                });
-            } catch (_) {}
-
-            // Spawn one iframe per tile via the manager (it appends inside
-            // each cell div React owns).
-            registeredIdsRef.current = new Set();
-            for (const tile of layout.tiles) {
-                const cellEl = cellRefs.current[tile.id];
-                if (!cellEl) continue;
-                try {
-                    manager.addChart({
-                        id:     tile.id,
-                        tf:     initialTimeframe || "1m",
-                        fileId: initialFileId || null,
-                        mode:   initialMode || null,
-                    }, cellEl);
-                    registeredIdsRef.current.add(tile.id);
-                } catch (e) {
-                    console.error("[MultichartGrid] addChart failed for", tile.id, e);
-                }
-            }
+            setManagerReady(true);
         }).catch((err) => {
             console.error("[MultichartGrid] failed to load parent bridge:", err);
         });
 
         return () => {
             cancelled = true;
-            if (manager) {
-                try { manager.dispose(); } catch (_) {}
+            if (managerRef.current) {
+                try { managerRef.current.dispose(); } catch (_) {}
+                managerRef.current = null;
             }
-            managerRef.current = null;
-            registeredIdsRef.current = new Set();
+            setManagerReady(false);
+            setReadyPanels(new Set());
         };
-        // We intentionally key only on layout.tiles + initial* so changing
-        // the focused panel or sync toggles doesn't tear down iframes.
-        // initialFileId/Timeframe/Mode are read once at mount time per the
-        // sync-bridge contract; per-panel runtime changes will land in
-        // Phase 7.2.4 via postMessage.
+        // Mount-once — never re-run.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [layout.tiles, initialFileId, initialTimeframe, initialMode]);
+    }, []);
+
+    // ─── Sync layout.tiles ↔ manager.charts incrementally ────────────────
+    //
+    // On each layout change, compute the diff:
+    //   - `removed`: panels in manager but not in new layout → removeChart
+    //   - `added`:   panels in new layout but not in manager → addChart
+    //   - everything else: untouched (iframe + chart state preserved)
+    //
+    // The cell <div> for each existing tile id is REUSED across renders
+    // (React reconciles by `key`), so its iframe child stays mounted.
+    // Only the new cell divs (e.g. C, D when going 2v→4) get fresh iframes.
+    useEffect(() => {
+        if (!managerReady) return;
+        const mgr = managerRef.current;
+        if (!mgr) return;
+
+        const desiredIds = new Set(layout.tiles.map((t) => t.id));
+
+        // Remove charts no longer in the layout
+        for (const existingId of Array.from(mgr.charts.keys())) {
+            if (!desiredIds.has(existingId)) {
+                try { mgr.removeChart(existingId); } catch (_) {}
+                setReadyPanels((prev) => {
+                    if (!prev.has(existingId)) return prev;
+                    const next = new Set(prev);
+                    next.delete(existingId);
+                    return next;
+                });
+            }
+        }
+
+        // Add charts that exist in the layout but not yet in the manager.
+        // (The cell <div> is already mounted by React's render that just
+        // committed — useEffect runs AFTER commit, so cellRefs are set.)
+        for (const tile of layout.tiles) {
+            if (mgr.charts.has(tile.id)) continue;
+            const cellEl = cellRefs.current[tile.id];
+            if (!cellEl) continue;
+            try {
+                mgr.addChart({
+                    id:     tile.id,
+                    tf:     initialTimeframeRef.current || "1m",
+                    fileId: initialFileIdRef.current    || null,
+                }, cellEl);
+            } catch (e) {
+                console.error("[MultichartGrid] addChart failed for", tile.id, e);
+            }
+        }
+    }, [layout.tiles, managerReady]);
 
     // ─── Push sync-mode changes to the live manager ─────────────────────
     useEffect(() => {
@@ -373,6 +491,7 @@ export default function MultichartGrid({
         >
             {layout.tiles.map((tile) => {
                 const isFocused = focusedPanelId === tile.id;
+                const isReady   = readyPanels.has(tile.id);
                 return (
                     <div
                         key={tile.id}
@@ -397,7 +516,21 @@ export default function MultichartGrid({
                             minWidth: 0,
                             minHeight: 0,
                         }}
-                    />
+                    >
+                        {/* Loading overlay (TradingView-style 3 dots + faint
+                             chart skeleton). Renders ABOVE the manager-spawned
+                             iframe (z-index:5 > iframe default) until the
+                             panel's bridge fires `bridge-ready`. Unmounted
+                             once `onChartReady(id)` adds id to readyPanels. */}
+                        {!isReady && (
+                            <div className="multichart-loading-overlay" aria-hidden="true">
+                                <div className="multichart-loading-dots">
+                                    <span/><span/><span/>
+                                </div>
+                                <div className="multichart-loading-label">Loading {tile.id}</div>
+                            </div>
+                        )}
+                    </div>
                 );
             })}
         </div>

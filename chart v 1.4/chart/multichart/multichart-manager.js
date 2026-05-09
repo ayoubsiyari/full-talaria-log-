@@ -50,6 +50,13 @@
         this.onLog    = opts.onLog    || function () {};
         this.onState  = opts.onState  || function () {};
         this.onAssertion = opts.onAssertion || function () {};
+        // Phase 7.2.4 hook: fired (with the chart id) AFTER the iframe's
+        // bridge has reported ready and the manager's loading overlay has
+        // been removed. Production callers use this to dismiss their own
+        // per-tile loading overlay (TradingView-style 3-dot indicator).
+        this.onChartReady = (typeof opts.onChartReady === 'function')
+            ? opts.onChartReady
+            : function () {};
         this.iframeSrcBuilder = (typeof opts.iframeSrcBuilder === 'function')
             ? opts.iframeSrcBuilder
             : null;
@@ -254,6 +261,9 @@
                     }
                     if (sourceChart.mountEl) sourceChart.mountEl.classList.add('ready');
                     this._log('info', 'bridge ready: ' + sourceId);
+                    try { this.onChartReady(sourceId); } catch (e) {
+                        this._log('warn', 'onChartReady threw: ' + (e && e.message || e));
+                    }
                 }
                 return;
 
