@@ -1,32 +1,31 @@
 /**
- * embed-bridge.js — production multichart embed
+ * embed-bridge.js — Phase 7.2.1 foundation
  *
- * Runs INSIDE each dist-v9 iframe spawned by /chart/multi (the production
- * multichart shell). Loaded ONLY when the iframe URL contains ?multichart=1.
+ * Runs INSIDE each dist-v9 iframe spawned by the future MultichartGrid React
+ * component (Phase 7.2.2). Loaded ONLY when the iframe URL contains
+ * ?multichart=1; on plain /chart/ this file is never injected.
  *
  * Responsibilities:
- *   1. Wait for `window.chart` to exist (the dist-v9 React app mounts
- *      chart.js asynchronously after the React tree boots).
- *   2. Once present, install MultichartBridge on it. From that moment on,
- *      crosshair / visible-range / symbol events flow to the parent shell
- *      via postMessage, governed by the same allowlist + loop guard verified
- *      through Phase 6 of multi_chart_rebuild_roadmap.md.
- *   3. Forward chart instrument changes via the existing dispatch pipeline
- *      (chart.js dispatches `chartDataLoaded` when a file/symbol loads;
- *      sync-bridge.js already listens for that and forwards `chart-state`).
- *   4. Emit a heartbeat `host-log` message every 5s for the first 30s of an
- *      iframe's life so the parent shell can surface boot diagnostics if
- *      `window.chart` never materialises (which usually means the React app
- *      failed to mount, e.g. unauthenticated).
+ *   1. Wait for window.chart to exist (the dist-v9 React app boots chart.js
+ *      asynchronously after the React tree mounts; auth redirects can delay
+ *      this by seconds).
+ *   2. Once present, install MultichartBridge (sync-bridge.js) on it. From
+ *      that moment crosshair / visible-range / symbol events flow to the
+ *      parent shell via postMessage, governed by FORBIDDEN_SYNC_FIELDS.
+ *   3. Apply initial viewing context (?fileId=N&tf=1m) so each panel boots
+ *      with the same data the user was viewing on /chart/ before they
+ *      picked a multi-panel layout.
+ *   4. Heartbeat host-log message every 5s for the first 30s while we wait
+ *      for window.chart, so the parent can surface boot diagnostics.
  *
- * What this file does NOT do (deliberately):
- *   - It does NOT push price-axis state. The forbidden-fields filter is
- *     enforced inside sync-bridge.js for inbound and outbound; this file
- *     never even touches priceScale.
- *   - It does NOT change the React app's state. Each iframe's React app is
- *     fully independent; the user picks file/tf/indicators/orders/drawings
- *     using the native dist-v9 UI inside each panel. Cross-panel sharing of
- *     drawings/indicators/orders is intentionally a Phase 7.2 follow-up.
+ * What this file does NOT do:
+ *   - Does not push price-axis state — sync-bridge.js + engine-api-guards.js
+ *     enforce that on both inbound and outbound.
+ *   - Does not change React state directly. Per-panel drawings/indicators/
+ *     orders rely on each iframe's own React tree being independent.
+ *   - Does not handle parent→iframe COMMAND messages (file change, indicator
+ *     add, drawing tool select, place order). That's panel-cmd-bridge.js,
+ *     coming in Phase 7.2.4 alongside the topbar action redirect.
  */
 
 (function () {
@@ -68,7 +67,7 @@
         }
         if (!window.MultichartBridge || !window.MultichartGuards) {
             reportToShell('error', 'sync-bridge.js or engine-api-guards.js did not load — '
-                + 'check that /chart/multi/ static mount is serving them');
+                + 'check that /chart/multichart-prod/ static mount is serving them');
             return;
         }
         var ch = window.chart;
@@ -89,42 +88,29 @@
             return;
         }
 
-        // Apply initial viewing context (fileId/tf forwarded from /chart/ via
-        // the shell). Without this, each panel boots empty ("No data to
-        // display") because the shell URL knows the file but the React app
-        // inside the iframe has no per-panel selection yet — fixes the
-        // "open backtest with data, click 2 panels, data is gone" regression.
         applyInitialContext();
     }
 
+    // Apply the file/tf the parent told us to boot with.
+    // Without this, each iframe would land on whatever default the dist-v9
+    // React app picks (usually empty, "No data to display"), even though the
+    // user just picked a layout from a /chart/ that already had data.
     function applyInitialContext() {
         var fileId = params.get('fileId');
         var tf     = params.get('tf');
-        if (!fileId) {
-            // Nothing to load — user opened /chart/multi directly with no
-            // initial context. They can pick a file using the dist-v9 React
-            // UI inside the panel. (NOTE: dist-v9 chrome is hidden by the
-            // multichart-embed CSS today, so picking a file per-panel will
-            // need a v1.2 shell-side picker. For v1.1 the boot context is
-            // the only path.)
-            return;
-        }
+        if (!fileId) return;
         var ch = window.chart;
         if (!ch || typeof ch.loadFileData !== 'function') {
             reportToShell('warn', 'cannot apply fileId=' + fileId + ': window.chart.loadFileData missing');
             return;
         }
         try {
-            // Hint the timeframe BEFORE loadFileData so the engine resamples
-            // raw 1m data into the right timeframe on first paint instead of
-            // first showing 1m and then re-resampling.
+            // Hint timeframe BEFORE load so first-paint resamples to the
+            // correct tf instead of paint-then-resample.
             if (tf && typeof ch.currentTimeframe === 'string') {
                 try { ch.currentTimeframe = tf; } catch (_) {}
             }
             var p = ch.loadFileData(fileId);
-            // loadFileData is async; if it returns a promise, finish the tf
-            // setup after it resolves so we don't race a setTimeframe call
-            // against an in-flight resample.
             if (p && typeof p.then === 'function') {
                 p.then(function () {
                     if (tf && typeof ch.setTimeframe === 'function') {
@@ -145,10 +131,8 @@
         }
     }
 
-    // Heartbeat + startup diagnostics — emit a log line every 5s for 30s while
-    // we wait for the chart to come up. Helps diagnose iframes that hang on
-    // auth redirect or module load failure (the parent shell prints these in
-    // its log panel).
+    // Heartbeat for the first 30s of boot — helps diagnose iframes whose
+    // window.chart never appears (auth redirect, bundle parse failure, etc.).
     var heartbeatStart = Date.now();
     var heartbeatId = setInterval(function () {
         var elapsed = Math.floor((Date.now() - heartbeatStart) / 1000);
@@ -160,16 +144,11 @@
             + 'document.readyState=' + document.readyState + ')');
     }, 5000);
 
-    // pagehide cleanup so the heartbeat can't outlive a torn-down iframe.
     window.addEventListener('pagehide', function () {
         clearInterval(heartbeatId);
     }, { once: true });
 
     function boot() {
-        // chart.js sets window.chart inside its constructor; the React app may
-        // boot the chart up to a few seconds after DOMContentLoaded depending
-        // on auth redirect and bundle parse time. 30s timeout matches the
-        // sandbox's chart-host.html grace period.
         pollFor(
             function () { return !!window.chart; },
             150,

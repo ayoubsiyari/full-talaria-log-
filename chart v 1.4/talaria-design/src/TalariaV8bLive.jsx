@@ -4615,71 +4615,27 @@ const TalariaV8bLive = () => {
     return () => { cancelled = true; };
   }, []);
 
-  // V9 layout picker → multichart navigate (Phase 7.1).
-  //
-  // The legacy panelManager.applyLayout has been removed from production
-  // (see dist-v9/index.html PANEL MANAGER BOOTSTRAP — REMOVED comment).
-  // When the user picks a multi-panel layout from the right-panel layout
-  // tab, navigate to the new safe multichart shell at /chart/multi with
-  // the selected layout id.
-  //
-  // Layouts the new shell currently supports (chart/multichart-prod/shell.html
-  // LAYOUTS map): '1', '2v', '2h', '3l', '3r', '2x2'. V9 LAYOUT_ID_MAP has
-  // many more variants (3v, 3h, 3t, 3b, 4 / 4h / 4v / 4l / 4tl, 5+, etc.)
-  // — for those we fall through to the closest supported variant rather
-  // than refusing to navigate.
-  //
-  // The legacy panelManager fallback is kept defensively in case some
-  // future code path resurrects it; it's currently dead.
-  //
-  // Skips the very first run (initial defaults) so picking layout 1 on
-  // boot doesn't redirect from /chart/ to /chart/multi?layout=1 (no-op
-  // navigation but visible flash).
+  // V9 layout picker → panelManager.applyLayout(id).
+  // Skips the very first run (initial defaults) so we don't reset whatever
+  // layout panelManager restored from userStorage on boot.
   const layoutFirstApplyRef = useRef(true);
-  const SHELL_LAYOUT_FALLBACK = {
-    // V9 id  →  shell id
-    '1':   '1',
-    '2v':  '2v', '2h':  '2h',
-    '3v':  '2v', '3h':  '2h',  // approximate fallback — shell doesn't have 3v/3h yet
-    '3l':  '3l', '3r':  '3r',
-    '3t':  '3l', '3b':  '3l',  // approximate fallback
-    '4':   '2x2', '4h': '2x2', '4v':  '2x2',
-    '4b':  '2x2', '4t': '2x2', '4l':  '2x2', '4r': '2x2', '4tl': '2x2',
-  };
   useEffect(() => {
     if (layoutFirstApplyRef.current) { layoutFirstApplyRef.current = false; return; }
     const id = LAYOUT_ID_MAP[layoutPanels.n - 1]?.[layoutPanels.li];
     if (!id) return;
-
-    // Already on the multichart shell? It has its own layout selector;
-    // user picking from the right panel here would be unexpected. Don't
-    // double-navigate.
-    try {
-      if (window.location.pathname && window.location.pathname.indexOf('/chart/multi') === 0) return;
-    } catch (_) {}
-
-    // Layout '1' = single chart = stay on /chart/. The user is already
-    // there or coming from /chart/multi (handled above).
-    if (id === '1') {
-      // Defensive: if the legacy panelManager somehow exists and has a
-      // "shrink to one panel" path, call it. Otherwise no-op.
+    const apply = () => {
+      const pm = window.panelManager;
+      if (!pm || typeof pm.applyLayout !== "function") return false;
       try {
-        const pm = window.panelManager;
-        if (pm && typeof pm.applyLayout === 'function') pm.applyLayout('1');
-      } catch (_) {}
-      return;
-    }
-
-    const shellId = SHELL_LAYOUT_FALLBACK[id] || null;
-    if (!shellId) {
-      console.warn('[V9 layout] picked', id, '— shell does not support this variant yet; staying on single chart');
-      return;
-    }
-    try {
-      window.location.href = '/chart/multi?layout=' + encodeURIComponent(shellId);
-    } catch (err) {
-      console.warn('[V9 layout] navigate to multichart failed:', err);
-    }
+        if (pm.getCurrentLayout?.() === id || pm.currentLayout === id) return true;
+        pm.applyLayout(id);
+      } catch (err) { console.warn("[V9 layout] applyLayout failed:", err); }
+      return true;
+    };
+    if (apply()) return;
+    let n = 0;
+    const t = setInterval(() => { if (apply() || ++n > 60) clearInterval(t); }, 100);
+    return () => clearInterval(t);
   }, [layoutPanels]);
 
   // After a layout switch, force EVERY chart instance to fully recompute its

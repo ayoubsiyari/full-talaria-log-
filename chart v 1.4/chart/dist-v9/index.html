@@ -15,70 +15,51 @@
     </script>
 
     <!-- ──────────────────────────────────────────────────────────────────
-         MULTICHART INTEGRATION (Phase 7.1 — production multichart v1)
-         Two pieces:
-           A) Topbar button (loaded ALWAYS, not gated): adds a small
-              "Layouts ▾" dropdown at the top of every /chart/ page.
-              Picking a multi-panel layout navigates to /chart/multi.
-              Hides itself when running inside an iframe so it doesn't
-              appear inside multichart panels.
-           B) Embed shim (loaded ONLY on ?multichart=1): when this page
-              loads inside an iframe of /chart/multi, injects the three
-              verified multichart-prod scripts (engine-api-guards.js,
-              sync-bridge.js, embed-bridge.js) so window.chart picks up
-              the verified sync bridge.
-         When ?multichart=1 is ABSENT, the embed shim is a no-op — the
-         only change to /chart/ is the topbar button.
+         MULTICHART EMBED SHIM (Phase 7.2.1 foundation)
+         FULLY GATED on ?multichart=1. When that param is ABSENT (i.e. the
+         user is on plain /chart/), this entire block is a no-op — single-
+         chart behavior is byte-identical to before this work.
+         When ?multichart=1 is PRESENT (i.e. inside a future <MultichartGrid>
+         iframe spawned by Phase 7.2.2), the shim:
+           1. Adds html.multichart-embed so CSS can hide chrome.
+           2. Injects style: every [data-v9-chrome="1"] element (top toolbar,
+              left tools, bottom replay/balance bar, trade list, right panel)
+              is display:none — each iframe collapses to chart canvas + axes
+              + crosshair + OHLC legend (TradingView per-pane look).
+           3. Loads the verified bridge stack from /chart/multichart-prod/:
+                a) engine-api-guards.js  (FORBIDDEN_SYNC_FIELDS + filter)
+                b) sync-bridge.js        (iframe-side bridge)
+                c) embed-bridge.js       (waits for window.chart, installs)
+         No <MultichartGrid> exists yet (that's Phase 7.2.2), so today this
+         shim never fires in production. It's foundation only.
          ────────────────────────────────────────────────────────────────── -->
     <script>
     (function () {
-        var V = '20260510T0000';
-        function inject(src) {
-            var s = document.createElement('script');
-            s.src = src + '?v=' + V;
-            s.defer = true;
-            document.head.appendChild(s);
-        }
-        // (A) Topbar Layouts button — always load.
-        try { inject('/chart/multi/topbar-button.js'); }
-        catch (e) { try { console.error('[multichart-topbar] inject failed:', e); } catch (_) {} }
-
-        // (B) Embed shim — only when this page is loaded inside a /chart/multi iframe.
         try {
             var p = new URLSearchParams(window.location.search);
             if (p.get('multichart') !== '1') return;
             document.documentElement.classList.add('multichart-embed');
-            // Inject TradingView-style chrome-hide CSS BEFORE React paints to
-            // avoid a flash of the full topbar / left toolbar / bottom replay
-            // bar / trade-list / right panel inside each panel. All of those
-            // are tagged with data-v9-chrome="1" in TalariaV8bLive.jsx
-            // (5 elements: top toolbar L16200, left tools L16452, bottom bar
-            // L16594, trade list L17189, right panel L17675). Hiding them
-            // collapses each panel to: chart canvas + price/time axes +
-            // crosshair + drawings — the TradingView-per-pane look.
-            // Per-panel file selection / indicators / orders move to a v1.2
-            // shell-side control surface; for v1.1 each panel uses the
-            // file/tf forwarded from /chart/ via embed-bridge.js applyInitialContext.
             var styleEl = document.createElement('style');
             styleEl.id = 'multichart-embed-style';
             styleEl.textContent = [
                 'html.multichart-embed [data-v9-chrome="1"] { display: none !important; }',
                 'html.multichart-embed body { background: #07080E !important; }',
                 'html.multichart-embed #root { padding: 0 !important; margin: 0 !important; }',
-                /* Hide leftover popups/tooltips that may have rendered before
-                   we got the multichart-embed class on body. */
-                'html.multichart-embed .v9-tooltip, html.multichart-embed [data-v9-popover="1"] { display: none !important; }',
             ].join('\n');
             document.head.appendChild(styleEl);
             document.addEventListener('DOMContentLoaded', function () {
                 document.body.classList.add('multichart-embed');
             }, { once: true });
-            // Order matters: defer scripts execute in document insertion
-            // order, and embed-bridge.js depends on the other two having
-            // populated window.MultichartGuards / window.MultichartBridge.
-            inject('/chart/multi/engine-api-guards.js');
-            inject('/chart/multi/sync-bridge.js');
-            inject('/chart/multi/embed-bridge.js');
+            var V = '20260510T0100';
+            function inject(src) {
+                var s = document.createElement('script');
+                s.src = src + '?v=' + V;
+                s.defer = true;
+                document.head.appendChild(s);
+            }
+            inject('/chart/multichart-prod/engine-api-guards.js');
+            inject('/chart/multichart-prod/sync-bridge.js');
+            inject('/chart/multichart-prod/embed-bridge.js');
         } catch (e) {
             try { console.error('[multichart-shim] failed:', e); } catch (_) {}
         }

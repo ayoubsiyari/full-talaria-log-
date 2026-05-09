@@ -12616,22 +12616,6 @@ _DIST_V9_DIR_PATH   = _CHART_ROOT_PATH / "dist-v9"
 _DIST_LEGACY_INDEX  = _CHART_ROOT_PATH / "dist" / "index.html"
 _DIST_LEGACY_DIR    = _CHART_ROOT_PATH / "dist"
 
-# Production multichart shell entry path (Phase 7.1). Defined here so the
-# explicit /chart/multi route below can reference it. The actual static
-# mount for /chart/multi/* (JS, CSS) is registered later, alongside the
-# /chart/multichart sandbox mount.
-_MULTICHART_PROD_SHELL_PATH = _CHART_ROOT_PATH / "multichart-prod" / "shell.html"
-
-# IMPORTANT: these routes MUST be registered BEFORE /chart/{file_name}
-# below — FastAPI matches in registration order, and the catch-all would
-# 404 "multi" because it's not in CHART_ROOT_FILES.
-@app.get("/chart/multi")
-@app.get("/chart/multi/")
-async def chart_multi_root():
-    if _MULTICHART_PROD_SHELL_PATH.is_file():
-        return FileResponse(str(_MULTICHART_PROD_SHELL_PATH))
-    raise HTTPException(status_code=404, detail="multichart-prod shell missing — multichart-prod/shell.html not found")
-
 @app.get("/chart/{file_name}")
 async def chart_root_files(file_name: str):
     if file_name not in CHART_ROOT_FILES:
@@ -12685,25 +12669,22 @@ if _MULTICHART_DIR_PATH.is_dir():
     app.mount("/chart/multichart", StaticFiles(directory=str(_MULTICHART_DIR_PATH), html=True), name="chart_multichart")
     print(f"✅ Multichart sandbox mounted at /chart/multichart/ from {_MULTICHART_DIR_PATH}")
 
-
-# ─── Multichart PRODUCTION (Phase 7.1) ────────────────────────────────────
-# Iframes load /chart/dist-v9/index.html?multichart=1; the dist-v9 shim
-# then loads guards/bridge/embed-bridge from /chart/multi/ and installs
-# the verified sync bridge on window.chart.
-#
-# The bare /chart/multi and /chart/multi/ routes are registered ABOVE
-# (right before /chart/{file_name}) so they win against the catch-all.
-# Here we only need the static mount for the JS/CSS sub-paths.
+# Multichart PRODUCTION foundation (Phase 7.2.1).
+# Static asset mount only — no entry route. The bridge files in this folder
+# (engine-api-guards.js, sync-bridge.js, multichart-manager.js, embed-bridge.js)
+# are loaded by the dist-v9/index.html shim ONLY when the iframe URL contains
+# ?multichart=1, and the only thing that creates such iframes is the future
+# <MultichartGrid> React component (Phase 7.2.2). Until then, this mount sits
+# dormant and serves no traffic.
 _MULTICHART_PROD_DIR_PATH = _CHART_ROOT_PATH / "multichart-prod"
 if _MULTICHART_PROD_DIR_PATH.is_dir():
     app.mount(
-        "/chart/multi",
-        StaticFiles(directory=str(_MULTICHART_PROD_DIR_PATH), html=True),
-        name="chart_multi_prod",
+        "/chart/multichart-prod",
+        StaticFiles(directory=str(_MULTICHART_PROD_DIR_PATH)),
+        name="chart_multichart_prod",
     )
-    print(f"✅ Multichart PROD assets mounted at /chart/multi/ from {_MULTICHART_PROD_DIR_PATH}")
-else:
-    print(f"ℹ️ No multichart-prod dir at {_MULTICHART_PROD_DIR_PATH}; /chart/multi static assets disabled.")
+    print(f"✅ Multichart prod foundation mounted at /chart/multichart-prod/ from {_MULTICHART_PROD_DIR_PATH}")
+
 
 # NinjaTrader landing page assets (served from repo files)
 ninjatrader_assets_dir = Path("homepage/ninjatrader/Landing-Page-Text-Images")

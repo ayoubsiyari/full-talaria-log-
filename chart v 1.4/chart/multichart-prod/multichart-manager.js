@@ -1,14 +1,7 @@
 /**
- * multichart-manager.js — PRODUCTION COPY
+ * multichart-manager.js
  *
- * Verbatim copy of multichart/multichart-manager.js verified through Phase 6
- * of multi_chart_rebuild_roadmap.md. The only production-specific behavior:
- * iframe `src` defaults to dist-v9 (with ?multichart=1 shim) instead of the
- * sandbox chart-host.html. This is a TEMPLATE override at addChart() call
- * sites in shell.html, not a code change here — keep this file in sync with
- * the sandbox.
- *
- * Parent shell orchestrator. Lives ONLY in the shell page.
+ * Parent shell orchestrator. Lives ONLY in the shell page (multichart-shell.html).
  *
  * Responsibilities:
  *   - Manage iframe lifecycle (add / remove charts)
@@ -18,6 +11,11 @@
  *   - Loop guard via causationId
  *   - Sync mode toggles (crosshair / visibleRange / both / none)
  *   - Symbol broadcast (when one chart changes symbol, all peers follow)
+ *   - Verification: log panel, counters, assertion-report aggregation,
+ *     guard self-test fan-out
+ *
+ * Strict envelope schema enforced both inbound (from iframes) and outbound
+ * (to iframes), via window.MultichartGuards.filterForbiddenFields.
  */
 
 (function (global) {
@@ -34,43 +32,31 @@
 
     /**
      * @param {object} opts
-     *   container: HTMLElement       — where the iframes are mounted
-     *   onLog:    (entry) => void    — receives log lines
-     *   onState:  (id, state) => void — receives chart-state updates per chart
+     *   container: HTMLElement      — where the iframes are mounted
+     *   onLog: (entry) => void       — receives log lines for the verification panel
+     *   onState: (id, state) => void — receives chart-state updates per chart
      *   onAssertion: (msg) => void   — receives assertion reports
-     *   iframeSrcBuilder: (cfg) => string — REQUIRED in production. Returns the
-     *      `src` URL for a new iframe given the chart cfg. The sandbox uses
-     *      'chart-host.html?...'; production uses '/chart/dist-v9/index.html?multichart=1&...'.
      */
     function MultichartManager(opts) {
         this.container = opts.container;
         this.onLog    = opts.onLog    || function () {};
         this.onState  = opts.onState  || function () {};
         this.onAssertion = opts.onAssertion || function () {};
-        this.iframeSrcBuilder = opts.iframeSrcBuilder || function (cfg) {
-            // Sandbox-compatible default for tests; production callers MUST
-            // supply their own builder so the iframe loads dist-v9.
-            const params = new URLSearchParams();
-            params.set('id', cfg.id);
-            params.set('tf', cfg.tf || '1m');
-            if (cfg.fileId) params.set('fileId', String(cfg.fileId));
-            return 'chart-host.html?' + params.toString();
-        };
 
-        this.charts = new Map();
+        this.charts = new Map();    // id -> { id, frame, ready, state }
         this.syncMode = {
             crosshair:   true,
             visibleRange: true,
             symbol:      true,
         };
         this.counters = {
-            outFromUser: 0,
-            droppedLoop: 0,
-            droppedForbidden: 0,
+            outFromUser: 0,        // user-originated forwards
+            droppedLoop: 0,        // dropped due to causation match
+            droppedForbidden: 0,   // dropped due to forbidden field
             assertionsOk: 0,
             assertionsFail: 0,
         };
-        this._frameOriginCheck = false;
+        this._frameOriginCheck = false;  // sandbox: '*' is fine
 
         this._onWindowMessage = this._onWindowMessage.bind(this);
         global.addEventListener('message', this._onWindowMessage);
@@ -86,26 +72,66 @@
         this._log('info', 'syncMode = ' + JSON.stringify(this.syncMode));
     };
 
+    /**
+     * Add a chart by spawning an iframe.
+     * @param {{id:string, symbol:string, tf:string, days?:number}} cfg
+     * @param {HTMLElement} mountEl  - the cell element to mount the iframe into
+     */
     MultichartManager.prototype.addChart = function (cfg, mountEl) {
         if (this.charts.has(cfg.id)) {
             this._log('warn', 'addChart: id already present: ' + cfg.id);
             return;
         }
-        const src = this.iframeSrcBuilder(cfg);
+        const params = new URLSearchParams();
+        params.set('id', cfg.id);
+        params.set('tf', cfg.tf || '1m');
+        if (cfg.verbose) params.set('verbose', '1');
 
+        // v10: shell remembers the last broadcast file id; pass it as URL
+        // param so newly-spawned iframes load the same file by default.
+        // Each iframe also has its own per-panel file picker the user can
+        // change after init.
+        //
+        // v10.5.0 (Phase 6.4 session restore): per-panel `cfg.fileId` from
+        // a saved session takes PRIORITY over the broadcast id. Same for
+        // `cfg.restoreStartSec` / `cfg.restoreEndSec`, which the iframe
+        // applies as its initial visible range once data is loaded. None
+        // of these are price-axis fields, by design — the original-bug
+        // guard is preserved.
+        try {
+            const rd = (typeof global.__multichartRealData === 'function')
+                ? global.__multichartRealData()
+                : null;
+            const effectiveFileId = cfg.fileId || (rd && rd.fileId) || null;
+            if (effectiveFileId) {
+                params.set('fileId', String(effectiveFileId));
+            }
+        } catch (_) {}
+        if (Number.isFinite(cfg.restoreStartSec) && Number.isFinite(cfg.restoreEndSec)
+            && cfg.restoreEndSec > cfg.restoreStartSec) {
+            params.set('restoreStart', String(Math.floor(cfg.restoreStartSec)));
+            params.set('restoreEnd',   String(Math.floor(cfg.restoreEndSec)));
+        }
+
+        // Per-cell loading overlay so we can see WHICH cells exist and which
+        // are stuck waiting for their iframe's chart.js to init. Removed when
+        // the cell goes ready (see _onWindowMessage on bridge-ready).
         const overlay = document.createElement('div');
-        overlay.className = 'mc-loading-overlay';
+        overlay.className = 'loading-overlay';
         overlay.innerHTML =
             '<div class="id">' + cfg.id + '</div>' +
-            '<div>Loading panel…</div>' +
+            '<div>Loading panel — pick a file…</div>' +
             '<small>iframe: pending — bridge: pending</small>';
         mountEl.appendChild(overlay);
 
         const frame = document.createElement('iframe');
-        frame.src = src;
+        frame.src = 'chart-host.html?' + params.toString();
         frame.title = 'Chart ' + cfg.id;
         frame.setAttribute('data-chart-id', cfg.id);
-        frame.style.cssText = 'width:100%;height:100%;border:0;display:block;background:#07080E;';
+        // No `sandbox` attribute — iframe is same-origin (file:// or local
+        // dev server), and chart.js needs unrestricted scripts. The
+        // postMessage allowlist is the security boundary here.
+        frame.style.cssText = 'width:100%;height:100%;border:0;display:block;background:#0b0c14;';
         const self = this;
         frame.addEventListener('load', function () {
             self._log('info', 'iframe loaded: ' + cfg.id + ' (waiting for bridge-ready…)');
@@ -118,7 +144,7 @@
                     const sm = overlay.querySelector('small');
                     if (sm) sm.textContent = 'iframe: LOADED — bridge: TIMEOUT (chart init failed)';
                 }
-            }, 15000);
+            }, 5000);
         });
         frame.addEventListener('error', function () {
             self._log('error', 'iframe FAILED to load: ' + cfg.id + ' src=' + frame.src);
@@ -136,7 +162,7 @@
             state:   { symbol: '—', timeframe: cfg.tf, candleCount: 0 },
             mountEl: mountEl,
         });
-        this._log('info', 'addChart ' + cfg.id + ' (tf=' + (cfg.tf || '?') + ') src=' + src);
+        this._log('info', 'addChart ' + cfg.id + ' (tf=' + (cfg.tf || '?') + ')');
     };
 
     MultichartManager.prototype.removeChart = function (id) {
@@ -151,6 +177,9 @@
         return Array.from(this.charts.values());
     };
 
+    /**
+     * Send a config patch to a specific iframe.
+     */
     MultichartManager.prototype.sendConfig = function (id, configPatch) {
         const c = this.charts.get(id);
         if (!c) return;
@@ -164,6 +193,7 @@
         }
     };
 
+    /** Broadcast a guard self-test request to every chart. */
     MultichartManager.prototype.runGuardSelfTest = function () {
         for (const c of this.charts.values()) {
             try {
@@ -173,6 +203,7 @@
         this._log('info', 'guard self-test requested across ' + this.charts.size + ' charts');
     };
 
+    /** Push a symbol change to all peers (user-driven). */
     MultichartManager.prototype.broadcastSymbol = function (sourceId, symbol) {
         if (!this.syncMode.symbol) return;
         const causationId = uuid();
@@ -184,10 +215,13 @@
         this._log('out', 'symbol ' + symbol + ' (from ' + sourceId + ') → ' + (this.charts.size - 1) + ' peers');
     };
 
+    /** ───────────────────────────── inbound from iframes ─────────────────── */
+
     MultichartManager.prototype._onWindowMessage = function (ev) {
         const msg = ev.data;
         if (!msg || typeof msg !== 'object' || !msg.type) return;
 
+        // Identify which chart sent it (by source field set by the bridge)
         const sourceId = msg.source;
         const sourceChart = sourceId ? this.charts.get(sourceId) : null;
 
@@ -226,10 +260,15 @@
                 return;
 
             case 'host-log':
+                // Diagnostic line forwarded from inside an iframe (chart-host).
+                // Useful for surfacing real-data fetch errors, timeouts, etc.
                 this._log(msg.level || 'info', msg.text || '');
                 return;
 
             case 'visibleRange':
+                // v10.5.0: also stash the range on the chart record so the
+                // shell can persist it as part of the session. This is a
+                // pure read-side cache; the fan-out below is unchanged.
                 if (sourceChart) {
                     sourceChart.state.visibleStartSec = Number(msg.startTime);
                     sourceChart.state.visibleEndSec   = Number(msg.endTime);
@@ -245,17 +284,21 @@
                 return;
 
             default:
+                // Unknown / non-sandbox messages — ignore
                 return;
         }
     };
 
+    /** PEER fan-out with allowlist filter. */
     MultichartManager.prototype._fanOut = function (msg, sourceId) {
+        // Allowlist filter on the way through the manager too — defense in depth.
         const cleaned = G.filterForbiddenFields(msg);
         if (cleaned.dropped.length) {
             this.counters.droppedForbidden++;
             this._log('error', 'DROPPED forbidden fields from ' + sourceId + ': ' + cleaned.dropped.join(', '));
         }
 
+        // Sync-mode gate
         const t = msg.type;
         if (t === 'crosshair' || t === 'crosshair-clear') {
             if (!this.syncMode.crosshair) return;
@@ -268,6 +311,7 @@
         this.counters.outFromUser++;
 
         const out = cleaned.clean;
+        // PEER topology: fan out to all charts EXCEPT the source.
         for (const c of this.charts.values()) {
             if (c.id === sourceId) continue;
             this._send(c, out);

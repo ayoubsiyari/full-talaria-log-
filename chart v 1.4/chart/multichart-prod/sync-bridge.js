@@ -1,12 +1,9 @@
 /**
- * sync-bridge.js — PRODUCTION COPY
- *
- * Verbatim copy of multichart/sync-bridge.js verified through Phase 6 of
- * multi_chart_rebuild_roadmap.md.
+ * sync-bridge.js
  *
  * Runs INSIDE each chart iframe. Wires `chart.js` events to outbound
- * postMessage to the parent shell, and applies inbound sync messages from
- * the parent to the local chart.
+ * postMessage to the parent shell, and applies inbound sync messages
+ * from the parent to the local chart.
  *
  * Strict allowlist enforced via `MultichartGuards.FORBIDDEN_SYNC_FIELDS`
  * and the postMessage envelope schema — only `time`, `startTime`,
@@ -17,8 +14,8 @@
  * Native chart events fired in response to that programmatic update are
  * matched by the recently-applied causationId and DROPPED before forwarding.
  *
- * Loaded by chart-host.html (sandbox) or embed-bridge.js (production
- * dist-v9 iframe shim).
+ * Loaded by `chart-host.html` after `chart.js` and after the chart
+ * instance is created.
  */
 (function (global) {
     'use strict';
@@ -29,6 +26,7 @@
         return;
     }
 
+    /** Ring buffer for loop guard. */
     function RingBuffer(cap) {
         this.cap = cap;
         this.arr = [];
@@ -41,11 +39,14 @@
         return this.arr.indexOf(v) !== -1;
     };
 
+    /** Generate a v4-ish UUID. Doesn't need to be cryptographically strong. */
     function uuid() {
         const r = (Math.random() * 1e9 | 0).toString(16);
         return Date.now().toString(16) + '-' + r + '-' + (Math.random() * 1e9 | 0).toString(16);
     }
 
+    /** Heuristic ms->s: chart.js stores `t` in seconds at our backend, but
+     *  legacy paths sometimes hold ms. >1e12 must be ms.  */
     function toSeconds(t) {
         if (!Number.isFinite(t)) return 0;
         return t > 1e12 ? Math.floor(t / 1000) : Math.floor(t);
@@ -55,6 +56,7 @@
         return t > 1e12 ? Math.floor(t) : Math.floor(t) * 1000;
     }
 
+    /** Snap helpers per Phase 0 Decision 3. */
     function floorToBucket(timeSec, bucketSec) {
         return Math.floor(timeSec / bucketSec) * bucketSec;
     }
@@ -62,6 +64,9 @@
         return Math.ceil(timeSec / bucketSec) * bucketSec;
     }
 
+    // Inline timeframe-to-seconds map. v10: this used to be sourced from
+    // sample-data.js (TIMEFRAME_SECONDS export), but sample-data.js was
+    // removed when we switched to real-data-only mode.
     const TIMEFRAME_SECONDS = {
         '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800,
         '1h': 3600, '2h': 7200, '4h': 14400,
@@ -72,14 +77,22 @@
     /**
      * Apply a sync'd visible time-range to the recipient chart.
      *
-     * Modeled after chart.js's own internal cross-panel sync. Key safety
-     * properties:
+     * Modeled after chart.js's own internal cross-panel sync (chart.js:2015-
+     * 2053). Key safety properties:
+     *
      *   • Never sets candleWidth so small that candles disappear (MIN_BARS).
      *   • Always centres on the closest candle to the synced midpoint.
-     *   • If post-alignment the visible bar count would be 0, falls back to
-     *     fitToView() so the user always sees SOMETHING.
+     *   • If post-alignment the visible bar count would be 0 (e.g. midpoint
+     *     fell outside this chart's data range), falls back to fitToView()
+     *     so the user always sees SOMETHING. Without this guard, panning
+     *     chart A (1m) by a small delta would leave chart B (1h) showing an
+     *     empty canvas — which is exactly the "jump and hide" bug.
      *   • Forces autoScale=true so the recipient's price axis re-fits its OWN
      *     newly-visible candles. NEVER reads min/max from the source chart.
+     *
+     * @param {object} chart   recipient chart instance
+     * @param {number} startSec  inclusive start of source visible window (seconds)
+     * @param {number} endSec    exclusive end of source visible window (seconds)
      */
     function setVisibleTimeRange(chart, startSec, endSec) {
         if (!chart || !chart.data || chart.data.length === 0) return;
@@ -89,20 +102,30 @@
         const widthPx = (chart.w || chart.canvas.width || 800) - (m.l + m.r);
         if (widthPx <= 0) return;
 
+        // Bar duration of THIS chart (recipient), in seconds.
         let barSec = 60;
         try {
             const ms = chart.inferBarDurationMs ? chart.inferBarDurationMs() : 60000;
             if (Number.isFinite(ms) && ms > 0) barSec = Math.max(1, Math.floor(ms / 1000));
         } catch (_) {}
 
+        // How many recipient-bars are in the source's visible window?
         const spanSec = Math.max(1, endSec - startSec);
         const desiredBars = spanSec / barSec;
+        // Floor so we always show enough candles to be visually useful.
+        // E.g. 30-min source window on a 1h recipient = 0.5 bars; clamping to
+        // 30 gives the user 30 hours of context centred on the midpoint instead
+        // of an essentially empty chart.
         const MIN_BARS_TO_SHOW = 30;
         const MAX_BARS_TO_SHOW = chart.data.length;
         const targetBars = Math.max(MIN_BARS_TO_SHOW, Math.min(MAX_BARS_TO_SHOW, desiredBars));
 
+        // Compute the candleWidth that would fit targetBars in widthPx pixels.
         const idealCandleWidth = widthPx / targetBars;
 
+        // Snap to the chart's allowed zoom levels (TradingView-style discrete
+        // zoom rungs). Keeps the chart's own zoom state consistent with what a
+        // user could reach via the wheel.
         if (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths)
             && chart.zoomLevel.allowedWidths.length > 0) {
             const allowed = chart.zoomLevel.allowedWidths;
@@ -117,6 +140,9 @@
             chart.candleWidth = Math.max(0.5, Math.min(80, idealCandleWidth));
         }
 
+        // Find the recipient candle closest to the midpoint of the source's
+        // visible window. Linear scan — chart.data is small (≤20k) and this
+        // runs at most once per rAF on the recipient.
         const midMs = ((startSec + endSec) / 2) * 1000;
         let bestIdx = 0;
         let bestDiff = Infinity;
@@ -127,6 +153,9 @@
             if (d < bestDiff) { bestDiff = d; bestIdx = i; }
         }
 
+        // Position offsetX so bestIdx is at the horizontal CENTER of the chart
+        // drawing area. Same arithmetic chart.js uses in its own jumpToTimestamp
+        // (chart.js:11167-11172) and cross-panel align (chart.js:2041).
         const cw = (chart.w || widthPx) - m.l - m.r;
         const candleSpacing = (typeof chart.getCandleSpacing === 'function')
             ? chart.getCandleSpacing()
@@ -140,6 +169,9 @@
             }
         }
 
+        // Safety net (mirrors chart.js:2050-2053): if our alignment left zero
+        // bars on screen, fall back to fitToView so we never produce a blank
+        // chart. This is the actual fix for the "jump and hide" report.
         const visibleBarCount = function () {
             const cs = (typeof chart.getCandleSpacing === 'function')
                 ? chart.getCandleSpacing() : chart.candleWidth;
@@ -152,12 +184,18 @@
             try { chart.fitToView && chart.fitToView(); } catch (_) {}
         }
 
+        // Force price autoScale ON so the recipient's price axis recomputes
+        // from its OWN newly-visible candles. NEVER set min/max from outside.
         if (chart.priceScale) chart.priceScale.autoScale = true;
         chart.autoScale = true;
 
         if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
     }
 
+    /**
+     * Read the chart's visible time range as { startSec, endSec }.
+     * Uses the same fields chart.js dispatches on `chartScrolled`.
+     */
     function readVisibleTimeRange(chart) {
         if (!chart || !chart.data || chart.data.length === 0) return null;
         const startIdx = typeof chart.getVisibleStartIndex === 'function' ? chart.getVisibleStartIndex() : 0;
@@ -172,6 +210,10 @@
         };
     }
 
+    /**
+     * Install the bridge on the global window. Call ONCE per iframe after
+     * `window.chart` exists.
+     */
     function installBridge(chart, opts) {
         opts = opts || {};
         const chartId = opts.chartId || 'chart-?';
@@ -184,6 +226,26 @@
             parentOrigin,
             applied: new RingBuffer(16),
             tick: 0,
+            // ──────────────────────────────────────────────────────────────
+            // v10.4.8 (Phase 6.2 sync regression fix):
+            //
+            // Previous design used a `suppressOutbound` integer counter:
+            // every inbound apply pre-paid +N to the budget expecting +N
+            // native echoes from chart.js. That assumption was wrong —
+            // setVisibleTimeRange in this bridge only mutates fields and
+            // schedules a render, it never calls dispatchScrollSync, so the
+            // counter accumulated. After a few B->A syncs, A's
+            // suppressOutbound was a large positive number; the user's
+            // genuine pan events on A were silently drained from the
+            // counter and never broadcast — A appeared dead.
+            //
+            // New design: a boolean `applying` window that is set true at
+            // the start of an inbound apply and cleared on the next two
+            // animation frames (chart.js render & chartScrolled paths are
+            // rAF-deferred). Because the window is time-bounded, it cannot
+            // accumulate across syncs. Programmatic echoes that land
+            // within the window are dropped; user input that fires after
+            // the window passes through normally.
             applying: false,
             applyingClearRaf: 0,
             inboundSnap: null,
@@ -195,6 +257,8 @@
         function beginApplying() {
             state.applying = true;
             if (state.applyingClearRaf) cancelAnimationFrame(state.applyingClearRaf);
+            // Double rAF: chart.js's render is rAF-deferred and the
+            // chartScrolled echo lands one more frame later.
             state.applyingClearRaf = requestAnimationFrame(function () {
                 state.applyingClearRaf = requestAnimationFrame(function () {
                     state.applying = false;
@@ -203,11 +267,14 @@
             });
         }
 
+        // ─── outbound: chart -> parent ─────────────────────────────────────
+
         function send(envelope) {
             const cleaned = G.filterForbiddenFields(envelope);
             if (cleaned.dropped.length) {
                 console.error('[bridge:' + chartId + '] dropped forbidden fields:', cleaned.dropped);
             }
+            // Inject envelope metadata
             cleaned.clean.source = chartId;
             cleaned.clean.causationId = cleaned.clean.causationId || uuid();
             cleaned.clean.syncTick = ++state.tick;
@@ -219,6 +286,12 @@
             }
         }
 
+        // ── rAF coalescer ─────────────────────────────────────────────────
+        // mouse moves fire at 60-120Hz; chart.js's updateCrosshair calls
+        // broadcastCrosshairSync on every move. Postmessage round-trips at
+        // that rate make the peer chart visibly lag. Coalesce so at most one
+        // crosshair postMessage goes out per animation frame, with the LATEST
+        // value. Same for visible-range pan.
         const pending = { crosshair: null, crosshairClear: false, visibleRange: null };
         let rafScheduled = false;
         function flushPending() {
@@ -241,6 +314,7 @@
             requestAnimationFrame(flushPending);
         }
 
+        // 1) Crosshair — monkey-patch broadcastCrosshairSync.
         chart._crosshairPanelSyncAllowed = function () {
             return !!chart.syncCrosshair;
         };
@@ -256,6 +330,7 @@
             scheduleFlush();
         };
 
+        // 2) Visible range — listen to chartScrolled (also rAF-coalesced)
         global.addEventListener('chartScrolled', function (ev) {
             if (state.applying) return;
             const d = ev.detail || {};
@@ -267,6 +342,11 @@
             scheduleFlush();
         });
 
+        // 3) Symbol / data load — re-emit chart-state, NOT a sync event.
+        //    v10.3: also include firstBarMs/lastBarMs so the shell can detect
+        //    cross-panel date-range mismatches (different files covering
+        //    non-overlapping periods → crosshair sync visibly no-ops because
+        //    receiveCrosshairSync hides when synced time is outside view).
         global.addEventListener('chartDataLoaded', function (ev) {
             const d = ev.detail || {};
             let firstBarMs = null, lastBarMs = null;
@@ -281,6 +361,10 @@
                     type: 'chart-state',
                     source: chartId,
                     state: {
+                        // v10.5.0: report fileId so the shell can persist
+                        // which file each panel has loaded for session
+                        // restore. Forbidden-fields filter still applies
+                        // on inbound; fileId is not in the forbidden list.
                         fileId: d.fileId || null,
                         symbol: d.symbol || chart.currentSymbol || null,
                         timeframe: d.timeframe || chart.currentTimeframe || null,
@@ -292,6 +376,7 @@
             } catch (_) {}
         });
 
+        // 4) Timeframe — chart-state only (NOT a sync field per Decision 1)
         global.addEventListener('timeframeChanged', function (ev) {
             const d = ev.detail || {};
             if (d.chart !== chart) return;
@@ -304,9 +389,13 @@
             } catch (_) {}
         });
 
+        // ─── inbound: parent -> chart ──────────────────────────────────────
+
         global.addEventListener('message', function (ev) {
+            // (parent origin check could be added here in prod)
             const msg = ev.data;
             if (!msg || typeof msg !== 'object') return;
+            // ignore messages we ourselves originated
             if (msg.source && msg.source === chartId) return;
 
             const cleaned = G.filterForbiddenFields(msg);
@@ -315,6 +404,7 @@
             }
             const m = cleaned.clean;
 
+            // Loop guard — only forward types if not a recent self-applied causationId
             if (m.causationId && state.applied.has(m.causationId)) {
                 log('drop loop echo', m.type, m.causationId);
                 return;
@@ -334,6 +424,7 @@
                 } else if (m.type === 'guard-self-test') {
                     runSelfTest();
                 }
+                // unknown types are silently ignored
             } catch (e) {
                 warn('inbound apply error', m.type, e);
             }
@@ -343,6 +434,7 @@
             const before = G.snapshotPriceState(chart);
             state.applied.add(m.causationId);
             beginApplying();
+            // chart.js receiveCrosshairSync expects MILLISECONDS
             chart.receiveCrosshairSync(toMillis(m.time), null, null);
             const after = G.snapshotPriceState(chart);
             const violations = G.diffPriceState(before, after, 'crosshair');
@@ -365,12 +457,14 @@
             state.applied.add(m.causationId);
             beginApplying();
 
+            // Snap to recipient TF buckets per Decision 3.
             const myTf = chart.currentTimeframe || '1m';
             const myBucket = tfSec(myTf);
             const startSnapped = floorToBucket(m.startTime, myBucket);
             const endSnapped   = ceilToBucket(m.endTime,   myBucket);
             setVisibleTimeRange(chart, startSnapped, endSnapped);
 
+            // Defer assertion until raf so render() has applied autoScale
             requestAnimationFrame(function () {
                 const after = G.snapshotPriceState(chart);
                 const v = G.diffPriceState(before, after, 'visibleRange');
@@ -384,6 +478,10 @@
         }
 
         function applySymbol(m) {
+            // Symbol changes are NOT incremental sync — they're a user-driven
+            // global swap. Each chart reloads its own data for the new symbol.
+            // The host page is responsible for the actual data swap; we just
+            // forward the request to the host.
             global.dispatchEvent(new CustomEvent('multichart:symbol-change', {
                 detail: { symbol: m.symbol }
             }));
@@ -419,6 +517,7 @@
             } catch (_) {}
         }
 
+        // ─── ready ────────────────────────────────────────────────────────
         try {
             global.parent.postMessage({
                 type: 'bridge-ready',

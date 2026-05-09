@@ -15,44 +15,37 @@
     </script>
 
     <!-- ──────────────────────────────────────────────────────────────────
-         MULTICHART INTEGRATION (Phase 7.1 — production multichart v1)
-         Mirror of chart v 1.4/chart/dist-v9/index.html. Two pieces:
-           A) Topbar button — always loaded; adds "Layouts ▾" dropdown.
-           B) Embed shim — only on ?multichart=1; injects the bridge.
+         MULTICHART EMBED SHIM (Phase 7.2.1 foundation — mirror)
+         Mirror of chart v 1.4/chart/dist-v9/index.html. Fully gated on
+         ?multichart=1 — no-op on plain /chart/.
          ────────────────────────────────────────────────────────────────── -->
     <script>
     (function () {
-        var V = '20260510T0000';
-        function inject(src) {
-            var s = document.createElement('script');
-            s.src = src + '?v=' + V;
-            s.defer = true;
-            document.head.appendChild(s);
-        }
-        try { inject('/chart/multi/topbar-button.js'); }
-        catch (e) { try { console.error('[multichart-topbar] inject failed:', e); } catch (_) {} }
         try {
             var p = new URLSearchParams(window.location.search);
             if (p.get('multichart') !== '1') return;
             document.documentElement.classList.add('multichart-embed');
-            // Hide dist-v9 chrome (data-v9-chrome="1") inside each multichart
-            // panel for TradingView-style clean layout. Mirror of the source
-            // in talaria-design/live/index.html.
             var styleEl = document.createElement('style');
             styleEl.id = 'multichart-embed-style';
             styleEl.textContent = [
                 'html.multichart-embed [data-v9-chrome="1"] { display: none !important; }',
                 'html.multichart-embed body { background: #07080E !important; }',
                 'html.multichart-embed #root { padding: 0 !important; margin: 0 !important; }',
-                'html.multichart-embed .v9-tooltip, html.multichart-embed [data-v9-popover="1"] { display: none !important; }',
             ].join('\n');
             document.head.appendChild(styleEl);
             document.addEventListener('DOMContentLoaded', function () {
                 document.body.classList.add('multichart-embed');
             }, { once: true });
-            inject('/chart/multi/engine-api-guards.js');
-            inject('/chart/multi/sync-bridge.js');
-            inject('/chart/multi/embed-bridge.js');
+            var V = '20260510T0100';
+            function inject(src) {
+                var s = document.createElement('script');
+                s.src = src + '?v=' + V;
+                s.defer = true;
+                document.head.appendChild(s);
+            }
+            inject('/chart/multichart-prod/engine-api-guards.js');
+            inject('/chart/multichart-prod/sync-bridge.js');
+            inject('/chart/multichart-prod/embed-bridge.js');
         } catch (e) {
             try { console.error('[multichart-shim] failed:', e); } catch (_) {}
         }
