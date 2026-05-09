@@ -9,6 +9,7 @@ import {
   normalizeSymForBadge,
   resolveSessionChartSymbol,
 } from "./chartSymbolBadge.jsx";
+import MultichartGrid from "./MultichartGrid.jsx";
 
 // ── Color utilities ──────────────────────────────────────────────────────────
 function parseColor(str) {
@@ -4444,6 +4445,10 @@ const TalariaV8bLive = () => {
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [layoutPos, setLayoutPos] = useState({ x: 0, y: 0 });
   const [layoutPanels, setLayoutPanels] = useState({n:1,li:0});
+  // Phase 7.2.2: which iframe in <MultichartGrid> currently has focus.
+  // Single-chart layouts ignore this; multi-panel layouts highlight the
+  // focused tile and (in Phase 7.2.4) route topbar/leftbar actions to it.
+  const [focusedPanelId, setFocusedPanelId] = useState("A");
   // Keep V9 defaults aligned with panel-manager.js defaults to avoid startup
   // races re-enabling sync modes (especially `time`) unexpectedly.
   const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: true, interval: false, dateRange: false, indicators: false, chartType: false });
@@ -16515,6 +16520,45 @@ const TalariaV8bLive = () => {
                     multi-panel effect re-stamping window.chart keeps main tile vs toolbar in sync. */}
                 {mainOhlcInfoEl}
               </div>
+
+              {/* Phase 7.2.2: in-page iframe grid for multi-panel layouts.
+                   Mounts ONLY when layoutPanels.n > 1 — single-chart UX is
+                   identical to before this component existed. The grid sits
+                   at z-index:12 (above #chartWrapper, below replay/screenshot
+                   overlays at z-index ≥21). When layout returns to 1 the
+                   grid unmounts and #chartWrapper is exposed again, with the
+                   parent chart engine still live (never paused). Each tile is
+                   a /chart/dist-v9/?multichart=1&panelId=X&fileId=...&tf=...
+                   iframe — chrome-hidden via the dist-v9 shim, sync-bridged
+                   via /chart/multichart-prod/* (Phase 7.2.1 foundation). */}
+              {layoutPanels.n > 1 && (() => {
+                const lid = LAYOUT_ID_MAP[layoutPanels.n - 1]?.[layoutPanels.li];
+                let initFileId = "";
+                let initTf = "";
+                try {
+                  if (window.chart) {
+                    if (window.chart.currentFileId != null) initFileId = String(window.chart.currentFileId);
+                    if (typeof window.chart.currentTimeframe === "string") initTf = window.chart.currentTimeframe;
+                  }
+                } catch (_) {}
+                let initMode = null;
+                try {
+                  const m = new URLSearchParams(window.location.search).get("mode");
+                  if (m === "backtest" || m === "propfirm" || m === "live") initMode = m;
+                } catch (_) {}
+                return (
+                  <MultichartGrid
+                    layoutId={lid}
+                    panelCount={layoutPanels.n}
+                    layoutSync={layoutSync}
+                    initialFileId={initFileId}
+                    initialTimeframe={initTf}
+                    initialMode={initMode}
+                    focusedPanelId={focusedPanelId}
+                    setFocusedPanelId={setFocusedPanelId}
+                  />
+                );
+              })()}
 
               {/* Overlays — stay on top of both #chartWrapper and #panels-container */}
               {screenshotFlash && <div onAnimationEnd={()=>setScreenshotFlash(false)} style={{position:"absolute",inset:0,background:"white",animation:"tlrFlash 0.35s ease-out forwards",zIndex:9998,pointerEvents:"none"}}/>}
