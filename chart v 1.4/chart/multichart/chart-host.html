@@ -296,8 +296,8 @@
     <!-- sandbox-only modules. Cache-busting query string — bump on any sandbox change.
          sample-data.js was deleted in v10 — the sandbox always fetches real
          data from /api/file/{id}/smart now. -->
-    <script src="./engine-api-guards.js?v=20260509T1510"></script>
-    <script src="./sync-bridge.js?v=20260509T1510"></script>
+    <script src="./engine-api-guards.js?v=20260509T1530"></script>
+    <script src="./sync-bridge.js?v=20260509T1530"></script>
 
     <script>
     (function () {
@@ -462,8 +462,23 @@
         }
 
         /**
+         * Format epoch-ms as a YYYY-MM-DD date string for option labels.
+         */
+        function fmtDate(ms) {
+            if (!Number.isFinite(ms)) return '';
+            const d = new Date(ms);
+            return d.getUTCFullYear() + '-'
+                 + String(d.getUTCMonth() + 1).padStart(2, '0') + '-'
+                 + String(d.getUTCDate()).padStart(2, '0');
+        }
+
+        /**
          * Fetch /api/files once on init, populate the per-panel file dropdown,
          * and cache by id for symbol-label lookups.
+         *
+         * v10.3: also caches each file's start_ts / end_ts so the per-panel
+         * dropdown can show date ranges and so on-change we can warn the
+         * user when a selection won't overlap with other panels' ranges.
          */
         async function loadFileList() {
             try {
@@ -487,13 +502,22 @@
                     const sym = f.symbol || f.ticker || '?';
                     const tf  = f.timeframe || f.tf || '';
                     const rows = f.rows || f.row_count || '';
+                    const startTs = Number(f.start_ts);
+                    const endTs   = Number(f.end_ts);
+                    const dateStr = (Number.isFinite(startTs) && Number.isFinite(endTs))
+                        ? ' ' + fmtDate(startTs) + '→' + fmtDate(endTs) : '';
                     const label = '#' + id + ' ' + sym + (tf ? ' ' + tf : '')
-                        + (rows ? ' (' + Number(rows).toLocaleString() + ')' : '');
+                        + (rows ? ' (' + Number(rows).toLocaleString() + ')' : '')
+                        + dateStr;
                     const opt = document.createElement('option');
                     opt.value = id;
                     opt.textContent = label;
                     fileSel.appendChild(opt);
-                    window.__filesById[id] = { id: id, symbol: sym, timeframe: tf, rows: rows };
+                    window.__filesById[id] = {
+                        id: id, symbol: sym, timeframe: tf, rows: rows,
+                        startTs: Number.isFinite(startTs) ? startTs : null,
+                        endTs:   Number.isFinite(endTs)   ? endTs   : null,
+                    };
                 });
                 if (currentFileId && window.__filesById[currentFileId]) {
                     fileSel.value = currentFileId;
@@ -581,40 +605,38 @@
             };
 
             // ──────────────────────────────────────────────────────────────
-            // v10.1: cross-ticker crosshair sync fix
+            // v10.2: cross-ticker crosshair sync fix
             //
             // chart.js's `receiveCrosshairSync` (chart.js:20568) positions
             // the vertical line by BAR-INDEX lookup (`dataIndexToPixel(idx)`,
-            // chart.js:20621) and HIDES it entirely (line 20644-20645) when
-            // the resulting X falls outside the visible window.
-            //
-            // This breaks per-panel cross-ticker sync (panel A=GBPUSD, panel
-            // B=AAPL): trading hours and time coverage differ, so the
+            // chart.js:20621). With cross-ticker sync (panel A=GBPUSD, panel
+            // B=ES) trading hours and time coverage differ, so the
             // recipient's "last bar at-or-before synced time" is at a
             // different X than where the synced wall-clock time should
-            // actually fall on the time axis. With same-ticker sync the bug
-            // was masked because both panels have bars at every synced time.
+            // actually fall on the time axis.
             //
-            // Fix:
-            //   • Compute X from the SYNCED wall-clock timestamp using the
-            //     recipient's own bar duration + spacing — extrapolate from
-            //     the nearest bar's pixel by `(syncedMs - refBarMs) / barMs
-            //     * spacing`. This places the crosshair at the *time-correct*
-            //     X regardless of whether the recipient has a bar there.
-            //   • ALWAYS show the crosshair, clamped to the nearest visible
-            //     edge with reduced opacity (0.35) when the synced time is
-            //     off-screen. Never hide.
-            //   • Time label uses the synced wall-clock time too, at the
-            //     clamped X — so all panels show "the same minute" as the
-            //     user requested in the v10.1 feedback.
+            // v10.1 attempted to fix this by clamping the crosshair to the
+            // nearest visible edge when the synced time was off-screen, but
+            // the user reported (2026-05-09) that the dim edge-clamped line
+            // looked like the chart had "jumped to the first/last candle" —
+            // visually misleading.
+            //
+            // v10.2 (this version):
+            //   • Same wall-clock-time X math as v10.1 (extrapolate from the
+            //     nearest bar's pixel: `refX + (syncedMs - refMs)/barMs *
+            //     spacing`). When synced time IS within the visible window,
+            //     the crosshair lands at the time-correct X with full
+            //     opacity — same as v10.1 in the success case.
+            //   • When synced time is OUTSIDE the visible window: HIDE the
+            //     crosshair entirely (no clamp, no jump, no faint line at
+            //     the edge). The recipient panel stays visually unchanged
+            //     until the user pans it into the synced time range manually.
+            //   • Same-ticker / overlapping ranges still get full crosshair
+            //     sync; only off-window cases hide gracefully.
             //
             // OHLC values still come from the recipient's nearest bar (so
             // each panel's header shows its own ticker's prices, not the
             // source ticker's).
-            //
-            // Same-ticker sync remains pixel-perfect: the synced timestamp
-            // matches a bar in the recipient → the extrapolation offset is
-            // 0 → X equals the bar's index-based X exactly.
             chart.receiveCrosshairSync = function (timestamp, price, sourceCandle) {
                 const c = this;
                 const container = c.canvas && c.canvas.parentElement;
@@ -623,23 +645,23 @@
                 const hLine = container.querySelector('.crosshair-horizontal');
                 const priceLabel = container.querySelector('.price-label');
                 const timeLabel  = container.querySelector('.time-label');
-
-                // Hide path: shell or peer cleared the crosshair.
-                if (timestamp === null || timestamp === undefined) {
+                const hideAll = function () {
                     if (vLine) vLine.style.display = 'none';
                     if (hLine) hLine.style.display = 'none';
                     if (priceLabel) priceLabel.style.display = 'none';
                     if (timeLabel) timeLabel.style.display = 'none';
+                };
+
+                // Hide path: shell or peer cleared the crosshair.
+                if (timestamp === null || timestamp === undefined) {
+                    hideAll();
                     c.currentCrosshairTimestamp = null;
                     return;
                 }
                 if (c._crosshairPanelSyncAllowed && !c._crosshairPanelSyncAllowed()) return;
                 if (!c.data || c.data.length === 0) return;
                 if (c.chartSettings && c.chartSettings.showCrosshair === false) {
-                    if (vLine) vLine.style.display = 'none';
-                    if (hLine) hLine.style.display = 'none';
-                    if (priceLabel) priceLabel.style.display = 'none';
-                    if (timeLabel) timeLabel.style.display = 'none';
+                    hideAll();
                     return;
                 }
 
@@ -647,7 +669,7 @@
                 const refIdx = (typeof c.findLastDataIndexAtOrBeforeTime === 'function')
                     ? c.findLastDataIndexAtOrBeforeTime(timestamp) : 0;
                 const refBar = c.data[refIdx];
-                if (!refBar || !Number.isFinite(refBar.t)) return;
+                if (!refBar || !Number.isFinite(refBar.t)) { hideAll(); return; }
 
                 const refX = (typeof c.dataIndexToPixel === 'function')
                     ? c.dataIndexToPixel(refIdx)
@@ -663,15 +685,20 @@
 
                 const leftEdge  = m.l;
                 const rightEdge = (c.w || container.clientWidth || 800) - m.r;
-                const inView = xExact >= leftEdge && xExact <= rightEdge;
-                const xClamped = Math.max(leftEdge, Math.min(rightEdge, xExact));
-                const opacity = inView ? 1 : 0.35;
+                // v10.2: synced time outside visible window → hide everything,
+                // no clamping, no edge artefacts.
+                if (xExact < leftEdge || xExact > rightEdge) {
+                    hideAll();
+                    c.currentCrosshairTimestamp = timestamp;
+                    return;
+                }
+
                 const candle = (typeof c.getDisplayCandle === 'function')
                     ? c.getDisplayCandle(refIdx) : refBar;
                 const crossWidth = Math.max(1, parseInt(
                     c.chartSettings && c.chartSettings.crosshairWidth, 10) || 2);
 
-                // 1) Vertical line — always shown.
+                // 1) Vertical line at the wall-clock-correct X.
                 if (vLine) {
                     vLine.style.cssText =
                         'position:absolute;top:0;width:' + crossWidth + 'px;'
@@ -679,7 +706,7 @@
                       + 'background:repeating-linear-gradient(to bottom,#787b86 0px,'
                       +   '#787b86 4px,transparent 4px,transparent 8px);'
                       + 'pointer-events:none;z-index:100;'
-                      + 'left:' + xClamped + 'px;display:block;opacity:' + opacity + ';';
+                      + 'left:' + xExact + 'px;display:block;';
                 }
 
                 // 2) Horizontal line + price label — anchored to recipient's
@@ -698,7 +725,7 @@
                           + 'background:repeating-linear-gradient(to right,#787b86 0px,'
                           +   '#787b86 4px,transparent 4px,transparent 8px);'
                           + 'pointer-events:none;z-index:100;'
-                          + 'top:' + y + 'px;display:block;opacity:' + opacity + ';';
+                          + 'top:' + y + 'px;display:block;';
                         if (priceLabel) {
                             const range = c.yScale.domain ? c.yScale.domain() : [0, 1];
                             const dec = (typeof c.getPriceDecimals === 'function')
@@ -708,7 +735,7 @@
                                 'position:absolute;right:5px;top:' + (y - 10) + 'px;'
                               + 'background:#363a45;color:#d1d4dc;padding:2px 6px;'
                               + 'font-size:11px;border-radius:2px;z-index:101;'
-                              + 'display:block;opacity:' + opacity + ';';
+                              + 'display:block;';
                         }
                     } else {
                         hLine.style.display = 'none';
@@ -716,7 +743,7 @@
                     }
                 }
 
-                // 3) Time label — synced wall-clock time at xClamped.
+                // 3) Time label — synced wall-clock time at xExact.
                 if (timeLabel) {
                     let labelMs = synMs;
                     if (typeof c.normalizeTimestampMs === 'function') {
@@ -741,11 +768,11 @@
                     const bottomPx = Math.max(2, Math.floor((m.b || 30) * 0.2));
                     timeLabel.textContent = timeStr;
                     timeLabel.style.cssText =
-                        'position:absolute;left:' + xClamped + 'px;top:auto;'
+                        'position:absolute;left:' + xExact + 'px;top:auto;'
                       + 'bottom:' + bottomPx + 'px;transform:translateX(-50%);'
                       + 'background:#363a45;color:#d1d4dc;padding:2px 6px;'
                       + 'font-size:11px;border-radius:2px;white-space:nowrap;'
-                      + 'z-index:101;display:block;opacity:' + opacity + ';';
+                      + 'z-index:101;display:block;';
                 }
 
                 c.currentCrosshairTimestamp = timestamp;
@@ -758,8 +785,29 @@
             // Changing the file is LOCAL to this iframe — it does NOT broadcast
             // a symbol-sync event. Use the shell's "Apply file to all" button
             // for that.
+            //
+            // v10.3: before loading, ask the parent shell whether the chosen
+            // file's date range overlaps with every other panel. If not, show
+            // a confirm() so the user can cancel before the load happens (and
+            // the misleading "no crosshair" symptom appears).
             fileSel.addEventListener('change', function (e) {
                 const newId = e.target.value || null;
+                if (newId && window.__filesById && window.__filesById[newId]) {
+                    const meta = window.__filesById[newId];
+                    if (Number.isFinite(meta.startTs) && Number.isFinite(meta.endTs)) {
+                        const conflict = checkPanelDateConflict(meta);
+                        if (conflict) {
+                            const proceed = confirm(conflict
+                                + '\n\nLoad anyway? Sync will silently no-op '
+                                + 'between this panel and the others until the '
+                                + 'date ranges actually overlap.');
+                            if (!proceed) {
+                                fileSel.value = currentFileId || '';
+                                return;
+                            }
+                        }
+                    }
+                }
                 currentFileId = newId;
                 loadDataInto(chart, newId, tfSel.value);
             });

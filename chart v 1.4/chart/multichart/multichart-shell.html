@@ -10,7 +10,7 @@
 <div class="app">
 
     <header class="topbar">
-        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T15:10 (v10.1 — cross-ticker crosshair fix) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
+        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T15:30 (v10.2 — hide off-window crosshair) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
 
         <div class="group">
             <label>Layout</label>
@@ -51,6 +51,12 @@
         </div>
     </header>
 
+    <!-- v10.3: cross-panel date-range overlap warning. Hidden by default,
+         appears when 2+ loaded panels have non-overlapping date ranges
+         (their crosshair sync would silently no-op because the synced time
+         falls outside every other panel's data). -->
+    <div id="overlap-warn" class="overlap-warn"></div>
+
     <section class="charts" id="charts-area"></section>
 
     <section class="bottom">
@@ -63,8 +69,8 @@
 </div>
 
 <!-- Cache-busting version query string. Bump on any sandbox script change. -->
-<script src="engine-api-guards.js?v=20260509T1510"></script>
-<script src="multichart-manager.js?v=20260509T1510"></script>
+<script src="engine-api-guards.js?v=20260509T1530"></script>
+<script src="multichart-manager.js?v=20260509T1530"></script>
 <script>
 (function () {
     const chartsArea = document.getElementById('charts-area');
@@ -157,6 +163,15 @@
     }
     setInterval(refreshCounters, 250);
 
+    /** Format epoch-ms as a short YYYY-MM-DD date for badge display. */
+    function fmtDate(ms) {
+        if (!Number.isFinite(ms)) return '—';
+        const d = new Date(ms);
+        return d.getUTCFullYear() + '-'
+             + String(d.getUTCMonth() + 1).padStart(2, '0') + '-'
+             + String(d.getUTCDate()).padStart(2, '0');
+    }
+
     function renderChartStates() {
         const host = document.getElementById('chart-states');
         host.innerHTML = '';
@@ -169,13 +184,70 @@
             const sym = s.symbol || '—';
             const tf  = s.timeframe || '—';
             const bars = (s.candleCount || 0).toLocaleString();
+            const dateRange = (s.firstBarMs && s.lastBarMs)
+                ? fmtDate(s.firstBarMs) + ' → ' + fmtDate(s.lastBarMs)
+                : '';
             div.innerHTML =
-                '<span class="name">' + readyMark + ' ' + c.id + '</span>' +
-                '<span class="val">' + sym + ' · ' + tf + ' · ' + bars + ' bars</span>';
+                '<span class="name">' + readyMark + ' ' + c.id + '</span>'
+              + '<span class="val">' + sym + ' · ' + tf + ' · ' + bars + ' bars'
+              + (dateRange ? '<br><small style="color:#5a5e69">' + dateRange + '</small>' : '')
+              + '</span>';
             host.appendChild(div);
         }
     }
     setInterval(renderChartStates, 500);
+
+    /**
+     * v10.3: cross-panel date-range overlap detector.
+     *
+     * Computes the intersection of every loaded panel's [firstBarMs, lastBarMs]
+     * range. If the intersection is empty (some panel pair has no overlap at
+     * all) the shell shows an amber warning banner above the chart area —
+     * crosshair sync between those panels would be silently no-op because
+     * the synced wall-clock time on one panel never falls inside the other's
+     * visible window (or even its data range).
+     *
+     * Refresh on the same 500ms cadence as the per-chart status panel.
+     */
+    function checkOverlapAndWarn() {
+        const banner = document.getElementById('overlap-warn');
+        if (!manager) { banner.classList.remove('show'); return; }
+        const charts = manager.getCharts().filter(function (c) {
+            return c.state
+                && Number.isFinite(c.state.firstBarMs)
+                && Number.isFinite(c.state.lastBarMs);
+        });
+        if (charts.length < 2) { banner.classList.remove('show'); return; }
+
+        let intersectStart = -Infinity;
+        let intersectEnd   =  Infinity;
+        for (const c of charts) {
+            if (c.state.firstBarMs > intersectStart) intersectStart = c.state.firstBarMs;
+            if (c.state.lastBarMs  < intersectEnd)   intersectEnd   = c.state.lastBarMs;
+        }
+
+        if (intersectStart <= intersectEnd) {
+            // Non-empty intersection — every panel covers at least the
+            // overlap window. Crosshair sync will work in that span.
+            banner.classList.remove('show');
+            return;
+        }
+
+        // Empty intersection — show the warning with a per-panel breakdown.
+        const ranges = charts.map(function (c) {
+            const sym = (c.state.symbol || c.id);
+            return c.id + ' (' + sym + '): '
+                 + fmtDate(c.state.firstBarMs) + ' → ' + fmtDate(c.state.lastBarMs);
+        }).join('  ·  ');
+        banner.innerHTML =
+            '\u26A0 <strong>Date mismatch:</strong> the loaded panels have no overlapping '
+          + 'date range, so crosshair / visible-range sync will not show across them. '
+          + 'Pick files that share at least some dates, or pan each panel into the '
+          + 'overlap manually.<br>'
+          + '<span class="ranges">' + ranges + '</span>';
+        banner.classList.add('show');
+    }
+    setInterval(checkOverlapAndWarn, 500);
 
     /** Build the chart cells + dividers for a layout. */
     function applyLayout(name) {
@@ -532,19 +604,28 @@
     const broadcastBtn    = document.getElementById('broadcast-file-apply');
     let currentBroadcastFileId = null;
 
+    // v10.3: keep the file list around so selection-time UI (per-panel
+    // dropdowns and the shell broadcast) can read each file's date range
+    // straight from /api/files (start_ts / end_ts) without an extra fetch.
+    window.__multichartFileList = [];
+
     async function loadShellFileList() {
         try {
             const res = await fetch('/api/files', { credentials: 'include', cache: 'no-store' });
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();
             const files = (data && data.files) || [];
+            window.__multichartFileList = files;
             broadcastSel.innerHTML = '<option value="">— pick file to broadcast —</option>';
             for (const f of files) {
                 const ticker = f.ticker || f.symbol || '?';
+                const dateStr = (Number.isFinite(f.start_ts) && Number.isFinite(f.end_ts))
+                    ? ' · ' + fmtDate(f.start_ts) + '→' + fmtDate(f.end_ts) : '';
                 const opt = document.createElement('option');
                 opt.value = String(f.id);
                 opt.textContent = '#' + f.id + ' · ' + ticker
                     + ' · ' + (Number(f.row_count) || 0).toLocaleString() + ' rows'
+                    + dateStr
                     + (f.original_name ? ' · ' + f.original_name : '');
                 broadcastSel.appendChild(opt);
             }
@@ -556,6 +637,42 @@
                 text: 'shell: /api/files fetch failed — ' + e.message
                     + ' (is FastAPI running on this origin?)' });
         }
+    }
+
+    /**
+     * Pre-flight overlap check when the user picks a file in the shell
+     * broadcast dropdown. Compares the candidate file's [start_ts, end_ts]
+     * (from /api/files metadata) against the date ranges of every CURRENTLY-
+     * LOADED panel. Returns a friendly error message string, or null if the
+     * candidate would overlap with every loaded panel.
+     */
+    function preflightCheckFile(fileId) {
+        const file = (window.__multichartFileList || []).find(function (f) {
+            return String(f.id) === String(fileId);
+        });
+        if (!file || !Number.isFinite(file.start_ts) || !Number.isFinite(file.end_ts)) {
+            return null;     // no metadata — let the load proceed and fall back
+                              // to the post-load banner if it actually mismatches.
+        }
+        if (!manager) return null;
+        const others = manager.getCharts().filter(function (c) {
+            return c.state
+                && Number.isFinite(c.state.firstBarMs)
+                && Number.isFinite(c.state.lastBarMs);
+        });
+        const noOverlap = others.filter(function (c) {
+            return c.state.lastBarMs < file.start_ts
+                || c.state.firstBarMs > file.end_ts;
+        });
+        if (!noOverlap.length) return null;
+        const ticker = file.ticker || ('#' + file.id);
+        const fileRange = fmtDate(file.start_ts) + ' → ' + fmtDate(file.end_ts);
+        const lines = noOverlap.map(function (c) {
+            return c.id + ' (' + (c.state.symbol || '?') + ', '
+                 + fmtDate(c.state.firstBarMs) + ' → ' + fmtDate(c.state.lastBarMs) + ')';
+        });
+        return 'Date mismatch — ' + ticker + ' (' + fileRange + ') has no overlap with: '
+             + lines.join(', ') + '. Crosshair / visible-range sync will not work across these panels.';
     }
 
     /** Push `set-file` to every iframe — used by the "Apply to all" button
@@ -581,6 +698,17 @@
     broadcastBtn.addEventListener('click', function () {
         const fid = broadcastSel.value;
         if (!fid) { alert('Pick a file first'); return; }
+        // v10.3: warn if the chosen file has no date overlap with any
+        // currently-loaded panel. Broadcast still proceeds — the user
+        // might intentionally swap every panel to the same new file.
+        const warn = preflightCheckFile(fid);
+        if (warn) {
+            const proceed = confirm(warn + '\n\nApply anyway? '
+                + '("Apply to all" replaces every panel\'s file with this one, so this '
+                + 'message is informational — after the broadcast, every panel will '
+                + 'have the same date range and sync will work.)');
+            if (!proceed) return;
+        }
         currentBroadcastFileId = fid;
         broadcastFileToAll(fid);
     });
