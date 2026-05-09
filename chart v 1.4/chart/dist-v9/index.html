@@ -15,23 +15,13 @@
     </script>
 
     <!-- ──────────────────────────────────────────────────────────────────
-         MULTICHART EMBED SHIM (Phase 7.2.1 foundation)
-         FULLY GATED on ?multichart=1. When that param is ABSENT (i.e. the
-         user is on plain /chart/), this entire block is a no-op — single-
-         chart behavior is byte-identical to before this work.
-         When ?multichart=1 is PRESENT (i.e. inside a future <MultichartGrid>
-         iframe spawned by Phase 7.2.2), the shim:
-           1. Adds html.multichart-embed so CSS can hide chrome.
-           2. Injects style: every [data-v9-chrome="1"] element (top toolbar,
-              left tools, bottom replay/balance bar, trade list, right panel)
-              is display:none — each iframe collapses to chart canvas + axes
-              + crosshair + OHLC legend (TradingView per-pane look).
-           3. Loads the verified bridge stack from /chart/multichart-prod/:
-                a) engine-api-guards.js  (FORBIDDEN_SYNC_FIELDS + filter)
-                b) sync-bridge.js        (iframe-side bridge)
-                c) embed-bridge.js       (waits for window.chart, installs)
-         No <MultichartGrid> exists yet (that's Phase 7.2.2), so today this
-         shim never fires in production. It's foundation only.
+         MULTICHART EMBED SHIM (Phase 7.2.1 foundation — SOURCE OF TRUTH)
+         `npm run build:live` ships this to chart/dist-v9/index.html, then
+         sync-v9-to-homepage.mjs mirrors it to homepage/public/chart/dist-v9.
+         FULLY GATED on ?multichart=1 — no-op on plain /chart/.
+         When present (only inside future MultichartGrid iframes from Phase
+         7.2.2), hides [data-v9-chrome="1"] chrome and loads the verified
+         bridge stack from /chart/multichart-prod/.
          ────────────────────────────────────────────────────────────────── -->
     <script>
     (function () {
@@ -765,11 +755,11 @@
          ────────────────────────────────────────────────────────────── -->
 
     <!-- Tier A — preferences-sync MUST run before preferences-init (defines window.preferencesSync). -->
-    <script defer src="/chart/modules/preferences-sync.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/preferences-init.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/market-calculations.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/chart-env.defaults.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/chart-env.generated.js?v=bmoy52iwr"></script>
+    <script defer src="/chart/modules/preferences-sync.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/preferences-init.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/market-calculations.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/chart-env.defaults.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/chart-env.generated.js?v=bmoyvdrlu"></script>
 
     <!-- Drawing tool base classes + individual tool registrations.
          Order matters within this block:
@@ -777,62 +767,62 @@
          - Each drawing-tools-*.js registers tools into the global registry.
          - drawing-tools-ui.js provides shared UI helpers used by tools.
          - drawing-tools-manager.js orchestrates everything (loaded later). -->
-    <script defer src="/chart/modules/drawing-tools-base.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/drawing-tools-lines.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/drawing-tools-shapes.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/drawing-tools-fibonacci.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/drawing-tools-text.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/drawing-tools-emoji.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/drawing-tools-image.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/emoji-picker.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/emoji-picker-simple.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/drawing-tools-advanced-volume.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/drawing-tools-advanced.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/drawing-tools-extended.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/drawing-tools-patterns.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/drawing-tools-fib-gann.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/drawing-tools-channels.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/drawing-tools-ui.js?v=bmoy52iwr"></script>
+    <script defer src="/chart/modules/drawing-tools-base.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/drawing-tools-lines.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/drawing-tools-shapes.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/drawing-tools-fibonacci.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/drawing-tools-text.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/drawing-tools-emoji.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/drawing-tools-image.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/emoji-picker.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/emoji-picker-simple.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/drawing-tools-advanced-volume.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/drawing-tools-advanced.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/drawing-tools-extended.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/drawing-tools-patterns.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/drawing-tools-fib-gann.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/drawing-tools-channels.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/drawing-tools-ui.js?v=bmoyvdrlu"></script>
 
     <!-- Drawing-tool support (color picker, toolbar UI, undo/redo). -->
-    <script defer src="/chart/modules/color-picker.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/drawing-toolbar.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/undo-redo-manager.js?v=bmoy52iwr"></script>
+    <script defer src="/chart/modules/color-picker.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/drawing-toolbar.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/undo-redo-manager.js?v=bmoyvdrlu"></script>
 
     <!-- Drawing-tools manager — orchestrator. Must load AFTER all individual
          drawing-tools-*.js so the registry is populated before init. -->
-    <script defer src="/chart/modules/drawing-tools-manager.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/favorites-manager.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/keyboard-shortcuts.js?v=bmoy52iwr"></script>
+    <script defer src="/chart/modules/drawing-tools-manager.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/favorites-manager.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/keyboard-shortcuts.js?v=bmoyvdrlu"></script>
 
-    <script defer src="/chart/modules/timezone-manager.js?v=bmoy52iwr"></script>
+    <script defer src="/chart/modules/timezone-manager.js?v=bmoyvdrlu"></script>
 
     <!-- Chart engine.
          chart.js exposes window.Chart synchronously and window.initializeChart
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=bn1m9q7tx"></script>
+    <script defer src="/chart/chart.js?v=bmoyvdrlu"></script>
     <!-- V9 React theme panel → chart.chartSettings (shared with legacy-index.html). Must load after chart.js. -->
-    <script defer src="/chart/modules/v9-theme-bridge.js?v=bmoy52iwr"></script>
+    <script defer src="/chart/modules/v9-theme-bridge.js?v=bmoyvdrlu"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
-    <script defer src="/chart/modules/replay-system.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/replay-dashboard-sync.js?v=bmoy52iwr"></script>
+    <script defer src="/chart/modules/replay-system.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/replay-dashboard-sync.js?v=bmoyvdrlu"></script>
 
     <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->
-    <script defer src="/chart/modules/order-event-bus.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/order-service.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/order-manager.js?v=bmoy52iwr"></script>
-    <script defer src="/chart/modules/screenshot-manager.js?v=bmoy52iwr"></script>
+    <script defer src="/chart/modules/order-event-bus.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/order-service.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/order-manager.js?v=bmoyvdrlu"></script>
+    <script defer src="/chart/modules/screenshot-manager.js?v=bmoyvdrlu"></script>
 
     <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
-    <script defer src="/chart/modules/chart-indicators-full.js?v=bmoy52iwr"></script>
+    <script defer src="/chart/modules/chart-indicators-full.js?v=bmoyvdrlu"></script>
 
     <!-- Multi-panel manager removed — single-chart mode only. -->
     <!-- Economic calendar: Finnhub via /api + chart time-axis markers (__economicCalendarForChart). -->
-    <script defer src="/chart/modules/economic-news-sidebar.js?v=bmoy52iwr"></script>
-  <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js?v=bmoy52iwr"></script>
+    <script defer src="/chart/modules/economic-news-sidebar.js?v=bmoyvdrlu"></script>
+  <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js?v=bmoyvdrlu"></script>
 </head>
 <body>
     <div id="backtestingLoader" aria-live="polite" aria-busy="true">
@@ -882,8 +872,7 @@
             <div class="news-items" id="newsItems"></div>
         </div>
     </div>
-    <!-- Module scripts are deferred too, so this runs AFTER all defers above. -->
-
+    <!-- Module scripts are deferred too, so this runs AFTER all defers above. -->
 
     <!-- ──────────────────────────────────────────────────────────────────
          PANEL MANAGER BOOTSTRAP — REMOVED
