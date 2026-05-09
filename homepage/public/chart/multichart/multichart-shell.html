@@ -10,7 +10,7 @@
 <div class="app">
 
     <header class="topbar">
-        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T12:50 (v7 — guard tuned, banner moved off X-axis)</span></h1>
+        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T12:55 (v7.1 — cache-busted, guards <span id="guards-ver" style="color:#7aa2ff">?</span>)</span></h1>
 
         <div class="group">
             <label>Layout</label>
@@ -67,8 +67,9 @@
     </section>
 </div>
 
-<script src="engine-api-guards.js"></script>
-<script src="multichart-manager.js"></script>
+<!-- Cache-busting version query string. Bump on any sandbox script change. -->
+<script src="engine-api-guards.js?v=20260509T1255"></script>
+<script src="multichart-manager.js?v=20260509T1255"></script>
 <script>
 (function () {
     const chartsArea = document.getElementById('charts-area');
@@ -81,6 +82,13 @@
     const ctrFbid = document.getElementById('ctr-fbid');
     const ctrOk   = document.getElementById('ctr-ok');
     const ctrFail = document.getElementById('ctr-fail');
+
+    // Surface the loaded guards version in the header so we can immediately
+    // tell whether engine-api-guards.js is being served fresh or from cache.
+    try {
+        document.getElementById('guards-ver').textContent =
+            (window.MultichartGuards && window.MultichartGuards.VERSION) || 'NOT-LOADED';
+    } catch (_) {}
 
     /** Predefined layouts for the verification matrix:
      *  1   — single chart (sanity)
