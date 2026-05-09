@@ -927,6 +927,14 @@ class Chart {
         if (mode === 'backtest' || mode === 'propfirm') {
             const isPropFirm = mode === 'propfirm';
 
+            // Backtest sessions always open on the 1D timeframe — overrides any
+            // persisted chart view timeframe (handled in loadTradingSessionState
+            // by checking this.isBacktestMode). Lower timeframes are reachable
+            // by the user via the timeframe bar; this just sets the default.
+            this.isBacktestMode = true;
+            this.currentTimeframe = '1d';
+            try { this._emitTimeframeChanged(); } catch (e) {}
+
             // Subscription gate (mirrors api_server auth middleware) — blocks back after pricing, etc.
             try {
                 const mer = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
@@ -1207,27 +1215,49 @@ class Chart {
         }
         
         try {
-            const displayTf = this.currentTimeframe || '1m';
-            const replayRawTf = '1m';
+            // Backtest sessions render the chart on 1D by default and load every
+            // available 1D bar on the server up to session end (so the user sees
+            // the full historical context BEFORE the replay start). The replay
+            // system still begins at session start (see enterReplayMode).
+            this.isBacktestMode = true;
+            this.currentTimeframe = '1d';
+            try { this._emitTimeframeChanged(); } catch (e) {}
+
+            const replayRawTf = '1d';
             // Step 1 must stay active until the HTTP response is back — marking it complete before
             // await made the UI show "Calculating indicators" during the real network wait.
             this.updateLoaderStep(1, 'active');
             this.updateLoaderProgress(20, 'Loading chart data...');
 
-            let result = await this._fetchSmartWindow(fileId, replayRawTf, session);
+            // Anchor at session end (or last available bar when no end date) and skip
+            // the session start_ts clamp so we pull every prior daily bar the server holds.
+            const sessionEndMs = (() => {
+                const r = session.endDate || session.end_date;
+                if (!r) return null;
+                const t = this._sessionEndToInclusiveUtcMs(r);
+                return Number.isFinite(t) ? Math.floor(t) : null;
+            })();
+            const historyRange = sessionEndMs != null ? { endTs: sessionEndMs } : null;
+
+            let result = await this._fetchSmartWindow(
+                fileId,
+                replayRawTf,
+                session,
+                'end',
+                historyRange,
+                { skipSessionDates: true }
+            );
 
             if (!this._smartResponseHasPayload(result)) {
                 const startR = session.startDate || session.start_date;
                 const endR = session.endDate || session.end_date;
-                if (startR || endR) {
-                    console.warn(
-                        '⚠️ /file/smart returned no candles with session date clamp; retrying without start_ts/end_ts',
-                        { fileId, startR, endR, meta: this._smartResponseMeta(result) }
-                    );
-                    result = await this._fetchSmartWindow(fileId, replayRawTf, session, undefined, null, {
-                        skipSessionDates: true,
-                    });
-                }
+                console.warn(
+                    '⚠️ /file/smart returned no candles for backtest history fetch; retrying without end clamp',
+                    { fileId, startR, endR, meta: this._smartResponseMeta(result) }
+                );
+                result = await this._fetchSmartWindow(fileId, replayRawTf, session, 'end', null, {
+                    skipSessionDates: true,
+                });
             }
 
             if (!this._smartResponseHasPayload(result)) {
@@ -2562,7 +2592,9 @@ class Chart {
                 if (typeof v.candleWidthIndex === 'number' && this.zoomLevel) {
                     this.zoomLevel.candleWidthIndex = v.candleWidthIndex;
                 }
-                if (v.timeframe && v.timeframe !== this.currentTimeframe) {
+                if (v.timeframe && v.timeframe !== this.currentTimeframe && !this.isBacktestMode) {
+                    // Backtest sessions are pinned to 1D on open (see checkBacktestingMode);
+                    // ignore the persisted timeframe so reopening a session always starts on 1D.
                     this.currentTimeframe = v.timeframe;
                     if (this.currentSymbol) {
                         this.updateChartTitle(this.currentSymbol);
@@ -11136,6 +11168,27 @@ class Chart {
         }
         
         if (this.replaySystem && this.replaySystem.isActive) {
+            // Backtest sessions load 1D bars on open; if the user picks a smaller timeframe
+            // than the loaded raw bars (e.g. 1d -> 1m), client-side resample can't expand
+            // them — refetch from the server with the session window clamp instead.
+            const rawTfMs = Number(this.replaySystem.rawTimeframe)
+                || (typeof this.parseTimeframe === 'function'
+                    ? this.parseTimeframe(this.replaySystem.rawTimeframe)
+                    : NaN);
+            const newTfMs = typeof this.parseTimeframe === 'function'
+                ? this.parseTimeframe(timeframe)
+                : NaN;
+            const needsServerRefetch = this.isBacktestMode
+                && this.currentFileId
+                && Number.isFinite(rawTfMs) && rawTfMs > 0
+                && Number.isFinite(newTfMs) && newTfMs > 0
+                && newTfMs < rawTfMs;
+
+            if (needsServerRefetch) {
+                this._refetchBacktestTimeframe(timeframe);
+                return;
+            }
+
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
@@ -11290,7 +11343,74 @@ class Chart {
             }
         }
     }
-    
+
+    /**
+     * Backtest-only: when the user picks a smaller timeframe than the loaded raw bars
+     * (e.g. switching from 1d default down to 1m), client-side resample can't expand
+     * the bars. Exit the active replay, refetch the new timeframe scoped to the
+     * session window (start_ts/end_ts), and re-enter replay at the saved timestamp.
+     */
+    async _refetchBacktestTimeframe(timeframe) {
+        const replay = this.replaySystem;
+        if (!replay || !this.currentFileId) return;
+
+        const wasActive = !!replay.isActive;
+        const wasPlaying = !!replay.isPlaying;
+        const savedReplayTimestamp = Number.isFinite(replay.replayTimestamp)
+            ? replay.replayTimestamp
+            : null;
+        const savedSpeed = replay.speed;
+        const savedPlaybackMode = typeof replay.getPlaybackMode === 'function'
+            ? replay.getPlaybackMode()
+            : null;
+
+        try {
+            if (wasActive && typeof replay.exitReplayMode === 'function') {
+                replay.exitReplayMode();
+            }
+        } catch (e) {
+            console.warn('[backtest] exitReplayMode before refetch failed', e);
+        }
+
+        try {
+            await this._loadTimeframeFromServer(timeframe);
+        } catch (e) {
+            console.error('[backtest] timeframe refetch failed', e);
+            return;
+        }
+
+        if (!Array.isArray(this.rawData) || this.rawData.length === 0) {
+            return;
+        }
+
+        if (!wasActive || typeof replay.enterReplayMode !== 'function') {
+            return;
+        }
+
+        try {
+            replay.enterReplayMode();
+        } catch (e) {
+            console.error('[backtest] enterReplayMode after refetch failed', e);
+            return;
+        }
+
+        if (savedReplayTimestamp != null && typeof replay.applyPersistedState === 'function') {
+            try {
+                replay.applyPersistedState({
+                    replayTimestamp: savedReplayTimestamp,
+                    speed: savedSpeed,
+                    playbackMode: savedPlaybackMode || undefined
+                });
+            } catch (e) {
+                console.warn('[backtest] applyPersistedState after refetch failed', e);
+            }
+        }
+
+        if (wasPlaying && typeof replay.play === 'function') {
+            try { replay.play(); } catch (e) { /* ignore */ }
+        }
+    }
+
     /**
      * Fire chartDataLoaded event for drawings, replay, etc.
      */
