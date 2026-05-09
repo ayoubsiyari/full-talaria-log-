@@ -10,7 +10,7 @@
 <div class="app">
 
     <header class="topbar">
-        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T15:45 (v10.3 — date-overlap warning) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
+        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T16:00 (v10.3.1 — overlay banner, no confirm dialogs) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
 
         <div class="group">
             <label>Layout</label>
@@ -69,8 +69,8 @@
 </div>
 
 <!-- Cache-busting version query string. Bump on any sandbox script change. -->
-<script src="engine-api-guards.js?v=20260509T1545"></script>
-<script src="multichart-manager.js?v=20260509T1545"></script>
+<script src="engine-api-guards.js?v=20260509T1600"></script>
+<script src="multichart-manager.js?v=20260509T1600"></script>
 <script>
 (function () {
     const chartsArea = document.getElementById('charts-area');
@@ -639,41 +639,6 @@
         }
     }
 
-    /**
-     * Pre-flight overlap check when the user picks a file in the shell
-     * broadcast dropdown. Compares the candidate file's [start_ts, end_ts]
-     * (from /api/files metadata) against the date ranges of every CURRENTLY-
-     * LOADED panel. Returns a friendly error message string, or null if the
-     * candidate would overlap with every loaded panel.
-     */
-    function preflightCheckFile(fileId) {
-        const file = (window.__multichartFileList || []).find(function (f) {
-            return String(f.id) === String(fileId);
-        });
-        if (!file || !Number.isFinite(file.start_ts) || !Number.isFinite(file.end_ts)) {
-            return null;     // no metadata — let the load proceed and fall back
-                              // to the post-load banner if it actually mismatches.
-        }
-        if (!manager) return null;
-        const others = manager.getCharts().filter(function (c) {
-            return c.state
-                && Number.isFinite(c.state.firstBarMs)
-                && Number.isFinite(c.state.lastBarMs);
-        });
-        const noOverlap = others.filter(function (c) {
-            return c.state.lastBarMs < file.start_ts
-                || c.state.firstBarMs > file.end_ts;
-        });
-        if (!noOverlap.length) return null;
-        const ticker = file.ticker || ('#' + file.id);
-        const fileRange = fmtDate(file.start_ts) + ' → ' + fmtDate(file.end_ts);
-        const lines = noOverlap.map(function (c) {
-            return c.id + ' (' + (c.state.symbol || '?') + ', '
-                 + fmtDate(c.state.firstBarMs) + ' → ' + fmtDate(c.state.lastBarMs) + ')';
-        });
-        return 'Date mismatch — ' + ticker + ' (' + fileRange + ') has no overlap with: '
-             + lines.join(', ') + '. Crosshair / visible-range sync will not work across these panels.';
-    }
 
     /** Push `set-file` to every iframe — used by the "Apply to all" button
      *  and by applyLayout() so newly-created iframes adopt the same file. */
@@ -698,17 +663,10 @@
     broadcastBtn.addEventListener('click', function () {
         const fid = broadcastSel.value;
         if (!fid) { alert('Pick a file first'); return; }
-        // v10.3: warn if the chosen file has no date overlap with any
-        // currently-loaded panel. Broadcast still proceeds — the user
-        // might intentionally swap every panel to the same new file.
-        const warn = preflightCheckFile(fid);
-        if (warn) {
-            const proceed = confirm(warn + '\n\nApply anyway? '
-                + '("Apply to all" replaces every panel\'s file with this one, so this '
-                + 'message is informational — after the broadcast, every panel will '
-                + 'have the same date range and sync will work.)');
-            if (!proceed) return;
-        }
+        // v10.3.1: broadcast unconditionally. If panels end up with
+        // mismatched date ranges (only possible if some panels couldn't
+        // accept the file), the amber overlap-warn banner above the chart
+        // area will surface that — no blocking dialog needed.
         currentBroadcastFileId = fid;
         broadcastFileToAll(fid);
     });

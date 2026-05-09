@@ -13,27 +13,37 @@ html, body { margin: 0; padding: 0; height: 100%; background: #0b0c14; color: #d
 
 .app {
     display: grid;
-    /* topbar | overlap-warn (auto, 0 when hidden) | charts | log */
-    grid-template-rows: 44px auto 1fr 220px;
+    grid-template-rows: 44px 1fr 220px;
     grid-template-columns: 1fr;
     height: 100vh;
 }
 
-/* v10.3: cross-panel date-range mismatch warning (between topbar + charts). */
+/* v10.3.1: cross-panel date-range mismatch warning. Positioned as a fixed
+ * overlay just under the 44px topbar so it CANNOT push the chart grid
+ * around — the grid stays exactly the same as v10.2 (3 rows). When not
+ * needed, display:none removes it from the page entirely. When shown, it
+ * floats above the top of the chart area (z-index 50 keeps it above
+ * iframes but below modals). */
 .overlap-warn {
     display: none;
+    position: fixed;
+    top: 44px;
+    left: 0;
+    right: 0;
+    z-index: 50;
     padding: 6px 12px;
-    background: rgba(255, 174, 87, 0.18);
-    color: #ffae57;
-    border-bottom: 1px solid rgba(255, 174, 87, 0.4);
+    background: rgba(255, 174, 87, 0.95);
+    color: #1a1300;
+    border-bottom: 1px solid rgba(120, 70, 0, 0.6);
     font-size: 12px;
     line-height: 1.5;
     font-family: 'JetBrains Mono', monospace;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 .overlap-warn.show { display: block; }
-.overlap-warn strong { color: #ffd3a3; }
+.overlap-warn strong { color: #4a2a00; }
 .overlap-warn .ranges {
-    color: #d1d4dc;
+    color: #2d1a00;
     margin-left: 6px;
 }
 
