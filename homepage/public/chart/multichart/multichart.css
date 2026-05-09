@@ -11,49 +11,69 @@
 html, body { margin: 0; padding: 0; height: 100%; background: #0b0c14; color: #d1d4dc;
     font-family: 'DM Sans', system-ui, sans-serif; overflow: hidden; }
 
+/* v10.4.6: layout is now fully fluid.
+ * - topbar row uses `auto` so it can wrap onto multiple lines on narrow
+ *   browsers / when zoomed in, instead of being clipped at 44px.
+ * - charts row keeps `1fr` so it always grabs the remaining viewport.
+ * - bottom row uses `minmax(0, 220px)` so it shrinks gracefully if the
+ *   topbar wraps and consumes more vertical space.
+ *
+ * dvh units (when supported) match the *visible* viewport on mobile
+ * browsers (i.e. accounting for collapsing URL bars). 100vh is kept as
+ * fallback for older engines. */
 .app {
     display: grid;
-    /* 3 rows, matching the 3 children in <body>: topbar | charts | bottom.
-     * Auto-placement assigns each child to its row in document order.
-     * (v10.3 briefly added a 4th row for an overlap-warn banner — that
-     * banner was removed in the revert, so the grid is back to 3 rows.) */
-    grid-template-rows: 44px 1fr 220px;
+    grid-template-rows: auto 1fr minmax(0, 220px);
     grid-template-columns: 1fr;
     height: 100vh;
+    height: 100dvh;
 }
 
 /* Bottom log + per-chart status panel can be hidden via the topbar
  * "Hide log / Show log" button. State persisted in localStorage. */
 .app.log-collapsed {
-    grid-template-rows: 44px 1fr 0;
+    grid-template-rows: auto 1fr 0;
 }
 .app.log-collapsed .bottom {
     display: none;
 }
 
 /* ─── Top bar ────────────────────────────────────────── */
+/* v10.4.6: flex-wrap so controls flow onto multiple rows on narrow
+ * viewports / browser zoom-in. min-height keeps the original 44 px feel
+ * when there is room, but the topbar may grow taller when it wraps. */
 .topbar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
-    padding: 0 12px;
+    gap: 8px;
+    padding: 6px 12px;
     background: #11141d;
     border-bottom: 1px solid #2a2e39;
     font-size: 13px;
+    min-height: 44px;
 }
 .topbar h1 {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     letter-spacing: 0.02em;
     color: #d1d4dc;
+    margin: 0;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
 }
 .topbar .group {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
-    padding: 0 8px;
+    padding: 2px 8px;
     border-left: 1px solid #2a2e39;
-    height: 100%;
+    min-height: 32px;
 }
 .topbar .group:first-of-type { border-left: 0; }
 .topbar label { color: #8a8e99; font-size: 12px; }
@@ -140,9 +160,13 @@ html, body { margin: 0; padding: 0; height: 100%; background: #0b0c14; color: #d
 .divider.row { cursor: row-resize; }
 
 /* ─── Bottom log panel ──────────────────────────────── */
+/* v10.4.6: assertions column was a hard 320 px which stole horizontal
+ * space on narrow viewports. minmax(0, 320px) lets it shrink to 0 if
+ * the viewport is narrow; the @media rule below stacks log over
+ * assertions on truly small screens. */
 .bottom {
     display: grid;
-    grid-template-columns: 1fr 320px;
+    grid-template-columns: 1fr minmax(0, 320px);
     border-top: 1px solid #2a2e39;
     background: #11141d;
     overflow: hidden;
@@ -187,3 +211,40 @@ html, body { margin: 0; padding: 0; height: 100%; background: #0b0c14; color: #d
 .assertions .item .val  { font-family: 'JetBrains Mono', monospace; color: #8eb4ff; }
 .assertions .item.fail .val { color: #ff7e8b; }
 .assertions .item.pass .val { color: #6ed3a4; }
+
+/* ─── Responsive breakpoints (v10.4.6) ───────────────── */
+/* Tablet / small laptop (or browser window dragged narrow): the chart
+ * panels keep precedence — bottom panel collapses to a single column,
+ * the per-chart assertions panel hides so the log gets the full width. */
+@media (max-width: 900px) {
+    .bottom {
+        grid-template-columns: 1fr;
+    }
+    .assertions {
+        display: none;
+    }
+}
+
+/* Mobile / very narrow / heavy browser zoom-in: stack the multichart
+ * grid so each chart cell goes full-width and is at least 240 px tall.
+ * Dividers are hidden because pointer drags don't apply when the layout
+ * is single-column. The shell's JS still drives column counts on the
+ * `.charts` grid; this @media rule overrides it for cramped viewports. */
+@media (max-width: 640px) {
+    .charts {
+        grid-template-columns: 1fr !important;
+        grid-auto-rows: minmax(240px, 1fr);
+        grid-auto-flow: row;
+        overflow-y: auto;
+    }
+    .divider {
+        display: none !important;
+    }
+    .topbar h1 {
+        flex: 1 1 100%;
+    }
+    .topbar .group {
+        border-left: 0;
+        padding: 2px 4px;
+    }
+}
