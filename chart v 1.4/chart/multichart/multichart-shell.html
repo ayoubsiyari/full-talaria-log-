@@ -43,6 +43,7 @@
 
         <div class="group">
             <button id="self-test">Run guard self-test</button>
+            <button id="diagnose" class="primary">Diagnose</button>
             <button id="clear-log">Clear log</button>
         </div>
 
@@ -321,6 +322,35 @@
 
     document.getElementById('self-test').addEventListener('click', function () {
         if (manager) manager.runGuardSelfTest();
+    });
+
+    document.getElementById('diagnose').addEventListener('click', function () {
+        if (!manager) { alert('No manager'); return; }
+        const charts = manager.getCharts();
+        const cellsInDom = chartsArea.querySelectorAll('.chart-cell').length;
+        const iframesInDom = chartsArea.querySelectorAll('.chart-cell iframe').length;
+        const lines = [];
+        lines.push('Layout selected: ' + layoutSel.value);
+        lines.push('Chart cells in DOM: ' + cellsInDom);
+        lines.push('iframes in DOM:     ' + iframesInDom);
+        lines.push('Charts in manager:  ' + charts.length);
+        lines.push('');
+        lines.push('Per-chart:');
+        for (const c of charts) {
+            lines.push('  ' + c.id + ':');
+            lines.push('    cfg:    ' + JSON.stringify(c.cfg));
+            lines.push('    ready:  ' + c.ready);
+            lines.push('    state:  ' + JSON.stringify(c.state));
+            lines.push('    iframe: ' + (c.frame && c.frame.src ? c.frame.src : 'NONE'));
+            lines.push('    mountEl in DOM: ' + (c.mountEl && document.body.contains(c.mountEl)));
+        }
+        lines.push('');
+        lines.push('Counters: ' + JSON.stringify(manager.counters));
+        const txt = lines.join('\n');
+        console.log('=== DIAGNOSE ===\n' + txt);
+        // Also dump to log panel so it survives
+        appendLog({ ts: Date.now(), level: 'info', text: '=== DIAGNOSE ===\n' + txt });
+        alert(txt);
     });
     document.getElementById('clear-log').addEventListener('click', function () {
         logEl.innerHTML = '';
