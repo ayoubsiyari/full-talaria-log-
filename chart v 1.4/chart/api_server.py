@@ -11701,13 +11701,7 @@ async def upload_csv(request: Request, csvFile: UploadFile = File(...)):
 
 @app.get("/api/files")
 async def get_files():
-    """Get list of all uploaded CSV files.
-
-    v10.3: also returns `start_ts` / `end_ts` (epoch ms) for each file so
-    the multichart sandbox can warn the user when two selected files have
-    non-overlapping date ranges (which would make crosshair / visible-range
-    sync silently no-op across them).
-    """
+    """Get list of all uploaded CSV files"""
     db = next(get_db())
     try:
         files = db.query(CSVFile).order_by(CSVFile.upload_date.desc()).all()
@@ -11723,8 +11717,6 @@ async def get_files():
                     "description": f.description,
                     "ticker": ticker,
                     "asset_class": asset_class,
-                    "start_ts": f.start_ts,
-                    "end_ts": f.end_ts,
                 }
             )
         return {"files": out_files}
