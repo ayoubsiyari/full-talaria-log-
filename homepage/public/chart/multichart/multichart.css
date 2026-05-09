@@ -13,8 +13,11 @@ html, body { margin: 0; padding: 0; height: 100%; background: #0b0c14; color: #d
 
 .app {
     display: grid;
-    /* topbar | overlap-warn (auto, 0 when hidden) | charts | log */
-    grid-template-rows: 44px auto 1fr 220px;
+    /* 3 rows, matching the 3 children in <body>: topbar | charts | bottom.
+     * Auto-placement assigns each child to its row in document order.
+     * (v10.3 briefly added a 4th row for an overlap-warn banner — that
+     * banner was removed in the revert, so the grid is back to 3 rows.) */
+    grid-template-rows: 44px 1fr 220px;
     grid-template-columns: 1fr;
     height: 100vh;
 }
@@ -22,28 +25,10 @@ html, body { margin: 0; padding: 0; height: 100%; background: #0b0c14; color: #d
 /* Bottom log + per-chart status panel can be hidden via the topbar
  * "Hide log / Show log" button. State persisted in localStorage. */
 .app.log-collapsed {
-    grid-template-rows: 44px auto 1fr 0;
+    grid-template-rows: 44px 1fr 0;
 }
 .app.log-collapsed .bottom {
     display: none;
-}
-
-/* v10.3: cross-panel date-range mismatch warning (between topbar + charts). */
-.overlap-warn {
-    display: none;
-    padding: 6px 12px;
-    background: rgba(255, 174, 87, 0.18);
-    color: #ffae57;
-    border-bottom: 1px solid rgba(255, 174, 87, 0.4);
-    font-size: 12px;
-    line-height: 1.5;
-    font-family: 'JetBrains Mono', monospace;
-}
-.overlap-warn.show { display: block; }
-.overlap-warn strong { color: #ffd3a3; }
-.overlap-warn .ranges {
-    color: #d1d4dc;
-    margin-left: 6px;
 }
 
 /* ─── Top bar ────────────────────────────────────────── */

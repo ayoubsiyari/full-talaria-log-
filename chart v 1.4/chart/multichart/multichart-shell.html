@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Multichart Sandbox — Talaria</title>
-    <link rel="stylesheet" href="multichart.css?v=20260509T1715" />
+    <link rel="stylesheet" href="multichart.css?v=20260509T1720" />
 </head>
 <body>
 <div class="app">
 
     <header class="topbar">
-        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T17:15 (v10.4.1 — collapse uses inline styles, CSS cache-busted) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
+        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T17:20 (v10.4.2 — fix grid: 3 rows match 3 children, charts now fill freed space) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
 
         <div class="group">
             <label>Layout</label>
@@ -616,7 +616,10 @@
         function apply(collapsed) {
             if (collapsed) {
                 appEl.classList.add('log-collapsed');
-                appEl.style.gridTemplateRows = '44px auto 1fr 0px';
+                // Inline override of grid-template-rows. 3 tracks matches
+                // the 3 children (topbar | charts | bottom), with the
+                // bottom track collapsed to 0 so .charts (1fr) absorbs it.
+                appEl.style.gridTemplateRows = '44px 1fr 0px';
                 bottomEl.style.display = 'none';
                 btn.textContent = 'Show log';
             } else {
