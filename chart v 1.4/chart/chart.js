@@ -1353,9 +1353,17 @@ class Chart {
             const w = Number(window.CHART_BACKTEST_SMART_INITIAL_LIMIT);
             if (Number.isFinite(w) && w > 0) backtestBatch = w;
         }
+        // Per-call override: smartOpts.limit lets a specific path (e.g. backtest 1m
+        // refetch) request a different size without changing the global default.
+        const optLimit = Number(opts.limit);
+        if (Number.isFinite(optLimit) && optLimit > 0) {
+            backtestBatch = optLimit;
+        }
         const limit = isBacktest
             ? String(Math.max(5000, Math.min(100000, backtestBatch)))
-            : '5000';
+            : (Number.isFinite(optLimit) && optLimit > 0
+                ? String(Math.max(100, Math.min(100000, Math.floor(optLimit))))
+                : '5000');
         const params = new URLSearchParams({
             timeframe: timeframe,
             limit: limit,
@@ -11350,8 +11358,13 @@ class Chart {
     /**
      * Load a timeframe window from the server (viewport-based).
      * Fetches last 5000 candles at the requested timeframe.
+     * @param {string} timeframe
+     * @param {Object} [options]
+     * @param {string} [options.anchor]      Override smart-window anchor ('start' | 'end').
+     * @param {Object} [options.windowRange] Explicit { startTs, endTs } window.
+     * @param {Object} [options.smartOpts]   Pass-through options (e.g. { skipSessionDates: true }).
      */
-    async _loadTimeframeFromServer(timeframe) {
+    async _loadTimeframeFromServer(timeframe, options = {}) {
         const loadId = ++this._timeframeLoadSeq;
         try {
             if (this.showLoader) this.showLoader('Changing timeframe...');
@@ -11362,7 +11375,14 @@ class Chart {
             const hadData = this.data && this.data.length > 0;
 
             const session = this.backtestingSession || {};
-            const result = await this._fetchSmartWindow(this.currentFileId, timeframe, session);
+            const result = await this._fetchSmartWindow(
+                this.currentFileId,
+                timeframe,
+                session,
+                options.anchor,
+                options.windowRange || null,
+                options.smartOpts || null
+            );
 
             if (loadId !== this._timeframeLoadSeq) return;
             if (!this._smartResponseHasPayload(result)) throw new Error('No data');
@@ -11464,8 +11484,10 @@ class Chart {
     /**
      * Backtest-only: when the user picks a smaller timeframe than the loaded raw bars
      * (e.g. switching from 1d default down to 1m), client-side resample can't expand
-     * the bars. Exit the active replay, refetch the new timeframe scoped to the
-     * session window (start_ts/end_ts), and re-enter replay at the saved timestamp.
+     * the bars. Exit the active replay, refetch the new timeframe with NO start clamp
+     * and the maximum window so the historical bars BEFORE session start stay visible
+     * just like they do on 1D, then re-enter replay at the saved timestamp (or session
+     * start when no timestamp was saved).
      */
     async _refetchBacktestTimeframe(timeframe) {
         const replay = this.replaySystem;
@@ -11489,8 +11511,24 @@ class Chart {
             console.warn('[backtest] exitReplayMode before refetch failed', e);
         }
 
+        // Anchor at session end (or last available bar when no end date) and skip the
+        // session start clamp so the smaller-TF fetch returns the maximum slice of
+        // pre-session history the server can deliver (~70 days of 1m at the 100k cap).
+        const session = this.backtestingSession || {};
+        const sessionEndMs = (() => {
+            const r = session.endDate || session.end_date;
+            if (!r) return null;
+            const t = this._sessionEndToInclusiveUtcMs(r);
+            return Number.isFinite(t) ? Math.floor(t) : null;
+        })();
+        const fetchOptions = {
+            anchor: 'end',
+            windowRange: sessionEndMs != null ? { endTs: sessionEndMs } : null,
+            smartOpts: { skipSessionDates: true, limit: 100000 },
+        };
+
         try {
-            await this._loadTimeframeFromServer(timeframe);
+            await this._loadTimeframeFromServer(timeframe, fetchOptions);
         } catch (e) {
             console.error('[backtest] timeframe refetch failed', e);
             return;
