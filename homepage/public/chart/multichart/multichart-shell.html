@@ -43,6 +43,7 @@
 
         <div class="group">
             <button id="self-test">Run guard self-test</button>
+            <button id="diagnose" class="primary">Diagnose</button>
             <button id="clear-log">Clear log</button>
         </div>
 
@@ -151,9 +152,10 @@
         for (const c of manager.getCharts()) {
             const s = c.state || {};
             const div = document.createElement('div');
-            div.className = 'item';
+            div.className = 'item ' + (c.ready ? 'pass' : 'fail');
+            const readyMark = c.ready ? '\u2713 ready' : '\u26A0 NOT ready';
             div.innerHTML =
-                '<span class="name">' + c.id + '</span>' +
+                '<span class="name">' + c.id + ' <small style="color:#5a5e69">' + readyMark + '</small></span>' +
                 '<span class="val">' + (s.symbol || '?') + ' / ' + (s.timeframe || '?') +
                 ' / ' + (s.candleCount || 0) + ' bars</span>';
             host.appendChild(div);
@@ -249,52 +251,125 @@
         return d;
     }
 
-    /** Drag a divider; tracks fr units of neighbours for resize. */
+    /**
+     * Notify each iframe's chart.js that its container resized.
+     * chart.js listens for `resize` on its OWN window (chart.js:588) — so we
+     * must dispatch the event INSIDE each iframe's contentWindow, not the
+     * parent shell. Same-origin iframes allow this directly.
+     *
+     * Step 5.1 deliverable: "When a chart's container resizes (because the
+     * user moved the divider), the chart must recompute its price axis to
+     * fit its visible candles."
+     */
+    let _resizeRaf = 0;
+    function notifyChartsResized() {
+        if (_resizeRaf) return;
+        _resizeRaf = requestAnimationFrame(function () {
+            _resizeRaf = 0;
+            if (!manager) return;
+            for (const c of manager.getCharts()) {
+                try {
+                    const cw = c.frame && c.frame.contentWindow;
+                    if (!cw) continue;
+                    // Construct Event in the iframe's context so the constructor
+                    // identity matches chart.js's listener registration.
+                    const Ev = cw.Event || Event;
+                    cw.dispatchEvent(new Ev('resize'));
+                } catch (e) {
+                    // Cross-origin would throw SecurityError; we're same-origin so
+                    // any error here is unexpected — log it.
+                    console.warn('[shell] resize dispatch failed for', c.id, e);
+                }
+            }
+        });
+    }
+
+    /**
+     * Drag a divider. We can't just set `style.width` on the neighbour
+     * cells because CSS grid (`grid-template-columns: 1fr 6px 1fr`) ignores
+     * child widths — the grid tracks dictate cell sizes. Instead, update
+     * `chartsArea.style.gridTemplateColumns` (or rows) to explicit pixel
+     * sizes for each track during drag.
+     */
     function installDividerDrag(divEl, orient) {
         let dragging = false;
         let startPos = 0;
-        let prevSize = 0, nextSize = 0, prevEl = null, nextEl = null, totalSize = 0;
+        let prevSize = 0, nextSize = 0, prevEl = null, nextEl = null;
+        let totalSize = 0;
+        let prevTrackIdx = -1, nextTrackIdx = -1;
+
+        function getTracks() {
+            const cs = window.getComputedStyle(chartsArea);
+            const tpl = orient === 'col' ? cs.gridTemplateColumns : cs.gridTemplateRows;
+            // Computed value is space-separated px values, e.g. "504px 6px 504px"
+            return tpl.split(/\s+/).map(s => parseFloat(s) || 0);
+        }
+        function setTracks(tracks) {
+            const css = tracks.map(v => v + 'px').join(' ');
+            if (orient === 'col') chartsArea.style.gridTemplateColumns = css;
+            else                  chartsArea.style.gridTemplateRows    = css;
+        }
 
         divEl.addEventListener('mousedown', function (e) {
             dragging = true;
             divEl.classList.add('dragging');
             startPos = (orient === 'col' ? e.clientX : e.clientY);
-            // Find neighbours
             prevEl = divEl.previousElementSibling;
             nextEl = divEl.nextElementSibling;
-            if (orient === 'col') {
-                prevSize = prevEl.getBoundingClientRect().width;
-                nextSize = nextEl.getBoundingClientRect().width;
-            } else {
-                prevSize = prevEl.getBoundingClientRect().height;
-                nextSize = nextEl.getBoundingClientRect().height;
-            }
+
+            const kids = Array.prototype.slice.call(chartsArea.children);
+            prevTrackIdx = kids.indexOf(prevEl);
+            nextTrackIdx = kids.indexOf(nextEl);
+
+            const tracks = getTracks();
+            prevSize  = tracks[prevTrackIdx] || 0;
+            nextSize  = tracks[nextTrackIdx] || 0;
             totalSize = prevSize + nextSize;
+
+            // CRITICAL: disable pointer events on every iframe so the mousemove
+            // events flow up to the parent shell instead of being captured by
+            // the iframe's contents. Without this, drag-from-divider goes dead
+            // the moment the cursor moves over a chart iframe.
+            const frames = chartsArea.querySelectorAll('iframe');
+            for (let i = 0; i < frames.length; i++) {
+                frames[i].style.pointerEvents = 'none';
+            }
+            // Also prevent text-selection drag behaviour on the parent.
+            document.body.style.userSelect = 'none';
             e.preventDefault();
         });
-        global.addEventListener('mousemove', function (e) {
+        window.addEventListener('mousemove', function (e) {
             if (!dragging) return;
             const cur = (orient === 'col' ? e.clientX : e.clientY);
             const delta = cur - startPos;
-            let newPrev = Math.max(120, Math.min(totalSize - 120, prevSize + delta));
-            let newNext = totalSize - newPrev;
-            if (orient === 'col') {
-                prevEl.style.width = newPrev + 'px';
-                nextEl.style.width = newNext + 'px';
-            } else {
-                prevEl.style.height = newPrev + 'px';
-                nextEl.style.height = newNext + 'px';
-            }
-            // Force iframe content to react: the chart's chart.js has its own
-            // ResizeObserver-equivalent that hooks `resize` and re-fits.
-            try { global.dispatchEvent(new Event('resize')); } catch (_) {}
+            const newPrev = Math.max(120, Math.min(totalSize - 120, prevSize + delta));
+            const newNext = totalSize - newPrev;
+            const tracks = getTracks();
+            tracks[prevTrackIdx] = newPrev;
+            tracks[nextTrackIdx] = newNext;
+            setTracks(tracks);
+            notifyChartsResized();
         });
-        global.addEventListener('mouseup', function () {
+        window.addEventListener('mouseup', function () {
             if (!dragging) return;
             dragging = false;
             divEl.classList.remove('dragging');
+
+            // Restore iframe interactivity so users can pan / hover the charts again.
+            const frames = chartsArea.querySelectorAll('iframe');
+            for (let i = 0; i < frames.length; i++) {
+                frames[i].style.pointerEvents = '';
+            }
+            document.body.style.userSelect = '';
+
+            notifyChartsResized();
+            setTimeout(notifyChartsResized, 130);
         });
     }
+
+    // Also handle the parent window itself resizing (browser zoom, window
+    // resize). Forward to all iframes so each chart re-fits.
+    window.addEventListener('resize', notifyChartsResized);
 
     // ─── Wire UI controls ────────────────────────────────────────────────
     layoutSel.addEventListener('change', function () { applyLayout(layoutSel.value); });
@@ -320,6 +395,35 @@
 
     document.getElementById('self-test').addEventListener('click', function () {
         if (manager) manager.runGuardSelfTest();
+    });
+
+    document.getElementById('diagnose').addEventListener('click', function () {
+        if (!manager) { alert('No manager'); return; }
+        const charts = manager.getCharts();
+        const cellsInDom = chartsArea.querySelectorAll('.chart-cell').length;
+        const iframesInDom = chartsArea.querySelectorAll('.chart-cell iframe').length;
+        const lines = [];
+        lines.push('Layout selected: ' + layoutSel.value);
+        lines.push('Chart cells in DOM: ' + cellsInDom);
+        lines.push('iframes in DOM:     ' + iframesInDom);
+        lines.push('Charts in manager:  ' + charts.length);
+        lines.push('');
+        lines.push('Per-chart:');
+        for (const c of charts) {
+            lines.push('  ' + c.id + ':');
+            lines.push('    cfg:    ' + JSON.stringify(c.cfg));
+            lines.push('    ready:  ' + c.ready);
+            lines.push('    state:  ' + JSON.stringify(c.state));
+            lines.push('    iframe: ' + (c.frame && c.frame.src ? c.frame.src : 'NONE'));
+            lines.push('    mountEl in DOM: ' + (c.mountEl && document.body.contains(c.mountEl)));
+        }
+        lines.push('');
+        lines.push('Counters: ' + JSON.stringify(manager.counters));
+        const txt = lines.join('\n');
+        console.log('=== DIAGNOSE ===\n' + txt);
+        // Also dump to log panel so it survives
+        appendLog({ ts: Date.now(), level: 'info', text: '=== DIAGNOSE ===\n' + txt });
+        alert(txt);
     });
     document.getElementById('clear-log').addEventListener('click', function () {
         logEl.innerHTML = '';

@@ -317,9 +317,6 @@
             prevEl = divEl.previousElementSibling;
             nextEl = divEl.nextElementSibling;
 
-            // Identify which tracks the prev/next cells occupy. Children of
-            // chartsArea are laid out in DOM order; track index = position in
-            // children array (cell, divider, cell, divider, ...).
             const kids = Array.prototype.slice.call(chartsArea.children);
             prevTrackIdx = kids.indexOf(prevEl);
             nextTrackIdx = kids.indexOf(nextEl);
@@ -328,6 +325,17 @@
             prevSize  = tracks[prevTrackIdx] || 0;
             nextSize  = tracks[nextTrackIdx] || 0;
             totalSize = prevSize + nextSize;
+
+            // CRITICAL: disable pointer events on every iframe so the mousemove
+            // events flow up to the parent shell instead of being captured by
+            // the iframe's contents. Without this, drag-from-divider goes dead
+            // the moment the cursor moves over a chart iframe.
+            const frames = chartsArea.querySelectorAll('iframe');
+            for (let i = 0; i < frames.length; i++) {
+                frames[i].style.pointerEvents = 'none';
+            }
+            // Also prevent text-selection drag behaviour on the parent.
+            document.body.style.userSelect = 'none';
             e.preventDefault();
         });
         window.addEventListener('mousemove', function (e) {
@@ -346,6 +354,14 @@
             if (!dragging) return;
             dragging = false;
             divEl.classList.remove('dragging');
+
+            // Restore iframe interactivity so users can pan / hover the charts again.
+            const frames = chartsArea.querySelectorAll('iframe');
+            for (let i = 0; i < frames.length; i++) {
+                frames[i].style.pointerEvents = '';
+            }
+            document.body.style.userSelect = '';
+
             notifyChartsResized();
             setTimeout(notifyChartsResized, 130);
         });
