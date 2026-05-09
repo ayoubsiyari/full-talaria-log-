@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260510T0200";
+const BRIDGE_VERSION = "20260510T0500";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -98,9 +98,14 @@ function loadParentBridge() {
     }
 
     bridgeLoadPromise = injectScript("/chart/multichart-prod/engine-api-guards.js")
+        // sync-bridge.js exposes window.MultichartBridge.installBridge.
+        // Required to install the host bridge on the parent's window.chart
+        // so tile A participates in crosshair / visible-range / symbol sync
+        // alongside the iframe panels (B/C/D/…).
+        .then(() => injectScript("/chart/multichart-prod/sync-bridge.js"))
         .then(() => injectScript("/chart/multichart-prod/multichart-manager.js"))
         .then(() => {
-            if (!window.MultichartManager || !window.MultichartGuards) {
+            if (!window.MultichartManager || !window.MultichartGuards || !window.MultichartBridge) {
                 throw new Error("bridge scripts loaded but globals missing");
             }
         })
@@ -109,6 +114,50 @@ function loadParentBridge() {
             throw err;
         });
     return bridgeLoadPromise;
+}
+
+// ─── host-bridge install (one-time per page) ────────────────────────────────
+//
+// The bridge monkey-patches `window.chart.broadcastCrosshairSync` and adds a
+// global 'message' listener — both side-effects we should NOT redo every time
+// MultichartGrid mounts. Cache the bridge instance on window so successive
+// mounts (e.g. user goes 1 → 2v → 1 → 4) reuse it.
+//
+// Returns null if window.chart isn't ready yet; caller should retry.
+function ensureHostBridge() {
+    if (typeof window === "undefined") return null;
+    if (window.__multichartHostBridge) return window.__multichartHostBridge;
+    if (!window.MultichartBridge) return null;
+    const ch = window.chart;
+    if (!ch) return null;
+    try {
+        const bridge = window.MultichartBridge.installBridge(ch, {
+            chartId:      HOST_PANEL_ID,
+            parentOrigin: "*",
+            verbose:      false,
+        });
+        window.__multichartHostBridge = bridge;
+        try { console.log("[MultichartGrid] host bridge installed on window.chart as", HOST_PANEL_ID); } catch (_) {}
+        return bridge;
+    } catch (err) {
+        console.error("[MultichartGrid] installBridge on host failed:", err);
+        return null;
+    }
+}
+
+// Wait up to `timeoutMs` for window.chart to exist, then install the bridge.
+// Resolves with the bridge or null if window.chart never appears.
+function waitForHostBridge(timeoutMs) {
+    return new Promise((resolve) => {
+        const t0 = Date.now();
+        const tick = () => {
+            const b = ensureHostBridge();
+            if (b) { resolve(b); return; }
+            if (Date.now() - t0 >= timeoutMs) { resolve(null); return; }
+            setTimeout(tick, 100);
+        };
+        tick();
+    });
 }
 
 // ─── layout templates ───────────────────────────────────────────────────────
@@ -484,7 +533,44 @@ export default function MultichartGrid({
                 },
             });
             managerRef.current = manager;
+            // Apply current sync mode immediately so the very first
+            // initial-sync-to-host (fired when the first iframe goes ready)
+            // honors the user's sync toggles instead of the manager's
+            // defaults. layoutSync ref isn't available here; the dedicated
+            // syncMode useEffect below pushes any updates after this anyway.
             setManagerReady(true);
+
+            // ─── Install + register the host bridge ───────────────────
+            //
+            // Tile A (HOST_PANEL_ID) is the parent's already-loaded
+            // window.chart. The bridge wires its native crosshair /
+            // chartScrolled events to outbound postMessage and exposes a
+            // `deliver` for inbound. Manager registers it as a peer so
+            // every fan-out includes A automatically.
+            //
+            // window.chart should already exist by the time MultichartGrid
+            // mounts (the parent /chart/ page boots chart.js on initial
+            // load), but we wait up to 10s defensively in case the user
+            // picks a layout while chart.js is still booting (e.g. fast
+            // page-load + immediate dropdown click).
+            waitForHostBridge(10000).then((hostBridge) => {
+                if (cancelled || !managerRef.current || !hostBridge) {
+                    if (!hostBridge) {
+                        console.warn("[MultichartGrid] host bridge install timed out — "
+                            + "tile A will display the parent chart but won't sync with iframe panels");
+                    }
+                    return;
+                }
+                try {
+                    managerRef.current.addHostChart({
+                        id:     HOST_PANEL_ID,
+                        tf:     initialTimeframeRef.current || "1m",
+                        fileId: initialFileIdRef.current    || null,
+                    }, hostBridge);
+                } catch (e) {
+                    console.error("[MultichartGrid] addHostChart failed:", e);
+                }
+            });
         }).catch((err) => {
             console.error("[MultichartGrid] failed to load parent bridge:", err);
         });

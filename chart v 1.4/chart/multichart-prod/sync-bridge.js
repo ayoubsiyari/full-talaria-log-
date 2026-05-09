@@ -315,19 +315,34 @@
         }
 
         // 1) Crosshair — monkey-patch broadcastCrosshairSync.
+        //
+        // We chain the original implementation (if any) so that within-chart
+        // sub-panel sync (e.g. an indicator panel below the price panel)
+        // continues to work after the bridge is installed. Without this, the
+        // host parent's #chartWrapper (where indicators may be present) would
+        // lose its internal crosshair sync the moment we go multi-panel.
         chart._crosshairPanelSyncAllowed = function () {
             return !!chart.syncCrosshair;
         };
+        const __origBroadcastCrosshairSync = (typeof chart.broadcastCrosshairSync === 'function')
+            ? chart.broadcastCrosshairSync.bind(chart)
+            : null;
         chart.broadcastCrosshairSync = function (timestamp, price) {
-            if (state.applying) return;
-            if (timestamp === null || timestamp === undefined) {
-                pending.crosshair = null;
-                pending.crosshairClear = true;
-            } else {
-                pending.crosshair = timestamp;
-                pending.crosshairClear = false;
+            // Bridge fan-out (cross-chart) — gated by the applying window.
+            if (!state.applying) {
+                if (timestamp === null || timestamp === undefined) {
+                    pending.crosshair = null;
+                    pending.crosshairClear = true;
+                } else {
+                    pending.crosshair = timestamp;
+                    pending.crosshairClear = false;
+                }
+                scheduleFlush();
             }
-            scheduleFlush();
+            // Preserve original within-chart sub-panel sync if it existed.
+            if (__origBroadcastCrosshairSync) {
+                try { __origBroadcastCrosshairSync(timestamp, price); } catch (_) {}
+            }
         };
 
         // 2) Visible range — listen to chartScrolled (also rAF-coalesced)
@@ -390,12 +405,25 @@
         });
 
         // ─── inbound: parent -> chart ──────────────────────────────────────
-
-        global.addEventListener('message', function (ev) {
-            // (parent origin check could be added here in prod)
-            const msg = ev.data;
+        //
+        // The same handler is used in two ways:
+        //   (a) iframe panels — receives MessageEvent via window.postMessage
+        //       from the parent shell.
+        //   (b) host panel (parent's own window.chart) — invoked DIRECTLY by
+        //       the manager's `_send` via the exposed `deliver` method.
+        //       Direct invocation avoids the manager hearing its own outbound
+        //       message back through window.postMessage and re-fanning it to
+        //       all peers (which would loop indefinitely because the manager
+        //       has no outbound causationId guard of its own; only the bridge
+        //       does).
+        function applyInbound(msg) {
             if (!msg || typeof msg !== 'object') return;
-            // ignore messages we ourselves originated
+            // Ignore messages we ourselves originated. For iframe bridges
+            // this matches strictly. For the host bridge this is also the
+            // mechanism that prevents the manager-to-host directDeliver of
+            // host-originated messages from being applied (manager skips
+            // source==chartId in _fanOut already, but defense-in-depth here
+            // protects against any future fan-out that forgets to filter).
             if (msg.source && msg.source === chartId) return;
 
             const cleaned = G.filterForbiddenFields(msg);
@@ -404,7 +432,8 @@
             }
             const m = cleaned.clean;
 
-            // Loop guard — only forward types if not a recent self-applied causationId
+            // Loop guard — drop any message whose causationId we've recently
+            // applied (i.e. it's the echo of our OWN outbound).
             if (m.causationId && state.applied.has(m.causationId)) {
                 log('drop loop echo', m.type, m.causationId);
                 return;
@@ -428,6 +457,10 @@
             } catch (e) {
                 warn('inbound apply error', m.type, e);
             }
+        }
+
+        global.addEventListener('message', function (ev) {
+            applyInbound(ev.data);
         });
 
         function applyCrosshair(m) {
@@ -533,7 +566,13 @@
 
         return {
             state,
+            chartId: chartId,
             send,
+            // Direct-deliver entry point used by the manager when this bridge
+            // is installed on the parent's host chart (Phase 7.2.5). For
+            // iframe bridges this is also called by the global 'message'
+            // listener — same code path either way.
+            deliver: applyInbound,
             setVisibleTimeRange: function (s, e) { setVisibleTimeRange(chart, s, e); },
             readVisibleTimeRange: function () { return readVisibleTimeRange(chart); },
         };

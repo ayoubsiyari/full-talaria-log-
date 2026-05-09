@@ -195,9 +195,129 @@
     MultichartManager.prototype.removeChart = function (id) {
         const c = this.charts.get(id);
         if (!c) return;
+        if (c.host) {
+            // Host charts are not iframes — never tear down their DOM.
+            // The parent owns the chartWrapper element.
+            this.charts.delete(id);
+            this._log('info', 'removeChart ' + id + ' (host — DOM left intact)');
+            return;
+        }
         try { c.frame.remove(); } catch (_) {}
         this.charts.delete(id);
         this._log('info', 'removeChart ' + id);
+    };
+
+    /**
+     * Register a "host" chart — a chart that lives in the SAME window as
+     * the manager (the parent's window.chart) rather than inside an iframe.
+     *
+     * Sync flow for the host:
+     *   • OUTBOUND (host → peers): the host bridge's monkey-patched
+     *     broadcastCrosshairSync + 'chartScrolled' listeners post to
+     *     `window.parent` which IS this same window — manager picks it up
+     *     in _onWindowMessage and fans out to iframe peers.
+     *   • INBOUND (peers → host): manager's _send sees `directDeliver` on
+     *     the chart entry and invokes it instead of frame.contentWindow.
+     *     postMessage. The deliver function is the bridge's exposed
+     *     applyInbound, which applies the message to the host chart
+     *     (skipping its own causationIds via the loop-guard ring buffer).
+     *
+     * Why directDeliver instead of `window.postMessage(msg, '*')`:
+     *   The manager has no outbound causationId guard. If we delivered to
+     *   the host via window.postMessage, the manager would hear that same
+     *   message in its 'message' listener and re-fan it to all peers,
+     *   producing N-way echo of every event.
+     *
+     * @param {object} cfg                   { id, tf?, fileId?, … }
+     * @param {{deliver:(msg)=>void}} hostBridge  the object returned by
+     *                                       MultichartBridge.installBridge.
+     * @returns the chart entry stored in `this.charts`
+     */
+    MultichartManager.prototype.addHostChart = function (cfg, hostBridge) {
+        if (this.charts.has(cfg.id)) {
+            this._log('warn', 'addHostChart: id already present: ' + cfg.id);
+            return this.charts.get(cfg.id);
+        }
+        if (!hostBridge || typeof hostBridge.deliver !== 'function') {
+            throw new Error('addHostChart: hostBridge.deliver is required');
+        }
+        const entry = {
+            id:      cfg.id,
+            cfg:     cfg,
+            frame:   null,
+            host:    true,
+            directDeliver: hostBridge.deliver,
+            // Optional read-side hook: bridge.readVisibleTimeRange() so the
+            // manager can pull the host's current view at any time (used by
+            // _initialSyncToHost when a new iframe panel goes ready).
+            directRead: (typeof hostBridge.readVisibleTimeRange === 'function')
+                ? hostBridge.readVisibleTimeRange
+                : null,
+            overlay: null,
+            // Host bridge is already installed and emitting events — mark
+            // ready immediately so the host counts as a peer for fan-out
+            // from the moment the first iframe arrives.
+            ready:   true,
+            state:   { symbol: '—', timeframe: cfg.tf || '?', candleCount: 0 },
+            mountEl: null,
+        };
+        this.charts.set(cfg.id, entry);
+        this._log('info', 'addHostChart ' + cfg.id + ' (in-process; ' + this.charts.size + ' total)');
+        // Fire onChartReady so the React grid can drop any host-tile
+        // overlay (in practice the React grid never shows one for the
+        // host, but stay consistent with iframe semantics).
+        try { this.onChartReady(cfg.id); } catch (_) {}
+
+        // Race-safety: any iframe panels that already went ready BEFORE the
+        // host was registered (possible if the host bridge install was
+        // delayed waiting for window.chart) need a backfill sync now so
+        // they don't sit on a stale loadFileData default view forever.
+        const self = this;
+        setTimeout(function () {
+            for (const c of self.charts.values()) {
+                if (c.host || !c.ready) continue;
+                self._initialSyncToHost(c);
+            }
+        }, 0);
+
+        return entry;
+    };
+
+    /**
+     * After a new iframe panel goes bridge-ready, push the host's CURRENT
+     * visible time range to it so it boots at the same view the user is
+     * already looking at on the parent's #chartWrapper, instead of
+     * whatever default chart.js picks after loadFileData.
+     *
+     * Only fires when:
+     *   • There is a host chart in the map (we never sync iframe-to-iframe
+     *     on add — peers reach steady state via normal user interaction).
+     *   • The host bridge exposed `readVisibleTimeRange` (it does in v10+).
+     *   • The host's data is loaded and the read returned a real range.
+     *
+     * Visible-range sync is gated by syncMode.visibleRange; if the user
+     * has it OFF we skip — they explicitly asked to keep panels independent.
+     */
+    MultichartManager.prototype._initialSyncToHost = function (newChart) {
+        if (!newChart || newChart.host) return;
+        if (!this.syncMode.visibleRange) return;
+        let host = null;
+        for (const c of this.charts.values()) {
+            if (c.host) { host = c; break; }
+        }
+        if (!host || typeof host.directRead !== 'function') return;
+        let range = null;
+        try { range = host.directRead(); } catch (_) { range = null; }
+        if (!range || !Number.isFinite(range.startSec) || !Number.isFinite(range.endSec)) return;
+        this._send(newChart, {
+            type:        'visibleRange',
+            startTime:   range.startSec,
+            endTime:     range.endSec,
+            source:      host.id,
+            causationId: 'host-init-' + Date.now() + '-' + (Math.random() * 1e6 | 0).toString(16),
+        });
+        this._log('info', 'initial-sync ' + host.id + ' → ' + newChart.id
+            + ' visibleRange=[' + range.startSec + '..' + range.endSec + ']');
     };
 
     MultichartManager.prototype.getCharts = function () {
@@ -210,11 +330,10 @@
     MultichartManager.prototype.sendConfig = function (id, configPatch) {
         const c = this.charts.get(id);
         if (!c) return;
+        const msg = { type: 'bridge-config', config: configPatch };
         try {
-            c.frame.contentWindow.postMessage({
-                type: 'bridge-config',
-                config: configPatch,
-            }, '*');
+            if (c.directDeliver) c.directDeliver(msg);
+            else                 c.frame.contentWindow.postMessage(msg, '*');
         } catch (e) {
             this._log('warn', 'sendConfig fail ' + id + ': ' + e.message);
         }
@@ -222,9 +341,11 @@
 
     /** Broadcast a guard self-test request to every chart. */
     MultichartManager.prototype.runGuardSelfTest = function () {
+        const msg = { type: 'guard-self-test' };
         for (const c of this.charts.values()) {
             try {
-                c.frame.contentWindow.postMessage({ type: 'guard-self-test' }, '*');
+                if (c.directDeliver) c.directDeliver(msg);
+                else                 c.frame.contentWindow.postMessage(msg, '*');
             } catch (_) {}
         }
         this._log('info', 'guard self-test requested across ' + this.charts.size + ' charts');
@@ -264,6 +385,15 @@
                     try { this.onChartReady(sourceId); } catch (e) {
                         this._log('warn', 'onChartReady threw: ' + (e && e.message || e));
                     }
+                    // Phase 7.2.5: bring the new iframe in line with the
+                    // host's current visible range so the user's split
+                    // shows the SAME data window across every panel
+                    // instead of stale defaults from chart.js init.
+                    // Deferred to next tick so the iframe's bridge has
+                    // settled (it just sent bridge-ready synchronously
+                    // from inside its own message setup).
+                    const self = this;
+                    setTimeout(function () { self._initialSyncToHost(sourceChart); }, 0);
                 }
                 return;
 
@@ -351,6 +481,13 @@
 
     MultichartManager.prototype._send = function (chartEntry, msg) {
         try {
+            if (chartEntry.directDeliver) {
+                // Host chart — deliver in-process. Bypasses postMessage so the
+                // manager doesn't hear its own outbound back through the
+                // 'message' listener and fan it out again. See addHostChart.
+                chartEntry.directDeliver(msg);
+                return;
+            }
             chartEntry.frame.contentWindow.postMessage(msg, '*');
         } catch (e) {
             this._log('warn', 'send fail ' + chartEntry.id + ': ' + e.message);
