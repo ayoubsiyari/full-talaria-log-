@@ -452,6 +452,55 @@ function clearHostSlot() {
     } catch (_) {}
 }
 
+// Apply / clear the per-tile FOCUSED border on an iframe cell.
+//
+// CSS outline on the cell is invisible behind the iframe (some browsers
+// composite iframe content above outline / box-shadow on the parent). A
+// React-rendered overlay div is also unreliable because the iframe is
+// appended by the manager via vanilla appendChild AFTER React commits, so
+// React inserts the overlay at its tracked sibling position — typically
+// BEFORE the iframe in DOM order — and z-index alone doesn't always win.
+//
+// Solution: append the border overlay via vanilla DOM AFTER the iframe is
+// in place, so it's the LAST child of the cell. Combined with a very high
+// z-index (9999), this gives a focus border that is reliably visible
+// across browsers and across the iframe's compositor layer.
+//
+// pointerEvents:none keeps clicks reaching the iframe so the user can
+// continue to interact with the focused chart normally.
+const IFRAME_FOCUS_BORDER_ATTR = "data-multichart-focus-border";
+
+function clearIframeFocusBorders(cellRefs) {
+    if (typeof document === "undefined") return;
+    if (!cellRefs) return;
+    for (const id in cellRefs) {
+        const cell = cellRefs[id];
+        if (!cell) continue;
+        const existing = cell.querySelector("[" + IFRAME_FOCUS_BORDER_ATTR + "]");
+        if (existing) existing.remove();
+    }
+}
+
+function applyIframeFocusBorder(cellEl) {
+    if (typeof document === "undefined") return;
+    if (!cellEl) return;
+    let overlay = cellEl.querySelector("[" + IFRAME_FOCUS_BORDER_ATTR + "]");
+    if (overlay) return; // already present
+    overlay = document.createElement("div");
+    overlay.setAttribute(IFRAME_FOCUS_BORDER_ATTR, "1");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.style.cssText = [
+        "position: absolute",
+        "inset: 0",
+        "pointer-events: none",
+        "border: 2px solid #3a6db5",
+        "box-sizing: border-box",
+        "box-shadow: 0 0 0 1px rgba(58,109,181,0.35), inset 0 0 12px rgba(58,109,181,0.18)",
+        "z-index: 9999",
+    ].join(";");
+    cellEl.appendChild(overlay); // appendChild = LAST child, sits over iframe
+}
+
 // Apply / clear the per-tile FOCUSED border on the host's #chartWrapper.
 //
 // CSS outline does not paint above an element's own children — the canvas,
@@ -483,7 +532,7 @@ function applyHostFocusOutline(focused) {
                 "border: 2px solid #3a6db5",
                 "box-sizing: border-box",
                 "box-shadow: 0 0 0 1px rgba(58,109,181,0.35), inset 0 0 12px rgba(58,109,181,0.18)",
-                "z-index: 100",
+                "z-index: 9999",
             ].join(";");
             wrapper.appendChild(overlay);
         }
@@ -814,14 +863,36 @@ export default function MultichartGrid({
     }, [layoutSync]);
 
     // ─── Focus outline on the host's #chartWrapper ──────────────────────
-    // Iframe tiles get their focused border via an overlay <div> rendered
-    // inside the cell (CSS outline gets covered by the iframe). The host's
-    // cell is invisible behind the wrapper, so when tile A is focused we
-    // inject the same overlay <div> as a child of #chartWrapper instead.
+    // Iframe tiles get their focused border via vanilla DOM injection
+    // (see iframe focus-border effect below). The host's cell is invisible
+    // behind the wrapper, so when tile A is focused we inject the same
+    // overlay <div> as a child of #chartWrapper instead.
     useEffect(() => {
         applyHostFocusOutline(focusedPanelId === HOST_PANEL_ID);
         return () => applyHostFocusOutline(false);
     }, [focusedPanelId]);
+
+    // ─── Focus border for iframe cells (vanilla DOM injection) ──────────
+    //
+    // Runs whenever focusedPanelId changes. Strips any existing focus
+    // border from every cell, then appends a fresh overlay <div> as the
+    // LAST child of the focused cell. Vanilla DOM (not React) is used so
+    // the overlay sits AFTER the manager-appended iframe in DOM order;
+    // combined with z-index:9999 this is the only reliable way to paint
+    // a border on top of an iframe across browsers.
+    //
+    // The effect also depends on `managerReady` + `layout.tiles` so that
+    // when the manager has just added a new iframe (e.g. user splits 2→4
+    // and immediately clicks D), the cell is in cellRefs and the overlay
+    // can be injected.
+    useEffect(() => {
+        clearIframeFocusBorders(cellRefs.current);
+        if (!focusedPanelId || focusedPanelId === HOST_PANEL_ID) return;
+        const cell = cellRefs.current[focusedPanelId];
+        if (!cell) return;
+        applyIframeFocusBorder(cell);
+        return () => clearIframeFocusBorders(cellRefs.current);
+    }, [focusedPanelId, managerReady, layout.tiles]);
 
     // ─── Focused-panel state → topbar reflection ────────────────────────
     //
@@ -1056,26 +1127,20 @@ export default function MultichartGrid({
                                 <div className="multichart-loading-label">Loading {tile.id}</div>
                             </div>
                         )}
-                        {/* Focused-panel border overlay. Painted as a real
-                             DOM element ABOVE the iframe (z-index:6) so it's
-                             actually visible — CSS outline on the cell would
-                             be hidden by the iframe child. Skipped for the
-                             host cell; the host paints its own focus border
-                             inside #chartWrapper via applyHostFocusOutline. */}
-                        {!isHost && isFocused && (
-                            <div
-                                aria-hidden="true"
-                                style={{
-                                    position: "absolute",
-                                    inset: 0,
-                                    pointerEvents: "none",
-                                    border: "2px solid #3a6db5",
-                                    boxSizing: "border-box",
-                                    boxShadow: "0 0 0 1px rgba(58,109,181,0.35), inset 0 0 12px rgba(58,109,181,0.18)",
-                                    zIndex: 6,
-                                }}
-                            />
-                        )}
+                        {/*
+                          NOTE: the focused-panel border for iframe cells is
+                          NOT rendered here. It is injected as a VANILLA DOM
+                          element AFTER the iframe via the focus-border
+                          effect (see applyIframeFocusBorder). React-rendered
+                          overlays would be inserted at React's child-position
+                          slot, which (because the iframe is appended outside
+                          React) ended up rendered BEFORE the iframe in DOM
+                          order — and even with z-index:6 the iframe still
+                          covered it on Chromium iframes due to iframe
+                          compositing quirks. Doing it via DOM injection
+                          guarantees the overlay is the LAST child of the
+                          cell and z-index:9999 sits unambiguously on top.
+                        */}
                     </div>
                 );
             })}
