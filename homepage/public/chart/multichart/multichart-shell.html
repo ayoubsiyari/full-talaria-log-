@@ -10,7 +10,7 @@
 <div class="app">
 
     <header class="topbar">
-        <h1>Multichart Sandbox</h1>
+        <h1>Multichart Sandbox <span style="color:#7aa2ff;font-size:11px;font-weight:400;margin-left:6px">build 2026-05-09T12:18 (drag-fix v3)</span></h1>
 
         <div class="group">
             <label>Layout</label>
@@ -310,8 +310,18 @@
             else                  chartsArea.style.gridTemplateRows    = css;
         }
 
-        divEl.addEventListener('mousedown', function (e) {
+        // Pointer Events API gives us reliable cross-iframe drag tracking via
+        // setPointerCapture: once captured, ALL pointermove events for that
+        // pointer are routed to the divider element until release, even if the
+        // pointer is over an iframe. This is the modern equivalent of the
+        // pointer-events:none-on-iframes trick and is the canonical way to
+        // implement drag handles next to iframes.
+        let activePointerId = null;
+        divEl.addEventListener('pointerdown', function (e) {
+            if (e.button !== 0) return;
             dragging = true;
+            activePointerId = e.pointerId;
+            try { divEl.setPointerCapture(e.pointerId); } catch (_) {}
             divEl.classList.add('dragging');
             startPos = (orient === 'col' ? e.clientX : e.clientY);
             prevEl = divEl.previousElementSibling;
@@ -326,20 +336,25 @@
             nextSize  = tracks[nextTrackIdx] || 0;
             totalSize = prevSize + nextSize;
 
-            // CRITICAL: disable pointer events on every iframe so the mousemove
-            // events flow up to the parent shell instead of being captured by
-            // the iframe's contents. Without this, drag-from-divider goes dead
-            // the moment the cursor moves over a chart iframe.
+            // Belt-and-braces: also kill iframe pointer events so even if
+            // setPointerCapture isn't honoured we still get mousemove on parent.
             const frames = chartsArea.querySelectorAll('iframe');
             for (let i = 0; i < frames.length; i++) {
                 frames[i].style.pointerEvents = 'none';
             }
-            // Also prevent text-selection drag behaviour on the parent.
             document.body.style.userSelect = 'none';
+
+            console.log('[shell] divider pointerdown', {
+                orient: orient, startPos: startPos,
+                prevTrackIdx: prevTrackIdx, nextTrackIdx: nextTrackIdx,
+                prevSize: prevSize, nextSize: nextSize,
+                tracks: tracks,
+            });
+            appendLog('drag start (' + orient + ') tracks=[' + tracks.join(',') + ']');
             e.preventDefault();
         });
-        window.addEventListener('mousemove', function (e) {
-            if (!dragging) return;
+        divEl.addEventListener('pointermove', function (e) {
+            if (!dragging || e.pointerId !== activePointerId) return;
             const cur = (orient === 'col' ? e.clientX : e.clientY);
             const delta = cur - startPos;
             const newPrev = Math.max(120, Math.min(totalSize - 120, prevSize + delta));
@@ -350,20 +365,33 @@
             setTracks(tracks);
             notifyChartsResized();
         });
-        window.addEventListener('mouseup', function () {
+        function endDrag(e) {
             if (!dragging) return;
+            if (e && e.pointerId !== activePointerId) return;
             dragging = false;
+            try { divEl.releasePointerCapture(activePointerId); } catch (_) {}
+            activePointerId = null;
             divEl.classList.remove('dragging');
 
-            // Restore iframe interactivity so users can pan / hover the charts again.
             const frames = chartsArea.querySelectorAll('iframe');
             for (let i = 0; i < frames.length; i++) {
                 frames[i].style.pointerEvents = '';
             }
             document.body.style.userSelect = '';
 
+            const tracks = getTracks();
+            console.log('[shell] divider pointerup, final tracks=', tracks);
+            appendLog('drag end (' + orient + ') tracks=[' + tracks.join(',') + ']');
+
             notifyChartsResized();
             setTimeout(notifyChartsResized, 130);
+        }
+        divEl.addEventListener('pointerup',     endDrag);
+        divEl.addEventListener('pointercancel', endDrag);
+
+        // Also keep a window-level mouseup as a final safety net for older browsers.
+        window.addEventListener('mouseup', function () {
+            if (dragging) endDrag(null);
         });
     }
 

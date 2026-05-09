@@ -128,12 +128,34 @@ html, body { margin: 0; padding: 0; height: 100%; background: #0b0c14; color: #d
 }
 .chart-cell .loading-overlay small { color: #8a8e99; font-size: 10px; margin-top: 4px; }
 .divider {
-    background: #1c1f26;
+    background: #2a2e39;
     cursor: col-resize;
     transition: background 0.1s;
+    position: relative;
+    z-index: 100;     /* above iframe edges so the cursor change is reliable */
+    touch-action: none;
+}
+.divider::before {
+    /* Invisible widened hit area so the 6-8px divider is easy to grab. */
+    content: '';
+    position: absolute;
+    inset: -4px;
 }
 .divider:hover, .divider.dragging { background: #2962ff; }
 .divider.row { cursor: row-resize; }
+/* Visual handle — three dots so user can clearly see it's draggable. */
+.divider::after {
+    content: '⋮';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #8a8e99;
+    font-size: 14px;
+    line-height: 1;
+    pointer-events: none;
+}
+.divider.row::after { content: '⋯'; }
 
 /* ─── Bottom log panel ──────────────────────────────── */
 .bottom {

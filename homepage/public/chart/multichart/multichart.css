@@ -77,11 +77,20 @@ html, body { margin: 0; padding: 0; height: 100%; background: #0b0c14; color: #d
 }
 .chart-cell {
     position: relative;
-    background: #0b0c14;
+    background: #1a0f0f;          /* dark red so empty cells are obvious */
     overflow: hidden;
     min-width: 200px;
     min-height: 200px;
+    border: 1px dashed #4a2e3a;   /* dashed border so we can SEE the cell boundary */
 }
+.chart-cell iframe {
+    border: 1px solid #2962ff;    /* loud border so we can see the iframe element */
+}
+.chart-cell.ready {
+    background: #0b0c14;
+    border-color: transparent;
+}
+.chart-cell.ready iframe { border-color: transparent; }
 .chart-cell .chart-cell-label {
     position: absolute;
     bottom: 6px;
@@ -96,13 +105,57 @@ html, body { margin: 0; padding: 0; height: 100%; background: #0b0c14; color: #d
     color: #8a8e99;
     pointer-events: none;
 }
+.chart-cell .loading-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 9;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(26, 15, 15, 0.85);
+    color: #ffae57;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    pointer-events: none;
+    text-align: center;
+    padding: 20px;
+}
+.chart-cell .loading-overlay .id {
+    font-size: 18px;
+    color: #ffd3d8;
+    margin-bottom: 6px;
+}
+.chart-cell .loading-overlay small { color: #8a8e99; font-size: 10px; margin-top: 4px; }
 .divider {
-    background: #1c1f26;
+    background: #2a2e39;
     cursor: col-resize;
     transition: background 0.1s;
+    position: relative;
+    z-index: 100;     /* above iframe edges so the cursor change is reliable */
+    touch-action: none;
+}
+.divider::before {
+    /* Invisible widened hit area so the 6-8px divider is easy to grab. */
+    content: '';
+    position: absolute;
+    inset: -4px;
 }
 .divider:hover, .divider.dragging { background: #2962ff; }
 .divider.row { cursor: row-resize; }
+/* Visual handle — three dots so user can clearly see it's draggable. */
+.divider::after {
+    content: '⋮';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #8a8e99;
+    font-size: 14px;
+    line-height: 1;
+    pointer-events: none;
+}
+.divider.row::after { content: '⋯'; }
 
 /* ─── Bottom log panel ──────────────────────────────── */
 .bottom {
