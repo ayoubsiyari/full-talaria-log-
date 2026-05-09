@@ -284,11 +284,31 @@
         });
     }
 
-    /** Drag a divider; resizes neighbours and notifies each iframe's chart. */
+    /**
+     * Drag a divider. We can't just set `style.width` on the neighbour
+     * cells because CSS grid (`grid-template-columns: 1fr 6px 1fr`) ignores
+     * child widths — the grid tracks dictate cell sizes. Instead, update
+     * `chartsArea.style.gridTemplateColumns` (or rows) to explicit pixel
+     * sizes for each track during drag.
+     */
     function installDividerDrag(divEl, orient) {
         let dragging = false;
         let startPos = 0;
-        let prevSize = 0, nextSize = 0, prevEl = null, nextEl = null, totalSize = 0;
+        let prevSize = 0, nextSize = 0, prevEl = null, nextEl = null;
+        let totalSize = 0;
+        let prevTrackIdx = -1, nextTrackIdx = -1;
+
+        function getTracks() {
+            const cs = window.getComputedStyle(chartsArea);
+            const tpl = orient === 'col' ? cs.gridTemplateColumns : cs.gridTemplateRows;
+            // Computed value is space-separated px values, e.g. "504px 6px 504px"
+            return tpl.split(/\s+/).map(s => parseFloat(s) || 0);
+        }
+        function setTracks(tracks) {
+            const css = tracks.map(v => v + 'px').join(' ');
+            if (orient === 'col') chartsArea.style.gridTemplateColumns = css;
+            else                  chartsArea.style.gridTemplateRows    = css;
+        }
 
         divEl.addEventListener('mousedown', function (e) {
             dragging = true;
@@ -296,13 +316,17 @@
             startPos = (orient === 'col' ? e.clientX : e.clientY);
             prevEl = divEl.previousElementSibling;
             nextEl = divEl.nextElementSibling;
-            if (orient === 'col') {
-                prevSize = prevEl.getBoundingClientRect().width;
-                nextSize = nextEl.getBoundingClientRect().width;
-            } else {
-                prevSize = prevEl.getBoundingClientRect().height;
-                nextSize = nextEl.getBoundingClientRect().height;
-            }
+
+            // Identify which tracks the prev/next cells occupy. Children of
+            // chartsArea are laid out in DOM order; track index = position in
+            // children array (cell, divider, cell, divider, ...).
+            const kids = Array.prototype.slice.call(chartsArea.children);
+            prevTrackIdx = kids.indexOf(prevEl);
+            nextTrackIdx = kids.indexOf(nextEl);
+
+            const tracks = getTracks();
+            prevSize  = tracks[prevTrackIdx] || 0;
+            nextSize  = tracks[nextTrackIdx] || 0;
             totalSize = prevSize + nextSize;
             e.preventDefault();
         });
@@ -310,23 +334,18 @@
             if (!dragging) return;
             const cur = (orient === 'col' ? e.clientX : e.clientY);
             const delta = cur - startPos;
-            let newPrev = Math.max(120, Math.min(totalSize - 120, prevSize + delta));
-            let newNext = totalSize - newPrev;
-            if (orient === 'col') {
-                prevEl.style.width = newPrev + 'px';
-                nextEl.style.width = newNext + 'px';
-            } else {
-                prevEl.style.height = newPrev + 'px';
-                nextEl.style.height = newNext + 'px';
-            }
+            const newPrev = Math.max(120, Math.min(totalSize - 120, prevSize + delta));
+            const newNext = totalSize - newPrev;
+            const tracks = getTracks();
+            tracks[prevTrackIdx] = newPrev;
+            tracks[nextTrackIdx] = newNext;
+            setTracks(tracks);
             notifyChartsResized();
         });
         window.addEventListener('mouseup', function () {
             if (!dragging) return;
             dragging = false;
             divEl.classList.remove('dragging');
-            // One final notify with a small delay so the cell's CSS has
-            // settled (some chart.js init paths re-measure after 120ms).
             notifyChartsResized();
             setTimeout(notifyChartsResized, 130);
         });
