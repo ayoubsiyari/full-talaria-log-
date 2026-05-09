@@ -296,8 +296,8 @@
     <!-- sandbox-only modules. Cache-busting query string — bump on any sandbox change.
          sample-data.js was deleted in v10 — the sandbox always fetches real
          data from /api/file/{id}/smart now. -->
-    <script src="./engine-api-guards.js?v=20260509T1530"></script>
-    <script src="./sync-bridge.js?v=20260509T1530"></script>
+    <script src="./engine-api-guards.js?v=20260509T1545"></script>
+    <script src="./sync-bridge.js?v=20260509T1545"></script>
 
     <script>
     (function () {
@@ -327,6 +327,48 @@
         function setBars(n, isError) {
             badgeBars.textContent = (isError ? 'ERROR · ' : '') + n + ' bars';
             badgeBars.className = 'badge' + (isError ? ' err' : '');
+        }
+
+        /**
+         * v10.3 helper: read other panels' loaded date ranges from the parent
+         * shell (same-origin iframe → direct property access is fine) and
+         * return a friendly warning string if `meta.startTs / endTs` does not
+         * overlap with at least one other panel. Null when overlap exists or
+         * when no other loaded panels are present yet.
+         */
+        function checkPanelDateConflict(meta) {
+            try {
+                const parentManager = window.parent && window.parent.__manager;
+                if (!parentManager || typeof parentManager.getCharts !== 'function') return null;
+                const others = parentManager.getCharts().filter(function (c) {
+                    return c.id !== chartId
+                        && c.state
+                        && Number.isFinite(c.state.firstBarMs)
+                        && Number.isFinite(c.state.lastBarMs);
+                });
+                if (!others.length) return null;
+                const noOverlap = others.filter(function (c) {
+                    return c.state.lastBarMs  < meta.startTs
+                        || c.state.firstBarMs > meta.endTs;
+                });
+                if (!noOverlap.length) return null;
+                const fmtD = function (ms) {
+                    const d = new Date(ms);
+                    return d.getUTCFullYear() + '-'
+                         + String(d.getUTCMonth() + 1).padStart(2, '0') + '-'
+                         + String(d.getUTCDate()).padStart(2, '0');
+                };
+                const fileRange = fmtD(meta.startTs) + ' → ' + fmtD(meta.endTs);
+                const lines = noOverlap.map(function (c) {
+                    return c.id + ' (' + (c.state.symbol || '?') + ', '
+                         + fmtD(c.state.firstBarMs) + ' → ' + fmtD(c.state.lastBarMs) + ')';
+                });
+                return 'Date mismatch — this file (' + meta.symbol + ', ' + fileRange + ') has '
+                     + 'NO date overlap with: ' + lines.join(', ') + '.';
+            } catch (e) {
+                console.warn('[chart-host:' + chartId + '] checkPanelDateConflict error:', e);
+                return null;
+            }
         }
 
         /**

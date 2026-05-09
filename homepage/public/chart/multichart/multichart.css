@@ -13,9 +13,28 @@ html, body { margin: 0; padding: 0; height: 100%; background: #0b0c14; color: #d
 
 .app {
     display: grid;
-    grid-template-rows: 44px 1fr 220px;
+    /* topbar | overlap-warn (auto, 0 when hidden) | charts | log */
+    grid-template-rows: 44px auto 1fr 220px;
     grid-template-columns: 1fr;
     height: 100vh;
+}
+
+/* v10.3: cross-panel date-range mismatch warning (between topbar + charts). */
+.overlap-warn {
+    display: none;
+    padding: 6px 12px;
+    background: rgba(255, 174, 87, 0.18);
+    color: #ffae57;
+    border-bottom: 1px solid rgba(255, 174, 87, 0.4);
+    font-size: 12px;
+    line-height: 1.5;
+    font-family: 'JetBrains Mono', monospace;
+}
+.overlap-warn.show { display: block; }
+.overlap-warn strong { color: #ffd3a3; }
+.overlap-warn .ranges {
+    color: #d1d4dc;
+    margin-left: 6px;
 }
 
 /* ─── Top bar ────────────────────────────────────────── */

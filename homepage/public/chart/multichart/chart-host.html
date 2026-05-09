@@ -296,8 +296,8 @@
     <!-- sandbox-only modules. Cache-busting query string — bump on any sandbox change.
          sample-data.js was deleted in v10 — the sandbox always fetches real
          data from /api/file/{id}/smart now. -->
-    <script src="./engine-api-guards.js?v=20260509T1530"></script>
-    <script src="./sync-bridge.js?v=20260509T1530"></script>
+    <script src="./engine-api-guards.js?v=20260509T1545"></script>
+    <script src="./sync-bridge.js?v=20260509T1545"></script>
 
     <script>
     (function () {
@@ -327,6 +327,48 @@
         function setBars(n, isError) {
             badgeBars.textContent = (isError ? 'ERROR · ' : '') + n + ' bars';
             badgeBars.className = 'badge' + (isError ? ' err' : '');
+        }
+
+        /**
+         * v10.3 helper: read other panels' loaded date ranges from the parent
+         * shell (same-origin iframe → direct property access is fine) and
+         * return a friendly warning string if `meta.startTs / endTs` does not
+         * overlap with at least one other panel. Null when overlap exists or
+         * when no other loaded panels are present yet.
+         */
+        function checkPanelDateConflict(meta) {
+            try {
+                const parentManager = window.parent && window.parent.__manager;
+                if (!parentManager || typeof parentManager.getCharts !== 'function') return null;
+                const others = parentManager.getCharts().filter(function (c) {
+                    return c.id !== chartId
+                        && c.state
+                        && Number.isFinite(c.state.firstBarMs)
+                        && Number.isFinite(c.state.lastBarMs);
+                });
+                if (!others.length) return null;
+                const noOverlap = others.filter(function (c) {
+                    return c.state.lastBarMs  < meta.startTs
+                        || c.state.firstBarMs > meta.endTs;
+                });
+                if (!noOverlap.length) return null;
+                const fmtD = function (ms) {
+                    const d = new Date(ms);
+                    return d.getUTCFullYear() + '-'
+                         + String(d.getUTCMonth() + 1).padStart(2, '0') + '-'
+                         + String(d.getUTCDate()).padStart(2, '0');
+                };
+                const fileRange = fmtD(meta.startTs) + ' → ' + fmtD(meta.endTs);
+                const lines = noOverlap.map(function (c) {
+                    return c.id + ' (' + (c.state.symbol || '?') + ', '
+                         + fmtD(c.state.firstBarMs) + ' → ' + fmtD(c.state.lastBarMs) + ')';
+                });
+                return 'Date mismatch — this file (' + meta.symbol + ', ' + fileRange + ') has '
+                     + 'NO date overlap with: ' + lines.join(', ') + '.';
+            } catch (e) {
+                console.warn('[chart-host:' + chartId + '] checkPanelDateConflict error:', e);
+                return null;
+            }
         }
 
         /**
@@ -462,8 +504,23 @@
         }
 
         /**
+         * Format epoch-ms as a YYYY-MM-DD date string for option labels.
+         */
+        function fmtDate(ms) {
+            if (!Number.isFinite(ms)) return '';
+            const d = new Date(ms);
+            return d.getUTCFullYear() + '-'
+                 + String(d.getUTCMonth() + 1).padStart(2, '0') + '-'
+                 + String(d.getUTCDate()).padStart(2, '0');
+        }
+
+        /**
          * Fetch /api/files once on init, populate the per-panel file dropdown,
          * and cache by id for symbol-label lookups.
+         *
+         * v10.3: also caches each file's start_ts / end_ts so the per-panel
+         * dropdown can show date ranges and so on-change we can warn the
+         * user when a selection won't overlap with other panels' ranges.
          */
         async function loadFileList() {
             try {
@@ -487,13 +544,22 @@
                     const sym = f.symbol || f.ticker || '?';
                     const tf  = f.timeframe || f.tf || '';
                     const rows = f.rows || f.row_count || '';
+                    const startTs = Number(f.start_ts);
+                    const endTs   = Number(f.end_ts);
+                    const dateStr = (Number.isFinite(startTs) && Number.isFinite(endTs))
+                        ? ' ' + fmtDate(startTs) + '→' + fmtDate(endTs) : '';
                     const label = '#' + id + ' ' + sym + (tf ? ' ' + tf : '')
-                        + (rows ? ' (' + Number(rows).toLocaleString() + ')' : '');
+                        + (rows ? ' (' + Number(rows).toLocaleString() + ')' : '')
+                        + dateStr;
                     const opt = document.createElement('option');
                     opt.value = id;
                     opt.textContent = label;
                     fileSel.appendChild(opt);
-                    window.__filesById[id] = { id: id, symbol: sym, timeframe: tf, rows: rows };
+                    window.__filesById[id] = {
+                        id: id, symbol: sym, timeframe: tf, rows: rows,
+                        startTs: Number.isFinite(startTs) ? startTs : null,
+                        endTs:   Number.isFinite(endTs)   ? endTs   : null,
+                    };
                 });
                 if (currentFileId && window.__filesById[currentFileId]) {
                     fileSel.value = currentFileId;
@@ -761,8 +827,29 @@
             // Changing the file is LOCAL to this iframe — it does NOT broadcast
             // a symbol-sync event. Use the shell's "Apply file to all" button
             // for that.
+            //
+            // v10.3: before loading, ask the parent shell whether the chosen
+            // file's date range overlaps with every other panel. If not, show
+            // a confirm() so the user can cancel before the load happens (and
+            // the misleading "no crosshair" symptom appears).
             fileSel.addEventListener('change', function (e) {
                 const newId = e.target.value || null;
+                if (newId && window.__filesById && window.__filesById[newId]) {
+                    const meta = window.__filesById[newId];
+                    if (Number.isFinite(meta.startTs) && Number.isFinite(meta.endTs)) {
+                        const conflict = checkPanelDateConflict(meta);
+                        if (conflict) {
+                            const proceed = confirm(conflict
+                                + '\n\nLoad anyway? Sync will silently no-op '
+                                + 'between this panel and the others until the '
+                                + 'date ranges actually overlap.');
+                            if (!proceed) {
+                                fileSel.value = currentFileId || '';
+                                return;
+                            }
+                        }
+                    }
+                }
                 currentFileId = newId;
                 loadDataInto(chart, newId, tfSel.value);
             });

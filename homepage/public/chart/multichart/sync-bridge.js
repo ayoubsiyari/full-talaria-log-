@@ -318,8 +318,19 @@
         });
 
         // 3) Symbol / data load — re-emit chart-state, NOT a sync event.
+        //    v10.3: also include firstBarMs/lastBarMs so the shell can detect
+        //    cross-panel date-range mismatches (different files covering
+        //    non-overlapping periods → crosshair sync visibly no-ops because
+        //    receiveCrosshairSync hides when synced time is outside view).
         global.addEventListener('chartDataLoaded', function (ev) {
             const d = ev.detail || {};
+            let firstBarMs = null, lastBarMs = null;
+            if (chart.data && chart.data.length > 0) {
+                const t0 = +chart.data[0].t;
+                const tN = +chart.data[chart.data.length - 1].t;
+                if (Number.isFinite(t0)) firstBarMs = t0 > 1e12 ? t0 : t0 * 1000;
+                if (Number.isFinite(tN)) lastBarMs  = tN > 1e12 ? tN : tN * 1000;
+            }
             try {
                 global.parent.postMessage({
                     type: 'chart-state',
@@ -328,6 +339,8 @@
                         symbol: d.symbol || chart.currentSymbol || null,
                         timeframe: d.timeframe || chart.currentTimeframe || null,
                         candleCount: chart.data ? chart.data.length : 0,
+                        firstBarMs: firstBarMs,
+                        lastBarMs: lastBarMs,
                     },
                 }, parentOrigin);
             } catch (_) {}

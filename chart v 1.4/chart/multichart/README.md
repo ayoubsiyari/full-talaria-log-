@@ -21,6 +21,12 @@ This sandbox lives **outside** the production chart code (`dist-v9/`, `talaria-d
 
 **v10 (2026-05-09):** Synthetic data (`sample-data.js`) was deleted. The sandbox now fetches real OHLC exclusively from FastAPI (`/api/files`, `/api/file/{id}/smart`). Each panel has its own file picker so different pairs can be displayed side by side.
 
+**v10.1 (2026-05-09):** Cross-ticker crosshair sync fix — `chart.receiveCrosshairSync` was monkey-patched to position the crosshair by **wall-clock time** (not bar index), so different-ticker panels stay aligned at the same minute even when their bars don't share start times.
+
+**v10.2 (2026-05-09):** Refined v10.1 — when the synced wall-clock time falls outside a panel's currently-visible window, the crosshair is now **hidden entirely** instead of clamped to the edge with reduced opacity (the clamp was visually misleading — it looked like the chart had jumped to its first/last candle).
+
+**v10.3 (2026-05-09):** Date-range overlap warning. Each iframe now reports its loaded `firstBarMs` / `lastBarMs` to the shell, and the `/api/files` endpoint returns each file's `start_ts` / `end_ts`. The shell shows an amber banner above the chart area whenever 2+ loaded panels have **non-overlapping** date ranges (so the user knows why crosshair / visible-range sync silently no-ops). The per-panel and broadcast file pickers also pop up a `confirm()` *before* loading a file that would not overlap with the other panels' current data.
+
 ---
 
 ## How to run
