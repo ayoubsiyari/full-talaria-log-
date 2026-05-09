@@ -170,9 +170,47 @@
         }, '*');
     } catch (_) {}
 
+    // ─── focus broadcast ───────────────────────────────────────────────
+    //
+    // Iframes are an event sink: pointerdown / mousedown that lands on
+    // this iframe's contentWindow does NOT bubble out to the parent
+    // document. Without an explicit signal the parent's MultichartGrid
+    // can never know "the user just clicked panel B" and the focused
+    // tile (which routes every topbar action — TF, file, indicator, …)
+    // would be stuck on whichever tile was focused last via parent-side
+    // interaction (typically host A).
+    //
+    // Solution: every pointerdown / mousedown / focusin inside the
+    // iframe posts `panel-focus` to the parent. The manager picks it up
+    // (via the new onPanelFocus opt hook) and updates focusedPanelId
+    // in the React tree.
+    //
+    // Coalesced via a 0ms timer: a single user click typically fires
+    // pointerdown + mousedown back-to-back; we only need to notify the
+    // parent ONCE per user action. The flag resets on the next tick.
+    var focusPending = false;
+    function notifyFocus() {
+        if (focusPending) return;
+        focusPending = true;
+        setTimeout(function () { focusPending = false; }, 0);
+        try {
+            global.parent.postMessage({
+                type:   'panel-focus',
+                source: panelId,
+            }, '*');
+        } catch (_) {}
+    }
+    // capture:true so we hear the event even if a deeper handler stops
+    // propagation. passive:true is fine because we never preventDefault.
+    global.addEventListener('pointerdown', notifyFocus, { capture: true, passive: true });
+    global.addEventListener('mousedown',   notifyFocus, { capture: true, passive: true });
+    // focusin covers keyboard focus shifts (tab into a chart input).
+    global.addEventListener('focusin',     notifyFocus, { capture: true, passive: true });
+
     global.MultichartCmdBridge = {
         panelId:      panelId,
         applyCommand: applyCommand,
+        notifyFocus:  notifyFocus,
     };
     log('installed');
 })(typeof window !== 'undefined' ? window : globalThis);

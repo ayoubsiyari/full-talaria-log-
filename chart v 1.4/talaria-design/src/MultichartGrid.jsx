@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260510T0500";
+const BRIDGE_VERSION = "20260510T0600";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -552,6 +552,16 @@ export default function MultichartGrid({
                         next.add(id);
                         return next;
                     });
+                },
+                // Phase 7.2.4: iframe-side `panel-focus` events bubble up
+                // here. Iframe events don't propagate to the parent DOM,
+                // so the cell <div>'s onMouseDownCapture never fires for
+                // clicks on B/C/D — we rely on the iframe to tell us
+                // explicitly via panel-cmd-bridge's focus broadcast.
+                onPanelFocus: function (id) {
+                    if (typeof setFocusedPanelId === "function") {
+                        setFocusedPanelId(id);
+                    }
                 },
             });
             managerRef.current = manager;

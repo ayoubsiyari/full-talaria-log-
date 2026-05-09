@@ -57,6 +57,16 @@
         this.onChartReady = (typeof opts.onChartReady === 'function')
             ? opts.onChartReady
             : function () {};
+        // Phase 7.2.4: fired with the panelId whenever a user action
+        // inside an iframe (pointerdown / mousedown / focusin) is
+        // reported via `panel-focus`. The React grid wires this to
+        // setFocusedPanelId so the topbar's per-panel command bus
+        // routes to the panel the user just clicked. Without it the
+        // user can never select B/C/D because iframe events are sealed
+        // inside the iframe and never bubble out to the parent.
+        this.onPanelFocus = (typeof opts.onPanelFocus === 'function')
+            ? opts.onPanelFocus
+            : function () {};
         this.iframeSrcBuilder = (typeof opts.iframeSrcBuilder === 'function')
             ? opts.iframeSrcBuilder
             : null;
@@ -478,6 +488,20 @@
                 // future versions may use it to flush queued commands.
                 this._log('info', 'panel-cmd-ready: ' + sourceId
                     + ' (cmds: ' + (msg.cmds || []).join(',') + ')');
+                return;
+
+            case 'panel-focus':
+                // Phase 7.2.4 selection: forwarded from panel-cmd-bridge
+                // when the user clicks (pointerdown / mousedown / focusin)
+                // anywhere inside this iframe. The React grid uses this
+                // to update focusedPanelId so subsequent topbar actions
+                // (TF, file, …) target this panel. Coalesced inside the
+                // iframe so we get at most one message per user action.
+                if (sourceId) {
+                    try { this.onPanelFocus(sourceId); } catch (e) {
+                        this._log('warn', 'onPanelFocus threw: ' + (e && e.message || e));
+                    }
+                }
                 return;
 
             case 'cmd-result':
