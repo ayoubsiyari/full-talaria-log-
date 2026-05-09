@@ -18246,8 +18246,9 @@ class Chart {
                 let timeStr;
                 const isDailyOrHigher = timeframeMs >= 86400000; // 1 day or more
                 if (isDailyOrHigher) {
-                    // Match x-axis format: "Apr 28" (no year)
-                    timeStr = `${month} ${day}`;
+                    // Daily/weekly/monthly: include year so the cursor label always
+                    // identifies which year the bar belongs to ("Apr 28, 2026").
+                    timeStr = `${month} ${day}, ${year}`;
                 } else {
                     timeStr = `${month} ${day}, ${year}, ${this._formatSessionClock(tzDate, true)}`;
                 }
@@ -20674,7 +20675,9 @@ class Chart {
             const year = tzDate.getUTCFullYear();
             let timeStr;
             if (timeframeMs >= 86400000) {
-                timeStr = `${month} ${day}`;
+                // Daily/weekly/monthly: include year so the cursor label always
+                // identifies which year the bar belongs to ("Apr 28, 2026").
+                timeStr = `${month} ${day}, ${year}`;
             } else {
                 timeStr = `${month} ${day}, ${year}, ${this._formatSessionClock(tzDate, true)}`;
             }
