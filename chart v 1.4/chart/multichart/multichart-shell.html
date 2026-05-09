@@ -274,7 +274,7 @@
             totalSize = prevSize + nextSize;
             e.preventDefault();
         });
-        global.addEventListener('mousemove', function (e) {
+        window.addEventListener('mousemove', function (e) {
             if (!dragging) return;
             const cur = (orient === 'col' ? e.clientX : e.clientY);
             const delta = cur - startPos;
@@ -289,9 +289,9 @@
             }
             // Force iframe content to react: the chart's chart.js has its own
             // ResizeObserver-equivalent that hooks `resize` and re-fits.
-            try { global.dispatchEvent(new Event('resize')); } catch (_) {}
+            try { window.dispatchEvent(new Event('resize')); } catch (_) {}
         });
-        global.addEventListener('mouseup', function () {
+        window.addEventListener('mouseup', function () {
             if (!dragging) return;
             dragging = false;
             divEl.classList.remove('dragging');

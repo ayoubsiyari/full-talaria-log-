@@ -172,6 +172,48 @@
         window.CHART_API_URL = '';
         // Disable the V9 settings DOM scrape (we're not in V9 here).
         window.__multichartSandbox = true;
+
+        // Minimal stubs for optional chart.js dependencies that V9/dist-v9 normally
+        // loads. These are wrapped in try/catch inside chart.js, but the unhandled
+        // ReferenceError pollutes the iframe's console and obscures real bugs.
+        // Each stub is the smallest no-op surface chart.js touches.
+        window.userStorage = {
+            // chart.js uses get/set with a default; return defaults so nothing changes
+            get:    function (_k, def) { return def; },
+            set:    function () { return true; },
+            remove: function () { return true; },
+            getJSON:function (_k, def) { return def; },
+            setJSON:function () { return true; },
+        };
+        // Drawing tools / replay / order / compare / indicators are NOT loaded in
+        // the sandbox. chart.js checks `typeof X !== 'undefined'` for most of these,
+        // but a couple of paths (initDrawingTools) call `new DrawingToolsManager(this)`
+        // unconditionally inside try/catch. Stub a minimal class so it constructs OK.
+        window.DrawingToolsManager = function (chart) {
+            this.chart = chart;
+            this.drawings = [];
+            this.currentTool = null;
+        };
+        window.DrawingToolsManager.prototype = {
+            saveDrawings:   function () {},
+            loadDrawings:   function () {},
+            renderDrawing:  function () {},
+            clearDrawings:  function () {},
+            destroy:        function () {},
+        };
+        // ReplaySystem stays undefined on purpose; chart.js logs a warning but the
+        // chart still works. To silence that one error too, provide a no-op:
+        window.ReplaySystem = function (chart) {
+            this.chart = chart;
+            this.isActive = false;
+        };
+        window.ReplaySystem.prototype = {
+            onTimeframeChange: function () {},
+            getReplayAutoScrollState: function () { return null; },
+        };
+        // OrderManager — only referenced when ReplaySystem.isActive, but stub it for safety:
+        window.OrderManager = function () {};
+        window.OrderManager.prototype = {};
     </script>
 
     <!-- engine -->
