@@ -10,7 +10,7 @@
 <div class="app">
 
     <header class="topbar">
-        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T13:25 (v9 — real-data toggle wired to /api/file/*/smart) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
+        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T13:30 (v9.1 — appendLog tolerant + host-log surfaced) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
 
         <div class="group">
             <label>Layout</label>
@@ -76,8 +76,8 @@
 </div>
 
 <!-- Cache-busting version query string. Bump on any sandbox script change. -->
-<script src="engine-api-guards.js?v=20260509T1325"></script>
-<script src="multichart-manager.js?v=20260509T1325"></script>
+<script src="engine-api-guards.js?v=20260509T1330"></script>
+<script src="multichart-manager.js?v=20260509T1330"></script>
 <script>
 (function () {
     const chartsArea = document.getElementById('charts-area');
@@ -133,15 +133,26 @@
     const chartStates = {};
 
     function appendLog(entry) {
+        // Accept either a string ("drag start ...") OR an entry object
+        // ({ts, level, text}). Earlier code paths call appendLog with bare
+        // strings (divider drag handlers), which used to throw RangeError on
+        // `new Date(undefined).toISOString()`.
+        if (typeof entry === 'string') {
+            entry = { ts: Date.now(), level: 'info', text: entry };
+        }
+        const ts = Number.isFinite(entry && entry.ts) ? entry.ts : Date.now();
+        const level = (entry && entry.level) || 'info';
+        const text  = (entry && entry.text) || '';
         const div = document.createElement('div');
-        div.className = 'row ' + entry.level;
-        const ts = new Date(entry.ts).toISOString().slice(11, 23);
-        div.innerHTML = '<span class="ts">' + ts + '</span>'
-                      + '[' + entry.level.toUpperCase() + '] '
-                      + escapeHtml(entry.text);
+        div.className = 'row ' + level;
+        let tsStr;
+        try { tsStr = new Date(ts).toISOString().slice(11, 23); }
+        catch (_) { tsStr = '--:--:--.---'; }
+        div.innerHTML = '<span class="ts">' + tsStr + '</span>'
+                      + '[' + level.toUpperCase() + '] '
+                      + escapeHtml(text);
         logEl.appendChild(div);
         logEl.scrollTop = logEl.scrollHeight;
-        // Cap log size to avoid unbounded growth during stress tests.
         while (logEl.childElementCount > 1500) logEl.removeChild(logEl.firstChild);
     }
 

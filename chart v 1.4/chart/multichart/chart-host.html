@@ -267,9 +267,9 @@
     <script src="../chart.js"></script>
 
     <!-- sandbox-only modules. Cache-busting query string — bump on any sandbox change. -->
-    <script src="./engine-api-guards.js?v=20260509T1325"></script>
-    <script src="./sample-data.js?v=20260509T1325"></script>
-    <script src="./sync-bridge.js?v=20260509T1325"></script>
+    <script src="./engine-api-guards.js?v=20260509T1330"></script>
+    <script src="./sample-data.js?v=20260509T1330"></script>
+    <script src="./sync-bridge.js?v=20260509T1330"></script>
 
     <script>
     (function () {
@@ -289,6 +289,23 @@
             + (useReal ? ' (real)' : '');
 
         /**
+         * Send a diagnostic line up to the parent shell so it appears in the
+         * bottom log even if the iframe's own console isn't open. Iframe
+         * messages of this shape are NOT sync events — the manager ignores
+         * unknown msg.type, but the shell's own message handler picks them up.
+         */
+        function reportToShell(level, text) {
+            try {
+                window.parent.postMessage({
+                    type: 'host-log', source: chartId, level: level,
+                    text: '[host:' + chartId + '] ' + text,
+                }, '*');
+            } catch (_) {}
+            (level === 'error' ? console.error : console.log).call(console,
+                '[chart-host:' + chartId + ']', text);
+        }
+
+        /**
          * Fetch a window of OHLC candles from FastAPI's /smart endpoint —
          * exact same query shape chart.js v9 builds in `_buildSmartWindowParams`.
          * Server returns { candles: [{t,o,h,l,c,v}, ...] } with t in either
@@ -302,19 +319,32 @@
                 response_format: 'candles',
             });
             const url = '/api/file/' + encodeURIComponent(fid) + '/smart?' + qs.toString();
+            reportToShell('info', 'fetching ' + url);
             const resp = await fetch(url, { credentials: 'include', cache: 'no-store' });
-            if (!resp.ok) throw new Error('HTTP ' + resp.status + ' on ' + url);
+            if (!resp.ok) {
+                const body = await resp.text().catch(() => '');
+                throw new Error('HTTP ' + resp.status + ' on ' + url
+                    + ' — body: ' + body.slice(0, 120));
+            }
             const ct = (resp.headers.get('content-type') || '').toLowerCase();
             if (ct && !ct.includes('json')) {
                 const txt = await resp.text().catch(() => '');
-                throw new Error('Expected JSON, got ' + (ct || 'unknown') + ' — ' + txt.slice(0, 80));
+                throw new Error('Expected JSON, got ' + (ct || 'unknown')
+                    + ' — body: ' + txt.slice(0, 120));
             }
             const data = await resp.json();
             const raw = (data && (data.candles || data.data)) || [];
+            if (!Array.isArray(raw)) {
+                throw new Error('Response missing candles[] — keys: '
+                    + Object.keys(data || {}).join(','));
+            }
+            reportToShell('info', '/smart returned ' + raw.length
+                + ' raw rows for tf=' + tf + ' (limit=5000, anchor=end)');
             const out = [];
+            let dropped = 0;
             for (let i = 0; i < raw.length; i++) {
                 const c = raw[i];
-                if (!c || typeof c !== 'object') continue;
+                if (!c || typeof c !== 'object') { dropped++; continue; }
                 let t = Number(c.t ?? c.time);
                 const o = Number(c.o ?? c.open);
                 const h = Number(c.h ?? c.high);
@@ -326,8 +356,12 @@
                 if (Number.isFinite(t) && Number.isFinite(o) && Number.isFinite(h)
                  && Number.isFinite(l) && Number.isFinite(cl)) {
                     out.push({ t, o, h, l, c: cl, v });
+                } else {
+                    dropped++;
                 }
             }
+            reportToShell('info', 'normalised ' + out.length + ' candles, dropped '
+                + dropped + ' invalid rows');
             return out;
         }
 

@@ -248,6 +248,12 @@
                     'guard self-test ' + sourceId + ': ' + (msg.ok ? 'PASS' : 'FAIL — ' + (msg.failures || []).join('; ')));
                 return;
 
+            case 'host-log':
+                // Diagnostic line forwarded from inside an iframe (chart-host).
+                // Useful for surfacing real-data fetch errors, timeouts, etc.
+                this._log(msg.level || 'info', msg.text || '');
+                return;
+
             case 'crosshair':
             case 'crosshair-clear':
             case 'visibleRange':
