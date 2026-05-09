@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Multichart Sandbox — Talaria</title>
-    <link rel="stylesheet" href="multichart.css" />
+    <link rel="stylesheet" href="multichart.css?v=20260509T1715" />
 </head>
 <body>
 <div class="app">
 
     <header class="topbar">
-        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T17:10 (v10.4 — collapsible bottom log) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
+        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T17:15 (v10.4.1 — collapse uses inline styles, CSS cache-busted) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
 
         <div class="group">
             <label>Layout</label>
@@ -594,30 +594,47 @@
     });
 
     // Show/hide the bottom log + per-chart status panel. State persisted in
-    // localStorage so it survives reloads. When the panel is hidden, the
-    // chart area gets the freed vertical space (CSS handles the grid swap
-    // via the .log-collapsed class on .app). Iframes get a window 'resize'
-    // dispatched after the toggle so each chart's price-axis recomputes.
+    // localStorage so it survives reloads.
+    //
+    // Belt-and-braces approach: we BOTH toggle a `.log-collapsed` class on
+    // .app (semantic, matches CSS rule in multichart.css) AND set inline
+    // styles on .app and .bottom directly. The inline style is what
+    // actually moves the layout — it can never be defeated by a stale
+    // cached CSS file. The class is kept in sync for future CSS-only
+    // tweaks (e.g. transition animations) without breaking older deploys.
     (function () {
         const appEl = document.querySelector('.app');
+        const bottomEl = document.querySelector('.bottom');
         const btn = document.getElementById('toggle-log');
         const KEY = 'multichart.logCollapsed';
+
+        // Save the original inline-style values so toggling back restores
+        // exactly the design-system grid (no hard-coded reset).
+        const ORIG_GRID_ROWS = '';     // empty string = "use stylesheet value"
+        const ORIG_BOTTOM_DISPLAY = '';
+
         function apply(collapsed) {
             if (collapsed) {
                 appEl.classList.add('log-collapsed');
+                appEl.style.gridTemplateRows = '44px auto 1fr 0px';
+                bottomEl.style.display = 'none';
                 btn.textContent = 'Show log';
             } else {
                 appEl.classList.remove('log-collapsed');
+                appEl.style.gridTemplateRows = ORIG_GRID_ROWS;
+                bottomEl.style.display = ORIG_BOTTOM_DISPLAY;
                 btn.textContent = 'Hide log';
             }
-            // Notify iframes that their available height changed so each
-            // chart's price-axis recomputes (per Step 5.1 — every container
-            // resize must trigger a price-axis recompute).
+            // Notify iframes their available height changed so each chart's
+            // price-axis recomputes (per Step 5.1 — every container resize
+            // must trigger a price-axis recompute).
             try { window.dispatchEvent(new Event('resize')); } catch (_) {}
         }
+
         let initial = false;
         try { initial = localStorage.getItem(KEY) === '1'; } catch (_) {}
         apply(initial);
+
         btn.addEventListener('click', function () {
             const next = !appEl.classList.contains('log-collapsed');
             apply(next);

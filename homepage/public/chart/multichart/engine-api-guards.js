@@ -250,7 +250,7 @@
     }
 
     global.MultichartGuards = {
-        VERSION: '2026-05-09T17:10-v10.4',  // bump on any guard semantic change
+        VERSION: '2026-05-09T17:15-v10.4.1',  // bump on any guard semantic change
         FORBIDDEN_SYNC_FIELDS,
         snapshotPriceState,
         diffPriceState,
