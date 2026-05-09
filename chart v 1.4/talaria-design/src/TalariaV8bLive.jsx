@@ -3451,6 +3451,13 @@ const TalariaV8bLive = () => {
   // WeakMap so each focused tile keeps its own mapping (multi-panel).
   const indicatorMapsByChartRef = useRef(null); // WeakMap<object, Record<string, string>> | null
 
+  // Phase 7.2.4 multichart counterpart: per-PANEL-ID indicator map keyed
+  // by string panel id ("A" / "B" / "C" / "D"). We can't use a WeakMap
+  // here because iframe panels live in a different document and we
+  // identify them by their stable panel id, not a JS object reference.
+  // Map<panelId, Record<v9Id, chartId | "__pending__">>
+  const panelIndicatorMapsRef = useRef(null);
+
   const chartTfToV9 = (cTf) => {
     if (!cTf) return null;
     const s = String(cTf).toLowerCase().trim();
@@ -5100,6 +5107,112 @@ const TalariaV8bLive = () => {
       return m;
     };
 
+    // ─── Phase 7.2.4 multichart branch ──────────────────────────────────
+    //
+    // When MultichartGrid is mounted, per-panel indicator state lives in
+    // panelIndicatorMapsRef (Map<panelId, Object<v9Id, chartId>>). The
+    // toolbar's `indActive` is treated as the FOCUSED PANEL's indicator
+    // list — when focus changes we mirror the new panel's chips into
+    // `indActive` (see syncIndUiFromMultichartFocus below); when the
+    // user toggles a chip we diff against the focused panel's map and
+    // route addIndicator / removeIndicator commands to that panel only.
+    // This means each panel can carry a different indicator set
+    // (Panel A: SMA + RSI; Panel B: just MACD; …) and the toolbar
+    // always reflects whichever panel is focused.
+    const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+    if (grid && typeof grid.runCommand === "function") {
+      const focused = grid.getFocusedPanelId() || "A";
+
+      if (!panelIndicatorMapsRef.current) {
+        panelIndicatorMapsRef.current = new Map();
+      }
+      const allMaps = panelIndicatorMapsRef.current;
+      let panelMap = allMaps.get(focused);
+      if (!panelMap) { panelMap = Object.create(null); allMaps.set(focused, panelMap); }
+
+      const nowSet  = new Set(indActive);
+      const prevSet = new Set(Object.keys(panelMap));
+
+      // Remove indicators from focused panel that are no longer in the
+      // toolbar's active set.
+      for (const v9Id of prevSet) {
+        if (nowSet.has(v9Id)) continue;
+        const chartId = panelMap[v9Id];
+        delete panelMap[v9Id];
+        if (chartId) {
+          grid.runCommand("removeIndicator", { chartId }, { panelId: focused })
+              .catch((err) => console.warn("[V9 ind multi] removeIndicator failed for", v9Id, err));
+        }
+      }
+      // Add new indicators to focused panel.
+      for (const v9Id of nowSet) {
+        if (prevSet.has(v9Id)) continue;
+        const type = ID_TO_TYPE[v9Id];
+        if (!type) {
+          console.warn("[V9 ind multi] indicator", v9Id, "is not yet supported by chart.js");
+          continue;
+        }
+        // Reserve the slot synchronously so a fast double-toggle doesn't
+        // double-add. We replace the placeholder with the real chartId
+        // when the cmd resolves.
+        panelMap[v9Id] = "__pending__";
+        grid.runCommand("addIndicator", { type }, { panelId: focused })
+            .then((data) => {
+              if (panelMap[v9Id] !== "__pending__") return; // already removed
+              if (data && data.chartId) panelMap[v9Id] = data.chartId;
+              else delete panelMap[v9Id];
+            })
+            .catch((err) => {
+              console.warn("[V9 ind multi] addIndicator failed for", v9Id, err);
+              if (panelMap[v9Id] === "__pending__") delete panelMap[v9Id];
+            });
+      }
+
+      // When the user clicks a different multichart panel, mirror that
+      // panel's actual indicator list back into `indActive` so the
+      // toolbar chips reflect the focused panel. Skip if the focused
+      // panel id hasn't changed (no-op for chart-state updates).
+      const syncIndUiFromMultichartFocus = () => {
+        if (cancelled) return;
+        const g = window.__multichartGrid;
+        if (!g || typeof g.getPanelIndicators !== "function") return;
+        const id = g.getFocusedPanelId() || "A";
+        // Reusing the same TYPE_TO_V9 reverse-lookup as legacy.
+        const TYPE_TO_V9 = {};
+        for (const [v9Id, t] of Object.entries(ID_TO_TYPE)) TYPE_TO_V9[t] = v9Id;
+        g.getPanelIndicators(id)
+          .then((items) => {
+            if (cancelled) return;
+            let map = allMaps.get(id);
+            if (!map) { map = Object.create(null); allMaps.set(id, map); }
+            // Wipe the stored map and rebuild from the panel's truth so
+            // we drop stale __pending__ slots and indicators that were
+            // closed via the chart's own UI.
+            for (const k of Object.keys(map)) delete map[k];
+            const next = [];
+            for (const it of items) {
+              const v9 = it.type ? TYPE_TO_V9[it.type] : null;
+              if (v9 && it.id) {
+                map[v9] = it.id;
+                if (!next.includes(v9)) next.push(v9);
+              }
+            }
+            setIndActive((prev) => {
+              if (prev.length === next.length && prev.every((x, i) => x === next[i])) return prev;
+              return next;
+            });
+          })
+          .catch(() => {});
+      };
+
+      window.addEventListener("multichartFocusChanged", syncIndUiFromMultichartFocus);
+      return () => {
+        cancelled = true;
+        window.removeEventListener("multichartFocusChanged", syncIndUiFromMultichartFocus);
+      };
+    }
+    // ─── /Phase 7.2.4 multichart branch ─────────────────────────────────
+
     const apply = () => {
       if (cancelled) return;
       const chart =
@@ -5217,7 +5330,11 @@ const TalariaV8bLive = () => {
       window.removeEventListener("panelsCreated", onPanelOrData);
       window.removeEventListener("chartDataLoaded", onPanelOrData);
     };
-  }, [indActive]);
+    // Also re-run when the multichart grid mounts/unmounts (layoutPanels.n
+    // crossing 1 ↔ N) so we switch between the legacy single-chart path
+    // and the multichart per-panel routing branch above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indActive, layoutPanels.n]);
 
   const [indSearch, setIndSearch] = useState("");
   const [indPos, setIndPos] = useState({ x: 0, y: 0 });
@@ -7451,6 +7568,43 @@ const TalariaV8bLive = () => {
     let cancelled = false; let n = 0;
     const apply = () => {
       if (cancelled) return;
+
+      // Phase 7.2.4 — multichart routing. If MultichartGrid is mounted,
+      // route the active drawing tool to the FOCUSED panel only. This
+      // means each panel can be in a different drawing mode at once
+      // (Panel A armed for trend lines while Panel B has cursor active).
+      // Falls back to legacy single-chart path when no grid is mounted.
+      const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+      if (grid && typeof grid.runCommand === "function") {
+        // Editing an existing drawing through the V9 settings panel:
+        // never arm a draw tool, just clear so the chart canvas is
+        // safe to click without starting a new stroke.
+        if (editingDrawingRef.current) {
+          grid.runCommand("clearActiveDrawingTool", null).catch(() => {});
+          return;
+        }
+        // toolbar.show sync-back to crosshair (a shape was just selected
+        // and the V9 floating bar told us): suppress unless the user is
+        // explicitly arming a real tool.
+        if (v9SelectionToolbarSyncRef.current) {
+          v9SelectionToolbarSyncRef.current = false;
+          const legacy = resolveLegacyTool();
+          if (!legacy) {
+            grid.runCommand("clearActiveDrawingTool", null).catch(() => {});
+            return;
+          }
+          // fall through → arm real tool
+        }
+        const legacy = resolveLegacyTool();
+        if (!legacy) {
+          grid.runCommand("clearActiveDrawingTool", null).catch(() => {});
+        } else {
+          grid.runCommand("setActiveDrawingTool", { tool: legacy })
+              .catch((err) => console.warn("[V9 tool bridge multi] setTool failed:", legacy, err));
+        }
+        return;
+      }
+
       const ch =
         typeof window.getActiveChart === "function"
           ? window.getActiveChart()
@@ -7510,14 +7664,22 @@ const TalariaV8bLive = () => {
     window.addEventListener("panelSelected", onPanelSelected);
     window.addEventListener("panelsCreated", onPanelSelected);
     window.addEventListener("chartDataLoaded", onPanelSelected);
+    // Phase 7.2.4: when the user clicks a different multichart panel,
+    // re-apply the current drawing tool to that panel so the toolbar
+    // selection follows focus (matching single-chart UX where the
+    // active tool is always the user's last pick).
+    window.addEventListener("multichartFocusChanged", onPanelSelected);
     return () => {
       cancelled = true;
       window.removeEventListener("panelSelected", onPanelSelected);
       window.removeEventListener("panelsCreated", onPanelSelected);
       window.removeEventListener("chartDataLoaded", onPanelSelected);
+      window.removeEventListener("multichartFocusChanged", onPanelSelected);
     };
+    // layoutPanels.n is in deps so we re-run when the multichart grid
+    // mounts/unmounts (1 ↔ N panels) and pick the right routing branch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, groupSelected]);
+  }, [tool, groupSelected, layoutPanels.n]);
 
   // Keep V9 left rail in sync when legacy drawing mode ends: (1) finalizeDrawing
   // clears the tool after a completed stroke; (2) clearTool runs in many paths

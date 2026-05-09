@@ -351,49 +351,73 @@
 
     /**
      * Phase 7.2.4 — send a per-panel COMMAND (timeframe change, file
-     * load, etc.) to a single iframe panel. Host (in-process) panels are
-     * NOT routed through here — the React grid invokes window.chart
-     * directly for the host because it lives in the same window and
-     * postMessage would be a needless detour.
+     * load, drawing tool, indicator add/remove, …) to a single iframe
+     * panel. Host (in-process) panels are NOT routed through here —
+     * the React grid invokes window.chart directly for the host
+     * because it lives in the same window and postMessage would be a
+     * needless detour.
      *
      * The receiving iframe runs panel-cmd-bridge.js (loaded by the
      * dist-v9 ?multichart=1 shim) which picks up `type:'panel-cmd'`
      * messages and applies them via its local window.chart.
      *
+     * Returns a Promise that resolves with the iframe's reply payload
+     * (cmd-result.data, may be null) on success, or rejects with the
+     * iframe's error message. Times out after 8 s — long enough for
+     * loadFile + applyIndicator on slow networks but short enough to
+     * fail loud rather than hang forever.
+     *
      * @param {string} panelId    e.g. 'B', 'C', 'D'
      * @param {string} cmd        'setTimeframe' | 'loadFile' | …
-     * @param {object} [args]     command-specific args (tf, fileId, …)
-     * @returns {string|null}     requestId (for matching cmd-result), or
-     *                            null if the panel is unknown / host
+     * @param {object} [args]     command-specific args
+     * @returns {Promise<any>}    resolves with cmd-result.data, rejects on error
      */
     MultichartManager.prototype.sendCommand = function (panelId, cmd, args) {
-        const c = this.charts.get(panelId);
-        if (!c) {
-            this._log('warn', 'sendCommand: unknown panel ' + panelId);
-            return null;
-        }
-        if (c.host) {
-            // Host panel: the React grid handles host commands via
-            // direct window.chart calls. Don't route through here.
-            this._log('warn', 'sendCommand: ignored for host panel ' + panelId);
-            return null;
-        }
-        const requestId = 'cmd-' + Date.now() + '-' + (Math.random() * 1e6 | 0).toString(16);
-        const msg = {
-            type:      'panel-cmd',
-            target:    panelId,
-            cmd:       cmd,
-            args:      args || {},
-            requestId: requestId,
-        };
-        try {
-            c.frame.contentWindow.postMessage(msg, '*');
-            this._log('out', 'panel-cmd ' + cmd + ' → ' + panelId);
-            return requestId;
-        } catch (e) {
-            this._log('warn', 'sendCommand fail ' + panelId + ': ' + e.message);
-            return null;
-        }
+        const self = this;
+        return new Promise(function (resolve, reject) {
+            const c = self.charts.get(panelId);
+            if (!c) {
+                self._log('warn', 'sendCommand: unknown panel ' + panelId);
+                reject(new Error('unknown panel ' + panelId));
+                return;
+            }
+            if (c.host) {
+                self._log('warn', 'sendCommand: ignored for host panel ' + panelId);
+                reject(new Error('host panel does not accept panel-cmd; use direct call'));
+                return;
+            }
+            if (!self._pendingCmds) self._pendingCmds = new Map();
+            const requestId = 'cmd-' + Date.now() + '-' + (Math.random() * 1e6 | 0).toString(16);
+            const timeout = setTimeout(function () {
+                if (self._pendingCmds.has(requestId)) {
+                    self._pendingCmds.delete(requestId);
+                    reject(new Error('panel-cmd timeout: ' + cmd + ' → ' + panelId));
+                }
+            }, 8000);
+            self._pendingCmds.set(requestId, {
+                resolve: resolve,
+                reject:  reject,
+                timeout: timeout,
+                cmd:     cmd,
+                panelId: panelId,
+            });
+            const msg = {
+                type:      'panel-cmd',
+                target:    panelId,
+                cmd:       cmd,
+                args:      args || {},
+                requestId: requestId,
+            };
+            try {
+                c.frame.contentWindow.postMessage(msg, '*');
+                self._log('out', 'panel-cmd ' + cmd + ' → ' + panelId);
+            } catch (e) {
+                clearTimeout(timeout);
+                self._pendingCmds.delete(requestId);
+                self._log('warn', 'sendCommand fail ' + panelId + ': ' + e.message);
+                reject(e);
+            }
+        });
     };
 
     /** Broadcast a guard self-test request to every chart. */
@@ -504,15 +528,26 @@
                 }
                 return;
 
-            case 'cmd-result':
-                // Phase 7.2.4 reply from panel-cmd-bridge.
+            case 'cmd-result': {
+                // Phase 7.2.4 reply from panel-cmd-bridge. Route back to
+                // the Promise returned by sendCommand so the React-side
+                // command bus can chain on the result (e.g. capture the
+                // chartId returned from addIndicator).
                 if (msg.ok) {
                     this._log('info', 'cmd-result OK ' + sourceId + ' req=' + msg.requestId);
                 } else {
                     this._log('warn', 'cmd-result FAIL ' + sourceId
                         + ' req=' + msg.requestId + ' err=' + (msg.error || 'unknown'));
                 }
+                if (this._pendingCmds && this._pendingCmds.has(msg.requestId)) {
+                    const pending = this._pendingCmds.get(msg.requestId);
+                    this._pendingCmds.delete(msg.requestId);
+                    clearTimeout(pending.timeout);
+                    if (msg.ok) pending.resolve(msg.data);
+                    else        pending.reject(new Error(msg.error || 'cmd failed'));
+                }
                 return;
+            }
 
             case 'visibleRange':
                 // v10.5.0: also stash the range on the chart record so the

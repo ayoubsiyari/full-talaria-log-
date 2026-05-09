@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260510T0600";
+const BRIDGE_VERSION = "20260510T0700";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -993,51 +993,142 @@ export default function MultichartGrid({
     useEffect(() => {
         const isMounted = true;
 
+        // applyHostCommand always RETURNS A PROMISE so callers (and the
+        // iframe path via manager.sendCommand) share a single interface:
+        //   runCommand(cmd, args) → Promise<data|null>
+        // Resolved value mirrors the iframe's cmd-result.data shape so
+        // callers can `await runCommand("addIndicator", …)` and read
+        // .chartId regardless of whether the focused panel is the host
+        // or an iframe.
         function applyHostCommand(cmd, args) {
             const ch = window.chart;
-            if (!ch) return false;
+            if (!ch) return Promise.reject(new Error("host chart not ready"));
             args = args || {};
             try {
                 switch (cmd) {
-                    case "setTimeframe":
-                        if (typeof ch.setTimeframe !== "function") return false;
-                        if (!args.tf) return false;
-                        if (ch.currentTimeframe === args.tf) return true;
-                        ch.setTimeframe(args.tf);
-                        return true;
-                    case "loadFile":
-                        if (typeof ch.loadFileData !== "function") return false;
-                        if (args.fileId === undefined || args.fileId === null || args.fileId === "") return false;
-                        ch.loadFileData(String(args.fileId));
-                        return true;
+                    case "setTimeframe": {
+                        if (typeof ch.setTimeframe !== "function") {
+                            return Promise.reject(new Error("chart.setTimeframe is not a function"));
+                        }
+                        if (!args.tf) return Promise.reject(new Error("setTimeframe: missing tf"));
+                        if (ch.currentTimeframe !== args.tf) ch.setTimeframe(args.tf);
+                        return Promise.resolve(null);
+                    }
+                    case "loadFile": {
+                        if (typeof ch.loadFileData !== "function") {
+                            return Promise.reject(new Error("chart.loadFileData is not a function"));
+                        }
+                        if (args.fileId === undefined || args.fileId === null || args.fileId === "") {
+                            return Promise.reject(new Error("loadFile: missing fileId"));
+                        }
+                        const r = ch.loadFileData(String(args.fileId));
+                        if (r && typeof r.then === "function") return r.then(() => null);
+                        return Promise.resolve(null);
+                    }
+                    case "setActiveDrawingTool": {
+                        const dm = ch.drawingManager;
+                        if (!dm) return Promise.reject(new Error("drawingManager not available"));
+                        const tool = args.tool ? String(args.tool) : null;
+                        if (!tool) {
+                            if (typeof dm.clearTool === "function") dm.clearTool();
+                            else dm.currentTool = null;
+                            return Promise.resolve(null);
+                        }
+                        if (typeof dm.setTool !== "function") {
+                            return Promise.reject(new Error("drawingManager.setTool is not a function"));
+                        }
+                        if (dm.currentTool !== tool) dm.setTool(tool);
+                        return Promise.resolve(null);
+                    }
+                    case "clearActiveDrawingTool": {
+                        const dmc = ch.drawingManager;
+                        if (!dmc) return Promise.resolve(null);
+                        if (typeof dmc.clearTool === "function") dmc.clearTool();
+                        else dmc.currentTool = null;
+                        return Promise.resolve(null);
+                    }
+                    case "addIndicator": {
+                        const type = String(args.type || "").trim();
+                        if (!type) return Promise.reject(new Error("addIndicator: missing type"));
+                        if (typeof ch.addIndicator !== "function") {
+                            return Promise.reject(new Error("chart.addIndicator is not a function"));
+                        }
+                        if (!ch.data || ch.data.length === 0) {
+                            return Promise.reject(new Error("chart data not loaded yet"));
+                        }
+                        const ind = ch.addIndicator(type);
+                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                        try { if (typeof ch.updateOHLCIndicators === "function") ch.updateOHLCIndicators(); } catch (_) {}
+                        return Promise.resolve({
+                            chartId: (ind && ind.id) ? ind.id : null,
+                            type:    type,
+                        });
+                    }
+                    case "removeIndicator": {
+                        const indId = args.chartId;
+                        if (indId === undefined || indId === null || indId === "") {
+                            return Promise.reject(new Error("removeIndicator: missing chartId"));
+                        }
+                        if (typeof ch.removeIndicator !== "function") {
+                            return Promise.reject(new Error("chart.removeIndicator is not a function"));
+                        }
+                        ch.removeIndicator(indId);
+                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                        try { if (typeof ch.updateOHLCIndicators === "function") ch.updateOHLCIndicators(); } catch (_) {}
+                        return Promise.resolve(null);
+                    }
+                    case "getIndicators": {
+                        const list = (ch.indicators && Array.isArray(ch.indicators.active))
+                            ? ch.indicators.active : [];
+                        return Promise.resolve({
+                            indicators: list.map((i) => ({ id: i.id, type: i.type || i.name || null })),
+                        });
+                    }
                     default:
-                        console.warn("[MultichartGrid] unknown host cmd:", cmd);
-                        return false;
+                        return Promise.reject(new Error("unknown host cmd: " + cmd));
                 }
             } catch (e) {
-                console.warn("[MultichartGrid] host cmd failed:", cmd, e);
-                return false;
+                return Promise.reject(e);
             }
         }
 
-        function runCommand(cmd, args) {
-            const target = focusedPanelIdRef.current || HOST_PANEL_ID;
+        // runCommand routes to either the host (in-process) or one of
+        // the iframes via manager.sendCommand. Always returns a Promise
+        // resolving with the cmd-result.data payload (may be null) or
+        // rejecting with the underlying error message.
+        //
+        // Optional opts.panelId pins the command to a specific panel
+        // (used by per-panel persistence flows). Without opts.panelId
+        // the bus targets the currently focused panel.
+        function runCommand(cmd, args, opts) {
+            const target = (opts && opts.panelId)
+                ? opts.panelId
+                : (focusedPanelIdRef.current || HOST_PANEL_ID);
             if (target === HOST_PANEL_ID) return applyHostCommand(cmd, args);
             const mgr = managerRef.current;
-            if (!mgr || typeof mgr.sendCommand !== "function") return false;
-            const reqId = mgr.sendCommand(target, cmd, args);
-            return !!reqId;
+            if (!mgr || typeof mgr.sendCommand !== "function") {
+                return Promise.reject(new Error("manager not ready"));
+            }
+            return mgr.sendCommand(target, cmd, args);
+        }
+
+        // Helper: query indicators on the focused (or specified) panel.
+        // Returns Promise<Array<{id, type}>>. Used by TalariaV8bLive on
+        // focus change to mirror the toolbar chips to the focused panel.
+        function getPanelIndicators(panelId) {
+            const target = panelId || focusedPanelIdRef.current || HOST_PANEL_ID;
+            return runCommand("getIndicators", null, { panelId: target })
+                .then((d) => (d && Array.isArray(d.indicators)) ? d.indicators : []);
         }
 
         window.__multichartGrid = {
             isMounted,
             runCommand,
+            getPanelIndicators,
             getFocusedPanelId: () => focusedPanelIdRef.current,
         };
 
         return () => {
-            // Only clear if no later mount has overwritten us (defensive
-            // against StrictMode double-invoke or unrelated remounts).
             if (window.__multichartGrid && window.__multichartGrid.runCommand === runCommand) {
                 delete window.__multichartGrid;
             }

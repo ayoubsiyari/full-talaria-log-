@@ -62,7 +62,7 @@
         } catch (_) {}
     }
 
-    function reportResult(requestId, ok, error) {
+    function reportResult(requestId, ok, error, data) {
         if (!requestId) return;
         try {
             global.parent.postMessage({
@@ -71,6 +71,7 @@
                 requestId: requestId,
                 ok:        !!ok,
                 error:     error || null,
+                data:      (data === undefined) ? null : data,
             }, '*');
         } catch (_) {}
     }
@@ -127,12 +128,88 @@
                     return;
                 }
 
+                // ─── drawing tool select / clear ───────────────────────
+                //
+                // Parent's left rail picks a tool (Trend Line, Fib, …)
+                // and resolves it to a chart.js legacy id (e.g. 'trendline',
+                // 'fibretracement'). Routing it here means each panel can
+                // be in a different drawing mode at once — Panel A is
+                // armed for trend lines while Panel B has cursor active.
+                case 'setActiveDrawingTool': {
+                    var dm = ch.drawingManager;
+                    if (!dm) throw new Error('drawingManager not available');
+                    var tool = args.tool ? String(args.tool) : null;
+                    if (!tool) {
+                        if (typeof dm.clearTool === 'function') dm.clearTool();
+                        else dm.currentTool = null;
+                        return;
+                    }
+                    if (typeof dm.setTool !== 'function') {
+                        throw new Error('drawingManager.setTool is not a function');
+                    }
+                    if (dm.currentTool !== tool) dm.setTool(tool);
+                    return;
+                }
+                case 'clearActiveDrawingTool': {
+                    var dmc = ch.drawingManager;
+                    if (!dmc) return;
+                    if (typeof dmc.clearTool === 'function') dmc.clearTool();
+                    else dmc.currentTool = null;
+                    return;
+                }
+
+                // ─── indicators ────────────────────────────────────────
+                //
+                // Per-panel indicator add/remove. Parent maintains a
+                // panelId → (v9Id → chartId) map and this command
+                // returns the freshly assigned chartId so the parent
+                // can later issue removeIndicator without guessing.
+                case 'addIndicator': {
+                    var indType = String(args.type || '').trim();
+                    if (!indType) throw new Error('addIndicator: missing args.type');
+                    if (typeof ch.addIndicator !== 'function') {
+                        throw new Error('chart.addIndicator is not a function');
+                    }
+                    if (!ch.data || ch.data.length === 0) {
+                        // chart.js's addIndicator alerts and bails when data is empty;
+                        // surface the failure cleanly so the parent can retry.
+                        throw new Error('chart data not loaded yet');
+                    }
+                    var ind = ch.addIndicator(indType);
+                    try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
+                    try { if (typeof ch.updateOHLCIndicators === 'function') ch.updateOHLCIndicators(); } catch (_) {}
+                    return { chartId: (ind && ind.id) ? ind.id : null, type: indType };
+                }
+                case 'removeIndicator': {
+                    var indId = args.chartId;
+                    if (indId === undefined || indId === null || indId === '') {
+                        throw new Error('removeIndicator: missing args.chartId');
+                    }
+                    if (typeof ch.removeIndicator !== 'function') {
+                        throw new Error('chart.removeIndicator is not a function');
+                    }
+                    ch.removeIndicator(indId);
+                    try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
+                    try { if (typeof ch.updateOHLCIndicators === 'function') ch.updateOHLCIndicators(); } catch (_) {}
+                    return;
+                }
+                // List the panel's currently-mounted indicators. Used by
+                // the parent on focus change to mirror the toolbar chips.
+                case 'getIndicators': {
+                    var list = (ch.indicators && Array.isArray(ch.indicators.active))
+                        ? ch.indicators.active
+                        : [];
+                    var items = list.map(function (i) {
+                        return { id: i.id, type: i.type || i.name || null };
+                    });
+                    return { indicators: items };
+                }
+
                 // ─── extensibility hook ────────────────────────────────
-                // Phase 7.2.4 ships with tf + file. Future commands
-                // (indicator add/remove, drawing tool select, place
-                // order, chart type) will land here as additional
-                // case branches — same envelope shape, parent-side
-                // command bus, no protocol churn.
+                // Phase 7.2.4 covers tf + file + drawings + indicators.
+                // Future commands (place order, chart type) land here
+                // as additional case branches — same envelope shape,
+                // no protocol churn.
                 default:
                     throw new Error('unknown panel-cmd: ' + cmd);
             }
@@ -149,7 +226,7 @@
 
         log('apply', msg.cmd, msg.args);
         applyCommand(msg.cmd, msg.args).then(
-            function () { reportResult(msg.requestId, true,  null); },
+            function (data) { reportResult(msg.requestId, true,  null, data); },
             function (err) {
                 warn('cmd failed:', msg.cmd, err && err.message || err);
                 reportResult(msg.requestId, false, String(err && err.message || err));
@@ -166,7 +243,15 @@
         global.parent.postMessage({
             type:    'panel-cmd-ready',
             source:  panelId,
-            cmds:    ['setTimeframe', 'loadFile'],
+            cmds:    [
+                'setTimeframe',
+                'loadFile',
+                'setActiveDrawingTool',
+                'clearActiveDrawingTool',
+                'addIndicator',
+                'removeIndicator',
+                'getIndicators',
+            ],
         }, '*');
     } catch (_) {}
 
