@@ -10,7 +10,7 @@
 <div class="app">
 
     <header class="topbar">
-        <h1>Multichart Sandbox <span style="color:#ff3366;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T12:24 (drag-fix v4 — pink divider, no css needed)</span></h1>
+        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T12:33 (drag-fix v5 — direct chart.resize)</span></h1>
 
         <div class="group">
             <label>Layout</label>
@@ -296,24 +296,45 @@
      * fit its visible candles."
      */
     let _resizeRaf = 0;
+    let _resizeLogCount = 0;
     function notifyChartsResized() {
         if (_resizeRaf) return;
         _resizeRaf = requestAnimationFrame(function () {
             _resizeRaf = 0;
             if (!manager) return;
+            const calls = [];
             for (const c of manager.getCharts()) {
                 try {
                     const cw = c.frame && c.frame.contentWindow;
-                    if (!cw) continue;
-                    // Construct Event in the iframe's context so the constructor
-                    // identity matches chart.js's listener registration.
+                    if (!cw) { calls.push(c.id + ':no-cw'); continue; }
+                    const ch = cw.chart;
+                    if (!ch) {
+                        // Fall back to event dispatch if chart instance not exposed.
+                        const Ev = cw.Event || Event;
+                        cw.dispatchEvent(new Ev('resize'));
+                        calls.push(c.id + ':event-only(no-chart)');
+                        continue;
+                    }
+                    // Direct call — bypass any event throttling chart.js might
+                    // do internally and avoid the synthetic-event ordering quirk.
+                    if (typeof ch.resize === 'function') ch.resize();
+                    if (typeof ch.scheduleRender === 'function') ch.scheduleRender();
+                    else if (typeof ch.render === 'function') ch.render();
+                    // Also dispatch the event for any other listeners that may rely on it.
                     const Ev = cw.Event || Event;
                     cw.dispatchEvent(new Ev('resize'));
+                    calls.push(c.id + ':direct-resize(w=' + (ch.w || '?') + ',h=' + (ch.h || '?') + ')');
                 } catch (e) {
-                    // Cross-origin would throw SecurityError; we're same-origin so
-                    // any error here is unexpected — log it.
-                    console.warn('[shell] resize dispatch failed for', c.id, e);
+                    console.warn('[shell] resize call failed for', c.id, e);
+                    calls.push(c.id + ':ERROR ' + e.message);
                 }
+            }
+            // Log only one in every ~30 calls to avoid spamming during the drag,
+            // but always log the first few so the user sees confirmation.
+            _resizeLogCount++;
+            if (_resizeLogCount < 5 || _resizeLogCount % 30 === 0) {
+                appendLog({ ts: Date.now(), level: 'info',
+                    text: 'notifyChartsResized #' + _resizeLogCount + ': ' + calls.join(' | ') });
             }
         });
     }
