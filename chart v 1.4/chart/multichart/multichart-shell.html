@@ -10,7 +10,7 @@
 <div class="app">
 
     <header class="topbar">
-        <h1>Multichart Sandbox <span style="color:#7aa2ff;font-size:11px;font-weight:400;margin-left:6px">build 2026-05-09T12:18 (drag-fix v3)</span></h1>
+        <h1>Multichart Sandbox <span style="color:#ff3366;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T12:24 (drag-fix v4 — pink divider, no css needed)</span></h1>
 
         <div class="group">
             <label>Layout</label>
@@ -89,22 +89,22 @@
      *  2x2 — Phase 5.2 stretch: four mismatched timeframes
      */
     const LAYOUTS = {
-        '1':   { gridCols: '1fr',                 gridRows: '1fr',     dividers: 0,
+        '1':   { gridCols: '1fr',                   gridRows: '1fr',       dividers: 0,
                  charts: [
                      { id: 'A', symbol: 'AAPL', tf: '1m' },
                  ] },
-        '2':   { gridCols: '1fr 6px 1fr',         gridRows: '1fr',     dividers: 1,
+        '2':   { gridCols: '1fr 14px 1fr',          gridRows: '1fr',       dividers: 1,
                  charts: [
                      { id: 'A', symbol: 'AAPL', tf: '1m' },
                      { id: 'B', symbol: 'AAPL', tf: '1h' },
                  ] },
-        '3':   { gridCols: '1fr 6px 1fr 6px 1fr', gridRows: '1fr',     dividers: 2,
+        '3':   { gridCols: '1fr 14px 1fr 14px 1fr', gridRows: '1fr',       dividers: 2,
                  charts: [
                      { id: 'A', symbol: 'AAPL', tf: '1m' },
                      { id: 'B', symbol: 'AAPL', tf: '5m' },
                      { id: 'C', symbol: 'AAPL', tf: '1h' },
                  ] },
-        '2x2': { gridCols: '1fr 6px 1fr', gridRows: '1fr 6px 1fr', dividers: 4,
+        '2x2': { gridCols: '1fr 14px 1fr', gridRows: '1fr 14px 1fr', dividers: 4,
                  charts: [
                      { id: 'A', symbol: 'AAPL', tf: '1m' },
                      { id: 'B', symbol: 'AAPL', tf: '15m' },
@@ -232,6 +232,23 @@
             visibleRange: document.getElementById('sync-visible').checked,
             symbol: document.getElementById('sync-symbol').checked,
         });
+
+        // Diagnostic: confirm the dividers are present + interactive.
+        setTimeout(function () {
+            const divs = chartsArea.querySelectorAll('.divider');
+            appendLog({ ts: Date.now(), level: 'info',
+                text: 'layout=' + name + ': ' + divs.length + ' divider(s) installed; '
+                    + 'gridCols="' + chartsArea.style.gridTemplateColumns + '" '
+                    + 'gridRows="' + chartsArea.style.gridTemplateRows + '"' });
+            divs.forEach(function (d, i) {
+                const r = d.getBoundingClientRect();
+                appendLog({ ts: Date.now(), level: 'info',
+                    text: 'divider[' + i + '] rect={x:' + r.x.toFixed(0)
+                        + ', y:' + r.y.toFixed(0)
+                        + ', w:' + r.width.toFixed(0)
+                        + ', h:' + r.height.toFixed(0) + '}' });
+            });
+        }, 100);
     }
 
     function makeCell(chartCfg) {
@@ -248,6 +265,23 @@
     function makeDivider(orient) {
         const d = document.createElement('div');
         d.className = 'divider' + (orient === 'row' ? ' row' : '');
+        // Inline styles so we don't depend on the user having deployed the
+        // updated multichart.css. (drag-fix v3 deployment race.)
+        d.style.background    = '#ff3366';     // unmissable bright pink
+        d.style.position      = 'relative';
+        d.style.zIndex        = '100';
+        d.style.touchAction   = 'none';
+        d.style.cursor        = orient === 'row' ? 'row-resize' : 'col-resize';
+        d.style.display       = 'flex';
+        d.style.alignItems    = 'center';
+        d.style.justifyContent = 'center';
+        d.style.userSelect    = 'none';
+        d.style.fontFamily    = 'monospace';
+        d.style.color         = '#fff';
+        d.style.fontSize      = '14px';
+        d.textContent         = orient === 'row' ? '⋯⋯ DRAG ⋯⋯' : '⋮';
+        // Widen the hit area without changing visual width.
+        d.title = 'Drag me to resize';
         return d;
     }
 
@@ -430,11 +464,31 @@
         const charts = manager.getCharts();
         const cellsInDom = chartsArea.querySelectorAll('.chart-cell').length;
         const iframesInDom = chartsArea.querySelectorAll('.chart-cell iframe').length;
+        const dividers = chartsArea.querySelectorAll('.divider');
         const lines = [];
         lines.push('Layout selected: ' + layoutSel.value);
         lines.push('Chart cells in DOM: ' + cellsInDom);
         lines.push('iframes in DOM:     ' + iframesInDom);
         lines.push('Charts in manager:  ' + charts.length);
+        lines.push('');
+        lines.push('Dividers in DOM: ' + dividers.length);
+        const csa = window.getComputedStyle(chartsArea);
+        lines.push('  computed grid-template-columns: ' + csa.gridTemplateColumns);
+        lines.push('  computed grid-template-rows:    ' + csa.gridTemplateRows);
+        lines.push('  inline   grid-template-columns: ' + chartsArea.style.gridTemplateColumns);
+        lines.push('  inline   grid-template-rows:    ' + chartsArea.style.gridTemplateRows);
+        dividers.forEach(function (d, i) {
+            const r = d.getBoundingClientRect();
+            const cs = window.getComputedStyle(d);
+            const fromPoint = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+            lines.push('  divider[' + i + ']: rect=(' + r.x.toFixed(0) + ',' + r.y.toFixed(0)
+                     + ' ' + r.width.toFixed(0) + 'x' + r.height.toFixed(0) + ') '
+                     + 'pointer-events=' + cs.pointerEvents + ' '
+                     + 'z-index=' + cs.zIndex + ' '
+                     + 'cursor=' + cs.cursor);
+            lines.push('    elementFromPoint(center) → '
+                     + (fromPoint ? (fromPoint.tagName + '.' + fromPoint.className) : 'null'));
+        });
         lines.push('');
         lines.push('Per-chart:');
         for (const c of charts) {
@@ -443,13 +497,11 @@
             lines.push('    ready:  ' + c.ready);
             lines.push('    state:  ' + JSON.stringify(c.state));
             lines.push('    iframe: ' + (c.frame && c.frame.src ? c.frame.src : 'NONE'));
-            lines.push('    mountEl in DOM: ' + (c.mountEl && document.body.contains(c.mountEl)));
         }
         lines.push('');
         lines.push('Counters: ' + JSON.stringify(manager.counters));
         const txt = lines.join('\n');
         console.log('=== DIAGNOSE ===\n' + txt);
-        // Also dump to log panel so it survives
         appendLog({ ts: Date.now(), level: 'info', text: '=== DIAGNOSE ===\n' + txt });
         alert(txt);
     });
