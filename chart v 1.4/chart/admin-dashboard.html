@@ -5277,16 +5277,32 @@ function _renderFirstrateNightlyHealth() {
   // Per-class cards.
   if (grid) {
     grid.innerHTML = (data.classes || []).map(function (c) {
-      const pctFresh = c.ticker_count ? Math.round(100 * c.fresh_count / c.ticker_count) : 0;
       const job = c.last_job || {};
       const jobBit = job.status
         ? ('last job: ' + job.status + (job.updated_at ? ' · ' + String(job.updated_at).slice(0, 16).replace('T', ' ') : ''))
         : 'no scheduled run yet';
+      // Manual "Run now" trigger — queues the same import the scheduler would,
+      // but for one specific asset class on demand. Disabled when the class
+      // has no registered tickers (nothing to pull) or when an unrelated job
+      // is already mid-flight (the backend would just queue behind it, but we
+      // surface that visually).
+      const hasTickers = (c.ticker_count || 0) > 0;
+      const btnAttrs = [
+        'type="button"',
+        'class="btn sm"',
+        'data-fr-run-class="' + c.asset_class + '"',
+        'style="font-size:11px;padding:2px 8px"',
+        'title="Pull latest day bundle for ' + c.asset_class + ' from FirstRate and merge into existing datasets"',
+      ];
+      if (!hasTickers) btnAttrs.push('disabled');
       return (
         '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel)">' +
-          '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px">' +
             '<strong style="font-size:13px">' + c.asset_class + '</strong>' +
-            '<span style="font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums">' + c.ticker_count + ' tickers</span>' +
+            '<span style="display:flex;align-items:center;gap:6px">' +
+              '<span style="font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums">' + c.ticker_count + ' tickers</span>' +
+              '<button ' + btnAttrs.join(' ') + '>Run now</button>' +
+            '</span>' +
           '</div>' +
           '<div style="display:flex;gap:4px;height:6px;border-radius:3px;overflow:hidden;margin-bottom:6px;background:var(--border)">' +
             '<div style="flex:' + c.fresh_count + ';background:#22c55e"></div>' +
@@ -5409,6 +5425,63 @@ document.addEventListener('change', function (e) {
   if (!t || t.id !== 'frHealthAutoRefresh') return;
   try { localStorage.setItem(_FR_HEALTH_AUTO_KEY, t.checked ? '1' : '0'); } catch (_) {}
   _applyFirstrateHealthAutoRefresh(!!t.checked);
+});
+
+// Per-class manual sync — fires the same import the scheduler would, but for
+// one specific asset class on demand. Hits the existing
+// `POST /api/admin/datasets/firstrate-fx/sync` endpoint with `instrument_type`
+// set to the clicked card's class, then polls the resulting job and refreshes
+// the health card (with `rescan=1` so the cached aggregate timestamps are
+// re-read from disk). Uses event delegation so each re-render of the grid
+// doesn't have to re-attach listeners.
+async function _runFirstrateClassNow(assetClass, btn) {
+  if (!assetClass) return;
+  const origLabel = btn ? btn.textContent : null;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Queueing…';
+  }
+  try {
+    const body = {
+      period: 'day',
+      timeframe: '1min',
+      instrument_type: assetClass,
+      upsert_existing: true,
+      delete_existing_first: false,
+    };
+    const data = await api('/api/admin/datasets/firstrate-fx/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (typeof toast === 'function') {
+      toast('FirstRate ' + assetClass + ' import queued — watching progress…', 'ok');
+    }
+    if (btn) btn.textContent = 'Running…';
+    if (data && data.job_id && typeof waitForFirstrateJob === 'function') {
+      await waitForFirstrateJob(data.job_id);
+    }
+  } catch (e) {
+    if (typeof toast === 'function') {
+      toast('Manual ' + assetClass + ' sync failed: ' + (e && e.message ? e.message : e), 'err');
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      if (origLabel !== null) btn.textContent = origLabel;
+    }
+    try {
+      await refreshFirstrateNightlyHealth({ rescan: true });
+    } catch (_) { /* best-effort re-render */ }
+  }
+}
+
+document.addEventListener('click', function (e) {
+  const t = e && e.target;
+  if (!t || !t.matches || !t.matches('button[data-fr-run-class]')) return;
+  e.preventDefault();
+  const cls = t.getAttribute('data-fr-run-class');
+  _runFirstrateClassNow(cls, t);
 });
 
 // Restore the toggle state on page load. Runs on DOMContentLoaded because the

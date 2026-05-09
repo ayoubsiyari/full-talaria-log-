@@ -2551,23 +2551,74 @@ def _firstrate_scheduler_tick() -> None:
             _save_firstrate_schedule(cfg2)
             return
 
-        # --- Legacy interval mode (kept for back-compat; single instrument) --
+        # --- Interval mode --------------------------------------------------
+        # When `auto_all_types` is on, behave like nightly: queue ONE asset
+        # class per tick until every class with registered data has been
+        # pulled in this cycle, then wait `interval_minutes` from the last
+        # completion before starting the next cycle. When off, fall back to
+        # the original single-instrument behaviour for back-compat with
+        # environments that intentionally pin one type via `instrument_type`.
         interval_min = max(15, int(cfg.get("interval_minutes") or 1440))
         last_fin = cfg.get("last_run_finished_at")
-        should_run = False
-        if not last_fin:
-            should_run = True
-        else:
+        elapsed_min: float | None = None
+        if last_fin:
             try:
                 raw = str(last_fin).replace("Z", "")
                 lf = datetime.fromisoformat(raw)
                 if lf.tzinfo is not None:
                     lf = lf.replace(tzinfo=None)
-                if (now - lf).total_seconds() >= interval_min * 60:
-                    should_run = True
+                elapsed_min = (now - lf).total_seconds() / 60.0
             except Exception:
-                should_run = True
-        if not should_run:
+                elapsed_min = None
+
+        if bool(cfg.get("auto_all_types", True)):
+            buckets, done_today = _firstrate_pending_types_for_nightly(cfg)
+            pending = [t for t in buckets if t not in done_today]
+
+            if not pending:
+                # Whole cycle complete — wait the configured interval before
+                # restarting (mirrors nightly's per-day reset, but keyed off
+                # last finish time rather than UTC midnight).
+                if elapsed_min is None or elapsed_min < interval_min:
+                    return
+                cfg["last_run_types_today"] = []
+                cfg["last_run_date"] = now.strftime("%Y-%m-%d")
+                _save_firstrate_schedule(cfg)
+                buckets, done_today = _firstrate_pending_types_for_nightly(cfg)
+                pending = [t for t in buckets if t not in done_today]
+                if not pending:
+                    return
+
+            next_type = pending[0]
+            pair_list = list(buckets[next_type])
+            adjustment = _firstrate_default_adjustment_for(next_type)
+
+            _queue_firstrate_fx_import_job(
+                period=str(cfg.get("period") or "day"),
+                timeframe=str(cfg.get("timeframe") or "1min"),
+                instrument_type=next_type,
+                adjustment=adjustment,
+                delete_existing_first=False,
+                purge_confirmation=None,
+                ticker_range=None,
+                download_timeout_sec=float(cfg.get("download_timeout_sec") or 7200),
+                upsert_existing=True,
+                trigger="schedule",
+                pairs=pair_list,
+            )
+
+            cfg2 = _load_firstrate_schedule()
+            done = list(cfg2.get("last_run_types_today") or [])
+            if next_type not in done:
+                done.append(next_type)
+            cfg2["last_run_types_today"] = done
+            cfg2["last_run_started_at"] = datetime.utcnow().isoformat() + "Z"
+            cfg2["last_error"] = None
+            _save_firstrate_schedule(cfg2)
+            return
+
+        # Single-instrument back-compat path (auto_all_types is off).
+        if elapsed_min is not None and elapsed_min < interval_min:
             return
 
         sched_pairs = cfg.get("pairs")
