@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multichart — chart host</title>
+
+    <!--
+        Per-chart iframe harness for the multi-chart sandbox.
+
+        URL params:
+            ?id=chart-A          — bridge identifier (REQUIRED)
+            &symbol=AAPL         — symbol for synthetic data
+            &tf=1m               — initial timeframe
+            &days=14             — days of synthetic data to generate
+            &verbose=1           — verbose bridge logs
+
+        Loads:
+            d3 (CDN)
+            ../chart.js          — engine (no modules — minimum surface)
+            engine-api-guards.js
+            sample-data.js
+            sync-bridge.js
+    -->
+
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0c14; color: #d1d4dc; font-family: 'DM Sans', system-ui, sans-serif; }
+
+        #chart-container {
+            position: absolute;
+            inset: 0;
+        }
+
+        #chartCanvas, #drawingSvg {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        #drawingSvg { pointer-events: none; z-index: 2; }
+
+        .crosshair-vertical, .crosshair-horizontal {
+            position: absolute;
+            pointer-events: none;
+            z-index: 10;
+            display: none;
+        }
+        .crosshair-vertical {
+            width: 1px; height: 100%;
+            background: repeating-linear-gradient(to bottom, rgba(150,155,165,.8) 0 6px, transparent 6px 10px);
+        }
+        .crosshair-horizontal {
+            width: 100%; height: 1px;
+            background: repeating-linear-gradient(to right, rgba(150,155,165,.8) 0 6px, transparent 6px 10px);
+        }
+        .price-label, .time-label {
+            position: absolute;
+            background: #2a2e39;
+            color: #d1d4dc;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 2px;
+            pointer-events: none;
+            z-index: 11;
+            display: none;
+        }
+
+        /* per-chart toolbar */
+        #toolbar {
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            z-index: 50;
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            align-items: center;
+            padding: 4px 6px;
+            background: rgba(10, 12, 22, 0.7);
+            border: 1px solid #2a2e39;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+        #toolbar .label { color: #8a8e99; }
+        #toolbar select, #toolbar input {
+            background: #1c1f26;
+            color: #d1d4dc;
+            border: 1px solid #2a2e39;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 12px;
+        }
+        #toolbar .badge {
+            display: inline-block;
+            padding: 1px 6px;
+            background: #2a2e39;
+            border-radius: 3px;
+            color: #8eb4ff;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+        }
+
+        /* price-axis assertion overlay */
+        #assert-banner {
+            position: absolute;
+            bottom: 6px;
+            right: 6px;
+            z-index: 60;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            background: rgba(8, 153, 129, 0.3);
+            color: #b6f3d2;
+            border: 1px solid rgba(8, 153, 129, 0.5);
+            display: none;
+        }
+        #assert-banner.fail {
+            background: rgba(242, 54, 69, 0.35);
+            color: #ffd3d8;
+            border-color: rgba(242, 54, 69, 0.6);
+        }
+
+        /* hide chart context menu (parent shell drives UX) */
+        .chart-context-menu { display: none !important; }
+    </style>
+
+    <!-- d3 (chart.js hard-requires d3) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+<body>
+    <div id="chart-container">
+        <div id="toolbar">
+            <span class="label">id</span>
+            <span class="badge" id="badge-id">—</span>
+            <span class="label">sym</span>
+            <span class="badge" id="badge-sym">—</span>
+            <span class="label">tf</span>
+            <select id="tf-select">
+                <option>1m</option>
+                <option>5m</option>
+                <option>15m</option>
+                <option>1h</option>
+                <option>4h</option>
+                <option>1d</option>
+            </select>
+            <span class="label">priceMin</span>
+            <span class="badge" id="badge-pmin">—</span>
+            <span class="label">priceMax</span>
+            <span class="badge" id="badge-pmax">—</span>
+        </div>
+
+        <canvas id="chartCanvas"></canvas>
+        <svg id="drawingSvg"></svg>
+        <div class="crosshair-vertical"></div>
+        <div class="crosshair-horizontal"></div>
+        <div class="price-label"></div>
+        <div class="time-label"></div>
+
+        <div id="assert-banner">price-axis OK</div>
+    </div>
+
+    <script>
+        // Stub the legacy panelManager (chart.js still references window.panelManager
+        // in many places — we keep it absent so guards short-circuit cleanly).
+        window.panelManager = undefined;
+
+        // No FastAPI backend in the sandbox.
+        window.CHART_API_URL = '';
+        // Disable the V9 settings DOM scrape (we're not in V9 here).
+        window.__multichartSandbox = true;
+    </script>
+
+    <!-- engine -->
+    <script src="../chart.js"></script>
+
+    <!-- sandbox-only modules -->
+    <script src="./engine-api-guards.js"></script>
+    <script src="./sample-data.js"></script>
+    <script src="./sync-bridge.js"></script>
+
+    <script>
+    (function () {
+        const params = new URLSearchParams(location.search);
+        const chartId   = params.get('id') || ('chart-' + Math.random().toString(36).slice(2, 6));
+        const symbol    = params.get('symbol') || 'AAPL';
+        const initialTf = params.get('tf') || '1m';
+        const daysBack  = parseInt(params.get('days') || '14', 10);
+        const verbose   = params.get('verbose') === '1';
+
+        document.getElementById('badge-id').textContent = chartId;
+        document.getElementById('badge-sym').textContent = symbol;
+        document.getElementById('tf-select').value = initialTf;
+        document.title = 'mc-' + chartId + ' ' + symbol + ' ' + initialTf;
+
+        function loadDataInto(chart, sym, tf) {
+            const candles = window.MultichartSampleData.generateForTimeframe(sym, tf, { daysBack });
+            chart.rawData = candles.slice();
+            chart.data = candles.slice();
+            chart.dataVersion++;
+            chart.currentSymbol = sym;
+            chart.currentTimeframe = tf;
+            chart.totalCandles = candles.length;
+            // Re-fit and render
+            try { chart.fitToView && chart.fitToView(); } catch (_) {}
+            try { chart.scheduleRender ? chart.scheduleRender() : chart.render(); } catch (_) {}
+            // Emit chartDataLoaded so the bridge tells parent
+            try {
+                window.dispatchEvent(new CustomEvent('chartDataLoaded', {
+                    detail: { symbol: sym, timeframe: tf },
+                }));
+            } catch (_) {}
+        }
+
+        function start() {
+            // Construct the chart with our canvas/svg explicitly.
+            const canvasEl = document.getElementById('chartCanvas');
+            const svgEl    = document.getElementById('drawingSvg');
+            const chart    = new Chart(canvasEl, svgEl, { panelIndex: 0 });
+
+            // chart.js sets isPanel=true when a canvas is passed; that disables a
+            // few main-chart-only paths (timezone scrape, backtest URL check).
+            window.chart = chart;
+
+            // Initial data load
+            loadDataInto(chart, symbol, initialTf);
+
+            // Wire timeframe selector — local only, NOT a sync event.
+            document.getElementById('tf-select').addEventListener('change', function (e) {
+                const newTf = e.target.value;
+                loadDataInto(chart, chart.currentSymbol, newTf);
+                try { chart.setTimeframe && chart.setTimeframe(newTf); } catch (_) {}
+            });
+
+            // Live price-axis badges
+            function refreshBadges() {
+                const ps = chart.priceScale || {};
+                document.getElementById('badge-pmin').textContent = (ps.min || 0).toFixed(4);
+                document.getElementById('badge-pmax').textContent = (ps.max || 0).toFixed(4);
+                requestAnimationFrame(refreshBadges);
+            }
+            refreshBadges();
+
+            // Assertion banner — listen to bridge reports via parent? No, we
+            // also listen locally: the bridge's reportAssertion function posts
+            // up to parent, but we want a local indicator. Subscribe via a
+            // CustomEvent the bridge could fire. Simpler: just intercept here.
+            // We'll fire our own CustomEvent.
+            window.addEventListener('multichart:assertion', function (ev) {
+                const banner = document.getElementById('assert-banner');
+                banner.style.display = 'block';
+                if (ev.detail && ev.detail.ok) {
+                    banner.classList.remove('fail');
+                    banner.textContent = 'price-axis OK (' + ev.detail.syncType + ')';
+                } else {
+                    banner.classList.add('fail');
+                    banner.textContent = 'LEAK ' + (ev.detail && ev.detail.syncType) + ': '
+                        + ((ev.detail && ev.detail.violations) || []).join('; ');
+                }
+                clearTimeout(window.__assertHide);
+                window.__assertHide = setTimeout(function () { banner.style.display = 'none'; }, 1500);
+            });
+
+            // Install bridge
+            const bridge = window.MultichartBridge.installBridge(chart, {
+                chartId: chartId,
+                parentOrigin: '*',
+                verbose: verbose,
+            });
+            window.__multichartBridge = bridge;
+
+            // Mirror bridge assertion reports as local CustomEvent so the
+            // banner can update without parent round-trip.
+            const origPost = window.parent.postMessage.bind(window.parent);
+            window.parent.postMessage = function (msg, target) {
+                if (msg && msg.type === 'assertion-report') {
+                    try {
+                        window.dispatchEvent(new CustomEvent('multichart:assertion', { detail: msg }));
+                    } catch (_) {}
+                }
+                return origPost(msg, target);
+            };
+
+            // Symbol-change requests from the parent (or peers via the parent).
+            window.addEventListener('multichart:symbol-change', function (ev) {
+                const sym = ev.detail && ev.detail.symbol;
+                if (sym) loadDataInto(chart, sym, chart.currentTimeframe);
+            });
+        }
+
+        // Wait for chart.js + d3 to be ready
+        function ready() {
+            if (typeof Chart === 'function' && typeof d3 !== 'undefined' && window.MultichartBridge) {
+                start();
+            } else {
+                setTimeout(ready, 30);
+            }
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', ready);
+        } else {
+            ready();
+        }
+    })();
+    </script>
+</body>
+</html>
