@@ -58,7 +58,7 @@
                    in some load orders), strip it again now. */
                 try { document.documentElement.classList.remove('bt-preload'); } catch (_) {}
             }, { once: true });
-            var V = '20260510T0300';
+            var V = '20260510T0500';
             function inject(src) {
                 var s = document.createElement('script');
                 s.src = src + '?v=' + V;
@@ -68,6 +68,11 @@
             inject('/chart/multichart-prod/engine-api-guards.js');
             inject('/chart/multichart-prod/sync-bridge.js');
             inject('/chart/multichart-prod/embed-bridge.js');
+            // Phase 7.2.4: per-panel command receiver. Listens for
+            // `panel-cmd` postMessages from the parent topbar (timeframe
+            // buttons, file picker, future indicator/drawing commands)
+            // and applies them to this iframe's window.chart.
+            inject('/chart/multichart-prod/panel-cmd-bridge.js');
         } catch (e) {
             try { console.error('[multichart-shim] failed:', e); } catch (_) {}
         }

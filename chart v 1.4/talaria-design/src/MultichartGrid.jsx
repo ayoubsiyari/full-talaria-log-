@@ -425,14 +425,17 @@ function clearHostSlot() {
     if (typeof document === "undefined") return;
     const wrapper = document.getElementById(HOST_WRAPPER_ID);
     if (!wrapper) return;
-    wrapper.style.left   = "";
-    wrapper.style.top    = "";
-    wrapper.style.width  = "";
-    wrapper.style.height = "";
-    wrapper.style.right  = "";
-    wrapper.style.bottom = "";
-    wrapper.style.zIndex = "";
+    wrapper.style.left      = "";
+    wrapper.style.top       = "";
+    wrapper.style.width     = "";
+    wrapper.style.height    = "";
+    wrapper.style.right     = "";
+    wrapper.style.bottom    = "";
+    wrapper.style.zIndex    = "";
+    wrapper.style.outline   = "";
+    wrapper.style.outlineOffset = "";
     delete wrapper.dataset.multichartHost;
+    delete wrapper.dataset.multichartHostFocused;
     try {
         const ch = window.chart;
         if (ch && typeof ch.resize === "function") {
@@ -441,6 +444,25 @@ function clearHostSlot() {
             if (typeof ch.render === "function") ch.render();
         }
     } catch (_) {}
+}
+
+// Apply / clear the per-tile FOCUSED outline on the host's #chartWrapper.
+// Iframe tiles get their outline via the cell <div>'s style, but the host's
+// cell is `pointer-events:none` and visually hidden behind the wrapper, so
+// the outline must live on the wrapper itself.
+function applyHostFocusOutline(focused) {
+    if (typeof document === "undefined") return;
+    const wrapper = document.getElementById(HOST_WRAPPER_ID);
+    if (!wrapper) return;
+    if (focused) {
+        wrapper.style.outline       = "2px solid #3a6db5";
+        wrapper.style.outlineOffset = "-2px";
+        wrapper.dataset.multichartHostFocused = "1";
+    } else {
+        wrapper.style.outline       = "";
+        wrapper.style.outlineOffset = "";
+        delete wrapper.dataset.multichartHostFocused;
+    }
 }
 
 // ─── component ──────────────────────────────────────────────────────────────
@@ -725,6 +747,95 @@ export default function MultichartGrid({
             });
         } catch (_) {}
     }, [layoutSync]);
+
+    // ─── Focus outline on the host's #chartWrapper ──────────────────────
+    // Iframe tiles get their focused outline via the cell <div> styling,
+    // but the host's cell is invisible (pointerEvents:none, transparent
+    // background). When tile A is focused we paint the outline directly
+    // on the wrapper so the user sees the same visual cue.
+    useEffect(() => {
+        applyHostFocusOutline(focusedPanelId === HOST_PANEL_ID);
+        return () => applyHostFocusOutline(false);
+    }, [focusedPanelId]);
+
+    // ─── Phase 7.2.4: expose the per-panel command bus to the parent ────
+    //
+    // The topbar's existing timeframe buttons and file picker call
+    // `window.__multichartGrid.runCommand(cmd, args)` when this grid is
+    // mounted. The bus routes by `focusedPanelId`:
+    //   • A (host)        → direct call to window.chart (in-process; no
+    //                       postMessage round-trip, no panel-cmd-bridge)
+    //   • B / C / D (iframe) → manager.sendCommand → panel-cmd-bridge in
+    //                          that iframe applies it to its own
+    //                          window.chart
+    //
+    // Returns true if the command was dispatched (caller should NOT also
+    // hit the global window.chart fallback). Returns false if the command
+    // can't be dispatched (no manager, unknown cmd, etc.) so the caller
+    // can fall back to legacy behavior.
+    //
+    // The `focusedPanelId` is captured in a ref so the bus always reads
+    // the LATEST value without re-installing on every focus change
+    // (would otherwise blow away the global between renders).
+    const focusedPanelIdRef = useRef(focusedPanelId);
+    useEffect(() => { focusedPanelIdRef.current = focusedPanelId; }, [focusedPanelId]);
+
+    useEffect(() => {
+        const isMounted = true;
+
+        function applyHostCommand(cmd, args) {
+            const ch = window.chart;
+            if (!ch) return false;
+            args = args || {};
+            try {
+                switch (cmd) {
+                    case "setTimeframe":
+                        if (typeof ch.setTimeframe !== "function") return false;
+                        if (!args.tf) return false;
+                        if (ch.currentTimeframe === args.tf) return true;
+                        ch.setTimeframe(args.tf);
+                        return true;
+                    case "loadFile":
+                        if (typeof ch.loadFileData !== "function") return false;
+                        if (args.fileId === undefined || args.fileId === null || args.fileId === "") return false;
+                        ch.loadFileData(String(args.fileId));
+                        return true;
+                    default:
+                        console.warn("[MultichartGrid] unknown host cmd:", cmd);
+                        return false;
+                }
+            } catch (e) {
+                console.warn("[MultichartGrid] host cmd failed:", cmd, e);
+                return false;
+            }
+        }
+
+        function runCommand(cmd, args) {
+            const target = focusedPanelIdRef.current || HOST_PANEL_ID;
+            if (target === HOST_PANEL_ID) return applyHostCommand(cmd, args);
+            const mgr = managerRef.current;
+            if (!mgr || typeof mgr.sendCommand !== "function") return false;
+            const reqId = mgr.sendCommand(target, cmd, args);
+            return !!reqId;
+        }
+
+        window.__multichartGrid = {
+            isMounted,
+            runCommand,
+            getFocusedPanelId: () => focusedPanelIdRef.current,
+        };
+
+        return () => {
+            // Only clear if no later mount has overwritten us (defensive
+            // against StrictMode double-invoke or unrelated remounts).
+            if (window.__multichartGrid && window.__multichartGrid.runCommand === runCommand) {
+                delete window.__multichartGrid;
+            }
+        };
+        // Mount-once. The ref captures the latest focusedPanelId without
+        // re-subscribing.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     return (
         <div

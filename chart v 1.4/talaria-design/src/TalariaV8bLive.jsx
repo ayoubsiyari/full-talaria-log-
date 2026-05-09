@@ -3464,6 +3464,14 @@ const TalariaV8bLive = () => {
     if (fileId == null) return;
     const fid = typeof fileId === "string" ? fileId : String(fileId);
     try {
+      // Phase 7.2.4: if the new MultichartGrid is mounted (layoutPanels.n > 1),
+      // route the file load through its per-panel command bus so the file
+      // lands in the FOCUSED panel only — host A is loaded directly, iframe
+      // panels receive a `panel-cmd` postMessage handled by panel-cmd-bridge.
+      const grid = window.__multichartGrid;
+      if (grid && typeof grid.runCommand === "function") {
+        if (grid.runCommand("loadFile", { fileId: fid })) return;
+      }
       const pm = window.panelManager;
       if (!pm || !v9IsMultiPanelLayoutActive()) {
         if (window.chart && typeof window.chart.loadFileData === "function") {
@@ -3514,6 +3522,15 @@ const TalariaV8bLive = () => {
       if (!chart || typeof chart.setTimeframe !== "function") {
         if (attempts++ < 60) setTimeout(apply, 200);
         return;
+      }
+      // Phase 7.2.4: per-panel routing via the MultichartGrid command bus.
+      // When the new in-page grid is mounted, change the timeframe on the
+      // FOCUSED panel only (host A → direct chart.setTimeframe; iframe →
+      // panel-cmd postMessage to that iframe). Falls back to the legacy
+      // panelManager / single-chart path when the grid isn't mounted.
+      const grid = window.__multichartGrid;
+      if (grid && typeof grid.runCommand === "function") {
+        if (grid.runCommand("setTimeframe", { tf: target })) return;
       }
       const pm = window.panelManager;
       if (

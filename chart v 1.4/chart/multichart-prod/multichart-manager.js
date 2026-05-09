@@ -339,6 +339,53 @@
         }
     };
 
+    /**
+     * Phase 7.2.4 — send a per-panel COMMAND (timeframe change, file
+     * load, etc.) to a single iframe panel. Host (in-process) panels are
+     * NOT routed through here — the React grid invokes window.chart
+     * directly for the host because it lives in the same window and
+     * postMessage would be a needless detour.
+     *
+     * The receiving iframe runs panel-cmd-bridge.js (loaded by the
+     * dist-v9 ?multichart=1 shim) which picks up `type:'panel-cmd'`
+     * messages and applies them via its local window.chart.
+     *
+     * @param {string} panelId    e.g. 'B', 'C', 'D'
+     * @param {string} cmd        'setTimeframe' | 'loadFile' | …
+     * @param {object} [args]     command-specific args (tf, fileId, …)
+     * @returns {string|null}     requestId (for matching cmd-result), or
+     *                            null if the panel is unknown / host
+     */
+    MultichartManager.prototype.sendCommand = function (panelId, cmd, args) {
+        const c = this.charts.get(panelId);
+        if (!c) {
+            this._log('warn', 'sendCommand: unknown panel ' + panelId);
+            return null;
+        }
+        if (c.host) {
+            // Host panel: the React grid handles host commands via
+            // direct window.chart calls. Don't route through here.
+            this._log('warn', 'sendCommand: ignored for host panel ' + panelId);
+            return null;
+        }
+        const requestId = 'cmd-' + Date.now() + '-' + (Math.random() * 1e6 | 0).toString(16);
+        const msg = {
+            type:      'panel-cmd',
+            target:    panelId,
+            cmd:       cmd,
+            args:      args || {},
+            requestId: requestId,
+        };
+        try {
+            c.frame.contentWindow.postMessage(msg, '*');
+            this._log('out', 'panel-cmd ' + cmd + ' → ' + panelId);
+            return requestId;
+        } catch (e) {
+            this._log('warn', 'sendCommand fail ' + panelId + ': ' + e.message);
+            return null;
+        }
+    };
+
     /** Broadcast a guard self-test request to every chart. */
     MultichartManager.prototype.runGuardSelfTest = function () {
         const msg = { type: 'guard-self-test' };
@@ -423,6 +470,24 @@
                 // Diagnostic line forwarded from inside an iframe (chart-host).
                 // Useful for surfacing real-data fetch errors, timeouts, etc.
                 this._log(msg.level || 'info', msg.text || '');
+                return;
+
+            case 'panel-cmd-ready':
+                // Phase 7.2.4 handshake: iframe's panel-cmd-bridge is now
+                // listening for commands. Today this is informational only;
+                // future versions may use it to flush queued commands.
+                this._log('info', 'panel-cmd-ready: ' + sourceId
+                    + ' (cmds: ' + (msg.cmds || []).join(',') + ')');
+                return;
+
+            case 'cmd-result':
+                // Phase 7.2.4 reply from panel-cmd-bridge.
+                if (msg.ok) {
+                    this._log('info', 'cmd-result OK ' + sourceId + ' req=' + msg.requestId);
+                } else {
+                    this._log('warn', 'cmd-result FAIL ' + sourceId
+                        + ' req=' + msg.requestId + ' err=' + (msg.error || 'unknown'));
+                }
                 return;
 
             case 'visibleRange':
