@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Multichart Sandbox — Talaria</title>
-    <link rel="stylesheet" href="multichart.css?v=20260509T1740" />
+    <link rel="stylesheet" href="multichart.css?v=20260509T1745" />
 </head>
 <body>
 <div class="app">
 
     <header class="topbar">
-        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T17:40 (v10.4.3 — strip orphan overlap-warn div) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
+        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T17:45 (v10.4.4 — post-layout resize cascade so price axes settle) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
 
         <div class="group">
             <label>Layout</label>
@@ -252,6 +252,20 @@
         // and passes ?fileId=N as a URL param. Each new iframe then loads that
         // file as soon as it boots — no separate postMessage needed and no
         // race against the iframe's set-file handler being wired.
+
+        // v10.4.4 — chart.js inside each iframe runs its first layout pass
+        // during DOMContentLoaded, which fires when the iframe is still in
+        // a transient size (especially the second/third panels created
+        // sequentially). At that point chart.margin.r (price-axis strip
+        // width) is computed from a wrong canvas width, so the price axis
+        // can render flush against the right edge / barely visible.
+        // Force a full resize cascade once per iframe at three checkpoints:
+        // 100ms (covers fast loads), 500ms (covers /api/files round-trip),
+        // 1500ms (covers slow first-paint). Each call no-ops gracefully if
+        // the chart isn't yet constructed.
+        setTimeout(notifyChartsResized,  100);
+        setTimeout(notifyChartsResized,  500);
+        setTimeout(notifyChartsResized, 1500);
     }
 
     function makeCell(chartCfg) {
