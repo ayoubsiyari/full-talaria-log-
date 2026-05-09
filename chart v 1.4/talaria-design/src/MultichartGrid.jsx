@@ -34,7 +34,21 @@
  *     right-panel layout tab.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+
+// Phase 7.2.5: tile id "A" is the HOST tile — it does NOT spawn an iframe.
+// Instead, the parent's existing #chartWrapper (the original main chart with
+// all its drawings, indicators, visible range, OHLC legend etc.) is moved
+// into cell A's grid slot via inline left/top/width/height. This means:
+//   - splitting 1→2v shows tile A INSTANTLY with the user's current chart
+//   - tiles B/C/D are fresh iframes that boot independently
+//   - drawings/indicators/replay state are all preserved on tile A across
+//     every layout transition (no save/restore round-trip)
+//   - returning to layout 1 unmounts the grid and the inline styles are
+//     cleared, restoring #chartWrapper to its CSS default fill behavior
+const HOST_PANEL_ID = "A";
+const HOST_WRAPPER_ID = "chartWrapper";
+const HOST_CONTAINER_ID = "chart-container";
 
 // ─── parent-side bridge loader ──────────────────────────────────────────────
 //
@@ -308,6 +322,78 @@ function ensureLoadingStyleInjected() {
     document.head.appendChild(s);
 }
 
+// ─── host-slot positioning ──────────────────────────────────────────────────
+//
+// applyHostSlot: position the parent's #chartWrapper to overlay cell A's grid
+// bbox. Coords are converted to be relative to #chart-container (the parent
+// the wrapper lives inside), and z-index:13 lifts it above the grid container
+// (which is at z-index:12) so it paints on top of the cell's background while
+// the iframes in cells B/C/D stay safely inside their own (smaller) cell
+// bboxes.
+//
+// clearHostSlot: blow away every inline style we set so #chartWrapper falls
+// back to its CSS default of `inset:0` and refills the entire chart slot
+// (single-chart UX is byte-identical to before MultichartGrid existed).
+//
+// Both call window.chart.resize()+render() so chart.js picks up the new
+// canvas dimensions immediately. We zero `_lastResizeDpr` first because
+// chart.js bails out of resize() when DPR is unchanged, and only the size
+// changed here.
+function applyHostSlot(cellEl) {
+    if (!cellEl) return;
+    if (typeof document === "undefined") return;
+    const wrapper   = document.getElementById(HOST_WRAPPER_ID);
+    const container = document.getElementById(HOST_CONTAINER_ID);
+    if (!wrapper || !container) return;
+    const cellRect      = cellEl.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    // Subpixel-friendly coords. We round to the nearest int to avoid
+    // hairline anti-alias gaps where cell.outline meets the wrapper edge.
+    const left   = Math.round(cellRect.left   - containerRect.left);
+    const top    = Math.round(cellRect.top    - containerRect.top);
+    const width  = Math.round(cellRect.width);
+    const height = Math.round(cellRect.height);
+    wrapper.style.left   = left   + "px";
+    wrapper.style.top    = top    + "px";
+    wrapper.style.width  = width  + "px";
+    wrapper.style.height = height + "px";
+    wrapper.style.right  = "auto";
+    wrapper.style.bottom = "auto";
+    wrapper.style.zIndex = "13";
+    wrapper.dataset.multichartHost = "1";
+    // Force chart.js to re-measure and repaint into the new bbox.
+    try {
+        const ch = window.chart;
+        if (ch && typeof ch.resize === "function") {
+            ch._lastResizeDpr = 0;
+            ch.resize();
+            if (typeof ch.render === "function") ch.render();
+        }
+    } catch (_) {}
+}
+
+function clearHostSlot() {
+    if (typeof document === "undefined") return;
+    const wrapper = document.getElementById(HOST_WRAPPER_ID);
+    if (!wrapper) return;
+    wrapper.style.left   = "";
+    wrapper.style.top    = "";
+    wrapper.style.width  = "";
+    wrapper.style.height = "";
+    wrapper.style.right  = "";
+    wrapper.style.bottom = "";
+    wrapper.style.zIndex = "";
+    delete wrapper.dataset.multichartHost;
+    try {
+        const ch = window.chart;
+        if (ch && typeof ch.resize === "function") {
+            ch._lastResizeDpr = 0;
+            ch.resize();
+            if (typeof ch.render === "function") ch.render();
+        }
+    } catch (_) {}
+}
+
 // ─── component ──────────────────────────────────────────────────────────────
 export default function MultichartGrid({
     layoutId,
@@ -323,7 +409,11 @@ export default function MultichartGrid({
     const cellRefs = useRef({});             // panelId -> cell <div>
     const managerRef = useRef(null);
     const [managerReady, setManagerReady] = useState(false);
-    const [readyPanels, setReadyPanels] = useState(() => new Set());
+    // Host tile A is "ready" from frame 0 — it just shows the parent's
+    // existing #chartWrapper, which has been alive (with all the user's
+    // drawings, indicators, replay state, etc.) since the user first
+    // opened /chart/. No loading overlay needed.
+    const [readyPanels, setReadyPanels] = useState(() => new Set([HOST_PANEL_ID]));
 
     // Capture initial context in refs so the per-tile add closure always
     // uses the LATEST values when a new tile is added (e.g. user opens
@@ -427,11 +517,16 @@ export default function MultichartGrid({
         const mgr = managerRef.current;
         if (!mgr) return;
 
-        const desiredIds = new Set(layout.tiles.map((t) => t.id));
+        // Tile A is the HOST tile — backed by the parent's #chartWrapper,
+        // never an iframe. Exclude it from every manager operation so the
+        // manager only ever sees iframe-backed tiles (B, C, D, …).
+        const desiredIframeIds = new Set(
+            layout.tiles.map((t) => t.id).filter((id) => id !== HOST_PANEL_ID)
+        );
 
-        // Remove charts no longer in the layout
+        // Remove iframe charts no longer in the layout
         for (const existingId of Array.from(mgr.charts.keys())) {
-            if (!desiredIds.has(existingId)) {
+            if (!desiredIframeIds.has(existingId)) {
                 try { mgr.removeChart(existingId); } catch (_) {}
                 setReadyPanels((prev) => {
                     if (!prev.has(existingId)) return prev;
@@ -442,10 +537,11 @@ export default function MultichartGrid({
             }
         }
 
-        // Add charts that exist in the layout but not yet in the manager.
+        // Add iframe charts that exist in the layout but not yet in the manager.
         // (The cell <div> is already mounted by React's render that just
         // committed — useEffect runs AFTER commit, so cellRefs are set.)
         for (const tile of layout.tiles) {
+            if (tile.id === HOST_PANEL_ID) continue; // host has no iframe
             if (mgr.charts.has(tile.id)) continue;
             const cellEl = cellRefs.current[tile.id];
             if (!cellEl) continue;
@@ -460,6 +556,76 @@ export default function MultichartGrid({
             }
         }
     }, [layout.tiles, managerReady]);
+
+    // ─── Host-tile positioning ──────────────────────────────────────────
+    //
+    // Mount-once effect that positions the parent's #chartWrapper to
+    // overlay cell A's grid bbox, then keeps it in sync via:
+    //   - ResizeObserver on cell A   → grid template changes (2v→4→3l),
+    //                                   right-panel resize, sidebar collapse
+    //   - window 'resize' / 'scroll' → window/zoom changes (cell A's
+    //                                   viewport coords shift)
+    //
+    // On unmount (user picks layout 1 from dropdown), every inline style
+    // we set is cleared and chartWrapper falls back to its CSS default
+    // (`inset: 0`), so single-chart UX is byte-identical to before this
+    // component existed.
+    //
+    // useLayoutEffect (not useEffect) so the host slot is positioned in
+    // the same paint frame as the grid mount — no flash where the parent
+    // chart still fills the full container.
+    useLayoutEffect(() => {
+        const cellA = cellRefs.current[HOST_PANEL_ID];
+        if (!cellA) return;
+
+        let raf = 0;
+        const schedule = () => {
+            if (raf) return;
+            raf = window.requestAnimationFrame(() => {
+                raf = 0;
+                applyHostSlot(cellA);
+            });
+        };
+
+        applyHostSlot(cellA);
+
+        const ro = new ResizeObserver(schedule);
+        ro.observe(cellA);
+
+        const onWin = () => schedule();
+        window.addEventListener("resize", onWin, { passive: true });
+        window.addEventListener("scroll", onWin, { passive: true, capture: true });
+
+        // Focus-tracking shim: cell A has pointerEvents:none (so the
+        // parent chartWrapper captures pointer activity), so the cell's
+        // own onMouseDownCapture never fires. Listen on #chartWrapper
+        // instead — clicking anywhere on the parent chart means the
+        // user is interacting with tile A.
+        const wrapper = document.getElementById(HOST_WRAPPER_ID);
+        const onWrapperDown = () => {
+            if (typeof setFocusedPanelId === "function") {
+                setFocusedPanelId(HOST_PANEL_ID);
+            }
+        };
+        if (wrapper) {
+            wrapper.addEventListener("mousedown", onWrapperDown, { capture: true });
+        }
+
+        return () => {
+            if (raf) window.cancelAnimationFrame(raf);
+            ro.disconnect();
+            window.removeEventListener("resize", onWin);
+            window.removeEventListener("scroll", onWin, { capture: true });
+            if (wrapper) {
+                wrapper.removeEventListener("mousedown", onWrapperDown, { capture: true });
+            }
+            clearHostSlot();
+        };
+        // Mount-once. Subsequent layout.tiles changes are handled by the
+        // ResizeObserver (cell A's bbox changes when grid template changes,
+        // which fires the observer and re-applies the host slot).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // ─── Push sync-mode changes to the live manager ─────────────────────
     useEffect(() => {
@@ -490,8 +656,11 @@ export default function MultichartGrid({
             }}
         >
             {layout.tiles.map((tile) => {
+                const isHost    = tile.id === HOST_PANEL_ID;
                 const isFocused = focusedPanelId === tile.id;
-                const isReady   = readyPanels.has(tile.id);
+                // Host tile is always "ready" (it's the parent's already-loaded
+                // chart) — never show the loading overlay for it.
+                const isReady   = isHost || readyPanels.has(tile.id);
                 return (
                     <div
                         key={tile.id}
@@ -500,6 +669,7 @@ export default function MultichartGrid({
                             else delete cellRefs.current[tile.id];
                         }}
                         data-panel-id={tile.id}
+                        data-multichart-host-cell={isHost ? "1" : undefined}
                         onMouseDownCapture={() => {
                             if (typeof setFocusedPanelId === "function") {
                                 setFocusedPanelId(tile.id);
@@ -509,19 +679,35 @@ export default function MultichartGrid({
                             gridColumn: tile.gridColumn || "auto",
                             gridRow:    tile.gridRow    || "auto",
                             position: "relative",
-                            background: "#0b0c14",
-                            outline: isFocused ? "2px solid #3a6db5" : "1px solid #15171f",
+                            // Host cell is the slot for the parent's
+                            // #chartWrapper — keep it transparent so the
+                            // wrapper paints cleanly over it (the wrapper
+                            // is at z-index:13, this cell is z-index auto,
+                            // so the wrapper covers the cell exactly).
+                            background: isHost ? "transparent" : "#0b0c14",
+                            outline: isFocused ? "2px solid #3a6db5"
+                                               : (isHost ? "none" : "1px solid #15171f"),
                             outlineOffset: "-1px",
                             overflow: "hidden",
                             minWidth: 0,
                             minHeight: 0,
+                            // pointer-events: none on host means clicks on the
+                            // chart canvas in tile A's slot reach the parent
+                            // #chartWrapper (which sits above this cell at
+                            // z-index:13) instead of being captured here. The
+                            // mouse-down focus handler still fires because
+                            // focusing tile A by clicking the parent chart
+                            // is naturally implied by it being the host.
+                            pointerEvents: isHost ? "none" : "auto",
                         }}
                     >
                         {/* Loading overlay (TradingView-style 3 dots + faint
                              chart skeleton). Renders ABOVE the manager-spawned
                              iframe (z-index:5 > iframe default) until the
                              panel's bridge fires `bridge-ready`. Unmounted
-                             once `onChartReady(id)` adds id to readyPanels. */}
+                             once `onChartReady(id)` adds id to readyPanels.
+                             Skipped for the host cell — parent chart is
+                             already loaded with full state. */}
                         {!isReady && (
                             <div className="multichart-loading-overlay" aria-hidden="true">
                                 <div className="multichart-loading-dots">
