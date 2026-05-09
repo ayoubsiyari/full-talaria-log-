@@ -13,12 +13,13 @@ This sandbox lives **outside** the production chart code (`dist-v9/`, `talaria-d
 | [`decisions.md`](./decisions.md) | Phase 0 (1, 2, 3, 4) | Sync allowlist, time format, snap rules, topology. |
 | [`engine-api-audit.md`](./engine-api-audit.md) | Step 1.2 | What chart.js emits, accepts, and which methods are forbidden from outside. |
 | [`engine-api-guards.js`](./engine-api-guards.js) | Step 1.2 | `FORBIDDEN_SYNC_FIELDS`, snapshot/diff guards, `runGuardSelfTest`. |
-| [`sample-data.js`](./sample-data.js) | Step 1.1 | Synthetic OHLC generator (no backend needed). |
-| [`chart-host.html`](./chart-host.html) | Steps 1.1 / 1.3 | Per-chart iframe harness — loads `chart.js`, mounts canvas, installs bridge. |
+| [`chart-host.html`](./chart-host.html) | Steps 1.1 / 1.3 / v10 | Per-chart iframe harness — loads `chart.js`, mounts canvas, installs bridge, **per-panel file/tf picker**. |
 | [`sync-bridge.js`](./sync-bridge.js) | Steps 3.1, 3.2, 4.1, 4.2 | Iframe-side: chart events ⇄ postMessage. Loop guard. |
 | [`multichart-manager.js`](./multichart-manager.js) | Steps 5.1 / 5.2 | Parent-side: iframe lifecycle, PEER fan-out, allowlist filter. |
-| [`multichart-shell.html`](./multichart-shell.html) | All phases (verification UI) | Resizable layout, sync toggles, log panel, counters. |
-| [`multichart.css`](./multichart.css) | Step 5.1 | Layout styling. |
+| [`multichart-shell.html`](./multichart-shell.html) | All phases (verification UI) | Resizable layout, sync toggles, log panel, counters, **broadcast-file dropdown**. |
+| [`multichart.css`](./multichart.css) | Step 5.1 / v10 | Layout styling — quiet by default. |
+
+**v10 (2026-05-09):** Synthetic data (`sample-data.js`) was deleted. The sandbox now fetches real OHLC exclusively from FastAPI (`/api/files`, `/api/file/{id}/smart`). Each panel has its own file picker so different pairs can be displayed side by side.
 
 ---
 

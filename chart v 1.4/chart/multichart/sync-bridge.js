@@ -64,10 +64,15 @@
         return Math.ceil(timeSec / bucketSec) * bucketSec;
     }
 
-    function tfSec(tf) {
-        const map = global.MultichartSampleData && global.MultichartSampleData.TIMEFRAME_SECONDS;
-        return (map && map[tf]) || 60;
-    }
+    // Inline timeframe-to-seconds map. v10: this used to be sourced from
+    // sample-data.js (TIMEFRAME_SECONDS export), but sample-data.js was
+    // removed when we switched to real-data-only mode.
+    const TIMEFRAME_SECONDS = {
+        '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800,
+        '1h': 3600, '2h': 7200, '4h': 14400,
+        '1d': 86400, '1w': 604800, '1M': 2592000,
+    };
+    function tfSec(tf) { return TIMEFRAME_SECONDS[tf] || 60; }
 
     /**
      * Apply a sync'd visible time-range to the recipient chart.

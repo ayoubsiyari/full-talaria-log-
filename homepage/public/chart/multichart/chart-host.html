@@ -10,17 +10,24 @@
 
         URL params:
             ?id=chart-A          — bridge identifier (REQUIRED)
-            &symbol=AAPL         — symbol for synthetic data
-            &tf=1m               — initial timeframe
-            &days=14             — days of synthetic data to generate
+            &tf=1m               — initial timeframe (per-panel, NOT synced)
+            &fileId=27           — initial file id (passed by shell on layout
+                                   build when "Apply file to all" was used).
+                                   When omitted, the iframe shows
+                                   "pick a file →" until user picks one
+                                   from the per-panel dropdown.
             &verbose=1           — verbose bridge logs
 
         Loads:
             d3 (CDN)
             ../chart.js          — engine (no modules — minimum surface)
             engine-api-guards.js
-            sample-data.js
             sync-bridge.js
+
+        v10 (2026-05-09): synthetic data path removed entirely. The iframe
+        always fetches real OHLC from FastAPI (/api/file/{id}/smart). If the
+        fetch fails, the chart stays empty and the per-panel badge surfaces
+        the error.
     -->
 
     <style>
@@ -67,40 +74,61 @@
             display: none;
         }
 
-        /* per-chart toolbar */
+        /* per-chart toolbar — compact pill at top-left, fades when not hovered */
         #toolbar {
             position: absolute;
-            top: 6px;
-            left: 6px;
+            top: 4px;
+            left: 4px;
             z-index: 50;
             display: flex;
-            gap: 6px;
+            gap: 4px;
             flex-wrap: wrap;
             align-items: center;
-            padding: 4px 6px;
-            background: rgba(10, 12, 22, 0.7);
+            padding: 3px 5px;
+            background: rgba(17, 20, 29, 0.85);
             border: 1px solid #2a2e39;
-            border-radius: 6px;
-            font-size: 12px;
+            border-radius: 5px;
+            font-size: 11px;
+            opacity: 0.55;
+            transition: opacity 0.15s;
         }
-        #toolbar .label { color: #8a8e99; }
-        #toolbar select, #toolbar input {
+        #toolbar:hover { opacity: 1; }
+        #toolbar .label { color: #8a8e99; font-size: 10px; }
+        #toolbar select {
             background: #1c1f26;
             color: #d1d4dc;
             border: 1px solid #2a2e39;
-            border-radius: 4px;
-            padding: 2px 6px;
-            font-size: 12px;
+            border-radius: 3px;
+            padding: 1px 4px;
+            font-size: 11px;
+            max-width: 180px;
         }
+        #toolbar #file-select { max-width: 220px; }
         #toolbar .badge {
             display: inline-block;
-            padding: 1px 6px;
+            padding: 1px 5px;
             background: #2a2e39;
             border-radius: 3px;
             color: #8eb4ff;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 11px;
+            font-size: 10px;
         }
+        #toolbar .err { background: rgba(242, 54, 69, 0.4); color: #ffd3d8; }
+        /* Loading overlay covering the chart area while a /smart fetch is in flight. */
+        #data-loading {
+            position: absolute;
+            inset: 0;
+            z-index: 40;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(11, 12, 20, 0.78);
+            color: #8eb4ff;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            pointer-events: none;
+        }
+        #data-loading.show { display: flex; }
 
         /* Price-axis assertion overlay.
            Positioned at TOP-RIGHT (away from chart.js's bottom-edge X-axis
@@ -143,12 +171,13 @@
 <body>
     <div id="chart-container">
         <div id="toolbar">
-            <span class="label">id</span>
             <span class="badge" id="badge-id">—</span>
-            <span class="label">sym</span>
-            <span class="badge" id="badge-sym">—</span>
+            <span class="label">file</span>
+            <select id="file-select" title="Pick a CSV file (per-panel — independent of other panels)">
+                <option value="">— loading… —</option>
+            </select>
             <span class="label">tf</span>
-            <select id="tf-select">
+            <select id="tf-select" title="Timeframe (per-panel — NOT synced)">
                 <option>1m</option>
                 <option>5m</option>
                 <option>15m</option>
@@ -156,10 +185,7 @@
                 <option>4h</option>
                 <option>1d</option>
             </select>
-            <span class="label">priceMin</span>
-            <span class="badge" id="badge-pmin">—</span>
-            <span class="label">priceMax</span>
-            <span class="badge" id="badge-pmax">—</span>
+            <span class="badge" id="badge-bars">0 bars</span>
         </div>
 
         <canvas id="chartCanvas"></canvas>
@@ -169,6 +195,7 @@
         <div class="price-label"></div>
         <div class="time-label"></div>
 
+        <div id="data-loading">Loading data…</div>
         <div id="assert-banner">price-axis OK</div>
     </div>
 
@@ -266,27 +293,41 @@
     <!-- engine -->
     <script src="../chart.js"></script>
 
-    <!-- sandbox-only modules. Cache-busting query string — bump on any sandbox change. -->
-    <script src="./engine-api-guards.js?v=20260509T1330"></script>
-    <script src="./sample-data.js?v=20260509T1330"></script>
-    <script src="./sync-bridge.js?v=20260509T1330"></script>
+    <!-- sandbox-only modules. Cache-busting query string — bump on any sandbox change.
+         sample-data.js was deleted in v10 — the sandbox always fetches real
+         data from /api/file/{id}/smart now. -->
+    <script src="./engine-api-guards.js?v=20260509T1340"></script>
+    <script src="./sync-bridge.js?v=20260509T1340"></script>
 
     <script>
     (function () {
         const params = new URLSearchParams(location.search);
         const chartId   = params.get('id') || ('chart-' + Math.random().toString(36).slice(2, 6));
-        const symbol    = params.get('symbol') || 'AAPL';
         const initialTf = params.get('tf') || '1m';
-        const daysBack  = parseInt(params.get('days') || '14', 10);
         const verbose   = params.get('verbose') === '1';
-        const useReal   = params.get('useReal') === '1';
-        const fileId    = params.get('fileId');     // null when synthetic mode
+        // Optional URL params from the shell. When the shell does "Apply file
+        // to all", iframes are recreated with these. When the user changes a
+        // per-panel file, we just update local state without recreating the iframe.
+        let currentFileId = params.get('fileId') || null;     // null means "no file picked yet"
 
-        document.getElementById('badge-id').textContent = chartId;
-        document.getElementById('badge-sym').textContent = symbol + (useReal ? ' [real:#' + fileId + ']' : '');
-        document.getElementById('tf-select').value = initialTf;
-        document.title = 'mc-' + chartId + ' ' + symbol + ' ' + initialTf
-            + (useReal ? ' (real)' : '');
+        const badgeId   = document.getElementById('badge-id');
+        const badgeBars = document.getElementById('badge-bars');
+        const fileSel   = document.getElementById('file-select');
+        const tfSel     = document.getElementById('tf-select');
+        const loadingEl = document.getElementById('data-loading');
+
+        badgeId.textContent = chartId;
+        tfSel.value = initialTf;
+        document.title = 'mc-' + chartId + ' ' + initialTf;
+
+        function setLoading(on) {
+            if (on) loadingEl.classList.add('show');
+            else    loadingEl.classList.remove('show');
+        }
+        function setBars(n, isError) {
+            badgeBars.textContent = (isError ? 'ERROR · ' : '') + n + ' bars';
+            badgeBars.className = 'badge' + (isError ? ' err' : '');
+        }
 
         /**
          * Send a diagnostic line up to the parent shell so it appears in the
@@ -380,35 +421,90 @@
                               candleCount: candles.length },
                 }));
             } catch (_) {}
-            console.log('[chart-host:' + chartId + '] loaded ' + candles.length
-                + ' ' + tf + ' candles (' + sourceLabel + ')');
+            setBars(candles.length, false);
+            reportToShell('info', 'loaded ' + candles.length + ' ' + tf
+                + ' candles (' + sourceLabel + ')');
         }
 
-        function loadDataInto(chart, sym, tf) {
-            // SYNTHETIC mode (default) — instant, deterministic, no network.
-            if (!useReal || !fileId) {
-                const candles = window.MultichartSampleData.generateForTimeframe(
-                    sym, tf, { daysBack });
-                applyCandles(chart, sym, tf, candles, 'synthetic');
+        /**
+         * Load real OHLC data for the given fileId+tf into `chart`. v10: there
+         * is NO synthetic fallback — if the fetch fails, we surface the error
+         * in the per-chart badge and the parent shell log instead of silently
+         * showing fake data.
+         */
+        function loadDataInto(chart, fid, tf) {
+            if (!fid) {
+                setBars(0, true);
+                reportToShell('warn', 'no file selected — pick one from the per-panel dropdown');
+                chart.rawData = []; chart.data = []; chart.totalCandles = 0;
+                try { chart.scheduleRender ? chart.scheduleRender() : chart.render(); } catch (_) {}
                 return;
             }
-            // REAL mode — fetch from FastAPI. Async, may fail if server down.
-            fetchRealCandles(fileId, tf).then(function (candles) {
+            setLoading(true);
+            // Resolve a friendly symbol label from the cached file list.
+            const meta = (window.__filesById && window.__filesById[fid]) || null;
+            const sym  = (meta && (meta.symbol || meta.ticker)) || ('#' + fid);
+            document.title = 'mc-' + chartId + ' ' + sym + ' ' + tf;
+
+            fetchRealCandles(fid, tf).then(function (candles) {
+                setLoading(false);
                 if (!candles.length) {
-                    console.warn('[chart-host:' + chartId + '] /smart returned 0 candles for tf='
-                        + tf + ' fileId=' + fileId + ' — falling back to synthetic');
-                    const synthetic = window.MultichartSampleData.generateForTimeframe(
-                        sym, tf, { daysBack });
-                    applyCandles(chart, sym, tf, synthetic, 'synthetic-fallback');
+                    setBars(0, true);
+                    reportToShell('error', '/smart returned 0 candles for fileId=' + fid + ' tf=' + tf);
                     return;
                 }
-                applyCandles(chart, sym, tf, candles, 'real:#' + fileId);
+                applyCandles(chart, sym, tf, candles, 'file#' + fid);
             }).catch(function (e) {
-                console.error('[chart-host:' + chartId + '] real-data fetch failed:', e);
-                const synthetic = window.MultichartSampleData.generateForTimeframe(
-                    sym, tf, { daysBack });
-                applyCandles(chart, sym, tf, synthetic, 'synthetic-fallback(' + e.message + ')');
+                setLoading(false);
+                setBars(0, true);
+                reportToShell('error', 'real-data fetch failed: ' + (e && e.message || e));
             });
+        }
+
+        /**
+         * Fetch /api/files once on init, populate the per-panel file dropdown,
+         * and cache by id for symbol-label lookups.
+         */
+        async function loadFileList() {
+            try {
+                const resp = await fetch('/api/files', { credentials: 'include', cache: 'no-store' });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                const files = (data && (data.files || data)) || [];
+                if (!Array.isArray(files) || !files.length) {
+                    fileSel.innerHTML = '<option value="">— no files on server —</option>';
+                    reportToShell('warn', '/api/files returned 0 files');
+                    return [];
+                }
+                window.__filesById = {};
+                fileSel.innerHTML = '';
+                const placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.textContent = '— pick a file —';
+                fileSel.appendChild(placeholder);
+                files.forEach(function (f) {
+                    const id = String(f.id ?? f.file_id ?? f.fileId);
+                    const sym = f.symbol || f.ticker || '?';
+                    const tf  = f.timeframe || f.tf || '';
+                    const rows = f.rows || f.row_count || '';
+                    const label = '#' + id + ' ' + sym + (tf ? ' ' + tf : '')
+                        + (rows ? ' (' + Number(rows).toLocaleString() + ')' : '');
+                    const opt = document.createElement('option');
+                    opt.value = id;
+                    opt.textContent = label;
+                    fileSel.appendChild(opt);
+                    window.__filesById[id] = { id: id, symbol: sym, timeframe: tf, rows: rows };
+                });
+                if (currentFileId && window.__filesById[currentFileId]) {
+                    fileSel.value = currentFileId;
+                }
+                reportToShell('info', '/api/files loaded ' + files.length + ' entries');
+                return files;
+            } catch (e) {
+                fileSel.innerHTML = '<option value="">— /api/files error —</option>';
+                reportToShell('error', '/api/files failed: ' + (e && e.message || e));
+                return [];
+            }
         }
 
         function start() {
@@ -484,43 +580,66 @@
                 }));
             };
 
-            // Initial data load
-            loadDataInto(chart, symbol, initialTf);
+            // Per-panel file picker. Wires AFTER /api/files has populated it.
+            // Changing the file is LOCAL to this iframe — it does NOT broadcast
+            // a symbol-sync event. Use the shell's "Apply file to all" button
+            // for that.
+            fileSel.addEventListener('change', function (e) {
+                const newId = e.target.value || null;
+                currentFileId = newId;
+                loadDataInto(chart, newId, tfSel.value);
+            });
 
-            // Wire timeframe selector — local only, NOT a sync event.
-            document.getElementById('tf-select').addEventListener('change', function (e) {
+            // Per-panel timeframe selector — local only, NOT a sync event.
+            tfSel.addEventListener('change', function (e) {
                 const newTf = e.target.value;
-                loadDataInto(chart, chart.currentSymbol, newTf);
+                loadDataInto(chart, currentFileId, newTf);
                 try { chart.setTimeframe && chart.setTimeframe(newTf); } catch (_) {}
             });
 
-            // Live price-axis badges
-            function refreshBadges() {
-                const ps = chart.priceScale || {};
-                document.getElementById('badge-pmin').textContent = (ps.min || 0).toFixed(4);
-                document.getElementById('badge-pmax').textContent = (ps.max || 0).toFixed(4);
-                requestAnimationFrame(refreshBadges);
+            // Shell-driven "set this file in this iframe" — used by the
+            // "Apply file to all" toolbar button. Shell sends:
+            //   { type: 'set-file', fileId: '27' }
+            window.addEventListener('message', function (ev) {
+                const m = ev.data;
+                if (!m || m.type !== 'set-file') return;
+                const newId = m.fileId ? String(m.fileId) : null;
+                currentFileId = newId;
+                if (newId && window.__filesById && window.__filesById[newId]) {
+                    fileSel.value = newId;
+                }
+                loadDataInto(chart, newId, tfSel.value);
+            });
+
+            // Initial data fetch — only if a file was passed via URL params.
+            // Otherwise we wait for the user to pick one.
+            if (currentFileId) {
+                loadDataInto(chart, currentFileId, initialTf);
+            } else {
+                setBars(0, false);
+                badgeBars.textContent = 'pick a file →';
             }
-            refreshBadges();
 
             // Assertion banner — listen to bridge reports via parent? No, we
             // also listen locally: the bridge's reportAssertion function posts
             // up to parent, but we want a local indicator. Subscribe via a
             // CustomEvent the bridge could fire. Simpler: just intercept here.
             // We'll fire our own CustomEvent.
+            // v10: only show the banner when an assertion FAILS — silent on OK.
+            // The shell's counter panel ("Run guard self-test", per-chart loop=0/fail=0)
+            // already shows successful pass-throughs aggregated, so an always-flashing
+            // green badge in the chart corner is just visual noise.
             window.addEventListener('multichart:assertion', function (ev) {
+                if (ev.detail && ev.detail.ok) return;     // success is silent
                 const banner = document.getElementById('assert-banner');
                 banner.style.display = 'block';
-                if (ev.detail && ev.detail.ok) {
-                    banner.classList.remove('fail');
-                    banner.textContent = 'price-axis OK (' + ev.detail.syncType + ')';
-                } else {
-                    banner.classList.add('fail');
-                    banner.textContent = 'LEAK ' + (ev.detail && ev.detail.syncType) + ': '
-                        + ((ev.detail && ev.detail.violations) || []).join('; ');
-                }
+                banner.classList.add('fail');
+                banner.textContent = 'LEAK ' + (ev.detail && ev.detail.syncType) + ': '
+                    + ((ev.detail && ev.detail.violations) || []).join('; ');
                 clearTimeout(window.__assertHide);
-                window.__assertHide = setTimeout(function () { banner.style.display = 'none'; }, 1500);
+                window.__assertHide = setTimeout(function () {
+                    banner.style.display = 'none';
+                }, 4000);
             });
 
             // Install bridge
@@ -543,16 +662,35 @@
                 return origPost(msg, target);
             };
 
-            // Symbol-change requests from the parent (or peers via the parent).
+            // Symbol-change broadcasts from the shell (sync event) — match
+            // by symbol against the cached file list and switch this iframe's
+            // file to the first match. We deliberately do NOT propagate this
+            // back as another symbol event (the bridge already handles loop
+            // suppression).
             window.addEventListener('multichart:symbol-change', function (ev) {
                 const sym = ev.detail && ev.detail.symbol;
-                if (sym) loadDataInto(chart, sym, chart.currentTimeframe);
+                if (!sym || !window.__filesById) return;
+                const ids = Object.keys(window.__filesById);
+                const match = ids.find(function (id) {
+                    return (window.__filesById[id].symbol || '').toUpperCase() === sym.toUpperCase();
+                });
+                if (match) {
+                    currentFileId = match;
+                    fileSel.value = match;
+                    loadDataInto(chart, match, tfSel.value);
+                }
             });
+
+            // Kick off the per-iframe file list load. Once it returns, if the
+            // iframe was created without a fileId URL param, we leave the
+            // user to pick one. If it was created WITH one, the early
+            // loadDataInto above already started fetching candles.
+            loadFileList();
         }
 
         // Wait for chart.js auto-init to finish creating window.chart.
         function ready() {
-            if (window.chart && typeof d3 !== 'undefined' && window.MultichartBridge && window.MultichartSampleData) {
+            if (window.chart && typeof d3 !== 'undefined' && window.MultichartBridge) {
                 start();
             } else {
                 setTimeout(ready, 50);

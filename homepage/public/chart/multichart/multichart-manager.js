@@ -84,20 +84,18 @@
         }
         const params = new URLSearchParams();
         params.set('id', cfg.id);
-        params.set('symbol', cfg.symbol || 'AAPL');
         params.set('tf', cfg.tf || '1m');
-        if (cfg.days) params.set('days', String(cfg.days));
         if (cfg.verbose) params.set('verbose', '1');
 
-        // Real-data toggle: when the shell exposes __multichartRealData() and
-        // the user has picked a file, pass it through so chart-host fetches
-        // from FastAPI's /api/file/{id}/smart instead of generating synthetic.
+        // v10: shell remembers the last broadcast file id; pass it as URL
+        // param so newly-spawned iframes load the same file by default.
+        // Each iframe also has its own per-panel file picker the user can
+        // change after init.
         try {
             const rd = (typeof global.__multichartRealData === 'function')
                 ? global.__multichartRealData()
                 : null;
-            if (rd && rd.useReal && rd.fileId) {
-                params.set('useReal', '1');
+            if (rd && rd.fileId) {
                 params.set('fileId', String(rd.fileId));
             }
         } catch (_) {}
@@ -109,7 +107,7 @@
         overlay.className = 'loading-overlay';
         overlay.innerHTML =
             '<div class="id">' + cfg.id + '</div>' +
-            '<div>Loading ' + (cfg.symbol || '?') + ' / ' + (cfg.tf || '?') + '…</div>' +
+            '<div>Loading panel — pick a file…</div>' +
             '<small>iframe: pending — bridge: pending</small>';
         mountEl.appendChild(overlay);
 
@@ -148,10 +146,10 @@
             frame:   frame,
             overlay: overlay,
             ready:   false,
-            state:   { symbol: cfg.symbol, timeframe: cfg.tf, candleCount: 0 },
+            state:   { symbol: '—', timeframe: cfg.tf, candleCount: 0 },
             mountEl: mountEl,
         });
-        this._log('info', 'addChart ' + cfg.id + ' (' + cfg.symbol + ', ' + cfg.tf + ')');
+        this._log('info', 'addChart ' + cfg.id + ' (tf=' + (cfg.tf || '?') + ')');
     };
 
     MultichartManager.prototype.removeChart = function (id) {
