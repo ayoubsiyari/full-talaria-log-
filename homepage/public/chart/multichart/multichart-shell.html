@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multichart Sandbox — Talaria</title>
+    <link rel="stylesheet" href="multichart.css" />
+</head>
+<body>
+<div class="app">
+
+    <header class="topbar">
+        <h1>Multichart Sandbox</h1>
+
+        <div class="group">
+            <label>Layout</label>
+            <select id="layout-select">
+                <option value="1">1</option>
+                <option value="2" selected>2</option>
+                <option value="3">3</option>
+                <option value="2x2">2×2</option>
+            </select>
+        </div>
+
+        <div class="group">
+            <label>Symbol</label>
+            <select id="symbol-select">
+                <option>AAPL</option>
+                <option>TSLA</option>
+                <option>MSFT</option>
+                <option>EURUSD</option>
+                <option>BTCUSD</option>
+                <option>NQ</option>
+            </select>
+            <button id="apply-symbol" title="Broadcast this symbol to all charts (sync)">Apply to all</button>
+        </div>
+
+        <div class="group">
+            <label><input type="checkbox" id="sync-crosshair" checked /> Crosshair</label>
+            <label><input type="checkbox" id="sync-visible" checked /> Visible range</label>
+            <label><input type="checkbox" id="sync-symbol" checked /> Symbol</label>
+        </div>
+
+        <div class="group">
+            <button id="self-test">Run guard self-test</button>
+            <button id="clear-log">Clear log</button>
+        </div>
+
+        <div class="group" style="margin-left:auto">
+            <span class="counter" title="user-originated sync events forwarded">out: <span id="ctr-out">0</span></span>
+            <span class="counter" title="loop-guard drops">loop: <span id="ctr-loop">0</span></span>
+            <span class="counter" title="forbidden-field drops (should always be 0)">fbid: <span id="ctr-fbid">0</span></span>
+            <span class="counter" title="price-axis assertion passes">ok: <span id="ctr-ok">0</span></span>
+            <span class="counter" title="price-axis assertion failures (should be 0)">fail: <span id="ctr-fail">0</span></span>
+        </div>
+    </header>
+
+    <section class="charts" id="charts-area"></section>
+
+    <section class="bottom">
+        <div class="log" id="log"></div>
+        <div class="assertions" id="assertions">
+            <h3>Per-chart status</h3>
+            <div id="chart-states"></div>
+        </div>
+    </section>
+</div>
+
+<script src="engine-api-guards.js"></script>
+<script src="multichart-manager.js"></script>
+<script>
+(function () {
+    const chartsArea = document.getElementById('charts-area');
+    const logEl = document.getElementById('log');
+    const layoutSel = document.getElementById('layout-select');
+    const symbolSel = document.getElementById('symbol-select');
+
+    const ctrOut  = document.getElementById('ctr-out');
+    const ctrLoop = document.getElementById('ctr-loop');
+    const ctrFbid = document.getElementById('ctr-fbid');
+    const ctrOk   = document.getElementById('ctr-ok');
+    const ctrFail = document.getElementById('ctr-fail');
+
+    /** Predefined layouts for the verification matrix:
+     *  1   — single chart (sanity)
+     *  2   — Phase 2/3/4: 1m + 1h side by side
+     *  3   — Phase 5.2: 1m + 5m + 1h
+     *  2x2 — Phase 5.2 stretch: four mismatched timeframes
+     */
+    const LAYOUTS = {
+        '1':   { gridCols: '1fr',                 gridRows: '1fr',     dividers: 0,
+                 charts: [
+                     { id: 'A', symbol: 'AAPL', tf: '1m' },
+                 ] },
+        '2':   { gridCols: '1fr 6px 1fr',         gridRows: '1fr',     dividers: 1,
+                 charts: [
+                     { id: 'A', symbol: 'AAPL', tf: '1m' },
+                     { id: 'B', symbol: 'AAPL', tf: '1h' },
+                 ] },
+        '3':   { gridCols: '1fr 6px 1fr 6px 1fr', gridRows: '1fr',     dividers: 2,
+                 charts: [
+                     { id: 'A', symbol: 'AAPL', tf: '1m' },
+                     { id: 'B', symbol: 'AAPL', tf: '5m' },
+                     { id: 'C', symbol: 'AAPL', tf: '1h' },
+                 ] },
+        '2x2': { gridCols: '1fr 6px 1fr', gridRows: '1fr 6px 1fr', dividers: 4,
+                 charts: [
+                     { id: 'A', symbol: 'AAPL', tf: '1m' },
+                     { id: 'B', symbol: 'AAPL', tf: '15m' },
+                     { id: 'C', symbol: 'AAPL', tf: '1h' },
+                     { id: 'D', symbol: 'AAPL', tf: '1d' },
+                 ] },
+    };
+
+    let manager = null;
+    const chartStates = {};
+
+    function appendLog(entry) {
+        const div = document.createElement('div');
+        div.className = 'row ' + entry.level;
+        const ts = new Date(entry.ts).toISOString().slice(11, 23);
+        div.innerHTML = '<span class="ts">' + ts + '</span>'
+                      + '[' + entry.level.toUpperCase() + '] '
+                      + escapeHtml(entry.text);
+        logEl.appendChild(div);
+        logEl.scrollTop = logEl.scrollHeight;
+        // Cap log size to avoid unbounded growth during stress tests.
+        while (logEl.childElementCount > 1500) logEl.removeChild(logEl.firstChild);
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+            return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+        });
+    }
+
+    function refreshCounters() {
+        if (!manager) return;
+        ctrOut.textContent  = manager.counters.outFromUser;
+        ctrLoop.textContent = manager.counters.droppedLoop;
+        ctrFbid.textContent = manager.counters.droppedForbidden;
+        ctrOk.textContent   = manager.counters.assertionsOk;
+        ctrFail.textContent = manager.counters.assertionsFail;
+    }
+    setInterval(refreshCounters, 250);
+
+    function renderChartStates() {
+        const host = document.getElementById('chart-states');
+        host.innerHTML = '';
+        if (!manager) return;
+        for (const c of manager.getCharts()) {
+            const s = c.state || {};
+            const div = document.createElement('div');
+            div.className = 'item';
+            div.innerHTML =
+                '<span class="name">' + c.id + '</span>' +
+                '<span class="val">' + (s.symbol || '?') + ' / ' + (s.timeframe || '?') +
+                ' / ' + (s.candleCount || 0) + ' bars</span>';
+            host.appendChild(div);
+        }
+    }
+    setInterval(renderChartStates, 500);
+
+    /** Build the chart cells + dividers for a layout. */
+    function applyLayout(name) {
+        const cfg = LAYOUTS[name];
+        if (!cfg) return;
+
+        // Tear down existing manager + DOM
+        if (manager) manager.dispose();
+        chartsArea.innerHTML = '';
+
+        chartsArea.style.gridTemplateColumns = cfg.gridCols;
+        chartsArea.style.gridTemplateRows    = cfg.gridRows;
+
+        manager = new MultichartManager({
+            container: chartsArea,
+            onLog:    appendLog,
+            onState:  function (id, state) { chartStates[id] = state; },
+            onAssertion: function (msg) { /* counters are read off manager.counters */ },
+        });
+        window.__manager = manager;
+
+        // Build cells in the order: cell, divider, cell, divider, cell ...
+        // For 2x2 we lay out manually.
+        if (name === '2x2') {
+            // 3 cols × 3 rows (cell, div, cell × 3 rows)
+            const positions = [
+                { col: 1, row: 1, chart: cfg.charts[0] },
+                { col: 3, row: 1, chart: cfg.charts[1] },
+                { col: 1, row: 3, chart: cfg.charts[2] },
+                { col: 3, row: 3, chart: cfg.charts[3] },
+            ];
+            for (const p of positions) {
+                const cell = makeCell(p.chart);
+                cell.style.gridColumn = String(p.col);
+                cell.style.gridRow    = String(p.row);
+                chartsArea.appendChild(cell);
+                manager.addChart(p.chart, cell);
+            }
+            // Vertical divider (col 2, all rows)
+            const vDiv = makeDivider('col');
+            vDiv.style.gridColumn = '2';
+            vDiv.style.gridRow    = '1 / span 3';
+            chartsArea.appendChild(vDiv);
+            // Horizontal divider (row 2, all cols)
+            const hDiv = makeDivider('row');
+            hDiv.style.gridRow    = '2';
+            hDiv.style.gridColumn = '1 / span 3';
+            chartsArea.appendChild(hDiv);
+
+            installDividerDrag(vDiv, 'col');
+            installDividerDrag(hDiv, 'row');
+        } else {
+            for (let i = 0; i < cfg.charts.length; i++) {
+                const cell = makeCell(cfg.charts[i]);
+                chartsArea.appendChild(cell);
+                manager.addChart(cfg.charts[i], cell);
+                if (i < cfg.charts.length - 1) {
+                    const div = makeDivider('col');
+                    chartsArea.appendChild(div);
+                    installDividerDrag(div, 'col');
+                }
+            }
+        }
+
+        // initial sync mode
+        manager.setSyncMode({
+            crosshair: document.getElementById('sync-crosshair').checked,
+            visibleRange: document.getElementById('sync-visible').checked,
+            symbol: document.getElementById('sync-symbol').checked,
+        });
+    }
+
+    function makeCell(chartCfg) {
+        const cell = document.createElement('div');
+        cell.className = 'chart-cell';
+        cell.setAttribute('data-id', chartCfg.id);
+        const lbl = document.createElement('div');
+        lbl.className = 'chart-cell-label';
+        lbl.textContent = chartCfg.id + ' · ' + chartCfg.symbol + ' · ' + chartCfg.tf;
+        cell.appendChild(lbl);
+        return cell;
+    }
+
+    function makeDivider(orient) {
+        const d = document.createElement('div');
+        d.className = 'divider' + (orient === 'row' ? ' row' : '');
+        return d;
+    }
+
+    /** Drag a divider; tracks fr units of neighbours for resize. */
+    function installDividerDrag(divEl, orient) {
+        let dragging = false;
+        let startPos = 0;
+        let prevSize = 0, nextSize = 0, prevEl = null, nextEl = null, totalSize = 0;
+
+        divEl.addEventListener('mousedown', function (e) {
+            dragging = true;
+            divEl.classList.add('dragging');
+            startPos = (orient === 'col' ? e.clientX : e.clientY);
+            // Find neighbours
+            prevEl = divEl.previousElementSibling;
+            nextEl = divEl.nextElementSibling;
+            if (orient === 'col') {
+                prevSize = prevEl.getBoundingClientRect().width;
+                nextSize = nextEl.getBoundingClientRect().width;
+            } else {
+                prevSize = prevEl.getBoundingClientRect().height;
+                nextSize = nextEl.getBoundingClientRect().height;
+            }
+            totalSize = prevSize + nextSize;
+            e.preventDefault();
+        });
+        global.addEventListener('mousemove', function (e) {
+            if (!dragging) return;
+            const cur = (orient === 'col' ? e.clientX : e.clientY);
+            const delta = cur - startPos;
+            let newPrev = Math.max(120, Math.min(totalSize - 120, prevSize + delta));
+            let newNext = totalSize - newPrev;
+            if (orient === 'col') {
+                prevEl.style.width = newPrev + 'px';
+                nextEl.style.width = newNext + 'px';
+            } else {
+                prevEl.style.height = newPrev + 'px';
+                nextEl.style.height = newNext + 'px';
+            }
+            // Force iframe content to react: the chart's chart.js has its own
+            // ResizeObserver-equivalent that hooks `resize` and re-fits.
+            try { global.dispatchEvent(new Event('resize')); } catch (_) {}
+        });
+        global.addEventListener('mouseup', function () {
+            if (!dragging) return;
+            dragging = false;
+            divEl.classList.remove('dragging');
+        });
+    }
+
+    // ─── Wire UI controls ────────────────────────────────────────────────
+    layoutSel.addEventListener('change', function () { applyLayout(layoutSel.value); });
+
+    document.getElementById('apply-symbol').addEventListener('click', function () {
+        if (!manager) return;
+        const sym = symbolSel.value;
+        // Treat as if originated from a virtual "shell" source — fan out to all
+        manager.broadcastSymbol('__shell__', sym);
+    });
+
+    function setSyncMode() {
+        if (!manager) return;
+        manager.setSyncMode({
+            crosshair: document.getElementById('sync-crosshair').checked,
+            visibleRange: document.getElementById('sync-visible').checked,
+            symbol: document.getElementById('sync-symbol').checked,
+        });
+    }
+    document.getElementById('sync-crosshair').addEventListener('change', setSyncMode);
+    document.getElementById('sync-visible').addEventListener('change', setSyncMode);
+    document.getElementById('sync-symbol').addEventListener('change', setSyncMode);
+
+    document.getElementById('self-test').addEventListener('click', function () {
+        if (manager) manager.runGuardSelfTest();
+    });
+    document.getElementById('clear-log').addEventListener('click', function () {
+        logEl.innerHTML = '';
+        if (manager) {
+            manager.counters.outFromUser = 0;
+            manager.counters.droppedLoop = 0;
+            manager.counters.droppedForbidden = 0;
+            manager.counters.assertionsOk = 0;
+            manager.counters.assertionsFail = 0;
+        }
+    });
+
+    // ─── Boot ────────────────────────────────────────────────────────────
+    applyLayout(layoutSel.value);
+})();
+</script>
+</body>
+</html>

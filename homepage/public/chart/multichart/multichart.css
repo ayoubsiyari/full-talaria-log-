@@ -1,0 +1,154 @@
+/**
+ * multichart.css — parent shell layout
+ *
+ * Resizable split layout. The shell uses CSS grid for the chart area, with
+ * draggable column dividers. When a divider is moved we fire a window
+ * `resize` event so each iframe's chart can react via its own resize observer
+ * (per Step 5.1 — chart's price axis must recompute on container resize).
+ */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; background: #0b0c14; color: #d1d4dc;
+    font-family: 'DM Sans', system-ui, sans-serif; overflow: hidden; }
+
+.app {
+    display: grid;
+    grid-template-rows: 44px 1fr 220px;
+    grid-template-columns: 1fr;
+    height: 100vh;
+}
+
+/* ─── Top bar ────────────────────────────────────────── */
+.topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px;
+    background: #11141d;
+    border-bottom: 1px solid #2a2e39;
+    font-size: 13px;
+}
+.topbar h1 {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #d1d4dc;
+}
+.topbar .group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    border-left: 1px solid #2a2e39;
+    height: 100%;
+}
+.topbar .group:first-of-type { border-left: 0; }
+.topbar label { color: #8a8e99; font-size: 12px; }
+.topbar select, .topbar input[type=text], .topbar button {
+    background: #1c1f26;
+    color: #d1d4dc;
+    border: 1px solid #2a2e39;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.topbar input[type=checkbox] { margin: 0; }
+.topbar button:hover { background: #262a33; }
+.topbar button.primary { background: #2962ff; border-color: #2962ff; color: #fff; }
+.topbar button.primary:hover { background: #3a72ff; }
+.topbar .counter {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #8eb4ff;
+    padding: 2px 6px;
+    background: #1c1f26;
+    border-radius: 3px;
+}
+
+/* ─── Charts area ────────────────────────────────────── */
+.charts {
+    display: grid;
+    /* set dynamically by JS based on layout choice */
+    grid-template-columns: 1fr 6px 1fr;
+    grid-template-rows: 1fr;
+    background: #0b0c14;
+    overflow: hidden;
+}
+.chart-cell {
+    position: relative;
+    background: #0b0c14;
+    overflow: hidden;
+    min-width: 200px;
+    min-height: 200px;
+}
+.chart-cell .chart-cell-label {
+    position: absolute;
+    bottom: 6px;
+    left: 6px;
+    z-index: 5;
+    background: rgba(10, 12, 22, 0.7);
+    border: 1px solid #2a2e39;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #8a8e99;
+    pointer-events: none;
+}
+.divider {
+    background: #1c1f26;
+    cursor: col-resize;
+    transition: background 0.1s;
+}
+.divider:hover, .divider.dragging { background: #2962ff; }
+.divider.row { cursor: row-resize; }
+
+/* ─── Bottom log panel ──────────────────────────────── */
+.bottom {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    border-top: 1px solid #2a2e39;
+    background: #11141d;
+    overflow: hidden;
+}
+.log {
+    overflow-y: auto;
+    padding: 6px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    background: #0e1118;
+}
+.log .row { white-space: pre-wrap; word-break: break-all; }
+.log .info  { color: #d1d4dc; }
+.log .out   { color: #8eb4ff; }
+.log .in    { color: #f7d97c; }
+.log .warn  { color: #ffae57; }
+.log .error { color: #ff7e8b; }
+.log .ts    { color: #5a5e69; margin-right: 6px; }
+
+.assertions {
+    border-left: 1px solid #2a2e39;
+    padding: 8px 10px;
+    overflow-y: auto;
+    background: #11141d;
+    font-size: 12px;
+}
+.assertions h3 {
+    font-size: 12px;
+    color: #8a8e99;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 6px;
+}
+.assertions .item {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px solid #1c1f26;
+}
+.assertions .item .name { color: #d1d4dc; }
+.assertions .item .val  { font-family: 'JetBrains Mono', monospace; color: #8eb4ff; }
+.assertions .item.fail .val { color: #ff7e8b; }
+.assertions .item.pass .val { color: #6ed3a4; }
