@@ -8909,22 +8909,34 @@ class Chart {
         const lastCandleX = (this.data.length - 1) * candleSpacing;
         const minOffset = -lastCandleX;
         
-        // Proactive pan-loading: trigger when viewport is NEAR the edge (like TradingView)
-        const isReplayActive = this.replaySystem && this.replaySystem.isActive;
-        const nearEdgeThreshold = 500 * candleSpacing;
-        if (isReplayActive) {
-            // Replay mode: only allow backward (scroll-left) pan-loading
-            // Forward loading is handled by simpleStepForward
-            if (this.offsetX > maxOffset - nearEdgeThreshold) {
-                this.checkViewportLoadMore('backward');
-            }
-        } else {
-            // Normal mode: trigger both directions based on viewport position
-            if (this.offsetX > maxOffset - nearEdgeThreshold) {
-                this.checkViewportLoadMore('backward');
-            }
-            if (this.offsetX < minOffset + nearEdgeThreshold) {
-                this.checkViewportLoadMore('forward');
+        // Proactive pan-loading: trigger when viewport is NEAR the edge (like TradingView).
+        // SKIP during a wheel-zoom burst — every wheel tick changes candleSpacing which
+        // changes the "near-edge" threshold, and on zoom-out lots of candles fit on screen
+        // so the viewport often appears near the edge even when no user-visible scroll
+        // happened. Without this gate each wheel tick can fire a 5000-bar fetch whose
+        // _commitLoadedBars (full resample + indicator recalc) competes with the render
+        // path → visible lag. After the wheel settles, _wheelBurstUntil expires and a
+        // deferred constrainOffset (scheduled in handleWheel) re-runs this check exactly
+        // once, so any genuinely-needed historical fetch still fires.
+        const wheelActive = typeof this._wheelBurstUntil === 'number'
+            && performance.now() < this._wheelBurstUntil;
+        if (!wheelActive) {
+            const isReplayActive = this.replaySystem && this.replaySystem.isActive;
+            const nearEdgeThreshold = 500 * candleSpacing;
+            if (isReplayActive) {
+                // Replay mode: only allow backward (scroll-left) pan-loading
+                // Forward loading is handled by simpleStepForward
+                if (this.offsetX > maxOffset - nearEdgeThreshold) {
+                    this.checkViewportLoadMore('backward');
+                }
+            } else {
+                // Normal mode: trigger both directions based on viewport position
+                if (this.offsetX > maxOffset - nearEdgeThreshold) {
+                    this.checkViewportLoadMore('backward');
+                }
+                if (this.offsetX < minOffset + nearEdgeThreshold) {
+                    this.checkViewportLoadMore('forward');
+                }
             }
         }
 
@@ -15324,7 +15336,20 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         const handleWheel = (e) => {
             e.preventDefault();
-            this._wheelBurstUntil = performance.now() + 45;
+            // 120ms (was 45ms) so back-to-back wheel ticks stay inside a single burst.
+            // While the burst flag is on, scheduleRender() forces synchronous render() and
+            // constrainOffset() skips the proactive pan-load fetch — together those make
+            // zoom-out feel smooth instead of network-stalled.
+            this._wheelBurstUntil = performance.now() + 120;
+
+            // After the burst ends, run constrainOffset() exactly once to pick up any
+            // genuinely-needed historical data fetch that we suppressed during the wheel.
+            clearTimeout(this._wheelPostBurstTimer);
+            this._wheelPostBurstTimer = setTimeout(() => {
+                if (this.data && this.data.length > 0) {
+                    try { this.constrainOffset(); } catch (_e) {}
+                }
+            }, 160);
 
             // No zoom if we have no data
             if (!this.data || this.data.length === 0) return;
