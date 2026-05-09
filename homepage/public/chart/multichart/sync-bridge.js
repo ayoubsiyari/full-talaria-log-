@@ -226,15 +226,46 @@
             parentOrigin,
             applied: new RingBuffer(16),
             tick: 0,
-            // per-event outbound suppression: when applying inbound, tag the chart
-            // and ignore N native echoes.
-            suppressOutbound: 0,
-            // recipient-side: snapshot taken at start of inbound apply
+            // ──────────────────────────────────────────────────────────────
+            // v10.4.8 (Phase 6.2 sync regression fix):
+            //
+            // Previous design used a `suppressOutbound` integer counter:
+            // every inbound apply pre-paid +N to the budget expecting +N
+            // native echoes from chart.js. That assumption was wrong —
+            // setVisibleTimeRange in this bridge only mutates fields and
+            // schedules a render, it never calls dispatchScrollSync, so the
+            // counter accumulated. After a few B->A syncs, A's
+            // suppressOutbound was a large positive number; the user's
+            // genuine pan events on A were silently drained from the
+            // counter and never broadcast — A appeared dead.
+            //
+            // New design: a boolean `applying` window that is set true at
+            // the start of an inbound apply and cleared on the next two
+            // animation frames (chart.js render & chartScrolled paths are
+            // rAF-deferred). Because the window is time-bounded, it cannot
+            // accumulate across syncs. Programmatic echoes that land
+            // within the window are dropped; user input that fires after
+            // the window passes through normally.
+            applying: false,
+            applyingClearRaf: 0,
             inboundSnap: null,
             inboundMode: null,
         };
 
         global.__multichartBridgeState = state;
+
+        function beginApplying() {
+            state.applying = true;
+            if (state.applyingClearRaf) cancelAnimationFrame(state.applyingClearRaf);
+            // Double rAF: chart.js's render is rAF-deferred and the
+            // chartScrolled echo lands one more frame later.
+            state.applyingClearRaf = requestAnimationFrame(function () {
+                state.applyingClearRaf = requestAnimationFrame(function () {
+                    state.applying = false;
+                    state.applyingClearRaf = 0;
+                });
+            });
+        }
 
         // ─── outbound: chart -> parent ─────────────────────────────────────
 
@@ -288,10 +319,7 @@
             return !!chart.syncCrosshair;
         };
         chart.broadcastCrosshairSync = function (timestamp, price) {
-            if (state.suppressOutbound > 0) {
-                state.suppressOutbound--;
-                return;
-            }
+            if (state.applying) return;
             if (timestamp === null || timestamp === undefined) {
                 pending.crosshair = null;
                 pending.crosshairClear = true;
@@ -304,10 +332,7 @@
 
         // 2) Visible range — listen to chartScrolled (also rAF-coalesced)
         global.addEventListener('chartScrolled', function (ev) {
-            if (state.suppressOutbound > 0) {
-                state.suppressOutbound--;
-                return;
-            }
+            if (state.applying) return;
             const d = ev.detail || {};
             if (d.chart !== chart) return;
             const startT = d.startTimestamp;
@@ -403,7 +428,7 @@
         function applyCrosshair(m) {
             const before = G.snapshotPriceState(chart);
             state.applied.add(m.causationId);
-            state.suppressOutbound++;
+            beginApplying();
             // chart.js receiveCrosshairSync expects MILLISECONDS
             chart.receiveCrosshairSync(toMillis(m.time), null, null);
             const after = G.snapshotPriceState(chart);
@@ -418,16 +443,14 @@
 
         function applyCrosshairClear(m) {
             state.applied.add(m.causationId);
-            state.suppressOutbound++;
+            beginApplying();
             chart.receiveCrosshairSync(null, null, null);
         }
 
         function applyVisibleRange(m) {
             const before = G.snapshotPriceState(chart);
             state.applied.add(m.causationId);
-            // Visible-range update will fire chartScrolled internally — suppress
-            // the outbound echo (chart will raf-coalesce; budget 4 echoes max)
-            state.suppressOutbound += 4;
+            beginApplying();
 
             // Snap to recipient TF buckets per Decision 3.
             const myTf = chart.currentTimeframe || '1m';
