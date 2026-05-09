@@ -10,7 +10,7 @@
 <div class="app">
 
     <header class="topbar">
-        <h1 title="build 2026-05-09T20:00 — v10.4.9 (Phase 6.3 cleanup: drop write-only chartStates map, clear iframe diagnostic interval on pagehide so layout-switch teardown is leak-clean)">Multichart <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">v10.4.9</span> <span style="color:#7aa2ff;font-size:11px;margin-left:4px" title="engine-api-guards version">g:<span id="guards-ver">?</span></span></h1>
+        <h1 title="build 2026-05-09T20:30 — v10.5.0 (Phase 6.4 polish: safe session restore in localStorage — layout, file ids, timeframes, visible ranges. Hard allowlist + forbidden-fields guard means price-axis fields physically cannot be persisted.)">Multichart <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">v10.5.0</span> <span style="color:#7aa2ff;font-size:11px;margin-left:4px" title="engine-api-guards version">g:<span id="guards-ver">?</span></span></h1>
 
         <div class="group">
             <label>Layout</label>
@@ -64,8 +64,8 @@
 </div>
 
 <!-- Cache-busting version query string. Bump on any sandbox script change. -->
-<script src="engine-api-guards.js?v=20260509T2000"></script>
-<script src="multichart-manager.js?v=20260509T2000"></script>
+<script src="engine-api-guards.js?v=20260509T2030"></script>
+<script src="multichart-manager.js?v=20260509T2030"></script>
 <script>
 (function () {
     const chartsArea = document.getElementById('charts-area');
@@ -121,6 +121,134 @@
     // straight off `manager.getCharts()[i].state`). It accumulated one
     // entry per chart-id that ever existed, including ids from torn-down
     // layouts, which made Phase 6.3 leak verification noisy. Deleted.
+
+    // ─── v10.5.0 (Phase 6.4): session persistence ────────────────────────
+    //
+    // Persists the user's working session to localStorage so a browser
+    // refresh restores: layout, sync mode, broadcast file id, and per-panel
+    // (file id, timeframe, visible time range).
+    //
+    // Hard guarantees against the original v9 bug class:
+    //
+    //   1. The `PERSIST_PANEL_FIELDS` allowlist is the ONLY thing the save
+    //      path will write per-panel. Any other field on `chart.state` —
+    //      including price-axis-related ones — is dropped before stringify.
+    //   2. The save path also runs the payload through
+    //      `MultichartGuards.filterForbiddenFields` (the same guard the
+    //      sync bridge uses on every postMessage) as defense-in-depth: any
+    //      forbidden field that ever sneaks into a future schema gets
+    //      stripped AND console.errored before it touches localStorage.
+    //   3. On restore the same allowlist is re-applied, so a hand-edited
+    //      localStorage value that contains e.g. `priceMin` is silently
+    //      ignored — the worst case is a panel falls back to fitToView().
+    //   4. The payload carries `version: 1`. If a future schema bump
+    //      ships, old payloads are discarded rather than half-restored.
+    //   5. Saves are debounced 500 ms so panning/scrolling doesn't spam
+    //      localStorage.
+    const SESSION_KEY = 'multichart-session-v1';
+    const SESSION_VERSION = 1;
+    const PERSIST_PANEL_FIELDS = Object.freeze([
+        'fileId', 'tf', 'visibleStartSec', 'visibleEndSec',
+    ]);
+    const PERSIST_SHELL_FIELDS = Object.freeze([
+        'version', 'layout', 'broadcastFileId', 'syncMode', 'panels',
+    ]);
+
+    function _pickAllowed(src, allow) {
+        const out = {};
+        for (const k of allow) if (src[k] !== undefined && src[k] !== null) out[k] = src[k];
+        return out;
+    }
+
+    function loadSession() {
+        let raw;
+        try { raw = localStorage.getItem(SESSION_KEY); } catch (_) { return null; }
+        if (!raw) return null;
+        let parsed;
+        try { parsed = JSON.parse(raw); } catch (_) { return null; }
+        if (!parsed || typeof parsed !== 'object') return null;
+        if (parsed.version !== SESSION_VERSION) {
+            // schema bump — discard old session rather than half-restore
+            return null;
+        }
+        // Defense in depth: re-filter through the forbidden-fields guard.
+        try {
+            const f = window.MultichartGuards
+                && window.MultichartGuards.filterForbiddenFields
+                && window.MultichartGuards.filterForbiddenFields(parsed);
+            if (f && f.dropped && f.dropped.length) {
+                console.error('[shell] session-restore: dropped forbidden fields from saved payload:',
+                    f.dropped);
+            }
+        } catch (_) {}
+        // Allowlist top-level fields and per-panel fields.
+        const safe = _pickAllowed(parsed, PERSIST_SHELL_FIELDS);
+        if (safe.panels && typeof safe.panels === 'object') {
+            const cleanPanels = {};
+            for (const id of Object.keys(safe.panels)) {
+                const p = safe.panels[id];
+                if (p && typeof p === 'object') {
+                    cleanPanels[id] = _pickAllowed(p, PERSIST_PANEL_FIELDS);
+                }
+            }
+            safe.panels = cleanPanels;
+        } else {
+            safe.panels = {};
+        }
+        return safe;
+    }
+
+    let _saveSessionRaf = 0;
+    function saveSession() {
+        if (_saveSessionRaf) clearTimeout(_saveSessionRaf);
+        _saveSessionRaf = setTimeout(_doSaveSession, 500);
+    }
+    function _doSaveSession() {
+        _saveSessionRaf = 0;
+        if (!manager) return;
+        const panels = {};
+        for (const c of manager.getCharts()) {
+            const st = c.state || {};
+            // Pull fileId from BOTH the chart-state (post-load) AND the
+            // cfg used to spawn the iframe (covers panels that haven't
+            // loaded yet). chart-state wins when present.
+            const fileId = st.fileId || (c.cfg && c.cfg.fileId) || null;
+            const panelObj = {
+                fileId: fileId,
+                tf: st.timeframe || (c.cfg && c.cfg.tf) || null,
+                visibleStartSec: Number.isFinite(st.visibleStartSec) ? st.visibleStartSec : null,
+                visibleEndSec:   Number.isFinite(st.visibleEndSec)   ? st.visibleEndSec   : null,
+            };
+            panels[c.id] = _pickAllowed(panelObj, PERSIST_PANEL_FIELDS);
+        }
+        const session = {
+            version: SESSION_VERSION,
+            layout: layoutSel.value,
+            broadcastFileId: currentBroadcastFileId || null,
+            syncMode: {
+                crosshair:    document.getElementById('sync-crosshair').checked,
+                visibleRange: document.getElementById('sync-visible').checked,
+                symbol:       document.getElementById('sync-symbol').checked,
+            },
+            panels: panels,
+        };
+        // Defense in depth: filter through the forbidden-fields guard.
+        try {
+            const f = window.MultichartGuards
+                && window.MultichartGuards.filterForbiddenFields
+                && window.MultichartGuards.filterForbiddenFields(session);
+            if (f && f.dropped && f.dropped.length) {
+                console.error('[shell] session-save: dropped forbidden fields BEFORE write:',
+                    f.dropped);
+            }
+        } catch (_) {}
+        try {
+            localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+        } catch (e) {
+            // QuotaExceededError or similar — non-fatal, just don't persist.
+            console.warn('[shell] session-save failed:', e && e.message);
+        }
+    }
 
     function appendLog(entry) {
         // Accept either a string ("drag start ...") OR an entry object
@@ -182,10 +310,32 @@
     }
     setInterval(renderChartStates, 500);
 
-    /** Build the chart cells + dividers for a layout. */
-    function applyLayout(name) {
+    /**
+     * Build the chart cells + dividers for a layout.
+     *
+     * @param {string} name             layout key ('1', '2', '3', '2x2')
+     * @param {object} [sessionPanels]  optional { panelId: {fileId,tf,visibleStartSec,visibleEndSec} }
+     *                                  from a restored session — applied on
+     *                                  top of the layout's defaults.
+     */
+    function applyLayout(name, sessionPanels) {
         const cfg = LAYOUTS[name];
         if (!cfg) return;
+
+        // Merge session per-panel overrides into the layout's chart cfgs.
+        // Allowlisted fields only — defends against a future schema change
+        // accidentally writing price-axis fields into the per-panel cfg.
+        const charts = cfg.charts.map(function (c) {
+            const merged = Object.assign({}, c);
+            const sp = sessionPanels && sessionPanels[c.id];
+            if (sp) {
+                if (sp.fileId)         merged.fileId          = sp.fileId;
+                if (sp.tf)             merged.tf              = sp.tf;
+                if (Number.isFinite(sp.visibleStartSec)) merged.restoreStartSec = sp.visibleStartSec;
+                if (Number.isFinite(sp.visibleEndSec))   merged.restoreEndSec   = sp.visibleEndSec;
+            }
+            return merged;
+        });
 
         // Tear down existing manager + DOM
         if (manager) manager.dispose();
@@ -197,7 +347,10 @@
         manager = new MultichartManager({
             container: chartsArea,
             onLog:    appendLog,
-            onState:  function (id, state) { /* state is stored on the chart entry itself; no per-shell mirror needed */ },
+            // v10.5.0: chart-state changes (file load, TF change, visible
+            // range update) all flow through here — schedule a debounced
+            // session save so refresh restores the latest state.
+            onState:  function (id, state) { saveSession(); },
             onAssertion: function (msg) { /* counters are read off manager.counters */ },
         });
         window.__manager = manager;
@@ -207,10 +360,10 @@
         if (name === '2x2') {
             // 3 cols × 3 rows (cell, div, cell × 3 rows)
             const positions = [
-                { col: 1, row: 1, chart: cfg.charts[0] },
-                { col: 3, row: 1, chart: cfg.charts[1] },
-                { col: 1, row: 3, chart: cfg.charts[2] },
-                { col: 3, row: 3, chart: cfg.charts[3] },
+                { col: 1, row: 1, chart: charts[0] },
+                { col: 3, row: 1, chart: charts[1] },
+                { col: 1, row: 3, chart: charts[2] },
+                { col: 3, row: 3, chart: charts[3] },
             ];
             for (const p of positions) {
                 const cell = makeCell(p.chart);
@@ -233,11 +386,11 @@
             installDividerDrag(vDiv, 'col');
             installDividerDrag(hDiv, 'row');
         } else {
-            for (let i = 0; i < cfg.charts.length; i++) {
-                const cell = makeCell(cfg.charts[i]);
+            for (let i = 0; i < charts.length; i++) {
+                const cell = makeCell(charts[i]);
                 chartsArea.appendChild(cell);
-                manager.addChart(cfg.charts[i], cell);
-                if (i < cfg.charts.length - 1) {
+                manager.addChart(charts[i], cell);
+                if (i < charts.length - 1) {
                     const div = makeDivider('col');
                     chartsArea.appendChild(div);
                     installDividerDrag(div, 'col');
@@ -270,6 +423,10 @@
         setTimeout(notifyChartsResized,  100);
         setTimeout(notifyChartsResized,  500);
         setTimeout(notifyChartsResized, 1500);
+
+        // v10.5.0: persist the new layout immediately so a refresh while
+        // panels are still booting still restores the chosen layout.
+        saveSession();
     }
 
     function makeCell(chartCfg) {
@@ -464,7 +621,12 @@
     window.addEventListener('resize', notifyChartsResized);
 
     // ─── Wire UI controls ────────────────────────────────────────────────
-    layoutSel.addEventListener('change', function () { applyLayout(layoutSel.value); });
+    layoutSel.addEventListener('change', function () {
+        // v10.5.0: layout switch starts a fresh canvas — drop saved per-panel
+        // restore data so the layout's defaults take effect; the next chart
+        // events will fill in fileId/tf/visibleRange and re-save naturally.
+        applyLayout(layoutSel.value);
+    });
 
     function setSyncMode() {
         if (!manager) return;
@@ -473,6 +635,7 @@
             visibleRange: document.getElementById('sync-visible').checked,
             symbol: document.getElementById('sync-symbol').checked,
         });
+        saveSession();
     }
     document.getElementById('sync-crosshair').addEventListener('change', setSyncMode);
     document.getElementById('sync-visible').addEventListener('change', setSyncMode);
@@ -654,6 +817,7 @@
         if (!fid) { alert('Pick a file first'); return; }
         currentBroadcastFileId = fid;
         broadcastFileToAll(fid);
+        saveSession();
     });
 
     // Expose for the manager — used to pass fileId as URL param to NEW iframes
@@ -664,7 +828,40 @@
 
     // ─── Boot ────────────────────────────────────────────────────────────
     loadShellFileList();
-    applyLayout(layoutSel.value);
+
+    // v10.5.0: restore prior session if present, then apply layout. Order
+    // matters: layoutSel.value, sync-mode checkboxes, and
+    // currentBroadcastFileId must all be set BEFORE applyLayout runs so
+    // that `manager.addChart()` reads the right values when spawning each
+    // iframe. Per-panel session data is forwarded via the `sessionPanels`
+    // arg to applyLayout, which merges it into the layout cfg's chart list.
+    const __session = loadSession();
+    if (__session) {
+        try {
+            if (__session.layout && LAYOUTS[__session.layout]) {
+                layoutSel.value = __session.layout;
+            }
+            if (__session.syncMode) {
+                if (typeof __session.syncMode.crosshair === 'boolean')
+                    document.getElementById('sync-crosshair').checked = __session.syncMode.crosshair;
+                if (typeof __session.syncMode.visibleRange === 'boolean')
+                    document.getElementById('sync-visible').checked = __session.syncMode.visibleRange;
+                if (typeof __session.syncMode.symbol === 'boolean')
+                    document.getElementById('sync-symbol').checked = __session.syncMode.symbol;
+            }
+            if (__session.broadcastFileId) {
+                currentBroadcastFileId = String(__session.broadcastFileId);
+            }
+            appendLog({ ts: Date.now(), level: 'info',
+                text: 'session-restore: layout=' + __session.layout
+                    + ' panels=' + Object.keys(__session.panels || {}).length
+                    + ' broadcast=' + (__session.broadcastFileId || '—') });
+        } catch (e) {
+            appendLog({ ts: Date.now(), level: 'warn',
+                text: 'session-restore failed: ' + (e && e.message || e) });
+        }
+    }
+    applyLayout(layoutSel.value, __session && __session.panels);
 })();
 </script>
 </body>

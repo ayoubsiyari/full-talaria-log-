@@ -361,6 +361,11 @@
                     type: 'chart-state',
                     source: chartId,
                     state: {
+                        // v10.5.0: report fileId so the shell can persist
+                        // which file each panel has loaded for session
+                        // restore. Forbidden-fields filter still applies
+                        // on inbound; fileId is not in the forbidden list.
+                        fileId: d.fileId || null,
                         symbol: d.symbol || chart.currentSymbol || null,
                         timeframe: d.timeframe || chart.currentTimeframe || null,
                         candleCount: chart.data ? chart.data.length : 0,

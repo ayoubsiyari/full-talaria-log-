@@ -91,14 +91,27 @@
         // param so newly-spawned iframes load the same file by default.
         // Each iframe also has its own per-panel file picker the user can
         // change after init.
+        //
+        // v10.5.0 (Phase 6.4 session restore): per-panel `cfg.fileId` from
+        // a saved session takes PRIORITY over the broadcast id. Same for
+        // `cfg.restoreStartSec` / `cfg.restoreEndSec`, which the iframe
+        // applies as its initial visible range once data is loaded. None
+        // of these are price-axis fields, by design — the original-bug
+        // guard is preserved.
         try {
             const rd = (typeof global.__multichartRealData === 'function')
                 ? global.__multichartRealData()
                 : null;
-            if (rd && rd.fileId) {
-                params.set('fileId', String(rd.fileId));
+            const effectiveFileId = cfg.fileId || (rd && rd.fileId) || null;
+            if (effectiveFileId) {
+                params.set('fileId', String(effectiveFileId));
             }
         } catch (_) {}
+        if (Number.isFinite(cfg.restoreStartSec) && Number.isFinite(cfg.restoreEndSec)
+            && cfg.restoreEndSec > cfg.restoreStartSec) {
+            params.set('restoreStart', String(Math.floor(cfg.restoreStartSec)));
+            params.set('restoreEnd',   String(Math.floor(cfg.restoreEndSec)));
+        }
 
         // Per-cell loading overlay so we can see WHICH cells exist and which
         // are stuck waiting for their iframe's chart.js to init. Removed when
@@ -252,9 +265,20 @@
                 this._log(msg.level || 'info', msg.text || '');
                 return;
 
+            case 'visibleRange':
+                // v10.5.0: also stash the range on the chart record so the
+                // shell can persist it as part of the session. This is a
+                // pure read-side cache; the fan-out below is unchanged.
+                if (sourceChart) {
+                    sourceChart.state.visibleStartSec = Number(msg.startTime);
+                    sourceChart.state.visibleEndSec   = Number(msg.endTime);
+                    this.onState(sourceId, sourceChart.state);
+                }
+                this._fanOut(msg, sourceId);
+                return;
+
             case 'crosshair':
             case 'crosshair-clear':
-            case 'visibleRange':
             case 'symbol':
                 this._fanOut(msg, sourceId);
                 return;

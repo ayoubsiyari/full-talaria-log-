@@ -296,8 +296,8 @@
     <!-- sandbox-only modules. Cache-busting query string — bump on any sandbox change.
          sample-data.js was deleted in v10 — the sandbox always fetches real
          data from /api/file/{id}/smart now. -->
-    <script src="./engine-api-guards.js?v=20260509T2000"></script>
-    <script src="./sync-bridge.js?v=20260509T2000"></script>
+    <script src="./engine-api-guards.js?v=20260509T2030"></script>
+    <script src="./sync-bridge.js?v=20260509T2030"></script>
 
     <script>
     (function () {
@@ -309,6 +309,23 @@
         // to all", iframes are recreated with these. When the user changes a
         // per-panel file, we just update local state without recreating the iframe.
         let currentFileId = params.get('fileId') || null;     // null means "no file picked yet"
+
+        // v10.5.0 (Phase 6.4 session restore): when the shell recreates an
+        // iframe from a saved session, it passes the previous visible time
+        // range as `restoreStart` / `restoreEnd` (Unix seconds). After the
+        // first data load completes we apply this range exactly once via
+        // the bridge's setVisibleTimeRange — which has the same safety
+        // guarantees as the inbound visibleRange sync (autoScale=true on
+        // the price axis, fitToView fallback if the range doesn't intersect
+        // this file's data). We deliberately do NOT accept any price-axis
+        // params from the URL — the original-bug guard.
+        const __pendingRestore = (function () {
+            const s = Number(params.get('restoreStart'));
+            const e = Number(params.get('restoreEnd'));
+            if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) return null;
+            return { startSec: s, endSec: e };
+        })();
+        let __pendingRestoreApplied = false;
 
         const badgeId   = document.getElementById('badge-id');
         const badgeBars = document.getElementById('badge-bars');
@@ -416,14 +433,40 @@
             try { chart.fitToView && chart.fitToView(); } catch (_) {}
             try { chart.scheduleRender ? chart.scheduleRender() : chart.render(); } catch (_) {}
             try {
+                // v10.5.0: include `fileId` so the shell can persist it
+                // (previously the shell only knew the symbol, not which
+                // file was loaded). The bridge forwards this as part of
+                // chart-state to the parent.
                 window.dispatchEvent(new CustomEvent('chartDataLoaded', {
                     detail: { symbol: sym, timeframe: tf, source: sourceLabel,
-                              candleCount: candles.length },
+                              candleCount: candles.length, fileId: currentFileId },
                 }));
             } catch (_) {}
             setBars(candles.length, false);
             reportToShell('info', 'loaded ' + candles.length + ' ' + tf
                 + ' candles (' + sourceLabel + ')');
+
+            // v10.5.0 (Phase 6.4 session restore): if the iframe was
+            // booted with a `restoreStart` / `restoreEnd` URL param, apply
+            // it now that data is in place. One-shot: after the first
+            // application, subsequent data loads (e.g. user switches TF)
+            // do NOT re-apply it — they fall back to chart.fitToView()
+            // already called above. This matches user expectations: a
+            // restored window survives a TF change only via the normal
+            // saveSession that fires on the next visibleRange event.
+            if (__pendingRestore && !__pendingRestoreApplied) {
+                __pendingRestoreApplied = true;
+                try {
+                    const br = window.__multichartBridge;
+                    if (br && typeof br.setVisibleTimeRange === 'function') {
+                        br.setVisibleTimeRange(__pendingRestore.startSec, __pendingRestore.endSec);
+                        reportToShell('info', 'session-restore: applied visible range '
+                            + __pendingRestore.startSec + '..' + __pendingRestore.endSec);
+                    }
+                } catch (e) {
+                    reportToShell('warn', 'session-restore failed: ' + (e && e.message || e));
+                }
+            }
         }
 
         /**
