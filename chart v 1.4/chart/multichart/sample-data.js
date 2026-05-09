@@ -53,14 +53,17 @@
     }
 
     /**
-     * Generate `count` 1-minute candles ending at `endTimeSec` (inclusive).
-     * Returns an array of { t, o, h, l, c, v } where t is UTC seconds.
+     * Generate `count` 1-minute candles ending at `endTimeMs` (inclusive).
+     * Returns an array of { t, o, h, l, c, v } where t is UTC **milliseconds**
+     * — chart.js interprets candle.t in ms (it was showing 1970 dates when
+     * we emitted seconds because 1.7e9 ms ≈ Jan 21, 1970).
      */
-    function generate1mCandles(symbol, endTimeSec, count) {
+    function generate1mCandles(symbol, endTimeMs, count) {
         const seed = hashSymbol(symbol || 'TEST');
         const rng = makeRng(seed);
 
-        const startTime = endTimeSec - (count - 1) * 60;
+        const ONE_MIN_MS = 60_000;
+        const startTime = endTimeMs - (count - 1) * ONE_MIN_MS;
         const out = new Array(count);
 
         // Long-running trend so panning across days covers a wide price band.
@@ -69,7 +72,7 @@
         let price = basePrice;
 
         for (let i = 0; i < count; i++) {
-            const t = startTime + i * 60;
+            const t = startTime + i * 60_000;
             // Slow drift + diurnal cycle + occasional shock
             const drift = Math.sin(i / 720) * (basePrice * 0.02);
             const tide  = Math.sin(i / 90) * (basePrice * 0.003);
@@ -106,14 +109,17 @@
     /**
      * Aggregate 1m candles into a higher timeframe.
      * Buckets are aligned to UTC midnight (i.e. 1h buckets start at HH:00:00 UTC).
+     * `tfSeconds` is the timeframe size in **seconds** (table value).
+     * Bar timestamps are in **milliseconds**.
      */
     function aggregate(base1m, tfSeconds) {
         if (tfSeconds === 60) return base1m.slice();
+        const tfMs = tfSeconds * 1000;
         const out = [];
         let bucket = null;
         for (let i = 0; i < base1m.length; i++) {
             const c = base1m[i];
-            const bucketStart = Math.floor(c.t / tfSeconds) * tfSeconds;
+            const bucketStart = Math.floor(c.t / tfMs) * tfMs;
             if (!bucket || bucket.t !== bucketStart) {
                 if (bucket) out.push(bucket);
                 bucket = { t: bucketStart, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v };
@@ -132,21 +138,23 @@
      * Generate candles for a (symbol, timeframe) pair.
      * `daysBack` defaults to 14 — enough for cross-TF sync to span multi-day
      * windows on the higher-TF chart.
+     * Returns candles with `t` in **milliseconds** (matches chart.js's
+     * internal time unit).
      */
     function generateForTimeframe(symbol, timeframe, opts) {
         opts = opts || {};
         const tfSec = TIMEFRAME_SECONDS[timeframe];
         if (!tfSec) throw new Error('Unknown timeframe: ' + timeframe);
 
-        const daysBack   = opts.daysBack || 14;
+        const daysBack  = opts.daysBack || 14;
         // Anchor end-time to a fixed value when given, otherwise "now" rounded
         // down to a clean minute. Fixing it across charts is what makes 1m+1h
-        // truly consistent.
-        const endTimeSec = opts.endTimeSec || Math.floor(Date.now() / 60000) * 60;
+        // truly consistent across iframes (same seed, same anchor → same series).
+        const endTimeMs = opts.endTimeMs || Math.floor(Date.now() / 60_000) * 60_000;
 
         // We always generate the 1m base, then aggregate.
         const minutes1mNeeded = daysBack * 24 * 60;
-        const base = generate1mCandles(symbol, endTimeSec, minutes1mNeeded);
+        const base = generate1mCandles(symbol, endTimeMs, minutes1mNeeded);
         return aggregate(base, tfSec);
     }
 

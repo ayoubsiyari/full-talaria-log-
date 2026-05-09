@@ -97,6 +97,21 @@
         // dev server), and chart.js needs unrestricted scripts. The
         // postMessage allowlist is the security boundary here.
         frame.style.cssText = 'width:100%;height:100%;border:0;display:block;background:#0b0c14;';
+        const self = this;
+        frame.addEventListener('load', function () {
+            self._log('info', 'iframe loaded: ' + cfg.id + ' (waiting for bridge-ready…)');
+            // If bridge-ready doesn't arrive within 5s, log a warning so
+            // we know the chart inside the iframe failed to init.
+            setTimeout(function () {
+                const c = self.charts.get(cfg.id);
+                if (c && !c.ready) {
+                    self._log('error', 'TIMEOUT: ' + cfg.id + ' iframe loaded but bridge never reported ready (chart.js init likely failed — check that iframe\'s console)');
+                }
+            }, 5000);
+        });
+        frame.addEventListener('error', function () {
+            self._log('error', 'iframe FAILED to load: ' + cfg.id + ' src=' + frame.src);
+        });
         mountEl.appendChild(frame);
 
         this.charts.set(cfg.id, {

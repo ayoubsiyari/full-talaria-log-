@@ -151,9 +151,10 @@
         for (const c of manager.getCharts()) {
             const s = c.state || {};
             const div = document.createElement('div');
-            div.className = 'item';
+            div.className = 'item ' + (c.ready ? 'pass' : 'fail');
+            const readyMark = c.ready ? '\u2713 ready' : '\u26A0 NOT ready';
             div.innerHTML =
-                '<span class="name">' + c.id + '</span>' +
+                '<span class="name">' + c.id + ' <small style="color:#5a5e69">' + readyMark + '</small></span>' +
                 '<span class="val">' + (s.symbol || '?') + ' / ' + (s.timeframe || '?') +
                 ' / ' + (s.candleCount || 0) + ' bars</span>';
             host.appendChild(div);
