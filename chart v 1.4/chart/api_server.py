@@ -12609,6 +12609,15 @@ app.mount("/chart/modules", StaticFiles(directory=str(_CHART_ROOT_PATH / "module
 app.mount("/chart/indicators", StaticFiles(directory=str(_CHART_ROOT_PATH / "indicators")), name="chart_indicators")
 app.mount("/chart/image", StaticFiles(directory=str(_CHART_ROOT_PATH / "image")), name="chart_image")
 
+# Multichart sandbox (multi_chart_rebuild_roadmap.md verification rig).
+# Static files only — sandbox HTML/JS/CSS that load `chart.js` in iframes
+# and orchestrate sync between them via postMessage. Same pattern as the
+# /chart/modules and /chart/image mounts above.
+_MULTICHART_DIR_PATH = _CHART_ROOT_PATH / "multichart"
+if _MULTICHART_DIR_PATH.is_dir():
+    app.mount("/chart/multichart", StaticFiles(directory=str(_MULTICHART_DIR_PATH), html=True), name="chart_multichart")
+    print(f"✅ Multichart sandbox mounted at /chart/multichart/ from {_MULTICHART_DIR_PATH}")
+
 # NinjaTrader landing page assets (served from repo files)
 ninjatrader_assets_dir = Path("homepage/ninjatrader/Landing-Page-Text-Images")
 if ninjatrader_assets_dir.exists():
