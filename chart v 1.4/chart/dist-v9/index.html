@@ -32,7 +32,7 @@
          ────────────────────────────────────────────────────────────────── -->
     <script>
     (function () {
-        var V = '20260509T2230';
+        var V = '20260510T0000';
         function inject(src) {
             var s = document.createElement('script');
             s.src = src + '?v=' + V;
@@ -48,6 +48,28 @@
             var p = new URLSearchParams(window.location.search);
             if (p.get('multichart') !== '1') return;
             document.documentElement.classList.add('multichart-embed');
+            // Inject TradingView-style chrome-hide CSS BEFORE React paints to
+            // avoid a flash of the full topbar / left toolbar / bottom replay
+            // bar / trade-list / right panel inside each panel. All of those
+            // are tagged with data-v9-chrome="1" in TalariaV8bLive.jsx
+            // (5 elements: top toolbar L16200, left tools L16452, bottom bar
+            // L16594, trade list L17189, right panel L17675). Hiding them
+            // collapses each panel to: chart canvas + price/time axes +
+            // crosshair + drawings — the TradingView-per-pane look.
+            // Per-panel file selection / indicators / orders move to a v1.2
+            // shell-side control surface; for v1.1 each panel uses the
+            // file/tf forwarded from /chart/ via embed-bridge.js applyInitialContext.
+            var styleEl = document.createElement('style');
+            styleEl.id = 'multichart-embed-style';
+            styleEl.textContent = [
+                'html.multichart-embed [data-v9-chrome="1"] { display: none !important; }',
+                'html.multichart-embed body { background: #07080E !important; }',
+                'html.multichart-embed #root { padding: 0 !important; margin: 0 !important; }',
+                /* Hide leftover popups/tooltips that may have rendered before
+                   we got the multichart-embed class on body. */
+                'html.multichart-embed .v9-tooltip, html.multichart-embed [data-v9-popover="1"] { display: none !important; }',
+            ].join('\n');
+            document.head.appendChild(styleEl);
             document.addEventListener('DOMContentLoaded', function () {
                 document.body.classList.add('multichart-embed');
             }, { once: true });

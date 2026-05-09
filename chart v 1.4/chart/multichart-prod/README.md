@@ -36,12 +36,28 @@ The original v9 multichart bug — lower-timeframe chart inheriting higher-timef
 
 | File | Purpose | Source of truth |
 |---|---|---|
-| `shell.html` + `shell.css` | Production shell at `/chart/multi`. Talaria-themed. Layout picker, sync toggles, log toggle, session restore. | THIS FOLDER |
-| `topbar-button.js` | Loaded by every `/chart/` page (unconditionally). Adds the `Layouts ▾` dropdown at top-center. Hides itself in iframes / on `/chart/multi`. Picking a multi-panel layout navigates to `/chart/multi?layout=<id>`. | THIS FOLDER |
-| `embed-bridge.js` | Loaded inside dist-v9 when `?multichart=1`. Waits for `window.chart`, installs `MultichartBridge`. Heartbeat + boot diagnostics. | THIS FOLDER |
+| `shell.html` + `shell.css` | Production shell at `/chart/multi`. Compact TradingView-style topbar (Talaria back link, layout dropdown, sync toggles, icon-only dev buttons). | THIS FOLDER |
+| `topbar-button.js` | Loaded by every `/chart/` page (unconditionally). Adds the `Layouts ▾` dropdown at top-center. Hides itself in iframes / on `/chart/multi`. Picking a multi-panel layout navigates to `/chart/multi?layout=<id>&fileId=<current>&tf=<current>&mode=<current>` so each panel boots with the same data the user was viewing. | THIS FOLDER |
+| `embed-bridge.js` | Loaded inside dist-v9 when `?multichart=1`. Waits for `window.chart`, installs `MultichartBridge`, and applies initial viewing context: if `?fileId=N&tf=1m` is in the iframe URL, calls `window.chart.loadFileData(N)` then `setTimeframe(tf)` so the panel shows real candles instead of "No data to display". | THIS FOLDER |
 | `engine-api-guards.js` | `FORBIDDEN_SYNC_FIELDS`, snapshot/diff, filter. Phase 6 verified. | **`../multichart/engine-api-guards.js`** (verbatim copy) |
 | `sync-bridge.js` | Iframe-side bridge. Phase 6 verified. | **`../multichart/sync-bridge.js`** (verbatim copy) |
 | `multichart-manager.js` | Parent-side orchestrator. Phase 6 verified. | **`../multichart/multichart-manager.js`** (verbatim copy + production `iframeSrcBuilder` opt) |
+
+### TradingView-style chrome hiding (v1.1)
+
+The dist-v9 shim, when running in iframe mode (`?multichart=1`), injects a tiny `<style>` that hides every element tagged with `data-v9-chrome="1"` in `TalariaV8bLive.jsx`:
+
+| `data-v9-chrome="1"` element | Source line | What it is |
+|---|---|---|
+| top toolbar | L16200 | symbol picker, timeframe buttons, indicators, Place Order, etc. |
+| left tools | L16452 | drawing tool palette + theme toggle |
+| bottom bar | L16594 | replay controls, balance, equity, P&L, speed |
+| trade list | L17189 | Trades / Pending / Open Positions / History / Analytics tabs |
+| right panel | L17675 | News / Layout / Layers / Indicators side drawer |
+
+Result: each panel collapses to **chart canvas + price axis + time axis + crosshair + drawings + OHLC info legend** — the TradingView per-pane feel. The user controls all of it from `/chart/` (file selection, timeframe, mode) and that context flows into every panel via the URL chain `topbar-button.js → /chart/multi?... → buildIframeSrc → iframe ?multichart=1&fileId=...&tf=... → embed-bridge.js applyInitialContext`.
+
+**Limitations of v1.1**: per-panel file selection is not yet possible — the user must go back to `/chart/` (via the `← Talaria` link in the shell topbar), pick a different file, then click `Layouts ▾` again to relaunch with the new file. Per-panel symbol/file picker in the shell topbar is the v1.2 follow-up.
 
 **Sync rule**: when changing semantics in any of the three "verbatim copy" files, change the sandbox first, re-verify Phase 6 end to end, then copy back. The sandbox is the verification harness; this folder is the deployment.
 
@@ -61,18 +77,22 @@ When `?multichart=1` is **absent** at `/chart/`, the only change vs. before this
 
 Verify in this order. Stop and report at the first failing step.
 
-### 0. Smoke
+### 0. Smoke (the canonical flow — go through /chart/, not direct)
 
-1. Open `/chart/multi` — the shell loads with the default 2-panel layout (`2v` = side by side).
-2. Both iframes show the dist-v9 React app loading. After ≤30s, both panels display a chart.
-3. Topbar shows `Talaria Multichart v1` + version badge. The header `<h1>` tooltip shows the build description.
-4. Open dev tools console. No errors. The shell's log panel (toggle "Show log") shows:
-   - `Talaria Multichart v1 — guards 2026-05-09T20:30-v10.5.0-prod-v1 — each panel loads /chart/dist-v9/?multichart=1`
-   - `addChart A (tf=...) src=/chart/dist-v9/index.html?multichart=1&panelId=A`
-   - For each panel: `iframe loaded: A (waiting for bridge-ready…)` then `bridge ready: A`
-5. Click `Self-test`. The log shows `guard self-test A: PASS` and `guard self-test B: PASS`.
+1. Open `/chart/?mode=backtest` (or your normal entry). Pick any file the way you would today — chart shows real candles.
+2. Click `Layouts ▾` (the small button at top-center of /chart/). A dropdown opens. Pick `2 panels — split horizontal`.
+3. The page navigates to `/chart/multi?layout=2v&fileId=<your file>&tf=<your tf>&mode=backtest`. The shell loads with a compact topbar (`← Talaria` back link, layout dropdown showing `⬌ 2 panels`, sync toggles, dev icon buttons).
+4. Both iframes load. After ≤30s each panel shows the **same file you were viewing** at the same timeframe — NOT "No data to display".
+5. Each panel is just chart canvas + axes + crosshair + OHLC legend at top-left. No top toolbar, no left drawing tools, no bottom replay/balance bar, no trade list inside the panels.
+6. Click `← Talaria` in the shell topbar. You're back on `/chart/?mode=backtest` with the same single chart.
 
-If a panel hangs on "iframe: LOADED — bridge: TIMEOUT", open that iframe directly in a new tab (`/chart/dist-v9/index.html?multichart=1&panelId=A`) — the console will show the actual chart-init failure (most often: not logged in → redirect to `/signin`).
+If a panel still says "No data to display": check the network tab inside the iframe — `embed-bridge.js applyInitialContext` should log `initial context applied: fileId=...` to the host shell log (toggle ≡ button). If it says `cannot apply fileId=...: window.chart.loadFileData missing`, the chart engine isn't booted yet inside the iframe — usually means the user is not logged in for that iframe, or the dist-v9 React bundle failed to mount.
+
+### 0b. Direct-open smoke (no /chart/ context)
+
+1. Open `/chart/multi` directly (no query params).
+2. Shell loads with default 2v layout. Each iframe boots empty ("No data to display") — **expected for v1.1**, since there's no boot-time context. User must hit `← Talaria`, pick a file there, then return via `Layouts ▾`.
+3. Click the icon buttons in the dev group (⌕ ✓ ≡ ⟲) — they should still work: `⌕` = diagnose, `✓` = self-test, `≡` = toggle log, `⟲` = reset session.
 
 ### 1. Existing single-chart UX is unchanged + topbar button works
 
@@ -82,25 +102,28 @@ This is the regression test for our integration:
 2. All existing controls work: tools, indicators, orders, drawings, replay, file picker, right-panel layout picker.
 3. No console errors. The embed shim doesn't fire because `?multichart=1` is absent. Only the topbar-button script runs.
 4. Click `Layouts ▾`. A dropdown opens with: Single chart, 2 panels split horizontal, 2 panels split vertical, 3 panels left-dominant, 3 panels right-dominant, 4 panels grid.
-5. Pick `2 panels — split horizontal`. Page navigates to `/chart/multi?layout=2v`.
+5. Open dev tools network tab, pick `2 panels — split horizontal`. The navigation URL is `/chart/multi?layout=2v&fileId=<your fileId>&tf=<your tf>` (and `&mode=...` if you came from a moded URL). If `fileId` is missing from the URL it means `window.chart.currentFileId` was null at click time — confirm by checking `window.chart` in console BEFORE clicking.
 6. Hit browser back. You return to `/chart/` with the same single chart you had before. State is intact.
 
 If the button doesn't appear, hard-refresh (Ctrl+Shift+R) — the topbar-button.js URL is cache-busted via the `V` constant in the shim.
 
 If anything else in the single-chart path changes, the integration is wrong — back out.
 
-### 2. Per-panel chart works (each iframe = full Talaria chart)
+### 2. Per-panel chart loads the right data (the bug-1 regression test)
 
-In each panel of `/chart/multi`:
+This is the regression test for the v1.0 → v1.1 fix where iframes spawned with no data:
 
-1. Pick a file using the dist-v9 file picker. The chart loads.
-2. Switch the timeframe. Chart redraws. The other panel does NOT change timeframe.
-3. Open the indicator menu, add an indicator. It shows in this panel only (correct for v1).
-4. Open the drawing tool palette, draw a trendline. It exists in this panel only (correct for v1).
-5. Place a paper order via the order panel. The order shows on the backend; both panels reflect it for the matching symbol (orders are user-scoped, not chart-scoped — correct).
-6. Open replay. The replay state is per-panel (correct for v1).
+1. Start at `/chart/?mode=backtest` with file X picked at timeframe Y. Confirm chart shows real candles.
+2. Click `Layouts ▾` → `2 panels — split horizontal`.
+3. Both panels at `/chart/multi` should show **the same file X at timeframe Y** within ≤30s of bridge-ready.
+4. Open the shell log (≡ button). For each panel you should see:
+   - `[embed:A] bridge installed on dist-v9 chart instance (guards v=...)`
+   - `[embed:A] initial context applied: fileId=X tf=Y`
+5. Each panel's chart canvas, axes, OHLC legend at top-left should match the single-chart view. The panel chrome (top toolbar / left tools / bottom bar / trade list / right panel) should NOT appear inside any panel — TradingView per-pane look.
 
-All native Talaria features should work inside each iframe exactly like they work in the single-chart view at `/chart/`.
+If a panel shows "No data to display":
+- Open the shell log — look for `cannot apply fileId=X: window.chart.loadFileData missing` (chart engine never booted; usually auth) or `loadFileData failed: ...` (network/permission error on the file).
+- Open the iframe URL directly in a new tab (`/chart/dist-v9/index.html?multichart=1&panelId=A&fileId=X&tf=Y`) and check the iframe console for the actual error.
 
 ### 3. Crosshair sync (the original-bug regression test)
 

@@ -20,58 +20,61 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #07080E; c
     grid-template-rows: auto 1fr 0;
 }
 
-/* ─── Topbar ───────────────────────────────────────────────────────────── */
+/* ─── Topbar (compact, TradingView-inspired) ──────────────────────────── */
 .topbar {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-    padding: 8px 14px;
+    gap: 8px;
+    padding: 0 10px;
     background: #0d0f17;
     border-bottom: 1px solid #1c1f2a;
-    min-height: 44px;
+    height: 36px;
+    flex-shrink: 0;
     color: #d1d4dc;
-    font-size: 13px;
+    font-size: 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
 }
-.topbar h1 {
-    flex: 0 1 auto;
-    min-width: 0;
-    margin: 0;
-    font-size: 14px;
-    font-weight: 600;
-    color: #e8eaed;
-    letter-spacing: 0.2px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.topbar h1 .ver {
-    margin-left: 8px;
-    color: #6ed3a4;
-    font-size: 11px;
-    font-weight: 600;
-}
-.topbar h1 .badge {
-    margin-left: 6px;
-    padding: 1px 6px;
-    background: #1a3045;
-    color: #7aa2ff;
-    font-size: 10px;
-    font-weight: 500;
-    border-radius: 3px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-.topbar .group {
-    display: flex;
+/* "Talaria ←" back link doubles as branding + escape hatch back to /chart/ */
+.back-to-chart {
+    display: inline-flex;
     align-items: center;
-    flex-wrap: wrap;
     gap: 6px;
-    padding: 3px 10px;
-    background: #11141d;
-    border: 1px solid #1c1f2a;
-    border-radius: 4px;
-    min-height: 30px;
+    padding: 0 8px;
+    height: 26px;
+    color: #d1d4dc;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 3px;
+    transition: background 0.12s, color 0.12s;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.back-to-chart:hover {
+    background: #1a3a6e;
+    color: #ffffff;
+}
+.back-to-chart .back-arrow {
+    color: #7aa2ff;
+    font-size: 16px;
+    line-height: 1;
+}
+.back-to-chart .brand { letter-spacing: 0.3px; }
+
+.topbar .divider-pipe {
+    width: 1px;
+    height: 16px;
+    background: #1c1f2a;
+    flex-shrink: 0;
+}
+
+.topbar .group {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 4px;
+    flex-shrink: 0;
     font-size: 12px;
 }
 .topbar .group label {
@@ -85,9 +88,12 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #07080E; c
     gap: 4px;
     cursor: pointer;
     color: #d1d4dc;
+    font-size: 12px;
 }
+.topbar .group label.checkbox.dim { color: #5c6370; }
 .topbar .group label.checkbox input { margin: 0; cursor: pointer; }
-.topbar select, .topbar button {
+
+.topbar select {
     background: #1c1f26;
     color: #d1d4dc;
     border: 1px solid #2a2e39;
@@ -96,26 +102,37 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #07080E; c
     font: inherit;
     font-size: 12px;
     cursor: pointer;
+    height: 26px;
     transition: background 0.12s, border-color 0.12s;
 }
-.topbar select:hover, .topbar button:hover {
+.topbar select:hover {
     background: #232732;
     border-color: #3a3f4b;
 }
-.topbar button.primary {
-    background: #1a3a6e;
-    border-color: #2a5099;
-    color: #d4e3ff;
+
+.topbar button {
+    background: transparent;
+    color: #8a8e99;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    padding: 0;
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-.topbar button.primary:hover {
-    background: #20498a;
+.topbar .dev-group button:hover {
+    background: #1c1f26;
+    color: #d1d4dc;
+    border-color: #2a2e39;
 }
+
 .topbar .spacer { flex: 1 1 auto; }
-.topbar .help {
-    color: #5c6370;
-    font-size: 11px;
-    font-style: italic;
-}
 
 /* ─── Charts area ──────────────────────────────────────────────────────── */
 .charts {
@@ -269,8 +286,11 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #07080E; c
     .assertions { display: none; }
 }
 @media (max-width: 640px) {
-    .topbar { padding: 6px 8px; gap: 6px; }
-    .topbar h1 { font-size: 12px; }
-    .topbar .group { padding: 2px 6px; gap: 4px; }
-    .topbar select, .topbar button { padding: 2px 6px; font-size: 11px; }
+    .topbar { padding: 0 6px; gap: 4px; }
+    .back-to-chart { padding: 0 4px; font-size: 12px; }
+    .topbar .group { padding: 0 2px; gap: 4px; }
+    .topbar select { padding: 2px 6px; font-size: 11px; height: 24px; }
+    .topbar button { width: 24px; height: 24px; font-size: 12px; }
+    .topbar .group label.checkbox { font-size: 11px; }
+    .topbar .sync-group label.checkbox.dim { display: none; }
 }

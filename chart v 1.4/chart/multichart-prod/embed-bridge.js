@@ -86,6 +86,62 @@
                 + (window.MultichartGuards.VERSION || '?') + ')');
         } catch (e) {
             reportToShell('error', 'installBridge threw: ' + (e && e.message || e));
+            return;
+        }
+
+        // Apply initial viewing context (fileId/tf forwarded from /chart/ via
+        // the shell). Without this, each panel boots empty ("No data to
+        // display") because the shell URL knows the file but the React app
+        // inside the iframe has no per-panel selection yet — fixes the
+        // "open backtest with data, click 2 panels, data is gone" regression.
+        applyInitialContext();
+    }
+
+    function applyInitialContext() {
+        var fileId = params.get('fileId');
+        var tf     = params.get('tf');
+        if (!fileId) {
+            // Nothing to load — user opened /chart/multi directly with no
+            // initial context. They can pick a file using the dist-v9 React
+            // UI inside the panel. (NOTE: dist-v9 chrome is hidden by the
+            // multichart-embed CSS today, so picking a file per-panel will
+            // need a v1.2 shell-side picker. For v1.1 the boot context is
+            // the only path.)
+            return;
+        }
+        var ch = window.chart;
+        if (!ch || typeof ch.loadFileData !== 'function') {
+            reportToShell('warn', 'cannot apply fileId=' + fileId + ': window.chart.loadFileData missing');
+            return;
+        }
+        try {
+            // Hint the timeframe BEFORE loadFileData so the engine resamples
+            // raw 1m data into the right timeframe on first paint instead of
+            // first showing 1m and then re-resampling.
+            if (tf && typeof ch.currentTimeframe === 'string') {
+                try { ch.currentTimeframe = tf; } catch (_) {}
+            }
+            var p = ch.loadFileData(fileId);
+            // loadFileData is async; if it returns a promise, finish the tf
+            // setup after it resolves so we don't race a setTimeframe call
+            // against an in-flight resample.
+            if (p && typeof p.then === 'function') {
+                p.then(function () {
+                    if (tf && typeof ch.setTimeframe === 'function') {
+                        try { ch.setTimeframe(tf); } catch (_) {}
+                    }
+                    reportToShell('info', 'initial context applied: fileId=' + fileId + ' tf=' + (tf || '(default)'));
+                }, function (err) {
+                    reportToShell('error', 'loadFileData failed: ' + (err && err.message || err));
+                });
+            } else {
+                if (tf && typeof ch.setTimeframe === 'function') {
+                    try { ch.setTimeframe(tf); } catch (_) {}
+                }
+                reportToShell('info', 'initial context applied (sync): fileId=' + fileId + ' tf=' + (tf || '(default)'));
+            }
+        } catch (e) {
+            reportToShell('error', 'applyInitialContext threw: ' + (e && e.message || e));
         }
     }
 

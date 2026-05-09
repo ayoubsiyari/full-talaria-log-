@@ -31,7 +31,7 @@
          ────────────────────────────────────────────────────────────────── -->
     <script>
     (function () {
-        var V = '20260509T2230';
+        var V = '20260510T0000';
         function inject(src) {
             var s = document.createElement('script');
             s.src = src + '?v=' + V;
@@ -44,6 +44,22 @@
             var p = new URLSearchParams(window.location.search);
             if (p.get('multichart') !== '1') return;
             document.documentElement.classList.add('multichart-embed');
+            // Hide dist-v9 chrome (data-v9-chrome="1" markers in
+            // TalariaV8bLive.jsx — top toolbar, left tools, bottom replay
+            // bar, trade list, right panel) inside each multichart panel.
+            // Result: each panel collapses to chart canvas + axes + crosshair
+            // + drawings — TradingView per-pane layout. Per-panel file/tf
+            // selection moves to a v1.2 shell-side surface; for v1.1 the
+            // boot-time fileId/tf forwarded from /chart/ is the only path.
+            var styleEl = document.createElement('style');
+            styleEl.id = 'multichart-embed-style';
+            styleEl.textContent = [
+                'html.multichart-embed [data-v9-chrome="1"] { display: none !important; }',
+                'html.multichart-embed body { background: #07080E !important; }',
+                'html.multichart-embed #root { padding: 0 !important; margin: 0 !important; }',
+                'html.multichart-embed .v9-tooltip, html.multichart-embed [data-v9-popover="1"] { display: none !important; }',
+            ].join('\n');
+            document.head.appendChild(styleEl);
             document.addEventListener('DOMContentLoaded', function () {
                 document.body.classList.add('multichart-embed');
             }, { once: true });

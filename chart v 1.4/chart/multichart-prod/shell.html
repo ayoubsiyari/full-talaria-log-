@@ -9,44 +9,42 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
     <!-- Absolute paths required: this page is served at /chart/multi (no trailing slash),
          so relative URLs resolve against /chart/ and 404. /chart/multi/* is the static mount. -->
-    <link rel="stylesheet" href="/chart/multi/shell.css?v=20260509T2230" />
+    <link rel="stylesheet" href="/chart/multi/shell.css?v=20260510T0000" />
 </head>
 <body>
 <div class="app log-collapsed">
 
     <header class="topbar">
-        <h1 title="Talaria multichart — production v1. Each panel is a full Talaria chart in its own iframe (dist-v9 with ?multichart=1). Tools, indicators, drawings, orders, replay all work per-panel. Sync (crosshair / visible range / symbol) is governed by the verified allowlist + loop guard from multi_chart_rebuild_roadmap.md.">
-            Talaria <span class="ver">Multichart v1</span><span class="badge" id="version-badge">2026-05-09</span>
-        </h1>
+        <a class="back-to-chart" id="back-to-chart" href="/chart/" title="Back to single chart">
+            <span class="back-arrow">←</span>
+            <span class="brand">Talaria</span>
+        </a>
 
-        <div class="group">
-            <label>Layout</label>
-            <select id="layout-select">
-                <option value="1">1</option>
-                <option value="2v" selected>2 ⬌</option>
-                <option value="2h">2 ⬍</option>
-                <option value="3l">3 (L)</option>
-                <option value="3r">3 (R)</option>
-                <option value="2x2">2×2</option>
+        <div class="group layout-group">
+            <select id="layout-select" title="Panel layout">
+                <option value="1">◻ Single</option>
+                <option value="2v" selected>⬌ 2 panels</option>
+                <option value="2h">⬍ 2 stacked</option>
+                <option value="3l">◧ 3 (left)</option>
+                <option value="3r">◨ 3 (right)</option>
+                <option value="2x2">⊞ 4 grid</option>
             </select>
         </div>
 
-        <div class="group">
-            <label class="checkbox" title="Move the crosshair on one panel — peers follow at the matching time bucket. Price is never sent."><input type="checkbox" id="sync-crosshair" checked /> Crosshair</label>
-            <label class="checkbox" title="Pan/zoom one panel — peers show the same time window snapped to their own bar buckets. Each panel's price axis auto-fits its OWN visible candles."><input type="checkbox" id="sync-visible" checked /> Visible range</label>
-            <label class="checkbox" title="Symbol sync requires a Phase 7.2 React-state hook in dist-v9 — disabled in v1. Each panel picks its own file/symbol via the native dist-v9 UI."><input type="checkbox" id="sync-symbol" disabled title="Phase 7.2" /> Symbol (v1.1)</label>
+        <div class="group sync-group">
+            <label class="checkbox" title="Move the crosshair on one panel — peers follow at the matching time bucket."><input type="checkbox" id="sync-crosshair" checked /> Crosshair</label>
+            <label class="checkbox" title="Pan/zoom one panel — peers follow with their own price axis."><input type="checkbox" id="sync-visible" checked /> Range</label>
+            <label class="checkbox dim" title="Symbol sync requires a Phase 7.2 React-state hook — disabled in v1."><input type="checkbox" id="sync-symbol" disabled /> Symbol</label>
         </div>
 
         <div class="spacer"></div>
 
-        <div class="group">
-            <button id="diagnose" title="Dump the current state of every panel + manager to the log + console">Diagnose</button>
-            <button id="self-test" title="Run the engine-API guard self-test on every iframe (verifies the price-axis lockdown is intact)">Self-test</button>
-            <button id="toggle-log" title="Show/hide the diagnostic log panel at the bottom">Show log</button>
-            <button id="reset-session" title="Clear saved layout + per-panel state from this browser">Reset</button>
+        <div class="group dev-group">
+            <button id="diagnose"      title="Dump current state of every panel">⌕</button>
+            <button id="self-test"     title="Run guard self-test on every iframe">✓</button>
+            <button id="toggle-log"    title="Show/hide diagnostic log">≡</button>
+            <button id="reset-session" title="Clear saved layout from this browser">⟲</button>
         </div>
-
-        <span class="help">Each panel = full Talaria chart. All tools, indicators, drawings, orders work per-panel.</span>
     </header>
 
     <section class="charts" id="charts-area"></section>
@@ -61,8 +59,8 @@
 </div>
 
 <!-- Sandbox-verified core (verbatim copies). Absolute paths (see CSS link above for reasoning). -->
-<script src="/chart/multi/engine-api-guards.js?v=20260509T2230"></script>
-<script src="/chart/multi/multichart-manager.js?v=20260509T2230"></script>
+<script src="/chart/multi/engine-api-guards.js?v=20260510T0000"></script>
+<script src="/chart/multi/multichart-manager.js?v=20260510T0000"></script>
 <script>
 (function () {
     'use strict';
@@ -257,6 +255,15 @@
         // verbose=1 turns on bridge debug logging — intentionally off in
         // production unless ?debug=1 is present on the shell URL.
         if (window.__multichartDebug) params.set('verbose', '1');
+        // Forward initial viewing context so each panel boots with the same
+        // file/timeframe/mode the user was on when they clicked Layouts ▾
+        // from /chart/. Read at shell-boot from the shell's URL params; the
+        // topbar-button on /chart/ populates them. embed-bridge.js (inside
+        // each iframe) reads these and calls window.chart.loadFileData()
+        // once chart.js initializes.
+        if (window.__initialFileId) params.set('fileId', window.__initialFileId);
+        if (window.__initialTf)     params.set('tf',     window.__initialTf);
+        if (window.__initialMode)   params.set('mode',   window.__initialMode);
         return '/chart/dist-v9/index.html?' + params.toString();
     }
 
@@ -544,6 +551,31 @@
         // Optional ?layout=... URL override
         const lp = p.get('layout');
         if (lp && LAYOUTS[lp]) layoutSel.value = lp;
+
+        // Initial viewing context forwarded from the /chart/ topbar button.
+        // Each iframe boots with the same file/tf/mode the user was viewing
+        // when they clicked Layouts ▾. buildIframeSrc(cfg) reads these
+        // window globals when assembling each iframe URL.
+        const fid = p.get('fileId');
+        const tf  = p.get('tf');
+        const md  = p.get('mode');
+        if (fid) window.__initialFileId = fid;
+        if (tf)  window.__initialTf     = tf;
+        if (md && (md === 'backtest' || md === 'propfirm' || md === 'live')) window.__initialMode = md;
+        if (fid || tf || md) {
+            appendLog({ ts: Date.now(), level: 'info',
+                text: 'initial context from /chart/ topbar: ' + JSON.stringify({ fileId: fid, tf: tf, mode: md }) });
+        }
+
+        // Update the "← Talaria" back link so it preserves the mode the user
+        // came from (backtest/propfirm/live), so they don't lose their session
+        // when bouncing between single-chart and multichart.
+        try {
+            var backEl = document.getElementById('back-to-chart');
+            if (backEl && md && (md === 'backtest' || md === 'propfirm' || md === 'live')) {
+                backEl.href = '/chart/?mode=' + encodeURIComponent(md);
+            }
+        } catch (_) {}
     })();
 
     const __session = loadSession();

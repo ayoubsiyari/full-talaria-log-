@@ -126,7 +126,34 @@
                         return;
                     }
                     try {
-                        window.location.href = '/chart/multi?layout=' + encodeURIComponent(lay.id);
+                        // Capture the user's current viewing context so each multichart panel
+                        // boots with the same data they were just looking at — fixes the v1
+                        // "open backtest with data, click 2 panels, data is gone" regression.
+                        // Reads from window.chart (chart.js engine instance, see chart.js
+                        // currentFileId / currentTimeframe assignments) and from /chart/ URL
+                        // params for mode (backtest/propfirm/live) so the iframes boot in
+                        // the matching mode (affects which API timeframe is requested).
+                        var ctx = {};
+                        try {
+                            var c = window.chart;
+                            if (c) {
+                                if (c.currentFileId != null) ctx.fileId = String(c.currentFileId);
+                                if (c.currentTimeframe) ctx.tf = String(c.currentTimeframe);
+                            }
+                        } catch (_) {}
+                        try {
+                            var p = new URLSearchParams(window.location.search);
+                            var mode = p.get('mode');
+                            if (mode === 'backtest' || mode === 'propfirm' || mode === 'live') {
+                                ctx.mode = mode;
+                            }
+                        } catch (_) {}
+
+                        var url = '/chart/multi?layout=' + encodeURIComponent(lay.id);
+                        if (ctx.fileId) url += '&fileId=' + encodeURIComponent(ctx.fileId);
+                        if (ctx.tf)     url += '&tf='     + encodeURIComponent(ctx.tf);
+                        if (ctx.mode)   url += '&mode='   + encodeURIComponent(ctx.mode);
+                        window.location.href = url;
                     } catch (e) {
                         console.error('[multichart-topbar] navigate failed:', e);
                     }
