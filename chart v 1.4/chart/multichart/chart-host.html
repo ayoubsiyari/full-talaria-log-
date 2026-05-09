@@ -267,9 +267,9 @@
     <script src="../chart.js"></script>
 
     <!-- sandbox-only modules. Cache-busting query string — bump on any sandbox change. -->
-    <script src="./engine-api-guards.js?v=20260509T1305"></script>
-    <script src="./sample-data.js?v=20260509T1305"></script>
-    <script src="./sync-bridge.js?v=20260509T1305"></script>
+    <script src="./engine-api-guards.js?v=20260509T1325"></script>
+    <script src="./sample-data.js?v=20260509T1325"></script>
+    <script src="./sync-bridge.js?v=20260509T1325"></script>
 
     <script>
     (function () {
@@ -279,29 +279,102 @@
         const initialTf = params.get('tf') || '1m';
         const daysBack  = parseInt(params.get('days') || '14', 10);
         const verbose   = params.get('verbose') === '1';
+        const useReal   = params.get('useReal') === '1';
+        const fileId    = params.get('fileId');     // null when synthetic mode
 
         document.getElementById('badge-id').textContent = chartId;
-        document.getElementById('badge-sym').textContent = symbol;
+        document.getElementById('badge-sym').textContent = symbol + (useReal ? ' [real:#' + fileId + ']' : '');
         document.getElementById('tf-select').value = initialTf;
-        document.title = 'mc-' + chartId + ' ' + symbol + ' ' + initialTf;
+        document.title = 'mc-' + chartId + ' ' + symbol + ' ' + initialTf
+            + (useReal ? ' (real)' : '');
 
-        function loadDataInto(chart, sym, tf) {
-            const candles = window.MultichartSampleData.generateForTimeframe(sym, tf, { daysBack });
+        /**
+         * Fetch a window of OHLC candles from FastAPI's /smart endpoint —
+         * exact same query shape chart.js v9 builds in `_buildSmartWindowParams`.
+         * Server returns { candles: [{t,o,h,l,c,v}, ...] } with t in either
+         * seconds or milliseconds (auto-normalised here to ms).
+         */
+        async function fetchRealCandles(fid, tf) {
+            const qs = new URLSearchParams({
+                timeframe: tf,
+                limit: '5000',
+                anchor: 'end',
+                response_format: 'candles',
+            });
+            const url = '/api/file/' + encodeURIComponent(fid) + '/smart?' + qs.toString();
+            const resp = await fetch(url, { credentials: 'include', cache: 'no-store' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status + ' on ' + url);
+            const ct = (resp.headers.get('content-type') || '').toLowerCase();
+            if (ct && !ct.includes('json')) {
+                const txt = await resp.text().catch(() => '');
+                throw new Error('Expected JSON, got ' + (ct || 'unknown') + ' — ' + txt.slice(0, 80));
+            }
+            const data = await resp.json();
+            const raw = (data && (data.candles || data.data)) || [];
+            const out = [];
+            for (let i = 0; i < raw.length; i++) {
+                const c = raw[i];
+                if (!c || typeof c !== 'object') continue;
+                let t = Number(c.t ?? c.time);
+                const o = Number(c.o ?? c.open);
+                const h = Number(c.h ?? c.high);
+                const l = Number(c.l ?? c.low);
+                const cl = Number(c.c ?? c.close);
+                let v = Number(c.v ?? c.volume);
+                if (!Number.isFinite(v)) v = 0;
+                if (Number.isFinite(t) && t < 1e11) t *= 1000;     // s -> ms
+                if (Number.isFinite(t) && Number.isFinite(o) && Number.isFinite(h)
+                 && Number.isFinite(l) && Number.isFinite(cl)) {
+                    out.push({ t, o, h, l, c: cl, v });
+                }
+            }
+            return out;
+        }
+
+        function applyCandles(chart, sym, tf, candles, sourceLabel) {
             chart.rawData = candles.slice();
             chart.data = candles.slice();
             chart.dataVersion++;
             chart.currentSymbol = sym;
             chart.currentTimeframe = tf;
             chart.totalCandles = candles.length;
-            // Re-fit and render
             try { chart.fitToView && chart.fitToView(); } catch (_) {}
             try { chart.scheduleRender ? chart.scheduleRender() : chart.render(); } catch (_) {}
-            // Emit chartDataLoaded so the bridge tells parent
             try {
                 window.dispatchEvent(new CustomEvent('chartDataLoaded', {
-                    detail: { symbol: sym, timeframe: tf },
+                    detail: { symbol: sym, timeframe: tf, source: sourceLabel,
+                              candleCount: candles.length },
                 }));
             } catch (_) {}
+            console.log('[chart-host:' + chartId + '] loaded ' + candles.length
+                + ' ' + tf + ' candles (' + sourceLabel + ')');
+        }
+
+        function loadDataInto(chart, sym, tf) {
+            // SYNTHETIC mode (default) — instant, deterministic, no network.
+            if (!useReal || !fileId) {
+                const candles = window.MultichartSampleData.generateForTimeframe(
+                    sym, tf, { daysBack });
+                applyCandles(chart, sym, tf, candles, 'synthetic');
+                return;
+            }
+            // REAL mode — fetch from FastAPI. Async, may fail if server down.
+            fetchRealCandles(fileId, tf).then(function (candles) {
+                if (!candles.length) {
+                    console.warn('[chart-host:' + chartId + '] /smart returned 0 candles for tf='
+                        + tf + ' fileId=' + fileId + ' — falling back to synthetic');
+                    const synthetic = window.MultichartSampleData.generateForTimeframe(
+                        sym, tf, { daysBack });
+                    applyCandles(chart, sym, tf, synthetic, 'synthetic-fallback');
+                    return;
+                }
+                applyCandles(chart, sym, tf, candles, 'real:#' + fileId);
+            }).catch(function (e) {
+                console.error('[chart-host:' + chartId + '] real-data fetch failed:', e);
+                const synthetic = window.MultichartSampleData.generateForTimeframe(
+                    sym, tf, { daysBack });
+                applyCandles(chart, sym, tf, synthetic, 'synthetic-fallback(' + e.message + ')');
+            });
         }
 
         function start() {

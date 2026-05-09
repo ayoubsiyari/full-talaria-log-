@@ -10,7 +10,7 @@
 <div class="app">
 
     <header class="topbar">
-        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T13:05 (v8 — no-empty-chart guard, MIN_BARS=30) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
+        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T13:25 (v9 — real-data toggle wired to /api/file/*/smart) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
 
         <div class="group">
             <label>Layout</label>
@@ -33,6 +33,14 @@
                 <option>NQ</option>
             </select>
             <button id="apply-symbol" title="Broadcast this symbol to all charts (sync)">Apply to all</button>
+        </div>
+
+        <div class="group">
+            <label><input type="checkbox" id="use-real" /> Real data</label>
+            <select id="file-select" style="min-width:160px" disabled>
+                <option value="">— pick file —</option>
+            </select>
+            <button id="apply-file" disabled title="Reload all charts with this real file">Apply file</button>
         </div>
 
         <div class="group">
@@ -68,8 +76,8 @@
 </div>
 
 <!-- Cache-busting version query string. Bump on any sandbox script change. -->
-<script src="engine-api-guards.js?v=20260509T1305"></script>
-<script src="multichart-manager.js?v=20260509T1305"></script>
+<script src="engine-api-guards.js?v=20260509T1325"></script>
+<script src="multichart-manager.js?v=20260509T1325"></script>
 <script>
 (function () {
     const chartsArea = document.getElementById('charts-area');
@@ -544,6 +552,73 @@
             manager.counters.assertionsFail = 0;
         }
     });
+
+    // ─── Real-data fetch (FastAPI /api/files + /api/file/{id}/smart) ─────
+    // Same endpoints chart.js v9 uses. The shell only fetches the file LIST;
+    // each iframe fetches its own /smart window so the network behaviour is
+    // identical to v9 and we surface real-server failures naturally per chart.
+    const useRealCb  = document.getElementById('use-real');
+    const fileSelect = document.getElementById('file-select');
+    const applyFile  = document.getElementById('apply-file');
+    let currentFileId = null;
+
+    async function loadFileList() {
+        try {
+            const res = await fetch('/api/files', { credentials: 'include', cache: 'no-store' });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            const files = (data && data.files) || [];
+            // Reset the picker
+            fileSelect.innerHTML = '<option value="">— pick file —</option>';
+            for (const f of files) {
+                const ticker = f.ticker || '?';
+                const opt = document.createElement('option');
+                opt.value = String(f.id);
+                opt.textContent = '#' + f.id + ' · ' + ticker
+                    + ' (' + (f.row_count || '?') + ' rows) · ' + (f.original_name || '');
+                fileSelect.appendChild(opt);
+            }
+            appendLog({ ts: Date.now(), level: 'info',
+                text: 'real-data: loaded ' + files.length + ' file(s) from /api/files' });
+            fileSelect.disabled = false;
+            applyFile.disabled  = false;
+        } catch (e) {
+            appendLog({ ts: Date.now(), level: 'error',
+                text: 'real-data: /api/files fetch failed — ' + e.message
+                    + ' (is FastAPI running on this origin?)' });
+            useRealCb.checked = false;
+            fileSelect.disabled = true;
+            applyFile.disabled  = true;
+        }
+    }
+
+    useRealCb.addEventListener('change', function () {
+        if (useRealCb.checked) {
+            loadFileList();
+        } else {
+            fileSelect.disabled = true;
+            applyFile.disabled  = true;
+            currentFileId = null;
+            appendLog({ ts: Date.now(), level: 'info',
+                text: 'real-data: disabled — switch back to synthetic on next layout/file change' });
+        }
+    });
+
+    applyFile.addEventListener('click', function () {
+        const fid = fileSelect.value;
+        if (!fid) { alert('Pick a file first'); return; }
+        currentFileId = fid;
+        appendLog({ ts: Date.now(), level: 'info',
+            text: 'real-data: applying fileId=' + fid + ' to all charts (rebuilding layout)' });
+        // Rebuild the current layout — addChart() reads the global toggle and
+        // passes ?fileId=N to each iframe so chart-host fetches /smart.
+        applyLayout(layoutSel.value);
+    });
+
+    // Expose globals so applyLayout / addChart can read them when constructing iframe URLs.
+    window.__multichartRealData = function () {
+        return { useReal: useRealCb.checked && !!currentFileId, fileId: currentFileId };
+    };
 
     // ─── Boot ────────────────────────────────────────────────────────────
     applyLayout(layoutSel.value);

@@ -89,6 +89,30 @@
         if (cfg.days) params.set('days', String(cfg.days));
         if (cfg.verbose) params.set('verbose', '1');
 
+        // Real-data toggle: when the shell exposes __multichartRealData() and
+        // the user has picked a file, pass it through so chart-host fetches
+        // from FastAPI's /api/file/{id}/smart instead of generating synthetic.
+        try {
+            const rd = (typeof global.__multichartRealData === 'function')
+                ? global.__multichartRealData()
+                : null;
+            if (rd && rd.useReal && rd.fileId) {
+                params.set('useReal', '1');
+                params.set('fileId', String(rd.fileId));
+            }
+        } catch (_) {}
+
+        // Per-cell loading overlay so we can see WHICH cells exist and which
+        // are stuck waiting for their iframe's chart.js to init. Removed when
+        // the cell goes ready (see _onWindowMessage on bridge-ready).
+        const overlay = document.createElement('div');
+        overlay.className = 'loading-overlay';
+        overlay.innerHTML =
+            '<div class="id">' + cfg.id + '</div>' +
+            '<div>Loading ' + (cfg.symbol || '?') + ' / ' + (cfg.tf || '?') + '…</div>' +
+            '<small>iframe: pending — bridge: pending</small>';
+        mountEl.appendChild(overlay);
+
         const frame = document.createElement('iframe');
         frame.src = 'chart-host.html?' + params.toString();
         frame.title = 'Chart ' + cfg.id;
@@ -97,14 +121,34 @@
         // dev server), and chart.js needs unrestricted scripts. The
         // postMessage allowlist is the security boundary here.
         frame.style.cssText = 'width:100%;height:100%;border:0;display:block;background:#0b0c14;';
+        const self = this;
+        frame.addEventListener('load', function () {
+            self._log('info', 'iframe loaded: ' + cfg.id + ' (waiting for bridge-ready…)');
+            const small = overlay.querySelector('small');
+            if (small) small.textContent = 'iframe: LOADED — bridge: pending';
+            setTimeout(function () {
+                const c = self.charts.get(cfg.id);
+                if (c && !c.ready) {
+                    self._log('error', 'TIMEOUT: ' + cfg.id + ' iframe loaded but bridge never reported ready (chart.js init likely failed — open the iframe directly in a new tab to see its console)');
+                    const sm = overlay.querySelector('small');
+                    if (sm) sm.textContent = 'iframe: LOADED — bridge: TIMEOUT (chart init failed)';
+                }
+            }, 5000);
+        });
+        frame.addEventListener('error', function () {
+            self._log('error', 'iframe FAILED to load: ' + cfg.id + ' src=' + frame.src);
+            const small = overlay.querySelector('small');
+            if (small) small.textContent = 'iframe: LOAD FAILED';
+        });
         mountEl.appendChild(frame);
 
         this.charts.set(cfg.id, {
-            id:     cfg.id,
-            cfg:    cfg,
-            frame:  frame,
-            ready:  false,
-            state:  { symbol: cfg.symbol, timeframe: cfg.tf, candleCount: 0 },
+            id:      cfg.id,
+            cfg:     cfg,
+            frame:   frame,
+            overlay: overlay,
+            ready:   false,
+            state:   { symbol: cfg.symbol, timeframe: cfg.tf, candleCount: 0 },
             mountEl: mountEl,
         });
         this._log('info', 'addChart ' + cfg.id + ' (' + cfg.symbol + ', ' + cfg.tf + ')');
@@ -174,6 +218,10 @@
             case 'bridge-ready':
                 if (sourceChart) {
                     sourceChart.ready = true;
+                    if (sourceChart.overlay && sourceChart.overlay.parentNode) {
+                        sourceChart.overlay.parentNode.removeChild(sourceChart.overlay);
+                    }
+                    if (sourceChart.mountEl) sourceChart.mountEl.classList.add('ready');
                     this._log('info', 'bridge ready: ' + sourceId);
                 }
                 return;

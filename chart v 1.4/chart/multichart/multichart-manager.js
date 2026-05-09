@@ -89,6 +89,19 @@
         if (cfg.days) params.set('days', String(cfg.days));
         if (cfg.verbose) params.set('verbose', '1');
 
+        // Real-data toggle: when the shell exposes __multichartRealData() and
+        // the user has picked a file, pass it through so chart-host fetches
+        // from FastAPI's /api/file/{id}/smart instead of generating synthetic.
+        try {
+            const rd = (typeof global.__multichartRealData === 'function')
+                ? global.__multichartRealData()
+                : null;
+            if (rd && rd.useReal && rd.fileId) {
+                params.set('useReal', '1');
+                params.set('fileId', String(rd.fileId));
+            }
+        } catch (_) {}
+
         // Per-cell loading overlay so we can see WHICH cells exist and which
         // are stuck waiting for their iframe's chart.js to init. Removed when
         // the cell goes ready (see _onWindowMessage on bridge-ready).
