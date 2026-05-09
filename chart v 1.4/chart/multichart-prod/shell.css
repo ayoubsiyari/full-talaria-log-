@@ -1,0 +1,276 @@
+/*
+ * shell.css — production multichart shell styling
+ *
+ * Talaria V9 dark theme. Adapted from multichart/multichart.css but tuned
+ * for production: quieter chrome, no debug counters in the header, log panel
+ * collapsed by default (toggleable for diagnostics).
+ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #07080E; color: #d1d4dc; font-family: 'DM Sans', system-ui, -apple-system, sans-serif; }
+
+.app {
+    display: grid;
+    grid-template-rows: auto 1fr minmax(0, 200px);
+    height: 100dvh;
+    width: 100vw;
+    background: #07080E;
+}
+.app.log-collapsed {
+    grid-template-rows: auto 1fr 0;
+}
+
+/* ─── Topbar ───────────────────────────────────────────────────────────── */
+.topbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 8px 14px;
+    background: #0d0f17;
+    border-bottom: 1px solid #1c1f2a;
+    min-height: 44px;
+    color: #d1d4dc;
+    font-size: 13px;
+}
+.topbar h1 {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #e8eaed;
+    letter-spacing: 0.2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.topbar h1 .ver {
+    margin-left: 8px;
+    color: #6ed3a4;
+    font-size: 11px;
+    font-weight: 600;
+}
+.topbar h1 .badge {
+    margin-left: 6px;
+    padding: 1px 6px;
+    background: #1a3045;
+    color: #7aa2ff;
+    font-size: 10px;
+    font-weight: 500;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.topbar .group {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 3px 10px;
+    background: #11141d;
+    border: 1px solid #1c1f2a;
+    border-radius: 4px;
+    min-height: 30px;
+    font-size: 12px;
+}
+.topbar .group label {
+    color: #8a8e99;
+    font-size: 11px;
+    user-select: none;
+}
+.topbar .group label.checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    color: #d1d4dc;
+}
+.topbar .group label.checkbox input { margin: 0; cursor: pointer; }
+.topbar select, .topbar button {
+    background: #1c1f26;
+    color: #d1d4dc;
+    border: 1px solid #2a2e39;
+    border-radius: 3px;
+    padding: 3px 8px;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+}
+.topbar select:hover, .topbar button:hover {
+    background: #232732;
+    border-color: #3a3f4b;
+}
+.topbar button.primary {
+    background: #1a3a6e;
+    border-color: #2a5099;
+    color: #d4e3ff;
+}
+.topbar button.primary:hover {
+    background: #20498a;
+}
+.topbar .spacer { flex: 1 1 auto; }
+.topbar .help {
+    color: #5c6370;
+    font-size: 11px;
+    font-style: italic;
+}
+
+/* ─── Charts area ──────────────────────────────────────────────────────── */
+.charts {
+    position: relative;
+    display: grid;
+    background: #07080E;
+    overflow: hidden;
+    min-height: 0;
+}
+.chart-cell {
+    position: relative;
+    background: #0b0c14;
+    overflow: hidden;
+    min-width: 120px;
+    min-height: 120px;
+    border: 1px solid #15171f;
+}
+.chart-cell.ready {
+    border-color: #1c1f2a;
+}
+
+/* Loading overlay shown until iframe's bridge reports ready */
+.mc-loading-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: linear-gradient(180deg, #0d0f17 0%, #07080E 100%);
+    color: #5c6370;
+    font-size: 12px;
+    z-index: 50;
+    pointer-events: none;
+}
+.mc-loading-overlay .id {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 13px;
+    color: #7aa2ff;
+    letter-spacing: 0.5px;
+}
+.mc-loading-overlay small {
+    color: #4a4f5b;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ─── Divider ──────────────────────────────────────────────────────────── */
+.divider {
+    position: relative;
+    z-index: 100;
+    background: transparent;
+    cursor: col-resize;
+    user-select: none;
+    touch-action: none;
+}
+.divider.row { cursor: row-resize; }
+.divider-handle {
+    position: absolute;
+    background: #1c1f2a;
+    transition: background 0.15s, width 0.15s, height 0.15s;
+}
+.divider:not(.row) .divider-handle {
+    top: 0; bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2px;
+}
+.divider.row .divider-handle {
+    left: 0; right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 2px;
+}
+.divider:hover .divider-handle,
+.divider.dragging .divider-handle {
+    background: #3a6db5;
+}
+.divider:hover:not(.row) .divider-handle,
+.divider.dragging:not(.row) .divider-handle {
+    width: 4px;
+}
+.divider:hover.row .divider-handle,
+.divider.dragging.row .divider-handle {
+    height: 4px;
+}
+
+/* ─── Bottom: log panel + per-chart status ─────────────────────────────── */
+.bottom {
+    display: grid;
+    grid-template-columns: 1fr minmax(0, 300px);
+    background: #0a0b12;
+    border-top: 1px solid #1c1f2a;
+    overflow: hidden;
+}
+.app.log-collapsed .bottom { display: none; }
+
+.log {
+    padding: 6px 10px;
+    overflow-y: auto;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px;
+    color: #8a8e99;
+    background: #07080E;
+    line-height: 1.45;
+}
+.log .row { padding: 1px 0; white-space: pre-wrap; word-break: break-word; }
+.log .row.error { color: #ff7e8a; }
+.log .row.warn  { color: #ffb86b; }
+.log .row.out   { color: #6ed3a4; }
+.log .row .ts   { color: #4a4f5b; margin-right: 6px; }
+
+.assertions {
+    padding: 8px 10px;
+    border-left: 1px solid #1c1f2a;
+    background: #0a0b12;
+    overflow-y: auto;
+    font-size: 11px;
+}
+.assertions h3 {
+    color: #8a8e99;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 6px 0;
+}
+.assertions .item {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 4px;
+    margin-bottom: 2px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+.assertions .item.pass { color: #d1d4dc; }
+.assertions .item.fail { color: #ff7e8a; }
+.assertions .item .name {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-weight: 500;
+}
+.assertions .item .val {
+    color: #5c6370;
+    font-size: 10px;
+}
+
+/* ─── Responsive ───────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+    .bottom { grid-template-columns: 1fr; }
+    .assertions { display: none; }
+}
+@media (max-width: 640px) {
+    .topbar { padding: 6px 8px; gap: 6px; }
+    .topbar h1 { font-size: 12px; }
+    .topbar .group { padding: 2px 6px; gap: 4px; }
+    .topbar select, .topbar button { padding: 2px 6px; font-size: 11px; }
+}
