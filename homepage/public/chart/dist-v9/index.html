@@ -15,18 +15,22 @@
     </script>
 
     <!-- ──────────────────────────────────────────────────────────────────
-         MULTICHART EMBED SHIM (Phase 7.1 — production multichart v1)
-         Mirror of the shim in chart v 1.4/chart/dist-v9/index.html. When
-         this page is loaded inside an iframe of /chart/multi with
-         ?multichart=1, the shim adds the `multichart-embed` class and
-         injects the three multichart-prod scripts (guards, bridge,
-         embed-bridge) so window.chart picks up the verified sync bridge.
-         No-op when ?multichart=1 is absent.
-         Sync the two copies via talaria-design/scripts/sync-v9-to-homepage.mjs
-         or hand-edit identically.
+         MULTICHART INTEGRATION (Phase 7.1 — production multichart v1)
+         Mirror of chart v 1.4/chart/dist-v9/index.html. Two pieces:
+           A) Topbar button — always loaded; adds "Layouts ▾" dropdown.
+           B) Embed shim — only on ?multichart=1; injects the bridge.
          ────────────────────────────────────────────────────────────────── -->
     <script>
     (function () {
+        var V = '20260509T2230';
+        function inject(src) {
+            var s = document.createElement('script');
+            s.src = src + '?v=' + V;
+            s.defer = true;
+            document.head.appendChild(s);
+        }
+        try { inject('/chart/multi/topbar-button.js'); }
+        catch (e) { try { console.error('[multichart-topbar] inject failed:', e); } catch (_) {} }
         try {
             var p = new URLSearchParams(window.location.search);
             if (p.get('multichart') !== '1') return;
@@ -34,13 +38,6 @@
             document.addEventListener('DOMContentLoaded', function () {
                 document.body.classList.add('multichart-embed');
             }, { once: true });
-            var V = '20260509T2200';
-            function inject(src) {
-                var s = document.createElement('script');
-                s.src = src + '?v=' + V;
-                s.defer = true;
-                document.head.appendChild(s);
-            }
             inject('/chart/multi/engine-api-guards.js');
             inject('/chart/multi/sync-bridge.js');
             inject('/chart/multi/embed-bridge.js');

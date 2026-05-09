@@ -15,21 +15,31 @@
     </script>
 
     <!-- ──────────────────────────────────────────────────────────────────
-         MULTICHART EMBED SHIM (Phase 7.1 — production multichart v1)
-         SOURCE OF TRUTH for the dist-v9 multichart shim — when this file
-         is built via `npm run build:live`, the same shim ships to
-         chart/dist-v9/index.html (and is then sync'd to
-         homepage/public/chart/dist-v9/index.html via sync-v9-to-homepage.mjs).
-         When the dist-v9 page is loaded inside an iframe of /chart/multi
-         with ?multichart=1, the shim adds the `multichart-embed` class and
-         injects the three multichart-prod scripts (engine-api-guards.js,
-         sync-bridge.js, embed-bridge.js) so window.chart picks up the
-         verified sync bridge.
-         When ?multichart=1 is ABSENT, this shim is a no-op — production
-         single-chart behavior at /chart/ is byte-identical to today.
+         MULTICHART INTEGRATION (Phase 7.1 — production multichart v1)
+         SOURCE OF TRUTH — `npm run build:live` ships this to
+         chart/dist-v9/index.html, then sync-v9-to-homepage.mjs mirrors to
+         homepage/public/chart/dist-v9/index.html.
+         Two pieces:
+           A) Topbar button — always loaded; adds "Layouts ▾" dropdown
+              that navigates to /chart/multi?layout=X.
+           B) Embed shim — only when this page loads inside an iframe of
+              /chart/multi with ?multichart=1; injects the verified
+              multichart bridge onto window.chart.
+         When ?multichart=1 is ABSENT and the user is on /chart/, the
+         only change is the topbar button — single-chart behavior is
+         byte-identical to today.
          ────────────────────────────────────────────────────────────────── -->
     <script>
     (function () {
+        var V = '20260509T2230';
+        function inject(src) {
+            var s = document.createElement('script');
+            s.src = src + '?v=' + V;
+            s.defer = true;
+            document.head.appendChild(s);
+        }
+        try { inject('/chart/multi/topbar-button.js'); }
+        catch (e) { try { console.error('[multichart-topbar] inject failed:', e); } catch (_) {} }
         try {
             var p = new URLSearchParams(window.location.search);
             if (p.get('multichart') !== '1') return;
@@ -37,13 +47,6 @@
             document.addEventListener('DOMContentLoaded', function () {
                 document.body.classList.add('multichart-embed');
             }, { once: true });
-            var V = '20260509T2200';
-            function inject(src) {
-                var s = document.createElement('script');
-                s.src = src + '?v=' + V;
-                s.defer = true;
-                document.head.appendChild(s);
-            }
             inject('/chart/multi/engine-api-guards.js');
             inject('/chart/multi/sync-bridge.js');
             inject('/chart/multi/embed-bridge.js');

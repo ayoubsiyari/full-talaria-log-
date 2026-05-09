@@ -36,7 +36,8 @@ The original v9 multichart bug — lower-timeframe chart inheriting higher-timef
 
 | File | Purpose | Source of truth |
 |---|---|---|
-| `shell.html` + `shell.css` | Production shell. Talaria-themed. Layout picker, sync toggles, log toggle, session restore. | THIS FOLDER |
+| `shell.html` + `shell.css` | Production shell at `/chart/multi`. Talaria-themed. Layout picker, sync toggles, log toggle, session restore. | THIS FOLDER |
+| `topbar-button.js` | Loaded by every `/chart/` page (unconditionally). Adds the `Layouts ▾` dropdown at top-center. Hides itself in iframes / on `/chart/multi`. Picking a multi-panel layout navigates to `/chart/multi?layout=<id>`. | THIS FOLDER |
 | `embed-bridge.js` | Loaded inside dist-v9 when `?multichart=1`. Waits for `window.chart`, installs `MultichartBridge`. Heartbeat + boot diagnostics. | THIS FOLDER |
 | `engine-api-guards.js` | `FORBIDDEN_SYNC_FIELDS`, snapshot/diff, filter. Phase 6 verified. | **`../multichart/engine-api-guards.js`** (verbatim copy) |
 | `sync-bridge.js` | Iframe-side bridge. Phase 6 verified. | **`../multichart/sync-bridge.js`** (verbatim copy) |
@@ -48,12 +49,13 @@ The original v9 multichart bug — lower-timeframe chart inheriting higher-timef
 
 | File | Change |
 |---|---|
-| `chart/dist-v9/index.html` | ~30 lines: `?multichart=1` shim that adds `multichart-embed` body class and injects the three scripts. **Source of truth: `talaria-design/live/index.html`** — the build copies it here. |
+| `chart/dist-v9/index.html` | ~30 lines: (A) always loads `topbar-button.js` (the "Layouts ▾" dropdown that lets the user open multichart from /chart/), and (B) on `?multichart=1`, adds `multichart-embed` body class and injects the three bridge scripts. **Source of truth: `talaria-design/live/index.html`** — the build copies it here. |
 | `talaria-design/live/index.html` | Same shim; this is the source. |
-| `homepage/public/chart/dist-v9/index.html` | Same shim (mirror copy). The `sync-v9-to-homepage.mjs` script syncs the dist-v9 build into the homepage on `npm run build:live`, so the source-of-truth shim flows here automatically. |
+| `talaria-design/src/TalariaV8bLive.jsx` | The right-panel layout picker `useEffect` was wired to call the deleted `panelManager.applyLayout(...)` and silently no-op'd. Repointed: picking layout `1` stays on /chart/, picking `2v`/`2h`/`3l`/`3r`/`2x2` (or any V9 variant that maps to one of those) navigates to `/chart/multi?layout=<id>`. Requires `npm run build:live` to deploy. |
+| `homepage/public/chart/dist-v9/index.html` | Same shim as `chart/dist-v9/index.html` (mirror copy). The `sync-v9-to-homepage.mjs` script syncs the dist-v9 build into the homepage on `npm run build:live`, so the source-of-truth shim flows here automatically. |
 | `chart/api_server.py` | Two routes: `GET /chart/multi` and `GET /chart/multi/` → serves `shell.html`. Plus a static mount at `/chart/multi/` for the JS/CSS files. Registered BEFORE the `/chart/{file_name}` catch-all. |
 
-When `?multichart=1` is **absent**, the dist-v9 shim is a complete no-op. Behavior at `/chart/` (single chart) is byte-identical to before this change.
+When `?multichart=1` is **absent** at `/chart/`, the only change vs. before this work is the small `Layouts ▾` button at the top-center of the page (added by `topbar-button.js`). Single-chart rendering is byte-identical.
 
 ## Verification checklist
 
@@ -72,15 +74,20 @@ Verify in this order. Stop and report at the first failing step.
 
 If a panel hangs on "iframe: LOADED — bridge: TIMEOUT", open that iframe directly in a new tab (`/chart/dist-v9/index.html?multichart=1&panelId=A`) — the console will show the actual chart-init failure (most often: not logged in → redirect to `/signin`).
 
-### 1. Existing single-chart UX is unchanged
+### 1. Existing single-chart UX is unchanged + topbar button works
 
 This is the regression test for our integration:
 
-1. Open `/chart/` (no query string). The single-chart React app loads exactly like today.
-2. All existing controls work: tools, indicators, orders, drawings, replay, file picker, layout picker (the layout picker still no-ops because `window.panelManager` is gone — that's pre-existing, not new harm).
-3. No console errors. The multichart shim doesn't fire because `?multichart=1` is absent.
+1. Open `/chart/` (no query string). The single-chart React app loads exactly like today, **plus** a small `Layouts ▾` button appears at the top-center of the page (z-index 9999, fixed position).
+2. All existing controls work: tools, indicators, orders, drawings, replay, file picker, right-panel layout picker.
+3. No console errors. The embed shim doesn't fire because `?multichart=1` is absent. Only the topbar-button script runs.
+4. Click `Layouts ▾`. A dropdown opens with: Single chart, 2 panels split horizontal, 2 panels split vertical, 3 panels left-dominant, 3 panels right-dominant, 4 panels grid.
+5. Pick `2 panels — split horizontal`. Page navigates to `/chart/multi?layout=2v`.
+6. Hit browser back. You return to `/chart/` with the same single chart you had before. State is intact.
 
-If anything in the single-chart path changes, the integration is wrong — back out.
+If the button doesn't appear, hard-refresh (Ctrl+Shift+R) — the topbar-button.js URL is cache-busted via the `V` constant in the shim.
+
+If anything else in the single-chart path changes, the integration is wrong — back out.
 
 ### 2. Per-panel chart works (each iframe = full Talaria chart)
 
@@ -152,16 +159,16 @@ If you see `PRICE-AXIS ASSERTION FAIL` in the log, **that is the original bug**.
 | Symbol sync | 7.2 | When user changes file in panel A, panel B follows. Needs the same React-state hook (so `applySymbol` in sync-bridge.js can update dist-v9's selected file). |
 | Cross-panel drawing sync | 7.3 | Allowlist new fields (`drawingId`, `points`, `style`) and add to bridge. |
 | Cross-panel indicator sync | 7.4 | Same shape as drawing sync. |
-| Repoint V9 layout picker dialog | 7.5 | The existing dialog calls `window.panelManager.applyLayout(...)` which no-ops; redirect to `/chart/multi?layout=...` once v1 is verified at scale. |
+| Repoint V9 layout picker dialog | 7.5 | DONE in v1.1 — `TalariaV8bLive.jsx`'s `useEffect([layoutPanels])` now navigates to `/chart/multi?layout=<shellId>` instead of calling the dead `panelManager.applyLayout`. Requires `npm run build:live` to deploy. |
 | Aggressive chrome-hiding inside iframes | tbd | Add CSS rules under `body.multichart-embed` once you've used it and tell us what's busy when 4 panels stack their topbars. |
 
 ## Cache busting
 
-Bump `v=YYYYMMDDTHHMM` in three places when shipping a change to a multichart-prod JS file:
+Bump `v=YYYYMMDDTHHMM` in four places when shipping a change to a multichart-prod JS/CSS file:
 
-1. `shell.html` — script tags for `engine-api-guards.js` and `multichart-manager.js`
-2. `chart/dist-v9/index.html` — the `V` constant in the multichart shim
-3. `talaria-design/live/index.html` — the `V` constant in the multichart shim (source of truth)
+1. `shell.html` — `link` tag for `shell.css` + `script` tags for `engine-api-guards.js` and `multichart-manager.js`
+2. `chart/dist-v9/index.html` — the `V` constant in the multichart shim (drives `topbar-button.js`, `engine-api-guards.js`, `sync-bridge.js`, `embed-bridge.js`)
+3. `talaria-design/live/index.html` — the `V` constant (source of truth for the dist-v9 shim)
 4. `homepage/public/chart/dist-v9/index.html` — the `V` constant (mirror)
 
 If you're shipping a change to one of the three "verbatim copies" (`engine-api-guards.js`, `sync-bridge.js`, `multichart-manager.js`), do it in the sandbox first, verify Phase 6, then copy here and bump.

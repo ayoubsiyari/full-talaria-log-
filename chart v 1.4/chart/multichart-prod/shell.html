@@ -7,7 +7,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="shell.css?v=20260509T2200" />
+    <!-- Absolute paths required: this page is served at /chart/multi (no trailing slash),
+         so relative URLs resolve against /chart/ and 404. /chart/multi/* is the static mount. -->
+    <link rel="stylesheet" href="/chart/multi/shell.css?v=20260509T2230" />
 </head>
 <body>
 <div class="app log-collapsed">
@@ -58,9 +60,9 @@
     </section>
 </div>
 
-<!-- Sandbox-verified core (verbatim copies). -->
-<script src="engine-api-guards.js?v=20260509T2200"></script>
-<script src="multichart-manager.js?v=20260509T2200"></script>
+<!-- Sandbox-verified core (verbatim copies). Absolute paths (see CSS link above for reasoning). -->
+<script src="/chart/multi/engine-api-guards.js?v=20260509T2230"></script>
+<script src="/chart/multi/multichart-manager.js?v=20260509T2230"></script>
 <script>
 (function () {
     'use strict';
