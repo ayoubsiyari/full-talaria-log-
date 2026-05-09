@@ -2066,8 +2066,41 @@ class ReplaySystem {
         const isBacktesting = mode === 'backtest' || mode === 'propfirm' || options.startAtBeginning;
         
         if (isBacktesting) {
-            // Start at first candle for backtesting
-            this.currentIndex = Math.min(10, this.chart.rawData.length - 1); // Show first 10 candles for context
+            // Backtest sessions load all daily history available on the server BEFORE
+            // session start so the user sees the lead-up. Replay must still begin at
+            // the first bar at/after session.startDate — find that index by timestamp.
+            let sessionStartMs = null;
+            try {
+                let sess = this.chart.backtestingSession;
+                if (!sess && typeof window !== 'undefined' && window.userStorage) {
+                    sess = JSON.parse(window.userStorage.getItem('backtestingSession') || '{}');
+                }
+                const raw = sess && (sess.startDate || sess.start_date);
+                if (raw) {
+                    const t = new Date(raw).getTime();
+                    if (Number.isFinite(t)) sessionStartMs = t;
+                }
+            } catch (e) { /* ignore */ }
+
+            const rd = this.chart.rawData;
+            let startIdx = Math.min(10, rd.length - 1);
+            if (sessionStartMs != null && Array.isArray(rd) && rd.length > 0) {
+                let found = -1;
+                for (let i = 0; i < rd.length; i++) {
+                    const bar = rd[i];
+                    if (bar && Number.isFinite(bar.t) && bar.t >= sessionStartMs) {
+                        found = i;
+                        break;
+                    }
+                }
+                if (found >= 0) {
+                    startIdx = found;
+                } else {
+                    // Session start is past every loaded bar — start at the last bar.
+                    startIdx = rd.length - 1;
+                }
+            }
+            this.currentIndex = Math.max(0, startIdx);
         } else {
             // Normal replay: start at 10% for context
             this.currentIndex = Math.floor(this.chart.rawData.length * 0.1);

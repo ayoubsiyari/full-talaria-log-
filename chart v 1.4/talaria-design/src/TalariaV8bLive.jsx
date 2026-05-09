@@ -2702,7 +2702,16 @@ const TalariaV8bLive = () => {
   const [btmResizing, setBtmResizing] = useState(false);
   const btmDragRef = useRef({startY:0, startH:0, curH:Math.round((window.innerHeight/1.05-92)*0.25)});
   const btmPanelRef = useRef(null);
-  const [tf, setTf] = useState("1m");
+  // Backtest sessions open on 1D by default (chart.js mirrors this in
+  // checkBacktestingMode). Initialize the React tf state from the URL so the
+  // chart-sync useEffect doesn't immediately push "1m" back over chart.js's 1D.
+  const [tf, setTf] = useState(() => {
+    try {
+      const m = new URLSearchParams(window.location.search).get("mode");
+      if (m === "backtest" || m === "propfirm") return "1D";
+    } catch (e) { /* noop */ }
+    return "1m";
+  });
   const [sizeMode, setSizeMode] = useState("$");
   const [riskVal, setRiskVal] = useState("100");
   const [riskBasis, setRiskBasis] = useState("balance");

@@ -361,6 +361,9 @@ class Chart {
         this._smartPrefetchCache = new Map(); // LRU-ish cache for other symbols' /smart payloads
         /** Incremented on each symbol switch; stale async responses must not overwrite the chart. */
         this._symbolLoadSeq = 0;
+        /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
+        this._scrollSyncRaf = null;
+        this._lastScrollSyncAt = 0;
         this.chunkSize = 5000; // Load data in chunks
         this.bufferSize = 1000; // Buffer size for smooth scrolling
         this.isLoadingChunk = false;
@@ -1285,7 +1288,16 @@ class Chart {
             // skipIndicators: enterReplayMode will recalculate on the 10% slice — no need on 100k
             this._ingestSmartWindowResult(result, { skipIndicators: true, skipFitToView: true });
             this.loadedRanges.set(0, result.returned);
-            this._scheduleSmartPrefetchOthers(fileId, replayRawTf, session);
+            // Defer prefetch of other session instruments until after replay + layout settle —
+            // parallel /smart for EUR/GBP/… competes with enterReplayMode and blanks panel 0 when half-width.
+            const selfBt = this;
+            const scheduledFor = fileId;
+            setTimeout(() => {
+                if (String(selfBt.currentFileId) !== String(scheduledFor)) return;
+                if (typeof selfBt._scheduleSmartPrefetchOthers === 'function') {
+                    selfBt._scheduleSmartPrefetchOthers(fileId, replayRawTf, session);
+                }
+            }, 14000);
 
             this.updateLoaderProgress(70, 'Preparing chart...');
 
@@ -1782,8 +1794,12 @@ class Chart {
                 if (typeof this.orderManager.updatePositionsPanel === 'function') this.orderManager.updatePositionsPanel();
             }
 
-            // Trigger symbol sync if enabled
-            if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.symbol) {
+            // Trigger symbol sync if enabled. Programmatic follower loads set
+            // `_suppressNextSymbolBroadcast` to avoid recursive fan-out storms.
+            const suppressSymbolBroadcast = !!this._suppressNextSymbolBroadcast;
+            this._suppressNextSymbolBroadcast = false;
+            if (!suppressSymbolBroadcast
+                && window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.symbol) {
                 const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
                 if (sourcePanel) {
                     window.panelManager.syncSymbol(sourcePanel, this.currentSymbol, targetFileId);
@@ -1991,7 +2007,7 @@ class Chart {
             // Copying main scroll onto a new pair often lands on an empty X window (no bars in
             // slice → calculateScales keeps old Y domain → blank chart + "LOCKED" legend).
             let alignScrollToMain = !!(pm && pm.syncSettings
-                && (pm.syncSettings.time || pm.syncSettings.dateRange)
+                && (pm.syncSettings.time === true || pm.syncSettings.dateRange === true)
                 && mainChart && mainChart !== this && mainChart.data && mainChart.data.length > 0
                 && this.data && this.data.length > 0);
             if (pairSwitched) alignScrollToMain = false;
@@ -2071,8 +2087,12 @@ class Chart {
                 mainOm.syncOrderVisualsToActiveChart();
             }
 
-            // Trigger symbol sync if enabled
-            if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.symbol) {
+            // Trigger symbol sync if enabled. Programmatic follower loads set
+            // `_suppressNextSymbolBroadcast` to avoid recursive fan-out storms.
+            const suppressSymbolBroadcast = !!this._suppressNextSymbolBroadcast;
+            this._suppressNextSymbolBroadcast = false;
+            if (!suppressSymbolBroadcast
+                && window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.symbol) {
                 const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
                 if (sourcePanel) {
                     window.panelManager.syncSymbol(sourcePanel, this.currentSymbol, targetFileId);
@@ -2566,7 +2586,14 @@ class Chart {
             // Restore chart view (pan/zoom position)
             if (state.chartView && typeof state.chartView === 'object') {
                 const v = state.chartView;
-                if (typeof v.offsetX === 'number' && Number.isFinite(v.offsetX)) {
+                // Replay uses virtual time + auto-scroll to pin the playhead; restoring saved chart pan
+                // from the same session blob overwrote that alignment — footer showed 21:10 while the
+                // viewport stayed hours earlier on 1m (15m looked "fine" because one aggregated candle).
+                const replayOwnsHorizontalPan =
+                    state.replay &&
+                    typeof state.replay === 'object' &&
+                    Object.keys(state.replay).length > 0;
+                if (typeof v.offsetX === 'number' && Number.isFinite(v.offsetX) && !replayOwnsHorizontalPan) {
                     this.offsetX = v.offsetX;
                 }
                 if (typeof v.candleWidth === 'number' && Number.isFinite(v.candleWidth)) {
@@ -7348,11 +7375,32 @@ class Chart {
             }
         }
 
-        return entries;
+        return this._dedupeSymbolEntries(entries);
     }
 
     _ssdNormalize(s) {
         return String(s || '').toLowerCase().replace(/[\s\-_\/\.]/g, '');
+    }
+
+    _dedupeSymbolEntries(entries) {
+        if (!Array.isArray(entries) || entries.length <= 1) return entries || [];
+        const byTicker = new Map();
+        const keyOf = (e) => this._ssdNormalize(e && e.ticker ? e.ticker : '');
+        const fileIdNum = (e) => {
+            const n = Number(e && e.fileId);
+            return Number.isFinite(n) ? n : -1;
+        };
+
+        entries.forEach((entry) => {
+            const key = keyOf(entry);
+            if (!key) return;
+            const existing = byTicker.get(key);
+            if (!existing || fileIdNum(entry) > fileIdNum(existing)) {
+                byTicker.set(key, entry);
+            }
+        });
+
+        return Array.from(byTicker.values());
     }
 
     _symbolMatches(entry, query) {
@@ -8377,6 +8425,19 @@ class Chart {
         if (this._chartViewRestored) {
             return;
         }
+
+        // Replay: never use the non-replay branch below that sets offsetX = 0 when "all candles fit"
+        // — on a zoomed-out candle width the entire backtest slice fits on screen and Y auto-scale
+        // spans the full loaded history (years of FX range) while the playhead price sits near the top.
+        const replay = this.replaySystem;
+        if (replay && replay.isActive && typeof replay.getReplayAutoScrollState === 'function') {
+            const st = replay.getReplayAutoScrollState(this);
+            if (st && Number.isFinite(st.offsetX)) {
+                this.offsetX = st.offsetX;
+                this.constrainOffset();
+                return;
+            }
+        }
         
         const m = this.margin;
         const cw = this.w - m.l - m.r;
@@ -8469,13 +8530,29 @@ class Chart {
     /**
      * Dispatch scroll/zoom sync event for panel synchronization
      */
-    dispatchScrollSync() {
+    dispatchScrollSync(force = false) {
         if (!this.data || this.data.length === 0) return;
         // Allow main chart (panel 0) to sync to other panels too
         if (!window.panelManager || window.panelManager.currentLayout === '1') return;
+        const syncSettings = window.panelManager && window.panelManager.syncSettings;
+        // Hard gate: with Time + Date range both off, no scroll-sync event should fire.
+        if (!syncSettings || (syncSettings.time !== true && syncSettings.dateRange !== true)) return;
         if (this._suppressPanelScrollSync) return;
         if (window.panelManager._isSyncing) return;
         if (window.panelManager._syncingDateRange) return;
+        if (!force && this.drag && this.drag.active && this.drag.type === 'pan') {
+            const now = performance.now();
+            if (now - this._lastScrollSyncAt < 16) {
+                if (this._scrollSyncRaf == null) {
+                    this._scrollSyncRaf = requestAnimationFrame(() => {
+                        this._scrollSyncRaf = null;
+                        this.dispatchScrollSync(true);
+                    });
+                }
+                return;
+            }
+            this._lastScrollSyncAt = now;
+        }
 
         // Visible range: use same helpers as UI so timestamps match actual viewport (multi-TF sync).
         const startIndex = typeof this.getVisibleStartIndex === 'function'
@@ -8496,7 +8573,21 @@ class Chart {
         const rightEdgePx = this.w - m.r;
         const idxAtRight = (rightEdgePx - m.l - this.offsetX) / spacing;
         const rightEdgeBarIndex = Math.max(0, Math.min(this.data.length - 1, Math.floor(idxAtRight)));
-        const timeSyncEndTimestamp = (this.data[rightEdgeBarIndex]?.t ?? 0) + barMs;
+        // Fractional right-edge timestamp avoids high-TF "freeze then jump" behavior.
+        // Using a floored bar index updates only when crossing whole bars; 1h/4h/1d then
+        // appears stuck while 1m moves continuously.
+        const i0 = Math.max(0, Math.min(this.data.length - 1, Math.floor(idxAtRight)));
+        const i1 = Math.max(i0, Math.min(this.data.length - 1, i0 + 1));
+        const t0 = Number(this.data[i0]?.t);
+        const t1 = Number(this.data[i1]?.t);
+        let rightEdgeTimestamp = t0;
+        if (Number.isFinite(t0) && Number.isFinite(t1) && i1 !== i0 && t1 > t0) {
+            const frac = Math.max(0, Math.min(1, idxAtRight - i0));
+            rightEdgeTimestamp = t0 + (t1 - t0) * frac;
+        } else if (!Number.isFinite(rightEdgeTimestamp)) {
+            rightEdgeTimestamp = Number(this.data[rightEdgeBarIndex]?.t) || 0;
+        }
+        const timeSyncEndTimestamp = rightEdgeTimestamp + barMs;
         
         // Find which panel this chart belongs to
         let sourcePanel = this.panel || null;
@@ -8850,22 +8941,34 @@ class Chart {
         const lastCandleX = (this.data.length - 1) * candleSpacing;
         const minOffset = -lastCandleX;
         
-        // Proactive pan-loading: trigger when viewport is NEAR the edge (like TradingView)
-        const isReplayActive = this.replaySystem && this.replaySystem.isActive;
-        const nearEdgeThreshold = 500 * candleSpacing;
-        if (isReplayActive) {
-            // Replay mode: only allow backward (scroll-left) pan-loading
-            // Forward loading is handled by simpleStepForward
-            if (this.offsetX > maxOffset - nearEdgeThreshold) {
-                this.checkViewportLoadMore('backward');
-            }
-        } else {
-            // Normal mode: trigger both directions based on viewport position
-            if (this.offsetX > maxOffset - nearEdgeThreshold) {
-                this.checkViewportLoadMore('backward');
-            }
-            if (this.offsetX < minOffset + nearEdgeThreshold) {
-                this.checkViewportLoadMore('forward');
+        // Proactive pan-loading: trigger when viewport is NEAR the edge (like TradingView).
+        // SKIP during a wheel-zoom burst — every wheel tick changes candleSpacing which
+        // changes the "near-edge" threshold, and on zoom-out lots of candles fit on screen
+        // so the viewport often appears near the edge even when no user-visible scroll
+        // happened. Without this gate each wheel tick can fire a 5000-bar fetch whose
+        // _commitLoadedBars (full resample + indicator recalc) competes with the render
+        // path → visible lag. After the wheel settles, _wheelBurstUntil expires and a
+        // deferred constrainOffset (scheduled in handleWheel) re-runs this check exactly
+        // once, so any genuinely-needed historical fetch still fires.
+        const wheelActive = typeof this._wheelBurstUntil === 'number'
+            && performance.now() < this._wheelBurstUntil;
+        if (!wheelActive) {
+            const isReplayActive = this.replaySystem && this.replaySystem.isActive;
+            const nearEdgeThreshold = 500 * candleSpacing;
+            if (isReplayActive) {
+                // Replay mode: only allow backward (scroll-left) pan-loading
+                // Forward loading is handled by simpleStepForward
+                if (this.offsetX > maxOffset - nearEdgeThreshold) {
+                    this.checkViewportLoadMore('backward');
+                }
+            } else {
+                // Normal mode: trigger both directions based on viewport position
+                if (this.offsetX > maxOffset - nearEdgeThreshold) {
+                    this.checkViewportLoadMore('backward');
+                }
+                if (this.offsetX < minOffset + nearEdgeThreshold) {
+                    this.checkViewportLoadMore('forward');
+                }
             }
         }
 
@@ -11145,11 +11248,25 @@ class Chart {
         // Empty rawData is normal during sync/replay races; still refetch when this panel is tied to a server file.
         if (!hasData && !this.currentFileId) return;
 
+        // Idempotency guard: callers in V9 (panelTimeframeChanged listener), panel-manager
+        // (syncInterval / updateSelectedPanelTimeframe) and replay paths can re-enter
+        // setTimeframe with the timeframe the chart already has. Without this guard
+        // _loadTimeframeFromServer would clear data, call fitToView and (for higher TFs)
+        // re-clamp candleWidth via _restorePositionToTimestamp — visible to the user as a
+        // jump to the right edge plus apparent candle compression on a sibling panel.
+        // Only short-circuit when we already have rendered data for that TF; with no
+        // data yet (e.g. fresh panel hydrated from session) we still need to fetch.
+        const normalizedTf = String(timeframe || '1m').toLowerCase().trim();
+        const haveCurrentTfData = (this.currentTimeframe === normalizedTf)
+            && Array.isArray(this.data) && this.data.length > 0
+            && !this._panLoading;
+        if (haveCurrentTfData) return;
+
         if (this.drawingManager && this.drawings && this.drawings.length > 0) {
             this.drawingManager.saveDrawings();
         }
         
-        this.currentTimeframe = String(timeframe || '1m').toLowerCase().trim();
+        this.currentTimeframe = normalizedTf;
         timeframe = this.currentTimeframe;
         this.scheduleChartViewSave();
         this._emitTimeframeChanged();
@@ -11992,9 +12109,22 @@ class Chart {
             return;
         }
 
-        const prices = visible.flatMap(d => [d.h, d.l]);
-        const minPrice = Math.min(...prices);
-        const maxPrice = Math.max(...prices);
+        // O(n) min/max — flatMap + Math.min(...hugeArray) allocates 2N numbers and can hit
+        // argument-limit / stack issues when zoomed out on 1m data (50k+ visible bars).
+        let minPrice = Infinity;
+        let maxPrice = -Infinity;
+        for (let i = 0; i < visible.length; i++) {
+            const d = visible[i];
+            if (!d) continue;
+            const h = Number(d.h);
+            const l = Number(d.l);
+            if (Number.isFinite(h) && h > maxPrice) maxPrice = h;
+            if (Number.isFinite(l) && l < minPrice) minPrice = l;
+        }
+        if (!Number.isFinite(minPrice) || !Number.isFinite(maxPrice)) {
+            minPrice = 0;
+            maxPrice = 1;
+        }
         const priceRange = maxPrice - minPrice || maxPrice * 0.01;
         
         // Calculate chart height for price area
@@ -13195,7 +13325,26 @@ class Chart {
                 }
             }
 
-            if (Number.isFinite(replayPrice)) price = replayPrice;
+            const displayRef = (this.data && this.data.length > 0 && Number.isFinite(this.data[this.data.length - 1].c))
+                ? this.data[this.data.length - 1].c
+                : (lastVisible && Number.isFinite(lastVisible.c) ? lastVisible.c : null);
+
+            if (Number.isFinite(replayPrice)) {
+                if (!Number.isFinite(displayRef)) {
+                    price = replayPrice;
+                } else {
+                    const refMag = Math.abs(displayRef) || 1;
+                    const relDiff = Math.abs(replayPrice - displayRef) / refMag;
+                    // Pan-merge / index drift can make fullRawData[currentIndex] disagree with the
+                    // bars actually drawn — resolveEffectiveCurrentPrice then blows the Y domain and
+                    // candles look "hidden" at one edge. Trust the displayed series when disagreement is large.
+                    if (relDiff <= 0.12) {
+                        price = replayPrice;
+                    } else {
+                        price = displayRef;
+                    }
+                }
+            }
         }
 
         return Number.isFinite(price) ? price : null;
@@ -13718,11 +13867,19 @@ class Chart {
         this.ctx.rect(m.l, m.t, this.w - m.l - m.r, this.h - m.t - m.b);
         this.ctx.clip();
         
-        const MAX_VOL_LOD = 2000;
+        const plotPxVol = Math.max(1, this.w - m.l - m.r);
+        const MAX_VOL_LOD = Math.min(1600, Math.max(320, Math.ceil(plotPxVol * 2)));
         const volLod = this._aggregateVisibleOhlcvBuckets(visible, MAX_VOL_LOD);
+        let volLodMax = 1;
+        if (volLod) {
+            for (let vi = 0; vi < volLod.length; vi++) {
+                const vs = Number(volLod[vi].vSum) || 0;
+                if (vs > volLodMax) volLodMax = vs;
+            }
+        }
         const volScaleLod = volLod
             ? d3.scaleLinear()
-                .domain([0, Math.max(1, ...volLod.map((b) => b.vSum))])
+                .domain([0, Math.max(1, volLodMax)])
                 .range(this.volumeScale.range())
             : null;
 
@@ -13745,20 +13902,26 @@ class Chart {
             });
         }
         
-        // Draw Volume MA if enabled
+        // Draw Volume MA if enabled — cache full-series MA; recomputing O(n·period) every
+        // render destroyed frame time on large datasets (same zoom-out lag as price scale).
         if (showMA && this.data && this.data.length >= maPeriod) {
-            // Calculate volume MA for the full dataset
-            const volumeMA = [];
-            for (let i = 0; i < this.data.length; i++) {
-                if (i < maPeriod - 1) {
-                    volumeMA.push(null);
-                } else {
-                    let sum = 0;
-                    for (let j = 0; j < maPeriod; j++) {
-                        sum += this.data[i - j].v;
+            const maKey = `${this.dataVersion}|${maPeriod}|${this.data.length}`;
+            let volumeMA = this._volumeMaSeriesCache;
+            if (this._volumeMaSeriesCacheKey !== maKey || !Array.isArray(volumeMA) || volumeMA.length !== this.data.length) {
+                volumeMA = new Array(this.data.length);
+                for (let i = 0; i < this.data.length; i++) {
+                    if (i < maPeriod - 1) {
+                        volumeMA[i] = null;
+                    } else {
+                        let sum = 0;
+                        for (let j = 0; j < maPeriod; j++) {
+                            sum += this.data[i - j].v;
+                        }
+                        volumeMA[i] = sum / maPeriod;
                     }
-                    volumeMA.push(sum / maPeriod);
                 }
+                this._volumeMaSeriesCache = volumeMA;
+                this._volumeMaSeriesCacheKey = maKey;
             }
             
             // Draw the MA line
@@ -14285,7 +14448,10 @@ class Chart {
         const useUnifiedBarColor = !!this.chartSettings.unifiedBarColorEnabled;
         const unifiedBarColor = this.chartSettings.unifiedBarColor || this.chartSettings.bodyUpColor || '#089981';
 
-        const MAX_LOD_CANDLES = 2000;
+        // When zoomed out, drawing thousands of bodies still stalls the GPU. Cap LOD buckets
+        // by plot width (~1 bucket per half-pixel max) so zoom/pan stays smooth on 1m ranges.
+        const plotPx = Math.max(1, this.w - m.l - m.r);
+        const MAX_LOD_CANDLES = Math.min(1600, Math.max(320, Math.ceil(plotPx * 2)));
         const lod = this._aggregateVisibleOhlcvBuckets(visible, MAX_LOD_CANDLES);
         const drawSeries = lod
             ? lod.map((b) => ({ d: { o: b.o, h: b.h, l: b.l, c: b.c }, idx: b.midIdx }))
@@ -15320,7 +15486,20 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         const handleWheel = (e) => {
             e.preventDefault();
-            this._wheelBurstUntil = performance.now() + 45;
+            // 120ms (was 45ms) so back-to-back wheel ticks stay inside a single burst.
+            // While the burst flag is on, scheduleRender() forces synchronous render() and
+            // constrainOffset() skips the proactive pan-load fetch — together those make
+            // zoom-out feel smooth instead of network-stalled.
+            this._wheelBurstUntil = performance.now() + 120;
+
+            // After the burst ends, run constrainOffset() exactly once to pick up any
+            // genuinely-needed historical data fetch that we suppressed during the wheel.
+            clearTimeout(this._wheelPostBurstTimer);
+            this._wheelPostBurstTimer = setTimeout(() => {
+                if (this.data && this.data.length > 0) {
+                    try { this.constrainOffset(); } catch (_e) {}
+                }
+            }, 160);
 
             // No zoom if we have no data
             if (!this.data || this.data.length === 0) return;
@@ -15892,7 +16071,7 @@ class Chart {
                     // Time sync (TradingView): click on bar → other panels show same date/time
                     if (!vpHandled) {
                         const pm = window.panelManager;
-                        if (pm && pm.syncSettings && pm.syncSettings.time && pm.currentLayout !== '1'
+                        if (pm && pm.syncSettings && pm.syncSettings.time === true && pm.currentLayout !== '1'
                             && this.data && this.data.length) {
                             const [mx, my] = this._eventCanvasLocalXY(e);
                             const mode = detectCursorMode(mx, my);
@@ -17957,11 +18136,12 @@ class Chart {
             vLine.style.display = showLines ? 'block' : 'none';
             vLine.style.background = vBg;
         }
+        const safeHLineY = Number.isFinite(hLineRenderY) ? hLineRenderY : lineY;
         if (hLine) {
             hLine.style.left = m.l + 'px';
             hLine.style.right = 'auto';
             hLine.style.width = plotW + 'px';
-            hLine.style.top = (hLineRenderY - crossWidth * 0.5) + 'px';
+            hLine.style.top = (safeHLineY - crossWidth * 0.5) + 'px';
             hLine.style.height = crossWidth + 'px';
             hLine.style.display = showLines ? 'block' : 'none';
             hLine.style.background = hBg;
