@@ -11989,9 +11989,22 @@ class Chart {
             return;
         }
 
-        const prices = visible.flatMap(d => [d.h, d.l]);
-        const minPrice = Math.min(...prices);
-        const maxPrice = Math.max(...prices);
+        // O(n) min/max — flatMap + Math.min(...hugeArray) allocates 2N numbers and can hit
+        // argument-limit / stack issues when zoomed out on 1m data (50k+ visible bars).
+        let minPrice = Infinity;
+        let maxPrice = -Infinity;
+        for (let i = 0; i < visible.length; i++) {
+            const d = visible[i];
+            if (!d) continue;
+            const h = Number(d.h);
+            const l = Number(d.l);
+            if (Number.isFinite(h) && h > maxPrice) maxPrice = h;
+            if (Number.isFinite(l) && l < minPrice) minPrice = l;
+        }
+        if (!Number.isFinite(minPrice) || !Number.isFinite(maxPrice)) {
+            minPrice = 0;
+            maxPrice = 1;
+        }
         const priceRange = maxPrice - minPrice || maxPrice * 0.01;
         
         // Calculate chart height for price area
@@ -13734,11 +13747,19 @@ class Chart {
         this.ctx.rect(m.l, m.t, this.w - m.l - m.r, this.h - m.t - m.b);
         this.ctx.clip();
         
-        const MAX_VOL_LOD = 2000;
+        const plotPxVol = Math.max(1, this.w - m.l - m.r);
+        const MAX_VOL_LOD = Math.min(1600, Math.max(320, Math.ceil(plotPxVol * 2)));
         const volLod = this._aggregateVisibleOhlcvBuckets(visible, MAX_VOL_LOD);
+        let volLodMax = 1;
+        if (volLod) {
+            for (let vi = 0; vi < volLod.length; vi++) {
+                const vs = Number(volLod[vi].vSum) || 0;
+                if (vs > volLodMax) volLodMax = vs;
+            }
+        }
         const volScaleLod = volLod
             ? d3.scaleLinear()
-                .domain([0, Math.max(1, ...volLod.map((b) => b.vSum))])
+                .domain([0, Math.max(1, volLodMax)])
                 .range(this.volumeScale.range())
             : null;
 
@@ -13761,20 +13782,26 @@ class Chart {
             });
         }
         
-        // Draw Volume MA if enabled
+        // Draw Volume MA if enabled — cache full-series MA; recomputing O(n·period) every
+        // render destroyed frame time on large datasets (same zoom-out lag as price scale).
         if (showMA && this.data && this.data.length >= maPeriod) {
-            // Calculate volume MA for the full dataset
-            const volumeMA = [];
-            for (let i = 0; i < this.data.length; i++) {
-                if (i < maPeriod - 1) {
-                    volumeMA.push(null);
-                } else {
-                    let sum = 0;
-                    for (let j = 0; j < maPeriod; j++) {
-                        sum += this.data[i - j].v;
+            const maKey = `${this.dataVersion}|${maPeriod}|${this.data.length}`;
+            let volumeMA = this._volumeMaSeriesCache;
+            if (this._volumeMaSeriesCacheKey !== maKey || !Array.isArray(volumeMA) || volumeMA.length !== this.data.length) {
+                volumeMA = new Array(this.data.length);
+                for (let i = 0; i < this.data.length; i++) {
+                    if (i < maPeriod - 1) {
+                        volumeMA[i] = null;
+                    } else {
+                        let sum = 0;
+                        for (let j = 0; j < maPeriod; j++) {
+                            sum += this.data[i - j].v;
+                        }
+                        volumeMA[i] = sum / maPeriod;
                     }
-                    volumeMA.push(sum / maPeriod);
                 }
+                this._volumeMaSeriesCache = volumeMA;
+                this._volumeMaSeriesCacheKey = maKey;
             }
             
             // Draw the MA line
@@ -14301,7 +14328,10 @@ class Chart {
         const useUnifiedBarColor = !!this.chartSettings.unifiedBarColorEnabled;
         const unifiedBarColor = this.chartSettings.unifiedBarColor || this.chartSettings.bodyUpColor || '#089981';
 
-        const MAX_LOD_CANDLES = 2000;
+        // When zoomed out, drawing thousands of bodies still stalls the GPU. Cap LOD buckets
+        // by plot width (~1 bucket per half-pixel max) so zoom/pan stays smooth on 1m ranges.
+        const plotPx = Math.max(1, this.w - m.l - m.r);
+        const MAX_LOD_CANDLES = Math.min(1600, Math.max(320, Math.ceil(plotPx * 2)));
         const lod = this._aggregateVisibleOhlcvBuckets(visible, MAX_LOD_CANDLES);
         const drawSeries = lod
             ? lod.map((b) => ({ d: { o: b.o, h: b.h, l: b.l, c: b.c }, idx: b.midIdx }))
