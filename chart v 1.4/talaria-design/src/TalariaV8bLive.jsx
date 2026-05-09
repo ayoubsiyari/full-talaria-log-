@@ -3637,11 +3637,35 @@ const TalariaV8bLive = () => {
       if (mapped) setTf(mapped);
     };
 
+    // Phase 7.2.4: MultichartGrid (the new in-page panel split) fires
+    // `multichartFocusChanged` when the user clicks a different panel
+    // OR when the focused panel's chart-state updates (file change,
+    // tf change). Reflect into the toolbar's `tf` + `symbol` so the
+    // user always sees the focused panel's current settings.
+    //
+    // Round-trip safety: setting tf here triggers the topbar's
+    // useEffect([tf]) which calls runCommand("setTimeframe", ...) on
+    // the focused panel. The bridge sees `currentTimeframe === target`
+    // and short-circuits — no infinite loop.
+    const onMultichartFocusChanged = (e) => {
+      const d = e?.detail || {};
+      if (d.symbol) {
+        const sym = normalizeSymbol(String(d.symbol).trim());
+        if (sym) setSymbol(sym);
+      }
+      if (d.timeframe) {
+        const mapped = chartTfToV9(d.timeframe);
+        if (mapped) setTf(mapped);
+      }
+    };
+
     window.addEventListener("panelSelected", onPanelSelected);
     window.addEventListener("panelTimeframeChanged", onPanelTimeframeChanged);
+    window.addEventListener("multichartFocusChanged", onMultichartFocusChanged);
     return () => {
       window.removeEventListener("panelSelected", onPanelSelected);
       window.removeEventListener("panelTimeframeChanged", onPanelTimeframeChanged);
+      window.removeEventListener("multichartFocusChanged", onMultichartFocusChanged);
     };
   }, []);
 

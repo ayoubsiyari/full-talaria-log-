@@ -436,6 +436,12 @@ function clearHostSlot() {
     wrapper.style.outlineOffset = "";
     delete wrapper.dataset.multichartHost;
     delete wrapper.dataset.multichartHostFocused;
+    // Phase 7.2.4: tear down the host focus overlay if any. Defensive —
+    // applyHostFocusOutline(false) is also called on unmount, but if
+    // something raced and the overlay survived, this guarantees a clean
+    // single-chart state.
+    const overlay = wrapper.querySelector("#" + HOST_FOCUS_OVERLAY_ID);
+    if (overlay) overlay.remove();
     try {
         const ch = window.chart;
         if (ch && typeof ch.resize === "function") {
@@ -446,21 +452,44 @@ function clearHostSlot() {
     } catch (_) {}
 }
 
-// Apply / clear the per-tile FOCUSED outline on the host's #chartWrapper.
-// Iframe tiles get their outline via the cell <div>'s style, but the host's
-// cell is `pointer-events:none` and visually hidden behind the wrapper, so
-// the outline must live on the wrapper itself.
+// Apply / clear the per-tile FOCUSED border on the host's #chartWrapper.
+//
+// CSS outline does not paint above an element's own children — the canvas,
+// drawing svg, and panels-container inside #chartWrapper would all paint on
+// top of any outline we set on the wrapper. Same problem the iframe cells
+// have, solved the same way: inject a real overlay <div> as a child of the
+// wrapper. The wrapper has z-index:13 (set in applyHostSlot) which makes it
+// a stacking context, so a child div at z-index:100 paints above the
+// canvas + svg locally while still respecting the parent's z-index 13
+// globally.
+//
+// pointerEvents:none on the overlay so it never intercepts chart clicks.
+const HOST_FOCUS_OVERLAY_ID = "multichart-host-focus-overlay";
+
 function applyHostFocusOutline(focused) {
     if (typeof document === "undefined") return;
     const wrapper = document.getElementById(HOST_WRAPPER_ID);
     if (!wrapper) return;
+    let overlay = wrapper.querySelector("#" + HOST_FOCUS_OVERLAY_ID);
     if (focused) {
-        wrapper.style.outline       = "2px solid #3a6db5";
-        wrapper.style.outlineOffset = "-2px";
+        if (!overlay) {
+            overlay = document.createElement("div");
+            overlay.id = HOST_FOCUS_OVERLAY_ID;
+            overlay.setAttribute("aria-hidden", "true");
+            overlay.style.cssText = [
+                "position: absolute",
+                "inset: 0",
+                "pointer-events: none",
+                "border: 2px solid #3a6db5",
+                "box-sizing: border-box",
+                "box-shadow: 0 0 0 1px rgba(58,109,181,0.35), inset 0 0 12px rgba(58,109,181,0.18)",
+                "z-index: 100",
+            ].join(";");
+            wrapper.appendChild(overlay);
+        }
         wrapper.dataset.multichartHostFocused = "1";
     } else {
-        wrapper.style.outline       = "";
-        wrapper.style.outlineOffset = "";
+        if (overlay) overlay.remove();
         delete wrapper.dataset.multichartHostFocused;
     }
 }
@@ -494,6 +523,21 @@ export default function MultichartGrid({
     const initialTimeframeRef = useRef(initialTimeframe);
     useEffect(() => { initialFileIdRef.current    = initialFileId;    }, [initialFileId]);
     useEffect(() => { initialTimeframeRef.current = initialTimeframe; }, [initialTimeframe]);
+
+    // ─── Focus-related refs (Phase 7.2.4) ───────────────────────────────
+    // Both the manager mount effect (callbacks closed over the first
+    // render) and the per-panel command bus (window global) need to read
+    // the LATEST focusedPanelId without re-installing themselves on
+    // every focus change. Capture in a ref synced via useEffect.
+    //
+    // onStateAnyRef holds the latest "any panel's chart-state changed"
+    // delegate. The manager's onState opt is wired to call this ref so
+    // we can change the delegate body across renders without rebuilding
+    // the manager. Used to push topbar reflection updates the moment a
+    // focused panel reports a new tf / fileId / symbol.
+    const focusedPanelIdRef = useRef(focusedPanelId);
+    useEffect(() => { focusedPanelIdRef.current = focusedPanelId; }, [focusedPanelId]);
+    const onStateAnyRef = useRef(null);
 
     const layout = useMemo(
         () => resolveLayout(layoutId, panelCount),
@@ -543,6 +587,17 @@ export default function MultichartGrid({
                 onAssertion: function (msg) {
                     if (msg && msg.ok === false) {
                         console.error("[multichart-mgr] PRICE-AXIS ASSERTION FAIL:", msg);
+                    }
+                },
+                // Phase 7.2.4 topbar reflection: every chart-state update
+                // (timeframe change, file load, symbol change inside an
+                // iframe) flows through here. We forward to the latest
+                // delegate via onStateAnyRef so the React state machine
+                // and topbar can react.
+                onState: function (id, state) {
+                    const fn = onStateAnyRef.current;
+                    if (typeof fn === "function") {
+                        try { fn(id, state); } catch (_) {}
                     }
                 },
                 onChartReady: function (id) {
@@ -759,14 +814,91 @@ export default function MultichartGrid({
     }, [layoutSync]);
 
     // ─── Focus outline on the host's #chartWrapper ──────────────────────
-    // Iframe tiles get their focused outline via the cell <div> styling,
-    // but the host's cell is invisible (pointerEvents:none, transparent
-    // background). When tile A is focused we paint the outline directly
-    // on the wrapper so the user sees the same visual cue.
+    // Iframe tiles get their focused border via an overlay <div> rendered
+    // inside the cell (CSS outline gets covered by the iframe). The host's
+    // cell is invisible behind the wrapper, so when tile A is focused we
+    // inject the same overlay <div> as a child of #chartWrapper instead.
     useEffect(() => {
         applyHostFocusOutline(focusedPanelId === HOST_PANEL_ID);
         return () => applyHostFocusOutline(false);
     }, [focusedPanelId]);
+
+    // ─── Focused-panel state → topbar reflection ────────────────────────
+    //
+    // When the user clicks panel B (which is on 5m showing GOLD), the
+    // topbar's TF button row and symbol badge should switch to "5m" /
+    // "GOLD" so they know which panel they're driving. We broadcast a
+    // `multichartFocusChanged` window event with the focused panel's
+    // current symbol + timeframe; TalariaV8bLive listens and updates its
+    // local `tf` / `symbol` state.
+    //
+    // Dispatched whenever:
+    //   • focusedPanelId changes (user clicked a different panel)
+    //   • the focused panel's chart-state updates (it loaded a new file
+    //     or changed timeframe via its own internal mechanism — e.g. host
+    //     A's existing topbar wiring before the user has clicked another
+    //     panel; or an iframe panel that received a panel-cmd)
+    //
+    // Round-trip safety: when the topbar reacts to this event by calling
+    // setTf(...) → useEffect([tf]) → runCommand("setTimeframe", {tf:X}) →
+    // host or iframe sees `currentTimeframe === X` and short-circuits to
+    // a no-op. Same for symbol via loadFile.
+    function readPanelState(panelId) {
+        if (panelId === HOST_PANEL_ID) {
+            const ch = window.chart;
+            if (!ch) return null;
+            return {
+                symbol:    ch.currentSymbol    || null,
+                timeframe: ch.currentTimeframe || null,
+                fileId:    ch.currentFileId    || null,
+            };
+        }
+        const mgr = managerRef.current;
+        const c = mgr && mgr.charts && mgr.charts.get(panelId);
+        if (!c || !c.state) return null;
+        return {
+            symbol:    c.state.symbol    || null,
+            timeframe: c.state.timeframe || null,
+            fileId:    c.state.fileId    || null,
+        };
+    }
+
+    function dispatchFocusChanged(panelId) {
+        const state = readPanelState(panelId);
+        try {
+            window.dispatchEvent(new CustomEvent("multichartFocusChanged", {
+                detail: {
+                    panelId:   panelId,
+                    symbol:    state ? state.symbol    : null,
+                    timeframe: state ? state.timeframe : null,
+                    fileId:    state ? state.fileId    : null,
+                },
+            }));
+        } catch (_) {}
+    }
+
+    // Fire when the focused id changes.
+    useEffect(() => {
+        if (!focusedPanelId) return;
+        // Defer one tick: when the user just clicked an iframe, the
+        // panel-focus message arrives in the same task as the iframe's
+        // chart event handler, which may then post a fresh chart-state
+        // a moment later. Microtask defer means we publish AFTER state
+        // has settled if both arrive in the same frame.
+        const t = setTimeout(() => dispatchFocusChanged(focusedPanelId), 0);
+        return () => clearTimeout(t);
+    }, [focusedPanelId]);
+
+    // Fire when the focused panel's state updates. The ref itself is
+    // declared at the top of the component; we just (re)assign its
+    // body every render so it always closes over the latest
+    // dispatchFocusChanged + readPanelState definitions. The manager's
+    // onState opt is wired (in the mount effect above) to call
+    // onStateAnyRef.current(id, state), which routes here.
+    onStateAnyRef.current = (id /*, state */) => {
+        if (id !== focusedPanelIdRef.current) return;
+        dispatchFocusChanged(id);
+    };
 
     // ─── Phase 7.2.4: expose the per-panel command bus to the parent ────
     //
@@ -784,12 +916,9 @@ export default function MultichartGrid({
     // can't be dispatched (no manager, unknown cmd, etc.) so the caller
     // can fall back to legacy behavior.
     //
-    // The `focusedPanelId` is captured in a ref so the bus always reads
-    // the LATEST value without re-installing on every focus change
-    // (would otherwise blow away the global between renders).
-    const focusedPanelIdRef = useRef(focusedPanelId);
-    useEffect(() => { focusedPanelIdRef.current = focusedPanelId; }, [focusedPanelId]);
-
+    // The `focusedPanelId` is captured via `focusedPanelIdRef` (declared
+    // near the top of the component) so the bus always reads the LATEST
+    // value without re-installing on every focus change.
     useEffect(() => {
         const isMounted = true;
 
@@ -892,8 +1021,12 @@ export default function MultichartGrid({
                             // is at z-index:13, this cell is z-index auto,
                             // so the wrapper covers the cell exactly).
                             background: isHost ? "transparent" : "#0b0c14",
-                            outline: isFocused ? "2px solid #3a6db5"
-                                               : (isHost ? "none" : "1px solid #15171f"),
+                            // Static border only — focused border is painted
+                            // by the overlay <div> below because CSS outline
+                            // is painted by the parent element and gets
+                            // covered by the iframe / canvas children
+                            // (outline isn't a stacking context).
+                            outline: isHost ? "none" : "1px solid #15171f",
                             outlineOffset: "-1px",
                             overflow: "hidden",
                             minWidth: 0,
@@ -922,6 +1055,26 @@ export default function MultichartGrid({
                                 </div>
                                 <div className="multichart-loading-label">Loading {tile.id}</div>
                             </div>
+                        )}
+                        {/* Focused-panel border overlay. Painted as a real
+                             DOM element ABOVE the iframe (z-index:6) so it's
+                             actually visible — CSS outline on the cell would
+                             be hidden by the iframe child. Skipped for the
+                             host cell; the host paints its own focus border
+                             inside #chartWrapper via applyHostFocusOutline. */}
+                        {!isHost && isFocused && (
+                            <div
+                                aria-hidden="true"
+                                style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    pointerEvents: "none",
+                                    border: "2px solid #3a6db5",
+                                    boxSizing: "border-box",
+                                    boxShadow: "0 0 0 1px rgba(58,109,181,0.35), inset 0 0 12px rgba(58,109,181,0.18)",
+                                    zIndex: 6,
+                                }}
+                            />
                         )}
                     </div>
                 );
