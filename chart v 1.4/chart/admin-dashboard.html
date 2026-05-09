@@ -1693,6 +1693,20 @@ select { cursor: pointer; }
                       <button type="button" class="btn sm" id="frSchedRefreshBtn" onclick="refreshFirstrateScheduleStatus()">Refresh preview</button>
                       <span id="frSchedStatus" style="font-size:12px;color:var(--text-muted)"></span>
                     </div>
+                    <!-- Manual per-class run-now triggers. Each button hits the same `/sync` endpoint
+                         the scheduler uses, but for one specific instrument_type and on demand —
+                         handy when the scheduler hasn't reached that class yet, or when something
+                         wedged the round-robin and you want to push a single class through. The
+                         click handler is the global `data-fr-run-class` delegate registered alongside
+                         the Nightly sync health card; no extra wiring needed here. -->
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
+                      <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px">Run now</span>
+                      <button type="button" class="btn sm" data-fr-run-class="fx" title="Pull the day bundle for fx and merge into existing datasets">fx</button>
+                      <button type="button" class="btn sm" data-fr-run-class="crypto" title="Pull the day bundle for crypto and merge into existing datasets">crypto</button>
+                      <button type="button" class="btn sm" data-fr-run-class="futures" title="Pull the day bundle for futures (contin_UNadj) and merge into existing datasets">futures</button>
+                      <button type="button" class="btn sm" data-fr-run-class="stock" title="Pull the day bundle for stock and merge into existing datasets">stock</button>
+                      <span style="font-size:11px;color:var(--text-muted)">— queues the same import the scheduler would, but for one class only.</span>
+                    </div>
                   </div>
                 </details>
               </div>
