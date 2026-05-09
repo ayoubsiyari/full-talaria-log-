@@ -187,35 +187,57 @@
             }
         }
 
+        // ── rAF coalescer ─────────────────────────────────────────────────
+        // mouse moves fire at 60-120Hz; chart.js's updateCrosshair calls
+        // broadcastCrosshairSync on every move. Postmessage round-trips at
+        // that rate make the peer chart visibly lag. Coalesce so at most one
+        // crosshair postMessage goes out per animation frame, with the LATEST
+        // value. Same for visible-range pan.
+        const pending = { crosshair: null, crosshairClear: false, visibleRange: null };
+        let rafScheduled = false;
+        function flushPending() {
+            rafScheduled = false;
+            if (pending.crosshairClear) {
+                pending.crosshairClear = false;
+                send({ type: 'crosshair-clear' });
+            } else if (pending.crosshair !== null) {
+                const t = pending.crosshair; pending.crosshair = null;
+                send({ type: 'crosshair', time: toSeconds(t) });
+            }
+            if (pending.visibleRange) {
+                const r = pending.visibleRange; pending.visibleRange = null;
+                send({ type: 'visibleRange', startTime: r.startSec, endTime: r.endSec });
+            }
+        }
+        function scheduleFlush() {
+            if (rafScheduled) return;
+            rafScheduled = true;
+            requestAnimationFrame(flushPending);
+        }
+
         // 1) Crosshair — monkey-patch broadcastCrosshairSync.
-        //    chart.js calls this from updateCrosshair when a sync allowlist gate
-        //    passes. We replace the gate with our own (always allow if bridge
-        //    is installed) and forward via postMessage.
         chart._crosshairPanelSyncAllowed = function () {
             return !!chart.syncCrosshair;
         };
-        const _origBroadcast = chart.broadcastCrosshairSync.bind(chart);
         chart.broadcastCrosshairSync = function (timestamp, price) {
-            // outbound suppression for loop guard
             if (state.suppressOutbound > 0) {
                 state.suppressOutbound--;
-                log('outbound suppressed (loop guard)');
                 return;
             }
             if (timestamp === null || timestamp === undefined) {
-                send({ type: 'crosshair-clear' });
-                return;
+                pending.crosshair = null;
+                pending.crosshairClear = true;
+            } else {
+                pending.crosshair = timestamp;
+                pending.crosshairClear = false;
             }
-            send({ type: 'crosshair', time: toSeconds(timestamp) });
-            // intentionally do NOT call the legacy panelManager path
-            // (panelManager has been deleted; original would no-op)
+            scheduleFlush();
         };
 
-        // 2) Visible range — listen to chartScrolled
+        // 2) Visible range — listen to chartScrolled (also rAF-coalesced)
         global.addEventListener('chartScrolled', function (ev) {
             if (state.suppressOutbound > 0) {
                 state.suppressOutbound--;
-                log('outbound (visibleRange) suppressed (loop guard)');
                 return;
             }
             const d = ev.detail || {};
@@ -223,11 +245,8 @@
             const startT = d.startTimestamp;
             const endT   = d.timeSyncEndTimestamp || d.endTimestamp;
             if (!Number.isFinite(startT) || !Number.isFinite(endT)) return;
-            send({
-                type: 'visibleRange',
-                startTime: toSeconds(startT),
-                endTime:   toSeconds(endT),
-            });
+            pending.visibleRange = { startSec: toSeconds(startT), endSec: toSeconds(endT) };
+            scheduleFlush();
         });
 
         // 3) Symbol / data load — re-emit chart-state, NOT a sync event.
