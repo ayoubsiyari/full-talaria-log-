@@ -19,6 +19,15 @@ html, body { margin: 0; padding: 0; height: 100%; background: #0b0c14; color: #d
     height: 100vh;
 }
 
+/* Bottom log + per-chart status panel can be hidden via the topbar
+ * "Hide log / Show log" button. State persisted in localStorage. */
+.app.log-collapsed {
+    grid-template-rows: 44px auto 1fr 0;
+}
+.app.log-collapsed .bottom {
+    display: none;
+}
+
 /* v10.3: cross-panel date-range mismatch warning (between topbar + charts). */
 .overlap-warn {
     display: none;

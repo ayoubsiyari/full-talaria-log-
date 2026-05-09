@@ -10,7 +10,7 @@
 <div class="app">
 
     <header class="topbar">
-        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T15:30 (v10.2 — hide off-window crosshair) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
+        <h1>Multichart Sandbox <span style="color:#6ed3a4;font-size:11px;font-weight:600;margin-left:6px">build 2026-05-09T17:10 (v10.4 — collapsible bottom log) guards <span id="guards-ver" style="color:#7aa2ff">?</span></span></h1>
 
         <div class="group">
             <label>Layout</label>
@@ -40,6 +40,7 @@
             <button id="self-test" title="Snapshot price axes, run guard self-tests">Run guard self-test</button>
             <button id="diagnose" class="primary">Diagnose</button>
             <button id="clear-log">Clear log</button>
+            <button id="toggle-log" title="Show / hide the bottom log + per-chart status panel">Hide log</button>
         </div>
 
         <div class="group" style="margin-left:auto">
@@ -69,8 +70,8 @@
 </div>
 
 <!-- Cache-busting version query string. Bump on any sandbox script change. -->
-<script src="engine-api-guards.js?v=20260509T1530"></script>
-<script src="multichart-manager.js?v=20260509T1530"></script>
+<script src="engine-api-guards.js?v=20260509T1710"></script>
+<script src="multichart-manager.js?v=20260509T1710"></script>
 <script>
 (function () {
     const chartsArea = document.getElementById('charts-area');
@@ -591,6 +592,38 @@
             manager.counters.assertionsFail = 0;
         }
     });
+
+    // Show/hide the bottom log + per-chart status panel. State persisted in
+    // localStorage so it survives reloads. When the panel is hidden, the
+    // chart area gets the freed vertical space (CSS handles the grid swap
+    // via the .log-collapsed class on .app). Iframes get a window 'resize'
+    // dispatched after the toggle so each chart's price-axis recomputes.
+    (function () {
+        const appEl = document.querySelector('.app');
+        const btn = document.getElementById('toggle-log');
+        const KEY = 'multichart.logCollapsed';
+        function apply(collapsed) {
+            if (collapsed) {
+                appEl.classList.add('log-collapsed');
+                btn.textContent = 'Show log';
+            } else {
+                appEl.classList.remove('log-collapsed');
+                btn.textContent = 'Hide log';
+            }
+            // Notify iframes that their available height changed so each
+            // chart's price-axis recomputes (per Step 5.1 — every container
+            // resize must trigger a price-axis recompute).
+            try { window.dispatchEvent(new Event('resize')); } catch (_) {}
+        }
+        let initial = false;
+        try { initial = localStorage.getItem(KEY) === '1'; } catch (_) {}
+        apply(initial);
+        btn.addEventListener('click', function () {
+            const next = !appEl.classList.contains('log-collapsed');
+            apply(next);
+            try { localStorage.setItem(KEY, next ? '1' : '0'); } catch (_) {}
+        });
+    })();
 
     // ─── File broadcast (FastAPI /api/files) ─────────────────────────────
     // v10: the shell maintains a SINGLE file-picker for "broadcast same file
