@@ -11,6 +11,63 @@ import {
 } from "./chartSymbolBadge.jsx";
 import MultichartGrid from "./MultichartGrid.jsx";
 
+// ── Multichart layout picker constants ───────────────────────────────────────
+// Lifted to module scope (Phase 7.2.3) so BOTH the existing right-panel
+// "Layout" tab AND the new topbar "Layout" dropdown can share the same
+// variants grid without duplicating the data. Source-of-truth for variant
+// shapes and sync toggle definitions.
+//
+// `lyLines[n-1]`: array of variants for n panels. Each variant is a list of
+// internal dividing line segments in 0..1 fractions (used by both the SVG
+// preview icons and — eventually — the resolved CSS grid template in
+// MultichartGrid via LAYOUT_ID_MAP.
+const LAYOUT_LY_LINES = [
+  // 1 panel
+  [[]],
+  // 2 panels
+  [[{x1:.5,y1:0,x2:.5,y2:1}],
+   [{x1:0,y1:.5,x2:1,y2:.5}]],
+  // 3 panels (6 variants)
+  [[{x1:.333,y1:0,x2:.333,y2:1},{x1:.667,y1:0,x2:.667,y2:1}],
+   [{x1:0,y1:.333,x2:1,y2:.333},{x1:0,y1:.667,x2:1,y2:.667}],
+   [{x1:.5,y1:0,x2:.5,y2:1},{x1:.5,y1:.5,x2:1,y2:.5}],
+   [{x1:.5,y1:0,x2:.5,y2:1},{x1:0,y1:.5,x2:.5,y2:.5}],
+   [{x1:0,y1:.5,x2:1,y2:.5},{x1:.5,y1:.5,x2:.5,y2:1}],
+   [{x1:0,y1:.5,x2:1,y2:.5},{x1:.5,y1:0,x2:.5,y2:.5}]],
+  // 4 panels (8 variants)
+  [[{x1:.5,y1:0,x2:.5,y2:1},{x1:0,y1:.5,x2:1,y2:.5}],
+   [{x1:0,y1:.25,x2:1,y2:.25},{x1:0,y1:.5,x2:1,y2:.5},{x1:0,y1:.75,x2:1,y2:.75}],
+   [{x1:.25,y1:0,x2:.25,y2:1},{x1:.5,y1:0,x2:.5,y2:1},{x1:.75,y1:0,x2:.75,y2:1}],
+   [{x1:0,y1:.5,x2:1,y2:.5},{x1:.333,y1:0,x2:.333,y2:.5},{x1:.667,y1:0,x2:.667,y2:.5}],
+   [{x1:0,y1:.5,x2:1,y2:.5},{x1:.333,y1:.5,x2:.333,y2:1},{x1:.667,y1:.5,x2:.667,y2:1}],
+   [{x1:.5,y1:0,x2:.5,y2:1},{x1:.5,y1:.333,x2:1,y2:.333},{x1:.5,y1:.667,x2:1,y2:.667}],
+   [{x1:.5,y1:0,x2:.5,y2:1},{x1:0,y1:.333,x2:.5,y2:.333},{x1:0,y1:.667,x2:.5,y2:.667}],
+   [{x1:.5,y1:0,x2:.5,y2:1},{x1:.5,y1:.5,x2:1,y2:.5},{x1:.75,y1:.5,x2:.75,y2:1}]],
+  // 5 panels (5 variants)
+  [[{x1:0,y1:.5,x2:1,y2:.5},{x1:.5,y1:0,x2:.5,y2:.5},{x1:.333,y1:.5,x2:.333,y2:1},{x1:.667,y1:.5,x2:.667,y2:1}],
+   [{x1:0,y1:.5,x2:1,y2:.5},{x1:.333,y1:0,x2:.333,y2:.5},{x1:.667,y1:0,x2:.667,y2:.5},{x1:.5,y1:.5,x2:.5,y2:1}],
+   [{x1:.5,y1:0,x2:.5,y2:1},{x1:.5,y1:.5,x2:1,y2:.5},{x1:.75,y1:0,x2:.75,y2:1}],
+   [{x1:.2,y1:0,x2:.2,y2:1},{x1:.4,y1:0,x2:.4,y2:1},{x1:.6,y1:0,x2:.6,y2:1},{x1:.8,y1:0,x2:.8,y2:1}],
+   [{x1:0,y1:.2,x2:1,y2:.2},{x1:0,y1:.4,x2:1,y2:.4},{x1:0,y1:.6,x2:1,y2:.6},{x1:0,y1:.8,x2:1,y2:.8}]],
+  // 6 panels (4 variants)
+  [[{x1:.333,y1:0,x2:.333,y2:1},{x1:.667,y1:0,x2:.667,y2:1},{x1:0,y1:.5,x2:1,y2:.5}],
+   [{x1:.5,y1:0,x2:.5,y2:1},{x1:0,y1:.333,x2:1,y2:.333},{x1:0,y1:.667,x2:1,y2:.667}],
+   [{x1:.167,y1:0,x2:.167,y2:1},{x1:.333,y1:0,x2:.333,y2:1},{x1:.5,y1:0,x2:.5,y2:1},{x1:.667,y1:0,x2:.667,y2:1},{x1:.833,y1:0,x2:.833,y2:1}],
+   [{x1:0,y1:.167,x2:1,y2:.167},{x1:0,y1:.333,x2:1,y2:.333},{x1:0,y1:.5,x2:1,y2:.5},{x1:0,y1:.667,x2:1,y2:.667},{x1:0,y1:.833,x2:1,y2:.833}]],
+  // 7 panels (2 variants)
+  [[{x1:0,y1:.5,x2:1,y2:.5},{x1:.333,y1:0,x2:.333,y2:.5},{x1:.667,y1:0,x2:.667,y2:.5},{x1:.25,y1:.5,x2:.25,y2:1},{x1:.5,y1:.5,x2:.5,y2:1},{x1:.75,y1:.5,x2:.75,y2:1}],
+   [{x1:.143,y1:0,x2:.143,y2:1},{x1:.286,y1:0,x2:.286,y2:1},{x1:.429,y1:0,x2:.429,y2:1},{x1:.571,y1:0,x2:.571,y2:1},{x1:.714,y1:0,x2:.714,y2:1},{x1:.857,y1:0,x2:.857,y2:1}]],
+  // 8 panels (4 variants)
+  [[{x1:.25,y1:0,x2:.25,y2:1},{x1:.5,y1:0,x2:.5,y2:1},{x1:.75,y1:0,x2:.75,y2:1},{x1:0,y1:.5,x2:1,y2:.5}],
+   [{x1:.5,y1:0,x2:.5,y2:1},{x1:0,y1:.25,x2:1,y2:.25},{x1:0,y1:.5,x2:1,y2:.5},{x1:0,y1:.75,x2:1,y2:.75}],
+   [{x1:.125,y1:0,x2:.125,y2:1},{x1:.25,y1:0,x2:.25,y2:1},{x1:.375,y1:0,x2:.375,y2:1},{x1:.5,y1:0,x2:.5,y2:1},{x1:.625,y1:0,x2:.625,y2:1},{x1:.75,y1:0,x2:.75,y2:1},{x1:.875,y1:0,x2:.875,y2:1}],
+   [{x1:0,y1:.125,x2:1,y2:.125},{x1:0,y1:.25,x2:1,y2:.25},{x1:0,y1:.375,x2:1,y2:.375},{x1:0,y1:.5,x2:1,y2:.5},{x1:0,y1:.625,x2:1,y2:.625},{x1:0,y1:.75,x2:1,y2:.75},{x1:0,y1:.875,x2:1,y2:.875}]],
+];
+const LAYOUT_SYNC_ITEMS = [
+  ["symbol","Symbol"],["interval","Interval"],["crosshair","Crosshair"],["time","Time"],
+  ["dateRange","Date Range"],["drawings","Drawings"],["indicators","Indicators"],["chartType","Chart Type"]
+];
+
 // ── Color utilities ──────────────────────────────────────────────────────────
 function parseColor(str) {
   if (!str) return { r:255, g:255, b:255, a:1 };
@@ -4449,6 +4506,12 @@ const TalariaV8bLive = () => {
   // Single-chart layouts ignore this; multi-panel layouts highlight the
   // focused tile and (in Phase 7.2.4) route topbar/leftbar actions to it.
   const [focusedPanelId, setFocusedPanelId] = useState("A");
+  // Phase 7.2.3: TradingView-style topbar layout dropdown (replaces the
+  // deleted topbar layout entry). Anchor ref lets us position the popover
+  // directly below the button so it lines up like TradingView.
+  const [layoutDropdownOpen, setLayoutDropdownOpen] = useState(false);
+  const layoutDropdownBtnRef = useRef(null);
+  const layoutDropdownPopRef = useRef(null);
   // Keep V9 defaults aligned with panel-manager.js defaults to avoid startup
   // races re-enabling sync modes (especially `time`) unexpectedly.
   const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: true, interval: false, dateRange: false, indicators: false, chartType: false });
@@ -4619,6 +4682,30 @@ const TalariaV8bLive = () => {
     tryHydrate();
     return () => { cancelled = true; };
   }, []);
+
+  // Phase 7.2.3: close the topbar layout dropdown on outside click / Esc.
+  // Anchor + popover refs are excluded so internal interactions (clicking
+  // a layout variant or sync toggle) don't dismiss the popover before the
+  // state update lands. Selecting a variant closes explicitly via its own
+  // onClick.
+  useEffect(() => {
+    if (!layoutDropdownOpen) return;
+    const onDocDown = (e) => {
+      const t = e.target;
+      const a = layoutDropdownBtnRef.current;
+      const p = layoutDropdownPopRef.current;
+      if (a && a.contains(t)) return;
+      if (p && p.contains(t)) return;
+      setLayoutDropdownOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setLayoutDropdownOpen(false); };
+    document.addEventListener("mousedown", onDocDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocDown, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [layoutDropdownOpen]);
 
   // V9 layout picker → panelManager.applyLayout(id).
   // Skips the very first run (initial defaults) so we don't reset whatever
@@ -16395,19 +16482,143 @@ const TalariaV8bLive = () => {
           <span style={{ fontSize: 13, fontWeight: 700, color: "#fff", WebkitFontSmoothing: "antialiased" }}>Place Order</span>
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: c.br }}/>
-        {/* "layout" entry removed — multi-panel/layout system has been deleted from the codebase. */}
-        {[{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
-          <button type="button" key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
+        {/* Phase 7.2.3: "layout" topbar entry restored. Click opens a
+             TradingView-style dropdown (LayoutDropdownPopover below) with
+             the same variants grid + sync toggles the right-panel layout
+             tab uses. Selecting a variant drives `layoutPanels` which
+             MultichartGrid (Phase 7.2.2) reacts to. */}
+        {[{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"layout",icon:"layout",label:"Layouts"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
+          <button type="button" key={id}
+            ref={(el) => { if (id === "layout") layoutDropdownBtnRef.current = el; }}
+            onClick={(e) => {
+              if(id==="layout"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setRightPanel(null); setOrderPanelOpen(false); setLayoutDropdownOpen(prev => !prev); return; }
+              if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); setLayoutDropdownOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} }
+              if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setLayoutDropdownOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); }
+              if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); setLayoutDropdownOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} }
+              if(id==="expand"){ e.stopPropagation(); setLayoutDropdownOpen(false); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }
+            }}
+            onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
-              background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
+              background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&layoutDropdownOpen) || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
               transition: "background 0.12s" }}>
-            {(() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return <>
+            {(() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&layoutDropdownOpen) || (id==="expand"&&isFullscreen); return <>
               <I n={id==="expand"&&isFullscreen?"compress":icon} s={16} cl={isActive ? c.acL : hov===`u-${id}` ? c.tx : c.ts}/>
               {isActive && <div style={{ position: "absolute", bottom: 0, left: "15%", right: "15%", height: 2, background: `linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
               {hov===`u-${id}` && !isActive && <div style={{ position: "absolute", bottom: 0, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
             </>; })()}
           </button>
         ))}
+        {/* ─── Phase 7.2.3: Layout dropdown popover (TradingView-style) ───
+             Portal to document.body so it floats above all chrome and is not
+             clipped by any flexbox/overflow context in the topbar tree. */}
+        {layoutDropdownOpen && layoutDropdownBtnRef.current && createPortal(
+          (() => {
+            const r = layoutDropdownBtnRef.current.getBoundingClientRect();
+            const POP_W = 280;
+            // Anchor the right edge of the popover to the right edge of the
+            // button so it doesn't overflow the viewport, then nudge by 4px
+            // for breathing room.
+            const right = Math.max(8, window.innerWidth - r.right - 4);
+            const top   = Math.round(r.bottom + 6);
+            const IW = 30, IH = 20;
+            return (
+              <div
+                ref={layoutDropdownPopRef}
+                data-v9-chrome="1"
+                onPointerDown={(e)=>e.stopPropagation()}
+                onMouseDown={(e)=>e.stopPropagation()}
+                style={{
+                  position: "fixed",
+                  top, right,
+                  width: POP_W,
+                  maxHeight: "min(70vh, 560px)",
+                  background: c.sf,
+                  border: `1px solid rgba(140,160,255,0.32)`,
+                  borderRadius: 4,
+                  boxShadow: "0 10px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)",
+                  zIndex: 9999,
+                  display: "flex",
+                  flexDirection: "column",
+                  fontFamily: F,
+                  overflow: "hidden",
+                  animation: "tlrPanelIn 0.14s ease",
+                }}
+              >
+                <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`, flexShrink: 0 }}/>
+                <div style={{ padding: "8px 12px", display: "flex", alignItems: "center", borderBottom: `1px solid ${c.br}`, flexShrink: 0 }}>
+                  <I n="layout" s={14} cl={c.acL}/>
+                  <span style={{ fontSize: 13, fontWeight: 700, flex: 1, marginLeft: 7, color: c.tx }}>Layouts</span>
+                  <div onClick={()=>setLayoutDropdownOpen(false)} onMouseEnter={()=>setSwHov("xLayoutDD")} onMouseLeave={()=>setSwHov(null)} style={{ cursor: "default", padding: 2 }}>
+                    <I n="x" s={15} cl={swHov==="xLayoutDD"?c.rd:c.ts}/>
+                  </div>
+                </div>
+                <div className="tlr-scroll" style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "10px 12px 12px" }}>
+                  {/* Variants grid — same shape as right-panel layout tab */}
+                  {[1,2,3,4,5,6,7,8].map((n) => {
+                    const variants = LAYOUT_LY_LINES[n-1];
+                    return (
+                      <div key={n} style={{ marginBottom: 6 }}>
+                        <div style={{ fontSize: 9, color: c.tm, marginBottom: 4, opacity: 0.55 }}>{n}</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {variants.map((lines, li) => {
+                            const isAct = layoutPanels.n===n && layoutPanels.li===li;
+                            const isH  = swHov===`ddly-${n}-${li}`;
+                            const pad = 1;
+                            const iw = IW - pad*2, ih = IH - pad*2;
+                            const lineCol = isAct ? c.acL : isH ? "rgba(140,160,255,0.70)" : "rgba(140,160,255,0.40)";
+                            return (
+                              <div key={li}
+                                onClick={() => { setLayoutPanels({n,li}); setLayoutDropdownOpen(false); }}
+                                onMouseEnter={()=>setSwHov(`ddly-${n}-${li}`)}
+                                onMouseLeave={()=>setSwHov(null)}
+                                style={{ width: IW, height: IH, cursor: "default", flexShrink: 0 }}>
+                                <svg width={IW} height={IH} viewBox={`0 0 ${IW} ${IH}`} style={{ display: "block" }}>
+                                  <rect x={pad} y={pad} width={iw} height={ih} rx={1}
+                                    fill={isAct ? "rgba(38,67,247,0.15)" : isH ? "rgba(140,160,255,0.08)" : "rgba(140,160,255,0.05)"}
+                                    stroke={lineCol} strokeWidth={0.7}/>
+                                  {lines.map((l, i) => (
+                                    <line key={i}
+                                      x1={pad+l.x1*iw} y1={pad+l.y1*ih}
+                                      x2={pad+l.x2*iw} y2={pad+l.y2*ih}
+                                      stroke={lineCol} strokeWidth={0.7}/>
+                                  ))}
+                                </svg>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Sync toggles section */}
+                  <div style={{ height: 1, background: `linear-gradient(90deg,transparent,${c.br},transparent)`, margin: "10px 0 6px" }}/>
+                  <div style={{ fontSize: 9, color: c.tm, letterSpacing: "0.06em", fontWeight: 700, marginBottom: 4 }}>SYNC</div>
+                  {LAYOUT_SYNC_ITEMS.map(([key, label]) => {
+                    const on = !!layoutSync[key];
+                    const isH = swHov===`ddsync-${key}`;
+                    const bCol = on ? c.acL : isH ? c.ts : "rgba(140,160,255,0.22)";
+                    return (
+                      <div key={key}
+                        onClick={() => setLayoutSync(prev => ({ ...prev, [key]: !prev[key] }))}
+                        onMouseEnter={()=>setSwHov(`ddsync-${key}`)}
+                        onMouseLeave={()=>setSwHov(null)}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "5px 8px", marginLeft: -4, marginRight: -4, cursor: "default", position: "relative", borderRadius: 2,
+                          background: on ? c.acD : isH ? "rgba(255,255,255,0.025)" : "transparent",
+                          transition: "background 0.1s" }}>
+                        {on && <div style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
+                        <span style={{ fontSize: 12, color: on ? c.tx : c.ts, fontWeight: on ? 600 : 500 }}>{label}</span>
+                        <div style={{ width: 22, height: 12, borderRadius: 6, border: `1px solid ${bCol}`, position: "relative", background: on ? "rgba(74,106,255,0.20)" : "transparent", transition: "all 0.15s" }}>
+                          <div style={{ position: "absolute", top: 1, left: on ? 11 : 1, width: 8, height: 8, borderRadius: "50%", background: on ? c.acL : c.ts, transition: "left 0.15s, background 0.15s", boxShadow: on ? `0 0 6px ${c.acG}` : "none" }}/>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })(),
+          document.body
+        )}
       </div>
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
         <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, boxSizing: "border-box", background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 1, paddingLeft: 0, paddingRight: 2, overflowY: "auto", overflowX: "hidden" }}>
@@ -17674,54 +17885,13 @@ const TalariaV8bLive = () => {
         </div>
         <div data-v9-chrome="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ width: (rightPanel || (orderPanelOpen && !panelDetached)) ? 336 : 0, flexShrink: 0, overflow: "hidden", transition: "width 0.2s ease" }}>
         {rightPanel ? (()=>{
-          // lyLines: each variant is an array of internal {x1,y1,x2,y2} dividing lines (fractions 0-1)
-          const lyLines = [
-            // 1 panel
-            [[]],
-            // 2 panels
-            [[{x1:.5,y1:0,x2:.5,y2:1}],
-             [{x1:0,y1:.5,x2:1,y2:.5}]],
-            // 3 panels (6 variants)
-            [[{x1:.333,y1:0,x2:.333,y2:1},{x1:.667,y1:0,x2:.667,y2:1}],
-             [{x1:0,y1:.333,x2:1,y2:.333},{x1:0,y1:.667,x2:1,y2:.667}],
-             [{x1:.5,y1:0,x2:.5,y2:1},{x1:.5,y1:.5,x2:1,y2:.5}],
-             [{x1:.5,y1:0,x2:.5,y2:1},{x1:0,y1:.5,x2:.5,y2:.5}],
-             [{x1:0,y1:.5,x2:1,y2:.5},{x1:.5,y1:.5,x2:.5,y2:1}],
-             [{x1:0,y1:.5,x2:1,y2:.5},{x1:.5,y1:0,x2:.5,y2:.5}]],
-            // 4 panels (8 variants)
-            [[{x1:.5,y1:0,x2:.5,y2:1},{x1:0,y1:.5,x2:1,y2:.5}],
-             [{x1:0,y1:.25,x2:1,y2:.25},{x1:0,y1:.5,x2:1,y2:.5},{x1:0,y1:.75,x2:1,y2:.75}],
-             [{x1:.25,y1:0,x2:.25,y2:1},{x1:.5,y1:0,x2:.5,y2:1},{x1:.75,y1:0,x2:.75,y2:1}],
-             [{x1:0,y1:.5,x2:1,y2:.5},{x1:.333,y1:0,x2:.333,y2:.5},{x1:.667,y1:0,x2:.667,y2:.5}],
-             [{x1:0,y1:.5,x2:1,y2:.5},{x1:.333,y1:.5,x2:.333,y2:1},{x1:.667,y1:.5,x2:.667,y2:1}],
-             [{x1:.5,y1:0,x2:.5,y2:1},{x1:.5,y1:.333,x2:1,y2:.333},{x1:.5,y1:.667,x2:1,y2:.667}],
-             [{x1:.5,y1:0,x2:.5,y2:1},{x1:0,y1:.333,x2:.5,y2:.333},{x1:0,y1:.667,x2:.5,y2:.667}],
-             [{x1:.5,y1:0,x2:.5,y2:1},{x1:.5,y1:.5,x2:1,y2:.5},{x1:.75,y1:.5,x2:.75,y2:1}]],
-            // 5 panels (5 variants)
-            [[{x1:0,y1:.5,x2:1,y2:.5},{x1:.5,y1:0,x2:.5,y2:.5},{x1:.333,y1:.5,x2:.333,y2:1},{x1:.667,y1:.5,x2:.667,y2:1}],
-             [{x1:0,y1:.5,x2:1,y2:.5},{x1:.333,y1:0,x2:.333,y2:.5},{x1:.667,y1:0,x2:.667,y2:.5},{x1:.5,y1:.5,x2:.5,y2:1}],
-             [{x1:.5,y1:0,x2:.5,y2:1},{x1:.5,y1:.5,x2:1,y2:.5},{x1:.75,y1:0,x2:.75,y2:1}],
-             [{x1:.2,y1:0,x2:.2,y2:1},{x1:.4,y1:0,x2:.4,y2:1},{x1:.6,y1:0,x2:.6,y2:1},{x1:.8,y1:0,x2:.8,y2:1}],
-             [{x1:0,y1:.2,x2:1,y2:.2},{x1:0,y1:.4,x2:1,y2:.4},{x1:0,y1:.6,x2:1,y2:.6},{x1:0,y1:.8,x2:1,y2:.8}]],
-            // 6 panels (4 variants)
-            [[{x1:.333,y1:0,x2:.333,y2:1},{x1:.667,y1:0,x2:.667,y2:1},{x1:0,y1:.5,x2:1,y2:.5}],
-             [{x1:.5,y1:0,x2:.5,y2:1},{x1:0,y1:.333,x2:1,y2:.333},{x1:0,y1:.667,x2:1,y2:.667}],
-             [{x1:.167,y1:0,x2:.167,y2:1},{x1:.333,y1:0,x2:.333,y2:1},{x1:.5,y1:0,x2:.5,y2:1},{x1:.667,y1:0,x2:.667,y2:1},{x1:.833,y1:0,x2:.833,y2:1}],
-             [{x1:0,y1:.167,x2:1,y2:.167},{x1:0,y1:.333,x2:1,y2:.333},{x1:0,y1:.5,x2:1,y2:.5},{x1:0,y1:.667,x2:1,y2:.667},{x1:0,y1:.833,x2:1,y2:.833}]],
-            // 7 panels (2 variants)
-            [[{x1:0,y1:.5,x2:1,y2:.5},{x1:.333,y1:0,x2:.333,y2:.5},{x1:.667,y1:0,x2:.667,y2:.5},{x1:.25,y1:.5,x2:.25,y2:1},{x1:.5,y1:.5,x2:.5,y2:1},{x1:.75,y1:.5,x2:.75,y2:1}],
-             [{x1:.143,y1:0,x2:.143,y2:1},{x1:.286,y1:0,x2:.286,y2:1},{x1:.429,y1:0,x2:.429,y2:1},{x1:.571,y1:0,x2:.571,y2:1},{x1:.714,y1:0,x2:.714,y2:1},{x1:.857,y1:0,x2:.857,y2:1}]],
-            // 8 panels (4 variants)
-            [[{x1:.25,y1:0,x2:.25,y2:1},{x1:.5,y1:0,x2:.5,y2:1},{x1:.75,y1:0,x2:.75,y2:1},{x1:0,y1:.5,x2:1,y2:.5}],
-             [{x1:.5,y1:0,x2:.5,y2:1},{x1:0,y1:.25,x2:1,y2:.25},{x1:0,y1:.5,x2:1,y2:.5},{x1:0,y1:.75,x2:1,y2:.75}],
-             [{x1:.125,y1:0,x2:.125,y2:1},{x1:.25,y1:0,x2:.25,y2:1},{x1:.375,y1:0,x2:.375,y2:1},{x1:.5,y1:0,x2:.5,y2:1},{x1:.625,y1:0,x2:.625,y2:1},{x1:.75,y1:0,x2:.75,y2:1},{x1:.875,y1:0,x2:.875,y2:1}],
-             [{x1:0,y1:.125,x2:1,y2:.125},{x1:0,y1:.25,x2:1,y2:.25},{x1:0,y1:.375,x2:1,y2:.375},{x1:0,y1:.5,x2:1,y2:.5},{x1:0,y1:.625,x2:1,y2:.625},{x1:0,y1:.75,x2:1,y2:.75},{x1:0,y1:.875,x2:1,y2:.875}]],
-          ];
+          // Phase 7.2.3: lyLines + syncItems are now lifted to module
+          // scope (LAYOUT_LY_LINES / LAYOUT_SYNC_ITEMS) so the topbar
+          // dropdown can reuse the same source-of-truth. Local aliases
+          // keep this render block byte-identical to before the lift.
+          const lyLines = LAYOUT_LY_LINES;
           const IW=30, IH=20;
-          const syncItems = [
-            ["symbol","Symbol"],["interval","Interval"],["crosshair","Crosshair"],["time","Time"],
-            ["dateRange","Date Range"],["drawings","Drawings"],["indicators","Indicators"],["chartType","Chart Type"]
-          ];
+          const syncItems = LAYOUT_SYNC_ITEMS;
           return (
         <div key={rightPanel} style={{ width: "100%", height: "100%", background: c.sf, borderLeft: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", fontFamily: F, animation:"tlrPanelIn 0.18s ease" }}>
           <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`, flexShrink: 0 }}/>
