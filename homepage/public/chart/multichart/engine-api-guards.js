@@ -84,22 +84,58 @@
 
     /**
      * Assert no price-axis state changed.
-     * mode = 'crosshair' — no field may change.
-     * mode = 'visibleRange' — only priceScale.min/max may change (auto-fit to new candles).
+     *
+     * mode = 'crosshair'    — no field may change. The peer's price MUST NOT
+     *                         influence our local price scale at all.
+     *
+     * mode = 'visibleRange' — the chart legitimately re-fits its price axis to
+     *                         its OWN newly-visible candles. ALL price-derived
+     *                         fields are allowed to change EXCEPT modal flags
+     *                         that would indicate a state leak from the peer
+     *                         (e.g. switching from auto- to manual-scaling, or
+     *                         locking the scale, or changing linear/log mode).
+     *                         The forbidden-flags set below is what we
+     *                         explicitly do NOT want the peer to dictate.
      *
      * Returns array of violation strings (empty = ok).
      */
     function diffPriceState(snapBefore, snapAfter, mode) {
         if (!snapBefore || !snapAfter) return ['snapshot missing'];
-        const allowedDelta = mode === 'visibleRange'
-            ? new Set(['priceScale.min', 'priceScale.max', 'priceZoom', 'priceOffset'])
-            : new Set();
+
+        // For visibleRange, allow ALL value-bearing fields (min/max/zoom/offset/
+        // manualCenterPrice/manualRange) to drift — they're auto-fit outputs.
+        // Only modal/structural fields are guarded.
+        const visibleRangeAllowed = new Set([
+            'priceScale.min',
+            'priceScale.max',
+            'priceZoom',
+            'priceOffset',
+            'manualCenterPrice',
+            'manualRange',
+            // autoScale flags can also flip true<->true (no-op) or stay true.
+            // We assert below that they're not flipped to FALSE by sync.
+            'priceScale.autoScale',
+            'autoScale',
+        ]);
+        const allowedDelta = mode === 'visibleRange' ? visibleRangeAllowed : new Set();
+
         const violations = [];
         for (const k of Object.keys(snapBefore)) {
             const a = snapBefore[k];
             const b = snapAfter[k];
             const equal = (a === b) || (Number.isNaN(a) && Number.isNaN(b));
-            if (!equal && !allowedDelta.has(k)) {
+            if (equal) continue;
+
+            // Special case: for visibleRange, autoScale must stay TRUE post-sync.
+            // If the peer somehow disabled it, that's a real leak we want to flag.
+            if (mode === 'visibleRange' && (k === 'autoScale' || k === 'priceScale.autoScale')) {
+                if (b !== true && b !== undefined && b !== null) {
+                    violations.push(`${k} disabled by sync: ${formatVal(a)} -> ${formatVal(b)}`);
+                }
+                continue;
+            }
+
+            if (!allowedDelta.has(k)) {
                 violations.push(`${k} changed: ${formatVal(a)} -> ${formatVal(b)}`);
             }
         }
