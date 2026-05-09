@@ -251,7 +251,40 @@
         return d;
     }
 
-    /** Drag a divider; tracks fr units of neighbours for resize. */
+    /**
+     * Notify each iframe's chart.js that its container resized.
+     * chart.js listens for `resize` on its OWN window (chart.js:588) — so we
+     * must dispatch the event INSIDE each iframe's contentWindow, not the
+     * parent shell. Same-origin iframes allow this directly.
+     *
+     * Step 5.1 deliverable: "When a chart's container resizes (because the
+     * user moved the divider), the chart must recompute its price axis to
+     * fit its visible candles."
+     */
+    let _resizeRaf = 0;
+    function notifyChartsResized() {
+        if (_resizeRaf) return;
+        _resizeRaf = requestAnimationFrame(function () {
+            _resizeRaf = 0;
+            if (!manager) return;
+            for (const c of manager.getCharts()) {
+                try {
+                    const cw = c.frame && c.frame.contentWindow;
+                    if (!cw) continue;
+                    // Construct Event in the iframe's context so the constructor
+                    // identity matches chart.js's listener registration.
+                    const Ev = cw.Event || Event;
+                    cw.dispatchEvent(new Ev('resize'));
+                } catch (e) {
+                    // Cross-origin would throw SecurityError; we're same-origin so
+                    // any error here is unexpected — log it.
+                    console.warn('[shell] resize dispatch failed for', c.id, e);
+                }
+            }
+        });
+    }
+
+    /** Drag a divider; resizes neighbours and notifies each iframe's chart. */
     function installDividerDrag(divEl, orient) {
         let dragging = false;
         let startPos = 0;
@@ -261,7 +294,6 @@
             dragging = true;
             divEl.classList.add('dragging');
             startPos = (orient === 'col' ? e.clientX : e.clientY);
-            // Find neighbours
             prevEl = divEl.previousElementSibling;
             nextEl = divEl.nextElementSibling;
             if (orient === 'col') {
@@ -287,16 +319,22 @@
                 prevEl.style.height = newPrev + 'px';
                 nextEl.style.height = newNext + 'px';
             }
-            // Force iframe content to react: the chart's chart.js has its own
-            // ResizeObserver-equivalent that hooks `resize` and re-fits.
-            try { window.dispatchEvent(new Event('resize')); } catch (_) {}
+            notifyChartsResized();
         });
         window.addEventListener('mouseup', function () {
             if (!dragging) return;
             dragging = false;
             divEl.classList.remove('dragging');
+            // One final notify with a small delay so the cell's CSS has
+            // settled (some chart.js init paths re-measure after 120ms).
+            notifyChartsResized();
+            setTimeout(notifyChartsResized, 130);
         });
     }
+
+    // Also handle the parent window itself resizing (browser zoom, window
+    // resize). Forward to all iframes so each chart re-fits.
+    window.addEventListener('resize', notifyChartsResized);
 
     // ─── Wire UI controls ────────────────────────────────────────────────
     layoutSel.addEventListener('change', function () { applyLayout(layoutSel.value); });
