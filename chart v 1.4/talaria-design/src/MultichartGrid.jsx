@@ -202,16 +202,32 @@ function resolveLayout(layoutId, panelCount) {
 }
 
 // ─── iframe URL ─────────────────────────────────────────────────────────────
-function buildIframeSrc({ panelId, fileId, tf, mode }) {
+function buildIframeSrc({ panelId, fileId, tf /*, mode — intentionally NOT forwarded, see note */ }) {
     const params = new URLSearchParams();
     params.set("multichart", "1");
     params.set("panelId", panelId);
     if (fileId) params.set("fileId", String(fileId));
     if (tf)     params.set("tf", String(tf));
-    // Only forward modes the dist-v9 bt-preload script knows about
-    if (mode === "backtest" || mode === "propfirm" || mode === "live") {
-        params.set("mode", mode);
-    }
+    //
+    // NOTE: we deliberately do NOT forward `mode=backtest|propfirm` into
+    // iframe panels even when the parent /chart/ is in backtest mode.
+    // Reasons:
+    //   1. mode=backtest triggers the bt-preload splash overlay
+    //      (#backtestingLoader, "Talaria-Log" loading screen) and hides
+    //      #root until chart.js auto-loads the session — that takes
+    //      ~1-2s per iframe and visually masks every panel.
+    //   2. The iframe would also kick off its own autoLoadBacktestingData
+    //      pipeline (read /api/sessions/X or localStorage backtestingSession,
+    //      apply order manager, propfirm tracker, etc) — all duplicate
+    //      work that the parent already does.
+    //   3. The parent owns the backtest UI (orders, balance, trade list,
+    //      propfirm tracking) via the topbar/leftbar/bottom bar that stays
+    //      visible around the grid. Iframes only need the price chart.
+    //
+    // Each iframe boots in "no-mode" (plain chart shell), then
+    // embed-bridge.js calls window.chart.loadFileData(fileId) the moment
+    // the engine is ready. End result: panels paint the chart directly
+    // with no splash and no duplicated auto-load.
     return "/chart/dist-v9/index.html?" + params.toString();
 }
 
@@ -262,7 +278,7 @@ export default function MultichartGrid({
                         panelId: cfg.id,
                         fileId:  cfg.fileId,
                         tf:      cfg.tf,
-                        mode:    cfg.mode,
+                        // mode intentionally omitted — see note in buildIframeSrc
                     });
                 },
                 onLog: function (entry) {
