@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260513T1300";
+const BRIDGE_VERSION = "20260513T1900";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -833,6 +833,13 @@ export default function MultichartGrid({
     // would queue a 5–20ms resize, pegging the main thread and
     // making the drag visibly "stutter".
     const isDraggingRef = useRef(false);
+    // liveDragRef holds the IN-FLIGHT drag's latest fractions. Set
+    // each rAF flush during drag, cleared on mouseup. The
+    // useLayoutEffect below reads it on every render — if a render
+    // happens mid-drag for unrelated reasons (focus change, replay
+    // tick, etc.) the effect re-applies our drag's inline style so
+    // the splitter doesn't snap back to the React-state position.
+    const liveDragRef = useRef(null); // { axis: 'col'|'row', fracs: number[] }
     useEffect(() => {
         if (isDraggingRef.current) return;
         const cellA = cellRefs.current[HOST_PANEL_ID];
@@ -842,6 +849,24 @@ export default function MultichartGrid({
             requestAnimationFrame(() => applyHostSlot(cellA));
         }
     }, [colFractions, rowFractions]);
+
+    // Re-apply the live drag's inline style after EVERY render. This
+    // is the safety net that lets the drag handler skip setState
+    // without risking a snap-back when an unrelated re-render lands.
+    // useLayoutEffect (not useEffect) so the re-apply happens before
+    // the browser paints.
+    useLayoutEffect(() => {
+        const drag = liveDragRef.current;
+        if (!drag) return;
+        const container = containerRef.current;
+        if (!container) return;
+        const styleProp = (drag.axis === "col")
+            ? "gridTemplateColumns"
+            : "gridTemplateRows";
+        container.style[styleProp] = drag.fracs.map(
+            (f) => f.toFixed(4) + "fr"
+        ).join(" ");
+    });
 
     // Inject the loading-overlay CSS once (idempotent — checks for existing
     // <style> tag by id).
@@ -2329,6 +2354,30 @@ export default function MultichartGrid({
             // expensive chart.resize() chain until we release.
             isDraggingRef.current = true;
 
+            // CRITICAL: iframes capture mouse events from their own
+            // window. Once the cursor crosses into an iframe during a
+            // drag, the parent document's mousemove listener simply
+            // stops firing — that's the #1 reason splitter drags
+            // feel "stuck" or stuttery. Disabling pointer-events on
+            // every iframe lets the cursor glide over them while the
+            // parent keeps receiving mousemove. We restore the
+            // original value on mouseup.
+            const lockedIframes = [];
+            try {
+                const ifrs = container.querySelectorAll("iframe");
+                ifrs.forEach((ifr) => {
+                    lockedIframes.push({ el: ifr, prev: ifr.style.pointerEvents });
+                    ifr.style.pointerEvents = "none";
+                });
+            } catch (_) {}
+
+            const styleProp = (axis === "col")
+                ? "gridTemplateColumns"
+                : "gridTemplateRows";
+            function fracsToTemplate(fracs) {
+                return fracs.map((f) => f.toFixed(4) + "fr").join(" ");
+            }
+
             let raf = 0;
             let pendingDx = 0;
             let lastApplied = startFracs;
@@ -2353,17 +2402,19 @@ export default function MultichartGrid({
                 updated[idx]     = nextA;
                 updated[idx + 1] = nextB;
                 lastApplied = updated;
-                // Commit to React state — JSX inline style stays in
-                // sync (no snap-back if React re-renders mid-drag for
-                // unrelated state). The host-resize useEffect skips
-                // because isDraggingRef is true; we handle the host
-                // wrapper reposition directly below (cheap path).
-                if (axis === "col") setColFractions(updated);
-                else                setRowFractions(updated);
-                // Reposition the host wrapper to track cell A's new
-                // bbox WITHOUT triggering chart.resize(). Cell A's
-                // bbox is updated synchronously by the grid reflow
-                // that React's commit triggers above.
+                // FAST PATH: direct DOM mutation, ZERO React work.
+                // setColFractions/setRowFractions during drag was the
+                // root cause of the lag — each setState fires a full
+                // MultichartGrid re-render (5–15ms) which blew the
+                // 16ms frame budget at 60Hz, making the splitter
+                // visibly chase the mouse. By writing the inline
+                // style here AND stashing in liveDragRef (so the
+                // useLayoutEffect re-applies if React renders for
+                // unrelated reasons), the drag stays at 60fps even
+                // on a busy main thread.
+                container.style[styleProp] = fracsToTemplate(updated);
+                liveDragRef.current = { axis, fracs: updated };
+                // Cheap host reposition (no chart.resize()).
                 const cellA = cellRefs.current[HOST_PANEL_ID];
                 if (cellA) applyHostSlotPositionOnly(cellA);
             }
@@ -2382,14 +2433,22 @@ export default function MultichartGrid({
                 document.removeEventListener("mouseup",   onUp);
                 document.body.style.cursor = "";
                 document.body.style.userSelect = "";
+                // Restore iframe pointer-events so user interaction
+                // resumes inside the panels.
+                lockedIframes.forEach(({ el, prev }) => {
+                    el.style.pointerEvents = prev || "";
+                });
+                // Release the drag gate FIRST and clear the live
+                // drag stash, then commit final state to React. After
+                // this point unrelated re-renders won't snap back
+                // because the JSX template now matches what we wrote.
                 isDraggingRef.current = false;
-                // Commit final state. Note: if `lastApplied` is the
-                // same reference as the current state (React bailout
-                // path) the useEffect will NOT fire, so we also
-                // explicitly call applyHostSlot below to guarantee a
-                // crisp final repaint at the new resolution.
+                liveDragRef.current  = null;
                 if (axis === "col") setColFractions(lastApplied);
                 else                setRowFractions(lastApplied);
+                // Force final crisp repaint regardless of React
+                // bailout (same-reference state would skip the
+                // useEffect that normally drives applyHostSlot).
                 requestAnimationFrame(() => {
                     const cellA = cellRefs.current[HOST_PANEL_ID];
                     if (cellA) applyHostSlot(cellA);
