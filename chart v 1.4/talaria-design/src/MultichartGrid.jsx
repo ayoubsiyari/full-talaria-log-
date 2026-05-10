@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260512T1900";
+const BRIDGE_VERSION = "20260512T2000";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1214,17 +1214,30 @@ export default function MultichartGrid({
 
         const onReplayTick = (ev) => {
             const mgr = managerRef.current;
-            if (!mgr || typeof mgr.sendCommand !== "function") return;
+            if (!mgr) return;
             const ts = ev && ev.detail && ev.detail.timestamp;
             if (!Number.isFinite(ts)) return;
             if (ts === replayStateRef.current.lastBroadcastTs) return;
             replayStateRef.current.lastBroadcastTs = ts;
             const cmd = replayStateRef.current.everEntered ? "replayTick" : "replayEnter";
             replayStateRef.current.everEntered = true;
+            // Use sendCommandNoReply for the hot tick path — at 60x
+            // playback speed this fires 60 events/sec * N panels and
+            // the per-call Promise + Map.set + setTimeout overhead of
+            // sendCommand becomes measurable. Fire-and-forget cuts
+            // ~0.3ms/call, freeing the parent's main thread to keep
+            // running its own play loop without stuttering.
+            const useNoReply = (cmd === "replayTick")
+                && typeof mgr.sendCommandNoReply === "function";
             for (const c of mgr.charts.values()) {
                 if (!c || c.host) continue;
-                try { mgr.sendCommand(c.id, cmd, { timestamp: ts }); }
-                catch (_) { /* ignore — the next tick retries */ }
+                try {
+                    if (useNoReply) {
+                        mgr.sendCommandNoReply(c.id, cmd, { timestamp: ts });
+                    } else {
+                        mgr.sendCommand(c.id, cmd, { timestamp: ts });
+                    }
+                } catch (_) { /* ignore — the next tick retries */ }
             }
         };
 

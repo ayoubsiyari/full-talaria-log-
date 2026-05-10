@@ -400,6 +400,39 @@
      * @param {object} [args]     command-specific args
      * @returns {Promise<any>}    resolves with cmd-result.data, rejects on error
      */
+    /**
+     * Fire-and-forget panel-cmd. No requestId, no pendingCmds entry,
+     * no timeout. Use for high-frequency commands where the caller
+     * does not need a reply (e.g. replayTick at 60Hz). Avoids the
+     * Promise + Map.set + setTimeout overhead per call which becomes
+     * significant when broadcasting to N panels every refresh frame.
+     *
+     * The iframe still POSTS a panel-cmd-reply (legacy) but parent's
+     * onMessage drops it silently when the requestId is missing from
+     * pendingCmds — so this is fully backward-compatible.
+     *
+     * @param {string} panelId
+     * @param {string} cmd
+     * @param {object} [args]
+     */
+    MultichartManager.prototype.sendCommandNoReply = function (panelId, cmd, args) {
+        const c = this.charts.get(panelId);
+        if (!c || c.host || !c.frame || !c.frame.contentWindow) return;
+        try {
+            c.frame.contentWindow.postMessage({
+                type:   'panel-cmd',
+                target: panelId,
+                cmd:    cmd,
+                args:   args || {},
+                // Intentionally no requestId — iframe will still
+                // reply but the parent's onMessage just no-ops on
+                // unknown requestIds.
+            }, '*');
+        } catch (e) {
+            this._log('warn', 'sendCommandNoReply fail ' + panelId + ': ' + e.message);
+        }
+    };
+
     MultichartManager.prototype.sendCommand = function (panelId, cmd, args) {
         const self = this;
         return new Promise(function (resolve, reject) {

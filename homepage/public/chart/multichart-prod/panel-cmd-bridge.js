@@ -125,6 +125,53 @@
     var pendingReplayDesired = null;
     var dataLoadedListenerInstalled = false;
 
+    // ─── coalesced replay-tick seek state ──────────────────────────────
+    //
+    // Parent fires `replayVirtualTimeChanged` once per CANDLE advance.
+    // At 60x speed that's ~60 events/sec; each turns into an iframe
+    // replayTick → goToReplayTimestamp → updateChartData + render
+    // (~10-30ms of work in iframe context — slower than parent's main
+    // window). Without coalescing the iframe queues seeks faster than
+    // it can process, so Panel B visibly lags behind Panel A
+    // ("Panel B moves slow not like Panel A" report).
+    //
+    // Solution: every replayTick stashes the LATEST timestamp into
+    // `coalescedSeekTs` and schedules a single rAF. When the rAF
+    // fires we seek to whatever ts is currently stashed — older
+    // timestamps that arrived in the same frame are dropped. Result:
+    // iframe seeks at most once per refresh frame, always to the
+    // newest ts the parent broadcast → iframe never falls behind.
+    //
+    // The first applyReplayEnter is NOT coalesced — we want it to
+    // run synchronously so the initial enterReplayMode + first seek
+    // happen as fast as possible. Coalescing kicks in only for
+    // SUBSEQUENT seeks once isActive=true.
+    var coalescedSeekTs = null;
+    var coalescedSeekScheduled = false;
+    function scheduleCoalescedSeek(ch, ts) {
+        coalescedSeekTs = ts;
+        if (coalescedSeekScheduled) return;
+        coalescedSeekScheduled = true;
+        var raf = global.requestAnimationFrame || function (fn) {
+            return setTimeout(fn, 16);
+        };
+        raf(function () {
+            coalescedSeekScheduled = false;
+            var seekTs = coalescedSeekTs;
+            coalescedSeekTs = null;
+            if (seekTs == null) return;
+            var rs = ch.replaySystem;
+            if (!rs || !rs.isActive) return;
+            if (typeof rs.goToReplayTimestamp !== 'function') return;
+            try {
+                rs.goToReplayTimestamp(seekTs,
+                    { preserveVisibleWindow: false });
+            } catch (e) {
+                warn('coalesced seek threw', e && e.message);
+            }
+        });
+    }
+
     function applyReplayEnter(ch, ts) {
         if (!Number.isFinite(ts)) {
             // Caller (e.g. _primeReplayFromParent) sent enter without a
@@ -386,16 +433,35 @@
                 //   • exitReplayMode early-returns when !isActive.
                 case 'replayEnter': {
                     var tsE = Number(args.timestamp);
+                    // First-time activation MUST run synchronously so
+                    // enterReplayMode + first seek complete before any
+                    // tick stream arrives. After this, ticks coalesce
+                    // via scheduleCoalescedSeek (see replayTick below).
                     return applyReplayEnter(ch, tsE);
                 }
                 case 'replayTick': {
                     var ts2 = Number(args.timestamp);
                     if (!Number.isFinite(ts2)) return;
-                    // Same deferral path as replayEnter — if data isn't
-                    // loaded yet, queue the seek. The chartDataLoaded
-                    // listener below will replay the latest queued ts
-                    // once the iframe's first dataset is in.
-                    return applyReplayEnter(ch, ts2);
+                    // Defer to chartDataLoaded if rawData isn't in yet
+                    // — otherwise applyReplayEnter handles everything.
+                    if (!ch.rawData || ch.rawData.length === 0) {
+                        return applyReplayEnter(ch, ts2);
+                    }
+                    var rsT = ch.replaySystem;
+                    // Lazy enter: if iframe missed the initial
+                    // replayEnter (e.g. added mid-replay), enter now
+                    // synchronously, then start coalescing.
+                    if (!rsT || !rsT.isActive) {
+                        return applyReplayEnter(ch, ts2);
+                    }
+                    // Hot path: just stash the latest ts and let the
+                    // rAF coalescer apply it. Older queued ts are
+                    // dropped so iframe never falls behind regardless
+                    // of parent's tick rate (60x, 100x — doesn't
+                    // matter, iframe always renders the newest).
+                    pendingReplayTs = ts2;
+                    scheduleCoalescedSeek(ch, ts2);
+                    return;
                 }
                 case 'replayExit': {
                     // Drop any queued enter — parent left replay before
