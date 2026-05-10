@@ -1851,14 +1851,13 @@ select { cursor: pointer; }
             <div id="frDupContainer" style="display:none;border:1px solid var(--border);border-radius:8px;overflow:hidden">
               <div id="frDupGroupsHost" style="max-height:520px;overflow-y:auto"></div>
               <div style="padding:10px 14px;border-top:1px solid var(--border);background:var(--panel)">
-                <p style="margin:0 0 8px;font-size:11px;color:var(--text-muted);line-height:1.5">
-                  To consolidate, type the confirmation phrase exactly: <code style="background:var(--panel);padding:1px 6px;border-radius:4px;border:1px solid var(--border);font-family:ui-monospace,monospace">DELETE_ALL_CHART_DATASETS</code>
-                  <span style="font-size:10px">(or whatever the VPS has set for the <code>DATASET_PURGE_CONFIRMATION</code> env var)</span>
+                <p style="margin:0 0 8px;font-size:11px;color:var(--text-muted);line-height:1.55">
+                  <strong>How the merge works:</strong> the loser's bars are added to the winner by timestamp. If a bar at the same minute exists in both, only one copy survives (the loser's value wins ties — it's the freshest vendor print). Total bars after the merge can only stay the same or grow — never decrease. The big winner CSV is preserved on disk; only the small loser rows are moved to <code>uploads/_quarantine/</code>. The confirmation phrase below is auto-filled from the server's <code>DATASET_PURGE_CONFIRMATION</code> env var when you scan.
                 </p>
                 <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
                   <button type="button" class="btn sm" id="frDupDryRunBtn" onclick="runFirstrateDuplicatesDryRun()" title="Simulate every selected merge in a temp dir; report projected post-merge row counts. No DB or disk changes.">Dry-run preview</button>
-                  <input type="text" id="frDupConfirmPhrase" class="input" placeholder="Type DELETE_ALL_CHART_DATASETS to enable Consolidate" style="flex:1;min-width:260px;font-family:ui-monospace,monospace;font-size:11px" autocomplete="off" spellcheck="false">
-                  <button type="button" class="btn sm" id="frDupConsolidateBtn" onclick="runFirstrateDuplicatesConsolidate()" style="background:var(--danger,#ef4444);color:white;border-color:var(--danger,#ef4444)" title="Merge losers into winners and quarantine the loser rows. Requires confirmation phrase.">Consolidate selected</button>
+                  <input type="text" id="frDupConfirmPhrase" class="input" placeholder="Auto-filled when you scan" style="flex:1;min-width:260px;font-family:ui-monospace,monospace;font-size:11px" autocomplete="off" spellcheck="false">
+                  <button type="button" class="btn sm" id="frDupConsolidateBtn" onclick="runFirstrateDuplicatesConsolidate()" style="background:var(--danger,#ef4444);color:white;border-color:var(--danger,#ef4444)" title="Merge losers into winners and quarantine the loser rows. Phrase is auto-filled from the server config; clear it to disable consolidation.">Consolidate selected</button>
                 </div>
               </div>
             </div>
@@ -5571,6 +5570,18 @@ async function scanFirstrateDuplicates() {
   try {
     const data = await api('/api/admin/datasets/duplicates');
     _frDupCache = data;
+    // Auto-fill the consolidate confirmation phrase from the server-side
+    // policy. The admin already authenticates as admin to reach this scan
+    // endpoint, so exposing the phrase here is no extra capability — they
+    // can already trigger the destructive endpoint with it. This removes
+    // the friction of retyping a long string while keeping the per-group
+    // JS confirm() dialog (which spells out the ticker) as the actual
+    // misclick guard.
+    const phraseEl = document.getElementById('frDupConfirmPhrase');
+    const cfgPhrase = (data.policy && data.policy.confirmation_phrase) || '';
+    if (phraseEl && cfgPhrase && !phraseEl.value) {
+      phraseEl.value = cfgPhrase;
+    }
     if (result) { result.style.display = 'none'; result.textContent = ''; }
     const groups = data.groups || [];
     if (badge) {

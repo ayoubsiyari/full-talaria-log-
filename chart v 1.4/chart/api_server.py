@@ -9675,6 +9675,14 @@ async def admin_dataset_duplicates(request: Request):
     Read-only scan for FirstRate duplicate dataset rows. Returns groups keyed
     by `(canonical_ticker, asset_class)` with ≥2 members. The admin UI uses
     this to render a manual winner-selection form.
+
+    Also surfaces the currently-configured `DATASET_PURGE_CONFIRMATION` value
+    in the response so the admin UI can pre-fill the consolidate phrase
+    without forcing the operator to retype a long string. This is safe to
+    expose to admin-authenticated callers because they can already invoke
+    the destructive consolidate endpoint with that same phrase — knowing
+    the value here grants no additional capability beyond what the same
+    request already has via `_require_admin`.
     """
     _require_admin(request)
     groups = _collect_firstrate_duplicate_groups()
@@ -9687,6 +9695,10 @@ async def admin_dataset_duplicates(request: Request):
             "duplicate_group_count": len(groups),
             "duplicate_row_count": duplicate_row_count,
             "total_firstrate_rows_in_groups": sum(len(g["rows"]) for g in groups),
+        },
+        "policy": {
+            "confirmation_phrase": (DATASET_PURGE_CONFIRMATION or "").strip(),
+            "quarantine_root": str(QUARANTINE_DIR),
         },
     }
 
