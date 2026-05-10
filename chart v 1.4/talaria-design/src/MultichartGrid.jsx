@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260511T2400";
+const BRIDGE_VERSION = "20260512T1700";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1099,12 +1099,12 @@ export default function MultichartGrid({
     //   • Parent exits replay → monkey-patched exitReplayMode broadcasts
     //     `replayExit` so iframes return to full-file view.
     //
-    // We deliberately do NOT mirror parent's PLAY/PAUSE state to iframes
-    // — only the timestamp. Each iframe seeks on every tick, which is
-    // the correct behavior whether the parent is playing (continuous
-    // ticks) or paused (no ticks → iframes hold position). Speed is
-    // also implicitly handled: parent's tick rate IS the playback
-    // speed; iframes inherit it for free.
+    // We ALSO mirror parent's play/pause/speed/playbackMode to iframes
+    // so each panel runs its OWN replay loop in lockstep — see the
+    // monkey-patch block below. This gives smooth tick animation on
+    // every panel without bouncing every animation frame through
+    // postMessage. The replayTick fan-out above still runs on each
+    // bar advance to correct any drift between local loops.
     //
     // The shared replay state is held in a ref so the listener effect
     // (mount-once) and the prime-on-ready effect (depends on
@@ -1133,10 +1133,29 @@ export default function MultichartGrid({
                 if (!Number.isFinite(ts)) return;
                 replayStateRef.current.lastBroadcastTs = ts;
                 replayStateRef.current.everEntered = true;
+                // Capture parent's current play/speed/mode so a panel
+                // that joins mid-playback boots into the same loop
+                // (otherwise it would sit paused at parent's ts until
+                // the user clicks pause-then-play).
+                const parentIsPlaying = !!rs.isPlaying;
+                const parentSpeed = Number(rs.speed) || 1;
+                const parentMode = (typeof rs.getPlaybackMode === "function")
+                    ? rs.getPlaybackMode()
+                    : (rs.playbackMode || "tick");
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.ready) continue;
                     try { mgr.sendCommand(c.id, "replayEnter", { timestamp: ts }); }
                     catch (_) {}
+                    // After enter, push the current speed + mode so the
+                    // iframe's local loop matches before play arrives.
+                    try { mgr.sendCommand(c.id, "replaySetSpeed", { speed: parentSpeed }); }
+                    catch (_) {}
+                    try { mgr.sendCommand(c.id, "replaySetMode", { mode: parentMode }); }
+                    catch (_) {}
+                    if (parentIsPlaying) {
+                        try { mgr.sendCommand(c.id, "replayPlay", { speed: parentSpeed, mode: parentMode }); }
+                        catch (_) {}
+                    }
                 }
             } else {
                 // Parent is NOT in active replay. Iframe panels auto-
@@ -1188,33 +1207,112 @@ export default function MultichartGrid({
         // session start" — no tick will fire until they hit play).
         _primeReplayFromParent();
 
-        // Monkey-patch parent's exitReplayMode so iframes drop replay
-        // mode in lockstep. Done lazily because replaySystem may not
-        // exist yet at mount — retry up to 5s.
+        // Helper: broadcast a replay command to every non-host iframe.
+        // Used by all the playback-state monkey-patches below.
+        const broadcastToIframes = (cmd, args) => {
+            try {
+                const mgr = managerRef.current;
+                if (!mgr) return;
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || !c.ready) continue;
+                    try { mgr.sendCommand(c.id, cmd, args || {}); }
+                    catch (_) {}
+                }
+            } catch (_) {}
+        };
+
+        // Monkey-patch parent's exitReplayMode + play + pause + setSpeed
+        // + setPlaybackMode so iframes mirror the parent's full playback
+        // state (not just the per-tick timestamp). Done lazily because
+        // replaySystem may not exist yet at mount — retry up to 5s.
         let patchedRs = null;
         let patchOriginalExit = null;
+        let patchOriginalPlay = null;
+        let patchOriginalPause = null;
+        let patchOriginalSetSpeed = null;
+        let patchOriginalSetMode = null;
         const tryPatch = (deadline) => {
             const ch = window.chart;
-            if (ch && ch.replaySystem && typeof ch.replaySystem.exitReplayMode === "function"
+            if (ch && ch.replaySystem
+                && typeof ch.replaySystem.exitReplayMode === "function"
                 && !ch.replaySystem.__multichartExitPatched) {
                 patchedRs = ch.replaySystem;
+
+                // ── exitReplayMode → broadcast replayExit ──
                 patchOriginalExit = patchedRs.exitReplayMode.bind(patchedRs);
-                patchedRs.__multichartExitPatched = true;
                 patchedRs.exitReplayMode = function () {
-                    try {
-                        const mgr = managerRef.current;
-                        if (mgr) {
-                            for (const c of mgr.charts.values()) {
-                                if (!c || c.host) continue;
-                                try { mgr.sendCommand(c.id, "replayExit", {}); }
-                                catch (_) {}
-                            }
-                        }
-                    } catch (_) {}
+                    broadcastToIframes("replayExit", {});
                     replayStateRef.current.everEntered = false;
                     replayStateRef.current.lastBroadcastTs = 0;
                     return patchOriginalExit();
                 };
+
+                // ── play → broadcast replayPlay {speed, mode} ──
+                //
+                // Send AFTER calling original so the parent's UI/state
+                // is already updated when iframes start their loops.
+                // Read speed + mode from `this` (the replaySystem) AFTER
+                // play() so any lazy initialization (saved tick state,
+                // etc.) has run.
+                if (typeof patchedRs.play === "function") {
+                    patchOriginalPlay = patchedRs.play.bind(patchedRs);
+                    patchedRs.play = function () {
+                        const result = patchOriginalPlay();
+                        try {
+                            const speed = Number(this.speed) || 1;
+                            const mode = (typeof this.getPlaybackMode === "function")
+                                ? this.getPlaybackMode()
+                                : (this.playbackMode || "tick");
+                            broadcastToIframes("replayPlay", { speed, mode });
+                        } catch (_) {}
+                        return result;
+                    };
+                }
+
+                // ── pause → broadcast replayPause ──
+                if (typeof patchedRs.pause === "function") {
+                    patchOriginalPause = patchedRs.pause.bind(patchedRs);
+                    patchedRs.pause = function () {
+                        const result = patchOriginalPause();
+                        broadcastToIframes("replayPause", {});
+                        return result;
+                    };
+                }
+
+                // ── setSpeed → broadcast replaySetSpeed {speed} ──
+                //
+                // Re-read from `this` post-call because setSpeed
+                // normalizes (clamp 1..100) and we want iframes to
+                // receive the post-clamp value, not the raw input.
+                if (typeof patchedRs.setSpeed === "function") {
+                    patchOriginalSetSpeed = patchedRs.setSpeed.bind(patchedRs);
+                    patchedRs.setSpeed = function (speed) {
+                        const result = patchOriginalSetSpeed(speed);
+                        try {
+                            broadcastToIframes("replaySetSpeed", {
+                                speed: Number(this.speed) || 1,
+                            });
+                        } catch (_) {}
+                        return result;
+                    };
+                }
+
+                // ── setPlaybackMode → broadcast replaySetMode {mode} ──
+                if (typeof patchedRs.setPlaybackMode === "function") {
+                    patchOriginalSetMode = patchedRs.setPlaybackMode.bind(patchedRs);
+                    patchedRs.setPlaybackMode = function (mode, opts) {
+                        const result = patchOriginalSetMode(mode, opts);
+                        try {
+                            const m = (typeof this.getPlaybackMode === "function")
+                                ? this.getPlaybackMode()
+                                : (this.playbackMode || "tick");
+                            broadcastToIframes("replaySetMode", { mode: m });
+                        } catch (_) {}
+                        return result;
+                    };
+                }
+
+                patchedRs.__multichartExitPatched = true;
                 return;
             }
             if (Date.now() < deadline) {
@@ -1225,11 +1323,15 @@ export default function MultichartGrid({
 
         return () => {
             window.removeEventListener("replayVirtualTimeChanged", onReplayTick);
-            // Restore exitReplayMode if we patched it — keeps single-
+            // Restore originals if we patched them — keeps single-
             // chart behavior intact when the user picks layout 1 again.
-            if (patchedRs && patchOriginalExit && patchedRs.__multichartExitPatched) {
+            if (patchedRs && patchedRs.__multichartExitPatched) {
                 try {
-                    patchedRs.exitReplayMode = patchOriginalExit;
+                    if (patchOriginalExit)     patchedRs.exitReplayMode  = patchOriginalExit;
+                    if (patchOriginalPlay)     patchedRs.play            = patchOriginalPlay;
+                    if (patchOriginalPause)    patchedRs.pause           = patchOriginalPause;
+                    if (patchOriginalSetSpeed) patchedRs.setSpeed        = patchOriginalSetSpeed;
+                    if (patchOriginalSetMode)  patchedRs.setPlaybackMode = patchOriginalSetMode;
                     delete patchedRs.__multichartExitPatched;
                 } catch (_) {}
             }

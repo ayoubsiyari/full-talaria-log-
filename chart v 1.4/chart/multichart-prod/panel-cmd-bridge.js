@@ -417,6 +417,112 @@
                     return;
                 }
 
+                // ─── replay PLAYBACK sync ──────────────────────────────
+                //
+                // Beyond the per-tick seek protocol above, the parent
+                // mirrors its own play/pause/speed/mode state to every
+                // iframe so each panel runs its OWN replay loop in
+                // lockstep. Why a local loop instead of pure-seek?
+                //
+                //   1. Tick animation (intra-bar pixel motion) emits at
+                //      ~60fps from the parent. Bouncing every frame
+                //      through postMessage + applying as a seek on the
+                //      iframe would (a) cost 4x CPU vs a local timer
+                //      and (b) make tick animation look jerky on slower
+                //      machines because every frame becomes a seek.
+                //
+                //   2. The user explicitly asked for "all panels run
+                //      same speed and same playback type (candle vs
+                //      tick)" — that means each panel renders its own
+                //      smooth animation. A local loop with matching
+                //      params produces identical visuals.
+                //
+                // Drift between local loops is corrected by the
+                // existing replayTick broadcast on each parent bar
+                // advance — iframe seeks back to parent's exact ts.
+                //
+                // Lifecycle:
+                //   replayPlay     → setSpeed, setPlaybackMode, play()
+                //   replayPause    → pause()
+                //   replaySetSpeed → setSpeed() (mid-play OK)
+                //   replaySetMode  → setPlaybackMode() (mid-play OK)
+                //
+                // Each handler is idempotent — applying the parent's
+                // current state to an already-matching iframe is a
+                // no-op (replaySystem internals already guard against
+                // redundant re-arming of timers).
+                case 'replayPlay': {
+                    var rsP = ch.replaySystem;
+                    if (!rsP) {
+                        warn('replayPlay: replaySystem not available');
+                        return;
+                    }
+                    // Defer if the iframe hasn't entered replay yet
+                    // (race: parent hits play before the iframe's
+                    // autoLoadBacktestingData → enterReplayMode chain
+                    // completes). drainPendingReplay will replay the
+                    // last enter ts; once active, parent's next tick
+                    // also broadcasts replayPlay so we'll catch up.
+                    if (!rsP.isActive) {
+                        log('replayPlay deferred (not yet active)');
+                        return;
+                    }
+                    if (Number.isFinite(args.speed)
+                        && typeof rsP.setSpeed === 'function') {
+                        try { rsP.setSpeed(args.speed); }
+                        catch (e) { warn('replayPlay: setSpeed threw', e && e.message); }
+                    }
+                    if (typeof args.mode === 'string'
+                        && typeof rsP.setPlaybackMode === 'function') {
+                        try {
+                            // restartPlayback:false because we're
+                            // about to call play() right after — no
+                            // sense restarting the loop twice.
+                            rsP.setPlaybackMode(args.mode,
+                                { restartPlayback: false });
+                        } catch (e) {
+                            warn('replayPlay: setPlaybackMode threw', e && e.message);
+                        }
+                    }
+                    if (rsP.isPlaying) return;
+                    if (typeof rsP.play !== 'function') return;
+                    try { rsP.play(); }
+                    catch (e) { warn('replayPlay: play threw', e && e.message); }
+                    return;
+                }
+                case 'replayPause': {
+                    var rsPa = ch.replaySystem;
+                    if (!rsPa || !rsPa.isPlaying) return;
+                    if (typeof rsPa.pause !== 'function') return;
+                    try { rsPa.pause(); }
+                    catch (e) { warn('replayPause: pause threw', e && e.message); }
+                    return;
+                }
+                case 'replaySetSpeed': {
+                    var rsS = ch.replaySystem;
+                    if (!rsS || typeof rsS.setSpeed !== 'function') return;
+                    if (!Number.isFinite(args.speed)) return;
+                    try { rsS.setSpeed(args.speed); }
+                    catch (e) { warn('replaySetSpeed threw', e && e.message); }
+                    return;
+                }
+                case 'replaySetMode': {
+                    var rsM = ch.replaySystem;
+                    if (!rsM || typeof rsM.setPlaybackMode !== 'function') return;
+                    if (typeof args.mode !== 'string') return;
+                    try {
+                        // restartPlayback:true so a mid-play mode
+                        // change (tick → candle) immediately re-arms
+                        // the right loop instead of waiting for the
+                        // next play()/pause() cycle.
+                        rsM.setPlaybackMode(args.mode,
+                            { restartPlayback: true });
+                    } catch (e) {
+                        warn('replaySetMode threw', e && e.message);
+                    }
+                    return;
+                }
+
                 // ─── extensibility hook ────────────────────────────────
                 // Phase 7.2.4 covers tf + file + drawings + indicators.
                 // Future commands (place order, chart type) land here
@@ -466,6 +572,10 @@
                 'replayEnter',
                 'replayTick',
                 'replayExit',
+                'replayPlay',
+                'replayPause',
+                'replaySetSpeed',
+                'replaySetMode',
             ],
         }, '*');
     } catch (_) {}
