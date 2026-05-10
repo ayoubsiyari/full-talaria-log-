@@ -138,8 +138,10 @@
         if (!ch.rawData || ch.rawData.length === 0) {
             pendingReplayTs = ts;
             installDataLoadedListener(ch);
+            log('replayEnter deferred (rawData empty); pendingReplayTs=' + ts);
             return;
         }
+        var wasActive = !!rs.isActive;
         // Data is loaded. Enter replay if needed, then seek.
         if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
             try {
@@ -156,44 +158,52 @@
                 warn('replayEnter: goToReplayTimestamp threw', e && e.message);
             }
         }
+        // Re-fit the canvas to the replay-truncated chart.data the FIRST
+        // TIME we activate replay. Without this, chart.candleWidth retains
+        // the value fitToView() set when the full file was loaded
+        // (sized for ~thousands of bars). Replay then truncates
+        // chart.data to 50–100 bars but candles stay tiny — what the
+        // user sees is "wrong data" (bars at the far left of an empty
+        // canvas with old offsetX still in effect). A subsequent tf
+        // change happens to call fitToView() during _commitLoadedBars
+        // and that's why "switch tf and it looks correct".
+        //
+        // Only fit on the activation transition (wasActive=false →
+        // isActive=true) — subsequent ticks/seeks must NOT re-fit
+        // because the user (or visibleRange sync from parent) may have
+        // panned/zoomed and we'd undo that.
+        if (!wasActive && rs.isActive && typeof ch.fitToView === 'function') {
+            try {
+                ch.fitToView();
+                if (typeof ch.scheduleRender === 'function') ch.scheduleRender();
+            } catch (e) {
+                warn('replayEnter: fitToView threw', e && e.message);
+            }
+        }
         // Successfully applied — clear the pending stash so a later
         // chartDataLoaded (e.g. user changes file via symbol-sync, then
         // tries to play) doesn't replay a stale timestamp from before
         // the file change.
         pendingReplayTs = null;
+        log('replayEnter applied: ts=' + ts
+            + ' isActive=' + rs.isActive
+            + ' chartDataLen=' + (ch.data ? ch.data.length : 0));
     }
 
     function drainPendingReplay() {
         if (pendingReplayTs == null) return;
         var ch = global.chart;
-        if (!ch || !ch.rawData || ch.rawData.length === 0) return;
-        var ts = pendingReplayTs;
-        // Apply directly via the now-ready path (skip the empty-data
-        // re-stash branch that only matters on cold dispatch).
-        var rs = ch.replaySystem;
-        if (!rs) {
-            warn('drainPendingReplay: replaySystem missing on ready chart');
+        if (!ch || !ch.rawData || ch.rawData.length === 0) {
+            log('drainPendingReplay bailed (rawData still empty)');
             return;
         }
-        if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
-            try {
-                rs.enterReplayMode({ startAtBeginning: true });
-            } catch (e) {
-                warn('drainPendingReplay: enterReplayMode threw', e && e.message);
-            }
-        }
-        if (rs.isActive && Number.isFinite(ts)
-            && typeof rs.goToReplayTimestamp === 'function') {
-            try {
-                rs.goToReplayTimestamp(ts, { preserveVisibleWindow: false });
-            } catch (e) {
-                warn('drainPendingReplay: goToReplayTimestamp threw', e && e.message);
-            }
-        }
-        // Only clear once we know the seek went through (rs.isActive
-        // means enterReplayMode succeeded). If something failed we keep
-        // the stash so the next chartDataLoaded retries.
-        if (rs.isActive) pendingReplayTs = null;
+        var ts = pendingReplayTs;
+        log('drainPendingReplay firing: ts=' + ts
+            + ' rawDataLen=' + ch.rawData.length);
+        // Delegate to applyReplayEnter so all activation logic
+        // (enterReplayMode, goToReplayTimestamp, fitToView for
+        // candleWidth recompute) runs in exactly one place.
+        applyReplayEnter(ch, ts);
     }
 
     function installDataLoadedListener(ch) {
