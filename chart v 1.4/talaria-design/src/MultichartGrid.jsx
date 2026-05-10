@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260513T1000";
+const BRIDGE_VERSION = "20260513T1100";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1476,25 +1476,25 @@ export default function MultichartGrid({
         return () => applyHostFocusOutline(false);
     }, [focusedPanelId]);
 
-    // ─── Focus border for iframe cells (vanilla DOM injection) ──────────
+    // ─── Focus border for iframe cells (legacy cell-internal path) ──────
     //
-    // Runs whenever focusedPanelId changes. Strips any existing focus
-    // border from every cell, then appends a fresh overlay <div> as the
-    // LAST child of the focused cell. Vanilla DOM (not React) is used so
-    // the overlay sits AFTER the manager-appended iframe in DOM order;
-    // combined with z-index:9999 this is the only reliable way to paint
-    // a border on top of an iframe across browsers.
+    // Originally we injected a focus overlay AS A CHILD of the focused
+    // cell. That path is now superseded by a sibling-of-cell React
+    // overlay rendered at the GRID level (see the JSX block titled
+    // "Sibling focus border (bulletproof iframe-friendly)" at the
+    // bottom of the return). The grid-level overlay sidesteps an
+    // intermittent Chromium iframe-compositing bug where the iframe
+    // hoists into its own layer and paints above any sibling child
+    // div regardless of z-index — which is exactly what the user
+    // hit ("no border showing").
     //
-    // The effect also depends on `managerReady` + `layout.tiles` so that
-    // when the manager has just added a new iframe (e.g. user splits 2→4
-    // and immediately clicks D), the cell is in cellRefs and the overlay
-    // can be injected.
+    // We KEEP this effect, but only as a teardown — it strips any
+    // legacy overlay still attached from older bundles or hot-reload
+    // sessions. Without the strip, two overlays (cell-internal +
+    // sibling) would stack and the border would render at double
+    // thickness on a brief flash.
     useEffect(() => {
         clearIframeFocusBorders(cellRefs.current);
-        if (!focusedPanelId || focusedPanelId === HOST_PANEL_ID) return;
-        const cell = cellRefs.current[focusedPanelId];
-        if (!cell) return;
-        applyIframeFocusBorder(cell);
         return () => clearIframeFocusBorders(cellRefs.current);
     }, [focusedPanelId, managerReady, layout.tiles]);
 
@@ -2177,6 +2177,28 @@ export default function MultichartGrid({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // Find the tile descriptor for the focused panel so we can render
+    // an absolutely-bulletproof focus border AT THE GRID LEVEL (sibling
+    // of the cells, not a child of the focused cell). Reasons:
+    //   1. Iframes in Chromium occasionally hoist into their own
+    //      compositing layer and end up painted ABOVE any sibling
+    //      child div regardless of z-index. By making the focus
+    //      border a sibling of the cell (not inside it) the iframe
+    //      is "below" in the same stacking context but a layer
+    //      apart — there's no compositing competition.
+    //   2. Even when DOM-injection-as-child works, Chromium's
+    //      iframe scrollbar / scrollbar-corner rendering can
+    //      occasionally paint over the cell's interior border.
+    //      Sibling overlay sidesteps this entirely.
+    //
+    // Implementation: the overlay is a grid item that picks up the
+    // SAME `gridColumn`/`gridRow` as the focused tile. CSS Grid's
+    // explicit placement guarantees it overlaps that cell perfectly,
+    // including across resize. pointerEvents:none lets all interaction
+    // pass through to the iframe / chart canvas underneath.
+    const focusedTile = focusedPanelId
+        ? layout.tiles.find((t) => t.id === focusedPanelId)
+        : null;
     return (
         <div
             ref={containerRef}
@@ -2187,8 +2209,12 @@ export default function MultichartGrid({
                 display: "grid",
                 gridTemplateColumns: layout.cols,
                 gridTemplateRows: layout.rows,
-                gap: "1px",
-                background: "#1c1f2a",
+                // Wider gap (was 1px, now 4px) so the divider line
+                // between panels is unmistakable. Combined with the
+                // lighter background color below the splitter reads
+                // as a clean TradingView-style separator.
+                gap: "4px",
+                background: "#2a2e3a",
                 zIndex: 12,
             }}
         >
@@ -2274,6 +2300,45 @@ export default function MultichartGrid({
                     </div>
                 );
             })}
+
+            {/* ─── Sibling focus border (bulletproof iframe-friendly) ──
+                Renders as a grid item with the SAME gridColumn/gridRow
+                as the focused tile, so it perfectly overlaps that
+                cell across all layouts and survives resizing. Sitting
+                at the GRID level (not inside the cell) means it is a
+                sibling of the iframe's parent — Chromium's iframe
+                compositing layer can no longer cover it.
+
+                Skipped for the host (Panel A) because the host's
+                #chartWrapper is positioned ABOVE this grid (z:13 vs
+                z:12), so any sibling here would be hidden behind
+                the wrapper. The host gets its own overlay injected
+                inside #chartWrapper via applyHostFocusOutline. */}
+            {focusedTile && focusedPanelId !== HOST_PANEL_ID && (
+                <div
+                    aria-hidden="true"
+                    data-multichart-focus-frame="1"
+                    style={{
+                        gridColumn: focusedTile.gridColumn || "auto",
+                        gridRow:    focusedTile.gridRow    || "auto",
+                        pointerEvents: "none",
+                        border: "3px solid #2962ff",
+                        borderRadius: "2px",
+                        boxSizing: "border-box",
+                        boxShadow: [
+                            "0 0 0 1px rgba(41,98,255,0.85)",
+                            "0 0 12px 2px rgba(41,98,255,0.55)",
+                            "inset 0 0 14px rgba(41,98,255,0.25)",
+                        ].join(", "),
+                        // Higher than every other grid item but lower
+                        // than the host wrapper (z:13) so a focused
+                        // iframe in B/C/D doesn't accidentally paint
+                        // over the host's chart area when layouts
+                        // overlap during a transient resize.
+                        zIndex: 11,
+                    }}
+                />
+            )}
         </div>
     );
 }
