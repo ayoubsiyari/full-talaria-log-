@@ -148,6 +148,62 @@
     // SUBSEQUENT seeks once isActive=true.
     var coalescedSeekTs = null;
     var coalescedSeekScheduled = false;
+
+    // ─── per-panel order forwarding state ──────────────────────────────
+    //
+    // panelOrderState.suppressEmitId — when the iframe is told to mirror
+    //   an order (case 'addOrder'), it calls registerOpenOrder /
+    //   registerPendingOrder which synchronously emit on
+    //   chart.orderManager.orderService.eventBus. Without a guard, our
+    //   own `order:opened` listener would forward that emission back
+    //   to the parent which would broadcast back to us → infinite loop.
+    //   Setting suppressEmitId=order.id while the register call runs
+    //   (cleared on the next microtask) lets the listener skip the
+    //   matching id ONCE.
+    //
+    // panelOrderState.busSubscribed — guard so the eventBus.on(...)
+    //   subscription installs at most once even if waitForChart resolves
+    //   multiple times (e.g. a future re-init path).
+    var panelOrderState = {
+        suppressEmitId: null,
+        busSubscribed:  false,
+    };
+
+    function postIframeOrder(kind, order) {
+        if (!order || order.id == null) return;
+        if (panelOrderState.suppressEmitId === order.id) return;
+        try {
+            global.parent.postMessage({
+                type:   'iframe-order',
+                source: panelId,
+                kind:   kind,
+                order:  order,
+                symbol: order.symbol || order.ticker || null,
+            }, '*');
+        } catch (e) {
+            warn('postIframeOrder failed', e && e.message);
+        }
+    }
+
+    function installOrderForwarders(ch) {
+        if (panelOrderState.busSubscribed) return;
+        var om  = ch && ch.orderManager;
+        var svc = om && om.orderService;
+        var bus = svc && svc.eventBus;
+        if (!bus || typeof bus.on !== 'function') {
+            // No service-style bus (legacy in-manager mode). Skip
+            // silently — order-mirror still works for host-placed
+            // orders because the host owns its own lifecycle.
+            return;
+        }
+        panelOrderState.busSubscribed = true;
+        bus.on('order:opened',          function (o) { postIframeOrder('opened',          o); });
+        bus.on('order:pending',         function (o) { postIframeOrder('pending',         o); });
+        bus.on('order:closed',          function (o) { postIframeOrder('closed',          o); });
+        bus.on('order:pending-removed', function (o) { postIframeOrder('pending-removed', o); });
+        log('order forwarders installed');
+    }
+
     function scheduleCoalescedSeek(ch, ts) {
         coalescedSeekTs = ts;
         if (coalescedSeekScheduled) return;
@@ -286,6 +342,13 @@
     // or rejects on failure (we surface either via reportResult).
     function applyCommand(cmd, args) {
         return waitForChart(5000).then(function (ch) {
+            // Lazy install of the order eventBus forwarder. Done here
+            // (rather than at module load) because chart.orderManager.
+            // orderService isn't constructed until chart.js finishes
+            // booting. The first applyCommand to land has the chart
+            // ready; subsequent calls early-return via the
+            // panelOrderState.busSubscribed guard.
+            try { installOrderForwarders(ch); } catch (_) {}
             args = args || {};
             switch (cmd) {
 
@@ -485,61 +548,53 @@
 
                 // ─── replay PLAYBACK sync ──────────────────────────────
                 //
-                // STRICT-SYNC MODEL: iframes are passive followers of
-                // the host (Panel A). Their own replaySystem is in
-                // replay mode (so the candle slice + indicators +
-                // session bounds are correct) but is NEVER allowed to
-                // run a local play loop — because:
+                // HYBRID MODEL: iframes run their OWN local play loop
+                // with the host's settings, AND parent broadcasts a
+                // drift-correcting seek on every host tick.
                 //
-                //   1. At high speeds (60x, 100x) each iframe's local
-                //      timer drifts vs the host. Iframe render is
-                //      slower than host (smaller canvas, iframe
-                //      compositing overhead, browser timer throttle on
-                //      sub-100ms intervals when many timers are armed
-                //      simultaneously). User reports "Panel B moves
-                //      slow not like Panel A" — that's the drift.
-                //
-                //   2. setInterval / requestAnimationFrame in different
-                //      browsing contexts (parent + 3 iframes) get
-                //      independent scheduler budgets. They cannot stay
-                //      in lockstep over thousands of ticks.
-                //
-                //   3. The user asked for "same candle same time on
-                //      all panels". The only way to guarantee that is
-                //      single-source-of-truth: the host owns the play
-                //      loop, every iframe seeks to host's current
-                //      timestamp on every host tick.
+                // Why both?
+                //   • Pure local-play (no seek): iframe drifts behind
+                //     host at high speeds because iframe render is
+                //     slower than host. User reported "Panel B moves
+                //     slow not like Panel A".
+                //   • Pure passive (no local play, only seek): iframe
+                //     visually does nothing until parent's tick arrives;
+                //     between ticks iframe is frozen. User reported
+                //     "need to select Panel B and press space — wrong".
+                //   • Hybrid: iframe plays locally so it animates
+                //     smoothly between ticks, AND every host tick
+                //     calls goToReplayTimestamp to snap iframe back to
+                //     host's exact position. Drift can never accumulate
+                //     because each tick re-aligns.
                 //
                 // Protocol:
                 //   replayPlay {speed, mode}
-                //     Iframe absorbs speed + mode INTO its replaySystem
-                //     state (so any UI inside the iframe — even though
-                //     hidden — stays consistent) but does NOT call
-                //     play(). isPlaying stays false. Drives the
-                //     iframe purely via the replayTick stream.
+                //     setSpeed + setPlaybackMode + play() locally.
+                //     Iframe.isPlaying becomes true. Local loop runs
+                //     at host's speed/mode.
                 //   replayPause
-                //     No-op (iframe was never playing locally).
-                //   replaySetSpeed / replaySetMode
-                //     Mirror host's value into iframe state for
-                //     consistency. setSpeed / setPlaybackMode do not
-                //     auto-start playback when isPlaying=false, so
-                //     this is a pure state update.
+                //     pause() locally. Iframe.isPlaying becomes false.
+                //   replaySetSpeed {speed}
+                //     setSpeed (mid-play OK; replaySystem internally
+                //     re-arms its own loop at the new rate).
+                //   replaySetMode {mode}
+                //     setPlaybackMode with restartPlayback so a
+                //     mid-play tick<->candle toggle takes effect.
                 //   replayTick {timestamp}
-                //     Iframe seeks via goToReplayTimestamp — see the
-                //     replayTick / replayEnter cases above.
+                //     Drift correction — iframe seeks via
+                //     scheduleCoalescedSeek so it can never fall
+                //     more than 1 refresh frame behind host.
                 case 'replayPlay': {
                     var rsP = ch.replaySystem;
                     if (!rsP) {
                         warn('replayPlay: replaySystem not available');
                         return;
                     }
-                    // Defer if the iframe hasn't entered replay yet
-                    // (race: parent hits play before the iframe's
-                    // autoLoadBacktestingData → enterReplayMode chain
-                    // completes). The next replayTick from parent
-                    // (which carries a timestamp) will lazily enter
-                    // replay via applyReplayEnter, after which the
-                    // following replayPlay will land.
+                    // Defer if the iframe hasn't entered replay yet —
+                    // the next replayTick will call applyReplayEnter
+                    // which lazily enters, and the following replayPlay
+                    // (or another tick reflecting host's continued
+                    // play state) will land.
                     if (!rsP.isActive) {
                         log('replayPlay deferred (not yet active)');
                         return;
@@ -552,23 +607,27 @@
                     if (typeof args.mode === 'string'
                         && typeof rsP.setPlaybackMode === 'function') {
                         try {
+                            // restartPlayback:false because we're
+                            // about to call play() right after.
                             rsP.setPlaybackMode(args.mode,
                                 { restartPlayback: false });
                         } catch (e) {
                             warn('replayPlay: setPlaybackMode threw', e && e.message);
                         }
                     }
-                    // INTENTIONALLY DO NOT CALL rsP.play() — see the
-                    // STRICT-SYNC MODEL comment above. Host's tick
-                    // stream drives this iframe.
+                    // Already playing? Don't re-arm the loop.
+                    if (rsP.isPlaying) return;
+                    if (typeof rsP.play !== 'function') return;
+                    try { rsP.play(); }
+                    catch (e) { warn('replayPlay: play threw', e && e.message); }
                     return;
                 }
                 case 'replayPause': {
-                    // No-op — iframe never started a local play loop,
-                    // so there's nothing to pause. When host pauses,
-                    // its tick stream stops, iframe stops seeking,
-                    // iframe holds at host's last ts. Visually
-                    // identical to "iframe paused".
+                    var rsPa = ch.replaySystem;
+                    if (!rsPa || !rsPa.isPlaying) return;
+                    if (typeof rsPa.pause !== 'function') return;
+                    try { rsPa.pause(); }
+                    catch (e) { warn('replayPause: pause threw', e && e.message); }
                     return;
                 }
                 case 'replaySetSpeed': {
@@ -577,8 +636,6 @@
                     if (!Number.isFinite(args.speed)) return;
                     try { rsS.setSpeed(args.speed); }
                     catch (e) { warn('replaySetSpeed threw', e && e.message); }
-                    // setSpeed is a no-op for restart when isPlaying=false,
-                    // so this just updates the speed value for consistency.
                     return;
                 }
                 case 'replaySetMode': {
@@ -586,22 +643,228 @@
                     if (!rsM || typeof rsM.setPlaybackMode !== 'function') return;
                     if (typeof args.mode !== 'string') return;
                     try {
-                        // restartPlayback:false — even in candle/tick
-                        // toggle, the iframe is not running a local
-                        // loop. Pure state update.
+                        // restartPlayback:true so a mid-play mode
+                        // change immediately re-arms the right loop.
                         rsM.setPlaybackMode(args.mode,
-                            { restartPlayback: false });
+                            { restartPlayback: true });
                     } catch (e) {
                         warn('replaySetMode threw', e && e.message);
                     }
                     return;
                 }
 
+                // ─── orders ────────────────────────────────────────────
+                //
+                // PROTOCOL:
+                //   placeOrder { side, type, quantity, entryPrice,
+                //                slEnabled, slPrice, tpEnabled, tpPrice }
+                //     Iframe writes the args into ITS OWN hidden order
+                //     panel DOM (#orderQuantity, #orderEntryPrice,
+                //     #enableTP / #tpPrice, #enableSL / #slPrice,
+                //     #buyTab / #sellTab) and then calls
+                //     chart.orderManager.placeAdvancedOrder({
+                //       keepPanelOpen: true
+                //     }).
+                //
+                //     Why drive through the iframe's DOM + the manager's
+                //     full submit path instead of building the order
+                //     object directly: placeAdvancedOrder also handles
+                //     tick-grid snap, risk validation, breakeven /
+                //     trailing / multi-TP / multi-entry, the
+                //     post-place persistRuntimeOrderState push, and
+                //     rendering. Re-implementing all that here would
+                //     drift from the canonical path. The DOM in the
+                //     iframe is hidden by [data-v9-chrome="1"] but the
+                //     elements still exist and accept input/checked
+                //     writes.
+                //
+                //   addOrder { order, kind }
+                //     A peer panel placed an order (or the host did),
+                //     and the broadcaster wants this iframe to also
+                //     show it. kind is 'opened' for open positions,
+                //     'pending' for pending limit/stop orders. We
+                //     register on this iframe's orderService so the
+                //     line drawer + PnL columns pick it up. Guarded
+                //     with `_suppressNextEmit` so the resulting
+                //     order:opened / order:pending eventBus emit
+                //     doesn't get re-broadcast back to the source
+                //     (otherwise: A places → broadcasts to B → B
+                //     registers → B's bus fires → B forwards to
+                //     parent → parent broadcasts to A → loop).
+                //
+                //   closeOrder    { orderId }    → closePosition
+                //   cancelOrder   { orderId }    → cancelPendingOrder
+                case 'placeOrder': {
+                    var om = ch.orderManager;
+                    if (!om) throw new Error('orderManager not available');
+                    if (typeof om.placeAdvancedOrder !== 'function') {
+                        throw new Error('orderManager.placeAdvancedOrder is not a function');
+                    }
+                    var doc = global.document;
+                    function setVal(id, v) {
+                        var el = doc.getElementById(id);
+                        if (!el) return;
+                        el.value = (v == null) ? '' : String(v);
+                        try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+                        try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+                    }
+                    function setChk(id, v) {
+                        var el = doc.getElementById(id);
+                        if (!el) return;
+                        el.checked = !!v;
+                        try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+                    }
+                    // 1) Side (BUY / SELL) — set the manager state
+                    // directly AND toggle the tab classes so any read
+                    // path that checks the active class still sees the
+                    // right side.
+                    var side = (args.side === 'SELL') ? 'SELL' : 'BUY';
+                    om.orderSide = side;
+                    var bt = doc.getElementById('buyTab');
+                    var st = doc.getElementById('sellTab');
+                    if (bt) bt.classList.toggle('active', side === 'BUY');
+                    if (st) st.classList.toggle('active', side === 'SELL');
+
+                    // 2) Order type — toggle .active on the matching
+                    // .order-type-btn[data-type="…"] element so any
+                    // legacy read of that selector lands on the right
+                    // type. order-manager doesn't expose a setter
+                    // pair this clean — it relies on the user clicking
+                    // the button — but the button's active class is
+                    // what placeAdvancedOrder branches on internally.
+                    var ot = (args.type === 'limit' || args.type === 'stop')
+                        ? args.type
+                        : 'market';
+                    var typeBtns = doc.querySelectorAll('#orderPanel .order-type-btn');
+                    if (typeBtns && typeBtns.forEach) {
+                        typeBtns.forEach(function (b) {
+                            b.classList.toggle('active', b.getAttribute('data-type') === ot);
+                        });
+                    }
+
+                    // 3) Numeric inputs.
+                    if (args.quantity != null)   setVal('orderQuantity',   args.quantity);
+                    if (args.entryPrice != null) setVal('orderEntryPrice', args.entryPrice);
+                    setChk('enableTP', !!args.tpEnabled);
+                    if (args.tpPrice != null)    setVal('tpPrice', args.tpPrice);
+                    setChk('enableSL', !!args.slEnabled);
+                    if (args.slPrice != null)    setVal('slPrice', args.slPrice);
+
+                    // 4) Submit. placeAdvancedOrder will alert+return
+                    // when replaySystem isn't active — surface that as
+                    // a thrown error so the parent sees cmd-result.ok=false.
+                    if (!ch.replaySystem || !ch.replaySystem.isActive) {
+                        throw new Error('iframe replay not active — cannot place order');
+                    }
+                    try {
+                        om.placeAdvancedOrder({ keepPanelOpen: true });
+                    } catch (e) {
+                        warn('placeOrder: placeAdvancedOrder threw', e && e.message);
+                        throw e;
+                    }
+                    // The newly-placed order id (if any) — we read
+                    // back from the most recent push. Best-effort:
+                    // the eventBus subscription below is the
+                    // authoritative source for cross-panel mirror.
+                    var arr = (om.orders && om.orders.length) ? om.orders : [];
+                    var newest = arr.length ? arr[arr.length - 1] : null;
+                    return { orderId: newest ? newest.id : null };
+                }
+                case 'addOrder': {
+                    var om2 = ch.orderManager;
+                    if (!om2) throw new Error('orderManager not available');
+                    var svc = om2.orderService;
+                    if (!svc) throw new Error('orderService not available');
+                    var ord = args && args.order;
+                    if (!ord || typeof ord !== 'object') {
+                        throw new Error('addOrder: missing args.order');
+                    }
+                    var kind = (args.kind === 'pending') ? 'pending' : 'opened';
+                    // De-dupe: if we already have this order id, skip.
+                    var existing = (om2.orders || []).some(function (o) {
+                        return o && o.id != null && o.id === ord.id;
+                    });
+                    if (existing) {
+                        return { skipped: true, reason: 'duplicate' };
+                    }
+                    // Loop guard: tag the id so our own eventBus
+                    // forwarder skips re-broadcasting THIS register.
+                    panelOrderState.suppressEmitId = ord.id;
+                    try {
+                        if (kind === 'pending') {
+                            if (typeof svc.registerPendingOrder === 'function') {
+                                svc.registerPendingOrder(ord);
+                            }
+                        } else {
+                            if (typeof svc.registerOpenOrder === 'function') {
+                                svc.registerOpenOrder(ord);
+                            }
+                        }
+                    } finally {
+                        // Defer clear by a microtask so the synchronous
+                        // emit inside register* sees the suppress id.
+                        setTimeout(function () {
+                            if (panelOrderState.suppressEmitId === ord.id) {
+                                panelOrderState.suppressEmitId = null;
+                            }
+                        }, 0);
+                    }
+                    // Force a render so the line shows up immediately.
+                    try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
+                    try {
+                        if (om2.updateOrderLines) om2.updateOrderLines(ch);
+                    } catch (_) {}
+                    return { ok: true };
+                }
+                case 'closeOrder': {
+                    var omC = ch.orderManager;
+                    if (!omC) throw new Error('orderManager not available');
+                    if (typeof omC.closePosition !== 'function') {
+                        throw new Error('orderManager.closePosition is not a function');
+                    }
+                    if (args.orderId == null) {
+                        throw new Error('closeOrder: missing args.orderId');
+                    }
+                    panelOrderState.suppressEmitId = args.orderId;
+                    try {
+                        omC.closePosition(args.orderId);
+                    } finally {
+                        setTimeout(function () {
+                            if (panelOrderState.suppressEmitId === args.orderId) {
+                                panelOrderState.suppressEmitId = null;
+                            }
+                        }, 0);
+                    }
+                    return { ok: true };
+                }
+                case 'cancelOrder': {
+                    var omX = ch.orderManager;
+                    if (!omX) throw new Error('orderManager not available');
+                    if (typeof omX.cancelPendingOrder !== 'function') {
+                        throw new Error('orderManager.cancelPendingOrder is not a function');
+                    }
+                    if (args.orderId == null) {
+                        throw new Error('cancelOrder: missing args.orderId');
+                    }
+                    panelOrderState.suppressEmitId = args.orderId;
+                    try {
+                        omX.cancelPendingOrder(args.orderId, { silent: true });
+                    } finally {
+                        setTimeout(function () {
+                            if (panelOrderState.suppressEmitId === args.orderId) {
+                                panelOrderState.suppressEmitId = null;
+                            }
+                        }, 0);
+                    }
+                    return { ok: true };
+                }
+
                 // ─── extensibility hook ────────────────────────────────
                 // Phase 7.2.4 covers tf + file + drawings + indicators.
-                // Future commands (place order, chart type) land here
-                // as additional case branches — same envelope shape,
-                // no protocol churn.
+                // Phase 7.2.4-orders adds the order routing above.
+                // Future commands (chart type, alerts) land here as
+                // additional case branches — same envelope shape, no
+                // protocol churn.
                 default:
                     throw new Error('unknown panel-cmd: ' + cmd);
             }
@@ -650,6 +913,10 @@
                 'replayPause',
                 'replaySetSpeed',
                 'replaySetMode',
+                'placeOrder',
+                'addOrder',
+                'closeOrder',
+                'cancelOrder',
             ],
         }, '*');
     } catch (_) {}

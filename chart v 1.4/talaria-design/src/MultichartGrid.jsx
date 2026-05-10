@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260512T2000";
+const BRIDGE_VERSION = "20260513T0900";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -722,6 +722,20 @@ export default function MultichartGrid({
     const focusedPanelIdRef = useRef(focusedPanelId);
     useEffect(() => { focusedPanelIdRef.current = focusedPanelId; }, [focusedPanelId]);
     const onStateAnyRef = useRef(null);
+
+    // ─── per-host order forwarding state ──────────────────────────────
+    //
+    // suppressEmitId — set to an order.id during an applyHostCommand
+    //   "addOrder" call so the host's eventBus listener (installed in
+    //   the order-mirror useEffect below) can skip THAT id and not
+    //   re-broadcast it back to the originating panel. Same trick the
+    //   iframe side uses (panel-cmd-bridge panelOrderState).
+    // listenerInstalled — guard so the host eventBus subscription is
+    //   installed at most once per page session.
+    const hostOrderStateRef = useRef({
+        suppressEmitId:    null,
+        listenerInstalled: false,
+    });
 
     const layout = useMemo(
         () => resolveLayout(layoutId, panelCount),
@@ -1722,6 +1736,101 @@ export default function MultichartGrid({
                             indicators: list.map((i) => ({ id: i.id, type: i.type || i.name || null })),
                         });
                     }
+
+                    // ─── orders (host-side) ─────────────────────────
+                    //
+                    // The host already owns the parent's #orderPanel
+                    // DOM and the React rail keeps its inputs in sync,
+                    // so placeOrder on the host is just "click the
+                    // existing button" — no argument shimming needed.
+                    // We mark the click as multichart-internal so the
+                    // capture-phase interceptor (installed below)
+                    // doesn't re-route it back into runCommand and
+                    // recursively re-fire forever.
+                    case "placeOrder": {
+                        const om = ch.orderManager;
+                        if (!om || typeof om.placeAdvancedOrder !== "function") {
+                            return Promise.reject(new Error("orderManager.placeAdvancedOrder is not a function"));
+                        }
+                        if (!ch.replaySystem || !ch.replaySystem.isActive) {
+                            return Promise.reject(new Error("host replay not active — cannot place order"));
+                        }
+                        try {
+                            om.placeAdvancedOrder({ keepPanelOpen: true });
+                            const arr = (om.orders && om.orders.length) ? om.orders : [];
+                            const newest = arr.length ? arr[arr.length - 1] : null;
+                            return Promise.resolve({ orderId: newest ? newest.id : null });
+                        } catch (e) {
+                            return Promise.reject(e);
+                        }
+                    }
+                    case "addOrder": {
+                        const om = ch.orderManager;
+                        const svc = om && om.orderService;
+                        if (!svc) return Promise.reject(new Error("orderService not available"));
+                        const order = args && args.order;
+                        if (!order) return Promise.reject(new Error("addOrder: missing args.order"));
+                        const kind = (args.kind === "pending") ? "pending" : "opened";
+                        const existing = (om.orders || []).some((o) => o && o.id != null && o.id === order.id);
+                        if (existing) return Promise.resolve({ skipped: true, reason: "duplicate" });
+                        // Loop guard — same trick as iframe side; the
+                        // host's eventBus listener (installed below)
+                        // will skip emitting THIS id.
+                        hostOrderStateRef.current.suppressEmitId = order.id;
+                        try {
+                            if (kind === "pending" && typeof svc.registerPendingOrder === "function") {
+                                svc.registerPendingOrder(order);
+                            } else if (typeof svc.registerOpenOrder === "function") {
+                                svc.registerOpenOrder(order);
+                            }
+                        } finally {
+                            setTimeout(() => {
+                                if (hostOrderStateRef.current.suppressEmitId === order.id) {
+                                    hostOrderStateRef.current.suppressEmitId = null;
+                                }
+                            }, 0);
+                        }
+                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                        try { if (om.updateOrderLines) om.updateOrderLines(ch); } catch (_) {}
+                        return Promise.resolve({ ok: true });
+                    }
+                    case "closeOrder": {
+                        const om = ch.orderManager;
+                        if (!om || typeof om.closePosition !== "function") {
+                            return Promise.reject(new Error("orderManager.closePosition is not a function"));
+                        }
+                        if (args.orderId == null) return Promise.reject(new Error("closeOrder: missing orderId"));
+                        hostOrderStateRef.current.suppressEmitId = args.orderId;
+                        try { om.closePosition(args.orderId); }
+                        catch (e) { return Promise.reject(e); }
+                        finally {
+                            setTimeout(() => {
+                                if (hostOrderStateRef.current.suppressEmitId === args.orderId) {
+                                    hostOrderStateRef.current.suppressEmitId = null;
+                                }
+                            }, 0);
+                        }
+                        return Promise.resolve({ ok: true });
+                    }
+                    case "cancelOrder": {
+                        const om = ch.orderManager;
+                        if (!om || typeof om.cancelPendingOrder !== "function") {
+                            return Promise.reject(new Error("orderManager.cancelPendingOrder is not a function"));
+                        }
+                        if (args.orderId == null) return Promise.reject(new Error("cancelOrder: missing orderId"));
+                        hostOrderStateRef.current.suppressEmitId = args.orderId;
+                        try { om.cancelPendingOrder(args.orderId, { silent: true }); }
+                        catch (e) { return Promise.reject(e); }
+                        finally {
+                            setTimeout(() => {
+                                if (hostOrderStateRef.current.suppressEmitId === args.orderId) {
+                                    hostOrderStateRef.current.suppressEmitId = null;
+                                }
+                            }, 0);
+                        }
+                        return Promise.resolve({ ok: true });
+                    }
+
                     default:
                         return Promise.reject(new Error("unknown host cmd: " + cmd));
                 }
@@ -1814,6 +1923,234 @@ export default function MultichartGrid({
         };
         // Mount-once. The ref captures the latest focusedPanelId without
         // re-subscribing.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // ─── Phase 7.2.4-orders: per-panel order placement + cross-panel mirror ─
+    //
+    // THREE responsibilities live in this effect, all scoped to the
+    // grid's lifetime so they self-clean when the user switches back to
+    // a single chart:
+    //
+    //   1. INTERCEPT the parent's #placeOrderButton click. When the
+    //      focused panel is an iframe, collect the form values from
+    //      the parent's hidden #orderPanel DOM and route a `placeOrder`
+    //      command to that iframe instead of letting the host's
+    //      orderManager.placeAdvancedOrder fire on the parent's
+    //      window.chart. When the focused panel is the host, do
+    //      NOTHING — let the original onclick run through unchanged
+    //      (zero regression for single-panel-style use).
+    //
+    //   2. SUBSCRIBE to the host's orderService eventBus so any order
+    //      that's `:opened` or `:pending` on the host gets fanned out
+    //      to all peer iframes whose currentSymbol matches. This
+    //      covers the case where the user kept Panel A focused and
+    //      placed via the rail — the order appears on the host AND
+    //      on every same-pair iframe.
+    //
+    //   3. LISTEN for `iframe-order` postMessage envelopes (sent by
+    //      panel-cmd-bridge.installOrderForwarders inside each iframe)
+    //      and fan them out the same way: to the host (if symbol
+    //      matches) and to every other iframe (if symbol matches),
+    //      excluding the source.
+    //
+    // Symbol matching is done on a NORMALIZED form (slash stripped,
+    // upper-cased) because order objects store symbol like 'EURUSD'
+    // while chart.currentSymbol is 'EUR/USD'. Without the normalize,
+    // every cross-panel mirror would silently fail.
+    useEffect(() => {
+        const normalize = (s) => String(s || "").replace(/\//g, "").toUpperCase();
+
+        // Read order spec from parent's hidden #orderPanel DOM.
+        // React (TalariaV8bLive) keeps these inputs in sync with its
+        // own form state via the useEffect at ~line 6008 — so by the
+        // time the user clicks the rail's Execute button, this DOM
+        // reflects exactly what the user typed.
+        function collectOrderArgs() {
+            const doc = document;
+            const buyTab = doc.getElementById("buyTab");
+            const side = (buyTab && buyTab.classList.contains("active"))
+                ? "BUY"
+                : "SELL";
+            const activeTypeBtn = doc.querySelector("#orderPanel .order-type-btn.active");
+            const type = activeTypeBtn
+                ? (activeTypeBtn.getAttribute("data-type") || "market")
+                : "market";
+            const num = (id) => {
+                const el = doc.getElementById(id);
+                if (!el) return null;
+                const n = parseFloat(el.value);
+                return Number.isFinite(n) ? n : null;
+            };
+            const chk = (id) => {
+                const el = doc.getElementById(id);
+                return !!(el && el.checked);
+            };
+            return {
+                side,
+                type,
+                quantity:    num("orderQuantity"),
+                entryPrice:  num("orderEntryPrice"),
+                slEnabled:   chk("enableSL"),
+                slPrice:     num("slPrice"),
+                tpEnabled:   chk("enableTP"),
+                tpPrice:     num("tpPrice"),
+            };
+        }
+
+        // Find all panels (host + iframes) whose currentSymbol matches
+        // the given normalized symbol, excluding the panel id in
+        // `excludeId`. Returns array of { id, isHost }.
+        function findPanelsForSymbol(symNorm, excludeId) {
+            const out = [];
+            // Host
+            if (excludeId !== HOST_PANEL_ID) {
+                const ch = window.chart;
+                if (ch && normalize(ch.currentSymbol) === symNorm) {
+                    out.push({ id: HOST_PANEL_ID, isHost: true });
+                }
+            }
+            // Iframes
+            const mgr = managerRef.current;
+            if (mgr && mgr.charts && typeof mgr.charts.values === "function") {
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host) continue;
+                    if (c.id === excludeId) continue;
+                    const sym = c.state && c.state.symbol;
+                    if (sym && normalize(sym) === symNorm) {
+                        out.push({ id: c.id, isHost: false });
+                    }
+                }
+            }
+            return out;
+        }
+
+        // Send addOrder to the given panel (host or iframe) using the
+        // existing runCommand bus. Wrapped in try/catch so a single
+        // bad panel can't break the others.
+        function mirrorTo(panelId, isHost, kind, order) {
+            const grid = window.__multichartGrid;
+            if (!grid || typeof grid.runCommand !== "function") return;
+            try {
+                grid.runCommand("addOrder", { order, kind }, { panelId })
+                    .catch((e) => {
+                        console.warn("[MultichartGrid] addOrder",
+                            panelId, "failed:", e && e.message || e);
+                    });
+            } catch (e) {
+                console.warn("[MultichartGrid] addOrder", panelId, "threw:", e);
+            }
+        }
+
+        function broadcastOrder(sourceId, kind, order) {
+            if (!order || order.id == null) return;
+            const symNorm = normalize(order.symbol || order.ticker);
+            if (!symNorm) return;
+            const peers = findPanelsForSymbol(symNorm, sourceId);
+            for (const p of peers) {
+                mirrorTo(p.id, p.isHost, kind, order);
+            }
+        }
+
+        // ─── 1. host eventBus subscription ─────────────────────────
+        let hostOffOpened = null;
+        let hostOffPending = null;
+        let hostOffClosed = null;
+        function tryInstallHostBus() {
+            const ch = window.chart;
+            const svc = ch && ch.orderManager && ch.orderManager.orderService;
+            const bus = svc && svc.eventBus;
+            if (!bus || typeof bus.on !== "function") return false;
+            if (hostOrderStateRef.current.listenerInstalled) return true;
+            hostOrderStateRef.current.listenerInstalled = true;
+            hostOffOpened = bus.on("order:opened", (o) => {
+                if (!o || o.id == null) return;
+                if (hostOrderStateRef.current.suppressEmitId === o.id) return;
+                broadcastOrder(HOST_PANEL_ID, "opened", o);
+            });
+            hostOffPending = bus.on("order:pending", (o) => {
+                if (!o || o.id == null) return;
+                if (hostOrderStateRef.current.suppressEmitId === o.id) return;
+                broadcastOrder(HOST_PANEL_ID, "pending", o);
+            });
+            // Note: we do NOT mirror order:closed yet — the chart
+            // engine handles SL/TP hits + manual closes per-panel
+            // already via shared session state on the next render.
+            // Adding it here would risk double-closing positions
+            // that the iframe's own simulated price already closed.
+            return true;
+        }
+        if (!tryInstallHostBus()) {
+            // chart.orderManager.orderService may not exist yet (chart
+            // boots async). Poll for ~5s, then give up.
+            let tries = 0;
+            const id = setInterval(() => {
+                tries += 1;
+                if (tryInstallHostBus() || tries > 50) clearInterval(id);
+            }, 100);
+        }
+
+        // ─── 2. iframe-order postMessage listener ──────────────────
+        function onIframeOrder(ev) {
+            const msg = ev && ev.data;
+            if (!msg || typeof msg !== "object") return;
+            if (msg.type !== "iframe-order") return;
+            const sourceId = msg.source;
+            const kind     = msg.kind;
+            const order    = msg.order;
+            if (!order || order.id == null) return;
+            if (kind !== "opened" && kind !== "pending") return;
+            broadcastOrder(sourceId, kind, order);
+        }
+        window.addEventListener("message", onIframeOrder);
+
+        // ─── 3. #placeOrderButton click interceptor ────────────────
+        //
+        // We attach in CAPTURE phase on document so we run BEFORE the
+        // element's onclick handler (set by order-manager). When the
+        // focused panel is an iframe we stopImmediatePropagation +
+        // preventDefault and route via runCommand. When focus is the
+        // host (or no panel focused / no multichart active), we let
+        // the click through unchanged.
+        function onPlaceOrderClickCapture(ev) {
+            const t = ev && ev.target;
+            if (!t || t.id !== "placeOrderButton") return;
+            const focused = focusedPanelIdRef.current;
+            if (!focused || focused === HOST_PANEL_ID) return;
+            // Iframe focused — route there.
+            ev.stopImmediatePropagation();
+            ev.preventDefault();
+            const args = collectOrderArgs();
+            const grid = window.__multichartGrid;
+            if (!grid || typeof grid.runCommand !== "function") {
+                console.warn("[MultichartGrid] placeOrder intercept: __multichartGrid not ready");
+                return;
+            }
+            grid.runCommand("placeOrder", args, { panelId: focused })
+                .then(() => {
+                    // Drain "Execute" rail visual feedback by firing
+                    // the same talaria event chart.orderManager would
+                    // fire — keeps any badges / journal listeners in
+                    // sync. order-manager's own emit handles this in
+                    // single-chart mode; here we wait for the iframe-
+                    // order broadcast to mirror the rest.
+                })
+                .catch((e) => {
+                    console.warn("[MultichartGrid] iframe placeOrder failed:", e && e.message || e);
+                });
+        }
+        document.addEventListener("click", onPlaceOrderClickCapture, true);
+
+        return () => {
+            document.removeEventListener("click", onPlaceOrderClickCapture, true);
+            window.removeEventListener("message", onIframeOrder);
+            try { if (typeof hostOffOpened  === "function") hostOffOpened(); }  catch (_) {}
+            try { if (typeof hostOffPending === "function") hostOffPending(); } catch (_) {}
+            try { if (typeof hostOffClosed  === "function") hostOffClosed(); }  catch (_) {}
+            hostOrderStateRef.current.listenerInstalled = false;
+        };
+        // Mount-once. Refs supply the latest focused panel + manager
+        // so we never need to re-install on focus change.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
