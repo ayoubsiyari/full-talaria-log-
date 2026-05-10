@@ -357,6 +357,74 @@
             scheduleFlush();
         });
 
+        // 2b) Force-dispatch chartScrolled regardless of legacy panelManager.
+        //
+        // chart.js's native `dispatchScrollSync` (chart.js:8541) early-returns
+        // when `!window.panelManager || currentLayout === '1'` AND when
+        // pm.syncSettings.time/dateRange are both off. In the multichart
+        // system NEITHER condition is ever true:
+        //   • `window.panelManager` doesn't exist (PanelManager class isn't
+        //     wired in the V9 build).
+        //   • Even if it existed, our React layout state never propagates
+        //     `currentLayout` back to it — pm sees a permanent '1'.
+        //
+        // The result is no `chartScrolled` event ever fires from the host
+        // chart, so the listener above never sees a single visible-range
+        // change, so visible-range / Date Range / Time sync silently no-op.
+        //
+        // We monkey-patch `chart.dispatchScrollSync` to ALWAYS dispatch the
+        // event with the same envelope chart.js builds itself (sourced from
+        // `getVisibleStartIndex` / `getVisibleEndIndex` / `inferBarDurationMs`),
+        // then chain through to the original (which is a no-op in our
+        // environment but kept defensive for any future wiring that does
+        // restore panelManager).
+        const __origDispatchScrollSync = (typeof chart.dispatchScrollSync === 'function')
+            ? chart.dispatchScrollSync.bind(chart)
+            : null;
+        chart.dispatchScrollSync = function (force) {
+            try {
+                if (chart.data && chart.data.length > 0) {
+                    const startIndex = (typeof chart.getVisibleStartIndex === 'function')
+                        ? chart.getVisibleStartIndex()
+                        : 0;
+                    const endIndex = (typeof chart.getVisibleEndIndex === 'function')
+                        ? chart.getVisibleEndIndex()
+                        : Math.max(0, chart.data.length - 1);
+                    const startTimestamp = chart.data[startIndex]
+                        ? Number(chart.data[startIndex].t)
+                        : 0;
+                    const barMs = (typeof chart.inferBarDurationMs === 'function')
+                        ? chart.inferBarDurationMs()
+                        : 60000;
+                    const endTimestamp = chart.data[endIndex]
+                        ? Number(chart.data[endIndex].t) + barMs
+                        : 0;
+                    if (Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
+                        && endTimestamp > startTimestamp) {
+                        global.dispatchEvent(new CustomEvent('chartScrolled', {
+                            detail: {
+                                chart: chart,
+                                startIndex: startIndex,
+                                endIndex: endIndex,
+                                startTimestamp: startTimestamp,
+                                endTimestamp: endTimestamp,
+                                timeSyncEndTimestamp: endTimestamp,
+                                rangeEndExclusive: endTimestamp,
+                                offsetX: chart.offsetX,
+                                candleWidth: chart.candleWidth,
+                                _multichartForced: true,
+                            },
+                        }));
+                    }
+                }
+            } catch (e) {
+                warn('forced dispatchScrollSync threw', e && e.message);
+            }
+            if (__origDispatchScrollSync) {
+                try { __origDispatchScrollSync(force); } catch (_) { /* native no-op in multichart env */ }
+            }
+        };
+
         // 3) Symbol / data load — re-emit chart-state, NOT a sync event.
         //    v10.3: also include firstBarMs/lastBarMs so the shell can detect
         //    cross-panel date-range mismatches (different files covering
