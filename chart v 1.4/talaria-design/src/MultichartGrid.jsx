@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260513T2130";
+const BRIDGE_VERSION = "20260513T2200";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1637,21 +1637,32 @@ export default function MultichartGrid({
     const [focusedRect, setFocusedRect] = useState(null);
     const computeFocusedRect = () => {
         if (typeof document === "undefined") return;
-        if (!focusedPanelId) { setFocusedRect(null); return; }
+        if (!focusedPanelId) {
+            setFocusedRect(null);
+            try { console.log("[focus-frame] no focusedPanelId — cleared"); } catch (_) {}
+            return;
+        }
         // Both host AND iframe paths read from the cell <div> — the
         // host wrapper is sized to cell A, so the cell's bbox is the
         // correct rect for either case. This keeps the math uniform.
         const cell = cellRefs.current[focusedPanelId];
         const parent = document.getElementById(HOST_CONTAINER_ID);
-        if (!cell || !parent) { setFocusedRect(null); return; }
+        if (!cell || !parent) {
+            setFocusedRect(null);
+            try { console.log("[focus-frame] missing cell or parent",
+                { focusedPanelId, hasCell: !!cell, hasParent: !!parent }); } catch (_) {}
+            return;
+        }
         const cellRect = cell.getBoundingClientRect();
         const parentRect = parent.getBoundingClientRect();
-        setFocusedRect({
+        const next = {
             left:   Math.round(cellRect.left   - parentRect.left),
             top:    Math.round(cellRect.top    - parentRect.top),
             width:  Math.round(cellRect.width),
             height: Math.round(cellRect.height),
-        });
+        };
+        try { console.log("[focus-frame] computed", { focusedPanelId, next }); } catch (_) {}
+        setFocusedRect(next);
     };
     // Recompute on every input that can move/resize cells.
     useLayoutEffect(() => {
@@ -2764,6 +2775,7 @@ export default function MultichartGrid({
             <div
                 aria-hidden="true"
                 data-multichart-focus-frame="1"
+                data-focused-panel-id={focusedPanelId || ""}
                 style={{
                     position: "absolute",
                     left:   `${focusedRect.left}px`,
@@ -2771,10 +2783,22 @@ export default function MultichartGrid({
                     width:  `${focusedRect.width}px`,
                     height: `${focusedRect.height}px`,
                     pointerEvents: "none",
-                    border: "2px solid #2962ff",
+                    // Bumped from 2px → 3px and added a stronger
+                    // outer halo + inset glow so the focus state
+                    // reads against the dark chart background. Even
+                    // at a glance the user should see "this panel
+                    // is selected" without squinting.
+                    border: "3px solid #2962ff",
                     boxSizing: "border-box",
-                    boxShadow: "0 0 0 1px rgba(41,98,255,0.45)",
-                    zIndex: 14,
+                    boxShadow: [
+                        "0 0 0 1px #2962ff",                // crisp outer line
+                        "0 0 8px 2px rgba(41,98,255,0.55)", // soft outer glow
+                        "inset 0 0 8px rgba(41,98,255,0.30)", // inner glow
+                    ].join(", "),
+                    // High z-index inside #chart-container's stacking
+                    // context — above #chartWrapper (z:13) and the
+                    // grid container (z:12).
+                    zIndex: 50,
                 }}
             />
         )}
