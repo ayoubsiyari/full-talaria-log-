@@ -41,3 +41,21 @@ if (fs.existsSync(chartJsSrc)) {
 } else {
   console.warn("[sync-v9-to-homepage] chart.js not found, skip:", chartJsSrc);
 }
+
+// Phase 7.2.x multichart bridge scripts: dist-v9 shim loads these at runtime
+// from /chart/multichart-prod/ (sync-bridge.js, multichart-manager.js,
+// engine-api-guards.js, embed-bridge.js, panel-cmd-bridge.js). Copy the
+// whole folder so homepage `/chart/multichart-prod/*` serves the latest
+// versions — without this, edits to sync-bridge.js / multichart-manager.js
+// silently never reach the deployed site even after a build.
+const mcpSrc = path.resolve(__dirname, "../../chart/multichart-prod");
+const mcpDest = path.resolve(__dirname, "../../../homepage/public/chart/multichart-prod");
+if (fs.existsSync(mcpSrc)) {
+  if (fs.existsSync(mcpDest)) {
+    fs.rmSync(mcpDest, { recursive: true, force: true });
+  }
+  fs.cpSync(mcpSrc, mcpDest, { recursive: true });
+  console.log("[sync-v9-to-homepage] Copied multichart-prod", mcpSrc, "→", mcpDest);
+} else {
+  console.warn("[sync-v9-to-homepage] multichart-prod not found, skip:", mcpSrc);
+}
