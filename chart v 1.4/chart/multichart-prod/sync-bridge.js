@@ -587,6 +587,23 @@
             }
             const action = m.type.slice('drawing-'.length); // 'add' | 'update' | 'remove' | 'clear'
             state.applied.add(m.causationId);
+
+            // ── Diagnostic snapshot BEFORE ────────────────────────────
+            // Drawings on this panel show price-axis labels but no shape =
+            // drawing entered dm.drawings (so showAxisHighlights ran) but
+            // its SVG group is empty / off-screen / clipped. Print the
+            // before/after state so we can see exactly what happened in
+            // the iframe DevTools console without rebuilding.
+            const dmBefore = (chart.drawingManager && chart.drawingManager.drawings)
+                ? chart.drawingManager.drawings.length : -1;
+            const incoming = m.drawing || {};
+            console.log('[bridge:' + chartId + '] drawing-' + action,
+                'id=' + (incoming.id || '?'),
+                'type=' + (incoming.type || '?'),
+                'cs=' + (incoming.coordinateSystem || '?'),
+                'pts=' + (Array.isArray(incoming.points) ? incoming.points.length : '0'),
+                'dm.drawings.before=' + dmBefore);
+
             // chart.js's receiveDrawingChange already sets _receivingDrawingSync
             // around its internal work, but we set it again here so the
             // wrapped broadcastDrawingChange (above) recognizes any nested
@@ -597,8 +614,66 @@
                 chart.receiveDrawingChange(action, m.drawing, m.drawingIndex);
             } catch (e) {
                 warn('receiveDrawingChange threw', action, e && e.message);
+                console.error('[bridge:' + chartId + '] receiveDrawingChange error stack:', e && e.stack);
             } finally {
                 chart._receivingDrawingSync = wasReceiving;
+            }
+
+            // ── Diagnostic snapshot AFTER ─────────────────────────────
+            try {
+                const dm = chart.drawingManager;
+                const dmAfter = dm && dm.drawings ? dm.drawings.length : -1;
+                let last = null;
+                if (dm && dm.drawings) {
+                    last = dm.drawings.find(function (d) { return d && d.id === incoming.id; }) || null;
+                }
+                if (last) {
+                    const groupNode = last.group && last.group.node ? last.group.node() : null;
+                    const groupKids = groupNode ? groupNode.childNodes.length : -1;
+                    const firstPt = (last.points && last.points[0]) ? last.points[0] : null;
+                    console.log('[bridge:' + chartId + '] applied drawing-' + action,
+                        'dm.drawings.after=' + dmAfter,
+                        'group=' + (groupNode ? 'YES' : 'NO'),
+                        'group.children=' + groupKids,
+                        'firstPoint=' + (firstPt ? JSON.stringify(firstPt) : 'null'),
+                        'tsPoints=' + (last.timestampPoints ? last.timestampPoints.length : '0'));
+                } else {
+                    console.warn('[bridge:' + chartId + '] applied drawing-' + action
+                        + ' but drawing not in dm.drawings (id=' + (incoming.id || '?') + ')');
+                }
+
+                // Force the chart to schedule a render. receiveDrawingChange
+                // calls dm.renderDrawing directly (which appends SVG nodes),
+                // but the canvas underneath also drives some drawing-aware
+                // rendering paths (axis highlights, hit-test caches, …). On
+                // panels that just finished loadFileData, the chart's first
+                // render may have already completed before the drawing
+                // arrived — without an explicit nudge, the SVG nodes are
+                // there but their pixel coords were computed against an
+                // older xScale/yScale and look "wrong" or sit outside the
+                // current clip rect. scheduleRender re-applies the current
+                // scales to all drawings via dm.renderAllDrawings (called
+                // from chart.render → dm.render).
+                if (typeof chart.scheduleRender === 'function') {
+                    chart.scheduleRender();
+                }
+
+                // Belt-and-suspenders: re-render this specific drawing on
+                // the next animation frame, after scheduleRender's render
+                // pass has settled and dataIndexToPixel reflects the
+                // current view. Catches race conditions where the panel
+                // was still mid-fitToView when receiveDrawingChange ran.
+                if (last && dm && typeof dm.renderDrawing === 'function') {
+                    requestAnimationFrame(function () {
+                        try {
+                            dm.renderDrawing(last);
+                        } catch (e) {
+                            console.warn('[bridge:' + chartId + '] re-render in rAF failed:', e && e.message);
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn('[bridge:' + chartId + '] post-apply diagnostic threw:', e && e.message);
             }
         }
 
