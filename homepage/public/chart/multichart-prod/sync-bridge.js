@@ -642,28 +642,56 @@
                         + ' but drawing not in dm.drawings (id=' + (incoming.id || '?') + ')');
                 }
 
-                // Force the chart to schedule a render. receiveDrawingChange
-                // calls dm.renderDrawing directly (which appends SVG nodes),
-                // but the canvas underneath also drives some drawing-aware
-                // rendering paths (axis highlights, hit-test caches, …). On
-                // panels that just finished loadFileData, the chart's first
-                // render may have already completed before the drawing
-                // arrived — without an explicit nudge, the SVG nodes are
-                // there but their pixel coords were computed against an
-                // older xScale/yScale and look "wrong" or sit outside the
-                // current clip rect. scheduleRender re-applies the current
-                // scales to all drawings via dm.renderAllDrawings (called
-                // from chart.render → dm.render).
+                // ── KEY FIX (Phase 7.2.5 drawing render race) ──────
+                //
+                // Confirmed empirically: after receiveDrawingChange returns
+                // the drawing IS in dm.drawings AND the user can see its
+                // price-axis highlight labels (showAxisHighlights ran fine,
+                // proving y-coords are valid). But the actual line/path SVG
+                // is invisible until the user changes timeframe on this
+                // panel — at which point the line appears and stays.
+                //
+                // Why: receiveDrawingChange calls dm.renderDrawing which
+                // appends SVG nodes into dm.drawingsGroup. That group has
+                // a clip-path (#chart-clip-path) computed from chart.w /
+                // chart.h via dm.updateClipPath(). On a freshly-loaded
+                // iframe that just finished loadFileData, the clip rect
+                // was set during dm.init() at chart.canvas's INITIAL
+                // dimensions — usually still 800x600 defaults — before
+                // the iframe was sized into its grid cell and chart.js
+                // ran its resize cycle. So the SVG nodes ARE created at
+                // valid coordinates, but they're CLIPPED OUT by a stale
+                // clip rect that's smaller than the actual chart area.
+                //
+                // setTimeframe → resampleData → chart.render() eventually
+                // calls dm.redrawAll() which calls dm.updateClipPath()
+                // FIRST, fixing the clip rect, THEN re-renders every
+                // drawing — that's why a tf change makes them appear and
+                // stay.
+                //
+                // Fix: call dm.redrawAll() ourselves on the next animation
+                // frame. redrawAll updates the clip path AND re-renders
+                // all drawings in one shot, which is exactly the path the
+                // tf change uses.
                 if (typeof chart.scheduleRender === 'function') {
                     chart.scheduleRender();
                 }
 
-                // Belt-and-suspenders: re-render this specific drawing on
-                // the next animation frame, after scheduleRender's render
-                // pass has settled and dataIndexToPixel reflects the
-                // current view. Catches race conditions where the panel
-                // was still mid-fitToView when receiveDrawingChange ran.
-                if (last && dm && typeof dm.renderDrawing === 'function') {
+                if (dm && typeof dm.redrawAll === 'function') {
+                    requestAnimationFrame(function () {
+                        try {
+                            dm.redrawAll();
+                        } catch (e) {
+                            console.warn('[bridge:' + chartId + '] redrawAll in rAF failed:', e && e.message);
+                            // Fallback: at least re-render the new drawing
+                            try {
+                                if (last && typeof dm.renderDrawing === 'function') {
+                                    dm.renderDrawing(last);
+                                }
+                            } catch (_) {}
+                        }
+                    });
+                } else if (last && dm && typeof dm.renderDrawing === 'function') {
                     requestAnimationFrame(function () {
                         try {
                             dm.renderDrawing(last);
