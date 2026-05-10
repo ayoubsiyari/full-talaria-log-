@@ -140,19 +140,8 @@
                     if (!dm) throw new Error('drawingManager not available');
                     var tool = args.tool ? String(args.tool) : null;
                     if (!tool) {
-                        // Match the legacy single-chart guard: only invoke
-                        // dm.clearTool when there's actually something to
-                        // clear. drawing-tools-manager.clearTool() runs
-                        // heavy DOM queries + SVG mutation + iterates every
-                        // drawing, and is unsafe to call redundantly right
-                        // after finalizeDrawing (which already cleared
-                        // currentTool to null). The host crashed without
-                        // this guard; iframes only avoided it because they
-                        // run the legacy path which already had it.
-                        if (dm.currentTool != null) {
-                            if (typeof dm.clearTool === 'function') dm.clearTool();
-                            else dm.currentTool = null;
-                        }
+                        if (typeof dm.clearTool === 'function') dm.clearTool();
+                        else dm.currentTool = null;
                         return;
                     }
                     if (typeof dm.setTool !== 'function') {
@@ -164,8 +153,6 @@
                 case 'clearActiveDrawingTool': {
                     var dmc = ch.drawingManager;
                     if (!dmc) return;
-                    // No-op guard, same reason as above.
-                    if (dmc.currentTool == null) return;
                     if (typeof dmc.clearTool === 'function') dmc.clearTool();
                     else dmc.currentTool = null;
                     return;
