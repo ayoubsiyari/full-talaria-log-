@@ -202,6 +202,158 @@
                 }
             } catch (_) {}
 
+            // ── Wipe protection + diagnostics for dm.drawings ─────────
+            //
+            // The user reports "drawings flash for ~1ms then disappear"
+            // even after the loadTradingSessionStateIfNeeded patches +
+            // ResizeObserver clip-path fix above. That pattern can ONLY
+            // be produced by something WIPING dm.drawings (or the SVG
+            // drawingsGroup's children) AFTER the initial render but
+            // BEFORE the user can interact.
+            //
+            // Known internal wipe sites in drawing-tools-manager.js:
+            //   • loadDrawings line 7193-7197 (wipes BEFORE reading
+            //     storage; if the second call's read sees a stale
+            //     localStorage entry, drawings stay wiped)
+            //   • loadDrawingsFromData line 7308-7316 (already patched
+            //     above)
+            //   • redrawAll line 6613 (wipes SVG group only, then
+            //     re-renders from dm.drawings — if dm.drawings is empty
+            //     here, SVG stays empty)
+            //   • clearDrawings line 6663 (user-triggered, harmless)
+            //
+            // Strategy:
+            //   1. Wrap dm.loadDrawings in a guard: once we have shown
+            //      drawings to the user (drawings.length > 0 after a
+            //      successful call), refuse to invoke the original again.
+            //      The destructive wipe-then-reload pattern is only
+            //      "safe" on first load when drawings = []; after that,
+            //      it's a footgun.
+            //   2. Trap writes to dm.drawings via Object.defineProperty
+            //      so any caller that does `dm.drawings = []` to nuke
+            //      the array gets a console.warn + parent host-log with
+            //      a stack trace. This tells us EXACTLY who wiped.
+            //
+            // Both are iframe-only (we're in embed-bridge); single-chart
+            // /chart/ users see no behavior change.
+            try {
+                var dmGuard = ch.drawingManager;
+                if (dmGuard && !dmGuard.__multichartGuardsInstalled) {
+                    dmGuard.__multichartGuardsInstalled = true;
+
+                    // (1) loadDrawings idempotency wrapper.
+                    if (typeof dmGuard.loadDrawings === 'function') {
+                        var __originalLoadDrawings = dmGuard.loadDrawings.bind(dmGuard);
+                        var __loadCallCount = 0;
+                        dmGuard.loadDrawings = function () {
+                            __loadCallCount++;
+                            var pre = (dmGuard.__rawDrawings && dmGuard.__rawDrawings.length)
+                                || (dmGuard._drawingsArr && dmGuard._drawingsArr.length)
+                                || 0;
+                            try {
+                                window.parent.postMessage({
+                                    type: 'host-log', source: chartId, level: 'info',
+                                    text: '[embed:' + chartId + '] loadDrawings call #'
+                                        + __loadCallCount + ' (pre=' + pre + ')',
+                                }, '*');
+                            } catch (_) {}
+                            // Once we've successfully loaded ≥1 drawing
+                            // and another call comes in, SKIP. Don't let
+                            // the destructive wipe-at-top fire a second
+                            // time. If the caller wanted to refresh due
+                            // to a tf change, refreshDrawingsForTimeframe
+                            // is the correct entry point and it's not
+                            // affected by this guard.
+                            if (pre > 0 && __loadCallCount > 1) {
+                                try {
+                                    window.parent.postMessage({
+                                        type: 'host-log', source: chartId, level: 'info',
+                                        text: '[embed:' + chartId + '] loadDrawings call #'
+                                            + __loadCallCount + ' SKIPPED — would wipe '
+                                            + pre + ' existing drawings',
+                                    }, '*');
+                                } catch (_) {}
+                                return Promise.resolve();
+                            }
+                            try {
+                                var ret = __originalLoadDrawings();
+                                if (ret && typeof ret.then === 'function') {
+                                    return ret.then(function (r) {
+                                        var post = (dmGuard.__rawDrawings && dmGuard.__rawDrawings.length)
+                                            || (dmGuard._drawingsArr && dmGuard._drawingsArr.length)
+                                            || 0;
+                                        try {
+                                            window.parent.postMessage({
+                                                type: 'host-log', source: chartId, level: 'info',
+                                                text: '[embed:' + chartId + '] loadDrawings call #'
+                                                    + __loadCallCount + ' done (post=' + post + ')',
+                                            }, '*');
+                                        } catch (_) {}
+                                        return r;
+                                    });
+                                }
+                                return ret;
+                            } catch (e) {
+                                try {
+                                    window.parent.postMessage({
+                                        type: 'host-log', source: chartId, level: 'error',
+                                        text: '[embed:' + chartId + '] loadDrawings threw: ' + (e && e.message || e),
+                                    }, '*');
+                                } catch (_) {}
+                                throw e;
+                            }
+                        };
+                    }
+
+                    // (2) dm.drawings setter trap. Logs every assignment
+                    // that wipes a populated array (length > 0 → 0).
+                    // _drawingsArr is the backing storage; the property
+                    // descriptor proxies reads/writes through it.
+                    try {
+                        var __initialDrawings = dmGuard.drawings;
+                        Object.defineProperty(dmGuard, '_drawingsArr', {
+                            value: Array.isArray(__initialDrawings) ? __initialDrawings : [],
+                            writable: true, configurable: true, enumerable: false,
+                        });
+                        Object.defineProperty(dmGuard, 'drawings', {
+                            configurable: true,
+                            enumerable: true,
+                            get: function () { return this._drawingsArr; },
+                            set: function (v) {
+                                var prev = this._drawingsArr;
+                                var prevLen = (prev && prev.length) || 0;
+                                var nextLen = (Array.isArray(v) && v.length) || 0;
+                                if (prevLen > 0 && nextLen === 0) {
+                                    var stack = '';
+                                    try { stack = new Error().stack || ''; } catch (_) {}
+                                    var firstFrames = stack.split('\n').slice(1, 6).join(' | ');
+                                    try {
+                                        console.warn('[embed:' + chartId + '] dm.drawings WIPE '
+                                            + '(' + prevLen + ' → 0)\n', stack);
+                                    } catch (_) {}
+                                    try {
+                                        window.parent.postMessage({
+                                            type: 'host-log', source: chartId, level: 'warn',
+                                            text: '[embed:' + chartId + '] dm.drawings WIPE ('
+                                                + prevLen + ' → 0) at: ' + firstFrames,
+                                        }, '*');
+                                    } catch (_) {}
+                                }
+                                this._drawingsArr = Array.isArray(v) ? v : [];
+                            },
+                        });
+                    } catch (e) {
+                        try {
+                            window.parent.postMessage({
+                                type: 'host-log', source: chartId, level: 'error',
+                                text: '[embed:' + chartId + '] dm.drawings setter trap install failed: '
+                                    + (e && e.message || e),
+                            }, '*');
+                        } catch (_) {}
+                    }
+                }
+            } catch (_) {}
+
             // ── Drawings-clip-path race fix ──
             //
             // chart.js renders into its drawingsGroup, which is clipped by
