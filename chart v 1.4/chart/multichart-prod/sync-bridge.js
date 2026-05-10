@@ -580,6 +580,100 @@
             }
         }
 
+        // ── Decorate incoming drawing points with local {x, y} indices ─
+        //
+        // Every drawing payload that crosses the bridge is the OUTPUT of
+        // chart.js BaseDrawing.toJSON (drawing-tools-base.js:757). When
+        // a drawing has timestampPoints (which is ALWAYS true after the
+        // first toJSON, since toJSON caches them back to the instance),
+        // toJSON serializes points as:
+        //   [{ timestamp, price }, …], coordinateSystem='timestamp'
+        // dropping the original {x, y} index fields entirely.
+        //
+        // chart.js's receiveDrawingChange (chart.js:21047) handles the
+        // NEW-add path by calling CoordinateUtils.pointsFromTimestamps
+        // (line 21123) to materialize {x, y} indices from those
+        // timestamps using the LOCAL chart.data — perfect.
+        //
+        // BUT the LIVE-update path (line 21068-21075, isLiveId branch)
+        // does NOT call pointsFromTimestamps. Instead it does a blind
+        //   existingById.points = drawingData.points
+        // assuming drawingData.points already has {x, y}. With our
+        // postMessage transport, drawingData.points is in {timestamp,
+        // price} form, so the resulting drawing instance has points
+        // without `x` or `y` — Trendline.render then reads `p1.x`
+        // (undefined) → dataIndexToPixel(undefined) → NaN, hits the
+        // SVG attribute validator, and the entire drawing renders
+        // invisible.
+        //
+        // We patch this on the receiver side by decorating each
+        // incoming point with a computed `x` (via pointsFromTimestamps
+        // against the iframe's local data + timeframe) and `y` (just
+        // the price). The live-update path then writes valid {x, y}
+        // and the renderer paints correctly. Idempotent: if a point
+        // already has finite x/y we leave them alone.
+        //
+        // Why receiver-side and not source-side: at broadcast time the
+        // bridge sees the toJSON OUTPUT, not the original drawing
+        // instance, so the {x, y} indices are already gone. Receiver-
+        // side fixup also has the right reference frame (we want
+        // indices into the LOCAL panel's data, not the source's).
+        function decorateDrawingPointsWithLocalIndices(drawingData) {
+            if (!drawingData || !Array.isArray(drawingData.points) || drawingData.points.length === 0) return;
+            const data = chart && chart.data;
+            if (!data || data.length === 0) return;
+            // CoordinateUtils is a top-level `class` in drawing-tools-base.js
+            // (loaded as a regular <script>). Top-level class bindings live
+            // on the script-global scope but are NOT mirrored on `window`,
+            // so reach them via the bare name. Fallback to global.* in case
+            // a future module bundle exposes it differently.
+            let CU = null;
+            try { CU = (typeof CoordinateUtils !== 'undefined') ? CoordinateUtils : null; }
+            catch (_) { CU = null; }
+            if (!CU && typeof global.CoordinateUtils !== 'undefined') CU = global.CoordinateUtils;
+            if (!CU || typeof CU.pointsFromTimestamps !== 'function') return;
+            // Only convert points that lack a finite x. Points may already
+            // have been decorated (e.g. retransmitted update) and
+            // re-converting would just recompute the same index.
+            const needsConvert = drawingData.points.some(function (p) {
+                return p && (typeof p.x !== 'number' || !Number.isFinite(p.x))
+                    && (p.timestamp != null || p.t != null);
+            });
+            if (needsConvert) {
+                const tf = chart.currentTimeframe || null;
+                // Normalize timestamp/t shape — pointsFromTimestamps reads p.timestamp.
+                const tsForConversion = drawingData.points.map(function (p) {
+                    return {
+                        timestamp: (p && (p.timestamp != null ? p.timestamp : p.t)),
+                        price:     (p && (p.price != null ? p.price : p.y)),
+                    };
+                });
+                const converted = CU.pointsFromTimestamps(tsForConversion, data, tf);
+                for (let i = 0; i < drawingData.points.length; i++) {
+                    const p = drawingData.points[i];
+                    const c = converted[i];
+                    if (!p || !c) continue;
+                    if (typeof p.x !== 'number' || !Number.isFinite(p.x)) {
+                        p.x = c.x;
+                    }
+                    if (typeof p.y !== 'number' || !Number.isFinite(p.y)) {
+                        // Prefer price when present (toJSON output stores it
+                        // there); fall back to converted.y which is just
+                        // p.price || p.y.
+                        p.y = (p.price != null ? p.price : c.y);
+                    }
+                }
+            } else {
+                // Even when x is fine, points may lack `y` (e.g. only
+                // `price`). Renderers read p.y, so backfill.
+                for (const p of drawingData.points) {
+                    if (p && (typeof p.y !== 'number' || !Number.isFinite(p.y)) && p.price != null) {
+                        p.y = p.price;
+                    }
+                }
+            }
+        }
+
         function applyDrawingChange(m) {
             if (typeof chart.receiveDrawingChange !== 'function') {
                 warn('chart.receiveDrawingChange missing — cannot apply drawing sync');
@@ -587,6 +681,13 @@
             }
             const action = m.type.slice('drawing-'.length); // 'add' | 'update' | 'remove' | 'clear'
             state.applied.add(m.causationId);
+            // Decorate BEFORE handing to chart.js so both new-add and
+            // live-update branches see valid {x, y} on every point.
+            // chart.js's own pointsFromTimestamps call inside the new-add
+            // branch is then a no-op (point.x already finite → not
+            // re-converted).
+            try { decorateDrawingPointsWithLocalIndices(m.drawing); }
+            catch (e) { warn('decorateDrawingPoints threw', e && e.message); }
 
             // ── Diagnostic snapshot BEFORE ────────────────────────────
             // Drawings on this panel show price-axis labels but no shape =

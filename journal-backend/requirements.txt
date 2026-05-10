@@ -1,5 +1,6 @@
 alembic==1.13.1
-gunicorn==21.2.0
+# 22.0.0 fixes CVE-2024-1135 (HTTP Request Smuggling). Pinned to 22.x to avoid surprise major bumps.
+gunicorn==22.0.0
 annotated-types==0.7.0
 anyio==4.9.0
 bcrypt==4.3.0
