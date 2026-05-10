@@ -120,6 +120,87 @@
             if (sessionId) {
                 try { ch.activeTradingSessionId = sessionId; } catch (_) {}
             }
+
+            // ── CRITICAL: neutralize loadTradingSessionStateIfNeeded ──
+            //
+            // chart.js's initReplaySystem schedules this fetch via
+            // setTimeout(0) at chart.js:3124. It hits
+            // /api/sessions/{sessionId}/state and, if state.drawings is
+            // non-empty, calls drawingManager.loadDrawingsFromData(state.drawings)
+            // — which SYNCHRONOUSLY WIPES dm.drawings + dm.drawingsGroup
+            // (drawing-tools-manager.js:7308-7316) before re-pushing from
+            // the server snapshot. In the multichart iframe context this
+            // produces the user-visible "drawing flashes for ~5ms then
+            // disappears" because:
+            //   1. dm.loadDrawings() (called from chart.loadFileData on
+            //      first load) reads localStorage → drawings appear.
+            //   2. setTimeout(loadTradingSessionStateIfNeeded, 0) fires
+            //      → fetch returns state.drawings.
+            //   3. loadDrawingsFromData wipes dm.drawings synchronously.
+            //   4. If state.drawings differs from local (server hadn't
+            //      received the latest writes yet, or the iframe race
+            //      causes the re-render to fail), drawings stay gone.
+            //   5. User changes tf → loadFileData runs again → loadDrawings
+            //      reads localStorage → drawings reappear and stay.
+            //
+            // The iframe panel does NOT need session state restoration —
+            // it's purely a sync display tied to the parent's chart, and
+            // its drawings come from the same localStorage the parent
+            // writes to (per-session key). Make the session-state fetch
+            // a no-op on the iframe's chart so it cannot clobber what
+            // dm.loadDrawings just put there.
+            try {
+                ch.loadTradingSessionStateIfNeeded = function () {
+                    return Promise.resolve();
+                };
+                // Prevent the same fetch from being kicked off by the
+                // backup-only fallback path used inside
+                // _applyTradingSessionFromLocalBackupOnly (chart.js).
+                if (typeof ch._applyTradingSessionFromLocalBackupOnly === 'function') {
+                    ch._applyTradingSessionFromLocalBackupOnly = function () {};
+                }
+            } catch (_) {}
+
+            // ── Belt-and-suspenders: neutralize loadDrawingsFromData ──
+            //
+            // loadTradingSessionStateIfNeeded is scheduled by chart.js
+            // initReplaySystem via setTimeout(0). That setTimeout might
+            // FIRE before applyInitialContext gets to monkey-patch above
+            // (defer-script ordering vs DOMContentLoaded race). If it
+            // does, the fetch is in flight and will eventually call
+            // drawingManager.loadDrawingsFromData(state.drawings) — which
+            // unconditionally wipes dm.drawings + dm.drawingsGroup at
+            // drawing-tools-manager.js:7308-7316 before re-rendering.
+            //
+            // The iframe panel never wants this clobber path: the local
+            // dm.loadDrawings (kicked by chart.loadFileData on first load
+            // and by chartDataLoaded listener on subsequent reloads) is
+            // the single source of truth here. Replace with a no-op so
+            // any late-arriving session-state fetch cannot wipe what's
+            // already on screen.
+            //
+            // Also covers the second call site (line 2202) inside
+            // _applyPendingSessionDrawingsAfterManagerLoad — if a stale
+            // _pendingSessionDrawingsFromState was set by a fetch that
+            // already returned, the same wipe would happen.
+            try {
+                var dm = ch.drawingManager;
+                if (dm && typeof dm.loadDrawingsFromData === 'function'
+                    && !dm.__multichartLoadFromDataNoOp) {
+                    dm.__multichartLoadFromDataNoOp = true;
+                    dm.loadDrawingsFromData = function () {
+                        try {
+                            window.parent.postMessage({
+                                type: 'host-log',
+                                source: chartId,
+                                level: 'info',
+                                text: '[embed:' + chartId + '] loadDrawingsFromData no-op'
+                                    + ' (multichart iframe; localStorage is source of truth)',
+                            }, '*');
+                        } catch (_) {}
+                    };
+                }
+            } catch (_) {}
             var afterLoad = function () {
                 if (tf && typeof ch.setTimeframe === 'function') {
                     try { ch.setTimeframe(tf); } catch (_) {}
