@@ -7585,39 +7585,51 @@ const TalariaV8bLive = () => {
       // (very unlikely but possible if window.__multichartGrid is
       // partially set up) cannot bubble into React render and blank
       // the page.
+      // Multichart routing: BROADCAST the active drawing tool to iframe
+      // panels (B / C / D) so they're armed and ready when the user
+      // clicks them. The HOST (Panel A / parent's window.chart) is
+      // intentionally NOT routed through the bus — it falls through to
+      // the legacy direct dm.setTool path below, which has been
+      // working for years.
+      //
+      // Why: routing the host through the bus produced a feedback loop
+      // that crashed the page when drawing on Panel A with iframes
+      // open. chart.js's finalizeDrawing internally calls clearTool
+      // (drawing-tools-manager.js:3759). Our React effect wraps
+      // clearTool to setTool("crosshair") in React state. That
+      // re-fires this effect; the multichart branch then called
+      // dm.clearTool again on the host, deep inside the still-running
+      // finalize stack. Keeping the host on the legacy direct path
+      // makes its drawing flow byte-identical to single-chart mode.
       const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
-      if (grid && typeof grid.runCommandAll === "function") {
+      if (grid && typeof grid.runCommandIframes === "function") {
         try {
-          // Editing an existing drawing through the V9 settings panel:
-          // never arm a draw tool, just clear so the chart canvas is
-          // safe to click without starting a new stroke.
           if (editingDrawingRef.current) {
-            grid.runCommandAll("clearActiveDrawingTool", null).catch(() => {});
-            return;
-          }
-          // toolbar.show sync-back to crosshair (a shape was just selected
-          // and the V9 floating bar told us): suppress unless the user is
-          // explicitly arming a real tool.
-          if (v9SelectionToolbarSyncRef.current) {
-            v9SelectionToolbarSyncRef.current = false;
+            grid.runCommandIframes("clearActiveDrawingTool", null).catch(() => {});
+          } else if (v9SelectionToolbarSyncRef.current) {
+            // Don't consume v9SelectionToolbarSyncRef here — the legacy
+            // block below still needs to read it to decide whether to
+            // suppress the sync-back. Just peek.
             const legacy = resolveLegacyTool();
             if (!legacy) {
-              grid.runCommandAll("clearActiveDrawingTool", null).catch(() => {});
-              return;
+              grid.runCommandIframes("clearActiveDrawingTool", null).catch(() => {});
+            } else {
+              grid.runCommandIframes("setActiveDrawingTool", { tool: legacy }).catch(() => {});
             }
-            // fall through → arm real tool
-          }
-          const legacy = resolveLegacyTool();
-          if (!legacy) {
-            grid.runCommandAll("clearActiveDrawingTool", null).catch(() => {});
           } else {
-            grid.runCommandAll("setActiveDrawingTool", { tool: legacy })
-                .catch((err) => console.warn("[V9 tool bridge multi] setTool failed:", legacy, err));
+            const legacy = resolveLegacyTool();
+            if (!legacy) {
+              grid.runCommandIframes("clearActiveDrawingTool", null).catch(() => {});
+            } else {
+              grid.runCommandIframes("setActiveDrawingTool", { tool: legacy })
+                  .catch((err) => console.warn("[V9 tool bridge iframes] setTool failed:", legacy, err));
+            }
           }
         } catch (err) {
-          console.warn("[V9 tool bridge multi] threw:", err);
+          console.warn("[V9 tool bridge iframes] threw:", err);
         }
-        return;
+        // Do NOT return — fall through to the legacy block below so
+        // the host's window.chart gets its tool set the original way.
       }
 
       const ch =

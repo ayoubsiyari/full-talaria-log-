@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260510T1015";
+const BRIDGE_VERSION = "20260510T1130";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1121,36 +1121,42 @@ export default function MultichartGrid({
                 .then((d) => (d && Array.isArray(d.indicators)) ? d.indicators : []);
         }
 
-        // runCommandAll broadcasts the command to EVERY panel (host + all
-        // iframes). Used by drawings: TradingView arms the active drawing
-        // tool on every panel so whichever one the user clicks first is
-        // already armed when the canvas's mousedown fires. If we only
-        // armed the focused panel, switching focus from B → A and then
-        // immediately mousedown-ing on A would lose the click — the
-        // mousedown is processed BEFORE the focus-change cascade reaches
-        // the drawing-tool effect, so A would still have currentTool=null
-        // and treat the click as a pan instead of starting a stroke.
+        // runCommandIframes broadcasts the command to every IFRAME panel
+        // (B / C / D), explicitly SKIPPING the host. Used by drawings:
+        // TradingView arms the active drawing tool on every panel so
+        // whichever one the user clicks first is already armed when the
+        // canvas's mousedown fires.
         //
-        // Returns Promise<void> (resolves once every per-panel call has
-        // settled, individual rejections are swallowed so one bad panel
-        // doesn't break the others).
-        function runCommandAll(cmd, args) {
+        // We deliberately skip the host here — the parent's React tree
+        // already has its OWN proven legacy code path that wires
+        // `chart.drawingManager.setTool` directly. Routing the host
+        // through this bus introduced a feedback loop where the
+        // chart engine's internal `finalizeDrawing → clearTool`
+        // (line 3759 of drawing-tools-manager.js) hit our wrapped
+        // clearTool → syncRailIfCursor → setTool("crosshair") → React
+        // re-render → drawing-tool effect → runCommandAll →
+        // dm.clearTool again. That chain crashed the page when
+        // drawing on the host with iframes open. By keeping the
+        // host on the legacy direct path, the host's drawing flow
+        // is byte-identical to single-chart mode (zero regression
+        // risk for the most-used panel).
+        //
+        // Returns Promise<void> (resolves once every iframe call has
+        // settled; individual rejections are swallowed so one bad
+        // iframe doesn't break the others).
+        function runCommandIframes(cmd, args) {
             const mgr = managerRef.current;
+            if (!mgr || !mgr.charts || typeof mgr.charts.values !== "function") {
+                return Promise.resolve();
+            }
             const proms = [];
-            // Host always exists in single + multi mode. Send to it
-            // unconditionally so single-chart fallback also works.
-            proms.push(applyHostCommand(cmd, args).catch((e) => {
-                console.warn("[MultichartGrid] runCommandAll host", cmd, "failed:", e && e.message || e);
-            }));
-            if (mgr && mgr.charts && typeof mgr.charts.values === "function") {
-                for (const c of mgr.charts.values()) {
-                    if (!c || c.host) continue; // host already handled above
-                    proms.push(
-                        mgr.sendCommand(c.id, cmd, args).catch((e) => {
-                            console.warn("[MultichartGrid] runCommandAll", c.id, cmd, "failed:", e && e.message || e);
-                        })
-                    );
-                }
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host) continue; // skip host on purpose
+                proms.push(
+                    mgr.sendCommand(c.id, cmd, args).catch((e) => {
+                        console.warn("[MultichartGrid] runCommandIframes", c.id, cmd, "failed:", e && e.message || e);
+                    })
+                );
             }
             return Promise.all(proms).then(() => undefined);
         }
@@ -1158,7 +1164,7 @@ export default function MultichartGrid({
         window.__multichartGrid = {
             isMounted,
             runCommand,
-            runCommandAll,
+            runCommandIframes,
             getPanelIndicators,
             getFocusedPanelId: () => focusedPanelIdRef.current,
         };
