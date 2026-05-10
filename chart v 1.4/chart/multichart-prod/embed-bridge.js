@@ -124,18 +124,29 @@
                 if (tf && typeof ch.setTimeframe === 'function') {
                     try { ch.setTimeframe(tf); } catch (_) {}
                 }
-                // Belt-and-suspenders: explicitly tell the drawing manager
-                // to load drawings now that data + sessionId + fileId are
-                // all in place. The DM's chartDataLoaded listener should
-                // also retry, but in some boot orderings (e.g. setTimeframe
-                // resamples before the listener runs) loadDrawings() is
-                // skipped because chart.data is briefly empty. Calling
-                // here guarantees one attempt with all context set.
-                try {
-                    if (ch.drawingManager && typeof ch.drawingManager.loadDrawings === 'function') {
-                        Promise.resolve(ch.drawingManager.loadDrawings()).catch(function () {});
-                    }
-                } catch (_) {}
+                // DO NOT call ch.drawingManager.loadDrawings() here.
+                //
+                // chart.js's loadFileData already invokes loadDrawings on
+                // first load (chart.js:1540) with the correct sessionId
+                // (we set ch.activeTradingSessionId BEFORE loadFileData,
+                // and getActiveTradingSessionId reads from URL too — both
+                // paths see the right sessionId on the first call).
+                //
+                // Calling loadDrawings AGAIN here causes a destructive
+                // race: the second call wipes dm.drawings synchronously
+                // at the top (line 7193-7197), then awaits for localStorage
+                // / cloud API again. If that re-read is briefly empty
+                // (storage write hadn't flushed yet, API returned null,
+                // etc.) the drawings stay wiped — visible to the user as
+                // "drawings flash for ~5ms then disappear, only reappear
+                // after a tf change". The tf change calls
+                // refreshDrawingsForTimeframe which iterates the existing
+                // drawings array — but if our wipe killed it, that
+                // refresh has nothing to render either. The fact that
+                // drawings reappear after tf is because the user TRIGGERS
+                // setTimeframe → _loadTimeframeFromServer → loadFileData
+                // path which calls loadDrawings AGAIN, and by then the
+                // localStorage write has settled.
                 reportToShell('info', 'initial context applied: fileId=' + fileId
                     + ' tf=' + (tf || '(default)')
                     + ' sessionId=' + (sessionId || '(none)'));
