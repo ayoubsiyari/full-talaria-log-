@@ -125,6 +125,26 @@
     var pendingReplayDesired = null;
     var dataLoadedListenerInstalled = false;
 
+    // ─── deferred play-state intent ─────────────────────────────────────
+    //
+    // Parent broadcasts `replayPlay` (with speed + mode) and
+    // `replayPause` whenever its own state changes. If those land
+    // BEFORE the iframe's replay system is active (e.g. iframe data
+    // is still loading when the user hits play in the parent), the
+    // command was previously DROPPED — no retry, iframe stayed
+    // paused until the user clicked play again.
+    //
+    // Now we stash the latest desired state in `pendingPlayDesired`
+    // (true=play, false=pause, null=no opinion yet) and the latest
+    // speed/mode in `pendingPlaySpeed` / `pendingPlayMode`. The
+    // moment applyReplayEnter completes successfully, drainPendingPlay
+    // applies these so the iframe boots straight into the right
+    // playback state. This is the key fix that makes "join mid-play"
+    // and "deferred play during data load" actually work.
+    var pendingPlayDesired = null;
+    var pendingPlaySpeed = null;
+    var pendingPlayMode = null;
+
     // ─── coalesced replay-tick seek state ──────────────────────────────
     //
     // Parent fires `replayVirtualTimeChanged` once per CANDLE advance.
@@ -277,6 +297,11 @@
         // tries to play) doesn't replay a stale timestamp from before
         // the file change.
         pendingReplayTs = null;
+        // Apply any deferred play/speed/mode that arrived BEFORE the
+        // iframe was active. This is what makes "join mid-play" work
+        // — without it the iframe sits paused at parent's ts even
+        // though the parent has been playing for minutes.
+        try { drainPendingPlay(ch); } catch (_) {}
         log('replayEnter applied: ts=' + ts
             + ' isActive=' + rs.isActive
             + ' chartDataLen=' + (ch.data ? ch.data.length : 0));
@@ -319,6 +344,40 @@
         // (enterReplayMode, goToReplayTimestamp) runs in exactly
         // one place.
         applyReplayEnter(ch, ts);
+    }
+
+    // Apply any stashed play/speed/mode intent. Called from
+    // applyReplayEnter immediately after the iframe finishes its
+    // first activation, and from the replayPlay/replayPause
+    // handlers as a safety net.
+    function drainPendingPlay(ch) {
+        if (!ch) ch = global.chart;
+        if (!ch) return;
+        var rs = ch.replaySystem;
+        if (!rs || !rs.isActive) return;
+        // Apply speed first so the loop boots at the right rate.
+        if (Number.isFinite(pendingPlaySpeed)
+            && typeof rs.setSpeed === 'function') {
+            try { rs.setSpeed(pendingPlaySpeed); }
+            catch (e) { warn('drainPendingPlay: setSpeed threw', e && e.message); }
+        }
+        if (typeof pendingPlayMode === 'string'
+            && typeof rs.setPlaybackMode === 'function') {
+            try { rs.setPlaybackMode(pendingPlayMode, { restartPlayback: false }); }
+            catch (e) { warn('drainPendingPlay: setPlaybackMode threw', e && e.message); }
+        }
+        // Then play/pause to match parent's intent. Skip no-op
+        // transitions so we don't call play() twice (which would
+        // cancel-then-restart the tick loop).
+        if (pendingPlayDesired === true && !rs.isPlaying
+            && typeof rs.play === 'function') {
+            try { rs.play(); }
+            catch (e) { warn('drainPendingPlay: play threw', e && e.message); }
+        } else if (pendingPlayDesired === false && rs.isPlaying
+            && typeof rs.pause === 'function') {
+            try { rs.pause(); }
+            catch (e) { warn('drainPendingPlay: pause threw', e && e.message); }
+        }
     }
 
     function installDataLoadedListener(ch) {
@@ -517,6 +576,45 @@
                     if (!rsT || !rsT.isActive) {
                         return applyReplayEnter(ch, ts2);
                     }
+                    // ─── candle-animation preservation ─────────────
+                    // If iframe is mid-playback, SKIP the seek.
+                    // goToReplayTimestamp resets `animatingCandle =
+                    // null` and `tickProgress = 0`, which kills the
+                    // in-progress candle build and the user sees
+                    // discrete candle jumps instead of the smooth
+                    // tick-by-tick draw the original chart shows.
+                    //
+                    // Both panels run their own play loops anchored
+                    // at the SAME start timestamp + speed + mode
+                    // (broadcast on enter via _primeReplayFromParent
+                    // and on every replaySetSpeed / replaySetMode
+                    // change), so they advance in lockstep without
+                    // needing a per-candle resync. Drift correction
+                    // happens naturally on pause: once parent pauses,
+                    // its final replayTick lands and iframe seeks.
+                    //
+                    // Only seek if iframe has drifted MORE than a
+                    // few candles (catastrophic drift, e.g. tab was
+                    // backgrounded — setTimeout throttles to ~1Hz,
+                    // iframe falls minutes behind, needs to catch up).
+                    if (rsT.isPlaying) {
+                        var localTs = Number(rsT.replayTimestamp);
+                        if (Number.isFinite(localTs)) {
+                            // Estimate "candles behind" using the
+                            // chart's timeframe step. Allow up to 3
+                            // candles of drift before correcting.
+                            var step = (ch.currentTimeframeMs
+                                ? Number(ch.currentTimeframeMs)
+                                : 60000);
+                            if (!Number.isFinite(step) || step <= 0) step = 60000;
+                            var driftMs = Math.abs(ts2 - localTs);
+                            if (driftMs <= step * 3) {
+                                // Within tolerance — let the local
+                                // animation continue uninterrupted.
+                                return;
+                            }
+                        }
+                    }
                     // Hot path: just stash the latest ts and let the
                     // rAF coalescer apply it. Older queued ts are
                     // dropped so iframe never falls behind regardless
@@ -531,6 +629,10 @@
                     // we got around to applying it.
                     pendingReplayTs = null;
                     pendingReplayDesired = false;
+                    // Clear deferred play intent — exit is the parent
+                    // saying "stop everything", so a stale "play"
+                    // shouldn't auto-resume on next enter.
+                    pendingPlayDesired = null;
                     // Make sure chartDataLoaded re-applies the exit if
                     // a later autoLoad / tf-change re-enters replay
                     // automatically. Without this listener, the iframe
@@ -585,52 +687,36 @@
                 //     scheduleCoalescedSeek so it can never fall
                 //     more than 1 refresh frame behind host.
                 case 'replayPlay': {
+                    // Always stash intent first so a deferred apply
+                    // (via drainPendingPlay on activation) lands the
+                    // right state even if iframe isn't ready yet.
+                    pendingPlayDesired = true;
+                    if (Number.isFinite(args.speed)) pendingPlaySpeed = args.speed;
+                    if (typeof args.mode === 'string') pendingPlayMode = args.mode;
                     var rsP = ch.replaySystem;
                     if (!rsP) {
                         warn('replayPlay: replaySystem not available');
                         return;
                     }
-                    // Defer if the iframe hasn't entered replay yet —
-                    // the next replayTick will call applyReplayEnter
-                    // which lazily enters, and the following replayPlay
-                    // (or another tick reflecting host's continued
-                    // play state) will land.
                     if (!rsP.isActive) {
-                        log('replayPlay deferred (not yet active)');
+                        // Iframe hasn't entered replay yet. Intent is
+                        // stashed above — drainPendingPlay will fire
+                        // it the moment applyReplayEnter completes.
+                        log('replayPlay stashed (not yet active)');
                         return;
                     }
-                    if (Number.isFinite(args.speed)
-                        && typeof rsP.setSpeed === 'function') {
-                        try { rsP.setSpeed(args.speed); }
-                        catch (e) { warn('replayPlay: setSpeed threw', e && e.message); }
-                    }
-                    if (typeof args.mode === 'string'
-                        && typeof rsP.setPlaybackMode === 'function') {
-                        try {
-                            // restartPlayback:false because we're
-                            // about to call play() right after.
-                            rsP.setPlaybackMode(args.mode,
-                                { restartPlayback: false });
-                        } catch (e) {
-                            warn('replayPlay: setPlaybackMode threw', e && e.message);
-                        }
-                    }
-                    // Already playing? Don't re-arm the loop.
-                    if (rsP.isPlaying) return;
-                    if (typeof rsP.play !== 'function') return;
-                    try { rsP.play(); }
-                    catch (e) { warn('replayPlay: play threw', e && e.message); }
+                    drainPendingPlay(ch);
                     return;
                 }
                 case 'replayPause': {
+                    pendingPlayDesired = false;
                     var rsPa = ch.replaySystem;
-                    if (!rsPa || !rsPa.isPlaying) return;
-                    if (typeof rsPa.pause !== 'function') return;
-                    try { rsPa.pause(); }
-                    catch (e) { warn('replayPause: pause threw', e && e.message); }
+                    if (!rsPa || !rsPa.isActive) return;
+                    drainPendingPlay(ch);
                     return;
                 }
                 case 'replaySetSpeed': {
+                    if (Number.isFinite(args.speed)) pendingPlaySpeed = args.speed;
                     var rsS = ch.replaySystem;
                     if (!rsS || typeof rsS.setSpeed !== 'function') return;
                     if (!Number.isFinite(args.speed)) return;
@@ -639,6 +725,7 @@
                     return;
                 }
                 case 'replaySetMode': {
+                    if (typeof args.mode === 'string') pendingPlayMode = args.mode;
                     var rsM = ch.replaySystem;
                     if (!rsM || typeof rsM.setPlaybackMode !== 'function') return;
                     if (typeof args.mode !== 'string') return;
@@ -957,6 +1044,69 @@
     global.addEventListener('mousedown',   notifyFocus, { capture: true, passive: true });
     // focusin covers keyboard focus shifts (tab into a chart input).
     global.addEventListener('focusin',     notifyFocus, { capture: true, passive: true });
+
+    // ─── replay keyboard forward ───────────────────────────────────────
+    //
+    // SPACE / Shift+ArrowRight / Shift+ArrowLeft / . / , are wired
+    // by chart/modules/keyboard-shortcuts.js to toggle play, step
+    // forward and step backward — on THIS iframe's local
+    // replaySystem. That gives every panel its own private replay
+    // controller, which is exactly the "duplicated replay system"
+    // bug the user reported: hitting space inside a focused iframe
+    // ran replay on that panel ALONE while the other panels stayed
+    // paused.
+    //
+    // The single source of truth must be the parent's replaySystem
+    // (Panel A). When the parent runs play / pause / step, it
+    // already broadcasts the corresponding command to every iframe
+    // via MultichartGrid's monkey-patched replaySystem methods, so
+    // all panels stay in lockstep.
+    //
+    // Fix: intercept those keys at the iframe's window-level capture
+    // phase, stop them from reaching keyboard-shortcuts.js, and
+    // forward them as `replay-keyboard` to the parent. The parent's
+    // MultichartGrid invokes the parent replaySystem method
+    // directly, which broadcasts to all iframes in turn.
+    function isReplayHotkey(e) {
+        if (!e || !e.key) return null;
+        var k = e.key;
+        if (k === ' ' || k === 'Spacebar' || k === 'Space') return 'togglePlay';
+        if (k === '.') return 'stepForward';
+        if (k === ',') return 'stepBackward';
+        if (k === 'ArrowRight' && e.shiftKey) return 'stepForward';
+        if (k === 'ArrowLeft'  && e.shiftKey) return 'stepBackward';
+        return null;
+    }
+    function onReplayKey(e) {
+        // Don't hijack typing in inputs / textareas / contenteditable —
+        // SPACE has its normal "insert space" meaning there.
+        var t = e.target;
+        if (t && t.tagName) {
+            var tag = String(t.tagName).toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+            if (t.isContentEditable) return;
+        }
+        var action = isReplayHotkey(e);
+        if (!action) return;
+        // SPACE in a non-input area would otherwise scroll the
+        // iframe — block that AND the local keyboard-shortcuts.js
+        // handler in one shot.
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        try {
+            global.parent.postMessage({
+                type:   'replay-keyboard',
+                source: panelId,
+                action: action,
+            }, '*');
+        } catch (_) {}
+    }
+    // Capture phase, BEFORE keyboard-shortcuts.js (which listens in
+    // bubble phase). stopImmediatePropagation ensures any other
+    // capture-phase listener from keyboard-shortcuts.js (it uses
+    // `true` for keydown registration in some paths) also doesn't run.
+    global.addEventListener('keydown', onReplayKey, { capture: true });
 
     global.MultichartCmdBridge = {
         panelId:      panelId,

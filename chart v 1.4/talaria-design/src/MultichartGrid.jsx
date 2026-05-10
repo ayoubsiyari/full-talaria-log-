@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260513T2200";
+const BRIDGE_VERSION = "20260513T2300";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1400,6 +1400,56 @@ export default function MultichartGrid({
 
         window.addEventListener("replayVirtualTimeChanged", onReplayTick);
 
+        // ─── Replay keyboard forward (iframe → parent) ─────────────
+        //
+        // Iframes intercept SPACE / Shift+Arrow / ./ , and post
+        // `replay-keyboard` here instead of toggling their OWN
+        // replaySystem. We route the action to the parent's
+        // replaySystem — its monkey-patched play/pause/etc methods
+        // then broadcast back out to every iframe, so all panels
+        // toggle together. Single source of truth, no more "panel B
+        // plays alone".
+        const onReplayKeyboard = (ev) => {
+            const data = ev && ev.data;
+            if (!data || data.type !== "replay-keyboard") return;
+            const ch = (typeof window !== "undefined") ? window.chart : null;
+            const rs = ch && ch.replaySystem;
+            if (!rs) return;
+            switch (data.action) {
+                case "togglePlay":
+                    if (typeof rs.togglePlay === "function") {
+                        try { rs.togglePlay(); } catch (_) {}
+                    } else if (rs.isActive) {
+                        // Fallback for older replay system versions
+                        if (rs.isPlaying && typeof rs.pause === "function") {
+                            try { rs.pause(); } catch (_) {}
+                        } else if (!rs.isPlaying && typeof rs.play === "function") {
+                            try { rs.play(); } catch (_) {}
+                        }
+                    }
+                    break;
+                case "stepForward":
+                    if (rs.isActive && typeof rs.stepForward === "function") {
+                        if (rs.isPlaying && typeof rs.pause === "function") {
+                            try { rs.pause(); } catch (_) {}
+                        }
+                        try { rs.stepForward(); } catch (_) {}
+                    }
+                    break;
+                case "stepBackward":
+                    if (rs.isActive && typeof rs.stepBackward === "function") {
+                        if (rs.isPlaying && typeof rs.pause === "function") {
+                            try { rs.pause(); } catch (_) {}
+                        }
+                        try { rs.stepBackward(); } catch (_) {}
+                    }
+                    break;
+                default:
+                    break;
+            }
+        };
+        window.addEventListener("message", onReplayKeyboard);
+
         // On mount: prime any iframes that are already ready before the
         // first tick (covers "user opens layout 2v while paused at
         // session start" — no tick will fire until they hit play).
@@ -1551,6 +1601,7 @@ export default function MultichartGrid({
 
         return () => {
             window.removeEventListener("replayVirtualTimeChanged", onReplayTick);
+            window.removeEventListener("message", onReplayKeyboard);
             // Restore originals if we patched them — keeps single-
             // chart behavior intact when the user picks layout 1 again.
             if (patchedRs && patchedRs.__multichartExitPatched) {
