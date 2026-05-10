@@ -116,6 +116,13 @@
     // the parent fires replayTick at ~playback rate, so there's no
     // value in queueing a backlog.
     var pendingReplayTs = null;
+    // Tri-state: null (no opinion yet), true (parent wants replay
+    // active at pendingReplayTs), false (parent wants replay OFF).
+    // Set by replayEnter / replayTick / replayExit; consumed every
+    // time chartDataLoaded fires so the iframe matches the parent's
+    // current intent EVEN IF its own autoLoadBacktestingData re-enters
+    // replay between commands (the parent's exit-then-split case).
+    var pendingReplayDesired = null;
     var dataLoadedListenerInstalled = false;
 
     function applyReplayEnter(ch, ts) {
@@ -132,6 +139,11 @@
             warn('replayEnter: replaySystem not available on this chart');
             return;
         }
+        // Record parent's intent so chartDataLoaded → drainPendingReplay
+        // can re-apply it after a subsequent reload (e.g. tf change
+        // re-fetch resets isActive and without this we'd exit replay
+        // even though the parent is still playing).
+        pendingReplayDesired = true;
         // Defer if data isn't loaded yet — install a one-time listener
         // and stash the timestamp. drainPendingReplay() will fire when
         // chartDataLoaded arrives.
@@ -168,18 +180,41 @@
     }
 
     function drainPendingReplay() {
-        if (pendingReplayTs == null) return;
         var ch = global.chart;
         if (!ch || !ch.rawData || ch.rawData.length === 0) {
             log('drainPendingReplay bailed (rawData still empty)');
             return;
         }
+        // Reconcile actual replay state against parent's stored
+        // intent. Three cases:
+        //   (a) parent wants replay active (pendingReplayDesired=true)
+        //       → enter (or re-seek if already entered).
+        //   (b) parent wants replay OFF (pendingReplayDesired=false)
+        //       → exit if currently active. This catches the
+        //       "user exited replay before splitting" scenario where
+        //       autoLoadBacktestingData auto-entered replay on the
+        //       iframe but the parent is showing the full slice.
+        //   (c) parent has no opinion yet (null) → leave whatever
+        //       autoLoad set, parent will broadcast on its next state
+        //       change.
+        if (pendingReplayDesired === false) {
+            var rsX = ch.replaySystem;
+            if (rsX && rsX.isActive
+                && typeof rsX.exitReplayMode === 'function') {
+                log('drainPendingReplay: parent wants OUT, calling exitReplayMode');
+                try { rsX.exitReplayMode(); }
+                catch (e) { warn('drainPendingReplay: exitReplayMode threw', e && e.message); }
+            }
+            return;
+        }
+        if (pendingReplayDesired !== true) return;
+        if (pendingReplayTs == null) return;
         var ts = pendingReplayTs;
         log('drainPendingReplay firing: ts=' + ts
             + ' rawDataLen=' + ch.rawData.length);
         // Delegate to applyReplayEnter so all activation logic
-        // (enterReplayMode, goToReplayTimestamp, fitToView for
-        // candleWidth recompute) runs in exactly one place.
+        // (enterReplayMode, goToReplayTimestamp) runs in exactly
+        // one place.
         applyReplayEnter(ch, ts);
     }
 
@@ -366,6 +401,13 @@
                     // Drop any queued enter — parent left replay before
                     // we got around to applying it.
                     pendingReplayTs = null;
+                    pendingReplayDesired = false;
+                    // Make sure chartDataLoaded re-applies the exit if
+                    // a later autoLoad / tf-change re-enters replay
+                    // automatically. Without this listener, the iframe
+                    // would silently re-enter replay after a tf change
+                    // even though the parent wants it out.
+                    installDataLoadedListener(ch);
                     var rs3 = ch.replaySystem;
                     if (rs3 && rs3.isActive
                         && typeof rs3.exitReplayMode === 'function') {

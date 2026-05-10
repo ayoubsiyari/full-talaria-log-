@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260511T2200";
+const BRIDGE_VERSION = "20260511T2330";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1110,18 +1110,42 @@ export default function MultichartGrid({
     // been told yet.
     function _primeReplayFromParent() {
         try {
-            const ch = (typeof window !== "undefined") ? window.chart : null;
-            if (!ch || !ch.replaySystem || !ch.replaySystem.isActive) return;
-            const ts = ch.replaySystem.replayTimestamp;
-            if (!Number.isFinite(ts)) return;
-            replayStateRef.current.lastBroadcastTs = ts;
-            replayStateRef.current.everEntered = true;
             const mgr = managerRef.current;
             if (!mgr || !mgr.charts) return;
-            for (const c of mgr.charts.values()) {
-                if (!c || c.host || !c.ready) continue;
-                try { mgr.sendCommand(c.id, "replayEnter", { timestamp: ts }); }
-                catch (_) {}
+            const ch = (typeof window !== "undefined") ? window.chart : null;
+            const rs = ch && ch.replaySystem;
+            const parentInReplay = !!(rs && rs.isActive);
+            const ts = parentInReplay ? rs.replayTimestamp : null;
+
+            if (parentInReplay) {
+                if (!Number.isFinite(ts)) return;
+                replayStateRef.current.lastBroadcastTs = ts;
+                replayStateRef.current.everEntered = true;
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || !c.ready) continue;
+                    try { mgr.sendCommand(c.id, "replayEnter", { timestamp: ts }); }
+                    catch (_) {}
+                }
+            } else {
+                // Parent is NOT in active replay. Iframe panels auto-
+                // enter replay during their own autoLoadBacktestingData
+                // bootstrap (enterReplayMode is called unconditionally
+                // at the end of that pipeline, and our embed-bridge
+                // monkey-patch makes it land at session start). Without
+                // a counter-message the iframe would render the
+                // session-start slice while the parent shows the full
+                // history → "panels show different ranges".
+                //
+                // Push a one-shot replayExit to every ready iframe so
+                // they restore their chart.data to the full session
+                // window. If parent later enters replay, the
+                // replayVirtualTimeChanged tick listener will broadcast
+                // replayEnter and bring them back in sync.
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || !c.ready) continue;
+                    try { mgr.sendCommand(c.id, "replayExit", {}); }
+                    catch (_) {}
+                }
             }
         } catch (_) {}
     }

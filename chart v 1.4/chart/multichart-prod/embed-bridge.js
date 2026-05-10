@@ -121,6 +121,48 @@
                 try { ch.activeTradingSessionId = sessionId; } catch (_) {}
             }
 
+            // ── Force iframe's replaySystem to treat ALL enterReplayMode calls as backtest ──
+            //
+            // chart.js's replay-system.js enterReplayMode picks the
+            // start index via:
+            //   isBacktesting = (urlMode === 'backtest' || 'propfirm')
+            //                   || options.startAtBeginning
+            //   if (isBacktesting) startIdx = sessionStartIdx;
+            //   else               startIdx = floor(rd.length * 0.1);
+            //
+            // The iframe URL deliberately omits mode=backtest (we don't
+            // want the splash + duplicate auto-init pipeline), so when
+            // chart.js's autoLoadBacktestingData internally fires
+            //   this.replaySystem.enterReplayMode();
+            // (no opts), isBacktesting falls to false and the iframe
+            // lands at the 10% mark — NOT at session start. Parent's
+            // playhead-broadcast (panel-cmd-bridge replayEnter) will
+            // later seek to the right timestamp, but if the parent is
+            // PAUSED at session start (the typical post-creation state)
+            // the iframe momentarily renders the wrong slice and the
+            // user perceives "ranges don't match".
+            //
+            // Patch the method to default options.startAtBeginning=true
+            // when the chart has a backtestingSession. Only the iframe
+            // sees this monkey-patch (embed-bridge runs only inside
+            // ?multichart=1).
+            try {
+                var rsEarly = ch.replaySystem;
+                if (rsEarly && typeof rsEarly.enterReplayMode === 'function'
+                    && !rsEarly.__multichartStartAtBeginningPatched) {
+                    rsEarly.__multichartStartAtBeginningPatched = true;
+                    var __originalEnterReplayMode = rsEarly.enterReplayMode.bind(rsEarly);
+                    rsEarly.enterReplayMode = function (options) {
+                        var opts = options || {};
+                        if (this.chart && this.chart.backtestingSession
+                            && opts.startAtBeginning === undefined) {
+                            opts = Object.assign({}, opts, { startAtBeginning: true });
+                        }
+                        return __originalEnterReplayMode(opts);
+                    };
+                }
+            } catch (_) {}
+
             // ── CRITICAL: copy the parent's backtestingSession into the iframe ──
             //
             // Without this, the iframe boots with chart.backtestingSession=null
@@ -552,10 +594,59 @@
                     + ' tf=' + (tf || '(default)')
                     + ' sessionId=' + (sessionId || '(none)'));
             };
-            var p = ch.loadFileData(fileId);
+
+            // ── Pick the right data-fetch entry point ──────────────────
+            //
+            // When the parent is in a backtest session the iframe MUST
+            // mirror parent's data window or the two panels visibly load
+            // different ranges.
+            //
+            //   • Parent (URL has mode=backtest) runs autoLoadBacktestingData.
+            //     That calls _fetchSmartWindow with anchor='end',
+            //     skipSessionDates:true, windowRange.endTs=sessionEndMs
+            //     → up to 100k 1D bars ENDING at session end → users sees
+            //     the whole "lead-up before replay start" exactly as
+            //     written in the chart.js comment at line 1224.
+            //
+            //   • Iframe via loadFileData(fileId) builds a DIFFERENT
+            //     param set: requestTimeframe='1m', no anchor, no
+            //     windowRange, BOTH start_ts and end_ts pulled from
+            //     session.startDate / session.endDate (no skip flag).
+            //     Result: 1m bars only inside the session window —
+            //     resampled to 1D this is a much SHORTER history with
+            //     no pre-session lead-up. Users perceived this as
+            //     "Panel A shows last year, Panel B only shows last
+            //     two months — why?".
+            //
+            // So when we have a backtest session, call autoLoadBacktestingData
+            // directly. It emits the same chartDataLoaded / chartScrolled
+            // events as loadFileData, so the bridge + panel-cmd-bridge's
+            // deferred replayEnter still pick up correctly.
+            //
+            // For non-backtest panels (no parent session) we keep the
+            // simple loadFileData(fileId) path — that's the right entry
+            // point when there's no session window to honor.
+            var sessForBoot = (ch.backtestingSession || null);
+            var useAutoBacktest = !!(sessForBoot
+                && (sessForBoot.startDate || sessForBoot.start_date)
+                && typeof ch.autoLoadBacktestingData === 'function');
+            var p;
+            if (useAutoBacktest) {
+                reportToShell('info', 'using autoLoadBacktestingData (mirrored session)');
+                try {
+                    p = ch.autoLoadBacktestingData(sessForBoot);
+                } catch (e) {
+                    reportToShell('error', 'autoLoadBacktestingData threw, '
+                        + 'falling back to loadFileData: ' + (e && e.message || e));
+                    p = ch.loadFileData(fileId);
+                }
+            } else {
+                p = ch.loadFileData(fileId);
+            }
             if (p && typeof p.then === 'function') {
                 p.then(afterLoad, function (err) {
-                    reportToShell('error', 'loadFileData failed: ' + (err && err.message || err));
+                    reportToShell('error', (useAutoBacktest ? 'autoLoadBacktestingData' : 'loadFileData')
+                        + ' failed: ' + (err && err.message || err));
                 });
             } else {
                 afterLoad();
