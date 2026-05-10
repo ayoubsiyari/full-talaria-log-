@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260512T1700";
+const BRIDGE_VERSION = "20260512T1800";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1114,6 +1114,27 @@ export default function MultichartGrid({
     const replayStateRef = useRef({
         lastBroadcastTs: 0,
         everEntered: false,
+        // Tri-state — has the PARENT chart's replaySystem ever entered
+        // replay since the page loaded?
+        //   null  = unknown (pre-monkey-patch install or parent never
+        //                    touched replay yet — could be either
+        //                    "bootstrap still in flight" or "no
+        //                    backtest mode at all"; primeFromParent
+        //                    treats this as "wait, do nothing")
+        //   true  = parent IS or HAS BEEN in replay (so isActive=false
+        //                    means user explicitly exited; safe to
+        //                    broadcast replayExit to iframes)
+        //   false = unused (kept the type tri-state for future use)
+        //
+        // Without this flag primeFromParent races with parent's async
+        // autoLoadBacktestingData: parent.replaySystem.isActive is
+        // false during the bootstrap window, prime sends replayExit,
+        // iframes auto-enter replay AFTER and immediately exit (because
+        // pendingReplayDesired=false sticks via drainPendingReplay).
+        // Result: every iframe shows full data window while parent
+        // shows session-start replay slice. User reports "panels show
+        // different ranges, not in replay".
+        parentEverEntered: null,
     });
 
     // Prime helper: shared between the mount-once tick listener and the
@@ -1133,6 +1154,11 @@ export default function MultichartGrid({
                 if (!Number.isFinite(ts)) return;
                 replayStateRef.current.lastBroadcastTs = ts;
                 replayStateRef.current.everEntered = true;
+                // Catch "patch hasn't installed yet but parent is
+                // already in replay" race — set the flag so any later
+                // prime call (e.g. user exits later) can distinguish
+                // exit from bootstrap-in-flight.
+                replayStateRef.current.parentEverEntered = true;
                 // Capture parent's current play/speed/mode so a panel
                 // that joins mid-playback boots into the same loop
                 // (otherwise it would sit paused at parent's ts until
@@ -1157,27 +1183,29 @@ export default function MultichartGrid({
                         catch (_) {}
                     }
                 }
-            } else {
-                // Parent is NOT in active replay. Iframe panels auto-
-                // enter replay during their own autoLoadBacktestingData
-                // bootstrap (enterReplayMode is called unconditionally
-                // at the end of that pipeline, and our embed-bridge
-                // monkey-patch makes it land at session start). Without
-                // a counter-message the iframe would render the
-                // session-start slice while the parent shows the full
-                // history → "panels show different ranges".
-                //
-                // Push a one-shot replayExit to every ready iframe so
-                // they restore their chart.data to the full session
-                // window. If parent later enters replay, the
-                // replayVirtualTimeChanged tick listener will broadcast
-                // replayEnter and bring them back in sync.
+            } else if (replayStateRef.current.parentEverEntered === true) {
+                // Parent IS NOT currently in replay BUT has entered
+                // replay at least once during this page session →
+                // user explicitly exited (or paused-and-exited).
+                // Tell iframes to drop their auto-entered replay
+                // state so they show the full slice like parent.
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.ready) continue;
                     try { mgr.sendCommand(c.id, "replayExit", {}); }
                     catch (_) {}
                 }
             }
+            // else: parent has NEVER entered replay yet. This is the
+            // "page just opened with mode=backtest, parent's async
+            // autoLoadBacktestingData → enterReplayMode chain hasn't
+            // completed yet" window. Sending replayExit here would
+            // kick iframes OUT of replay just as they're about to
+            // auto-enter via their own autoLoad — visible bug:
+            // panels show full data while Panel A shows session-start
+            // replay slice. Solution: do nothing. The monkey-patched
+            // enterReplayMode (above) re-runs primeFromParent the
+            // moment parent enters, so iframes will receive
+            // replayEnter at parent's ts as soon as parent is ready.
         } catch (_) {}
     }
 
@@ -1227,6 +1255,7 @@ export default function MultichartGrid({
         // replaySystem may not exist yet at mount — retry up to 5s.
         let patchedRs = null;
         let patchOriginalExit = null;
+        let patchOriginalEnter = null;
         let patchOriginalPlay = null;
         let patchOriginalPause = null;
         let patchOriginalSetSpeed = null;
@@ -1237,6 +1266,35 @@ export default function MultichartGrid({
                 && typeof ch.replaySystem.exitReplayMode === "function"
                 && !ch.replaySystem.__multichartExitPatched) {
                 patchedRs = ch.replaySystem;
+
+                // If parent already entered replay before we got around
+                // to patching (e.g. mode=backtest autoLoad fired its
+                // queueMicrotask enterReplayMode before MultichartGrid
+                // mounted), pick up the existing state so primeFromParent
+                // doesn't think parent has never been in replay.
+                if (patchedRs.isActive) {
+                    replayStateRef.current.parentEverEntered = true;
+                }
+
+                // ── enterReplayMode → mark parentEverEntered, re-prime
+                //    iframes so a panel that was out of sync (e.g. it
+                //    had auto-exited via the previous race) snaps to
+                //    parent's new ts ──
+                if (typeof patchedRs.enterReplayMode === "function") {
+                    patchOriginalEnter = patchedRs.enterReplayMode.bind(patchedRs);
+                    patchedRs.enterReplayMode = function (options) {
+                        const result = patchOriginalEnter(options);
+                        replayStateRef.current.parentEverEntered = true;
+                        // Defer one microtask so any synchronous state
+                        // updates inside the original (isActive flip,
+                        // replayTimestamp set) have settled before we
+                        // read them.
+                        Promise.resolve().then(() => {
+                            try { _primeReplayFromParent(); } catch (_) {}
+                        });
+                        return result;
+                    };
+                }
 
                 // ── exitReplayMode → broadcast replayExit ──
                 patchOriginalExit = patchedRs.exitReplayMode.bind(patchedRs);
@@ -1328,6 +1386,7 @@ export default function MultichartGrid({
             if (patchedRs && patchedRs.__multichartExitPatched) {
                 try {
                     if (patchOriginalExit)     patchedRs.exitReplayMode  = patchOriginalExit;
+                    if (patchOriginalEnter)    patchedRs.enterReplayMode = patchOriginalEnter;
                     if (patchOriginalPlay)     patchedRs.play            = patchOriginalPlay;
                     if (patchOriginalPause)    patchedRs.pause           = patchOriginalPause;
                     if (patchOriginalSetSpeed) patchedRs.setSpeed        = patchOriginalSetSpeed;
