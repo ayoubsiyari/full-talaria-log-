@@ -601,52 +601,96 @@
             // mirror parent's data window or the two panels visibly load
             // different ranges.
             //
-            //   • Parent (URL has mode=backtest) runs autoLoadBacktestingData.
-            //     That calls _fetchSmartWindow with anchor='end',
+            //   • Parent (URL has mode=backtest) runs autoLoadBacktestingData
+            //     via its own checkBacktestingMode constructor hook. That
+            //     calls _fetchSmartWindow with anchor='end',
             //     skipSessionDates:true, windowRange.endTs=sessionEndMs
-            //     → up to 100k 1D bars ENDING at session end → users sees
-            //     the whole "lead-up before replay start" exactly as
-            //     written in the chart.js comment at line 1224.
+            //     → up to 100k 1D bars ENDING at session end → user sees
+            //     the whole "lead-up before replay start".
             //
             //   • Iframe via loadFileData(fileId) builds a DIFFERENT
             //     param set: requestTimeframe='1m', no anchor, no
             //     windowRange, BOTH start_ts and end_ts pulled from
             //     session.startDate / session.endDate (no skip flag).
-            //     Result: 1m bars only inside the session window —
-            //     resampled to 1D this is a much SHORTER history with
-            //     no pre-session lead-up. Users perceived this as
-            //     "Panel A shows last year, Panel B only shows last
-            //     two months — why?".
+            //     Result: 1m bars only inside the session window — a
+            //     much SHORTER history with no pre-session lead-up.
+            //     Visible to the user as "Panel A shows last year,
+            //     Panel B only shows last two months — why?".
             //
-            // So when we have a backtest session, call autoLoadBacktestingData
-            // directly. It emits the same chartDataLoaded / chartScrolled
-            // events as loadFileData, so the bridge + panel-cmd-bridge's
-            // deferred replayEnter still pick up correctly.
+            // Fix: forward `mode=backtest|propfirm` from parent into
+            // every iframe URL (see MultichartGrid.buildIframeSrc).
+            // chart.js's checkBacktestingMode then runs autoLoadBacktestingData
+            // INSIDE the iframe with identical params to the parent →
+            // identical data window. The dist-v9 multichart shim hides
+            // the splash overlay (#backtestingLoader) + bt-preload
+            // visibility gate so users never see the iframe's loader.
             //
-            // For non-backtest panels (no parent session) we keep the
-            // simple loadFileData(fileId) path — that's the right entry
-            // point when there's no session window to honor.
-            var sessForBoot = (ch.backtestingSession || null);
-            var useAutoBacktest = !!(sessForBoot
-                && (sessForBoot.startDate || sessForBoot.start_date)
-                && typeof ch.autoLoadBacktestingData === 'function');
+            // When mode=backtest is in URL, embed-bridge MUST NOT call
+            // loadFileData / autoLoadBacktestingData itself — that would
+            // double-load (chart.js handles it asynchronously via the
+            // constructor → checkBacktestingMode chain). Instead we just
+            // wait for chartDataLoaded (or wait a tick) and then apply
+            // the user's preferred timeframe (chart.js forces '1d' in
+            // backtest mode; if the parent was on a different tf when
+            // the user split, we want the iframe to follow).
+            //
+            // For non-backtest panels (no mode in URL) we keep the
+            // explicit loadFileData(fileId) path — chart.js does no
+            // automatic load when there's no mode= param.
+            var paramMode = (params.get('mode') || '').toLowerCase();
+            var deferToCheckBacktestingMode = (paramMode === 'backtest'
+                || paramMode === 'propfirm');
             var p;
-            if (useAutoBacktest) {
-                reportToShell('info', 'using autoLoadBacktestingData (mirrored session)');
-                try {
-                    p = ch.autoLoadBacktestingData(sessForBoot);
-                } catch (e) {
-                    reportToShell('error', 'autoLoadBacktestingData threw, '
-                        + 'falling back to loadFileData: ' + (e && e.message || e));
-                    p = ch.loadFileData(fileId);
+            if (deferToCheckBacktestingMode) {
+                reportToShell('info', 'mode=' + paramMode
+                    + ' in URL; deferring data-load to chart.js checkBacktestingMode');
+                // Apply user's preferred tf once data lands — chart.js
+                // forces '1d' on backtest open, but if the parent was
+                // on e.g. 1h before the split we want the iframe to
+                // match. setTimeframe is a no-op when current tf
+                // already equals the requested one, so this is safe to
+                // run unconditionally.
+                if (tf && tf !== '1d' && typeof ch.setTimeframe === 'function') {
+                    var applyTfOnce = function () {
+                        try {
+                            // Re-read currentTimeframe to avoid
+                            // re-fetching when chart.js already
+                            // converged on the requested tf via some
+                            // other code path (defensive).
+                            if (ch.currentTimeframe !== tf) {
+                                ch.setTimeframe(tf);
+                            }
+                        } catch (e) {
+                            reportToShell('warn', 'setTimeframe(' + tf
+                                + ') threw: ' + (e && e.message || e));
+                        }
+                    };
+                    // chartDataLoaded fires after autoLoad's
+                    // _commitLoadedBars. Wait for it once, then apply
+                    // the tf override (which itself triggers a re-load
+                    // and a second chartDataLoaded — but that won't
+                    // re-enter this listener because of {once:true}).
+                    global.addEventListener('chartDataLoaded', function onceTf() {
+                        global.removeEventListener('chartDataLoaded', onceTf);
+                        // Defer one tick so chart.js post-load
+                        // bookkeeping (rawData index, lastBarMs) settles
+                        // before setTimeframe re-fetches.
+                        setTimeout(applyTfOnce, 0);
+                    });
                 }
-            } else {
-                p = ch.loadFileData(fileId);
+                reportToShell('info', 'initial context applied (deferred): fileId=' + fileId
+                    + ' tf=' + (tf || '(default)')
+                    + ' sessionId=' + (sessionId || '(none)'));
+                return;
             }
+            // No mode in URL — chart.js does not auto-load. We must
+            // call loadFileData explicitly to bring data into the
+            // iframe's chart engine.
+            p = ch.loadFileData(fileId);
             if (p && typeof p.then === 'function') {
                 p.then(afterLoad, function (err) {
-                    reportToShell('error', (useAutoBacktest ? 'autoLoadBacktestingData' : 'loadFileData')
-                        + ' failed: ' + (err && err.message || err));
+                    reportToShell('error', 'loadFileData failed: '
+                        + (err && err.message || err));
                 });
             } else {
                 afterLoad();

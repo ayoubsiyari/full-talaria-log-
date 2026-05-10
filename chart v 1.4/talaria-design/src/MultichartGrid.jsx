@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260511T2330";
+const BRIDGE_VERSION = "20260511T2400";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -375,7 +375,7 @@ function resolveLayout(layoutId, panelCount) {
 }
 
 // ─── iframe URL ─────────────────────────────────────────────────────────────
-function buildIframeSrc({ panelId, fileId, tf, sessionId /*, mode — intentionally NOT forwarded, see note */ }) {
+function buildIframeSrc({ panelId, fileId, tf, sessionId, mode }) {
     const params = new URLSearchParams();
     params.set("multichart", "1");
     params.set("panelId", panelId);
@@ -383,34 +383,41 @@ function buildIframeSrc({ panelId, fileId, tf, sessionId /*, mode — intentiona
     if (tf)        params.set("tf",        String(tf));
     if (sessionId) params.set("sessionId", String(sessionId));
     //
-    // NOTE: we deliberately do NOT forward `mode=backtest|propfirm` into
-    // iframe panels even when the parent /chart/ is in backtest mode.
-    // Reasons:
-    //   1. mode=backtest triggers the bt-preload splash overlay
-    //      (#backtestingLoader, "Talaria-Log" loading screen) and hides
-    //      #root until chart.js auto-loads the session — that takes
-    //      ~1-2s per iframe and visually masks every panel.
-    //   2. The iframe would also kick off its own autoLoadBacktestingData
-    //      pipeline (read /api/sessions/X or localStorage backtestingSession,
-    //      apply order manager, propfirm tracker, etc) — all duplicate
-    //      work that the parent already does.
-    //   3. The parent owns the backtest UI (orders, balance, trade list,
-    //      propfirm tracking) via the topbar/leftbar/bottom bar that stays
-    //      visible around the grid. Iframes only need the price chart.
+    // Forward `mode=backtest|propfirm` so chart.js's checkBacktestingMode
+    // runs the canonical backtest pipeline inside the iframe. Without
+    // it, the iframe loads via the wrong code path:
     //
-    // Each iframe boots in "no-mode" (plain chart shell), then
-    // embed-bridge.js calls window.chart.loadFileData(fileId) the moment
-    // the engine is ready. End result: panels paint the chart directly
-    // with no splash and no duplicated auto-load.
+    //   • loadFileData uses _buildSmartWindowParams(fileId, '1m', session)
+    //     which builds {start_ts, end_ts} bounded to the session window
+    //     → fetches in-session 1m bars only.
+    //   • autoLoadBacktestingData uses _fetchSmartWindow(fileId, '1d', …,
+    //     'end', {endTs: sessionEndMs}, {skipSessionDates:true}) → fetches
+    //     up to 100k 1D bars ENDING at session end (year of context).
     //
+    // The two paths fetch DIFFERENT slices, so panels visibly load
+    // different date ranges. Forwarding mode=backtest lets each iframe
+    // hit the same server endpoint as the parent.
+    //
+    // The visual side-effects (splash overlay, hidden #root) are
+    // suppressed by the dist-v9 multichart shim:
+    //   <style html.multichart-embed #backtestingLoader { display: none }>
+    //   <style html.multichart-embed #root { visibility: visible }>
+    // and the shim head-script strips the bt-preload class as soon as
+    // it sees ?multichart=1.
+    //
+    // The duplicated orderManager / propfirm-tracker setup happens but
+    // is harmless — every chrome element it touches is hidden by the
+    // shim's [data-v9-chrome="1"] rule, so the user sees only the
+    // price chart canvas + axes inside each panel.
+    if (mode === "backtest" || mode === "propfirm") {
+        params.set("mode", mode);
+    }
     // BUT — we DO forward `sessionId` so the iframe's chart engine builds
     // the SAME drawings storage key as the parent (chart.js:2181 →
     // `chart_drawings_s<sessionId>_<fileId>` when a session is active).
     // Without sessionId, the iframe looks under `chart_drawings_<fileId>`
     // and finds nothing, even though the parent has been saving the
-    // user's drawings under the session-scoped key for hours. That's why
-    // multichart panels showed empty even when single-chart reload
-    // restored everything.
+    // user's drawings under the session-scoped key for hours.
     return "/chart/dist-v9/index.html?" + params.toString();
 }
 
@@ -670,7 +677,9 @@ export default function MultichartGrid({
     layoutSync,
     initialFileId,
     initialTimeframe,
-    initialMode, // currently unused — see buildIframeSrc note
+    initialMode, // forwarded as ?mode=backtest|propfirm so iframe runs the
+                 // same checkBacktestingMode → autoLoadBacktestingData
+                 // pipeline as the parent (matched data slice).
     initialSessionId, // forwarded as ?sessionId= so iframe builds the
                       // same per-session drawings storage key as parent
     focusedPanelId,
@@ -693,9 +702,11 @@ export default function MultichartGrid({
     const initialFileIdRef    = useRef(initialFileId);
     const initialTimeframeRef = useRef(initialTimeframe);
     const initialSessionIdRef = useRef(initialSessionId);
+    const initialModeRef      = useRef(initialMode);
     useEffect(() => { initialFileIdRef.current    = initialFileId;    }, [initialFileId]);
     useEffect(() => { initialTimeframeRef.current = initialTimeframe; }, [initialTimeframe]);
     useEffect(() => { initialSessionIdRef.current = initialSessionId; }, [initialSessionId]);
+    useEffect(() => { initialModeRef.current      = initialMode;      }, [initialMode]);
 
     // ─── Focus-related refs (Phase 7.2.4) ───────────────────────────────
     // Both the manager mount effect (callbacks closed over the first
@@ -749,7 +760,7 @@ export default function MultichartGrid({
                         fileId:    cfg.fileId,
                         tf:        cfg.tf,
                         sessionId: cfg.sessionId || initialSessionIdRef.current || null,
-                        // mode intentionally omitted — see note in buildIframeSrc
+                        mode:      cfg.mode      || initialModeRef.current      || null,
                     });
                 },
                 onLog: function (entry) {
@@ -898,6 +909,7 @@ export default function MultichartGrid({
                     tf:        initialTimeframeRef.current || "1m",
                     fileId:    initialFileIdRef.current    || null,
                     sessionId: initialSessionIdRef.current || null,
+                    mode:      initialModeRef.current      || null,
                 }, cellEl);
             } catch (e) {
                 console.error("[MultichartGrid] addChart failed for", tile.id, e);
