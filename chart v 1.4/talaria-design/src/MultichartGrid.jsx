@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260513T2030";
+const BRIDGE_VERSION = "20260513T2130";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -812,6 +812,13 @@ export default function MultichartGrid({
         setColFractions(parseFrTemplate(layout.cols));
         setRowFractions(parseFrTemplate(layout.rows));
     }, [layout.cols, layout.rows]);
+
+    // Live container size (in CSS px). Declared HERE — high in the
+    // component body — so any later useEffect / useLayoutEffect /
+    // useMemo can list `containerSize` in its deps without hitting
+    // a temporal-dead-zone error. (The ResizeObserver wiring is set
+    // up further down once `containerRef` is bound.)
+    const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
     const colsTemplate = useMemo(
         () => colFractions.map((f) => f.toFixed(4) + "fr").join(" "),
         [colFractions]
@@ -2553,9 +2560,10 @@ export default function MultichartGrid({
         return out;
     }
 
-    // We need the live container size to position splitters in PIXELS.
-    // ResizeObserver keeps it fresh on window resize / sidebar toggle.
-    const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
+    // ResizeObserver wiring for `containerSize` (the state itself is
+    // declared near the top of the component so cross-cutting
+    // effects can reference it without TDZ). Splitter pixel math
+    // and the focus-frame rect both depend on it.
     useEffect(() => {
         const el = containerRef.current;
         if (!el || typeof ResizeObserver === "undefined") return;
