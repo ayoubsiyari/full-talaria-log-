@@ -419,38 +419,48 @@
 
                 // ─── replay PLAYBACK sync ──────────────────────────────
                 //
-                // Beyond the per-tick seek protocol above, the parent
-                // mirrors its own play/pause/speed/mode state to every
-                // iframe so each panel runs its OWN replay loop in
-                // lockstep. Why a local loop instead of pure-seek?
+                // STRICT-SYNC MODEL: iframes are passive followers of
+                // the host (Panel A). Their own replaySystem is in
+                // replay mode (so the candle slice + indicators +
+                // session bounds are correct) but is NEVER allowed to
+                // run a local play loop — because:
                 //
-                //   1. Tick animation (intra-bar pixel motion) emits at
-                //      ~60fps from the parent. Bouncing every frame
-                //      through postMessage + applying as a seek on the
-                //      iframe would (a) cost 4x CPU vs a local timer
-                //      and (b) make tick animation look jerky on slower
-                //      machines because every frame becomes a seek.
+                //   1. At high speeds (60x, 100x) each iframe's local
+                //      timer drifts vs the host. Iframe render is
+                //      slower than host (smaller canvas, iframe
+                //      compositing overhead, browser timer throttle on
+                //      sub-100ms intervals when many timers are armed
+                //      simultaneously). User reports "Panel B moves
+                //      slow not like Panel A" — that's the drift.
                 //
-                //   2. The user explicitly asked for "all panels run
-                //      same speed and same playback type (candle vs
-                //      tick)" — that means each panel renders its own
-                //      smooth animation. A local loop with matching
-                //      params produces identical visuals.
+                //   2. setInterval / requestAnimationFrame in different
+                //      browsing contexts (parent + 3 iframes) get
+                //      independent scheduler budgets. They cannot stay
+                //      in lockstep over thousands of ticks.
                 //
-                // Drift between local loops is corrected by the
-                // existing replayTick broadcast on each parent bar
-                // advance — iframe seeks back to parent's exact ts.
+                //   3. The user asked for "same candle same time on
+                //      all panels". The only way to guarantee that is
+                //      single-source-of-truth: the host owns the play
+                //      loop, every iframe seeks to host's current
+                //      timestamp on every host tick.
                 //
-                // Lifecycle:
-                //   replayPlay     → setSpeed, setPlaybackMode, play()
-                //   replayPause    → pause()
-                //   replaySetSpeed → setSpeed() (mid-play OK)
-                //   replaySetMode  → setPlaybackMode() (mid-play OK)
-                //
-                // Each handler is idempotent — applying the parent's
-                // current state to an already-matching iframe is a
-                // no-op (replaySystem internals already guard against
-                // redundant re-arming of timers).
+                // Protocol:
+                //   replayPlay {speed, mode}
+                //     Iframe absorbs speed + mode INTO its replaySystem
+                //     state (so any UI inside the iframe — even though
+                //     hidden — stays consistent) but does NOT call
+                //     play(). isPlaying stays false. Drives the
+                //     iframe purely via the replayTick stream.
+                //   replayPause
+                //     No-op (iframe was never playing locally).
+                //   replaySetSpeed / replaySetMode
+                //     Mirror host's value into iframe state for
+                //     consistency. setSpeed / setPlaybackMode do not
+                //     auto-start playback when isPlaying=false, so
+                //     this is a pure state update.
+                //   replayTick {timestamp}
+                //     Iframe seeks via goToReplayTimestamp — see the
+                //     replayTick / replayEnter cases above.
                 case 'replayPlay': {
                     var rsP = ch.replaySystem;
                     if (!rsP) {
@@ -460,9 +470,10 @@
                     // Defer if the iframe hasn't entered replay yet
                     // (race: parent hits play before the iframe's
                     // autoLoadBacktestingData → enterReplayMode chain
-                    // completes). drainPendingReplay will replay the
-                    // last enter ts; once active, parent's next tick
-                    // also broadcasts replayPlay so we'll catch up.
+                    // completes). The next replayTick from parent
+                    // (which carries a timestamp) will lazily enter
+                    // replay via applyReplayEnter, after which the
+                    // following replayPlay will land.
                     if (!rsP.isActive) {
                         log('replayPlay deferred (not yet active)');
                         return;
@@ -475,27 +486,23 @@
                     if (typeof args.mode === 'string'
                         && typeof rsP.setPlaybackMode === 'function') {
                         try {
-                            // restartPlayback:false because we're
-                            // about to call play() right after — no
-                            // sense restarting the loop twice.
                             rsP.setPlaybackMode(args.mode,
                                 { restartPlayback: false });
                         } catch (e) {
                             warn('replayPlay: setPlaybackMode threw', e && e.message);
                         }
                     }
-                    if (rsP.isPlaying) return;
-                    if (typeof rsP.play !== 'function') return;
-                    try { rsP.play(); }
-                    catch (e) { warn('replayPlay: play threw', e && e.message); }
+                    // INTENTIONALLY DO NOT CALL rsP.play() — see the
+                    // STRICT-SYNC MODEL comment above. Host's tick
+                    // stream drives this iframe.
                     return;
                 }
                 case 'replayPause': {
-                    var rsPa = ch.replaySystem;
-                    if (!rsPa || !rsPa.isPlaying) return;
-                    if (typeof rsPa.pause !== 'function') return;
-                    try { rsPa.pause(); }
-                    catch (e) { warn('replayPause: pause threw', e && e.message); }
+                    // No-op — iframe never started a local play loop,
+                    // so there's nothing to pause. When host pauses,
+                    // its tick stream stops, iframe stops seeking,
+                    // iframe holds at host's last ts. Visually
+                    // identical to "iframe paused".
                     return;
                 }
                 case 'replaySetSpeed': {
@@ -504,6 +511,8 @@
                     if (!Number.isFinite(args.speed)) return;
                     try { rsS.setSpeed(args.speed); }
                     catch (e) { warn('replaySetSpeed threw', e && e.message); }
+                    // setSpeed is a no-op for restart when isPlaying=false,
+                    // so this just updates the speed value for consistency.
                     return;
                 }
                 case 'replaySetMode': {
@@ -511,12 +520,11 @@
                     if (!rsM || typeof rsM.setPlaybackMode !== 'function') return;
                     if (typeof args.mode !== 'string') return;
                     try {
-                        // restartPlayback:true so a mid-play mode
-                        // change (tick → candle) immediately re-arms
-                        // the right loop instead of waiting for the
-                        // next play()/pause() cycle.
+                        // restartPlayback:false — even in candle/tick
+                        // toggle, the iframe is not running a local
+                        // loop. Pure state update.
                         rsM.setPlaybackMode(args.mode,
-                            { restartPlayback: true });
+                            { restartPlayback: false });
                     } catch (e) {
                         warn('replaySetMode threw', e && e.message);
                     }
