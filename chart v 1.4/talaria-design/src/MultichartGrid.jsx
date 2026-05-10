@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260513T0900";
+const BRIDGE_VERSION = "20260513T1000";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -616,14 +616,29 @@ function applyIframeFocusBorder(cellEl) {
     overlay = document.createElement("div");
     overlay.setAttribute(IFRAME_FOCUS_BORDER_ATTR, "1");
     overlay.setAttribute("aria-hidden", "true");
+    // Bright, thick TradingView-style focus border. Previous values
+    // (2px / #3a6db5 / soft inset shadow) read as "barely tinted" on
+    // a dark chart background — user couldn't tell which panel was
+    // selected. New look:
+    //   • 3px solid border in #2962ff (TradingView's active-blue)
+    //   • outer glow via box-shadow that bleeds 6-12px into the gap
+    //     so even the panel sides next to a peer panel are obviously
+    //     highlighted
+    //   • stronger inset glow so the border is unmistakable against
+    //     the chart canvas it's painted on top of
     overlay.style.cssText = [
         "position: absolute",
         "inset: 0",
         "pointer-events: none",
-        "border: 2px solid #3a6db5",
+        "border: 3px solid #2962ff",
+        "border-radius: 2px",
         "box-sizing: border-box",
-        "box-shadow: 0 0 0 1px rgba(58,109,181,0.35), inset 0 0 12px rgba(58,109,181,0.18)",
-        "z-index: 9999",
+        "box-shadow: " + [
+            "0 0 0 1px rgba(41,98,255,0.85)",
+            "0 0 12px 2px rgba(41,98,255,0.55)",
+            "inset 0 0 14px rgba(41,98,255,0.25)",
+        ].join(", "),
+        "z-index: 2147483647",
     ].join(";");
     cellEl.appendChild(overlay); // appendChild = LAST child, sits over iframe
 }
@@ -652,14 +667,22 @@ function applyHostFocusOutline(focused) {
             overlay = document.createElement("div");
             overlay.id = HOST_FOCUS_OVERLAY_ID;
             overlay.setAttribute("aria-hidden", "true");
+            // Match the iframe focus overlay exactly — same bright
+            // TradingView-blue look so the user gets identical visual
+            // feedback whether they focus tile A (host) or any iframe.
             overlay.style.cssText = [
                 "position: absolute",
                 "inset: 0",
                 "pointer-events: none",
-                "border: 2px solid #3a6db5",
+                "border: 3px solid #2962ff",
+                "border-radius: 2px",
                 "box-sizing: border-box",
-                "box-shadow: 0 0 0 1px rgba(58,109,181,0.35), inset 0 0 12px rgba(58,109,181,0.18)",
-                "z-index: 9999",
+                "box-shadow: " + [
+                    "0 0 0 1px rgba(41,98,255,0.85)",
+                    "0 0 12px 2px rgba(41,98,255,0.55)",
+                    "inset 0 0 14px rgba(41,98,255,0.25)",
+                ].join(", "),
+                "z-index: 2147483647",
             ].join(";");
             wrapper.appendChild(overlay);
         }
