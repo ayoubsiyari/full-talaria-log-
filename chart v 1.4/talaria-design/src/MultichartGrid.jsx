@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260510T0700";
+const BRIDGE_VERSION = "20260510T0930";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1121,9 +1121,44 @@ export default function MultichartGrid({
                 .then((d) => (d && Array.isArray(d.indicators)) ? d.indicators : []);
         }
 
+        // runCommandAll broadcasts the command to EVERY panel (host + all
+        // iframes). Used by drawings: TradingView arms the active drawing
+        // tool on every panel so whichever one the user clicks first is
+        // already armed when the canvas's mousedown fires. If we only
+        // armed the focused panel, switching focus from B → A and then
+        // immediately mousedown-ing on A would lose the click — the
+        // mousedown is processed BEFORE the focus-change cascade reaches
+        // the drawing-tool effect, so A would still have currentTool=null
+        // and treat the click as a pan instead of starting a stroke.
+        //
+        // Returns Promise<void> (resolves once every per-panel call has
+        // settled, individual rejections are swallowed so one bad panel
+        // doesn't break the others).
+        function runCommandAll(cmd, args) {
+            const mgr = managerRef.current;
+            const proms = [];
+            // Host always exists in single + multi mode. Send to it
+            // unconditionally so single-chart fallback also works.
+            proms.push(applyHostCommand(cmd, args).catch((e) => {
+                console.warn("[MultichartGrid] runCommandAll host", cmd, "failed:", e && e.message || e);
+            }));
+            if (mgr && mgr.charts && typeof mgr.charts.values === "function") {
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host) continue; // host already handled above
+                    proms.push(
+                        mgr.sendCommand(c.id, cmd, args).catch((e) => {
+                            console.warn("[MultichartGrid] runCommandAll", c.id, cmd, "failed:", e && e.message || e);
+                        })
+                    );
+                }
+            }
+            return Promise.all(proms).then(() => undefined);
+        }
+
         window.__multichartGrid = {
             isMounted,
             runCommand,
+            runCommandAll,
             getPanelIndicators,
             getFocusedPanelId: () => focusedPanelIdRef.current,
         };

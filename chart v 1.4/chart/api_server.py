@@ -1888,7 +1888,14 @@ def _merge_canonical_ohlcv_csvs(existing: Path, incoming: Path, dest: Path) -> t
     return rows_out, new_rows_added
 
 
-def _upsert_or_create_dataset_from_csv(file_path: Path, original_name: str, description: str | None, upsert: bool) -> dict:
+def _upsert_or_create_dataset_from_csv(
+    file_path: Path,
+    original_name: str,
+    description: str | None,
+    upsert: bool,
+    match_canonical_ticker: str | None = None,
+    match_canonical_class: str | None = None,
+) -> dict:
     """
     Register a normalized CSV as a dataset, or **merge** the incoming CSV into
     an existing dataset with the same original_name when `upsert=True`.
@@ -1901,6 +1908,19 @@ def _upsert_or_create_dataset_from_csv(file_path: Path, original_name: str, desc
     would silently destroy old bars when a short-period bundle was imported
     on top of a long one.
 
+    Fallback matching: when the strict `original_name` lookup misses and the
+    caller supplies `match_canonical_ticker` (and optionally
+    `match_canonical_class`), we search FirstRate-imported rows whose
+    extracted ticker + classified asset class equal the requested values. This
+    is what stops daily updates from creating brand-new dataset rows when a
+    library was originally seeded under a different filename shape — e.g. an
+    old `period=full` import stored as `EURUSD_full_1min_1min.csv` will still
+    receive merges from a new `period=day` bundle that resolves to the
+    canonical `EURUSD_1min.csv`. When multiple rows match (i.e. duplicates
+    have already accumulated), we merge into the densest series (`max
+    row_count`) so the freshest data lands on the row most likely to be the
+    "real" one.
+
     The dataset row keeps its `file.id`, so downstream references (binary
     tiles, saved selections) remain stable.
     """
@@ -1908,6 +1928,35 @@ def _upsert_or_create_dataset_from_csv(file_path: Path, original_name: str, desc
         db = SessionLocal()
         try:
             db_file = db.query(CSVFile).filter(CSVFile.original_name == original_name).first()
+
+            # Canonical-ticker fallback: scoped to rows that look FirstRate-
+            # imported (on-disk filename contains `_firstrate_`) so we don't
+            # accidentally absorb arbitrary user uploads that happen to share
+            # a ticker.
+            if db_file is None and match_canonical_ticker:
+                wanted_ticker = (match_canonical_ticker or "").strip().upper()
+                wanted_class = (match_canonical_class or "").strip().lower() or None
+                if wanted_ticker:
+                    candidates = db.query(CSVFile).all()
+                    matches = []
+                    for cand in candidates:
+                        cand_disk = (cand.filename or "").lower()
+                        if "_firstrate_" not in cand_disk:
+                            continue
+                        cand_orig = cand.original_name or ""
+                        cand_ticker = (
+                            _firstrate_extract_ticker_from_filename(cand_orig) or ""
+                        ).upper()
+                        if not cand_ticker or cand_ticker != wanted_ticker:
+                            continue
+                        if wanted_class:
+                            cand_class = _firstrate_classify_ticker(cand_ticker)
+                            if cand_class != wanted_class:
+                                continue
+                        matches.append(cand)
+                    if matches:
+                        db_file = max(matches, key=lambda r: int(r.row_count or 0))
+
             if db_file:
                 final_path = _resolve_dataset_csv_for_file(db_file)
                 new_rows_added = 0
@@ -4931,6 +4980,413 @@ def _purge_all_chart_datasets() -> dict:
     return {"deleted_count": len(deleted_ids), "deleted_ids": deleted_ids}
 
 
+# ---------------------------------------------------------------------------
+# FirstRate duplicate-dataset cleanup tooling
+#
+# Background: prior to the canonical-ticker fix in
+# `_upsert_or_create_dataset_from_csv`, every change of `period`/`timeframe`
+# in a FirstRate import would mint a fresh `CSVFile` row instead of merging
+# into the existing one (e.g. a `period=full` seed at `EURUSD_full_1min_1min.csv`
+# and a later nightly `period=day` import at `EURUSD_1min_1min.csv` end up as
+# two rows for the same instrument). The helpers below let the admin scan for
+# such groups and consolidate them without ever truly deleting the historical
+# big dataset.
+#
+# Safety contract:
+#   * Identification is read-only — `_collect_firstrate_duplicate_groups`
+#     never touches disk or DB state.
+#   * Consolidation is opt-in per group, requires an explicit confirmation
+#     phrase, and quarantines the loser bytes under `_quarantine/<id>/` so a
+#     future restore is always possible.
+#   * The winner CSV gets a pre-merge backup before any merge, and a hard
+#     row-count guard refuses to delete losers if the merge produces a
+#     smaller-than-input result.
+# ---------------------------------------------------------------------------
+
+QUARANTINE_DIR = UPLOAD_DIR / "_quarantine"
+
+
+def _collect_firstrate_duplicate_groups() -> list[dict]:
+    """
+    Scan the `csv_files` registry, bucket FirstRate-imported rows by
+    `(canonical_ticker, asset_class)`, and return one entry per group with
+    ≥2 members. The on-disk filename containing `_firstrate_` is the gate
+    that stops arbitrary user uploads (Dukascopy, manual CSV, …) from being
+    pulled into a group with the same ticker.
+
+    Each returned dict carries enough metadata for the admin UI to render a
+    decision form: per-row `id`, `original_name`, `filename`, `row_count`,
+    `last_bar_iso`, plus the densest row's id flagged as `suggested_winner_id`
+    (the UI uses this only as a default — the admin can pick a different one).
+    """
+    db = SessionLocal()
+    try:
+        files = db.query(CSVFile).all()
+        agg_rows = (
+            db.query(CSVAggregate)
+            .filter(CSVAggregate.timeframe == "1m")
+            .all()
+        )
+    finally:
+        db.close()
+    end_ts_by_file: dict[int, float | None] = {}
+    for a in agg_rows:
+        try:
+            end_ts_by_file[int(a.file_id)] = float(a.end_ts) if a.end_ts is not None else None
+        except (TypeError, ValueError):
+            end_ts_by_file[int(a.file_id)] = None
+
+    grouped: dict[tuple[str, str], list[dict]] = {}
+    for f in files:
+        disk = (f.filename or "").lower()
+        if "_firstrate_" not in disk:
+            continue
+        ticker = (
+            _firstrate_extract_ticker_from_filename(f.original_name or "") or ""
+        ).upper()
+        if not ticker:
+            continue
+        asset_class = _firstrate_classify_ticker(ticker) or ""
+        if not asset_class:
+            continue
+        key = (ticker, asset_class)
+        ts = end_ts_by_file.get(int(f.id))
+        grouped.setdefault(key, []).append({
+            "id": int(f.id),
+            "original_name": f.original_name,
+            "filename": f.filename,
+            "row_count": int(f.row_count or 0),
+            "description": f.description or "",
+            "last_bar_ms": ts,
+            "last_bar_iso": _epoch_ms_to_iso_utc(ts) if ts is not None else None,
+        })
+
+    out: list[dict] = []
+    for (ticker, asset_class), rows in grouped.items():
+        if len(rows) < 2:
+            continue
+        rows.sort(key=lambda r: int(r["row_count"] or 0), reverse=True)
+        suggested = rows[0]["id"]
+        out.append({
+            "ticker": ticker,
+            "asset_class": asset_class,
+            "group_key": f"{asset_class}:{ticker}",
+            "suggested_winner_id": suggested,
+            "row_count_total": sum(int(r["row_count"] or 0) for r in rows),
+            "rows": rows,
+        })
+    out.sort(key=lambda g: (g["asset_class"], g["ticker"]))
+    return out
+
+
+def _quarantine_dataset_assets(db, db_file: CSVFile, dest_root: Path) -> dict:
+    """
+    Move (not copy) every on-disk artifact + DB row for `db_file` into
+    `dest_root`, then delete the DB rows. Mirrors `_purge_dataset_rows` but
+    with `move` instead of `unlink`, so a future restore endpoint can put the
+    bytes back. Returns a small manifest describing what was moved.
+    """
+    file_id = int(db_file.id)
+    dest_root.mkdir(parents=True, exist_ok=True)
+    csv_dest = dest_root / "source"
+    bin_dest = dest_root / "bin"
+    agg_dest = dest_root / "aggregates"
+    tile_dest = dest_root / "tiles"
+    for d in (csv_dest, bin_dest, agg_dest, tile_dest):
+        d.mkdir(parents=True, exist_ok=True)
+
+    moved: dict[str, list[str]] = {"source": [], "bin": [], "aggregates": [], "tiles": []}
+
+    src_csv_candidates = [UPLOAD_DIR / db_file.filename, CSV_ARCHIVE_DIR / db_file.filename]
+    for cand in src_csv_candidates:
+        if cand.exists():
+            try:
+                shutil.move(str(cand), str(csv_dest / cand.name))
+                moved["source"].append(cand.name)
+            except Exception:
+                pass
+
+    aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
+    for agg in aggs:
+        for d in (BIN_DIR, AGG_DIR):
+            p = d / agg.agg_filename
+            if p.exists():
+                try:
+                    target = (bin_dest if d is BIN_DIR else agg_dest) / agg.agg_filename
+                    shutil.move(str(p), str(target))
+                    moved["aggregates"].append(agg.agg_filename)
+                except Exception:
+                    pass
+        db.delete(agg)
+
+    for tf in DATASET_TIMEFRAMES:
+        p = BIN_DIR / f"bin_{file_id}_{tf}.bin"
+        if p.exists():
+            try:
+                shutil.move(str(p), str(bin_dest / p.name))
+                moved["bin"].append(p.name)
+            except Exception:
+                pass
+
+    tile_file_dir = TILES_DIR / str(file_id)
+    if tile_file_dir.exists():
+        for tp in tile_file_dir.rglob("tile_*.bin"):
+            try:
+                _mmap_cache.invalidate(tp)
+            except Exception:
+                pass
+        try:
+            shutil.move(str(tile_file_dir), str(tile_dest / str(file_id)))
+            moved["tiles"].append(str(file_id))
+        except Exception:
+            pass
+
+    db.query(DatasetSettings).filter(DatasetSettings.file_id == file_id).delete()
+    db.query(BinaryBuildJob).filter(BinaryBuildJob.file_id == file_id).delete()
+    db.delete(db_file)
+
+    return {
+        "file_id": file_id,
+        "original_name": db_file.original_name,
+        "filename": db_file.filename,
+        "moved": moved,
+    }
+
+
+def _consolidate_duplicate_group(
+    *,
+    winner_id: int,
+    loser_ids: list[int],
+    expected_ticker: str,
+    expected_class: str,
+    consolidation_id: str,
+    dry_run: bool,
+) -> dict:
+    """
+    Merge every loser dataset into `winner_id` and (when not `dry_run`)
+    quarantine the losers. Returns a per-loser report with pre/post row
+    counts and the rows added. Aborts the entire group on any safety
+    violation — the caller is expected to surface the abort reason.
+
+    Safety violations that abort the group:
+      * winner or any loser missing in DB
+      * any row's filename does not contain `_firstrate_`
+      * any row's extracted ticker / classified class disagrees with
+        `expected_ticker` / `expected_class`
+      * a loser's row_count is greater than the winner's (configured to be
+        defensive — the caller should already be picking the densest row)
+      * the merged CSV ends up shorter than the pre-merge winner
+    """
+    db = SessionLocal()
+    try:
+        winner = db.query(CSVFile).filter(CSVFile.id == int(winner_id)).first()
+        if winner is None:
+            raise ValueError(f"winner CSVFile id={winner_id} not found")
+        if "_firstrate_" not in (winner.filename or "").lower():
+            raise ValueError(
+                f"winner id={winner_id} is not a FirstRate-imported dataset "
+                "(consolidation refuses to touch arbitrary uploads)"
+            )
+
+        winner_ticker = (
+            _firstrate_extract_ticker_from_filename(winner.original_name or "") or ""
+        ).upper()
+        winner_class = _firstrate_classify_ticker(winner_ticker) or ""
+        if winner_ticker != expected_ticker.upper():
+            raise ValueError(
+                f"winner id={winner_id} has ticker {winner_ticker!r}, "
+                f"expected {expected_ticker!r}"
+            )
+        if winner_class != expected_class.lower():
+            raise ValueError(
+                f"winner id={winner_id} classified as {winner_class!r}, "
+                f"expected {expected_class!r}"
+            )
+
+        loser_rows: list[CSVFile] = []
+        for lid in loser_ids:
+            row = db.query(CSVFile).filter(CSVFile.id == int(lid)).first()
+            if row is None:
+                raise ValueError(f"loser CSVFile id={lid} not found")
+            if int(row.id) == int(winner.id):
+                raise ValueError(f"loser id={lid} is the same as winner")
+            if "_firstrate_" not in (row.filename or "").lower():
+                raise ValueError(
+                    f"loser id={lid} is not a FirstRate-imported dataset"
+                )
+            row_ticker = (
+                _firstrate_extract_ticker_from_filename(row.original_name or "") or ""
+            ).upper()
+            row_class = _firstrate_classify_ticker(row_ticker) or ""
+            if row_ticker != expected_ticker.upper():
+                raise ValueError(
+                    f"loser id={lid} ticker {row_ticker!r} does not match "
+                    f"expected {expected_ticker!r}"
+                )
+            if row_class != expected_class.lower():
+                raise ValueError(
+                    f"loser id={lid} classified as {row_class!r}, expected "
+                    f"{expected_class!r}"
+                )
+            if int(row.row_count or 0) > int(winner.row_count or 0):
+                raise ValueError(
+                    f"refusing to consolidate: loser id={lid} has "
+                    f"{int(row.row_count or 0)} rows but winner id={winner.id} "
+                    f"has only {int(winner.row_count or 0)} — pick the larger row "
+                    "as the winner instead"
+                )
+            loser_rows.append(row)
+
+        winner_csv = _resolve_dataset_csv_for_file(winner)
+        if not winner_csv.exists():
+            raise ValueError(
+                f"winner CSV file is missing on disk: {winner_csv}"
+            )
+
+        group_dir = QUARANTINE_DIR / consolidation_id / "groups" / f"{expected_class}_{expected_ticker}"
+        backup_dir = group_dir / "winners_pre_merge"
+        losers_dir = group_dir / "losers"
+
+        per_loser_report: list[dict] = []
+
+        if dry_run:
+            # Simulate the merge into a temp directory so we can report a
+            # projected post-merge row count without touching anything live.
+            # Each loser is merged into a copy of the winner CSV in sequence,
+            # exactly mirroring the real path so the projected counts reflect
+            # what the destructive call will produce.
+            tmp_root = Path(tempfile.mkdtemp(prefix=f"frconsdr_{consolidation_id}_"))
+            try:
+                tmp_winner = tmp_root / "winner.csv"
+                shutil.copyfile(winner_csv, tmp_winner)
+                running_count = int(count_csv_rows(str(tmp_winner)) or 0)
+                for row in loser_rows:
+                    loser_csv = _resolve_dataset_csv_for_file(row)
+                    if not loser_csv.exists():
+                        per_loser_report.append({
+                            "id": int(row.id),
+                            "original_name": row.original_name,
+                            "filename": row.filename,
+                            "rows_before": int(row.row_count or 0),
+                            "skipped": True,
+                            "reason": "loser CSV missing on disk",
+                        })
+                        continue
+                    rows_out, new_added = _merge_canonical_ohlcv_csvs(
+                        existing=tmp_winner, incoming=loser_csv, dest=tmp_winner
+                    )
+                    if int(rows_out) < running_count:
+                        raise ValueError(
+                            f"merge with loser id={row.id} would shrink the "
+                            f"winner from {running_count} to {rows_out} rows — "
+                            "aborting"
+                        )
+                    per_loser_report.append({
+                        "id": int(row.id),
+                        "original_name": row.original_name,
+                        "filename": row.filename,
+                        "rows_before": int(row.row_count or 0),
+                        "new_rows_added": int(new_added),
+                        "winner_total_after_this_merge": int(rows_out),
+                        "skipped": False,
+                    })
+                    running_count = int(rows_out)
+                return {
+                    "winner_id": int(winner.id),
+                    "winner_original_name": winner.original_name,
+                    "winner_filename": winner.filename,
+                    "winner_rows_before": int(winner.row_count or 0),
+                    "projected_winner_rows": running_count,
+                    "losers": per_loser_report,
+                    "dry_run": True,
+                }
+            finally:
+                shutil.rmtree(tmp_root, ignore_errors=True)
+
+        # Real execution path.
+        group_dir.mkdir(parents=True, exist_ok=True)
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        losers_dir.mkdir(parents=True, exist_ok=True)
+
+        winner_backup = backup_dir / winner_csv.name
+        shutil.copyfile(winner_csv, winner_backup)
+        winner_rows_before = int(winner.row_count or 0)
+
+        try:
+            running_count = int(count_csv_rows(str(winner_csv)) or 0)
+            for row in loser_rows:
+                loser_csv = _resolve_dataset_csv_for_file(row)
+                if not loser_csv.exists():
+                    per_loser_report.append({
+                        "id": int(row.id),
+                        "original_name": row.original_name,
+                        "filename": row.filename,
+                        "rows_before": int(row.row_count or 0),
+                        "new_rows_added": 0,
+                        "skipped": True,
+                        "reason": "loser CSV missing on disk; loser DB row will still be quarantined",
+                    })
+                    continue
+                rows_out, new_added = _merge_canonical_ohlcv_csvs(
+                    existing=winner_csv, incoming=loser_csv, dest=winner_csv
+                )
+                if int(rows_out) < running_count:
+                    raise RuntimeError(
+                        f"merge with loser id={row.id} shrunk the winner from "
+                        f"{running_count} to {rows_out} — restoring backup and "
+                        "aborting"
+                    )
+                per_loser_report.append({
+                    "id": int(row.id),
+                    "original_name": row.original_name,
+                    "filename": row.filename,
+                    "rows_before": int(row.row_count or 0),
+                    "new_rows_added": int(new_added),
+                    "winner_total_after_this_merge": int(rows_out),
+                    "skipped": False,
+                })
+                running_count = int(rows_out)
+        except Exception:
+            shutil.copyfile(winner_backup, winner_csv)
+            raise
+
+        winner.row_count = running_count
+        try:
+            build_binary_for_file(
+                int(winner.id), winner_csv, winner.original_name, run_async=False, trigger="consolidate"
+            )
+        except Exception:
+            pass
+
+        # Move loser assets and delete their DB rows.
+        loser_manifests: list[dict] = []
+        for row in loser_rows:
+            loser_dir = losers_dir / str(int(row.id))
+            man = _quarantine_dataset_assets(db, row, loser_dir)
+            loser_manifests.append(man)
+
+        db.commit()
+        db.refresh(winner)
+
+        return {
+            "winner_id": int(winner.id),
+            "winner_original_name": winner.original_name,
+            "winner_filename": winner.filename,
+            "winner_rows_before": winner_rows_before,
+            "winner_rows_after": running_count,
+            "winner_pre_merge_backup": str(winner_backup),
+            "losers": per_loser_report,
+            "loser_quarantine": loser_manifests,
+            "quarantine_dir": str(group_dir),
+            "dry_run": False,
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def _dataset_binary_integrity(db, file_id: int) -> tuple[bool, list[str]]:
     """Validate that required TF binaries + tile metadata are all ready for a dataset."""
     issues: list[str] = []
@@ -5569,13 +6025,25 @@ def _run_firstrate_import_job(job_id: str) -> None:
                     _firstrate_write_job(job_id, st)
                     continue
 
-                original_label = f"{stem_safe}_{timeframe}.csv"
+                # Use the canonical ticker (period-independent) for the
+                # dataset key so nightly `period=day` bundles merge into the
+                # dataset originally seeded from `period=full` (or any other
+                # period). Without this, the vendor's stem changes per period
+                # — `EURUSD_full_1min` vs `EURUSD_1min` vs `EURUSD_week_1min`
+                # — and the strict `original_name` lookup misses, creating a
+                # fresh duplicate dataset every time the period changes.
+                canonical_ticker = (
+                    _firstrate_extract_ticker_from_filename(stem_raw) or stem_safe
+                ).upper()
+                original_label = f"{canonical_ticker}_{timeframe}.csv"
                 upsert = bool(state.get("upsert_existing"))
                 info = _upsert_or_create_dataset_from_csv(
                     dest_csv,
                     original_name=original_label,
                     description=f"FirstRate {instrument_type} ({period}, {timeframe})",
                     upsert=upsert,
+                    match_canonical_ticker=canonical_ticker,
+                    match_canonical_class=instrument_type,
                 )
                 entry = info.get("file") if isinstance(info, dict) else None
                 if entry:

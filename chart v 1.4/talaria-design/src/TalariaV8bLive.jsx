@@ -7570,37 +7570,52 @@ const TalariaV8bLive = () => {
       if (cancelled) return;
 
       // Phase 7.2.4 — multichart routing. If MultichartGrid is mounted,
-      // route the active drawing tool to the FOCUSED panel only. This
-      // means each panel can be in a different drawing mode at once
-      // (Panel A armed for trend lines while Panel B has cursor active).
-      // Falls back to legacy single-chart path when no grid is mounted.
+      // BROADCAST the active drawing tool to every panel (host + all
+      // iframes), matching TradingView UX. Why broadcast and not focus-
+      // only: the user often picks a tool and then mousedowns on a
+      // panel that wasn't focused yet (e.g. focus was on B, click on
+      // A's canvas to draw). The focus change is processed AFTER the
+      // mousedown event, so if we only armed the focused panel, A
+      // would still have currentTool=null when its canvas processed
+      // the mousedown, and the click would be treated as a pan
+      // instead of starting a stroke. Broadcasting means whichever
+      // panel the user clicks first is already armed.
+      //
+      // Wrapped in try/catch so a synchronous throw inside the bus
+      // (very unlikely but possible if window.__multichartGrid is
+      // partially set up) cannot bubble into React render and blank
+      // the page.
       const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
-      if (grid && typeof grid.runCommand === "function") {
-        // Editing an existing drawing through the V9 settings panel:
-        // never arm a draw tool, just clear so the chart canvas is
-        // safe to click without starting a new stroke.
-        if (editingDrawingRef.current) {
-          grid.runCommand("clearActiveDrawingTool", null).catch(() => {});
-          return;
-        }
-        // toolbar.show sync-back to crosshair (a shape was just selected
-        // and the V9 floating bar told us): suppress unless the user is
-        // explicitly arming a real tool.
-        if (v9SelectionToolbarSyncRef.current) {
-          v9SelectionToolbarSyncRef.current = false;
-          const legacy = resolveLegacyTool();
-          if (!legacy) {
-            grid.runCommand("clearActiveDrawingTool", null).catch(() => {});
+      if (grid && typeof grid.runCommandAll === "function") {
+        try {
+          // Editing an existing drawing through the V9 settings panel:
+          // never arm a draw tool, just clear so the chart canvas is
+          // safe to click without starting a new stroke.
+          if (editingDrawingRef.current) {
+            grid.runCommandAll("clearActiveDrawingTool", null).catch(() => {});
             return;
           }
-          // fall through → arm real tool
-        }
-        const legacy = resolveLegacyTool();
-        if (!legacy) {
-          grid.runCommand("clearActiveDrawingTool", null).catch(() => {});
-        } else {
-          grid.runCommand("setActiveDrawingTool", { tool: legacy })
-              .catch((err) => console.warn("[V9 tool bridge multi] setTool failed:", legacy, err));
+          // toolbar.show sync-back to crosshair (a shape was just selected
+          // and the V9 floating bar told us): suppress unless the user is
+          // explicitly arming a real tool.
+          if (v9SelectionToolbarSyncRef.current) {
+            v9SelectionToolbarSyncRef.current = false;
+            const legacy = resolveLegacyTool();
+            if (!legacy) {
+              grid.runCommandAll("clearActiveDrawingTool", null).catch(() => {});
+              return;
+            }
+            // fall through → arm real tool
+          }
+          const legacy = resolveLegacyTool();
+          if (!legacy) {
+            grid.runCommandAll("clearActiveDrawingTool", null).catch(() => {});
+          } else {
+            grid.runCommandAll("setActiveDrawingTool", { tool: legacy })
+                .catch((err) => console.warn("[V9 tool bridge multi] setTool failed:", legacy, err));
+          }
+        } catch (err) {
+          console.warn("[V9 tool bridge multi] threw:", err);
         }
         return;
       }
