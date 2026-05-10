@@ -94,6 +94,125 @@
         });
     }
 
+    // ─── replay sync deferral state ────────────────────────────────────
+    //
+    // Replay commands (replayEnter / replayTick) frequently arrive BEFORE
+    // the iframe finishes loading its dataset:
+    //   T0   embed-bridge.installOnce → MultichartBridge.installBridge
+    //         → bridge-ready postMessage → parent marks panel ready.
+    //   T+ε  parent's _primeReplayFromParent fires (if parent is in
+    //         active replay) → sendCommand('replayEnter', { ts }).
+    //   T+δ  embed-bridge.applyInitialContext kicks loadFileData(fileId)
+    //         — STILL IN FLIGHT.
+    //   T+δ+ chart.rawData populated, chartDataLoaded fires.
+    //
+    // If replayEnter executes during the (T+ε, T+δ+) window, rawData is
+    // empty → enterReplayMode would alert("Please load data first") and
+    // bail. To avoid that we stash the LATEST requested timestamp here
+    // and a single chartDataLoaded listener (installed lazily on the
+    // first deferred command) drains it the moment data arrives.
+    //
+    // Only the LATEST timestamp is kept — replay seek is idempotent and
+    // the parent fires replayTick at ~playback rate, so there's no
+    // value in queueing a backlog.
+    var pendingReplayTs = null;
+    var dataLoadedListenerInstalled = false;
+
+    function applyReplayEnter(ch, ts) {
+        if (!Number.isFinite(ts)) {
+            // Caller (e.g. _primeReplayFromParent) sent enter without a
+            // timestamp — that means "enter at parent's current ts but
+            // we don't know it yet". Use whatever we last stashed; if
+            // nothing stashed, this is a no-op (next replayTick will
+            // supply the ts).
+            ts = pendingReplayTs;
+        }
+        var rs = ch.replaySystem;
+        if (!rs) {
+            warn('replayEnter: replaySystem not available on this chart');
+            return;
+        }
+        // Defer if data isn't loaded yet — install a one-time listener
+        // and stash the timestamp. drainPendingReplay() will fire when
+        // chartDataLoaded arrives.
+        if (!ch.rawData || ch.rawData.length === 0) {
+            pendingReplayTs = ts;
+            installDataLoadedListener(ch);
+            return;
+        }
+        // Data is loaded. Enter replay if needed, then seek.
+        if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
+            try {
+                rs.enterReplayMode({ startAtBeginning: true });
+            } catch (e) {
+                warn('replayEnter: enterReplayMode threw', e && e.message);
+            }
+        }
+        if (rs.isActive && Number.isFinite(ts)
+            && typeof rs.goToReplayTimestamp === 'function') {
+            try {
+                rs.goToReplayTimestamp(ts, { preserveVisibleWindow: false });
+            } catch (e) {
+                warn('replayEnter: goToReplayTimestamp threw', e && e.message);
+            }
+        }
+        // Successfully applied — clear the pending stash so a later
+        // chartDataLoaded (e.g. user changes file via symbol-sync, then
+        // tries to play) doesn't replay a stale timestamp from before
+        // the file change.
+        pendingReplayTs = null;
+    }
+
+    function drainPendingReplay() {
+        if (pendingReplayTs == null) return;
+        var ch = global.chart;
+        if (!ch || !ch.rawData || ch.rawData.length === 0) return;
+        var ts = pendingReplayTs;
+        // Apply directly via the now-ready path (skip the empty-data
+        // re-stash branch that only matters on cold dispatch).
+        var rs = ch.replaySystem;
+        if (!rs) {
+            warn('drainPendingReplay: replaySystem missing on ready chart');
+            return;
+        }
+        if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
+            try {
+                rs.enterReplayMode({ startAtBeginning: true });
+            } catch (e) {
+                warn('drainPendingReplay: enterReplayMode threw', e && e.message);
+            }
+        }
+        if (rs.isActive && Number.isFinite(ts)
+            && typeof rs.goToReplayTimestamp === 'function') {
+            try {
+                rs.goToReplayTimestamp(ts, { preserveVisibleWindow: false });
+            } catch (e) {
+                warn('drainPendingReplay: goToReplayTimestamp threw', e && e.message);
+            }
+        }
+        // Only clear once we know the seek went through (rs.isActive
+        // means enterReplayMode succeeded). If something failed we keep
+        // the stash so the next chartDataLoaded retries.
+        if (rs.isActive) pendingReplayTs = null;
+    }
+
+    function installDataLoadedListener(ch) {
+        if (dataLoadedListenerInstalled) return;
+        dataLoadedListenerInstalled = true;
+        global.addEventListener('chartDataLoaded', function () {
+            // Defer to next tick so chart.js finishes its post-load
+            // bookkeeping (rawData index rebuild, lastBarMs cache, etc.)
+            // before replay re-enters. This avoids fighting chart.js's
+            // own initial render pass.
+            setTimeout(drainPendingReplay, 0);
+        });
+        // Also attempt one more flush AFTER a short delay, in case
+        // chartDataLoaded already fired before we attached the
+        // listener (race when applyCommand resolves on the same
+        // microtask as the first chartDataLoaded dispatch).
+        setTimeout(drainPendingReplay, 250);
+    }
+
     // Apply a single command. Returns a promise that resolves on success
     // or rejects on failure (we surface either via reportResult).
     function applyCommand(cmd, args) {
@@ -244,57 +363,22 @@
                 //     the same timestamp.
                 //   • exitReplayMode early-returns when !isActive.
                 case 'replayEnter': {
-                    if (!ch.rawData || ch.rawData.length === 0) {
-                        // Iframe data still loading — defer; the next
-                        // replayTick (parent fires every candle) will
-                        // re-attempt with the same logic.
-                        throw new Error('chart data not loaded yet');
-                    }
-                    var rs = ch.replaySystem;
-                    if (!rs) throw new Error('replaySystem not available');
-                    if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
-                        // startAtBeginning forces the backtest path so
-                        // the initial currentIndex respects session
-                        // start instead of jumping to the 10% default.
-                        // We immediately seek anyway so the first
-                        // visible bar matches the parent.
-                        try {
-                            rs.enterReplayMode({ startAtBeginning: true });
-                        } catch (e) {
-                            warn('replayEnter: enterReplayMode threw', e && e.message);
-                        }
-                    }
                     var tsE = Number(args.timestamp);
-                    if (Number.isFinite(tsE) && rs.isActive
-                        && typeof rs.goToReplayTimestamp === 'function') {
-                        rs.goToReplayTimestamp(tsE, { preserveVisibleWindow: false });
-                    }
-                    return;
+                    return applyReplayEnter(ch, tsE);
                 }
                 case 'replayTick': {
-                    var rs2 = ch.replaySystem;
-                    if (!rs2) return;
                     var ts2 = Number(args.timestamp);
                     if (!Number.isFinite(ts2)) return;
-                    // Lazy enter: an iframe that became ready AFTER the
-                    // parent already entered replay never received
-                    // replayEnter; treat the first tick as the enter
-                    // signal. Skip silently if rawData isn't loaded
-                    // yet (subsequent ticks will retry).
-                    if (!rs2.isActive) {
-                        if (!ch.rawData || ch.rawData.length === 0) return;
-                        if (typeof rs2.enterReplayMode === 'function') {
-                            try { rs2.enterReplayMode({ startAtBeginning: true }); }
-                            catch (e) { warn('replayTick: enterReplayMode threw', e && e.message); }
-                        }
-                    }
-                    if (rs2.isActive
-                        && typeof rs2.goToReplayTimestamp === 'function') {
-                        rs2.goToReplayTimestamp(ts2, { preserveVisibleWindow: false });
-                    }
-                    return;
+                    // Same deferral path as replayEnter — if data isn't
+                    // loaded yet, queue the seek. The chartDataLoaded
+                    // listener below will replay the latest queued ts
+                    // once the iframe's first dataset is in.
+                    return applyReplayEnter(ch, ts2);
                 }
                 case 'replayExit': {
+                    // Drop any queued enter — parent left replay before
+                    // we got around to applying it.
+                    pendingReplayTs = null;
                     var rs3 = ch.replaySystem;
                     if (rs3 && rs3.isActive
                         && typeof rs3.exitReplayMode === 'function') {

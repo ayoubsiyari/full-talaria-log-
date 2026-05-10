@@ -14,7 +14,9 @@ run_npm_audit() {
     return 0
   fi
   if command -v npm >/dev/null 2>&1; then
-    (cd "$ROOT/$dir" && npm audit --audit-level=moderate) || FAILED=1
+    # --omit=dev: focus on packages that ship to users; build/test toolchains
+    # (jest, jsdom, terser, eslint, etc.) are excluded. Mirrors CI.
+    (cd "$ROOT/$dir" && npm audit --audit-level=moderate --omit=dev) || FAILED=1
   else
     echo "    (skip: npm not found)"
   fi
