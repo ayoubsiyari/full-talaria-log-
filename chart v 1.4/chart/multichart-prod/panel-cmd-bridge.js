@@ -212,6 +212,98 @@
                     return { indicators: items };
                 }
 
+                // ─── replay sync ───────────────────────────────────────
+                //
+                // Parent broadcasts the host's replay state so every
+                // iframe panel slides its candle slice to the same
+                // virtual time. The iframe's own replaySystem is the
+                // mechanism (it owns updateChartData → resampleData →
+                // render), but its toolbar UI is hidden by the
+                // multichart shim ([data-v9-chrome="1"]) so only the
+                // parent's toolbar drives play/pause/seek.
+                //
+                // Parent → iframe protocol:
+                //   replayEnter { timestamp }
+                //     Activate replaySystem at the given virtual time.
+                //     Iframe calls enterReplayMode (if not already
+                //     active) then goToReplayTimestamp to align.
+                //   replayTick  { timestamp }
+                //     Live tick during play / seek. Iframe seeks to
+                //     the new timestamp; if not yet active it lazily
+                //     enters first (handles "iframe added mid-replay"
+                //     race where panel-cmd-ready arrives between the
+                //     parent's enter and the next tick).
+                //   replayExit
+                //     Parent exited replay (user clicked exit, or
+                //     loaded a new dataset). Iframe exits too so its
+                //     candle slice returns to the full file.
+                //
+                // Idempotency:
+                //   • enterReplayMode early-returns when isActive=true.
+                //   • goToReplayTimestamp is cheap and idempotent for
+                //     the same timestamp.
+                //   • exitReplayMode early-returns when !isActive.
+                case 'replayEnter': {
+                    if (!ch.rawData || ch.rawData.length === 0) {
+                        // Iframe data still loading — defer; the next
+                        // replayTick (parent fires every candle) will
+                        // re-attempt with the same logic.
+                        throw new Error('chart data not loaded yet');
+                    }
+                    var rs = ch.replaySystem;
+                    if (!rs) throw new Error('replaySystem not available');
+                    if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
+                        // startAtBeginning forces the backtest path so
+                        // the initial currentIndex respects session
+                        // start instead of jumping to the 10% default.
+                        // We immediately seek anyway so the first
+                        // visible bar matches the parent.
+                        try {
+                            rs.enterReplayMode({ startAtBeginning: true });
+                        } catch (e) {
+                            warn('replayEnter: enterReplayMode threw', e && e.message);
+                        }
+                    }
+                    var tsE = Number(args.timestamp);
+                    if (Number.isFinite(tsE) && rs.isActive
+                        && typeof rs.goToReplayTimestamp === 'function') {
+                        rs.goToReplayTimestamp(tsE, { preserveVisibleWindow: false });
+                    }
+                    return;
+                }
+                case 'replayTick': {
+                    var rs2 = ch.replaySystem;
+                    if (!rs2) return;
+                    var ts2 = Number(args.timestamp);
+                    if (!Number.isFinite(ts2)) return;
+                    // Lazy enter: an iframe that became ready AFTER the
+                    // parent already entered replay never received
+                    // replayEnter; treat the first tick as the enter
+                    // signal. Skip silently if rawData isn't loaded
+                    // yet (subsequent ticks will retry).
+                    if (!rs2.isActive) {
+                        if (!ch.rawData || ch.rawData.length === 0) return;
+                        if (typeof rs2.enterReplayMode === 'function') {
+                            try { rs2.enterReplayMode({ startAtBeginning: true }); }
+                            catch (e) { warn('replayTick: enterReplayMode threw', e && e.message); }
+                        }
+                    }
+                    if (rs2.isActive
+                        && typeof rs2.goToReplayTimestamp === 'function') {
+                        rs2.goToReplayTimestamp(ts2, { preserveVisibleWindow: false });
+                    }
+                    return;
+                }
+                case 'replayExit': {
+                    var rs3 = ch.replaySystem;
+                    if (rs3 && rs3.isActive
+                        && typeof rs3.exitReplayMode === 'function') {
+                        try { rs3.exitReplayMode(); }
+                        catch (e) { warn('replayExit: exitReplayMode threw', e && e.message); }
+                    }
+                    return;
+                }
+
                 // ─── extensibility hook ────────────────────────────────
                 // Phase 7.2.4 covers tf + file + drawings + indicators.
                 // Future commands (place order, chart type) land here
@@ -258,6 +350,9 @@
                 'addIndicator',
                 'removeIndicator',
                 'getIndicators',
+                'replayEnter',
+                'replayTick',
+                'replayExit',
             ],
         }, '*');
     } catch (_) {}

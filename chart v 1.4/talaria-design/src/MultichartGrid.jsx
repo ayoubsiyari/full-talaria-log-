@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260510T2200";
+const BRIDGE_VERSION = "20260511T1300";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1057,6 +1057,162 @@ export default function MultichartGrid({
         window.addEventListener("chartDataLoaded", onDataLoaded);
         return () => window.removeEventListener("chartDataLoaded", onDataLoaded);
     }, [layoutSync]);
+
+    // ─── Replay sync (parent → iframes) ─────────────────────────────────
+    //
+    // When the parent enters backtest replay (mode=backtest), each candle
+    // tick fires `replayVirtualTimeChanged` on `window` with `{ timestamp,
+    // symbol }` (replay-system.js:4745, 4783). We mirror that timestamp
+    // to every iframe panel via panel-cmd-bridge `replayTick`, and the
+    // iframe's own replaySystem calls goToReplayTimestamp(ts) to slide
+    // its visible candle slice to the same virtual time.
+    //
+    // The iframe's replay TOOLBAR is hidden by the multichart shim
+    // (data-v9-chrome="1"), so only the parent's toolbar shows
+    // play/pause/seek controls. The iframe's chart engine STILL runs its
+    // replaySystem internals — that's the mechanism that knows how to
+    // slice fullRawData and resample to the current timeframe.
+    //
+    // Lifecycle:
+    //   • First tick after grid mount → broadcast `replayEnter` (sets
+    //     up isActive + fullRawData on the iframe, then seeks).
+    //   • Subsequent ticks → broadcast `replayTick` (fast seek only).
+    //   • Newly-added iframes mid-replay receive `replayEnter` on the
+    //     next tick (via lazy enter inside panel-cmd-bridge replayTick).
+    //   • Parent exits replay → monkey-patched exitReplayMode broadcasts
+    //     `replayExit` so iframes return to full-file view.
+    //
+    // We deliberately do NOT mirror parent's PLAY/PAUSE state to iframes
+    // — only the timestamp. Each iframe seeks on every tick, which is
+    // the correct behavior whether the parent is playing (continuous
+    // ticks) or paused (no ticks → iframes hold position). Speed is
+    // also implicitly handled: parent's tick rate IS the playback
+    // speed; iframes inherit it for free.
+    //
+    // The shared replay state is held in a ref so the listener effect
+    // (mount-once) and the prime-on-ready effect (depends on
+    // readyPanels) can both read/write the same lastBroadcastTs and
+    // everEntered fields without re-creating the listeners on every
+    // ready change.
+    const replayStateRef = useRef({
+        lastBroadcastTs: 0,
+        everEntered: false,
+    });
+
+    // Prime helper: shared between the mount-once tick listener and the
+    // readyPanels-watching effect. If parent is in active replay, send
+    // replayEnter to every iframe panel that's bridge-ready but hasn't
+    // been told yet.
+    function _primeReplayFromParent() {
+        try {
+            const ch = (typeof window !== "undefined") ? window.chart : null;
+            if (!ch || !ch.replaySystem || !ch.replaySystem.isActive) return;
+            const ts = ch.replaySystem.replayTimestamp;
+            if (!Number.isFinite(ts)) return;
+            replayStateRef.current.lastBroadcastTs = ts;
+            replayStateRef.current.everEntered = true;
+            const mgr = managerRef.current;
+            if (!mgr || !mgr.charts) return;
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host || !c.ready) continue;
+                try { mgr.sendCommand(c.id, "replayEnter", { timestamp: ts }); }
+                catch (_) {}
+            }
+        } catch (_) {}
+    }
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const onReplayTick = (ev) => {
+            const mgr = managerRef.current;
+            if (!mgr || typeof mgr.sendCommand !== "function") return;
+            const ts = ev && ev.detail && ev.detail.timestamp;
+            if (!Number.isFinite(ts)) return;
+            if (ts === replayStateRef.current.lastBroadcastTs) return;
+            replayStateRef.current.lastBroadcastTs = ts;
+            const cmd = replayStateRef.current.everEntered ? "replayTick" : "replayEnter";
+            replayStateRef.current.everEntered = true;
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host) continue;
+                try { mgr.sendCommand(c.id, cmd, { timestamp: ts }); }
+                catch (_) { /* ignore — the next tick retries */ }
+            }
+        };
+
+        window.addEventListener("replayVirtualTimeChanged", onReplayTick);
+
+        // On mount: prime any iframes that are already ready before the
+        // first tick (covers "user opens layout 2v while paused at
+        // session start" — no tick will fire until they hit play).
+        _primeReplayFromParent();
+
+        // Monkey-patch parent's exitReplayMode so iframes drop replay
+        // mode in lockstep. Done lazily because replaySystem may not
+        // exist yet at mount — retry up to 5s.
+        let patchedRs = null;
+        let patchOriginalExit = null;
+        const tryPatch = (deadline) => {
+            const ch = window.chart;
+            if (ch && ch.replaySystem && typeof ch.replaySystem.exitReplayMode === "function"
+                && !ch.replaySystem.__multichartExitPatched) {
+                patchedRs = ch.replaySystem;
+                patchOriginalExit = patchedRs.exitReplayMode.bind(patchedRs);
+                patchedRs.__multichartExitPatched = true;
+                patchedRs.exitReplayMode = function () {
+                    try {
+                        const mgr = managerRef.current;
+                        if (mgr) {
+                            for (const c of mgr.charts.values()) {
+                                if (!c || c.host) continue;
+                                try { mgr.sendCommand(c.id, "replayExit", {}); }
+                                catch (_) {}
+                            }
+                        }
+                    } catch (_) {}
+                    replayStateRef.current.everEntered = false;
+                    replayStateRef.current.lastBroadcastTs = 0;
+                    return patchOriginalExit();
+                };
+                return;
+            }
+            if (Date.now() < deadline) {
+                setTimeout(() => tryPatch(deadline), 200);
+            }
+        };
+        tryPatch(Date.now() + 5000);
+
+        return () => {
+            window.removeEventListener("replayVirtualTimeChanged", onReplayTick);
+            // Restore exitReplayMode if we patched it — keeps single-
+            // chart behavior intact when the user picks layout 1 again.
+            if (patchedRs && patchOriginalExit && patchedRs.__multichartExitPatched) {
+                try {
+                    patchedRs.exitReplayMode = patchOriginalExit;
+                    delete patchedRs.__multichartExitPatched;
+                } catch (_) {}
+            }
+        };
+        // Mount-once. Re-prime on readyPanels change is in the next effect.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Re-prime when a new iframe becomes bridge-ready DURING an active
+    // parent replay. Without this, the user splits 1 → 2 mid-replay
+    // and Panel B sits at the file's last bar while Panel A shows the
+    // session at, say, the 30%-replay mark. The next tick eventually
+    // catches B up via the lazy-enter in panel-cmd-bridge replayTick,
+    // but for paused replay (no ticks) B would stay misaligned forever.
+    // Sending replayEnter the moment B is ready closes that window.
+    useEffect(() => {
+        // Defer to next microtask so the manager's `c.ready` flag has
+        // been set (onChartReady runs synchronously before this state
+        // update is processed, but the iframe's mgr.charts.get(id) may
+        // not yet reflect c.ready=true in the same tick).
+        const t = setTimeout(_primeReplayFromParent, 0);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [readyPanels]);
 
     // ─── Focus outline on the host's #chartWrapper ──────────────────────
     // Iframe tiles get their focused border via vanilla DOM injection
