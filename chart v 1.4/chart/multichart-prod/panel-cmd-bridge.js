@@ -141,7 +141,6 @@
             log('replayEnter deferred (rawData empty); pendingReplayTs=' + ts);
             return;
         }
-        var wasActive = !!rs.isActive;
         // Data is loaded. Enter replay if needed, then seek.
         if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
             try {
@@ -156,28 +155,6 @@
                 rs.goToReplayTimestamp(ts, { preserveVisibleWindow: false });
             } catch (e) {
                 warn('replayEnter: goToReplayTimestamp threw', e && e.message);
-            }
-        }
-        // Re-fit the canvas to the replay-truncated chart.data the FIRST
-        // TIME we activate replay. Without this, chart.candleWidth retains
-        // the value fitToView() set when the full file was loaded
-        // (sized for ~thousands of bars). Replay then truncates
-        // chart.data to 50–100 bars but candles stay tiny — what the
-        // user sees is "wrong data" (bars at the far left of an empty
-        // canvas with old offsetX still in effect). A subsequent tf
-        // change happens to call fitToView() during _commitLoadedBars
-        // and that's why "switch tf and it looks correct".
-        //
-        // Only fit on the activation transition (wasActive=false →
-        // isActive=true) — subsequent ticks/seeks must NOT re-fit
-        // because the user (or visibleRange sync from parent) may have
-        // panned/zoomed and we'd undo that.
-        if (!wasActive && rs.isActive && typeof ch.fitToView === 'function') {
-            try {
-                ch.fitToView();
-                if (typeof ch.scheduleRender === 'function') ch.scheduleRender();
-            } catch (e) {
-                warn('replayEnter: fitToView threw', e && e.message);
             }
         }
         // Successfully applied — clear the pending stash so a later

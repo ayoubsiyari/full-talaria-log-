@@ -1327,11 +1327,6 @@ export default function MultichartGrid({
     // (chart-state from iframes can re-fire many times per pan).
     const lastBroadcastTfRef = useRef({});       // panelId -> tf
     const lastBroadcastFileRef = useRef({});     // panelId -> fileId
-    // Track per-panel "we have already pushed the initial visible range
-    // + replay state after the iframe finished its first data load".
-    // Without this, every subsequent chart-state (every pan, wheel, etc)
-    // would re-fire the snap-to-host, fighting the user's interactions.
-    const lastReadyResyncRef = useRef({});       // panelId -> true
 
     // Fire when ANY panel's state updates. Two responsibilities:
     //
@@ -1402,48 +1397,6 @@ export default function MultichartGrid({
             }
         }
 
-        // ── Re-sync once iframe finishes loading data ───────────────
-        //
-        // bridge-ready fires the moment the postMessage transport is
-        // wired (BEFORE loadFileData completes), so the initial
-        // _initialSyncToHost + _primeReplayFromParent both target an
-        // empty chart. The visible-range envelope is no-oped by
-        // setVisibleTimeRange (no data → bail) and the replay command
-        // is queued by panel-cmd-bridge until chartDataLoaded fires
-        // inside the iframe.
-        //
-        // chart-state arrives the moment the iframe's chartDataLoaded
-        // dispatches, so this is the right hook to re-push parent's
-        // current view + replay timestamp. Without this, the iframe
-        // fits-to-view its full file (thousands of bars) and the user
-        // sees a different date range than the host until they pan
-        // or change tf.
-        //
-        // Gate: only on the FIRST chart-state with non-zero candleCount
-        // for this panel. Subsequent state updates (every pan / wheel
-        // zoom on the iframe) flow through normal sync paths.
-        try {
-            if (state && state.candleCount > 0 && !lastReadyResyncRef.current[id]) {
-                lastReadyResyncRef.current[id] = true;
-                // Push host's current visible range — same envelope
-                // _initialSyncToHost would build, just delivered now
-                // that the iframe has data to anchor it.
-                if (typeof mgr._initialSyncToHost === "function" && sourceChart) {
-                    mgr._initialSyncToHost(sourceChart);
-                }
-                // If host is in active replay, re-broadcast the current
-                // virtual time so the iframe's panel-cmd-bridge kicks
-                // its (now-loaded) replaySystem into the same place.
-                const ch = window.chart;
-                if (ch && ch.replaySystem && ch.replaySystem.isActive) {
-                    const ts = ch.replaySystem.replayTimestamp;
-                    if (Number.isFinite(ts)) {
-                        try { mgr.sendCommand(id, "replayEnter", { timestamp: ts }); }
-                        catch (_) {}
-                    }
-                }
-            }
-        } catch (_) {}
     };
 
     // ─── Phase 7.2.4: expose the per-panel command bus to the parent ────
