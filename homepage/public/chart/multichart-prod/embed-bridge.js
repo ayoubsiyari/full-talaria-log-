@@ -96,8 +96,9 @@
     // React app picks (usually empty, "No data to display"), even though the
     // user just picked a layout from a /chart/ that already had data.
     function applyInitialContext() {
-        var fileId = params.get('fileId');
-        var tf     = params.get('tf');
+        var fileId    = params.get('fileId');
+        var tf        = params.get('tf');
+        var sessionId = params.get('sessionId');
         if (!fileId) return;
         var ch = window.chart;
         if (!ch || typeof ch.loadFileData !== 'function') {
@@ -110,21 +111,42 @@
             if (tf && typeof ch.currentTimeframe === 'string') {
                 try { ch.currentTimeframe = tf; } catch (_) {}
             }
-            var p = ch.loadFileData(fileId);
-            if (p && typeof p.then === 'function') {
-                p.then(function () {
-                    if (tf && typeof ch.setTimeframe === 'function') {
-                        try { ch.setTimeframe(tf); } catch (_) {}
-                    }
-                    reportToShell('info', 'initial context applied: fileId=' + fileId + ' tf=' + (tf || '(default)'));
-                }, function (err) {
-                    reportToShell('error', 'loadFileData failed: ' + (err && err.message || err));
-                });
-            } else {
+            // Stash sessionId on the chart instance so getDrawingsStorageKey
+            // builds the same per-session key as the parent. chart.js's
+            // getActiveTradingSessionId reads URL → instance →
+            // localStorage; setting it here makes the URL value win even
+            // if some legacy localStorage key from a different session
+            // is hanging around.
+            if (sessionId) {
+                try { ch.activeTradingSessionId = sessionId; } catch (_) {}
+            }
+            var afterLoad = function () {
                 if (tf && typeof ch.setTimeframe === 'function') {
                     try { ch.setTimeframe(tf); } catch (_) {}
                 }
-                reportToShell('info', 'initial context applied (sync): fileId=' + fileId + ' tf=' + (tf || '(default)'));
+                // Belt-and-suspenders: explicitly tell the drawing manager
+                // to load drawings now that data + sessionId + fileId are
+                // all in place. The DM's chartDataLoaded listener should
+                // also retry, but in some boot orderings (e.g. setTimeframe
+                // resamples before the listener runs) loadDrawings() is
+                // skipped because chart.data is briefly empty. Calling
+                // here guarantees one attempt with all context set.
+                try {
+                    if (ch.drawingManager && typeof ch.drawingManager.loadDrawings === 'function') {
+                        Promise.resolve(ch.drawingManager.loadDrawings()).catch(function () {});
+                    }
+                } catch (_) {}
+                reportToShell('info', 'initial context applied: fileId=' + fileId
+                    + ' tf=' + (tf || '(default)')
+                    + ' sessionId=' + (sessionId || '(none)'));
+            };
+            var p = ch.loadFileData(fileId);
+            if (p && typeof p.then === 'function') {
+                p.then(afterLoad, function (err) {
+                    reportToShell('error', 'loadFileData failed: ' + (err && err.message || err));
+                });
+            } else {
+                afterLoad();
             }
         } catch (e) {
             reportToShell('error', 'applyInitialContext threw: ' + (e && e.message || e));

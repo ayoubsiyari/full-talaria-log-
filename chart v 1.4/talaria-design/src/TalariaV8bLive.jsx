@@ -16987,6 +16987,24 @@ const TalariaV8bLive = () => {
                   const m = new URLSearchParams(window.location.search).get("mode");
                   if (m === "backtest" || m === "propfirm" || m === "live") initMode = m;
                 } catch (_) {}
+                // Capture the active trading sessionId so iframe panels
+                // build the same drawings storage key as the parent
+                // (chart.js getDrawingsStorageKey uses
+                // `chart_drawings_s<sessionId>_<fileId>` when a session
+                // is active). Without this the iframe looks under a
+                // different key and shows no drawings even on the same
+                // pair the parent has been drawing on for hours.
+                let initSessionId = "";
+                try {
+                  if (window.chart && typeof window.chart.getActiveTradingSessionId === "function") {
+                    const sid = window.chart.getActiveTradingSessionId();
+                    if (sid != null) initSessionId = String(sid);
+                  }
+                  if (!initSessionId) {
+                    const u = new URLSearchParams(window.location.search).get("sessionId");
+                    if (u) initSessionId = String(u);
+                  }
+                } catch (_) {}
                 return (
                   <MultichartGrid
                     layoutId={lid}
@@ -16995,6 +17013,7 @@ const TalariaV8bLive = () => {
                     initialFileId={initFileId}
                     initialTimeframe={initTf}
                     initialMode={initMode}
+                    initialSessionId={initSessionId}
                     focusedPanelId={focusedPanelId}
                     setFocusedPanelId={setFocusedPanelId}
                   />

@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260510T1300";
+const BRIDGE_VERSION = "20260510T1430";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -265,12 +265,13 @@ function resolveLayout(layoutId, panelCount) {
 }
 
 // ─── iframe URL ─────────────────────────────────────────────────────────────
-function buildIframeSrc({ panelId, fileId, tf /*, mode — intentionally NOT forwarded, see note */ }) {
+function buildIframeSrc({ panelId, fileId, tf, sessionId /*, mode — intentionally NOT forwarded, see note */ }) {
     const params = new URLSearchParams();
     params.set("multichart", "1");
     params.set("panelId", panelId);
-    if (fileId) params.set("fileId", String(fileId));
-    if (tf)     params.set("tf", String(tf));
+    if (fileId)    params.set("fileId",    String(fileId));
+    if (tf)        params.set("tf",        String(tf));
+    if (sessionId) params.set("sessionId", String(sessionId));
     //
     // NOTE: we deliberately do NOT forward `mode=backtest|propfirm` into
     // iframe panels even when the parent /chart/ is in backtest mode.
@@ -291,6 +292,15 @@ function buildIframeSrc({ panelId, fileId, tf /*, mode — intentionally NOT for
     // embed-bridge.js calls window.chart.loadFileData(fileId) the moment
     // the engine is ready. End result: panels paint the chart directly
     // with no splash and no duplicated auto-load.
+    //
+    // BUT — we DO forward `sessionId` so the iframe's chart engine builds
+    // the SAME drawings storage key as the parent (chart.js:2181 →
+    // `chart_drawings_s<sessionId>_<fileId>` when a session is active).
+    // Without sessionId, the iframe looks under `chart_drawings_<fileId>`
+    // and finds nothing, even though the parent has been saving the
+    // user's drawings under the session-scoped key for hours. That's why
+    // multichart panels showed empty even when single-chart reload
+    // restored everything.
     return "/chart/dist-v9/index.html?" + params.toString();
 }
 
@@ -551,6 +561,8 @@ export default function MultichartGrid({
     initialFileId,
     initialTimeframe,
     initialMode, // currently unused — see buildIframeSrc note
+    initialSessionId, // forwarded as ?sessionId= so iframe builds the
+                      // same per-session drawings storage key as parent
     focusedPanelId,
     setFocusedPanelId,
 }) {
@@ -570,8 +582,10 @@ export default function MultichartGrid({
     // splits to 4 — tiles C and D should boot with file Y).
     const initialFileIdRef    = useRef(initialFileId);
     const initialTimeframeRef = useRef(initialTimeframe);
+    const initialSessionIdRef = useRef(initialSessionId);
     useEffect(() => { initialFileIdRef.current    = initialFileId;    }, [initialFileId]);
     useEffect(() => { initialTimeframeRef.current = initialTimeframe; }, [initialTimeframe]);
+    useEffect(() => { initialSessionIdRef.current = initialSessionId; }, [initialSessionId]);
 
     // ─── Focus-related refs (Phase 7.2.4) ───────────────────────────────
     // Both the manager mount effect (callbacks closed over the first
@@ -621,9 +635,10 @@ export default function MultichartGrid({
                 container: containerRef.current,
                 iframeSrcBuilder: function (cfg) {
                     return buildIframeSrc({
-                        panelId: cfg.id,
-                        fileId:  cfg.fileId,
-                        tf:      cfg.tf,
+                        panelId:   cfg.id,
+                        fileId:    cfg.fileId,
+                        tf:        cfg.tf,
+                        sessionId: cfg.sessionId || initialSessionIdRef.current || null,
                         // mode intentionally omitted — see note in buildIframeSrc
                     });
                 },
@@ -769,9 +784,10 @@ export default function MultichartGrid({
             if (!cellEl) continue;
             try {
                 mgr.addChart({
-                    id:     tile.id,
-                    tf:     initialTimeframeRef.current || "1m",
-                    fileId: initialFileIdRef.current    || null,
+                    id:        tile.id,
+                    tf:        initialTimeframeRef.current || "1m",
+                    fileId:    initialFileIdRef.current    || null,
+                    sessionId: initialSessionIdRef.current || null,
                 }, cellEl);
             } catch (e) {
                 console.error("[MultichartGrid] addChart failed for", tile.id, e);
