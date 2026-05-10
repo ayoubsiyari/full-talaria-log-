@@ -9637,6 +9637,145 @@ async def admin_rebuild_dataset_binary(file_id: int, request: Request):
     finally:
         db.close()
 
+# ═══════════════════════════════════════════════════════════════════
+#  ADMIN — FirstRate duplicate cleanup
+#
+# Two endpoints powering the admin-side dedup tool:
+#
+#   GET  /api/admin/datasets/duplicates
+#         Read-only scan. Groups FirstRate-imported `csv_files` rows by
+#         (canonical_ticker, asset_class) and returns groups with ≥2 members
+#         along with a suggested winner per group (the densest row). The
+#         caller (admin UI) renders this as a per-group decision form.
+#
+#   POST /api/admin/datasets/duplicates/consolidate
+#         Body: {
+#           groups: [{ ticker, asset_class, winner_id, loser_ids: [...] }, ...],
+#           dry_run: bool,
+#           confirmation: str   # required when dry_run=false
+#         }
+#         When `dry_run=true`: simulates each merge in a temp dir and reports
+#         projected row counts. No disk/DB changes.
+#         When `dry_run=false` AND `confirmation == DATASET_PURGE_CONFIRMATION`:
+#         pre-merge-backs-up each winner CSV under
+#         `uploads/_quarantine/<consolidation_id>/groups/<class>_<ticker>/winners_pre_merge/`,
+#         merges every loser CSV into the winner via
+#         `_merge_canonical_ohlcv_csvs`, rebuilds the winner's binaries, and
+#         then quarantines (moves) every loser's CSV + binaries + tile dir
+#         under the same quarantine subtree before deleting the loser DB
+#         rows. The big historical dataset is always the winner — losers are
+#         the smaller/newer duplicates created when older imports landed
+#         under different filename shapes.
+# ═══════════════════════════════════════════════════════════════════
+
+
+@app.get("/api/admin/datasets/duplicates")
+async def admin_dataset_duplicates(request: Request):
+    """
+    Read-only scan for FirstRate duplicate dataset rows. Returns groups keyed
+    by `(canonical_ticker, asset_class)` with ≥2 members. The admin UI uses
+    this to render a manual winner-selection form.
+    """
+    _require_admin(request)
+    groups = _collect_firstrate_duplicate_groups()
+    duplicate_row_count = sum(max(0, len(g["rows"]) - 1) for g in groups)
+    return {
+        "success": True,
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "groups": groups,
+        "summary": {
+            "duplicate_group_count": len(groups),
+            "duplicate_row_count": duplicate_row_count,
+            "total_firstrate_rows_in_groups": sum(len(g["rows"]) for g in groups),
+        },
+    }
+
+
+class _ConsolidateGroupIn(BaseModel):
+    ticker: str
+    asset_class: str
+    winner_id: int
+    loser_ids: list[int]
+
+
+class _ConsolidateDuplicatesIn(BaseModel):
+    groups: list[_ConsolidateGroupIn]
+    dry_run: bool = True
+    confirmation: str | None = None
+
+
+@app.post("/api/admin/datasets/duplicates/consolidate")
+async def admin_dataset_duplicates_consolidate(
+    payload: _ConsolidateDuplicatesIn, request: Request
+):
+    """
+    Consolidate one or more FirstRate duplicate groups. Always supports
+    dry-run; when `dry_run=False`, the request is rejected unless
+    `confirmation` matches `DATASET_PURGE_CONFIRMATION`. Per-group failures
+    do NOT abort the whole call — each group reports its own outcome so a
+    partial run can be retried surgically.
+    """
+    _require_admin(request)
+
+    if not payload.groups:
+        raise HTTPException(status_code=400, detail="`groups` must be a non-empty list")
+
+    if not payload.dry_run:
+        expected = (DATASET_PURGE_CONFIRMATION or "").strip()
+        if (payload.confirmation or "").strip() != expected:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Destructive consolidate requires `confirmation` to exactly equal "
+                    f"{expected!r} (set via DATASET_PURGE_CONFIRMATION env var). "
+                    "Re-issue with that phrase, or pass `dry_run: true` to preview."
+                ),
+            )
+
+    # Group key includes a tag so the admin can correlate quarantine dirs back
+    # to the originating call (timestamp + 6 hex chars is unique enough for
+    # human inspection).
+    consolidation_id = (
+        datetime.utcnow().strftime("%Y%m%d%H%M%S") + "_" + secrets.token_hex(3)
+    )
+
+    results: list[dict] = []
+    for g in payload.groups:
+        try:
+            res = _consolidate_duplicate_group(
+                winner_id=int(g.winner_id),
+                loser_ids=[int(x) for x in (g.loser_ids or [])],
+                expected_ticker=str(g.ticker or "").upper(),
+                expected_class=str(g.asset_class or "").lower(),
+                consolidation_id=consolidation_id,
+                dry_run=bool(payload.dry_run),
+            )
+            res["ticker"] = g.ticker
+            res["asset_class"] = g.asset_class
+            res["status"] = "ok"
+            results.append(res)
+        except Exception as e:
+            results.append({
+                "ticker": g.ticker,
+                "asset_class": g.asset_class,
+                "winner_id": int(g.winner_id),
+                "loser_ids": list(g.loser_ids or []),
+                "status": "error",
+                "error": str(e)[:1500],
+                "dry_run": bool(payload.dry_run),
+            })
+
+    return {
+        "success": True,
+        "dry_run": bool(payload.dry_run),
+        "consolidation_id": consolidation_id,
+        "quarantine_dir": str(QUARANTINE_DIR / consolidation_id) if not payload.dry_run else None,
+        "groups": results,
+        "ok_count": sum(1 for r in results if r["status"] == "ok"),
+        "error_count": sum(1 for r in results if r["status"] == "error"),
+    }
+
+
 @app.delete("/api/admin/datasets/{file_id}")
 async def admin_delete_dataset(file_id: int, request: Request):
     _require_admin(request)

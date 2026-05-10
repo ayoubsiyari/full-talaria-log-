@@ -1828,6 +1828,39 @@ select { cursor: pointer; }
           </div>
         </div>
 
+        <!-- FirstRate duplicate-dataset cleanup
+             Surfaces the dedup tool: scan finds (canonical_ticker, asset_class)
+             groups with ≥2 FirstRate-imported rows, the admin manually picks
+             the winner per group, runs a dry-run preview, and only then
+             executes a destructive consolidate (with confirmation phrase).
+             Losers are quarantined under uploads/_quarantine/, never truly
+             deleted, so a manual restore is always possible. -->
+        <div class="card" id="frDuplicatesCard" style="margin-bottom:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            <div class="card-title">FirstRate duplicate datasets</div>
+            <span class="card-badge" id="frDupBadge" style="background:var(--panel);color:var(--text-muted)">not scanned</span>
+            <div style="margin-left:auto;display:flex;gap:6px">
+              <button type="button" class="btn sm primary" id="frDupScanBtn" onclick="scanFirstrateDuplicates()" title="Read-only scan: groups FirstRate-imported csv_files rows by (canonical_ticker, asset_class) and shows duplicates.">Scan for duplicates</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <p style="margin:0 0 12px;font-size:12px;color:var(--text-muted);line-height:1.55">
+              Groups FirstRate-imported datasets that share the same canonical ticker (e.g. an old <code>EURUSD_full_1min_1min.csv</code> seed and a newer <code>EURUSD_1min.csv</code> from a daily nightly run). For each group you pick the winner — typically the row with the most bars, which is the historical seed — and the smaller "loser" rows get their bars merged into the winner before being moved to <code>uploads/_quarantine/</code>. <strong>The big dataset is never deleted</strong>: it's the winner. Losers are quarantined, not erased, so a manual restore is always possible.
+            </p>
+            <div id="frDupContainer" style="display:none;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+              <div id="frDupGroupsHost" style="max-height:520px;overflow-y:auto"></div>
+              <div style="padding:10px 14px;border-top:1px solid var(--border);background:var(--panel);display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+                <button type="button" class="btn sm" id="frDupDryRunBtn" onclick="runFirstrateDuplicatesDryRun()" title="Simulate every selected merge in a temp dir; report projected post-merge row counts. No DB or disk changes.">Dry-run preview</button>
+                <input type="password" id="frDupConfirmPhrase" class="input" placeholder="Confirmation phrase (DATASET_PURGE_CONFIRMATION)" style="flex:1;min-width:220px;font-family:ui-monospace,monospace;font-size:11px" autocomplete="off">
+                <button type="button" class="btn sm" id="frDupConsolidateBtn" onclick="runFirstrateDuplicatesConsolidate()" style="background:var(--danger,#ef4444);color:white;border-color:var(--danger,#ef4444)" title="Merge losers into winners and quarantine the loser rows. Requires confirmation phrase.">Consolidate selected</button>
+              </div>
+            </div>
+            <p id="frDupEmpty" style="display:none;margin:0;padding:18px;text-align:center;color:var(--text-muted);font-size:12px;border:1px dashed var(--border);border-radius:8px">No FirstRate duplicate groups found — every canonical ticker maps to exactly one row.</p>
+            <pre id="frDupResult" style="display:none;margin:12px 0 0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel);font-family:ui-monospace,monospace;font-size:11px;line-height:1.5;max-height:300px;overflow:auto;white-space:pre-wrap"></pre>
+          </div>
+        </div>
+
         <!-- Dataset List + Settings -->
         <div class="grid-2">
           <div class="card">
@@ -5497,6 +5530,228 @@ document.addEventListener('click', function (e) {
   const cls = t.getAttribute('data-fr-run-class');
   _runFirstrateClassNow(cls, t);
 });
+
+// ───────────────────────────────────────────────────────────
+// FirstRate duplicate-dataset cleanup tool
+//
+// Three-step UX:
+//   1. Scan      — read-only call to `GET /api/admin/datasets/duplicates`,
+//                  renders one card per (canonical_ticker, asset_class)
+//                  group. Each card lists every duplicate row with a radio
+//                  button to pick the winner and a checkbox per other row
+//                  to opt that loser into the consolidate plan.
+//   2. Dry-run   — POST with `dry_run:true` to simulate the merge; report
+//                  projected post-merge row counts.
+//   3. Consolidate — POST with `dry_run:false` plus the confirmation phrase
+//                  (DATASET_PURGE_CONFIRMATION on the server). Losers get
+//                  their bars merged into the winner, then quarantined under
+//                  uploads/_quarantine/<id>/. The winner is never deleted.
+// ───────────────────────────────────────────────────────────
+let _frDupCache = null;
+
+function _frDupRowSize(rc) {
+  const n = Number(rc) || 0;
+  return n.toLocaleString();
+}
+
+async function scanFirstrateDuplicates() {
+  const btn = document.getElementById('frDupScanBtn');
+  const badge = document.getElementById('frDupBadge');
+  const host = document.getElementById('frDupGroupsHost');
+  const wrap = document.getElementById('frDupContainer');
+  const empty = document.getElementById('frDupEmpty');
+  const result = document.getElementById('frDupResult');
+  if (btn) { btn.disabled = true; btn.textContent = 'Scanning…'; }
+  try {
+    const data = await api('/api/admin/datasets/duplicates');
+    _frDupCache = data;
+    if (result) { result.style.display = 'none'; result.textContent = ''; }
+    const groups = data.groups || [];
+    if (badge) {
+      const summary = data.summary || {};
+      const dups = Number(summary.duplicate_row_count) || 0;
+      badge.textContent = (groups.length || 0) + ' group(s) · ' + dups + ' duplicate(s)';
+      badge.style.background = groups.length ? 'color-mix(in oklab, #eab308 25%, var(--panel))' : 'color-mix(in oklab, #22c55e 25%, var(--panel))';
+      badge.style.color = groups.length ? '#eab308' : '#22c55e';
+    }
+    if (!groups.length) {
+      if (wrap) wrap.style.display = 'none';
+      if (empty) empty.style.display = '';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    if (wrap) wrap.style.display = '';
+    if (!host) return;
+    host.innerHTML = groups.map(function (g) {
+      const rows = (g.rows || []).slice().sort(function (a, b) {
+        return (Number(b.row_count) || 0) - (Number(a.row_count) || 0);
+      });
+      const groupKey = g.group_key || (g.asset_class + ':' + g.ticker);
+      const rowsHtml = rows.map(function (r, idx) {
+        const isSuggested = (Number(r.id) === Number(g.suggested_winner_id));
+        const lastBar = r.last_bar_iso ? String(r.last_bar_iso).replace('T', ' ').slice(0, 16) : '—';
+        return (
+          '<tr>' +
+            '<td style="padding:4px 8px"><label style="display:flex;align-items:center;gap:4px;cursor:pointer">' +
+              '<input type="radio" name="frdup_winner_' + groupKey + '" value="' + r.id + '"' +
+                (isSuggested ? ' checked' : '') +
+                ' data-fr-dup-group="' + groupKey + '" data-fr-dup-role="winner">' +
+              (isSuggested ? '<span style="font-size:10px;color:#22c55e">suggested</span>' : '') +
+            '</label></td>' +
+            '<td style="padding:4px 8px"><label style="display:flex;align-items:center;gap:4px;cursor:pointer">' +
+              '<input type="checkbox" name="frdup_loser_' + groupKey + '" value="' + r.id + '" checked' +
+                ' data-fr-dup-group="' + groupKey + '" data-fr-dup-role="loser">' +
+              '<span style="font-size:10px;color:var(--text-muted)">include</span>' +
+            '</label></td>' +
+            '<td style="padding:4px 8px;font-family:ui-monospace,monospace;font-size:11px">#' + r.id + '</td>' +
+            '<td style="padding:4px 8px;font-family:ui-monospace,monospace;font-size:11px">' + esc(r.original_name || '') + '</td>' +
+            '<td style="padding:4px 8px;text-align:right;font-variant-numeric:tabular-nums">' + _frDupRowSize(r.row_count) + '</td>' +
+            '<td style="padding:4px 8px;font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted)">' + esc(lastBar) + '</td>' +
+          '</tr>'
+        );
+      }).join('');
+      return (
+        '<div data-fr-dup-group="' + groupKey + '" style="border-bottom:1px solid var(--border);padding:10px 14px">' +
+          '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">' +
+            '<strong style="font-size:13px">' + esc(g.ticker) + '</strong>' +
+            '<span style="font-size:11px;color:var(--text-muted)">' + esc(g.asset_class) + ' · ' + (rows.length) + ' rows</span>' +
+          '</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+            '<thead><tr style="text-align:left;color:var(--text-muted);font-size:11px">' +
+              '<th style="padding:4px 8px;width:90px">Winner</th>' +
+              '<th style="padding:4px 8px;width:80px">Loser</th>' +
+              '<th style="padding:4px 8px;width:60px">ID</th>' +
+              '<th style="padding:4px 8px">Original name</th>' +
+              '<th style="padding:4px 8px;text-align:right;width:90px">Rows</th>' +
+              '<th style="padding:4px 8px;width:130px">Last bar (UTC)</th>' +
+            '</tr></thead>' +
+            '<tbody>' + rowsHtml + '</tbody>' +
+          '</table>' +
+        '</div>'
+      );
+    }).join('');
+
+    // Wire up: when a winner radio is selected, that row's loser checkbox
+    // is force-cleared (the winner is never a loser of itself), and all the
+    // other rows' loser checkboxes default back to checked.
+    host.querySelectorAll('input[type="radio"][data-fr-dup-role="winner"]').forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        const grp = radio.getAttribute('data-fr-dup-group');
+        const winnerId = radio.value;
+        host.querySelectorAll('input[type="checkbox"][data-fr-dup-role="loser"][data-fr-dup-group="' + grp + '"]').forEach(function (cb) {
+          if (cb.value === winnerId) {
+            cb.checked = false;
+            cb.disabled = true;
+          } else {
+            cb.disabled = false;
+            cb.checked = true;
+          }
+        });
+      });
+      // Initial state.
+      radio.dispatchEvent(new Event('change'));
+    });
+  } catch (e) {
+    if (typeof toast === 'function') toast('Duplicate scan failed: ' + (e && e.message ? e.message : e), 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Rescan'; }
+  }
+}
+
+function _frDupBuildPayload(dryRun, confirmation) {
+  const host = document.getElementById('frDupGroupsHost');
+  if (!host || !_frDupCache) return null;
+  const groups = [];
+  (_frDupCache.groups || []).forEach(function (g) {
+    const groupKey = g.group_key || (g.asset_class + ':' + g.ticker);
+    const winnerInput = host.querySelector('input[type="radio"][data-fr-dup-role="winner"][data-fr-dup-group="' + groupKey + '"]:checked');
+    if (!winnerInput) return;
+    const winnerId = Number(winnerInput.value);
+    const loserIds = [];
+    host.querySelectorAll('input[type="checkbox"][data-fr-dup-role="loser"][data-fr-dup-group="' + groupKey + '"]:checked').forEach(function (cb) {
+      const v = Number(cb.value);
+      if (v && v !== winnerId) loserIds.push(v);
+    });
+    if (loserIds.length) {
+      groups.push({
+        ticker: g.ticker,
+        asset_class: g.asset_class,
+        winner_id: winnerId,
+        loser_ids: loserIds,
+      });
+    }
+  });
+  return { groups: groups, dry_run: !!dryRun, confirmation: confirmation || null };
+}
+
+function _frDupRenderResult(data) {
+  const out = document.getElementById('frDupResult');
+  if (!out) return;
+  out.style.display = '';
+  out.textContent = JSON.stringify(data, null, 2);
+}
+
+async function runFirstrateDuplicatesDryRun() {
+  const btn = document.getElementById('frDupDryRunBtn');
+  const payload = _frDupBuildPayload(true, null);
+  if (!payload || !payload.groups.length) {
+    if (typeof toast === 'function') toast('No groups selected for consolidation.', 'err');
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  try {
+    const data = await api('/api/admin/datasets/duplicates/consolidate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    _frDupRenderResult(data);
+    if (typeof toast === 'function') {
+      toast('Dry-run complete: ' + (data.ok_count || 0) + ' group(s) ok, ' + (data.error_count || 0) + ' error(s).', 'ok');
+    }
+  } catch (e) {
+    if (typeof toast === 'function') toast('Dry-run failed: ' + (e && e.message ? e.message : e), 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Dry-run preview'; }
+  }
+}
+
+async function runFirstrateDuplicatesConsolidate() {
+  const btn = document.getElementById('frDupConsolidateBtn');
+  const phraseEl = document.getElementById('frDupConfirmPhrase');
+  const phrase = (phraseEl && phraseEl.value || '').trim();
+  if (!phrase) {
+    if (typeof toast === 'function') toast('Confirmation phrase required to consolidate.', 'err');
+    return;
+  }
+  const payload = _frDupBuildPayload(false, phrase);
+  if (!payload || !payload.groups.length) {
+    if (typeof toast === 'function') toast('No groups selected for consolidation.', 'err');
+    return;
+  }
+  if (!window.confirm('This will merge ' + payload.groups.length + ' duplicate group(s) and quarantine the loser rows under uploads/_quarantine/. Continue?')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Consolidating…'; }
+  try {
+    const data = await api('/api/admin/datasets/duplicates/consolidate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    _frDupRenderResult(data);
+    if (typeof toast === 'function') {
+      const msg = (data.ok_count || 0) + ' group(s) consolidated, ' + (data.error_count || 0) + ' error(s). Quarantine: ' + (data.quarantine_dir || '—');
+      toast(msg, data.error_count ? 'err' : 'ok');
+    }
+    // Refresh the scan + the nightly-health view so the cleared-up rows disappear.
+    await scanFirstrateDuplicates();
+    try { await refreshFirstrateNightlyHealth({ rescan: true }); } catch (_) {}
+  } catch (e) {
+    if (typeof toast === 'function') toast('Consolidate failed: ' + (e && e.message ? e.message : e), 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Consolidate selected'; }
+    if (phraseEl) phraseEl.value = '';
+  }
+}
 
 // Restore the toggle state on page load. Runs on DOMContentLoaded because the
 // checkbox lives inside the admin panel and may not be present immediately.

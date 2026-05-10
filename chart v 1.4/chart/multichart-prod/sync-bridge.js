@@ -416,6 +416,28 @@
         //       all peers (which would loop indefinitely because the manager
         //       has no outbound causationId guard of its own; only the bridge
         //       does).
+        // The set of message types this bridge actually CARES about.
+        // Everything else (chart-state metadata reports, panel-cmd, panel-
+        // focus, cmd-result, panel-cmd-ready, host-log, bridge-ready, …)
+        // is meant for the manager / parent React tree, not for this
+        // bridge to apply to the chart. We must NOT run those through
+        // filterForbiddenFields because chart-state legitimately carries
+        // metadata fields named like sync fields ("timeframe" reports the
+        // panel's CURRENT tf to the parent UI, it doesn't dictate it to
+        // peers). Filtering them spams the console with `inbound forbidden
+        // fields dropped` errors many times per second on every
+        // visible-range update, which is a real UX problem even though
+        // the messages themselves are silently ignored by the type switch
+        // below.
+        const SYNC_MSG_TYPES = {
+            'crosshair':       true,
+            'crosshair-clear': true,
+            'visibleRange':    true,
+            'symbol':          true,
+            'bridge-config':   true,
+            'guard-self-test': true,
+        };
+
         function applyInbound(msg) {
             if (!msg || typeof msg !== 'object') return;
             // Ignore messages we ourselves originated. For iframe bridges
@@ -425,6 +447,12 @@
             // source==chartId in _fanOut already, but defense-in-depth here
             // protects against any future fan-out that forgets to filter).
             if (msg.source && msg.source === chartId) return;
+
+            // Skip filter+apply entirely for non-sync types. The forbidden-
+            // fields filter is a SYNC-channel guard (no chart should
+            // dictate another's price/timeframe via sync); applying it to
+            // metadata reports is a category error.
+            if (!SYNC_MSG_TYPES[msg.type]) return;
 
             const cleaned = G.filterForbiddenFields(msg);
             if (cleaned.dropped.length) {
