@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260513T1900";
+const BRIDGE_VERSION = "20260513T2030";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1584,32 +1584,89 @@ export default function MultichartGrid({
     // (see iframe focus-border effect below). The host's cell is invisible
     // behind the wrapper, so when tile A is focused we inject the same
     // overlay <div> as a child of #chartWrapper instead.
+    // (Phase 7.2.4-fix) Host focus outline retired in favour of the
+    // unified focus frame rendered as a sibling of #chartWrapper —
+    // see focusedRect + the Fragment-sibling overlay at the bottom of
+    // the JSX. We still call applyHostFocusOutline(false) once here
+    // as cleanup so any overlay from older bundles or hot-reload
+    // sessions is stripped on first mount.
     useEffect(() => {
-        applyHostFocusOutline(focusedPanelId === HOST_PANEL_ID);
-        return () => applyHostFocusOutline(false);
-    }, [focusedPanelId]);
+        applyHostFocusOutline(false);
+    }, []);
 
     // ─── Focus border for iframe cells (legacy cell-internal path) ──────
     //
-    // Originally we injected a focus overlay AS A CHILD of the focused
-    // cell. That path is now superseded by a sibling-of-cell React
-    // overlay rendered at the GRID level (see the JSX block titled
-    // "Sibling focus border (bulletproof iframe-friendly)" at the
-    // bottom of the return). The grid-level overlay sidesteps an
-    // intermittent Chromium iframe-compositing bug where the iframe
-    // hoists into its own layer and paints above any sibling child
-    // div regardless of z-index — which is exactly what the user
-    // hit ("no border showing").
+    // Both the cell-internal vanilla-DOM injection AND the
+    // grid-sibling React overlay have been retired in favour of a
+    // SINGLE focus frame rendered as a sibling of #chartWrapper
+    // inside #chart-container (see the focusedRect logic + the
+    // bottom-of-return "Unified focus frame" JSX). That placement
+    // wins because:
+    //   • #chart-container has `isolation:isolate` → its children
+    //     share one stacking context.
+    //   • #chartWrapper sits at z-index 13 in that context (Panel A).
+    //   • The grid container (with iframes inside) sits at z-12.
+    //   • A sibling at z-14 paints above BOTH, so the same overlay
+    //     works for the host AND for every iframe panel.
+    //   • It's outside the grid container, so Chromium iframe
+    //     compositing inside the grid cannot occlude it.
     //
     // We KEEP this effect, but only as a teardown — it strips any
     // legacy overlay still attached from older bundles or hot-reload
-    // sessions. Without the strip, two overlays (cell-internal +
-    // sibling) would stack and the border would render at double
-    // thickness on a brief flash.
+    // sessions.
     useEffect(() => {
         clearIframeFocusBorders(cellRefs.current);
         return () => clearIframeFocusBorders(cellRefs.current);
     }, [focusedPanelId, managerReady, layout.tiles]);
+
+    // ─── Focused cell bounding rect (for the unified focus frame) ──────
+    //
+    // Single source of truth for where to draw the blue selection
+    // outline. Coords are relative to #chart-container so the frame
+    // (rendered as a sibling of #chartWrapper at z-14) lands exactly
+    // over the focused cell, whether that's the host (Panel A — read
+    // from cell A's slot, which the host wrapper is positioned to)
+    // or any iframe panel.
+    const [focusedRect, setFocusedRect] = useState(null);
+    const computeFocusedRect = () => {
+        if (typeof document === "undefined") return;
+        if (!focusedPanelId) { setFocusedRect(null); return; }
+        // Both host AND iframe paths read from the cell <div> — the
+        // host wrapper is sized to cell A, so the cell's bbox is the
+        // correct rect for either case. This keeps the math uniform.
+        const cell = cellRefs.current[focusedPanelId];
+        const parent = document.getElementById(HOST_CONTAINER_ID);
+        if (!cell || !parent) { setFocusedRect(null); return; }
+        const cellRect = cell.getBoundingClientRect();
+        const parentRect = parent.getBoundingClientRect();
+        setFocusedRect({
+            left:   Math.round(cellRect.left   - parentRect.left),
+            top:    Math.round(cellRect.top    - parentRect.top),
+            width:  Math.round(cellRect.width),
+            height: Math.round(cellRect.height),
+        });
+    };
+    // Recompute on every input that can move/resize cells.
+    useLayoutEffect(() => {
+        computeFocusedRect();
+        // (computeFocusedRect intentionally not in deps — it's an
+        // inline closure rebuilt every render and depends only on
+        // focusedPanelId via the ref, which is stable.)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focusedPanelId, layout, colFractions, rowFractions, containerSize, managerReady]);
+    // Window resize — viewport change can shift cells if the parent
+    // container is sized fluidly.
+    useEffect(() => {
+        function onWinResize() { computeFocusedRect(); }
+        window.addEventListener("resize", onWinResize);
+        return () => window.removeEventListener("resize", onWinResize);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focusedPanelId]);
+    // Expose the rect computer so the splitter drag's flush() can
+    // call it on every rAF tick to keep the focus frame glued to the
+    // cell as the user resizes.
+    const computeFocusedRectRef = useRef(computeFocusedRect);
+    computeFocusedRectRef.current = computeFocusedRect;
 
     // ─── Focused-panel state → topbar reflection ────────────────────────
     //
@@ -2417,6 +2474,13 @@ export default function MultichartGrid({
                 // Cheap host reposition (no chart.resize()).
                 const cellA = cellRefs.current[HOST_PANEL_ID];
                 if (cellA) applyHostSlotPositionOnly(cellA);
+                // Keep the focus frame glued to the focused cell as
+                // the splitter moves — without this the blue border
+                // would stay frozen at the pre-drag bbox and snap
+                // only on mouseup.
+                if (computeFocusedRectRef.current) {
+                    computeFocusedRectRef.current();
+                }
             }
 
             function onMove(e) {
@@ -2513,6 +2577,7 @@ export default function MultichartGrid({
         : [];
 
     return (
+        <>
         <div
             ref={containerRef}
             data-multichart-grid="1"
@@ -2614,37 +2679,6 @@ export default function MultichartGrid({
                 );
             })}
 
-            {/* ─── Focus frame (clean TradingView-style) ─────────────
-                Sibling-of-cells overlay placed at the focused tile's
-                grid coords. Bulletproof against Chromium's iframe
-                compositing layer (no parent-of-iframe relationship).
-
-                Visual: ONE solid 2px line in #2962ff with a tight
-                1px halo — matches the reference (no glow, no inset
-                shadow) so the user can read which panel is selected
-                without it dominating the chart.
-
-                Skipped for the host (Panel A) — the host's
-                #chartWrapper is z-index:13 (above this grid at z:12),
-                so any sibling here would be hidden behind the
-                wrapper. Host gets its own overlay injected inside
-                #chartWrapper via applyHostFocusOutline. */}
-            {focusedTile && focusedPanelId !== HOST_PANEL_ID && (
-                <div
-                    aria-hidden="true"
-                    data-multichart-focus-frame="1"
-                    style={{
-                        gridColumn: focusedTile.gridColumn || "auto",
-                        gridRow:    focusedTile.gridRow    || "auto",
-                        pointerEvents: "none",
-                        border: "2px solid #2962ff",
-                        boxSizing: "border-box",
-                        boxShadow: "0 0 0 1px rgba(41,98,255,0.45)",
-                        zIndex: 11,
-                    }}
-                />
-            )}
-
             {/* ─── Draggable column splitters ─────────────────────────
                 One <div> per grid-gap boundary, positioned in PIXELS
                 (computed from cell bounding rects via `gapCenterPx`)
@@ -2698,5 +2732,44 @@ export default function MultichartGrid({
                 />
             ))}
         </div>
+
+        {/* ─── Unified focus frame ─────────────────────────────────────
+            Single overlay, sibling of #chartWrapper inside
+            #chart-container. Positioned absolutely from the focused
+            cell's bbox (relative to #chart-container).
+
+            Why this placement wins:
+              • #chart-container has `isolation: isolate` → all
+                children share ONE stacking context.
+              • #chartWrapper (Panel A's host) sits at z-index:13.
+              • The grid container above (with iframes inside) sits
+                at z-index:12.
+              • This frame at z-index:14 paints above BOTH, so the
+                same overlay works uniformly for the host AND every
+                iframe — no per-cell DOM injection, no host-only
+                special case, no Chromium iframe-compositing bypass
+                needed.
+
+            Visual: clean 2px solid #2962ff with a 1px halo. Matches
+            TradingView's focused-tile treatment. */}
+        {focusedRect && (
+            <div
+                aria-hidden="true"
+                data-multichart-focus-frame="1"
+                style={{
+                    position: "absolute",
+                    left:   `${focusedRect.left}px`,
+                    top:    `${focusedRect.top}px`,
+                    width:  `${focusedRect.width}px`,
+                    height: `${focusedRect.height}px`,
+                    pointerEvents: "none",
+                    border: "2px solid #2962ff",
+                    boxSizing: "border-box",
+                    boxShadow: "0 0 0 1px rgba(41,98,255,0.45)",
+                    zIndex: 14,
+                }}
+            />
+        )}
+        </>
     );
 }
