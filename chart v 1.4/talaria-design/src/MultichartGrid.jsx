@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260513T2300";
+const BRIDGE_VERSION = "20260513T2330";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1688,32 +1688,21 @@ export default function MultichartGrid({
     const [focusedRect, setFocusedRect] = useState(null);
     const computeFocusedRect = () => {
         if (typeof document === "undefined") return;
-        if (!focusedPanelId) {
-            setFocusedRect(null);
-            try { console.log("[focus-frame] no focusedPanelId — cleared"); } catch (_) {}
-            return;
-        }
+        if (!focusedPanelId) { setFocusedRect(null); return; }
         // Both host AND iframe paths read from the cell <div> — the
         // host wrapper is sized to cell A, so the cell's bbox is the
         // correct rect for either case. This keeps the math uniform.
         const cell = cellRefs.current[focusedPanelId];
         const parent = document.getElementById(HOST_CONTAINER_ID);
-        if (!cell || !parent) {
-            setFocusedRect(null);
-            try { console.log("[focus-frame] missing cell or parent",
-                { focusedPanelId, hasCell: !!cell, hasParent: !!parent }); } catch (_) {}
-            return;
-        }
+        if (!cell || !parent) { setFocusedRect(null); return; }
         const cellRect = cell.getBoundingClientRect();
         const parentRect = parent.getBoundingClientRect();
-        const next = {
+        setFocusedRect({
             left:   Math.round(cellRect.left   - parentRect.left),
             top:    Math.round(cellRect.top    - parentRect.top),
             width:  Math.round(cellRect.width),
             height: Math.round(cellRect.height),
-        };
-        try { console.log("[focus-frame] computed", { focusedPanelId, next }); } catch (_) {}
-        setFocusedRect(next);
+        });
     };
     // Recompute on every input that can move/resize cells.
     useLayoutEffect(() => {
