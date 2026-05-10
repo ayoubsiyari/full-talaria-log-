@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260513T1100";
+const BRIDGE_VERSION = "20260513T1200";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -667,21 +667,16 @@ function applyHostFocusOutline(focused) {
             overlay = document.createElement("div");
             overlay.id = HOST_FOCUS_OVERLAY_ID;
             overlay.setAttribute("aria-hidden", "true");
-            // Match the iframe focus overlay exactly — same bright
-            // TradingView-blue look so the user gets identical visual
-            // feedback whether they focus tile A (host) or any iframe.
+            // Clean TradingView-style frame: 2px solid blue with a
+            // single 1px halo. Matches the iframe focus frame exactly
+            // so focus state reads identically across all panels.
             overlay.style.cssText = [
                 "position: absolute",
                 "inset: 0",
                 "pointer-events: none",
-                "border: 3px solid #2962ff",
-                "border-radius: 2px",
+                "border: 2px solid #2962ff",
                 "box-sizing: border-box",
-                "box-shadow: " + [
-                    "0 0 0 1px rgba(41,98,255,0.85)",
-                    "0 0 12px 2px rgba(41,98,255,0.55)",
-                    "inset 0 0 14px rgba(41,98,255,0.25)",
-                ].join(", "),
+                "box-shadow: 0 0 0 1px rgba(41,98,255,0.45)",
                 "z-index: 2147483647",
             ].join(";");
             wrapper.appendChild(overlay);
@@ -765,9 +760,76 @@ export default function MultichartGrid({
         [layoutId, panelCount]
     );
 
+    // ─── Resizable column / row fractions ──────────────────────────────
+    //
+    // Layout templates declare grid tracks like "1fr 1fr" which means
+    // "two equal-weight tracks". To make the splitter between them
+    // draggable we need to mutate those fractions per user gesture.
+    //
+    // We parse the template's `Nfr` segments into a numeric array on
+    // first render and on every layoutId change (so picking 2v then
+    // 4 then back to 2v starts from clean equal splits each time).
+    // Subsequent fraction state lives in `colFractions` / `rowFractions`
+    // and the gridTemplateColumns/Rows in the JSX is rebuilt from them.
+    //
+    // Only "1fr"-style segments are resizable. Layouts using `gridColumn`
+    // SPAN like "1 / 3" still work — the splitter operates on the
+    // underlying TRACK, not on individual cells. A spanning cell just
+    // rides along.
+    function parseFrTemplate(tpl) {
+        if (!tpl) return [1];
+        const parts = String(tpl).trim().split(/\s+/).map((p) => {
+            const m = p.match(/^([\d.]+)fr$/);
+            if (m) return parseFloat(m[1]) || 1;
+            return 1; // unknown unit → treat as 1fr (no resize fidelity)
+        });
+        return parts.length ? parts : [1];
+    }
+    const initialColFracs = useMemo(() => parseFrTemplate(layout.cols), [layout.cols]);
+    const initialRowFracs = useMemo(() => parseFrTemplate(layout.rows), [layout.rows]);
+    const [colFractions, setColFractions] = useState(initialColFracs);
+    const [rowFractions, setRowFractions] = useState(initialRowFracs);
+    // Reset fractions whenever the layout TEMPLATE (not just id) changes
+    // so a layout switch always opens with even splits.
+    useEffect(() => {
+        setColFractions(parseFrTemplate(layout.cols));
+        setRowFractions(parseFrTemplate(layout.rows));
+    }, [layout.cols, layout.rows]);
+    const colsTemplate = useMemo(
+        () => colFractions.map((f) => f.toFixed(4) + "fr").join(" "),
+        [colFractions]
+    );
+    const rowsTemplate = useMemo(
+        () => rowFractions.map((f) => f.toFixed(4) + "fr").join(" "),
+        [rowFractions]
+    );
+
+    // Whenever the fractions change (drag, layout swap), reposition the
+    // host's #chartWrapper to match cell A's new bbox. Without this the
+    // host chart visually lags behind the resize because applyHostSlot
+    // only fires on layout add/remove.
+    useEffect(() => {
+        const cellA = cellRefs.current[HOST_PANEL_ID];
+        if (cellA) {
+            // Defer one rAF so the grid has actually committed the new
+            // template before we measure the cell bbox.
+            requestAnimationFrame(() => applyHostSlot(cellA));
+        }
+    }, [colFractions, rowFractions]);
+
     // Inject the loading-overlay CSS once (idempotent — checks for existing
     // <style> tag by id).
     useEffect(() => { ensureLoadingStyleInjected(); }, []);
+
+    // Diagnostic — prints the current bundle version so we (and the
+    // user) can confirm a hard-refresh actually picked up the new code
+    // when the focus border / splitter changes feel "missing". Logs
+    // once per mount.
+    useEffect(() => {
+        try {
+            console.log("[MultichartGrid] mounted, BRIDGE_VERSION =", BRIDGE_VERSION);
+        } catch (_) {}
+    }, []);
 
     // ─── Mount the MultichartManager ONCE on first render of the grid ───
     //
@@ -2178,27 +2240,109 @@ export default function MultichartGrid({
     }, []);
 
     // Find the tile descriptor for the focused panel so we can render
-    // an absolutely-bulletproof focus border AT THE GRID LEVEL (sibling
-    // of the cells, not a child of the focused cell). Reasons:
-    //   1. Iframes in Chromium occasionally hoist into their own
-    //      compositing layer and end up painted ABOVE any sibling
-    //      child div regardless of z-index. By making the focus
-    //      border a sibling of the cell (not inside it) the iframe
-    //      is "below" in the same stacking context but a layer
-    //      apart — there's no compositing competition.
-    //   2. Even when DOM-injection-as-child works, Chromium's
-    //      iframe scrollbar / scrollbar-corner rendering can
-    //      occasionally paint over the cell's interior border.
-    //      Sibling overlay sidesteps this entirely.
-    //
-    // Implementation: the overlay is a grid item that picks up the
-    // SAME `gridColumn`/`gridRow` as the focused tile. CSS Grid's
-    // explicit placement guarantees it overlaps that cell perfectly,
-    // including across resize. pointerEvents:none lets all interaction
-    // pass through to the iframe / chart canvas underneath.
+    // a sibling focus frame at the GRID level — sidesteps the iframe-
+    // compositing bug where the iframe layer paints above any child
+    // overlay regardless of z-index.
     const focusedTile = focusedPanelId
         ? layout.tiles.find((t) => t.id === focusedPanelId)
         : null;
+
+    // ─── splitter drag handlers ────────────────────────────────────────
+    //
+    // Each splitter operates on ONE adjacent pair of tracks. dragging
+    // moves weight from one to the other while preserving the SUM of
+    // their fractions (so the rest of the grid layout stays put).
+    //
+    // We coalesce updates inside requestAnimationFrame because mousemove
+    // can fire faster than the grid re-flows; without rAF the chart
+    // re-resizes per-event and the host applyHostSlot starts queueing
+    // dozens of resize() calls per second on the canvas.
+    function makeSplitterDown(axis /* 'col' | 'row' */, idx) {
+        return function onDown(ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const container = containerRef.current;
+            if (!container) return;
+            const rect = container.getBoundingClientRect();
+            const total = (axis === "col" ? rect.width : rect.height) || 1;
+            const startMouse = (axis === "col" ? ev.clientX : ev.clientY);
+            const startFracs = (axis === "col") ? [...colFractions] : [...rowFractions];
+            const sumPair    = (startFracs[idx] || 0) + (startFracs[idx + 1] || 0);
+            // Min track size in pixels — anything smaller and the chart
+            // can't render its right axis without overflow. 80px is
+            // empirically tight but usable.
+            const MIN_PX = 80;
+            const minFrac = Math.max(0.05, MIN_PX / total * (
+                startFracs.reduce((a, b) => a + b, 0)
+            ));
+
+            let raf = 0;
+            let pendingDelta = 0;
+            function flush() {
+                raf = 0;
+                const dPx = pendingDelta;
+                const dFrac = (dPx / total) * startFracs.reduce((a, b) => a + b, 0);
+                let nextA = startFracs[idx]     + dFrac;
+                let nextB = startFracs[idx + 1] - dFrac;
+                if (nextA < minFrac) {
+                    nextB -= (minFrac - nextA);
+                    nextA  = minFrac;
+                }
+                if (nextB < minFrac) {
+                    nextA -= (minFrac - nextB);
+                    nextB  = minFrac;
+                }
+                // Re-clamp A in case both tried to shrink past min
+                if (nextA < minFrac) nextA = minFrac;
+                if (sumPair && nextA + nextB !== sumPair) {
+                    // Renormalize so the sum of this pair stays constant
+                    const k = sumPair / (nextA + nextB);
+                    nextA *= k;
+                    nextB *= k;
+                }
+                const updated = [...startFracs];
+                updated[idx]     = nextA;
+                updated[idx + 1] = nextB;
+                if (axis === "col") setColFractions(updated);
+                else                setRowFractions(updated);
+            }
+
+            function onMove(e) {
+                pendingDelta = (axis === "col" ? e.clientX : e.clientY) - startMouse;
+                if (raf) return;
+                raf = requestAnimationFrame(flush);
+            }
+            function onUp() {
+                if (raf) cancelAnimationFrame(raf);
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup",   onUp);
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+            }
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup",   onUp);
+            // Keep the resize cursor while dragging even if the mouse
+            // leaves the splitter strip.
+            document.body.style.cursor = (axis === "col") ? "col-resize" : "row-resize";
+            document.body.style.userSelect = "none";
+        };
+    }
+
+    // Cumulative fraction percentages used to position splitters along
+    // each axis. e.g. for [1,1] cols, splitter sits at 50%.
+    function cumPctList(fracs) {
+        const total = fracs.reduce((a, b) => a + b, 0) || 1;
+        const out = [];
+        let acc = 0;
+        for (let i = 0; i < fracs.length - 1; i++) {
+            acc += fracs[i];
+            out.push((acc / total) * 100);
+        }
+        return out;
+    }
+    const colSplitPcts = colFractions.length > 1 ? cumPctList(colFractions) : [];
+    const rowSplitPcts = rowFractions.length > 1 ? cumPctList(rowFractions) : [];
+
     return (
         <div
             ref={containerRef}
@@ -2207,8 +2351,8 @@ export default function MultichartGrid({
                 position: "absolute",
                 inset: 0,
                 display: "grid",
-                gridTemplateColumns: layout.cols,
-                gridTemplateRows: layout.rows,
+                gridTemplateColumns: colsTemplate,
+                gridTemplateRows:    rowsTemplate,
                 // Wider gap (was 1px, now 4px) so the divider line
                 // between panels is unmistakable. Combined with the
                 // lighter background color below the splitter reads
@@ -2301,19 +2445,21 @@ export default function MultichartGrid({
                 );
             })}
 
-            {/* ─── Sibling focus border (bulletproof iframe-friendly) ──
-                Renders as a grid item with the SAME gridColumn/gridRow
-                as the focused tile, so it perfectly overlaps that
-                cell across all layouts and survives resizing. Sitting
-                at the GRID level (not inside the cell) means it is a
-                sibling of the iframe's parent — Chromium's iframe
-                compositing layer can no longer cover it.
+            {/* ─── Focus frame (clean TradingView-style) ─────────────
+                Sibling-of-cells overlay placed at the focused tile's
+                grid coords. Bulletproof against Chromium's iframe
+                compositing layer (no parent-of-iframe relationship).
 
-                Skipped for the host (Panel A) because the host's
-                #chartWrapper is positioned ABOVE this grid (z:13 vs
-                z:12), so any sibling here would be hidden behind
-                the wrapper. The host gets its own overlay injected
-                inside #chartWrapper via applyHostFocusOutline. */}
+                Visual: ONE solid 2px line in #2962ff with a tight
+                1px halo — matches the reference (no glow, no inset
+                shadow) so the user can read which panel is selected
+                without it dominating the chart.
+
+                Skipped for the host (Panel A) — the host's
+                #chartWrapper is z-index:13 (above this grid at z:12),
+                so any sibling here would be hidden behind the
+                wrapper. Host gets its own overlay injected inside
+                #chartWrapper via applyHostFocusOutline. */}
             {focusedTile && focusedPanelId !== HOST_PANEL_ID && (
                 <div
                     aria-hidden="true"
@@ -2322,23 +2468,69 @@ export default function MultichartGrid({
                         gridColumn: focusedTile.gridColumn || "auto",
                         gridRow:    focusedTile.gridRow    || "auto",
                         pointerEvents: "none",
-                        border: "3px solid #2962ff",
-                        borderRadius: "2px",
+                        border: "2px solid #2962ff",
                         boxSizing: "border-box",
-                        boxShadow: [
-                            "0 0 0 1px rgba(41,98,255,0.85)",
-                            "0 0 12px 2px rgba(41,98,255,0.55)",
-                            "inset 0 0 14px rgba(41,98,255,0.25)",
-                        ].join(", "),
-                        // Higher than every other grid item but lower
-                        // than the host wrapper (z:13) so a focused
-                        // iframe in B/C/D doesn't accidentally paint
-                        // over the host's chart area when layouts
-                        // overlap during a transient resize.
+                        boxShadow: "0 0 0 1px rgba(41,98,255,0.45)",
                         zIndex: 11,
                     }}
                 />
             )}
+
+            {/* ─── Draggable column splitters ─────────────────────────
+                One <div> at each boundary BETWEEN adjacent columns,
+                positioned at the cumulative-fraction × container-width
+                point. Width 8px straddles the 4px grid-gap by ±2px on
+                either side so the user has a generous click target
+                without overlapping panel content. Cursor flips to
+                col-resize on hover; mousedown installs the drag
+                handler that mutates colFractions in real time
+                (rAF-coalesced, see makeSplitterDown above). */}
+            {colSplitPcts.map((pct, i) => (
+                <div
+                    key={`col-splitter-${i}`}
+                    data-col-splitter={i}
+                    onMouseDown={makeSplitterDown("col", i)}
+                    style={{
+                        position: "absolute",
+                        top: 0,
+                        bottom: 0,
+                        left: `calc(${pct}% - 4px)`,
+                        width: "8px",
+                        cursor: "col-resize",
+                        zIndex: 30,
+                        // Subtle hover affordance — the splitter sits
+                        // INSIDE the 4px grid gap so the gap's color
+                        // shows through unless the user hovers, at
+                        // which point a brighter line appears.
+                        background: "transparent",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(41,98,255,0.35)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                />
+            ))}
+
+            {/* ─── Draggable row splitters ────────────────────────────
+                Mirror of column splitters but along the horizontal
+                axis. */}
+            {rowSplitPcts.map((pct, i) => (
+                <div
+                    key={`row-splitter-${i}`}
+                    data-row-splitter={i}
+                    onMouseDown={makeSplitterDown("row", i)}
+                    style={{
+                        position: "absolute",
+                        left: 0,
+                        right: 0,
+                        top: `calc(${pct}% - 4px)`,
+                        height: "8px",
+                        cursor: "row-resize",
+                        zIndex: 30,
+                        background: "transparent",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(41,98,255,0.35)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                />
+            ))}
         </div>
     );
 }
