@@ -122,7 +122,14 @@
                     if (typeof ch.loadFileData !== 'function') {
                         throw new Error('chart.loadFileData is not a function');
                     }
-                    var p = ch.loadFileData(String(fileId));
+                    // Idempotency guard: when the parent fans out symbol
+                    // sync to every panel, each panel echoes chart-state
+                    // back; without this, the echo would re-trigger
+                    // loadFileData on every panel and loop. Same trick
+                    // setTimeframe uses above.
+                    var fidStr = String(fileId);
+                    if (String(ch.currentFileId || '') === fidStr) return;
+                    var p = ch.loadFileData(fidStr);
                     // loadFileData may be sync OR return a promise.
                     if (p && typeof p.then === 'function') return p;
                     return;

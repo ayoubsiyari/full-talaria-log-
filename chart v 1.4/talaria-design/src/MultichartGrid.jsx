@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260510T1830";
+const BRIDGE_VERSION = "20260510T2000";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -166,40 +166,50 @@ function waitForHostBridge(timeoutMs) {
 // + per-tile placement. Tile ids are A, B, C, … so the same id space is
 // used by per-panel state (focused panel, sync source, etc.).
 //
-// Variants not in this table fall back to the closest supported layout for
-// that panel count (see resolveLayout). Phase 7.2.3 will add the topbar
-// dropdown that drives layoutPanels and may expose more variants.
+// IDs and visual ordering MUST match TalariaV8bLive.jsx
+// `LAYOUT_LY_LINES` + `LAYOUT_ID_MAP` so the dropdown preview matches what
+// actually renders. Each entry below has a comment showing the matching
+// `LAYOUT_LY_LINES` row so a future re-derivation is auditable.
 const LAYOUT_TEMPLATES = {
     "1":   { cols: "1fr",     rows: "1fr",     tiles: [{ id: "A" }] },
 
+    // ─── 2 panels ───────────────────────────────────────────────────────
+    // 2v: vertical split  (LAYOUT_LY_LINES idx 0)
     "2v":  { cols: "1fr 1fr", rows: "1fr",
              tiles: [{ id: "A" }, { id: "B" }] },
+    // 2h: horizontal split (LAYOUT_LY_LINES idx 1)
     "2h":  { cols: "1fr",     rows: "1fr 1fr",
              tiles: [{ id: "A" }, { id: "B" }] },
 
-    // 3 panels
+    // ─── 3 panels ───────────────────────────────────────────────────────
+    // 3v: 3 columns
     "3v":  { cols: "1fr 1fr 1fr", rows: "1fr",
              tiles: [{ id: "A" }, { id: "B" }, { id: "C" }] },
+    // 3h: 3 rows
     "3h":  { cols: "1fr",         rows: "1fr 1fr 1fr",
              tiles: [{ id: "A" }, { id: "B" }, { id: "C" }] },
-    "3l":  { cols: "2fr 1fr",     rows: "1fr 1fr",
+    // 3l: 1 big left + 2 stacked right
+    "3l":  { cols: "1fr 1fr",     rows: "1fr 1fr",
              tiles: [
                  { id: "A", gridColumn: "1", gridRow: "1 / 3" },
                  { id: "B", gridColumn: "2", gridRow: "1" },
                  { id: "C", gridColumn: "2", gridRow: "2" },
              ] },
-    "3r":  { cols: "1fr 2fr",     rows: "1fr 1fr",
+    // 3r: 2 stacked left + 1 big right
+    "3r":  { cols: "1fr 1fr",     rows: "1fr 1fr",
              tiles: [
                  { id: "A", gridColumn: "1", gridRow: "1" },
                  { id: "B", gridColumn: "1", gridRow: "2" },
                  { id: "C", gridColumn: "2", gridRow: "1 / 3" },
              ] },
+    // 3t: 1 wide top + 2 small bottom
     "3t":  { cols: "1fr 1fr",     rows: "1fr 1fr",
              tiles: [
                  { id: "A", gridColumn: "1 / 3", gridRow: "1" },
                  { id: "B", gridColumn: "1",     gridRow: "2" },
                  { id: "C", gridColumn: "2",     gridRow: "2" },
              ] },
+    // 3b: 2 small top + 1 wide bottom
     "3b":  { cols: "1fr 1fr",     rows: "1fr 1fr",
              tiles: [
                  { id: "A", gridColumn: "1",     gridRow: "1" },
@@ -207,20 +217,17 @@ const LAYOUT_TEMPLATES = {
                  { id: "C", gridColumn: "1 / 3", gridRow: "2" },
              ] },
 
-    // 4 panels — most variants collapse to 2x2 for v1
+    // ─── 4 panels ───────────────────────────────────────────────────────
+    // 4: 2x2 grid
     "4":   { cols: "1fr 1fr", rows: "1fr 1fr",
              tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }] },
+    // 4h: 4 stacked rows
     "4h":  { cols: "1fr",     rows: "1fr 1fr 1fr 1fr",
              tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }] },
+    // 4v: 4 columns
     "4v":  { cols: "1fr 1fr 1fr 1fr", rows: "1fr",
              tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }] },
-    "4t":  { cols: "1fr 1fr 1fr", rows: "1fr 1fr",
-             tiles: [
-                 { id: "A", gridColumn: "1 / 4", gridRow: "1" },
-                 { id: "B", gridColumn: "1",     gridRow: "2" },
-                 { id: "C", gridColumn: "2",     gridRow: "2" },
-                 { id: "D", gridColumn: "3",     gridRow: "2" },
-             ] },
+    // 4b: 3 small top + 1 wide bottom (LAYOUT_LY_LINES idx 3)
     "4b":  { cols: "1fr 1fr 1fr", rows: "1fr 1fr",
              tiles: [
                  { id: "A", gridColumn: "1",     gridRow: "1" },
@@ -228,34 +235,132 @@ const LAYOUT_TEMPLATES = {
                  { id: "C", gridColumn: "3",     gridRow: "1" },
                  { id: "D", gridColumn: "1 / 4", gridRow: "2" },
              ] },
-    "4l":  { cols: "1fr 1fr 1fr", rows: "1fr 1fr",
+    // 4t: 1 wide top + 3 small bottom (LAYOUT_LY_LINES idx 4)
+    "4t":  { cols: "1fr 1fr 1fr", rows: "1fr 1fr",
              tiles: [
-                 { id: "A", gridColumn: "1", gridRow: "1 / 3" },
-                 { id: "B", gridColumn: "2", gridRow: "1" },
-                 { id: "C", gridColumn: "3", gridRow: "1" },
-                 { id: "D", gridColumn: "2 / 4", gridRow: "2" },
+                 { id: "A", gridColumn: "1 / 4", gridRow: "1" },
+                 { id: "B", gridColumn: "1",     gridRow: "2" },
+                 { id: "C", gridColumn: "2",     gridRow: "2" },
+                 { id: "D", gridColumn: "3",     gridRow: "2" },
              ] },
-    "4r":  { cols: "1fr 1fr 1fr", rows: "1fr 1fr",
+    // 4l: 1 tall left + 3 stacked right (LAYOUT_LY_LINES idx 5)
+    "4l":  { cols: "1fr 1fr", rows: "1fr 1fr 1fr",
+             tiles: [
+                 { id: "A", gridColumn: "1", gridRow: "1 / 4" },
+                 { id: "B", gridColumn: "2", gridRow: "1" },
+                 { id: "C", gridColumn: "2", gridRow: "2" },
+                 { id: "D", gridColumn: "2", gridRow: "3" },
+             ] },
+    // 4r: 3 stacked left + 1 tall right (LAYOUT_LY_LINES idx 6)
+    "4r":  { cols: "1fr 1fr", rows: "1fr 1fr 1fr",
+             tiles: [
+                 { id: "A", gridColumn: "1", gridRow: "1" },
+                 { id: "B", gridColumn: "1", gridRow: "2" },
+                 { id: "C", gridColumn: "1", gridRow: "3" },
+                 { id: "D", gridColumn: "2", gridRow: "1 / 4" },
+             ] },
+    // 4tl: 1 big left + 1 wide top-right + 2 small bottom-right (LAYOUT_LY_LINES idx 7)
+    "4tl": { cols: "1fr 1fr 1fr 1fr", rows: "1fr 1fr",
+             tiles: [
+                 { id: "A", gridColumn: "1 / 3", gridRow: "1 / 3" },
+                 { id: "B", gridColumn: "3 / 5", gridRow: "1" },
+                 { id: "C", gridColumn: "3",     gridRow: "2" },
+                 { id: "D", gridColumn: "4",     gridRow: "2" },
+             ] },
+
+    // ─── 5 panels ───────────────────────────────────────────────────────
+    // 5a: 2 top + 3 bottom (LAYOUT_LY_LINES idx 0)
+    "5a":  { cols: "1fr 1fr 1fr 1fr 1fr 1fr", rows: "1fr 1fr",
+             tiles: [
+                 { id: "A", gridColumn: "1 / 4", gridRow: "1" },
+                 { id: "B", gridColumn: "4 / 7", gridRow: "1" },
+                 { id: "C", gridColumn: "1 / 3", gridRow: "2" },
+                 { id: "D", gridColumn: "3 / 5", gridRow: "2" },
+                 { id: "E", gridColumn: "5 / 7", gridRow: "2" },
+             ] },
+    // 5b: 3 top + 2 bottom (LAYOUT_LY_LINES idx 1)
+    "5b":  { cols: "1fr 1fr 1fr 1fr 1fr 1fr", rows: "1fr 1fr",
              tiles: [
                  { id: "A", gridColumn: "1 / 3", gridRow: "1" },
-                 { id: "B", gridColumn: "3",     gridRow: "1 / 3" },
-                 { id: "C", gridColumn: "1",     gridRow: "2" },
-                 { id: "D", gridColumn: "2",     gridRow: "2" },
+                 { id: "B", gridColumn: "3 / 5", gridRow: "1" },
+                 { id: "C", gridColumn: "5 / 7", gridRow: "1" },
+                 { id: "D", gridColumn: "1 / 4", gridRow: "2" },
+                 { id: "E", gridColumn: "4 / 7", gridRow: "2" },
              ] },
-    "4tl": { cols: "1fr 1fr", rows: "1fr 1fr",
-             tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }] },
+    // 5c: 1 big left + 4-tile 2x2 right (LAYOUT_LY_LINES idx 2)
+    "5c":  { cols: "1fr 1fr 1fr 1fr", rows: "1fr 1fr",
+             tiles: [
+                 { id: "A", gridColumn: "1 / 3", gridRow: "1 / 3" },
+                 { id: "B", gridColumn: "3",     gridRow: "1" },
+                 { id: "C", gridColumn: "4",     gridRow: "1" },
+                 { id: "D", gridColumn: "3",     gridRow: "2" },
+                 { id: "E", gridColumn: "4",     gridRow: "2" },
+             ] },
+    // 5v: 5 columns
+    "5v":  { cols: "1fr 1fr 1fr 1fr 1fr", rows: "1fr",
+             tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }, { id: "E" }] },
+    // 5h: 5 rows
+    "5h":  { cols: "1fr", rows: "1fr 1fr 1fr 1fr 1fr",
+             tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }, { id: "E" }] },
+
+    // ─── 6 panels ───────────────────────────────────────────────────────
+    // 6: 3 cols x 2 rows (LAYOUT_LY_LINES idx 0)
+    "6":   { cols: "1fr 1fr 1fr", rows: "1fr 1fr",
+             tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }, { id: "E" }, { id: "F" }] },
+    // 6b: 2 cols x 3 rows (LAYOUT_LY_LINES idx 1)
+    "6b":  { cols: "1fr 1fr", rows: "1fr 1fr 1fr",
+             tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }, { id: "E" }, { id: "F" }] },
+    // 6v: 6 columns
+    "6v":  { cols: "1fr 1fr 1fr 1fr 1fr 1fr", rows: "1fr",
+             tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }, { id: "E" }, { id: "F" }] },
+    // 6h: 6 rows
+    "6h":  { cols: "1fr", rows: "1fr 1fr 1fr 1fr 1fr 1fr",
+             tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }, { id: "E" }, { id: "F" }] },
+
+    // ─── 7 panels ───────────────────────────────────────────────────────
+    // 7a: 3 top + 4 bottom (LAYOUT_LY_LINES idx 0). LCM(3,4)=12 column grid.
+    "7a":  { cols: "1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr", rows: "1fr 1fr",
+             tiles: [
+                 { id: "A", gridColumn: "1 / 5",   gridRow: "1" },
+                 { id: "B", gridColumn: "5 / 9",   gridRow: "1" },
+                 { id: "C", gridColumn: "9 / 13",  gridRow: "1" },
+                 { id: "D", gridColumn: "1 / 4",   gridRow: "2" },
+                 { id: "E", gridColumn: "4 / 7",   gridRow: "2" },
+                 { id: "F", gridColumn: "7 / 10",  gridRow: "2" },
+                 { id: "G", gridColumn: "10 / 13", gridRow: "2" },
+             ] },
+    // 7v: 7 columns
+    "7v":  { cols: "1fr 1fr 1fr 1fr 1fr 1fr 1fr", rows: "1fr",
+             tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }, { id: "E" }, { id: "F" }, { id: "G" }] },
+
+    // ─── 8 panels ───────────────────────────────────────────────────────
+    // 8: 4 cols x 2 rows (LAYOUT_LY_LINES idx 0)
+    "8":   { cols: "1fr 1fr 1fr 1fr", rows: "1fr 1fr",
+             tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }, { id: "E" }, { id: "F" }, { id: "G" }, { id: "H" }] },
+    // 8b: 2 cols x 4 rows (LAYOUT_LY_LINES idx 1)
+    "8b":  { cols: "1fr 1fr", rows: "1fr 1fr 1fr 1fr",
+             tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }, { id: "E" }, { id: "F" }, { id: "G" }, { id: "H" }] },
+    // 8v: 8 columns
+    "8v":  { cols: "1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr", rows: "1fr",
+             tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }, { id: "E" }, { id: "F" }, { id: "G" }, { id: "H" }] },
+    // 8h: 8 rows
+    "8h":  { cols: "1fr", rows: "1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr",
+             tiles: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }, { id: "E" }, { id: "F" }, { id: "G" }, { id: "H" }] },
 };
 
-// Closest-fit fallback for layout ids not yet templated
+// Closest-fit fallback for layout ids not in LAYOUT_TEMPLATES (defensive
+// — every id in LAYOUT_LY_LINES / LAYOUT_ID_MAP IS templated above, but if
+// a future variant is added to the dropdown without a matching template,
+// fall back to the simplest grid for that panel count.
 const PANEL_COUNT_FALLBACK = {
     1: "1",
     2: "2v",
     3: "3v",
     4: "4",
-    5: "4",   // collapse 5 → 2x2 (drop tile E for v1)
-    6: "4",
-    7: "4",
-    8: "4",
+    5: "5v",
+    6: "6",
+    7: "7v",
+    8: "8",
 };
 
 function resolveLayout(layoutId, panelCount) {
@@ -866,6 +971,19 @@ export default function MultichartGrid({
     }, []);
 
     // ─── Push sync-mode changes to the live manager ─────────────────────
+    //
+    // The MultichartManager constructor defaults syncMode to ALL true
+    // (multichart-manager.js:75). React's layoutSync state, however,
+    // defaults to crosshair/symbol/drawings ON but time/dateRange OFF.
+    // If we only pushed on `[layoutSync]` change the user would see this
+    // mismatch on first split: panels would actually pan/zoom together
+    // (manager default visibleRange:true) even though the dropdown
+    // reads "Time / Date Range OFF".
+    //
+    // Fix: also depend on `managerReady` so the same useEffect fires the
+    // moment the manager is created — pushing the user's CURRENT toggle
+    // state instead of the manager's all-true defaults. Subsequent
+    // toggle clicks re-fire via the layoutSync dep as before.
     useEffect(() => {
         const mgr = managerRef.current;
         if (!mgr || typeof mgr.setSyncMode !== "function") return;
@@ -877,6 +995,67 @@ export default function MultichartGrid({
                 drawings:     !!(layoutSync && layoutSync.drawings),
             });
         } catch (_) {}
+    }, [layoutSync, managerReady]);
+
+    // ─── Interval (timeframe) sync ──────────────────────────────────────
+    //
+    // The manager's syncMode does NOT cover Interval — chart.js's
+    // setTimeframe is an action, not a sync envelope. We implement
+    // Interval sync at the React layer instead: whenever the host's
+    // current timeframe changes AND layoutSync.interval is on, fan it
+    // out to every iframe panel via panel-cmd-bridge.setTimeframe.
+    //
+    // Listen on chart.js's `timeframeChanged` event (chart.js:11587 →
+    // _emitTimeframeChanged). The event fires on the parent window only
+    // (each iframe fires on its own contentWindow), so this listener
+    // naturally only sees host tile A's timeframe changes.
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const onTfChanged = (ev) => {
+            if (!layoutSync || !layoutSync.interval) return;
+            const mgr = managerRef.current;
+            if (!mgr || typeof mgr.sendCommand !== "function") return;
+            const tf = (ev && ev.detail && ev.detail.timeframe)
+                || (window.chart && window.chart.currentTimeframe)
+                || null;
+            if (!tf) return;
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host) continue; // host already changed; iframes only
+                try { mgr.sendCommand(c.id, "setTimeframe", { tf }); } catch (_) {}
+            }
+        };
+        window.addEventListener("timeframeChanged", onTfChanged);
+        return () => window.removeEventListener("timeframeChanged", onTfChanged);
+    }, [layoutSync]);
+
+    // ─── Symbol/file sync ───────────────────────────────────────────────
+    //
+    // Same pattern as Interval. When the host loads a new file (user
+    // picks a different pair from the symbol selector) AND
+    // layoutSync.symbol is on, broadcast loadFile to every iframe.
+    // chart.js fires `chartDataLoaded` on every successful load with
+    // the new fileId in its detail.
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        let lastBroadcastFileId = null;
+        const onDataLoaded = (ev) => {
+            if (!layoutSync || !layoutSync.symbol) return;
+            const mgr = managerRef.current;
+            if (!mgr || typeof mgr.sendCommand !== "function") return;
+            const fileId = (window.chart && window.chart.currentFileId) || null;
+            if (!fileId) return;
+            // Coalesce: chartDataLoaded can fire many times for a single
+            // file (resamples, refetches). Broadcast only when the file
+            // id actually changes.
+            if (String(fileId) === String(lastBroadcastFileId)) return;
+            lastBroadcastFileId = String(fileId);
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host) continue;
+                try { mgr.sendCommand(c.id, "loadFile", { fileId }); } catch (_) {}
+            }
+        };
+        window.addEventListener("chartDataLoaded", onDataLoaded);
+        return () => window.removeEventListener("chartDataLoaded", onDataLoaded);
     }, [layoutSync]);
 
     // ─── Focus outline on the host's #chartWrapper ──────────────────────
@@ -977,15 +1156,85 @@ export default function MultichartGrid({
         return () => clearTimeout(t);
     }, [focusedPanelId]);
 
-    // Fire when the focused panel's state updates. The ref itself is
-    // declared at the top of the component; we just (re)assign its
-    // body every render so it always closes over the latest
-    // dispatchFocusChanged + readPanelState definitions. The manager's
-    // onState opt is wired (in the mount effect above) to call
-    // onStateAnyRef.current(id, state), which routes here.
-    onStateAnyRef.current = (id /*, state */) => {
-        if (id !== focusedPanelIdRef.current) return;
-        dispatchFocusChanged(id);
+    // Stable ref to the latest layoutSync so the onState delegate below
+    // can read it without re-running on every toggle change.
+    const layoutSyncRef = useRef(layoutSync);
+    useEffect(() => { layoutSyncRef.current = layoutSync; }, [layoutSync]);
+
+    // Track per-panel last-broadcast tf/fileId so we don't echo a sync
+    // back to the same panel and don't re-broadcast on noise updates
+    // (chart-state from iframes can re-fire many times per pan).
+    const lastBroadcastTfRef = useRef({});       // panelId -> tf
+    const lastBroadcastFileRef = useRef({});     // panelId -> fileId
+
+    // Fire when ANY panel's state updates. Two responsibilities:
+    //
+    //   (a) Update focused-panel mirror UI (existing behavior — drives
+    //       the topbar OHLC + indicator chips when the focused panel
+    //       reports new tf / fileId / candle counts).
+    //
+    //   (b) Bidirectional Interval / Symbol fan-out (TradingView UX).
+    //       When sync.interval is on, a tf change on ANY panel (host
+    //       or iframe) should propagate to every other panel. Same
+    //       for sync.symbol with file changes. The host listens to
+    //       its own `timeframeChanged` / `chartDataLoaded` events
+    //       (effects above), and each iframe reports tf / fileId via
+    //       sync-bridge `chart-state` postMessage which lands here.
+    onStateAnyRef.current = (id, state) => {
+        // (a) focus mirror
+        if (id === focusedPanelIdRef.current) {
+            dispatchFocusChanged(id);
+        }
+
+        // (b) bidirectional fan-out — only act on iframe sources; host
+        // changes are handled by the parent-side timeframeChanged /
+        // chartDataLoaded listeners (see effects above) which also
+        // reach the host. Without this gate, a host change would be
+        // double-fanned (once via the parent listener, once via this
+        // path after the host's own bridge echoed chart-state back).
+        const mgr = managerRef.current;
+        if (!mgr || typeof mgr.sendCommand !== "function") return;
+        const sourceChart = mgr.charts && mgr.charts.get(id);
+        if (!sourceChart || sourceChart.host) return; // skip host echoes
+
+        const sync = layoutSyncRef.current || {};
+        if (state && state.timeframe && sync.interval) {
+            const tf = String(state.timeframe);
+            if (lastBroadcastTfRef.current[id] !== tf) {
+                lastBroadcastTfRef.current[id] = tf;
+                // 1) push to the host (in-process call) — host doesn't
+                // run panel-cmd-bridge, so we hit window.chart directly.
+                try {
+                    if (window.chart && typeof window.chart.setTimeframe === "function"
+                        && window.chart.currentTimeframe !== tf) {
+                        window.chart.setTimeframe(tf);
+                        lastBroadcastTfRef.current[HOST_PANEL_ID] = tf;
+                    }
+                } catch (_) {}
+                // 2) push to every other iframe panel
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || c.id === id) continue;
+                    try { mgr.sendCommand(c.id, "setTimeframe", { tf }); } catch (_) {}
+                }
+            }
+        }
+        if (state && state.fileId && sync.symbol) {
+            const fid = String(state.fileId);
+            if (lastBroadcastFileRef.current[id] !== fid) {
+                lastBroadcastFileRef.current[id] = fid;
+                try {
+                    if (window.chart && typeof window.chart.loadFileData === "function"
+                        && String(window.chart.currentFileId || "") !== fid) {
+                        window.chart.loadFileData(fid);
+                        lastBroadcastFileRef.current[HOST_PANEL_ID] = fid;
+                    }
+                } catch (_) {}
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || c.id === id) continue;
+                    try { mgr.sendCommand(c.id, "loadFile", { fileId: fid }); } catch (_) {}
+                }
+            }
+        }
     };
 
     // ─── Phase 7.2.4: expose the per-panel command bus to the parent ────
