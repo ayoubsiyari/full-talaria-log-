@@ -5582,11 +5582,37 @@ async function scanFirstrateDuplicates() {
     if (empty) empty.style.display = 'none';
     if (wrap) wrap.style.display = '';
     if (!host) return;
-    host.innerHTML = groups.map(function (g) {
-      const rows = (g.rows || []).slice().sort(function (a, b) {
+
+    // Compute "stakes" per group = total bars in the loser rows (i.e. how
+    // many rows would be merged out). Used to colour-code the stakes badge
+    // and to flag the lowest-stakes group as the recommended starting point
+    // for the admin's first real consolidation. Lower stakes = safer test.
+    const annotated = groups.map(function (g) {
+      const groupKey = g.group_key || (g.asset_class + ':' + g.ticker);
+      const sorted = (g.rows || []).slice().sort(function (a, b) {
         return (Number(b.row_count) || 0) - (Number(a.row_count) || 0);
       });
-      const groupKey = g.group_key || (g.asset_class + ':' + g.ticker);
+      const winnerRows = Number((sorted[0] || {}).row_count) || 0;
+      const loserBars = sorted.slice(1).reduce(function (acc, r) { return acc + (Number(r.row_count) || 0); }, 0);
+      return { g: g, sorted: sorted, groupKey: groupKey, winnerRows: winnerRows, loserBars: loserBars };
+    });
+    let safestGroupKey = null;
+    let safestBars = Infinity;
+    annotated.forEach(function (a) {
+      if (a.loserBars < safestBars) { safestBars = a.loserBars; safestGroupKey = a.groupKey; }
+    });
+
+    host.innerHTML = annotated.map(function (a) {
+      const g = a.g;
+      const rows = a.sorted;
+      const groupKey = a.groupKey;
+      const loserBars = a.loserBars;
+      // Stakes colour: green ≤ 1k loser bars, yellow ≤ 100k, red beyond.
+      // The merge always grows or preserves the winner — the stakes number
+      // is purely "how much loser data is being moved into the winner",
+      // never anything that's deleted from the winner.
+      const stakesColor = loserBars <= 1000 ? '#22c55e' : (loserBars <= 100000 ? '#eab308' : '#ef4444');
+      const isSafest = (groupKey === safestGroupKey && loserBars > 0);
       const rowsHtml = rows.map(function (r, idx) {
         const isSuggested = (Number(r.id) === Number(g.suggested_winner_id));
         const lastBar = r.last_bar_iso ? String(r.last_bar_iso).replace('T', ' ').slice(0, 16) : '—';
@@ -5611,10 +5637,16 @@ async function scanFirstrateDuplicates() {
         );
       }).join('');
       return (
-        '<div data-fr-dup-group="' + groupKey + '" style="border-bottom:1px solid var(--border);padding:10px 14px">' +
-          '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">' +
+        '<div data-fr-dup-group="' + groupKey + '" style="border-bottom:1px solid var(--border);padding:10px 14px' + (isSafest ? ';background:color-mix(in oklab, #22c55e 6%, transparent)' : '') + '">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">' +
             '<strong style="font-size:13px">' + esc(g.ticker) + '</strong>' +
-            '<span style="font-size:11px;color:var(--text-muted)">' + esc(g.asset_class) + ' · ' + (rows.length) + ' rows</span>' +
+            '<span style="font-size:11px;color:var(--text-muted)">' + esc(g.asset_class) + ' · ' + (rows.length) + ' rows · winner ' + _frDupRowSize(a.winnerRows) + ' bars</span>' +
+            '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:color-mix(in oklab, ' + stakesColor + ' 22%, transparent);color:' + stakesColor + '" title="Total bars in the loser rows that would be merged into the winner. Lower = safer to test.">stakes: ' + _frDupRowSize(loserBars) + ' loser bars</span>' +
+            (isSafest ? '<span style="font-size:10px;color:#22c55e;font-weight:600;font-style:italic">← lowest stakes — safe place to start</span>' : '') +
+            '<span style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
+              '<button type="button" class="btn sm" data-fr-dup-action="dryrun" data-fr-dup-target="' + groupKey + '" title="Simulate merging this group only. No DB or disk changes.">Dry-run this group</button>' +
+              '<button type="button" class="btn sm" data-fr-dup-action="consolidate" data-fr-dup-target="' + groupKey + '" style="background:var(--danger,#ef4444);color:white;border-color:var(--danger,#ef4444)" title="Consolidate this single group only — leaves the other groups untouched. Requires confirmation phrase below.">Consolidate this group</button>' +
+            '</span>' +
           '</div>' +
           '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
             '<thead><tr style="text-align:left;color:var(--text-muted);font-size:11px">' +
@@ -5658,12 +5690,17 @@ async function scanFirstrateDuplicates() {
   }
 }
 
-function _frDupBuildPayload(dryRun, confirmation) {
+// Build the consolidate payload from the current UI state. When
+// `restrictToGroupKey` is provided, only that single group is included —
+// used by the per-group action buttons so the user can dry-run / consolidate
+// one ticker at a time without touching the others.
+function _frDupBuildPayload(dryRun, confirmation, restrictToGroupKey) {
   const host = document.getElementById('frDupGroupsHost');
   if (!host || !_frDupCache) return null;
   const groups = [];
   (_frDupCache.groups || []).forEach(function (g) {
     const groupKey = g.group_key || (g.asset_class + ':' + g.ticker);
+    if (restrictToGroupKey && groupKey !== restrictToGroupKey) return;
     const winnerInput = host.querySelector('input[type="radio"][data-fr-dup-role="winner"][data-fr-dup-group="' + groupKey + '"]:checked');
     if (!winnerInput) return;
     const winnerId = Number(winnerInput.value);
@@ -5752,6 +5789,72 @@ async function runFirstrateDuplicatesConsolidate() {
     if (phraseEl) phraseEl.value = '';
   }
 }
+
+// Per-group dry-run / consolidate. Same plumbing as the bulk buttons but
+// scoped to a single (canonical_ticker, asset_class) group via the
+// `restrictToGroupKey` argument of `_frDupBuildPayload`. Lets the admin
+// safely test the tool on the lowest-stakes group first before touching
+// any others.
+async function _runFirstrateDupGroupAction(groupKey, action, srcBtn) {
+  if (!groupKey || !action) return;
+  const dryRun = (action === 'dryrun');
+  let phrase = null;
+  if (!dryRun) {
+    const phraseEl = document.getElementById('frDupConfirmPhrase');
+    phrase = (phraseEl && phraseEl.value || '').trim();
+    if (!phrase) {
+      if (typeof toast === 'function') toast('Confirmation phrase required to consolidate this group. Type it into the box at the bottom of the card first.', 'err');
+      return;
+    }
+  }
+  const payload = _frDupBuildPayload(dryRun, phrase, groupKey);
+  if (!payload || !payload.groups.length) {
+    if (typeof toast === 'function') toast('Group has no losers selected — pick at least one row to merge.', 'err');
+    return;
+  }
+  if (!dryRun) {
+    const grp = payload.groups[0];
+    if (!window.confirm('Consolidate ONLY ' + grp.ticker + ' (' + grp.asset_class + ')? Merges ' + grp.loser_ids.length + ' loser row(s) into winner #' + grp.winner_id + ', then quarantines them. Other groups will not be touched.')) return;
+  }
+  const origLabel = srcBtn ? srcBtn.textContent : null;
+  if (srcBtn) { srcBtn.disabled = true; srcBtn.textContent = dryRun ? 'Running…' : 'Consolidating…'; }
+  try {
+    const data = await api('/api/admin/datasets/duplicates/consolidate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    _frDupRenderResult(data);
+    if (typeof toast === 'function') {
+      const which = (payload.groups[0] && payload.groups[0].ticker) || groupKey;
+      const tag = dryRun ? 'Dry-run' : 'Consolidate';
+      const msg = tag + ' ' + which + ': ' + (data.ok_count || 0) + ' ok, ' + (data.error_count || 0) + ' error(s)';
+      toast(msg, data.error_count ? 'err' : 'ok');
+    }
+    if (!dryRun) {
+      await scanFirstrateDuplicates();
+      try { await refreshFirstrateNightlyHealth({ rescan: true }); } catch (_) {}
+      const phraseEl = document.getElementById('frDupConfirmPhrase');
+      if (phraseEl) phraseEl.value = '';
+    }
+  } catch (e) {
+    if (typeof toast === 'function') toast((dryRun ? 'Dry-run' : 'Consolidate') + ' failed: ' + (e && e.message ? e.message : e), 'err');
+  } finally {
+    if (srcBtn) {
+      srcBtn.disabled = false;
+      if (origLabel !== null) srcBtn.textContent = origLabel;
+    }
+  }
+}
+
+document.addEventListener('click', function (e) {
+  const t = e && e.target;
+  if (!t || !t.matches || !t.matches('button[data-fr-dup-action]')) return;
+  e.preventDefault();
+  const action = t.getAttribute('data-fr-dup-action');
+  const groupKey = t.getAttribute('data-fr-dup-target');
+  _runFirstrateDupGroupAction(groupKey, action, t);
+});
 
 // Restore the toggle state on page load. Runs on DOMContentLoaded because the
 // checkbox lives inside the admin panel and may not be present immediately.

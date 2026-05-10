@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260510T1015";
+const BRIDGE_VERSION = "20260510T1024";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1030,8 +1030,18 @@ export default function MultichartGrid({
                         if (!dm) return Promise.reject(new Error("drawingManager not available"));
                         const tool = args.tool ? String(args.tool) : null;
                         if (!tool) {
-                            if (typeof dm.clearTool === "function") dm.clearTool();
-                            else dm.currentTool = null;
+                            // Match the legacy single-chart guard: only call
+                            // dm.clearTool when there's actually something to
+                            // clear. drawing-tools-manager.clearTool() does
+                            // heavy work (DOM queries, SVG mutation, iterates
+                            // every drawing, deselectAll) and was crashing the
+                            // host page when invoked redundantly inside the
+                            // React commit phase right after finalizeDrawing
+                            // (which already cleared currentTool to null).
+                            if (dm.currentTool != null) {
+                                if (typeof dm.clearTool === "function") dm.clearTool();
+                                else dm.currentTool = null;
+                            }
                             return Promise.resolve(null);
                         }
                         if (typeof dm.setTool !== "function") {
@@ -1043,6 +1053,8 @@ export default function MultichartGrid({
                     case "clearActiveDrawingTool": {
                         const dmc = ch.drawingManager;
                         if (!dmc) return Promise.resolve(null);
+                        // No-op guard, same reason as above.
+                        if (dmc.currentTool == null) return Promise.resolve(null);
                         if (typeof dmc.clearTool === "function") dmc.clearTool();
                         else dmc.currentTool = null;
                         return Promise.resolve(null);

@@ -58,7 +58,7 @@
                    in some load orders), strip it again now. */
                 try { document.documentElement.classList.remove('bt-preload'); } catch (_) {}
             }, { once: true });
-            var V = '20260510T1015';
+            var V = '20260510T1024';
             function inject(src) {
                 var s = document.createElement('script');
                 s.src = src + '?v=' + V;
@@ -895,7 +895,7 @@
             <div class="news-items" id="newsItems"></div>
         </div>
     </div>
-    <!-- Module scripts are deferred too, so this runs AFTER all defers above. -->
+    <!-- Module scripts are deferred too, so this runs AFTER all defers above. -->
 
     <!-- ──────────────────────────────────────────────────────────────────
          PANEL MANAGER BOOTSTRAP — REMOVED
