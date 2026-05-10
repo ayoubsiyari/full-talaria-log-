@@ -121,6 +121,78 @@
                 try { ch.activeTradingSessionId = sessionId; } catch (_) {}
             }
 
+            // ── CRITICAL: copy the parent's backtestingSession into the iframe ──
+            //
+            // Without this, the iframe boots with chart.backtestingSession=null
+            // because we deliberately don't forward `mode=backtest` in the
+            // iframe URL (would trigger the splash + duplicate orderManager
+            // setup). The downstream effects of a missing session are
+            // visible to the user as:
+            //
+            //   1. loadFileData reads `this.backtestingSession ||
+            //      JSON.parse(userStorage.getItem('backtestingSession'))`
+            //      and uses session.startDate/endDate to build the
+            //      _fetchSmartWindow params. With session=null, the
+            //      iframe pulls a DIFFERENT data window than the parent
+            //      (typically the full file ending at "now") — explains
+            //      "Panel B already loaded complete data" and "the date
+            //      of the last candle is wrong" reports.
+            //
+            //   2. enterReplayMode (called via panel-cmd-bridge replayEnter
+            //      after loadFileData) hunts for sessionStartMs from
+            //      this.backtestingSession → window.userStorage →
+            //      localStorage. None present → fallback startIdx=10 →
+            //      replay starts 10 bars in instead of at the user's
+            //      configured session start date. Even when goToReplayTimestamp
+            //      moves the cursor to parentTs afterwards, the chart.data
+            //      slice still doesn't reflect the session's intended
+            //      window because of (1).
+            //
+            // Because parent + iframe share an origin (both /chart/* on the
+            // same host), window.parent.chart is directly readable from the
+            // iframe. Pull the live object — newer than userStorage if the
+            // user just created the session in this tab — and stash it on
+            // the iframe's chart BEFORE loadFileData runs so smart-window
+            // param building sees it on the very first call.
+            try {
+                var parentChart = (window.parent && window.parent !== window)
+                    ? window.parent.chart : null;
+                var parentSess = parentChart && parentChart.backtestingSession;
+                if (parentSess) {
+                    ch.backtestingSession = parentSess;
+                    if (parentChart.activeTradingSessionId
+                        && !ch.activeTradingSessionId) {
+                        ch.activeTradingSessionId = parentChart.activeTradingSessionId;
+                    }
+                    if (typeof parentChart.isPropFirmMode === 'boolean') {
+                        ch.isPropFirmMode = parentChart.isPropFirmMode;
+                    }
+                    // Also mirror into userStorage so any code path that
+                    // reads JSON.parse(userStorage.getItem('backtestingSession'))
+                    // — including replay-system enterReplayMode's fallback —
+                    // sees the same session.
+                    try {
+                        if (window.userStorage
+                            && typeof window.userStorage.setItem === 'function') {
+                            window.userStorage.setItem(
+                                'backtestingSession',
+                                JSON.stringify(parentSess)
+                            );
+                        }
+                    } catch (_) {}
+                    reportToShell('info',
+                        'mirrored parent backtestingSession (startDate='
+                        + (parentSess.startDate || parentSess.start_date || '?')
+                        + ', endDate='
+                        + (parentSess.endDate || parentSess.end_date || '?')
+                        + ')');
+                }
+            } catch (e) {
+                reportToShell('warn',
+                    'mirror parent backtestingSession failed: '
+                    + (e && e.message || e));
+            }
+
             // ── CRITICAL: neutralize loadTradingSessionStateIfNeeded ──
             //
             // chart.js's initReplaySystem schedules this fetch via
