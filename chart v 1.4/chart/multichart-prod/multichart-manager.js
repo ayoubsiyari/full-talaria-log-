@@ -73,9 +73,10 @@
 
         this.charts = new Map();    // id -> { id, frame, ready, state }
         this.syncMode = {
-            crosshair:   true,
+            crosshair:    true,
             visibleRange: true,
-            symbol:      true,
+            symbol:       true,
+            drawings:     true,
         };
         this.counters = {
             outFromUser: 0,        // user-originated forwards
@@ -96,8 +97,26 @@
     };
 
     MultichartManager.prototype.setSyncMode = function (mode) {
+        const prev = Object.assign({}, this.syncMode);
         Object.assign(this.syncMode, mode || {});
         this._log('info', 'syncMode = ' + JSON.stringify(this.syncMode));
+
+        // When the user toggles visibleRange (Time / Date Range) sync ON
+        // from OFF, immediately push the host's CURRENT view to every
+        // iframe so the panels visibly snap to the same range. Without
+        // this, sync only kicks in on the next user pan/zoom — and the
+        // user's natural test ("I turned sync on, why didn't anything
+        // happen?") fails. After this snap, ongoing pan/zoom flows
+        // through normal _fanOut.
+        if (this.syncMode.visibleRange && !prev.visibleRange) {
+            const self = this;
+            setTimeout(function () {
+                for (const c of self.charts.values()) {
+                    if (c.host || !c.ready) continue;
+                    self._initialSyncToHost(c);
+                }
+            }, 0);
+        }
     };
 
     /**
@@ -299,18 +318,23 @@
      * already looking at on the parent's #chartWrapper, instead of
      * whatever default chart.js picks after loadFileData.
      *
-     * Only fires when:
-     *   • There is a host chart in the map (we never sync iframe-to-iframe
-     *     on add — peers reach steady state via normal user interaction).
-     *   • The host bridge exposed `readVisibleTimeRange` (it does in v10+).
-     *   • The host's data is loaded and the read returned a real range.
+     * Fires whenever a host chart is registered AND has a readable range,
+     * REGARDLESS of syncMode.visibleRange. This is a ONE-TIME snapshot at
+     * iframe-add time — it makes panels VISIBLY consistent at split time
+     * (TradingView UX expectation: "I split my chart into 2, both halves
+     * show the same view"). After this initial snap, ongoing pan/zoom
+     * sync is still gated by syncMode.visibleRange — so users who turn
+     * date-range sync OFF can pan independently from this aligned start.
      *
-     * Visible-range sync is gated by syncMode.visibleRange; if the user
-     * has it OFF we skip — they explicitly asked to keep panels independent.
+     * Why we ignore the gate here:
+     *   Without this initial snap, Panel B boots at chart.js's default
+     *   "show last N bars" view, which almost never matches Panel A's
+     *   current view. The user perceives this as broken sync ("the
+     *   data is wrong on Panel B"). Aligning at split time is the
+     *   single biggest UX improvement and only happens once per add.
      */
     MultichartManager.prototype._initialSyncToHost = function (newChart) {
         if (!newChart || newChart.host) return;
-        if (!this.syncMode.visibleRange) return;
         let host = null;
         for (const c of this.charts.values()) {
             if (c.host) { host = c; break; }
@@ -319,6 +343,10 @@
         let range = null;
         try { range = host.directRead(); } catch (_) { range = null; }
         if (!range || !Number.isFinite(range.startSec) || !Number.isFinite(range.endSec)) return;
+        // Bypass the syncMode gate by calling _send directly with a
+        // visibleRange envelope. _send doesn't consult syncMode (only
+        // _fanOut does), so this initial snap delivers even when the
+        // user has date-range sync off.
         this._send(newChart, {
             type:        'visibleRange',
             startTime:   range.startSec,
@@ -567,6 +595,19 @@
                 this._fanOut(msg, sourceId);
                 return;
 
+            // Phase 7.2.5+: drawing sync. The bridge's monkey-patched
+            // broadcastDrawingChange emits these on every add/update/
+            // remove/clear from chart.js's drawing tools manager. We
+            // simply fan them out to peer panels; their bridges will
+            // call chart.receiveDrawingChange which already handles
+            // the loop guard via _receivingDrawingSync.
+            case 'drawing-add':
+            case 'drawing-update':
+            case 'drawing-remove':
+            case 'drawing-clear':
+                this._fanOut(msg, sourceId);
+                return;
+
             default:
                 // Unknown / non-sandbox messages — ignore
                 return;
@@ -590,6 +631,9 @@
             if (!this.syncMode.visibleRange) return;
         } else if (t === 'symbol') {
             if (!this.syncMode.symbol) return;
+        } else if (t === 'drawing-add' || t === 'drawing-update'
+                || t === 'drawing-remove' || t === 'drawing-clear') {
+            if (!this.syncMode.drawings) return;
         }
 
         this.counters.outFromUser++;

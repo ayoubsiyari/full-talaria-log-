@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260510T1130";
+const BRIDGE_VERSION = "20260510T1300";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -858,6 +858,7 @@ export default function MultichartGrid({
                 crosshair:    !!(layoutSync && layoutSync.crosshair),
                 visibleRange: !!(layoutSync && (layoutSync.dateRange || layoutSync.time)),
                 symbol:       !!(layoutSync && layoutSync.symbol),
+                drawings:     !!(layoutSync && layoutSync.drawings),
             });
         } catch (_) {}
     }, [layoutSync]);

@@ -5665,9 +5665,13 @@ async function scanFirstrateDuplicates() {
 
     // Wire up: when a winner radio is selected, that row's loser checkbox
     // is force-cleared (the winner is never a loser of itself), and all the
-    // other rows' loser checkboxes default back to checked.
+    // other rows' loser checkboxes default back to checked. Only the
+    // freshly-checked radio drives the state — unchecked radios firing their
+    // change handlers on init would otherwise overwrite the correct state
+    // with a mirror image of it (loser checkboxes flipped).
     host.querySelectorAll('input[type="radio"][data-fr-dup-role="winner"]').forEach(function (radio) {
       radio.addEventListener('change', function () {
+        if (!radio.checked) return;
         const grp = radio.getAttribute('data-fr-dup-group');
         const winnerId = radio.value;
         host.querySelectorAll('input[type="checkbox"][data-fr-dup-role="loser"][data-fr-dup-group="' + grp + '"]').forEach(function (cb) {
@@ -5680,7 +5684,11 @@ async function scanFirstrateDuplicates() {
           }
         });
       });
-      // Initial state.
+    });
+    // Apply initial state once per group, driven only by the actually-checked
+    // (suggested-winner) radio. This is what was being clobbered by the
+    // earlier per-radio dispatch loop.
+    host.querySelectorAll('input[type="radio"][data-fr-dup-role="winner"]:checked').forEach(function (radio) {
       radio.dispatchEvent(new Event('change'));
     });
   } catch (e) {

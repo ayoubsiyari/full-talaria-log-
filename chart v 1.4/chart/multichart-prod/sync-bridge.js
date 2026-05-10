@@ -404,6 +404,86 @@
             } catch (_) {}
         });
 
+        // 5) Drawings — monkey-patch broadcastDrawingChange.
+        //
+        // chart.js's native broadcastDrawingChange (chart.js:21008) walks
+        // window.panelManager.panels and calls receiveDrawingChange on
+        // each peer. window.panelManager doesn't exist in the multichart
+        // architecture (we replaced it with iframes + this bridge), so
+        // the native impl returns early on line 21010 — no drawing ever
+        // syncs. We replace it with a postMessage-based fan-out.
+        //
+        // Outbound: every add/update/remove/clear from chart.js's drawing
+        // tools manager flows through here, gets serialized to JSON, and
+        // posted to parent. The manager fans it out to peers; each peer's
+        // bridge calls chart.receiveDrawingChange (which does NOT check
+        // window.panelManager — see chart.js:21047) so the drawing
+        // appears on every other panel.
+        //
+        // Loop guard: we set chart._receivingDrawingSync = true while
+        // applying inbound drawings (same flag chart.js's native impl
+        // uses), and skip outbound while it's true. This prevents the
+        // received drawing from being re-broadcast back to its source.
+        //
+        // We chain the original impl for in-process (legacy panel-manager
+        // sub-panels). Defensive even though it's a no-op without
+        // panelManager — keeps behavior matching what chart.js expects
+        // if the legacy system ever returns.
+        const __origBroadcastDrawingChange = (typeof chart.broadcastDrawingChange === 'function')
+            ? chart.broadcastDrawingChange.bind(chart)
+            : null;
+        chart.broadcastDrawingChange = function (action, drawing, drawingIndex) {
+            // Skip outbound while we're applying an inbound drawing
+            // change — the drawing manager will call this from inside
+            // receiveDrawingChange, and we don't want a loop.
+            if (chart._receivingDrawingSync) {
+                if (__origBroadcastDrawingChange) {
+                    try { __origBroadcastDrawingChange(action, drawing, drawingIndex); } catch (_) {}
+                }
+                return;
+            }
+            // Serialize drawing for transport. Use toJSON if the drawing
+            // class provides it (most do, see drawing-tools-base.js); else
+            // fall back to a JSON.parse(JSON.stringify) deep-clone so we
+            // don't accidentally postMessage a class instance with cyclic
+            // refs.
+            let drawingData = null;
+            try {
+                if (drawing && typeof drawing.toJSON === 'function') {
+                    drawingData = drawing.toJSON();
+                } else if (drawing != null) {
+                    drawingData = JSON.parse(JSON.stringify(drawing));
+                }
+            } catch (e) {
+                warn('drawing serialize failed', action, e && e.message);
+                drawingData = null;
+            }
+            if (action !== 'clear' && !drawingData) {
+                if (__origBroadcastDrawingChange) {
+                    try { __origBroadcastDrawingChange(action, drawing, drawingIndex); } catch (_) {}
+                }
+                return;
+            }
+            try {
+                global.parent.postMessage({
+                    type:        'drawing-' + action, // 'drawing-add' | 'drawing-update' | 'drawing-remove' | 'drawing-clear'
+                    source:      chartId,
+                    causationId: uuid(),
+                    syncTick:    ++state.tick,
+                    drawing:     drawingData,
+                    drawingIndex: (typeof drawingIndex === 'number') ? drawingIndex : null,
+                }, parentOrigin);
+                log('out', 'drawing-' + action, drawingData && drawingData.id);
+            } catch (e) {
+                warn('drawing postMessage failed', e && e.message);
+            }
+            // Preserve original (no-op without panelManager but keeps
+            // behavior matching what chart.js expects).
+            if (__origBroadcastDrawingChange) {
+                try { __origBroadcastDrawingChange(action, drawing, drawingIndex); } catch (_) {}
+            }
+        };
+
         // ─── inbound: parent -> chart ──────────────────────────────────────
         //
         // The same handler is used in two ways:
@@ -436,6 +516,14 @@
             'symbol':          true,
             'bridge-config':   true,
             'guard-self-test': true,
+            // Drawing sync types — handled by applyDrawingChange below.
+            // These do NOT carry FORBIDDEN_SYNC_FIELDS payloads (drawings
+            // are pure user content), so the filter is a defensive no-op
+            // for them.
+            'drawing-add':     true,
+            'drawing-update':  true,
+            'drawing-remove':  true,
+            'drawing-clear':   true,
         };
 
         function applyInbound(msg) {
@@ -480,10 +568,37 @@
                     applyBridgeConfig(m);
                 } else if (m.type === 'guard-self-test') {
                     runSelfTest();
+                } else if (m.type === 'drawing-add'
+                        || m.type === 'drawing-update'
+                        || m.type === 'drawing-remove'
+                        || m.type === 'drawing-clear') {
+                    applyDrawingChange(m);
                 }
                 // unknown types are silently ignored
             } catch (e) {
                 warn('inbound apply error', m.type, e);
+            }
+        }
+
+        function applyDrawingChange(m) {
+            if (typeof chart.receiveDrawingChange !== 'function') {
+                warn('chart.receiveDrawingChange missing — cannot apply drawing sync');
+                return;
+            }
+            const action = m.type.slice('drawing-'.length); // 'add' | 'update' | 'remove' | 'clear'
+            state.applied.add(m.causationId);
+            // chart.js's receiveDrawingChange already sets _receivingDrawingSync
+            // around its internal work, but we set it again here so the
+            // wrapped broadcastDrawingChange (above) recognizes any nested
+            // re-broadcast and short-circuits. Belt-and-suspenders.
+            const wasReceiving = chart._receivingDrawingSync;
+            chart._receivingDrawingSync = true;
+            try {
+                chart.receiveDrawingChange(action, m.drawing, m.drawingIndex);
+            } catch (e) {
+                warn('receiveDrawingChange threw', action, e && e.message);
+            } finally {
+                chart._receivingDrawingSync = wasReceiving;
             }
         }
 
