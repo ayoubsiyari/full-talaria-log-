@@ -508,6 +508,26 @@ function trackBandsPx(fracs, totalPx, gap) {
     return out;
 }
 
+/**
+ * Read the parent page's main chart file + timeframe so iframe panels can
+ * bootstrap even when React's initialFileId prop was still empty on the
+ * first paint (chart.js finishes loading a tick later). multichart-manager
+ * also calls window.__multichartRealData() as a URL fallback when cfg.fileId
+ * is missing — without that hook, iframes boot with no fileId → embed-bridge
+ * skips loadFileData → permanent "No data to display".
+ */
+function readHostChartFileAndTf() {
+    try {
+        const ch = window.chart;
+        if (!ch) return { fileId: "", tf: "" };
+        const fid = ch.currentFileId != null ? String(ch.currentFileId).trim() : "";
+        const tf = typeof ch.currentTimeframe === "string" ? ch.currentTimeframe.trim() : "";
+        return { fileId: fid, tf: tf };
+    } catch (_) {
+        return { fileId: "", tf: "" };
+    }
+}
+
 // ─── iframe URL ─────────────────────────────────────────────────────────────
 function buildIframeSrc({ panelId, fileId, tf, sessionId, mode }) {
     const params = new URLSearchParams();
@@ -1034,6 +1054,15 @@ export default function MultichartGrid({
     // entirely (i.e. the user picks layout 1 from the dropdown).
     useEffect(() => {
         let cancelled = false;
+        const prevMultichartRealData =
+            typeof window !== "undefined" ? window.__multichartRealData : undefined;
+        if (typeof window !== "undefined") {
+            window.__multichartRealData = function () {
+                const h = readHostChartFileAndTf();
+                if (!h.fileId) return null;
+                return { useReal: true, fileId: h.fileId };
+            };
+        }
 
         loadParentBridge().then(() => {
             if (cancelled) return;
@@ -1140,6 +1169,9 @@ export default function MultichartGrid({
 
         return () => {
             cancelled = true;
+            if (typeof window !== "undefined") {
+                window.__multichartRealData = prevMultichartRealData;
+            }
             if (managerRef.current) {
                 try { managerRef.current.dispose(); } catch (_) {}
                 managerRef.current = null;
@@ -1195,10 +1227,15 @@ export default function MultichartGrid({
             const cellEl = cellRefs.current[tile.id];
             if (!cellEl) continue;
             try {
+                const hostNt = readHostChartFileAndTf();
+                const propFid = initialFileIdRef.current && String(initialFileIdRef.current).trim();
+                const propTf = initialTimeframeRef.current && String(initialTimeframeRef.current).trim();
+                const effFile = propFid || hostNt.fileId || null;
+                const effTf = propTf || hostNt.tf || "1m";
                 mgr.addChart({
                     id:        tile.id,
-                    tf:        initialTimeframeRef.current || "1m",
-                    fileId:    initialFileIdRef.current    || null,
+                    tf:        effTf,
+                    fileId:    effFile,
                     sessionId: initialSessionIdRef.current || null,
                     mode:      initialModeRef.current      || null,
                 }, cellEl);
@@ -1207,6 +1244,32 @@ export default function MultichartGrid({
             }
         }
     }, [layout.tiles, managerReady]);
+
+    // When the host chart's file/tf becomes available after the first paint,
+    // props update but existing iframes keep their old src (no fileId).
+    // Push loadFile + setTimeframe so panels recover without remounting.
+    // Only target panels that already sent bridge-ready — panel-cmd has no
+    // queue before panel-cmd-ready, so early sendCommand would time out.
+    // `readyPanels` re-runs this when each iframe becomes listenable.
+    // (initial* mirror the host; this aligns iframes that booted empty.)
+    useEffect(() => {
+        if (!managerReady) return;
+        const hostNt = readHostChartFileAndTf();
+        const fid = (initialFileId && String(initialFileId).trim())
+            || hostNt.fileId;
+        const tf = (initialTimeframe && String(initialTimeframe).trim())
+            || hostNt.tf;
+        if (!fid) return;
+        const mgr = managerRef.current;
+        if (!mgr || !mgr.charts) return;
+        for (const c of mgr.charts.values()) {
+            if (!c || c.host || !c.ready) continue;
+            try {
+                mgr.sendCommandNoReply(c.id, "loadFile", { fileId: fid });
+                if (tf) mgr.sendCommandNoReply(c.id, "setTimeframe", { tf });
+            } catch (_) {}
+        }
+    }, [managerReady, initialFileId, initialTimeframe, readyPanels]);
 
     // ─── Host-tile positioning ──────────────────────────────────────────
     //
