@@ -7796,7 +7796,7 @@ class DrawingToolsManager {
      *     `this.drawings` / visually on top) wins so selection matches what you see.
      */
     findDrawingsAtPoint(mouseX, mouseY, options = {}) {
-        const baseHitTolerance = 10; // pixels - how close to a line to consider it a hit
+        const baseHitTolerance = 12; // pixels - how close to a line to consider it a hit
         const hitsById = new Map(); // drawingId -> { drawing, distance, z }
         
         // Check if mouse is outside the chart's visible area (in axis regions)
@@ -8228,11 +8228,14 @@ class DrawingToolsManager {
 
                     // Prefer native stroke hit-testing so hover matches selectable zone exactly
                     if (typeof element.isPointInStroke === 'function') {
-                        isStrokeHit = element.isPointInStroke(point);
+                        try {
+                            isStrokeHit = element.isPointInStroke(point);
+                        } catch (_e) { isStrokeHit = false; }
                         if (isStrokeHit) hitDistance = 0;
                     }
                     
-                    // For lines, check distance to line
+                    // For lines, always check geometric distance as fallback
+                    // (isPointInStroke can fail for transparent strokes in some browsers)
                     if (!isStrokeHit && element.tagName === 'line') {
                         const x1 = parseFloat(element.getAttribute('x1'));
                         const y1 = parseFloat(element.getAttribute('y1'));
@@ -8243,9 +8246,10 @@ class DrawingToolsManager {
                         
                         const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
                         const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
-                        // Match actual stroke hit area (approx): stroke extends ~strokeWidth/2 from the path.
-                        // For Fib/Elliott/Pattern tools, enforce a minimum tolerance so thin lines are easier to select.
-                        const effectiveTolerance = Math.max((strokeWidth / 2) + 0.5, minLineHitTolerance);
+                        // For invisible hit-area lines, use the full stroke-width as tolerance
+                        const effectiveTolerance = isHitArea
+                            ? Math.max((strokeWidth / 2) + 0.5, 12)
+                            : Math.max((strokeWidth / 2) + 0.5, minLineHitTolerance);
                         
                         isStrokeHit = distance <= effectiveTolerance;
                         if (isStrokeHit) hitDistance = distance;
@@ -8257,7 +8261,7 @@ class DrawingToolsManager {
                         const rw = parseFloat(element.getAttribute('width')) || 0;
                         const rh = parseFloat(element.getAttribute('height')) || 0;
                         const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
-                        const effectiveTolerance = (strokeWidth / 2) + 0.5;
+                        const effectiveTolerance = Math.max((strokeWidth / 2) + 0.5, 10);
                         const distTop = this.pointToLineDistance(mouseX, mouseY, rx, ry, rx + rw, ry);
                         const distBottom = this.pointToLineDistance(mouseX, mouseY, rx, ry + rh, rx + rw, ry + rh);
                         const distLeft = this.pointToLineDistance(mouseX, mouseY, rx, ry, rx, ry + rh);
@@ -8271,15 +8275,13 @@ class DrawingToolsManager {
                         const cy = parseFloat(element.getAttribute('cy')) || 0;
                         const r = parseFloat(element.getAttribute('r')) || 0;
                         const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
-                        const effectiveTolerance = (strokeWidth / 2) + 0.5;
+                        const effectiveTolerance = Math.max((strokeWidth / 2) + 0.5, 10);
                         if (r > 0) {
                             const dx = mouseX - cx;
                             const dy = mouseY - cy;
                             const dist = Math.sqrt(dx * dx + dy * dy);
                             const distFromBorder = Math.abs(dist - r);
-                            const maxTol = Math.max(0.5, r - 1);
-                            const tol = Math.min(effectiveTolerance, maxTol);
-                            isStrokeHit = distFromBorder <= tol;
+                            isStrokeHit = distFromBorder <= effectiveTolerance;
                             if (isStrokeHit) hitDistance = distFromBorder;
                         }
                     }
@@ -8289,15 +8291,13 @@ class DrawingToolsManager {
                         const erx = parseFloat(element.getAttribute('rx')) || 0;
                         const ery = parseFloat(element.getAttribute('ry')) || 0;
                         const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
-                        const effectiveTolerance = (strokeWidth / 2) + 0.5;
+                        const effectiveTolerance = Math.max((strokeWidth / 2) + 0.5, 10);
                         if (erx > 0 && ery > 0) {
                             const ndx = (mouseX - cx) / erx;
                             const ndy = (mouseY - cy) / ery;
                             const normalizedDist = Math.sqrt(ndx * ndx + ndy * ndy);
                             const distFromBorder = Math.abs(normalizedDist - 1) * Math.min(erx, ery);
-                            const maxTol = Math.max(0.5, Math.min(erx, ery) - 1);
-                            const tol = Math.min(effectiveTolerance, maxTol);
-                            isStrokeHit = distFromBorder <= tol;
+                            isStrokeHit = distFromBorder <= effectiveTolerance;
                             if (isStrokeHit) hitDistance = distFromBorder;
                         }
                     }
