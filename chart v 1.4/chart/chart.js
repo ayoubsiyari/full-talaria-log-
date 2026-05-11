@@ -11900,9 +11900,44 @@ class Chart {
             try { replay.play(); } catch (e) { /* ignore */ }
         }
 
-        // Replay viewport is final — lift the freeze on the next frame so the
-        // post-positioning render lands on the canvas before we swap the overlay.
-        requestAnimationFrame(() => this._endTimeframeSwitching());
+        // Final viewport reset = "double-click time axis" parity on every TF
+        // switch. Without this, a 1D → 5m switch sometimes lands the viewport
+        // mid-history: enterReplayMode internally schedules a setTimeout(150ms)
+        // realignAfterLayout pass that can fire AFTER applyPersistedState moved
+        // currentIndex (so chart.data.length grew) but BEFORE the canvas is
+        // measured at its new size — leaving a stale offsetX from the smaller
+        // session-start slice. We defer the freeze lift to ~200ms so:
+        //   1) enterReplayMode's own realignAfterLayout (rAF + setTimeout 150ms)
+        //      has fully run,
+        //   2) the canvas has settled at its real dimensions,
+        //   3) jumpToLatest then computes the final offsetX against the right
+        //      data length and right candle spacing.
+        // In replay mode jumpToLatest → fitToView → getReplayAutoScrollState
+        // = right edge of the sliced data = playhead. The freeze overlay
+        // (snapshot of the previous TF) stays up the whole time so the user
+        // never sees the intermediate "viewport at session start" frame.
+        const finalizeReset = () => {
+            try {
+                if (typeof this.resize === 'function') this.resize();
+            } catch (e) { /* ignore */ }
+            try {
+                if (Array.isArray(this.data) && this.data.length > 0
+                    && typeof this.jumpToLatest === 'function') {
+                    this.jumpToLatest();
+                }
+            } catch (e) { /* ignore */ }
+            this._endTimeframeSwitching();
+        };
+        // Run after enterReplayMode's own 150ms realignAfterLayout completes.
+        // Two-pass: an immediate rAF render keeps the snapshot bitmap accurate
+        // against the new canvas size if it changed during the fetch, then the
+        // delayed finalizeReset lifts the freeze with the correct viewport.
+        requestAnimationFrame(() => {
+            try {
+                if (typeof this.render === 'function') this.render();
+            } catch (e) { /* ignore */ }
+        });
+        setTimeout(finalizeReset, 200);
     }
 
     /**
