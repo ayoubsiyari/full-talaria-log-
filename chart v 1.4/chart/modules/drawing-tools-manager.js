@@ -1901,6 +1901,27 @@ class DrawingToolsManager {
             }
 
             if (drawingsAtPoint.length > 0 && !event.shiftKey && !event.altKey) {
+                // Double-click detection: check if this is the second click within
+                // timing on the same drawing. The first click may have come from the
+                // canvas (before SVG had pointer-events), so we share _drawingClickTimes.
+                const best = drawingsAtPoint[0];
+                if (best && !best.locked) {
+                    if (!this._drawingClickTimes) this._drawingClickTimes = {};
+                    const lastTime = this._drawingClickTimes[best.id] || 0;
+                    const now = Date.now();
+                    const elapsed = now - lastTime;
+                    if (elapsed > 50 && elapsed < 700) {
+                        this._drawingClickTimes[best.id] = 0;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        this.selectDrawing(best, false);
+                        this.editDrawing(best, event.pageX || event.clientX, event.pageY || event.clientY);
+                        this._suppressNextDrawingDblClickUntil = Date.now() + 600;
+                        return;
+                    }
+                    this._drawingClickTimes[best.id] = now;
+                }
+
                 const lineTypeSet = new Set([
                     'trendline',
                     'horizontal',
@@ -1948,7 +1969,6 @@ class DrawingToolsManager {
                     'ellipse'
                 ]);
 
-                const best = drawingsAtPoint[0];
                 const bestZ = best ? this.drawings.indexOf(best) : -1;
 
                 // If the top hit is a circle/ellipse, but a line also exists at this point,
@@ -6627,7 +6647,8 @@ class DrawingToolsManager {
                 drawing.type === 'polyline' ||
                 drawing.type === 'path' ||
                 drawing.type === 'double-curve';
-                this.renderDrawing(drawing, { skipInteraction: true });        });
+            this.renderDrawing(drawing, { skipInteraction: !needsFullInteraction });
+        });
         
         this.chart._isRendering = wasRendering;
         

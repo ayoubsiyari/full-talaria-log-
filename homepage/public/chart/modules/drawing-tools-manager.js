@@ -1901,6 +1901,27 @@ class DrawingToolsManager {
             }
 
             if (drawingsAtPoint.length > 0 && !event.shiftKey && !event.altKey) {
+                // Double-click detection: check if this is the second click within
+                // timing on the same drawing. The first click may have come from the
+                // canvas (before SVG had pointer-events), so we share _drawingClickTimes.
+                const best = drawingsAtPoint[0];
+                if (best && !best.locked) {
+                    if (!this._drawingClickTimes) this._drawingClickTimes = {};
+                    const lastTime = this._drawingClickTimes[best.id] || 0;
+                    const now = Date.now();
+                    const elapsed = now - lastTime;
+                    if (elapsed > 50 && elapsed < 700) {
+                        this._drawingClickTimes[best.id] = 0;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        this.selectDrawing(best, false);
+                        this.editDrawing(best, event.pageX || event.clientX, event.pageY || event.clientY);
+                        this._suppressNextDrawingDblClickUntil = Date.now() + 600;
+                        return;
+                    }
+                    this._drawingClickTimes[best.id] = now;
+                }
+
                 const lineTypeSet = new Set([
                     'trendline',
                     'horizontal',
@@ -1948,7 +1969,6 @@ class DrawingToolsManager {
                     'ellipse'
                 ]);
 
-                const best = drawingsAtPoint[0];
                 const bestZ = best ? this.drawings.indexOf(best) : -1;
 
                 // If the top hit is a circle/ellipse, but a line also exists at this point,
@@ -6627,7 +6647,8 @@ class DrawingToolsManager {
                 drawing.type === 'polyline' ||
                 drawing.type === 'path' ||
                 drawing.type === 'double-curve';
-                this.renderDrawing(drawing, { skipInteraction: true });        });
+            this.renderDrawing(drawing, { skipInteraction: !needsFullInteraction });
+        });
         
         this.chart._isRendering = wasRendering;
         
@@ -9073,12 +9094,16 @@ class DrawingToolsManager {
      */
     saveToolStyle(toolType, style, options = {}) {
         if (!toolType || !style) return;
-        
-        // Clone style and remove non-persistent properties
+
+        const isPositionTool = toolType === 'long-position' || toolType === 'short-position';
+
+        // Only persist risk settings for position tools — regular drawing styles
+        // start fresh every time so settings never carry over between tools.
+        if (!isPositionTool) return;
+
         const styleToSave = { ...style };
         delete styleToSave.id;
 
-        const isPositionTool = toolType === 'long-position' || toolType === 'short-position';
         const existingRiskSettings = this.getSavedToolRiskSettings(toolType);
         let riskSettingsToSave = existingRiskSettings;
 
@@ -9210,36 +9235,7 @@ class DrawingToolsManager {
      * Apply saved style to a drawing
      */
     applySavedStyle(drawing) {
-        const savedStyle = this.getSavedToolStyle(drawing.type);
-        if (savedStyle) {
-            // Merge saved style into drawing style (don't overwrite everything)
-            Object.keys(savedStyle).forEach(key => {
-                // Skip certain properties that shouldn't be copied
-                // For image tools, don't copy imageUrl - each new image should start empty
-                const isImageTool = drawing.type === 'image';
-                const isEmojiTool = drawing.type === 'emoji';
-                const isEmojiIdentityField = isEmojiTool && (
-                    key === 'glyph' ||
-                    key === 'category' ||
-                    key === 'fontFamily' ||
-                    key === 'fontSize' ||
-                    key === 'sizeInDataUnits'
-                );
-
-                if (key !== 'id' && key !== 'points' && !(isImageTool && key === 'imageUrl') && !isEmojiIdentityField) {
-                    drawing.style[key] = savedStyle[key];
-                }
-            });
-            // Sync stroke from color: when stroke is still the default grey but color carries a
-            // distinct template value, propagate it to stroke so the line renders in that color too.
-            const _dfltStroke = '#787b86';
-            const _sc = drawing.style.color;
-            if ((!drawing.style.stroke || drawing.style.stroke === _dfltStroke) &&
-                _sc && _sc !== 'none' && _sc !== _dfltStroke) {
-                drawing.style.stroke = _sc;
-            }
-            // [debug removed]
-        }
+        // Style persistence disabled — each new drawing starts with its tool's built-in defaults.
 
         // Apply persisted risk inputs for long/short position tools
         if ((drawing.type === 'long-position' || drawing.type === 'short-position') && typeof drawing.ensureRiskSettings === 'function') {
