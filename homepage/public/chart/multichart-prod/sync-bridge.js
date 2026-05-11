@@ -464,10 +464,23 @@
             const d = ev.detail || {};
             if (d.chart !== chart) return;
             try {
+                // Include symbol + fileId so the parent's MultichartManager
+                // cache stays aligned for order mirroring (host → iframe).
+                // Partial updates used to send { timeframe } only, leaving
+                // state.symbol stuck on the initial "—" placeholder — then
+                // findPanelsForSymbol never matched iframe peers after a host
+                // placeOrder even though every panel showed the same pair.
+                var st = { timeframe: d.timeframe };
+                if (chart.currentSymbol != null && String(chart.currentSymbol) !== '') {
+                    st.symbol = chart.currentSymbol;
+                }
+                if (chart.currentFileId != null && String(chart.currentFileId) !== '') {
+                    st.fileId = String(chart.currentFileId);
+                }
                 global.parent.postMessage({
                     type: 'chart-state',
                     source: chartId,
-                    state: { timeframe: d.timeframe },
+                    state: st,
                 }, parentOrigin);
             } catch (_) {}
         });

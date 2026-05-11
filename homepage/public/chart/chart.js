@@ -11527,6 +11527,7 @@ class Chart {
             overlay.src = dataUrl;
             overlay.style.display = 'block';
         } else {
+            // Couldn't snapshot — hide overlay so a stale image doesn't linger.
             overlay.style.display = 'none';
         }
     }
@@ -12871,7 +12872,7 @@ class Chart {
         // setTimeframe() / _loadTimeframeFromServer() lift this flag once the new bars are
         // committed and the currentTimeframe matches the destination TF.
         if (this._timeframeSwitching) return;
-
+        
         // Ensure minimum dimensions to prevent rendering issues
         if (this.w < 200 || this.h < 150) {
             // Chart is too small to render properly

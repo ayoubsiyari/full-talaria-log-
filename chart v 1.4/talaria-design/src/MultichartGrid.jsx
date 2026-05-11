@@ -375,6 +375,22 @@ function resolveLayout(layoutId, panelCount) {
 }
 
 /**
+ * Normalize tickers for order ↔ multichart panel matching (aligns with
+ * multichart-manager `_normalizeSymbol`: strip slashes, dashes, spaces, dots).
+ */
+function normalizeOrderTickerForMirror(s) {
+    if (s == null || s === "") return "";
+    return String(s).replace(/[\/\-:\s\.]+/g, "").toUpperCase();
+}
+
+/** Manager iframe chart-state still uses the placeholder em-dash before the first full chart-state. */
+function isPlaceholderMultichartSymbol(s) {
+    const t = String(s == null ? "" : s).trim();
+    if (!t) return true;
+    return t === "—" || t === "–" || t === "-" || t === "…";
+}
+
+/**
  * Pixel gap between CSS grid tracks — must match `gap` on the multichart grid container.
  */
 const MULTICHART_GRID_GAP_PX = 4;
@@ -2323,12 +2339,11 @@ export default function MultichartGrid({
     //      matches) and to every other iframe (if symbol matches),
     //      excluding the source.
     //
-    // Symbol matching is done on a NORMALIZED form (slash stripped,
-    // upper-cased) because order objects store symbol like 'EURUSD'
-    // while chart.currentSymbol is 'EUR/USD'. Without the normalize,
-    // every cross-panel mirror would silently fail.
+    // Symbol matching uses normalizeOrderTickerForMirror (slashes, dashes,
+    // spaces, dots stripped — same idea as multichart-manager). We also
+    // match on sourceFileId/fileId when the manager's iframe state.symbol
+    // is still the placeholder "—" (chart-state can lag behind visible data).
     useEffect(() => {
-        const normalize = (s) => String(s || "").replace(/\//g, "").toUpperCase();
 
         // Read order spec from parent's hidden #orderPanel DOM.
         // React (TalariaV8bLive) keeps these inputs in sync with its
@@ -2367,16 +2382,25 @@ export default function MultichartGrid({
             };
         }
 
-        // Find all panels (host + iframes) whose currentSymbol matches
-        // the given normalized symbol, excluding the panel id in
-        // `excludeId`. Returns array of { id, isHost }.
-        function findPanelsForSymbol(symNorm, excludeId) {
+        // Find all panels (host + iframes) that should receive a mirrored
+        // order: same normalized ticker OR same dataset (fileId) when the
+        // peer's cached symbol is still a placeholder or unknown.
+        function findPanelsForSymbol(symNorm, excludeId, order) {
             const out = [];
+            const orderFid = order && order.sourceFileId != null && String(order.sourceFileId) !== ""
+                ? String(order.sourceFileId) : "";
             // Host
             if (excludeId !== HOST_PANEL_ID) {
                 const ch = window.chart;
-                if (ch && normalize(ch.currentSymbol) === symNorm) {
-                    out.push({ id: HOST_PANEL_ID, isHost: true });
+                if (ch) {
+                    const hostSym = normalizeOrderTickerForMirror(ch.currentSymbol || "");
+                    const hostFid = ch.currentFileId != null && String(ch.currentFileId) !== ""
+                        ? String(ch.currentFileId) : "";
+                    const symMatch = !!(symNorm && hostSym && hostSym === symNorm);
+                    const fileMatch = !!(orderFid && hostFid && hostFid === orderFid);
+                    if (symMatch || fileMatch) {
+                        out.push({ id: HOST_PANEL_ID, isHost: true });
+                    }
                 }
             }
             // Iframes
@@ -2385,8 +2409,16 @@ export default function MultichartGrid({
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host) continue;
                     if (c.id === excludeId) continue;
-                    const sym = c.state && c.state.symbol;
-                    if (sym && normalize(sym) === symNorm) {
+                    const rawSym = c.state && c.state.symbol;
+                    const panelNorm = !isPlaceholderMultichartSymbol(rawSym)
+                        ? normalizeOrderTickerForMirror(rawSym) : "";
+                    const panelFid = c.state && c.state.fileId != null && String(c.state.fileId) !== ""
+                        ? String(c.state.fileId) : "";
+                    const symMatch = !!(symNorm && panelNorm && panelNorm === symNorm);
+                    const fileMatch = !!(orderFid && panelFid === orderFid
+                        && (!symNorm || !panelNorm || panelNorm === symNorm
+                            || isPlaceholderMultichartSymbol(rawSym)));
+                    if (symMatch || fileMatch) {
                         out.push({ id: c.id, isHost: false });
                     }
                 }
@@ -2413,9 +2445,13 @@ export default function MultichartGrid({
 
         function broadcastOrder(sourceId, kind, order) {
             if (!order || order.id == null) return;
-            const symNorm = normalize(order.symbol || order.ticker);
-            if (!symNorm) return;
-            const peers = findPanelsForSymbol(symNorm, sourceId);
+            const symNorm = normalizeOrderTickerForMirror(
+                order.symbol || order.ticker || order.pair || order.instrument || ""
+            );
+            const orderFid = order.sourceFileId != null && String(order.sourceFileId) !== ""
+                ? String(order.sourceFileId) : "";
+            if (!symNorm && !orderFid) return;
+            const peers = findPanelsForSymbol(symNorm, sourceId, order);
             for (const p of peers) {
                 mirrorTo(p.id, p.isHost, kind, order);
             }
