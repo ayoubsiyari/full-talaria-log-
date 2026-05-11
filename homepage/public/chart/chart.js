@@ -11752,16 +11752,30 @@ class Chart {
     }
 
     /**
-     * Backtest-only: when the user picks a smaller timeframe than the loaded raw bars
-     * (e.g. switching from 1d default down to 1m), client-side resample can't expand
-     * the bars. Exit the active replay, refetch the new timeframe with NO start clamp
-     * and the maximum window so the historical bars BEFORE session start stay visible
-     * just like they do on 1D, then re-enter replay at the saved timestamp (or session
-     * start when no timestamp was saved).
+     * Backtest TF switch (e.g. 1D → 15m). Mirrors the **initial backtest load path**
+     * exactly so all timeframes behave the same way the user described:
+     *
+     *   backtest menu (10/11/2022 → 10/11/2025)
+     *     → load every available bar up to session-end, anchored at end
+     *     → enter replay; replay positions viewport at session-start (or saved playhead)
+     *
+     * Previously this used `_loadTimeframeFromServer`, which adds a generic
+     * `_restorePositionToTimestamp(centerFromOldTF, candleWidthFromOldTF)` + fitToView
+     * pass in its own rAF. That pass ran AFTER `enterReplayMode` already positioned
+     * the viewport, clobbering it with stale 1D context — the user saw only the
+     * playhead candle floating in an otherwise empty chart. The replay system already
+     * knows how to position the viewport; there is no second position-restore needed.
+     *
+     * The freeze overlay (set up by `_beginTimeframeSwitching` in `setTimeframe`)
+     * stays up across the entire fetch + re-enter-replay sequence, and is only
+     * lifted by `_endTimeframeSwitching` once the replay viewport is final.
      */
     async _refetchBacktestTimeframe(timeframe) {
         const replay = this.replaySystem;
-        if (!replay || !this.currentFileId) return;
+        if (!replay || !this.currentFileId) {
+            this._endTimeframeSwitching();
+            return;
+        }
 
         const wasActive = !!replay.isActive;
         const wasPlaying = !!replay.isPlaying;
@@ -11773,6 +11787,8 @@ class Chart {
             ? replay.getPlaybackMode()
             : null;
 
+        const loadId = ++this._timeframeLoadSeq;
+
         try {
             if (wasActive && typeof replay.exitReplayMode === 'function') {
                 replay.exitReplayMode();
@@ -11781,9 +11797,9 @@ class Chart {
             console.warn('[backtest] exitReplayMode before refetch failed', e);
         }
 
-        // Anchor at session end (or last available bar when no end date) and skip the
-        // session start clamp so the smaller-TF fetch returns the maximum slice of
-        // pre-session history the server can deliver (~70 days of 1m at the 100k cap).
+        // SAME fetch shape as the initial backtest load (see startBacktesting path):
+        // anchor='end' + endTs=sessionEnd + skipSessionDates=true → server returns the
+        // maximum pre-session history available for this TF.
         const session = this.backtestingSession || {};
         const sessionEndMs = (() => {
             const r = session.endDate || session.end_date;
@@ -11791,24 +11807,75 @@ class Chart {
             const t = this._sessionEndToInclusiveUtcMs(r);
             return Number.isFinite(t) ? Math.floor(t) : null;
         })();
-        const fetchOptions = {
-            anchor: 'end',
-            windowRange: sessionEndMs != null ? { endTs: sessionEndMs } : null,
-            smartOpts: { skipSessionDates: true, limit: 100000 },
-        };
+        const historyRange = sessionEndMs != null ? { endTs: sessionEndMs } : null;
 
+        let result;
         try {
-            await this._loadTimeframeFromServer(timeframe, fetchOptions);
+            if (this.showLoader) this.showLoader('Changing timeframe...');
+            result = await this._fetchSmartWindow(
+                this.currentFileId,
+                timeframe,
+                session,
+                'end',
+                historyRange,
+                { skipSessionDates: true }
+            );
+            // Initial-load retry parity: if the end-clamped fetch comes back empty
+            // (file ends before sessionEndMs), retry without the end clamp.
+            if (!this._smartResponseHasPayload(result)) {
+                result = await this._fetchSmartWindow(
+                    this.currentFileId,
+                    timeframe,
+                    session,
+                    'end',
+                    null,
+                    { skipSessionDates: true }
+                );
+            }
         } catch (e) {
-            console.error('[backtest] timeframe refetch failed', e);
+            console.error('[backtest] timeframe refetch fetch failed', e);
+            if (this.hideLoader) this.hideLoader();
+            this._endTimeframeSwitching();
             return;
         }
 
+        // Superseded by a newer switch — abandon, the newer one owns the overlay.
+        if (loadId !== this._timeframeLoadSeq) return;
+
+        if (!this._smartResponseHasPayload(result)) {
+            console.warn('[backtest] timeframe refetch returned no data');
+            if (this.hideLoader) this.hideLoader();
+            this._endTimeframeSwitching();
+            return;
+        }
+
+        // Atomic commit: TF + data + cursors land together. No position-restore,
+        // no fitToView — `enterReplayMode` below owns viewport positioning.
+        this.rawData = [];
+        this.data = [];
+        this.totalCandles = result.total;
+        this._serverCursors = {
+            firstTs: result.first_cursor,
+            lastTs: result.last_cursor,
+            hasMoreLeft: result.has_more_left,
+            hasMoreRight: result.has_more_right
+        };
+        this._panLoading = false;
+        this._chartViewRestored = false;
+        this._commitTimeframeChange(timeframe);
+        this._ingestSmartWindowResult(result, { skipIndicators: true, skipFitToView: true });
+        if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
+            this.compareOverlay.refreshForTimeframe(timeframe);
+        }
+        if (this.hideLoader) this.hideLoader();
+
         if (!Array.isArray(this.rawData) || this.rawData.length === 0) {
+            this._endTimeframeSwitching();
             return;
         }
 
         if (!wasActive || typeof replay.enterReplayMode !== 'function') {
+            this._endTimeframeSwitching();
             return;
         }
 
@@ -11816,6 +11883,7 @@ class Chart {
             replay.enterReplayMode();
         } catch (e) {
             console.error('[backtest] enterReplayMode after refetch failed', e);
+            this._endTimeframeSwitching();
             return;
         }
 
@@ -11834,6 +11902,10 @@ class Chart {
         if (wasPlaying && typeof replay.play === 'function') {
             try { replay.play(); } catch (e) { /* ignore */ }
         }
+
+        // Replay viewport is final — lift the freeze on the next frame so the
+        // post-positioning render lands on the canvas before we swap the overlay.
+        requestAnimationFrame(() => this._endTimeframeSwitching());
     }
 
     /**
