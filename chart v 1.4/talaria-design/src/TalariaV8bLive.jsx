@@ -7566,73 +7566,9 @@ const TalariaV8bLive = () => {
   // chart.js / drawingManager may not be initialized yet on first mount.
   useEffect(() => {
     let cancelled = false; let n = 0;
-    const apply = () => {
+    /** Push tool into the in-process host chart (and poll until drawingManager exists). */
+    const applyHostDm = () => {
       if (cancelled) return;
-
-      // Phase 7.2.4 — multichart routing (two modes):
-      //   • Toolbar / chartDataLoaded / panelSelected: BROADCAST the tool to
-      //     every iframe (runCommandIframes) so the user can pick a tool and
-      //     mousedown on a tile that is not focused yet — the stroke still
-      //     starts (TradingView behaviour).
-      //   • multichartFocusChanged: syncDrawingToolAcrossPanels — arm ONLY the
-      //     focused chart and clear all others so switching panels does not
-      //     leave the previous tile in drawing mode.
-      const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
-      const focusOnlyMultichartTool =
-        typeof window !== "undefined" && window.__v9MultichartFocusToolTick;
-      if (grid && typeof grid.syncDrawingToolAcrossPanels === "function" && focusOnlyMultichartTool) {
-        try {
-          let legacyParam = null;
-          if (editingDrawingRef.current) {
-            legacyParam = null;
-          } else if (v9SelectionToolbarSyncRef.current) {
-            legacyParam = resolveLegacyTool() || null;
-          } else {
-            legacyParam = resolveLegacyTool() || null;
-          }
-          void grid.syncDrawingToolAcrossPanels(legacyParam).catch(() => {});
-          const fid = typeof grid.getFocusedPanelId === "function"
-            ? grid.getFocusedPanelId()
-            : null;
-          if (fid && grid.hostPanelId != null && fid !== grid.hostPanelId) {
-            try {
-              const h = window.chart;
-              const dmc = h && h.drawingManager;
-              if (dmc) {
-                if (typeof dmc.clearTool === "function") dmc.clearTool();
-                else dmc.currentTool = null;
-              }
-            } catch (_) {}
-            return;
-          }
-        } catch (err) {
-          console.warn("[V9 tool bridge multichart focus] threw:", err);
-        }
-      } else if (grid && typeof grid.runCommandIframes === "function") {
-        try {
-          if (editingDrawingRef.current) {
-            grid.runCommandIframes("clearActiveDrawingTool", null).catch(() => {});
-          } else if (v9SelectionToolbarSyncRef.current) {
-            const legacy = resolveLegacyTool();
-            if (!legacy) {
-              grid.runCommandIframes("clearActiveDrawingTool", null).catch(() => {});
-            } else {
-              grid.runCommandIframes("setActiveDrawingTool", { tool: legacy }).catch(() => {});
-            }
-          } else {
-            const legacy = resolveLegacyTool();
-            if (!legacy) {
-              grid.runCommandIframes("clearActiveDrawingTool", null).catch(() => {});
-            } else {
-              grid.runCommandIframes("setActiveDrawingTool", { tool: legacy })
-                  .catch((err) => console.warn("[V9 tool bridge iframes] setTool failed:", legacy, err));
-            }
-          }
-        } catch (err) {
-          console.warn("[V9 tool bridge iframes] threw:", err);
-        }
-      }
-
       const ch =
         typeof window.getActiveChart === "function"
           ? window.getActiveChart()
@@ -7683,6 +7619,106 @@ const TalariaV8bLive = () => {
           dm.setTool(legacy);
         }
       } catch (err) { console.warn('[V9 tool bridge] setTool failed:', legacy, err); }
+    };
+
+    const apply = () => {
+      if (cancelled) return;
+
+      // Phase 7.2.4 — multichart routing (two modes):
+      //   • Toolbar / chartDataLoaded / panelSelected: BROADCAST the tool to
+      //     every iframe (runCommandIframes) so the user can pick a tool and
+      //     mousedown on a tile that is not focused yet — the stroke still
+      //     starts (TradingView behaviour).
+      //   • multichartFocusChanged: syncDrawingToolAcrossPanels — arm ONLY the
+      //     focused chart and clear all others so switching panels does not
+      //     leave the previous tile in drawing mode.
+      //
+      // IMPORTANT: iframe panel-cmd round-trips are async. If we fire
+      // runCommandIframes without awaiting and immediately setTool on the
+      // host, the user can click the iframe in the same frame before the
+      // iframe's drawingManager is armed — first mousedown does nothing.
+      // Await the broadcast / focus sync, then run applyHostDm.
+      const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+      const focusOnlyMultichartTool =
+        typeof window !== "undefined" && window.__v9MultichartFocusToolTick;
+      if (grid && typeof grid.syncDrawingToolAcrossPanels === "function" && focusOnlyMultichartTool) {
+        try {
+          let legacyParam = null;
+          if (editingDrawingRef.current) {
+            legacyParam = null;
+          } else if (v9SelectionToolbarSyncRef.current) {
+            legacyParam = resolveLegacyTool() || null;
+          } else {
+            legacyParam = resolveLegacyTool() || null;
+          }
+          const fid = typeof grid.getFocusedPanelId === "function"
+            ? grid.getFocusedPanelId()
+            : null;
+          void grid.syncDrawingToolAcrossPanels(legacyParam)
+            .then(() => {
+              if (cancelled) return;
+              if (fid && grid.hostPanelId != null && fid !== grid.hostPanelId) {
+                try {
+                  const h = window.chart;
+                  const dmc = h && h.drawingManager;
+                  if (dmc) {
+                    if (typeof dmc.clearTool === "function") dmc.clearTool();
+                    else dmc.currentTool = null;
+                  }
+                } catch (_) {}
+                return;
+              }
+              applyHostDm();
+            })
+            .catch((err) => {
+              console.warn("[V9 tool bridge multichart focus] sync failed:", err);
+              if (cancelled) return;
+              if (fid && grid.hostPanelId != null && fid !== grid.hostPanelId) {
+                try {
+                  const h = window.chart;
+                  const dmc = h && h.drawingManager;
+                  if (dmc) {
+                    if (typeof dmc.clearTool === "function") dmc.clearTool();
+                    else dmc.currentTool = null;
+                  }
+                } catch (_) {}
+                return;
+              }
+              applyHostDm();
+            });
+          return;
+        } catch (err) {
+          console.warn("[V9 tool bridge multichart focus] threw:", err);
+        }
+      } else if (grid && typeof grid.runCommandIframes === "function") {
+        try {
+          let p;
+          if (editingDrawingRef.current) {
+            p = grid.runCommandIframes("clearActiveDrawingTool", null);
+          } else if (v9SelectionToolbarSyncRef.current) {
+            const legacy = resolveLegacyTool();
+            p = !legacy
+              ? grid.runCommandIframes("clearActiveDrawingTool", null)
+              : grid.runCommandIframes("setActiveDrawingTool", { tool: legacy });
+          } else {
+            const legacy = resolveLegacyTool();
+            p = !legacy
+              ? grid.runCommandIframes("clearActiveDrawingTool", null)
+              : grid.runCommandIframes("setActiveDrawingTool", { tool: legacy });
+          }
+          void p
+            .then(() => { if (!cancelled) applyHostDm(); })
+            .catch((err) => {
+              console.warn("[V9 tool bridge iframes] failed:", err);
+              if (!cancelled) applyHostDm();
+            });
+          return;
+        } catch (err) {
+          console.warn("[V9 tool bridge iframes] threw:", err);
+        }
+      }
+
+      applyHostDm();
     };
     apply();
     const onPanelSelected = () => {

@@ -1025,18 +1025,27 @@
     //
     // Coalesced via a 0ms timer: a single user click typically fires
     // pointerdown + mousedown back-to-back; we only need to notify the
-    // parent ONCE per user action. The flag resets on the next tick.
+    // parent ONCE per user action.
+    //
+    // Defer postMessage to the NEXT task (setTimeout(0)), not the capture
+    // phase of the same event: the parent's multichartFocusChanged handler
+    // runs syncDrawingToolAcrossPanels, which can clear/re-arm tools while
+    // this iframe's drawingManager is still handling the SAME pointerdown —
+    // the first click would then miss starting a stroke. Letting the
+    // current event finish first fixes "pick tool → first click doesn't draw".
     var focusPending = false;
     function notifyFocus() {
         if (focusPending) return;
         focusPending = true;
-        setTimeout(function () { focusPending = false; }, 0);
-        try {
-            global.parent.postMessage({
-                type:   'panel-focus',
-                source: panelId,
-            }, '*');
-        } catch (_) {}
+        setTimeout(function () {
+            focusPending = false;
+            try {
+                global.parent.postMessage({
+                    type:   'panel-focus',
+                    source: panelId,
+                }, '*');
+            } catch (_) {}
+        }, 0);
     }
     // capture:true so we hear the event even if a deeper handler stops
     // propagation. passive:true is fine because we never preventDefault.
