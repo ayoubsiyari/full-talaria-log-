@@ -4492,15 +4492,16 @@ class ReplaySystem {
         const r = wrap.getBoundingClientRect();
         const padR = 120;
         const padB = 70;
-        const btnH = 44;
+        const btnH = 36;
+        const z = (typeof window !== 'undefined' && typeof window.__v9Zoom === 'number' && window.__v9Zoom > 0) ? window.__v9Zoom : 1;
         let topPx = Math.round(r.bottom - padB - btnH);
 
         // If stacked indicator panels exist, pin follow button to the main chart pane
         // (just above the top separator), so it never overlaps separate indicator panes.
         const spi = this.chart?.separatePanelInfo;
         if (spi && Number.isFinite(spi.top)) {
-            const separatorTop = Math.round(r.top + spi.top);
-            topPx = separatorTop - btnH - 10;
+            const separatorTop = Math.round(r.top + spi.top * z);
+            topPx = separatorTop - btnH - 8;
         }
 
         const minTop = Math.round(r.top + 8);
