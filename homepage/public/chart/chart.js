@@ -12458,6 +12458,14 @@ class Chart {
      * Effective minimum candleWidth — caps zoom-out so no more than
      * MAX_VISIBLE_CANDLES bars fit on screen at once (TradingView-style).
      *
+     * The cap is **per-timeframe** so the visible time-span stays useful:
+     *   1m → 1440  (one full 24h day, otherwise 260×1m ≈ 4h is too little)
+     *   5m →  288  (one full 24h day)
+     *  15m →  260  (≈ 2.7 days)
+     *   1h →  260  (≈ 11 days)
+     *   1d →  260  (≈ 9 months)
+     * Rule: `max(260, candlesPerDay(timeframe))`.
+     *
      * The floor is the larger of:
      *   • the static floor (allowedWidths[0], usually 0.2)
      *   • a viewport-derived floor: the smallest w such that
@@ -12468,11 +12476,18 @@ class Chart {
      *   0.5 < w ≤ 8  → spacing = w + (w - 0.5) · 2/7.5   → w = (S·7.5 + 1) / 9.5
      *   w > 8        → spacing = w + 2                   → w = S − 2
      *
-     * Recomputed on every call so window resize / panel layout changes are
-     * always reflected without explicit invalidation.
+     * Recomputed on every call so window resize / panel layout / timeframe
+     * changes are always reflected without explicit invalidation.
      */
     _getEffectiveMinCandleWidth(allowedWidths) {
-        const MAX_VISIBLE_CANDLES = 260;
+        const DAY_MS = 86_400_000;
+        const BASE_MAX_VISIBLE = 260;
+        const tfMs = Number(this.parseTimeframe(this.currentTimeframe));
+        const candlesPerDay = (Number.isFinite(tfMs) && tfMs > 0)
+            ? Math.ceil(DAY_MS / tfMs)
+            : 0;
+        const MAX_VISIBLE_CANDLES = Math.max(BASE_MAX_VISIBLE, candlesPerDay);
+
         const widths = (allowedWidths && allowedWidths.length) ? allowedWidths : [0.2];
         const staticFloor = widths[0];
         const m = this.margin || { l: 0, r: 60 };
