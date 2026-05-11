@@ -8605,9 +8605,8 @@ const TalariaV8bLive = () => {
     }
   };
 
-  // When the armed legacy tool changes (e.g. Rectangle → Triangle), reload `tlStyle` from
-  // `drawingManager.getSavedToolStyle` *before* the forward bridge runs so we do not persist the
-  // previous tool's colors into the new tool's saved defaults.
+  // When the armed legacy tool changes (e.g. Rectangle → Triangle), reset `tlStyle`
+  // to clean defaults so settings never carry over from the previous tool.
   const v9LastHydratedLegacyRef = useRef(null);
   const [legacyHydrateNonce, setLegacyHydrateNonce] = useState(0);
   useEffect(() => {
@@ -8633,21 +8632,20 @@ const TalariaV8bLive = () => {
     }
     if (v9LastHydratedLegacyRef.current === legacy) return;
 
-    let ch =
-      typeof window !== "undefined" && typeof window.getActiveChart === "function"
-        ? window.getActiveChart()
-        : window.chart;
-    let dm = ch && ch.drawingManager;
-    if (!dm && window.chart && window.chart !== ch) {
-      ch = window.chart;
-      dm = ch && ch.drawingManager;
-    }
-    if (!dm || typeof dm.getSavedToolStyle !== "function") return;
-
     v9LastHydratedLegacyRef.current = legacy;
-    const mergePatch = v9MergeHydratePatchFromLegacy(dm, legacy);
+    const freshDefaults = {
+      lineColor: "#8C8C8C", bgColor: "rgba(74,106,255,0.15)", lineType: "solid", lineWidth: "2",
+      ep1: "normal", ep2: "normal", extendLeft: false, extendRight: false,
+      priceLabels: true, timeLabels: true,
+      showInfo: false, showInfoTypes: ["Price range"],
+      labelColor: "#ffffff", labelFontSize: "12", labelBg: true, labelBgColor: "rgba(0,0,0,0.6)",
+      textSize: 14, textColor: "#ffffff", textItalic: false, textBold: false, textContent: "",
+      labelLineType: "solid", labelLineWidth: "1",
+      vertAlign: "top", horizAlign: "center",
+      midLine: false, midLineColor: "#8C8C8C", midLineType: "dashed", midLineWidth: "1",
+    };
     flushSync(() => {
-      setTlStyle((prev) => ({ ...prev, ...mergePatch }));
+      setTlStyle((prev) => ({ ...prev, ...freshDefaults }));
     });
   }, [tool, groupSelected, legacyHydrateNonce]);
 
@@ -8726,17 +8724,7 @@ const TalariaV8bLive = () => {
       middleLineDash: midDashArr,
     };
 
-    // Persist as default for this tool — new drawings inherit via applySavedStyle.
-    // Debounced: avoid hammering localStorage on every dropdown click.
-    if (legacyTool) {
-      if (saveToolStyleTimer.current) clearTimeout(saveToolStyleTimer.current);
-      saveToolStyleTimer.current = setTimeout(() => {
-        try {
-          const merged = { ...(dm.getSavedToolStyle?.(legacyTool) || {}), ...stylePatch };
-          dm.saveToolStyle?.(legacyTool, merged);
-        } catch (err) { /* ignore */ }
-      }, 300);
-    }
+    // Do NOT persist style as default for this tool — each new drawing starts fresh.
 
     // Mutate currently-selected drawing(s) and repaint immediately.
     // We funnel through the legacy toolbar.onUpdate hook so renderDrawing,
