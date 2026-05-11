@@ -7388,7 +7388,7 @@ const TalariaV8bLive = () => {
     // Group 7 - Text & Labels
     [{ id: "text", icon: "text", label: "Text & Labels", dd: [
       {h:"TEXT"},{icon:"text",label:"Text"},{icon:"note",label:"Note"},{icon:"priceNote",label:"Price Note"},{icon:"callout",label:"Callout"},{icon:"comment",label:"Comment"},
-      {h:"LABELS"},{icon:"pin",label:"Pin"},{icon:"priceLabel",label:"Price Label"},{icon:"signpost",label:"Signpost"},{icon:"flag",label:"Flag Mark"},{icon:"image",label:"Image"},
+      {h:"LABELS"},{icon:"pin",label:"Pin"},{icon:"signpost",label:"Signpost"},{icon:"flag",label:"Flag Mark"},{icon:"image",label:"Image"},
       {h:"EMOJIS"},{icon:"emoji",label:"Emojis & Stickers"}
     ]}],
     // Group 8 - Patterns & Waves
@@ -8098,6 +8098,7 @@ const TalariaV8bLive = () => {
   // so the forward bridge below skips that pass and we don't loop.
   const suppressForwardBridge = useRef(false);
   const suppressTxtForwardBridge = useRef(false);
+  const suppressRrForwardBridge = useRef(false);
 
   // Legacy chart.js saves drawings and updates `d.levels` / style directly; React `tlStyle` does not
   // hear those edits. The forward bridge below would then push *stale* `tlStyle.fibLevels` back onto
@@ -8429,7 +8430,9 @@ const TalariaV8bLive = () => {
     LEGACY_TYPE_TO_V9_ICON,
     suppressForwardBridge,
     suppressTxtForwardBridge,
+    suppressRrForwardBridge,
     setTxtStyle,
+    setRrStyle,
     v9SelectionToolbarSyncRef,
     drawingTypeToPanelGroupRef,
     editingDrawingRef,
@@ -8510,6 +8513,20 @@ const TalariaV8bLive = () => {
                 br.suppressTxtForwardBridge.current = true;
                 br.setTxtStyle((s) => ({ ...s, ...tp }));
               }
+            }
+            if (drawing.type === 'long-position' || drawing.type === 'short-position') {
+              const rs = drawing.style || {};
+              br.suppressRrForwardBridge.current = true;
+              br.setRrStyle(prev => ({
+                ...prev,
+                profitColor: rs.rewardColor || prev.profitColor,
+                lossColor: rs.riskColor || prev.lossColor,
+                entryColor: rs.entryColor || prev.entryColor,
+                labelFontSize: String(rs.labelFontSize ?? rs.fontSize ?? prev.labelFontSize),
+                labelColor: rs.labelTextColor || rs.textColor || prev.labelColor,
+                showPriceLabels: typeof rs.showPriceLabels === 'boolean' ? rs.showPriceLabels : prev.showPriceLabels,
+                showTimeLabels: typeof rs.showTimeLabels === 'boolean' ? rs.showTimeLabels : prev.showTimeLabels,
+              }));
             }
           }
         } catch (_) {}
@@ -9051,6 +9068,44 @@ const TalariaV8bLive = () => {
     vpStyle.visMinutes, vpStyle.visHours, vpStyle.visDays, vpStyle.visWeeks, vpStyle.visMonths,
     avStyle.visMinutes, avStyle.visHours, avStyle.visDays, avStyle.visWeeks, avStyle.visMonths,
     vwapSettOpen, vpSettOpen, avSettOpen,
+  ]);
+
+  // V9 rrStyle → selected long/short-position drawings (risk-reward color/label bridge).
+  const rrStyleBridgeReady = useRef(false);
+  useLayoutEffect(() => {
+    if (!rrStyleBridgeReady.current) { rrStyleBridgeReady.current = true; return; }
+    if (suppressRrForwardBridge.current) { suppressRrForwardBridge.current = false; return; }
+    try {
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || !d.style) return;
+        if (d.type !== 'long-position' && d.type !== 'short-position') return;
+        const tb = dm.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+        d.style.rewardColor = rrStyle.profitColor;
+        d.style.riskColor = rrStyle.lossColor;
+        d.style.entryColor = rrStyle.entryColor;
+        const fs = parseInt(String(rrStyle.labelFontSize), 10);
+        if (Number.isFinite(fs) && fs > 0) {
+          d.style.fontSize = fs;
+          d.style.labelFontSize = fs;
+        }
+        d.style.textColor = rrStyle.labelColor;
+        d.style.labelTextColor = rrStyle.labelColor;
+        d.style.showPriceLabels = rrStyle.showPriceLabels;
+        d.style.showTimeLabels = rrStyle.showTimeLabels;
+        try { dm.renderDrawing?.(d); } catch (_) {}
+        try { dm.saveDrawings?.(); } catch (_) {}
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach(ch => ch.scheduleRender && ch.scheduleRender());
+    } catch (err) {
+      console.warn("[V9 rrStyle bridge] failed:", err);
+    }
+  }, [
+    rrStyle.profitColor, rrStyle.lossColor, rrStyle.entryColor,
+    rrStyle.labelFontSize, rrStyle.labelColor,
+    rrStyle.showPriceLabels, rrStyle.showTimeLabels,
   ]);
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelectedId(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
@@ -14434,7 +14489,22 @@ const TalariaV8bLive = () => {
             <TlSep/>
             {/* RR tool: create order */}
             <TlBtn id="tl-rr-order" isAct={orderPanelOpen} tip="Place Order"
-              onClick={e=>{e.stopPropagation();setOrderPanelOpen(v=>!v);}}>
+              onClick={e=>{e.stopPropagation();
+                try {
+                  const om = window.chart?.orderManager;
+                  if (om) {
+                    const sel = getSelectedDrawingAcrossCharts(editingDrawingRef.current);
+                    if (sel && (sel.type === 'long-position' || sel.type === 'short-position')) {
+                      om.pushRiskRewardToolToManager(sel);
+                      om.openOrderPanel();
+                      setOrderPanelOpen(true);
+                      return;
+                    }
+                  }
+                } catch(_){}
+                setOrderPanelOpen(v=>!v);
+              }}>
+
               {(_,isAct,col)=><svg width={18} height={18} viewBox="0 0 18 18" fill="none">
                 <circle cx="8" cy="9" r="6.5" stroke={col} strokeWidth="1.5"/>
                 <path d="M8 4.5v9M10.5 6.5C10 5.5 9.2 5 8 5 6.5 5 5.5 5.9 5.5 7c0 1 .8 1.6 2.5 1.6s2.5.8 2.5 2c0 1.2-1 2-2.5 2C6.8 12.6 6 12.1 5.5 11.5" stroke={col} strokeWidth="1.4" strokeLinecap="round"/>
