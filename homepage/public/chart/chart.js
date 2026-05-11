@@ -593,23 +593,20 @@ class Chart {
         } else {
             // For panels, still setup canvas right-click context menu
             this.canvas.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
                 if (this.shouldSuppressRightClickContextMenu(e)) {
-                    e.preventDefault();
                     e.stopPropagation();
                     return;
                 }
 
                 const dm = this.drawingManager;
                 if (dm && dm.currentTool && e.button === 0 && e.ctrlKey) {
-                    e.preventDefault();
                     if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
                     e.stopPropagation();
                     return;
                 }
 
-                // Only show context menu if not on a drawing
                 if (!this.tool && !this.findDrawingAtPoint(e.offsetX, e.offsetY)) {
-                    e.preventDefault();
                     this.showChartContextMenu(e.clientX, e.clientY, e.offsetX, e.offsetY);
                 }
             });
@@ -3544,24 +3541,20 @@ class Chart {
         
         // Setup canvas right-click
         this.canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
             if (this.shouldSuppressRightClickContextMenu(e)) {
-                e.preventDefault();
                 e.stopPropagation();
                 return;
             }
 
             const dm = this.drawingManager;
             if (dm && dm.currentTool && e.button === 0 && e.ctrlKey) {
-                e.preventDefault();
                 if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
                 e.stopPropagation();
                 return;
             }
 
-            // Only show context menu if not on a drawing
             if (!this.tool && !this.findDrawingAtPoint(e.offsetX, e.offsetY)) {
-                e.preventDefault();
-                // Use clientX/clientY for fixed positioning
                 this.showChartContextMenu(e.clientX, e.clientY, e.offsetX, e.offsetY);
             }
         });
@@ -16986,10 +16979,9 @@ class Chart {
             }
         }, false);
         
-        // Prevent context menu for box zoom
         this.canvas.addEventListener('contextmenu', e => {
+            e.preventDefault();
             if (this.shouldSuppressRightClickContextMenu(e)) {
-                e.preventDefault();
                 if (typeof e.stopImmediatePropagation === 'function') {
                     e.stopImmediatePropagation();
                 }
