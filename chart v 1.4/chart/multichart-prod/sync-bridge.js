@@ -250,6 +250,14 @@
             applyingClearRaf: 0,
             inboundSnap: null,
             inboundMode: null,
+            // After we apply an inbound `visibleRange`, chart.js still emits
+            // `chartScrolled` once `applying` has cleared (rAF after render).
+            // That outbound would fan to sibling iframes and they echo back
+            // with ranges derived from *their* shorter `chart.data` slices —
+            // feedback that jumps the panel the user was panning to an
+            // unrelated window (e.g. a few weeks / wrong year vs panel A).
+            suppressRangeScrollEchoUntil: 0,
+            suppressRangeScrollEchoLeft: 0,
         };
 
         global.__multichartBridgeState = state;
@@ -348,6 +356,17 @@
         // 2) Visible range — listen to chartScrolled (also rAF-coalesced)
         global.addEventListener('chartScrolled', function (ev) {
             if (state.applying) return;
+            var nowEcho = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            if (nowEcho < state.suppressRangeScrollEchoUntil
+                    && state.suppressRangeScrollEchoLeft > 0) {
+                state.suppressRangeScrollEchoLeft--;
+                return;
+            }
+            if (nowEcho >= state.suppressRangeScrollEchoUntil) {
+                state.suppressRangeScrollEchoLeft = 0;
+            }
             const d = ev.detail || {};
             if (d.chart !== chart) return;
             const startT = d.startTimestamp;
@@ -924,6 +943,15 @@
             const startSnapped = floorToBucket(m.startTime, myBucket);
             const endSnapped   = ceilToBucket(m.endTime,   myBucket);
             setVisibleTimeRange(chart, startSnapped, endSnapped);
+
+            // Drop the next few chartScrolled-driven outbound range posts —
+            // they are almost always echoes from this programmatic viewport
+            // change, not a new user pan (see state.suppressRangeScrollEcho*).
+            var tSil = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            state.suppressRangeScrollEchoUntil = tSil + 200;
+            state.suppressRangeScrollEchoLeft = 6;
 
             // Defer assertion until raf so render() has applied autoScale
             requestAnimationFrame(function () {
