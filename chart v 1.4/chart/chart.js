@@ -1424,10 +1424,41 @@ class Chart {
         ric(() => {
             if (!this._smartPrefetchCache) this._smartPrefetchCache = new Map();
             const entries = this.getSymbolSwitcherEntries();
+            // Match the new loadFileData / loadPanelFileData shape for backtest sessions
+            // so the prefetched payloads hit the cache on pair-switch (skipSessionDates
+            // + end-anchor at replay cursor / session end). Without this the cache miss
+            // would force a synchronous round-trip every switch even though we already
+            // had the data on disk.
+            const isBacktest = this._isSessionBacktestStyle(session);
+            let backtestEndTs = null;
+            if (isBacktest) {
+                const r = session && (session.endDate || session.end_date);
+                if (r) {
+                    const t = this._sessionEndToInclusiveUtcMs(r);
+                    if (Number.isFinite(t)) backtestEndTs = Math.floor(t);
+                }
+                const replay = this.replaySystem;
+                if (replay && replay.isActive && Number.isFinite(Number(replay.replayTimestamp))) {
+                    backtestEndTs = Math.floor(Number(replay.replayTimestamp));
+                }
+            }
             for (let i = 0; i < entries.length; i++) {
                 const e = entries[i];
                 if (!e || String(e.fileId) === String(activeFileId)) continue;
-                const params = this._buildSmartWindowParams(e.fileId, timeframe, session);
+                let params;
+                if (isBacktest) {
+                    const historyRange = backtestEndTs != null ? { endTs: backtestEndTs } : null;
+                    params = this._buildSmartWindowParams(
+                        e.fileId,
+                        timeframe,
+                        session,
+                        'end',
+                        historyRange,
+                        { skipSessionDates: true }
+                    );
+                } else {
+                    params = this._buildSmartWindowParams(e.fileId, timeframe, session);
+                }
                 const key = this._smartCacheKeyFromParams(e.fileId, params);
                 if (this._smartPrefetchCache.has(key)) continue;
                 fetch(`${this.apiUrl}/file/${e.fileId}/smart?${params.toString()}`)
@@ -1651,18 +1682,49 @@ class Chart {
                 }
             }
             const isBacktestSession = this._isSessionBacktestStyle(session);
-            const requestTimeframe = isBacktestSession ? '1m' : (this.currentTimeframe || '1m');
-            const params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
-
-            if (replayActiveBefore && Number.isFinite(replayTargetTs)) {
-                // For replay pair switches: fetch data centered around the replay time.
-                // Override start_ts to ensure data reaches the replay position, and
-                // keep session end_ts so there's forward data for continued replay.
-                const sessionStartMs = session?.startDate ? new Date(session.startDate).getTime() : 0;
-                const contextBars = isBacktestSession ? 80000 : 4000;
-                const contextMs = contextBars * 60 * 1000;
-                const adjustedStart = Math.max(sessionStartMs, replayTargetTs - contextMs);
-                params.set('start_ts', String(Math.floor(adjustedStart)));
+            // Backtest pair-switch must use the SAME fetch shape as autoLoadBacktestingData
+            // (anchor='end' + skipSessionDates + endTs at replay cursor / session end).
+            // Without this the request gets clamped at session.startDate (e.g. 2/2/2022),
+            // so the new pair loads only the post-start slice — user sees 1–2 daily
+            // candles instead of the full history-before-session view the initial load
+            // draws. Also use the chart's current timeframe so a 1d view stays 1d on the
+            // new pair (was hardcoded to '1m', which both broke history depth and made
+            // the rawTimeframe mismatch the displayed bars).
+            let requestTimeframe;
+            let params;
+            if (isBacktestSession) {
+                requestTimeframe = this.currentTimeframe || '1d';
+                const sessionEndMs = (() => {
+                    const r = session.endDate || session.end_date;
+                    if (!r) return null;
+                    const t = this._sessionEndToInclusiveUtcMs(r);
+                    return Number.isFinite(t) ? Math.floor(t) : null;
+                })();
+                let endAnchor = sessionEndMs;
+                if (replayActiveBefore && Number.isFinite(replayTargetTs)) {
+                    endAnchor = Math.floor(replayTargetTs);
+                }
+                const historyRange = endAnchor != null ? { endTs: endAnchor } : null;
+                params = this._buildSmartWindowParams(
+                    targetFileId,
+                    requestTimeframe,
+                    session,
+                    'end',
+                    historyRange,
+                    { skipSessionDates: true }
+                );
+            } else {
+                requestTimeframe = this.currentTimeframe || '1m';
+                params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
+                if (replayActiveBefore && Number.isFinite(replayTargetTs)) {
+                    // Non-backtest replay pair switch: keep prior behavior — fetch a window
+                    // centered around the replay time so there's data to continue replay on.
+                    const sessionStartMs = session?.startDate ? new Date(session.startDate).getTime() : 0;
+                    const contextBars = 4000;
+                    const contextMs = contextBars * 60 * 1000;
+                    const adjustedStart = Math.max(sessionStartMs, replayTargetTs - contextMs);
+                    params.set('start_ts', String(Math.floor(adjustedStart)));
+                }
             }
 
             let result = this._tryTakeSmartPrefetch(targetFileId, params);
@@ -1672,6 +1734,21 @@ class Chart {
             }
             if (!result) {
                 result = await this._fetchSmartWindowWithParams(targetFileId, params);
+                // Initial-load retry parity: if the end-clamped backtest fetch returns
+                // no candles (file ends before the chosen end anchor, or the prior
+                // pair's session window doesn't overlap this file's data range),
+                // retry once without the end clamp so the new pair still renders.
+                if (isBacktestSession && !this._smartResponseHasPayload(result)) {
+                    const retryParams = this._buildSmartWindowParams(
+                        targetFileId,
+                        requestTimeframe,
+                        session,
+                        'end',
+                        null,
+                        { skipSessionDates: true }
+                    );
+                    result = await this._fetchSmartWindowWithParams(targetFileId, retryParams);
+                }
             }
 
             if (loadSeq !== this._symbolLoadSeq) {
@@ -1889,15 +1966,49 @@ class Chart {
                 ? Number(replay.replayTimestamp) : null;
 
             const isBacktest = this._isSessionBacktestStyle(session);
-            const requestTimeframe = isBacktest ? '1m' : (this.currentTimeframe || '1m');
-            const params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
-
-            if (replayActiveBefore && Number.isFinite(replayTs)) {
-                const sessionStartMs = session?.startDate ? new Date(session.startDate).getTime() : 0;
-                const ctxBars = isBacktest ? 80000 : 4000;
-                const ctxMs = ctxBars * 60 * 1000;
-                const adjStart = Math.max(sessionStartMs, replayTs - ctxMs);
-                params.set('start_ts', String(Math.floor(adjStart)));
+            // Mirror the fix in loadFileData: backtest panel pair-switch must use the
+            // same shape as the initial backtest load (skipSessionDates + endTs anchor),
+            // otherwise the new pair only gets the post-session-start slice.
+            let requestTimeframe;
+            let params;
+            if (isBacktest) {
+                requestTimeframe = this.currentTimeframe || '1d';
+                const sessionEndMs = (() => {
+                    const r = session.endDate || session.end_date;
+                    if (!r) return null;
+                    const t = (mainChart && typeof mainChart._sessionEndToInclusiveUtcMs === 'function')
+                        ? mainChart._sessionEndToInclusiveUtcMs(r)
+                        : (typeof this._sessionEndToInclusiveUtcMs === 'function'
+                            ? this._sessionEndToInclusiveUtcMs(r)
+                            : new Date(r).getTime());
+                    return Number.isFinite(t) ? Math.floor(t) : null;
+                })();
+                let endAnchor = sessionEndMs;
+                if (replayActiveBefore && Number.isFinite(replayTs)) {
+                    endAnchor = Math.floor(replayTs);
+                }
+                const historyRange = endAnchor != null ? { endTs: endAnchor } : null;
+                const buildParams = (mainChart && typeof mainChart._buildSmartWindowParams === 'function')
+                    ? mainChart._buildSmartWindowParams.bind(mainChart)
+                    : this._buildSmartWindowParams.bind(this);
+                params = buildParams(
+                    targetFileId,
+                    requestTimeframe,
+                    session,
+                    'end',
+                    historyRange,
+                    { skipSessionDates: true }
+                );
+            } else {
+                requestTimeframe = this.currentTimeframe || '1m';
+                params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
+                if (replayActiveBefore && Number.isFinite(replayTs)) {
+                    const sessionStartMs = session?.startDate ? new Date(session.startDate).getTime() : 0;
+                    const ctxBars = 4000;
+                    const ctxMs = ctxBars * 60 * 1000;
+                    const adjStart = Math.max(sessionStartMs, replayTs - ctxMs);
+                    params.set('start_ts', String(Math.floor(adjStart)));
+                }
             }
 
             // Try main chart's prefetch cache first (same as loadFileData)
@@ -1914,6 +2025,22 @@ class Chart {
             }
             if (!result) {
                 result = await this._fetchSmartWindowWithParams(targetFileId, params);
+                // Same retry parity as loadFileData: if the end-clamped backtest fetch
+                // returns nothing, retry without the end clamp.
+                if (isBacktest && !this._smartResponseHasPayload(result)) {
+                    const buildParams = (mainChart && typeof mainChart._buildSmartWindowParams === 'function')
+                        ? mainChart._buildSmartWindowParams.bind(mainChart)
+                        : this._buildSmartWindowParams.bind(this);
+                    const retryParams = buildParams(
+                        targetFileId,
+                        requestTimeframe,
+                        session,
+                        'end',
+                        null,
+                        { skipSessionDates: true }
+                    );
+                    result = await this._fetchSmartWindowWithParams(targetFileId, retryParams);
+                }
             }
 
             if (loadSeq !== this._panelFileLoadSeq) {
