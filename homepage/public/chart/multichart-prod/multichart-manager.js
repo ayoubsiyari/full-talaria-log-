@@ -70,6 +70,9 @@
         this.onPanelFocus = (typeof opts.onPanelFocus === 'function')
             ? opts.onPanelFocus
             : function () {};
+        this.onContextMenu = (typeof opts.onContextMenu === 'function')
+            ? opts.onContextMenu
+            : function () {};
         this.iframeSrcBuilder = (typeof opts.iframeSrcBuilder === 'function')
             ? opts.iframeSrcBuilder
             : null;
@@ -649,6 +652,19 @@
             case 'drawing-remove':
             case 'drawing-clear':
                 this._fanOut(msg, sourceId);
+                return;
+
+            case 'iframe-contextmenu':
+                // Phase 7.2.6: unified right-click context menu. The iframe
+                // suppressed its local chart.js menu and forwarded the click
+                // data here. Pass it to the React shell via a callback so it
+                // can open the HOST chart's menu at the correct viewport
+                // coordinates (computed from the iframe's bounding rect).
+                if (sourceId && typeof this.onContextMenu === 'function') {
+                    try { this.onContextMenu(sourceId, msg); } catch (e) {
+                        this._log('warn', 'onContextMenu threw: ' + (e && e.message || e));
+                    }
+                }
                 return;
 
             default:

@@ -1207,6 +1207,69 @@
     // `true` for keydown registration in some paths) also doesn't run.
     global.addEventListener('keydown', onReplayKey, { capture: true });
 
+    // ─── context-menu forward ───────────────────────────────────────────
+    //
+    // Each iframe has its own chart.js that opens a LOCAL context menu
+    // when the user right-clicks. In multichart mode that produces N
+    // independent menus (one per panel) instead of a single, unified
+    // menu in the parent shell. Fix: capture the contextmenu event
+    // before chart.js sees it, suppress the local menu, and forward
+    // the click data to the parent. The parent (MultichartGrid) opens
+    // the host chart's context menu at the correct screen position.
+    function onContextMenu(e) {
+        if (!e) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        // Hide the local menu in case chart.js already rendered it
+        // (some paths fire both mouseup + contextmenu in the same task).
+        try {
+            var ch = global.chart;
+            if (ch && typeof ch.hideContextMenu === 'function') ch.hideContextMenu();
+        } catch (_) {}
+
+        // Derive the price and symbol from the local chart so the
+        // parent's unified menu can show correct Buy / Sell / Alert
+        // items even when the clicked panel has a different instrument
+        // or y-scale from the host.
+        var priceAtCursor = null;
+        var priceText = null;
+        var symbolName = null;
+        try {
+            var ch = global.chart;
+            if (ch && ch.yScale) {
+                priceAtCursor = ch.yScale.invert(e.offsetY);
+                var priceRange = ch.yScale.domain()[1] - ch.yScale.domain()[0];
+                var decimals = (typeof ch.getPriceDecimals === 'function')
+                    ? ch.getPriceDecimals(priceRange)
+                    : 2;
+                priceText = priceAtCursor.toFixed(decimals);
+            }
+            if (ch && typeof ch.getContextMenuSymbolName === 'function') {
+                symbolName = ch.getContextMenuSymbolName();
+            }
+        } catch (_) {}
+
+        // clientX/Y are relative to this iframe's viewport; the
+        // parent adds the iframe's bounding-rect offset to get
+        // host-viewport coordinates.
+        try {
+            global.parent.postMessage({
+                type:    'iframe-contextmenu',
+                source:  panelId,
+                clientX: e.clientX,
+                clientY: e.clientY,
+                offsetX: e.offsetX,
+                offsetY: e.offsetY,
+                priceAtCursor: priceAtCursor,
+                priceText: priceText,
+                symbolName: symbolName,
+            }, '*');
+        } catch (_) {}
+    }
+    global.addEventListener('contextmenu', onContextMenu, { capture: true });
+
     global.MultichartCmdBridge = {
         panelId:      panelId,
         applyCommand: applyCommand,

@@ -1154,6 +1154,22 @@ export default function MultichartGrid({
                         setFocusedPanelId(id);
                     }
                 },
+                onContextMenu: function (panelId, msg) {
+                    const ch = window.chart;
+                    if (!ch || typeof ch.showChartContextMenu !== "function") return;
+                    const mgr = managerRef.current;
+                    if (!mgr) return;
+                    const entry = mgr.charts.get(panelId);
+                    if (!entry || !entry.frame) return;
+                    const rect = entry.frame.getBoundingClientRect();
+                    const hostX = rect.left + (msg.clientX || 0);
+                    const hostY = rect.top  + (msg.clientY || 0);
+                    ch.showChartContextMenu(hostX, hostY, msg.offsetX || 0, msg.offsetY || 0, {
+                        priceAtCursor: msg.priceAtCursor,
+                        priceText:     msg.priceText,
+                        symbolName:    msg.symbolName,
+                    });
+                },
             });
             managerRef.current = manager;
             // Apply current sync mode immediately so the very first

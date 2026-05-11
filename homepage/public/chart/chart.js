@@ -19373,7 +19373,7 @@ class Chart {
         }
     }
     
-    showChartContextMenu(clientX, clientY, offsetX, offsetY) {
+    showChartContextMenu(clientX, clientY, offsetX, offsetY, overrides) {
         if (this.shouldSuppressRightClickContextMenu()) {
             return;
         }
@@ -19386,18 +19386,23 @@ class Chart {
             .style('transform', 'none')
             .style('transition', 'none');
         
-        // Get price at cursor position with proper formatting
-        let priceAtCursor = null;
-        let priceText = null;
-        if (this.yScale) {
+        // Get price at cursor position with proper formatting.
+        // When called from the multichart bridge, `overrides` carries
+        // pre-computed price/symbol from the clicked iframe panel so
+        // the menu shows correct values for that panel's instrument
+        // instead of the host chart's y-scale.
+        let priceAtCursor = (overrides && overrides.priceAtCursor != null)
+            ? overrides.priceAtCursor : null;
+        let priceText = (overrides && overrides.priceText) || null;
+        if (priceAtCursor == null && this.yScale) {
             priceAtCursor = this.yScale.invert(offsetY);
-            // Use same decimal formatting as price axis
             const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
             const decimals = this.getPriceDecimals(priceRange);
             priceText = priceAtCursor.toFixed(decimals);
         }
 
-        const symbolName = this.getContextMenuSymbolName();
+        const symbolName = (overrides && overrides.symbolName)
+            || this.getContextMenuSymbolName();
         
         // Position menu using client coordinates (for fixed positioning)
         const menuWidth = 330;
