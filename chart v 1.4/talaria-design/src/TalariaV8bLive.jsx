@@ -17033,7 +17033,7 @@ const TalariaV8bLive = () => {
         )}
       </div>
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
-        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, boxSizing: "border-box", background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 1, paddingLeft: 0, paddingRight: 2, overflowY: "auto", overflowX: "hidden" }}>
+        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 40, flexShrink: 0, boxSizing: "border-box", background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 1, paddingLeft: 4, paddingRight: 2, overflowY: "auto", overflowX: "hidden" }}>
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%" }}>
               {gi === toolGroups.length - 1 && <div style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>}
