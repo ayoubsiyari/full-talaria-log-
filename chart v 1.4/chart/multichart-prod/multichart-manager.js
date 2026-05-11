@@ -189,18 +189,26 @@
         // postMessage allowlist is the security boundary here.
         frame.style.cssText = 'width:100%;height:100%;border:0;display:block;background:#0b0c14;';
         const self = this;
+        // Panel iframes each boot the full dist-v9 stack (deferred scripts +
+        // React + chart.js). With 3–4 panels, parallel CPU/network contention
+        // can push `window.chart` well past 5s after the iframe `load` event
+        // even though init is still healthy — embed-bridge polls up to 30s.
+        var BRIDGE_READY_TIMEOUT_MS = 30000;
         frame.addEventListener('load', function () {
             self._log('info', 'iframe loaded: ' + cfg.id + ' (waiting for bridge-ready…)');
             const small = overlay.querySelector('small');
-            if (small) small.textContent = 'iframe: LOADED — bridge: pending';
+            if (small) small.textContent = 'iframe: LOADED — bridge: pending (up to '
+                + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
             setTimeout(function () {
                 const c = self.charts.get(cfg.id);
                 if (c && !c.ready) {
-                    self._log('error', 'TIMEOUT: ' + cfg.id + ' iframe loaded but bridge never reported ready (chart.js init likely failed — open the iframe directly in a new tab to see its console)');
+                    self._log('error', 'TIMEOUT: ' + cfg.id + ' iframe loaded but bridge never reported ready within '
+                        + BRIDGE_READY_TIMEOUT_MS + 'ms (chart.js init stalled or failed — open the iframe URL in a new tab to inspect its console)');
                     const sm = overlay.querySelector('small');
-                    if (sm) sm.textContent = 'iframe: LOADED — bridge: TIMEOUT (chart init failed)';
+                    if (sm) sm.textContent = 'iframe: LOADED — bridge: TIMEOUT (no ready after '
+                        + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
                 }
-            }, 5000);
+            }, BRIDGE_READY_TIMEOUT_MS);
         });
         frame.addEventListener('error', function () {
             self._log('error', 'iframe FAILED to load: ' + cfg.id + ' src=' + frame.src);

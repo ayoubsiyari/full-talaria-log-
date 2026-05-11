@@ -1247,29 +1247,61 @@ export default function MultichartGrid({
         // Add iframe charts that exist in the layout but not yet in the manager.
         // (The cell <div> is already mounted by React's render that just
         // committed — useEffect runs AFTER commit, so cellRefs are set.)
+        //
+        // Stagger spawns slightly: each iframe loads the full dist-v9 bundle;
+        // firing 3× addChart in one tick makes B/C/D fight for CPU + HTTP/2
+        // streams so the last panel often misses the old 5s bridge-ready gate.
+        const IFRAME_ADD_STAGGER_MS = 280;
+        const hostNt = readHostChartFileAndTf();
+        const propFid = initialFileIdRef.current && String(initialFileIdRef.current).trim();
+        const propTf = initialTimeframeRef.current && String(initialTimeframeRef.current).trim();
+        const effFile = propFid || hostNt.fileId || null;
+        const effTf = propTf || hostNt.tf || "1m";
+        const effMode = initialModeRef.current || readUrlChartMode();
+        const sessId = initialSessionIdRef.current || null;
+
+        const staggerTimeouts = [];
+        let staggerCancelled = false;
+        let staggerSlot = 0;
         for (const tile of layout.tiles) {
             if (tile.id === HOST_PANEL_ID) continue; // host has no iframe
             if (mgr.charts.has(tile.id)) continue;
             const cellEl = cellRefs.current[tile.id];
             if (!cellEl) continue;
-            try {
-                const hostNt = readHostChartFileAndTf();
-                const propFid = initialFileIdRef.current && String(initialFileIdRef.current).trim();
-                const propTf = initialTimeframeRef.current && String(initialTimeframeRef.current).trim();
-                const effFile = propFid || hostNt.fileId || null;
-                const effTf = propTf || hostNt.tf || "1m";
-                const effMode = initialModeRef.current || readUrlChartMode();
-                mgr.addChart({
-                    id:        tile.id,
-                    tf:        effTf,
-                    fileId:    effFile,
-                    sessionId: initialSessionIdRef.current || null,
-                    mode:      effMode,
-                }, cellEl);
-            } catch (e) {
-                console.error("[MultichartGrid] addChart failed for", tile.id, e);
+
+            const cfg = {
+                id:        tile.id,
+                tf:        effTf,
+                fileId:    effFile,
+                sessionId: sessId,
+                mode:      effMode,
+            };
+            const delayMs = staggerSlot * IFRAME_ADD_STAGGER_MS;
+            staggerSlot += 1;
+
+            const runAdd = () => {
+                if (staggerCancelled) return;
+                try {
+                    const m = managerRef.current;
+                    if (!m || m !== mgr) return;
+                    if (m.charts.has(tile.id)) return;
+                    m.addChart(cfg, cellEl);
+                } catch (e) {
+                    console.error("[MultichartGrid] addChart failed for", tile.id, e);
+                }
+            };
+
+            if (delayMs === 0) {
+                runAdd();
+            } else {
+                staggerTimeouts.push(setTimeout(runAdd, delayMs));
             }
         }
+
+        return () => {
+            staggerCancelled = true;
+            staggerTimeouts.forEach((tid) => clearTimeout(tid));
+        };
     }, [layout.tiles, managerReady]);
 
     // When the host chart's file/tf becomes available after the first paint,
