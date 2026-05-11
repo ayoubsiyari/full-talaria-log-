@@ -2148,6 +2148,35 @@ class ReplaySystem {
         this.updateChartData();
 
         requestAnimationFrame(() => this.updateAutoScrollIndicator());
+
+        // Refresh-safety: on a hard refresh, enterReplayMode can fire before the
+        // canvas has its real dimensions (chart.w === 0). In that case the offsetX
+        // computed by updateChartData() uses the 320px fallback inside
+        // getReplayAutoScrollState(), placing candles far off-screen — the user
+        // then has to double-click the time axis (jumpToLatest) to see them.
+        // Re-run resize + alignment once the browser has laid out the chart so the
+        // playhead lands near the right edge automatically, TradingView-style.
+        const realignAfterLayout = () => {
+            if (!this.isActive) return;
+            try {
+                if (typeof this.chart.resize === 'function') this.chart.resize();
+            } catch (e) { /* ignore */ }
+            if (this.autoScrollEnabled && !this.userHasPanned) {
+                const st = this.getReplayAutoScrollState(this.chart);
+                if (st && Number.isFinite(st.offsetX)) {
+                    this.chart.offsetX = st.offsetX;
+                    if (typeof this.chart.constrainOffset === 'function') {
+                        this.chart.constrainOffset();
+                    }
+                    this.chart.scheduleRender();
+                }
+            }
+        };
+        requestAnimationFrame(() => {
+            realignAfterLayout();
+            // Second pass after typewriter loader fades + React tree finishes mounting.
+            setTimeout(realignAfterLayout, 150);
+        });
     }
 
     /**

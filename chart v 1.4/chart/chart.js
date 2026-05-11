@@ -2646,6 +2646,36 @@ class Chart {
                     });
                     this._emitTimeframeChanged();
                 }
+
+                // On a backtest/replay refresh, enterReplayMode() ran first with the default
+                // candleWidth (8) and already set offsetX via getReplayAutoScrollState(). The
+                // saved candleWidth restored above may differ wildly (e.g. 0.2 or 34), which
+                // changes candleSpacing — leaving the stale offsetX pointing far off-screen so
+                // no candles render until the user double-clicks the time axis (jumpToLatest).
+                // Recompute offsetX now against the freshly-restored candleWidth so the
+                // playhead stays near the right edge with TradingView-style auto-fit.
+                if (replayOwnsHorizontalPan &&
+                    this.replaySystem &&
+                    this.replaySystem.isActive &&
+                    typeof this.replaySystem.getReplayAutoScrollState === 'function') {
+                    const realignOffsetForReplay = () => {
+                        const st = this.replaySystem.getReplayAutoScrollState(this);
+                        if (st && Number.isFinite(st.offsetX)) {
+                            this.offsetX = st.offsetX;
+                            if (typeof this.constrainOffset === 'function') this.constrainOffset();
+                        }
+                    };
+                    realignOffsetForReplay();
+                    // Second pass after layout settles: if the canvas was still 0×0 above
+                    // (refresh before React mounted #chartCanvas) the first realign used
+                    // the 320px fallback width. Re-run on the next frame with real dimensions.
+                    requestAnimationFrame(() => {
+                        if (typeof this.resize === 'function') this.resize();
+                        realignOffsetForReplay();
+                        this.scheduleRender();
+                    });
+                }
+
                 // Set flag to prevent fitToView() from overriding the restored position
                 this._chartViewRestored = true;
                 // Validate restored view against real candles on next scale calculation
@@ -11250,6 +11280,15 @@ class Chart {
     /**
      * Resample data to a specific timeframe
      * @param {string} timeframe - Timeframe identifier (e.g., '1m', '5m', '1h', '1d')
+     *
+     * TradingView-style switch: the chart canvas freezes on its previous frame and
+     * a 3-dot loading indicator appears next to the OHLC timeframe text until the
+     * new bars are committed. `this.currentTimeframe` is NOT updated upfront — if
+     * we set it before the new data arrived, the time axis would reformat for the
+     * new TF cadence against the still-old bars and look broken until the user
+     * double-clicked the time axis. The commit happens atomically inside
+     * `_loadTimeframeFromServer` / `_commitTimeframeChange` once the new data is
+     * either fetched or resampled.
      */
     setTimeframe(timeframe) {
         const hasData = Array.isArray(this.rawData) && this.rawData.length > 0;
@@ -11273,25 +11312,21 @@ class Chart {
         if (this.drawingManager && this.drawings && this.drawings.length > 0) {
             this.drawingManager.saveDrawings();
         }
-        
-        this.currentTimeframe = normalizedTf;
-        timeframe = this.currentTimeframe;
-        this.scheduleChartViewSave();
-        this._emitTimeframeChanged();
-        if (this.currentSymbol) {
-            this.updateChartTitle(this.currentSymbol);
-        } else {
-            this.updateChartOHLCSymbol(this.currentSymbol);
-        }
 
-        // Trigger interval sync if enabled
+        // Begin the visual freeze + loading-dots indicator. Anything that triggers
+        // render() between here and _endTimeframeSwitching() short-circuits, so the
+        // last good frame stays on the canvas until the new TF's bars are ready.
+        this._beginTimeframeSwitching(this.currentTimeframe, normalizedTf);
+
+        // Trigger interval sync if enabled. Uses the local normalizedTf rather than
+        // this.currentTimeframe so the deferred commit doesn't break sibling panels.
         if (!this._suppressIntervalSync && window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
             const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
             if (sourcePanel) {
-                window.panelManager.syncInterval(sourcePanel, timeframe);
+                window.panelManager.syncInterval(sourcePanel, normalizedTf);
             }
         }
-        
+
         if (this.replaySystem && this.replaySystem.isActive) {
             // Backtest sessions load 1D bars on open; if the user picks a smaller timeframe
             // than the loaded raw bars (e.g. 1d -> 1m), client-side resample can't expand
@@ -11301,7 +11336,7 @@ class Chart {
                     ? this.parseTimeframe(this.replaySystem.rawTimeframe)
                     : NaN);
             const newTfMs = typeof this.parseTimeframe === 'function'
-                ? this.parseTimeframe(timeframe)
+                ? this.parseTimeframe(normalizedTf)
                 : NaN;
             const needsServerRefetch = this.isBacktestMode
                 && this.currentFileId
@@ -11310,37 +11345,47 @@ class Chart {
                 && newTfMs < rawTfMs;
 
             if (needsServerRefetch) {
-                this._refetchBacktestTimeframe(timeframe);
+                // _loadTimeframeFromServer commits + ends the switching state when data arrives.
+                this._refetchBacktestTimeframe(normalizedTf);
                 return;
             }
 
+            // Client-side resample path: commit synchronously THEN let replay redraw,
+            // so onTimeframeChange's resampleData() reads the new timeframe.
+            this._commitTimeframeChange(normalizedTf);
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
-                this.compareOverlay.refreshForTimeframe(timeframe);
+                this.compareOverlay.refreshForTimeframe(normalizedTf);
             }
             this.replaySystem.onTimeframeChange(this);
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
-                requestAnimationFrame(() => this.compareOverlay.refreshForTimeframe(timeframe));
+                requestAnimationFrame(() => this.compareOverlay.refreshForTimeframe(normalizedTf));
             }
+            this._endTimeframeSwitching();
             return;
         }
-        
+
         // Always fetch from server — viewport-based, like TradingView
         if (this.currentFileId) {
-            this._loadTimeframeFromServer(timeframe);
+            this._loadTimeframeFromServer(normalizedTf);
             return;
         }
-        
+
         // Fallback for non-file data (small local datasets)
-        if (!hasData) return;
+        if (!hasData) {
+            this._endTimeframeSwitching();
+            return;
+        }
 
         // Capture center timestamp and zoom before resampling
         const centerTimestamp = this._getVisibleCenterTimestamp();
         const savedCandleWidth = this.candleWidth;
 
-        this.data = this.resampleData(this.rawData, timeframe);
+        // Commit BEFORE resample so the new data + new timeframe land together.
+        this._commitTimeframeChange(normalizedTf);
+        this.data = this.resampleData(this.rawData, normalizedTf);
         if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
-            this.compareOverlay.refreshForTimeframe(timeframe);
+            this.compareOverlay.refreshForTimeframe(normalizedTf);
         }
 
         // Restore position to center timestamp
@@ -11351,8 +11396,91 @@ class Chart {
             this.resize();
             this.fitToView();
         }
+        this._endTimeframeSwitching();
         this.scheduleRender();
         this._fireChartDataLoaded();
+    }
+
+    /**
+     * Atomically commit a new timeframe value on this chart and update UI bindings.
+     * Called by setTimeframe (sync paths) and by _loadTimeframeFromServer (async path)
+     * once the matching data is ready. Kept separate from _endTimeframeSwitching so
+     * the async path can commit the TF before _ingestSmartWindowResult and only lift
+     * the render freeze AFTER the new bars are installed.
+     */
+    _commitTimeframeChange(newTimeframe) {
+        if (!newTimeframe) return;
+        this.currentTimeframe = newTimeframe;
+        try { this.scheduleChartViewSave(); } catch (e) { /* ignore */ }
+        try { this._emitTimeframeChanged(); } catch (e) { /* ignore */ }
+        if (this.currentSymbol) {
+            this.updateChartTitle(this.currentSymbol);
+        } else {
+            this.updateChartOHLCSymbol(this.currentSymbol);
+        }
+    }
+
+    /**
+     * Mark the chart as in-flight for a TF switch:
+     *  - sets `_timeframeSwitching = true` (render() short-circuits so the previous
+     *    frame stays painted on the canvas)
+     *  - flips the OHLC info block into the "tf-loading-active" CSS state so the
+     *    3-dot loading indicator next to the symbol becomes visible.
+     */
+    _beginTimeframeSwitching(fromTf, toTf) {
+        this._timeframeSwitching = true;
+        this._switchingFromTimeframe = fromTf || this.currentTimeframe || null;
+        this._switchingToTimeframe = toTf || null;
+        try { this._showTimeframeLoadingIndicator(); } catch (e) { /* ignore */ }
+    }
+
+    /**
+     * Lift the visual freeze + loading-dots indicator. Safe to call even when no
+     * switch is in flight (idempotent). Triggers a fresh render so the chart picks
+     * up any drawing that was suppressed while the flag was set.
+     */
+    _endTimeframeSwitching() {
+        const wasSwitching = !!this._timeframeSwitching;
+        this._timeframeSwitching = false;
+        this._switchingFromTimeframe = null;
+        this._switchingToTimeframe = null;
+        try { this._hideTimeframeLoadingIndicator(); } catch (e) { /* ignore */ }
+        if (wasSwitching && typeof this.scheduleRender === 'function') {
+            this.scheduleRender();
+        }
+    }
+
+    /**
+     * Show the 3-dot loading indicator inside the OHLC symbol block (right after
+     * #chartTimeframe). The element is lazily injected once and toggled via a CSS
+     * class on the OHLC info container so theming + multi-panel selectors in
+     * dist-v9/index.html can target it without JS recomputing styles every switch.
+     */
+    _showTimeframeLoadingIndicator() {
+        const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
+        const ohlcInfo = document.getElementById('ohlcInfo' + idSuffix) || document.getElementById('ohlcInfo');
+        const tfEl = document.getElementById('chartTimeframe' + idSuffix) || document.getElementById('chartTimeframe');
+        if (!ohlcInfo || !tfEl || !tfEl.parentElement) return;
+
+        let dots = tfEl.parentElement.querySelector(':scope > .tf-loading-dots');
+        if (!dots) {
+            dots = document.createElement('span');
+            dots.className = 'tf-loading-dots';
+            dots.setAttribute('aria-label', 'Loading new timeframe');
+            dots.innerHTML = '<span></span><span></span><span></span>';
+            tfEl.parentElement.insertBefore(dots, tfEl.nextSibling);
+        }
+        ohlcInfo.classList.add('tf-loading-active');
+    }
+
+    /**
+     * Hide the 3-dot loading indicator. The injected DOM stays in place so re-showing
+     * on the next switch is just a class toggle (no DOM churn).
+     */
+    _hideTimeframeLoadingIndicator() {
+        const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
+        const ohlcInfo = document.getElementById('ohlcInfo' + idSuffix) || document.getElementById('ohlcInfo');
+        if (ohlcInfo) ohlcInfo.classList.remove('tf-loading-active');
     }
     
     /**
@@ -11366,6 +11494,12 @@ class Chart {
      */
     async _loadTimeframeFromServer(timeframe, options = {}) {
         const loadId = ++this._timeframeLoadSeq;
+        // Direct callers (not via setTimeframe) need the same freeze + loading dots
+        // so the time axis doesn't reformat mid-fetch. Idempotent when setTimeframe
+        // already armed it.
+        if (!this._timeframeSwitching) {
+            this._beginTimeframeSwitching(this.currentTimeframe, timeframe);
+        }
         try {
             if (this.showLoader) this.showLoader('Changing timeframe...');
 
@@ -11402,6 +11536,12 @@ class Chart {
             if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
             this.resize();
 
+            // Commit the new timeframe BEFORE ingest so _commitLoadedBars + the
+            // chartDataLoaded listeners (which can trigger sub-renders) see a
+            // consistent {currentTimeframe, data} pair. The render path is still
+            // frozen by `_timeframeSwitching` so nothing paints until we explicitly
+            // end the switch below.
+            this._commitTimeframeChange(timeframe);
             this._ingestSmartWindowResult(result, { skipFitToView: true });
 
             // Immediately put the chart into a renderable state.
@@ -11461,6 +11601,9 @@ class Chart {
                     this._chartViewRestored = false;
                     this.fitToView();
                 }
+                // Lift the visual freeze + loading dots BEFORE calling render(), otherwise
+                // the render-skip guard at the top of render() would no-op this final paint.
+                this._endTimeframeSwitching();
                 this.render();
                 // Refresh partner-panel sync positions immediately after the
                 // new viewport settles.  Without this, _timeSyncLastTargetBar
@@ -11477,6 +11620,9 @@ class Chart {
             if (loadId === this._timeframeLoadSeq) {
                 console.error('❌ Timeframe change failed:', error);
                 if (this.hideLoader) this.hideLoader();
+                // Always end the switch on failure so the user isn't stuck looking at a
+                // frozen canvas + spinning dots forever.
+                this._endTimeframeSwitching();
             }
         }
     }
@@ -12438,6 +12584,15 @@ class Chart {
 
     render() {
         if (this.isLoading) return;
+
+        // TradingView-style timeframe switch: freeze the previously-rendered frame while
+        // we wait for the new bars. Without this freeze the canvas would clear and either
+        // (a) flash "No data" between data[]=[] and the ingest, or (b) re-format the time
+        // axis for the new TF cadence against still-old bars / against zero bars, both of
+        // which look like the chart "broke" until the user double-clicks the time axis.
+        // setTimeframe() / _loadTimeframeFromServer() lift this flag once the new bars are
+        // committed and the currentTimeframe matches the destination TF.
+        if (this._timeframeSwitching) return;
         
         // Ensure minimum dimensions to prevent rendering issues
         if (this.w < 200 || this.h < 150) {
