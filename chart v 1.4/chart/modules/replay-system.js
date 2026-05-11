@@ -4461,7 +4461,11 @@ class ReplaySystem {
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
 
-        // Scroll to latest position; follow chrome hides again once the replay head is in view.
+        // Reset zoom and scroll to latest candle (same as double-click on time axis).
+        if (this.chart && typeof this.chart.jumpToLatest === 'function') {
+            this.chart.jumpToLatest();
+        }
+
         this.updateChartData(true);
 
         requestAnimationFrame(() => {
