@@ -11422,12 +11422,19 @@ class Chart {
 
     /**
      * Mark the chart as in-flight for a TF switch:
-     *  - sets `_timeframeSwitching = true` (render() short-circuits so the previous
-     *    frame stays painted on the canvas)
+     *  - captures the current canvas pixels into a freeze overlay <img> stacked on
+     *    top of the canvas. This is what the user actually sees during the switch
+     *    — the canvas underneath can be freely cleared / resized (resize() writes
+     *    canvas.width which wipes the bitmap) without any visible flash.
+     *  - sets `_timeframeSwitching = true` so render() also short-circuits as a
+     *    second line of defense.
      *  - flips the OHLC info block into the "tf-loading-active" CSS state so the
      *    3-dot loading indicator next to the symbol becomes visible.
      */
     _beginTimeframeSwitching(fromTf, toTf) {
+        // Capture BEFORE setting the flag — captureFreezeOverlay calls toDataURL on
+        // the live canvas, which must still hold the previous frame's pixels.
+        try { this._captureFreezeOverlay(); } catch (e) { /* ignore */ }
         this._timeframeSwitching = true;
         this._switchingFromTimeframe = fromTf || this.currentTimeframe || null;
         this._switchingToTimeframe = toTf || null;
@@ -11436,8 +11443,8 @@ class Chart {
 
     /**
      * Lift the visual freeze + loading-dots indicator. Safe to call even when no
-     * switch is in flight (idempotent). Triggers a fresh render so the chart picks
-     * up any drawing that was suppressed while the flag was set.
+     * switch is in flight (idempotent). Renders the new frame synchronously before
+     * removing the snapshot overlay so the swap is seamless (no blank flash).
      */
     _endTimeframeSwitching() {
         const wasSwitching = !!this._timeframeSwitching;
@@ -11445,16 +11452,91 @@ class Chart {
         this._switchingFromTimeframe = null;
         this._switchingToTimeframe = null;
         try { this._hideTimeframeLoadingIndicator(); } catch (e) { /* ignore */ }
-        if (wasSwitching && typeof this.scheduleRender === 'function') {
-            this.scheduleRender();
+        if (!wasSwitching) {
+            try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
+            return;
+        }
+        // Paint the new bars to the canvas FIRST, then drop the overlay on the next
+        // frame. If we removed the overlay before render() the user would see a
+        // single blank canvas frame between the snapshot and the new chart.
+        try { if (typeof this.render === 'function') this.render(); } catch (e) { /* ignore */ }
+        requestAnimationFrame(() => {
+            try {
+                if (typeof this.render === 'function') this.render();
+            } catch (e) { /* ignore */ }
+            try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
+        });
+    }
+
+    /**
+     * Take a bitmap snapshot of the current canvas and overlay it on top of the
+     * canvas so the previous frame stays visible while we fetch / commit the new
+     * timeframe's bars. The overlay is a plain <img> sized to match the canvas;
+     * removing or hiding it reveals whatever the canvas painted while it was up.
+     *
+     * Falls back gracefully if toDataURL() throws (tainted canvas, no parent yet,
+     * 0×0 canvas before first layout, etc.) — the freeze flag alone still skips
+     * render() so we don't actively make things worse in that edge case.
+     */
+    _captureFreezeOverlay() {
+        if (!this.canvas || !this.canvas.parentElement) return;
+        if (!this.canvas.width || !this.canvas.height) return;
+        const parent = this.canvas.parentElement;
+        const cs = window.getComputedStyle(parent);
+        if (cs && cs.position === 'static') {
+            // Overlay is position:absolute and needs a positioned ancestor.
+            parent.style.position = 'relative';
+        }
+        let overlay = parent.querySelector(':scope > .tf-freeze-overlay');
+        if (!overlay) {
+            overlay = document.createElement('img');
+            overlay.className = 'tf-freeze-overlay';
+            overlay.alt = '';
+            // z-index sits above #drawingSvg (z:2) so the snapshot also covers
+            // drawings (which would otherwise pop to new positions when
+            // _commitLoadedBars changes bar indices). Stays below crosshair (z:10)
+            // and OHLC info (z:25) so the loading dots remain visible on top.
+            overlay.style.cssText = [
+                'position:absolute',
+                'left:0',
+                'top:0',
+                'right:0',
+                'bottom:0',
+                'width:100%',
+                'height:100%',
+                'pointer-events:none',
+                'z-index:3',
+                'display:block',
+                'object-fit:fill',
+                'user-select:none'
+            ].join(';');
+            parent.appendChild(overlay);
+        }
+        let dataUrl = '';
+        try { dataUrl = this.canvas.toDataURL('image/png'); } catch (e) { dataUrl = ''; }
+        if (dataUrl) {
+            overlay.src = dataUrl;
+            overlay.style.display = 'block';
+        } else {
+            overlay.style.display = 'none';
+        }
+    }
+
+    /** Hide / remove the canvas freeze overlay. Idempotent. */
+    _removeFreezeOverlay() {
+        if (!this.canvas || !this.canvas.parentElement) return;
+        const overlay = this.canvas.parentElement.querySelector(':scope > .tf-freeze-overlay');
+        if (overlay) {
+            overlay.style.display = 'none';
+            overlay.removeAttribute('src');
         }
     }
 
     /**
      * Show the 3-dot loading indicator inside the OHLC symbol block (right after
-     * #chartTimeframe). The element is lazily injected once and toggled via a CSS
-     * class on the OHLC info container so theming + multi-panel selectors in
-     * dist-v9/index.html can target it without JS recomputing styles every switch.
+     * #chartTimeframe). Inline styles are applied directly so the dots animate
+     * correctly even if the host page's CSS hasn't loaded our keyframes yet
+     * (e.g. cached HTML, multi-panel pages without dist-v9/index.html).
      */
     _showTimeframeLoadingIndicator() {
         const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
@@ -11462,25 +11544,67 @@ class Chart {
         const tfEl = document.getElementById('chartTimeframe' + idSuffix) || document.getElementById('chartTimeframe');
         if (!ohlcInfo || !tfEl || !tfEl.parentElement) return;
 
+        // Inject a one-time <style> block so the dot keyframes exist regardless of
+        // what stylesheet the host page loaded.
+        if (!document.getElementById('tf-loading-dots-style')) {
+            const styleEl = document.createElement('style');
+            styleEl.id = 'tf-loading-dots-style';
+            styleEl.textContent = '@keyframes tfLoadingDotPulse {' +
+                '0%,80%,100% { opacity: 0.25; transform: scale(0.7); }' +
+                '40% { opacity: 1; transform: scale(1.15); }' +
+                '}';
+            document.head.appendChild(styleEl);
+        }
+
         let dots = tfEl.parentElement.querySelector(':scope > .tf-loading-dots');
         if (!dots) {
             dots = document.createElement('span');
             dots.className = 'tf-loading-dots';
             dots.setAttribute('aria-label', 'Loading new timeframe');
-            dots.innerHTML = '<span></span><span></span><span></span>';
+            dots.style.cssText = [
+                'display:inline-flex',
+                'align-items:center',
+                'gap:4px',
+                'margin-left:8px',
+                'line-height:1',
+                'flex-shrink:0',
+                'pointer-events:none',
+                'vertical-align:middle'
+            ].join(';');
+            const dotCss = [
+                'width:5px',
+                'height:5px',
+                'border-radius:50%',
+                'background:#9598a1',
+                'display:inline-block',
+                'animation:tfLoadingDotPulse 1.1s ease-in-out infinite'
+            ].join(';');
+            dots.innerHTML =
+                '<span style="' + dotCss + ';animation-delay:0s"></span>' +
+                '<span style="' + dotCss + ';animation-delay:0.18s"></span>' +
+                '<span style="' + dotCss + ';animation-delay:0.36s"></span>';
             tfEl.parentElement.insertBefore(dots, tfEl.nextSibling);
+        } else {
+            dots.style.display = 'inline-flex';
         }
         ohlcInfo.classList.add('tf-loading-active');
     }
 
     /**
      * Hide the 3-dot loading indicator. The injected DOM stays in place so re-showing
-     * on the next switch is just a class toggle (no DOM churn).
+     * on the next switch is just a style toggle (no DOM churn).
      */
     _hideTimeframeLoadingIndicator() {
         const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
         const ohlcInfo = document.getElementById('ohlcInfo' + idSuffix) || document.getElementById('ohlcInfo');
-        if (ohlcInfo) ohlcInfo.classList.remove('tf-loading-active');
+        if (ohlcInfo) {
+            ohlcInfo.classList.remove('tf-loading-active');
+            const tfEl = document.getElementById('chartTimeframe' + idSuffix) || document.getElementById('chartTimeframe');
+            if (tfEl && tfEl.parentElement) {
+                const dots = tfEl.parentElement.querySelector(':scope > .tf-loading-dots');
+                if (dots) dots.style.display = 'none';
+            }
+        }
     }
     
     /**
