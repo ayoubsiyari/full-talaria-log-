@@ -382,7 +382,7 @@ class ArrowMarkUpTool extends BaseDrawing {
             .attr('d', arrowPath)
             .attr('fill', 'none')
             .attr('stroke', 'transparent')
-            .attr('stroke-width', Math.max(8, size * 0.35))
+            .attr('stroke-width', Math.max(16, size * 0.35))
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
@@ -516,7 +516,7 @@ class ArrowMarkDownTool extends BaseDrawing {
             .attr('d', arrowPath)
             .attr('fill', 'none')
             .attr('stroke', 'transparent')
-            .attr('stroke-width', Math.max(8, size * 0.35))
+            .attr('stroke-width', Math.max(16, size * 0.35))
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
