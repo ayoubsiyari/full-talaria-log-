@@ -458,6 +458,21 @@ function v9GetPriceDecimals() {
   return 5;
 }
 
+/** Returns the price change per pixel on the chart's y-axis (same as 1px mouse move). */
+function v9GetPriceStepPerPixel() {
+  try {
+    const ch = typeof window !== "undefined" && window.chart;
+    if (ch && ch.yScale) {
+      const domain = ch.yScale.domain();
+      const range = ch.yScale.range();
+      const priceRange = Math.abs(domain[1] - domain[0]);
+      const pxHeight = Math.abs(range[0] - range[1]);
+      if (pxHeight > 0 && priceRange > 0) return priceRange / pxHeight;
+    }
+  } catch (_) {}
+  return 0.01;
+}
+
 /** drawing.points[] — x = bar index, y = price → V9 Coordinates tab (`pt{n}Price` / `pt{n}Bar`). */
 function v9CoordPatchFromDrawing(d) {
   const pts = d && d.points;
@@ -11754,6 +11769,7 @@ const TalariaV8bLive = () => {
             {tlSettTab==="coordinates" && (()=>{
               const _dec = v9GetPriceDecimals();
               const _step = Math.pow(10, -_dec);
+              const _pxStep = v9GetPriceStepPerPixel();
               const spinInput=(k,type)=>(
                 <div style={{ position:"relative", width:"100%" }}>
                   <input type="number" step={type==="price"?String(_step):"1"} value={tlStyle[k]}
@@ -11766,7 +11782,7 @@ const TalariaV8bLive = () => {
                              outline:"none", boxSizing:"border-box", fontVariantNumeric:"tabular-nums" }}/>
                   <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                     {[[+1,"▲"],[- 1,"▼"]].map(([delta,chr],i)=>(
-                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*_step).toFixed(_dec):String(+s[k]+delta)})))}
+                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*_pxStep).toFixed(_dec):String(+s[k]+delta)})))}
                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                         style={{ flex:1, width:18, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                  display:"flex", alignItems:"center", justifyContent:"center",
@@ -12667,6 +12683,7 @@ const TalariaV8bLive = () => {
             {txtSettTab==="coordinates" && (()=>{
               const _dec = v9GetPriceDecimals();
               const _step = Math.pow(10, -_dec);
+              const _pxStep = v9GetPriceStepPerPixel();
               const spinInput=(k,type)=>(
                 <div style={{position:"relative",width:"100%"}}>
                   <input type="number" step={type==="price"?String(_step):"1"} value={txtStyle[k]}
@@ -12679,7 +12696,7 @@ const TalariaV8bLive = () => {
                             outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                   <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                     {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                      <button type="button" key={i} {...modalPointerActivate(() => setTxtStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*_step).toFixed(_dec):String(+s[k]+delta)})))}
+                      <button type="button" key={i} {...modalPointerActivate(() => setTxtStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*_pxStep).toFixed(_dec):String(+s[k]+delta)})))}
                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                         style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                 display:"flex",alignItems:"center",justifyContent:"center",
@@ -13252,6 +13269,7 @@ const TalariaV8bLive = () => {
               {vwapSettTab==="coordinates" && (()=>{
                 const _dec = v9GetPriceDecimals();
                 const _step = Math.pow(10, -_dec);
+                const _pxStep = v9GetPriceStepPerPixel();
                 const setCoord=(k,v)=>{setVwapStyle(s=>({...s,[k]:v}));setTlStyle(s=>({...s,[k]:v}));};
                 const spinInput=(k,type)=>(
                   <div style={{position:"relative",width:"100%"}}>
@@ -13265,7 +13283,7 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+vwapStyle[k]+delta*_step).toFixed(_dec):String(+vwapStyle[k]+delta);setCoord(k,nv);})}
+                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+vwapStyle[k]+delta*_pxStep).toFixed(_dec):String(+vwapStyle[k]+delta);setCoord(k,nv);})}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -13636,6 +13654,7 @@ const TalariaV8bLive = () => {
               {vpSettTab==="coordinates" && (()=>{
                 const _dec = v9GetPriceDecimals();
                 const _step = Math.pow(10, -_dec);
+                const _pxStep = v9GetPriceStepPerPixel();
                 const setCoord=(k,v)=>{setVpStyle(s=>({...s,[k]:v}));setTlStyle(s=>({...s,[k]:v}));};
                 const spinInput=(k,type)=>(
                   <div style={{position:"relative",width:"100%"}}>
@@ -13649,7 +13668,7 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+vpStyle[k]+delta*_step).toFixed(_dec):String(+vpStyle[k]+delta);setCoord(k,nv);})}
+                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+vpStyle[k]+delta*_pxStep).toFixed(_dec):String(+vpStyle[k]+delta);setCoord(k,nv);})}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -14016,6 +14035,7 @@ const TalariaV8bLive = () => {
               {avSettTab==="coordinates" && (()=>{
                 const _dec = v9GetPriceDecimals();
                 const _step = Math.pow(10, -_dec);
+                const _pxStep = v9GetPriceStepPerPixel();
                 const setCoord=(k,v)=>{setAvStyle(s=>({...s,[k]:v}));setTlStyle(s=>({...s,[k]:v}));};
                 const spinInput=(k,type)=>(
                   <div style={{position:"relative",width:"100%"}}>
@@ -14029,7 +14049,7 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+avStyle[k]+delta*_step).toFixed(_dec):String(+avStyle[k]+delta);setCoord(k,nv);})}
+                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+avStyle[k]+delta*_pxStep).toFixed(_dec):String(+avStyle[k]+delta);setCoord(k,nv);})}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
