@@ -203,9 +203,14 @@
         /* ── Multi-panel selection ring + resize handles (mirror chart/legacy-index.html) ──
            panel-manager adds .panel-selected, .panel-selection-frame, .panel-resize-handle */
         /* Exclude .panel-resize-handle — #chart-container * loses borders via border:none !important,
-           which strips the thin side borders that widen the grab hit area (legacy keeps handles usable). */
+           which strips the thin side borders that widen the grab hit area (legacy keeps handles usable).
+           Also exclude the V9 multi-panel focus frame ([data-multichart-focus-frame]) and the legacy
+           per-iframe focus border ([data-multichart-focus-border]) — see MultichartGrid.jsx. Without
+           these exclusions the unified blue selection ring (3px solid #2962ff + outer/inset glow)
+           that React paints over the focused panel was being stripped, so clicking a panel showed
+           no visual "this is selected" state. */
         #chart-container canvas,
-        #chart-container *:not(.panel-resize-handle) {
+        #chart-container *:not(.panel-resize-handle):not([data-multichart-focus-frame]):not([data-multichart-focus-border]) {
             user-select: none;
             -webkit-user-select: none;
             -webkit-user-drag: none;
@@ -214,6 +219,28 @@
             outline: none !important;
             box-shadow: none !important;
         }
+
+        /* ── Forced visibility for the V9 unified focus frame ──
+           Belt-and-suspenders: even if the strip rule above ever matches the
+           focus overlay because of a future selector regression, the
+           [data-multichart-focus-frame] / [data-multichart-focus-border]
+           elements WILL still paint their TradingView-style blue ring. These
+           rules are intentionally id-anchored at #chart-container so they win
+           against the universal selector strip rule by specificity alone, and
+           they come AFTER the strip rule in source order, so on specificity
+           ties they win the cascade. */
+        #chart-container [data-multichart-focus-frame],
+        #chart-container [data-multichart-focus-border] {
+            border: 3px solid #2962ff !important;
+            box-shadow:
+                0 0 0 1px #2962ff,
+                0 0 8px 2px rgba(41, 98, 255, 0.55),
+                inset 0 0 8px rgba(41, 98, 255, 0.30) !important;
+            outline: none !important;
+            pointer-events: none !important;
+            box-sizing: border-box !important;
+        }
+
         .panel-select-bar {
             display: none;
         }

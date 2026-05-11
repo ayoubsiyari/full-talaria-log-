@@ -219,6 +219,31 @@
             outline: none !important;
             box-shadow: none !important;
         }
+
+        /* ── Forced visibility for the V9 unified focus frame ──
+           Belt-and-suspenders: even if the strip rule above ever matches the
+           focus overlay because of a future selector regression, the
+           [data-multichart-focus-frame] / [data-multichart-focus-border]
+           elements WILL still paint their TradingView-style blue ring. These
+           rules are intentionally id-anchored at #chart-container so they win
+           against the universal selector strip rule by specificity alone
+           (#id + [attr] = 1,1,0 vs #id + *:not(...) = 1,1,0 — tied — then the
+           later rule in source order wins, and these come AFTER the strip
+           rule). Inline `style="border:..."` set by React is preserved only
+           when our strip rule does NOT match, but if a peer rule sneaks in
+           with !important, these put the border back. */
+        #chart-container [data-multichart-focus-frame],
+        #chart-container [data-multichart-focus-border] {
+            border: 3px solid #2962ff !important;
+            box-shadow:
+                0 0 0 1px #2962ff,
+                0 0 8px 2px rgba(41, 98, 255, 0.55),
+                inset 0 0 8px rgba(41, 98, 255, 0.30) !important;
+            outline: none !important;
+            pointer-events: none !important;
+            box-sizing: border-box !important;
+        }
+
         .panel-select-bar {
             display: none;
         }
