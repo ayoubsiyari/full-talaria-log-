@@ -5222,18 +5222,30 @@ class Chart {
             this.scheduleRender();
         });
         
-        // Precision
+        // Precision — "Default" auto-detects from the instrument registry or
+        // loaded data. The resolved value is shown in the label so the user
+        // knows what precision is active without guessing.
         const precisionRow = this.addSettingRow(section);
         precisionRow.append('span')
             .style('font-size', '15px')
             .style('color', '#131722')
             .style('min-width', '150px')
             .text('Precision');
-        const precisionDropdown = this.addDropdown(precisionRow, ['Default', '0', '1', '2', '3', '4', '5'], this.chartSettings.pricePrecision || 'default');
+        const autoPrec = this._resolveDefaultPrecision();
+        const defaultLabel = 'Default (' + '0.' + '0'.repeat(autoPrec) + ')';
+        const precisionOptions = [defaultLabel, '0.0', '0.00', '0.000', '0.0000', '0.00000', '0.000000'];
+        const precisionValues  = ['default',    '1',   '2',    '3',     '4',      '5',       '6'];
+        const currentVal = this.chartSettings.pricePrecision || 'default';
+        const selectedOpt = precisionOptions[precisionValues.indexOf(currentVal)] || defaultLabel;
+        const precisionDropdown = this.addDropdown(precisionRow, precisionOptions, selectedOpt);
         precisionDropdown.on('change', () => {
-            const val = precisionDropdown.property('value');
-            this.chartSettings.precision = val;
-            this.chartSettings.pricePrecision = val === 'Default' ? 'default' : val;
+            const idx = precisionOptions.indexOf(precisionDropdown.property('value'));
+            const mapped = idx >= 0 ? precisionValues[idx] : 'default';
+            this.chartSettings.precision = mapped;
+            this.chartSettings.pricePrecision = mapped;
+            this._symbolPrecision = undefined;
+            this._dataPrecisionCached = undefined;
+            this._dataPrecisionVersion = undefined;
             this.scheduleRender();
         });
         
@@ -13636,9 +13648,9 @@ class Chart {
             return dot === -1 ? 0 : (s.length - dot - 1);
         };
         const override = this.chartSettings && this.chartSettings.pricePrecision;
-        if (override && override !== 'default') {
+        if (override && override !== 'default' && override !== 'Default') {
             const n = parseInt(override, 10);
-            if (!isNaN(n)) return n;
+            if (!isNaN(n) && n >= 0) return n;
         }
         // If the active symbol changed since we last resolved, drop the cached value so
         // the registry is consulted fresh (prevents FX-default 5dp leaking into NQ/ES/GC).
@@ -13776,6 +13788,40 @@ class Chart {
         let end = s.length;
         while (end > dot + 1 && s[end - 1] === '0') end--;
         return end - dot - 1;
+    }
+
+    /**
+     * Resolve the "natural" precision for the current instrument WITHOUT
+     * consulting the user override (`chartSettings.pricePrecision`). Used
+     * by the Settings panel to show what "Default" means for this dataset.
+     */
+    _resolveDefaultPrecision() {
+        if (this.currentSymbol && typeof window !== 'undefined' && window.marketCalcEngine) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
+                const specs = calc && calc.specs;
+                if (specs) {
+                    if (Number.isFinite(specs.precision) && specs.precision >= 0) return specs.precision;
+                    if (Number.isFinite(specs.tickSize) && specs.tickSize > 0) {
+                        const s = String(specs.tickSize);
+                        if (s.includes('e-')) return parseInt(s.split('e-')[1], 10) || 0;
+                        const dot = s.indexOf('.');
+                        return dot === -1 ? 0 : s.length - dot - 1;
+                    }
+                }
+            } catch (_) {}
+        }
+        const dataDec = this._inferPrecisionFromData();
+        if (Number.isFinite(dataDec) && dataDec >= 0) return dataDec;
+        const pr = this.yScale
+            ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0])
+            : 100;
+        if (pr < 0.01) return 6;
+        if (pr < 0.1)  return 4;
+        if (pr < 1)    return 3;
+        if (pr < 10)   return 2;
+        if (pr < 1000) return 2;
+        return 0;
     }
 
     /**
