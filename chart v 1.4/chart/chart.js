@@ -11356,6 +11356,14 @@ class Chart {
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(normalizedTf);
             }
+            // TradingView-style reset on every TF switch (double-click parity).
+            // Reset BEFORE onTimeframeChange so the replay viewport is computed
+            // against default candleWidth + autoScale, identical to a fresh load.
+            this.candleWidth = 8;
+            this.priceZoom = 1;
+            this.priceOffset = 0;
+            this.autoScale = true;
+            this._chartViewRestored = false;
             this.replaySystem.onTimeframeChange(this);
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 requestAnimationFrame(() => this.compareOverlay.refreshForTimeframe(normalizedTf));
@@ -11376,10 +11384,6 @@ class Chart {
             return;
         }
 
-        // Capture center timestamp and zoom before resampling
-        const centerTimestamp = this._getVisibleCenterTimestamp();
-        const savedCandleWidth = this.candleWidth;
-
         // Commit BEFORE resample so the new data + new timeframe land together.
         this._commitTimeframeChange(normalizedTf);
         this.data = this.resampleData(this.rawData, normalizedTf);
@@ -11388,12 +11392,17 @@ class Chart {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
         }
 
-        // Restore position to center timestamp
-        if (centerTimestamp && this.data && this.data.length > 0) {
-            this._restorePositionToTimestamp(centerTimestamp, savedCandleWidth);
+        // TradingView-style reset on every TF switch: same effect as the user
+        // double-clicking the time axis (default candleWidth, autoScale ON,
+        // latest data visible). Replaces the previous "preserve the visible
+        // center timestamp + previous candleWidth" logic, which would land the
+        // user on an arbitrary region of the new TF and required a manual
+        // double-click to get back to a usable view.
+        this.resize();
+        if (this.data && this.data.length > 0) {
+            this.jumpToLatest();
         } else {
             this._chartViewRestored = false;
-            this.resize();
             this.fitToView();
         }
         this._endTimeframeSwitching();
@@ -11628,11 +11637,6 @@ class Chart {
         try {
             if (this.showLoader) this.showLoader('Changing timeframe...');
 
-            // Capture center timestamp and zoom before switching
-            const centerTimestamp = this._getVisibleCenterTimestamp();
-            const savedCandleWidth = this.candleWidth;
-            const hadData = this.data && this.data.length > 0;
-
             const session = this.backtestingSession || {};
             const result = await this._fetchSmartWindow(
                 this.currentFileId,
@@ -11690,38 +11694,17 @@ class Chart {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
 
-                // Restore position to center timestamp if we had data before
-                let restored = false;
-                if (hadData && centerTimestamp && this.data && this.data.length > 0) {
-                    this._restorePositionToTimestamp(centerTimestamp, savedCandleWidth);
-                    restored = true;
-                }
-
-                // Safety: validate that the restored viewport actually shows data.
-                // Switching timeframe (e.g. 1m -> 1h) can produce an offsetX where no candles
-                // are visible (especially on panel charts whose dimensions may shift), leaving
-                // the chart blank until the user double-clicks the time axis. Detect that
-                // case and fall back to fitToView().
-                if (restored) {
-                    const m = this.margin || { l: 0, r: 60 };
-                    const plotW = (this.w || 0) - (m.l || 0) - (m.r || 0);
-                    const spacing = this.getCandleSpacing
-                        ? this.getCandleSpacing()
-                        : (this.candleWidth + 2);
-                    if (plotW > 0 && spacing > 0) {
-                        const firstVis = Math.floor(-this.offsetX / spacing);
-                        const lastVis = Math.ceil((plotW - this.offsetX) / spacing);
-                        const visibleEnd = Math.min(this.data.length - 1, lastVis);
-                        const visibleStart = Math.max(0, firstVis);
-                        const offscreen = !Number.isFinite(this.offsetX)
-                            || lastVis < 0
-                            || firstVis >= this.data.length
-                            || visibleEnd < visibleStart;
-                        if (offscreen) {
-                            this._chartViewRestored = false;
-                            this.fitToView();
-                        }
-                    }
+                // TradingView-style reset on every TF switch: identical to the
+                // user double-clicking the time axis (default candleWidth,
+                // autoScale ON, latest candle at the right edge). Previously we
+                // tried to preserve the visible center timestamp + previous
+                // candleWidth across the switch, but that often landed the user
+                // on an arbitrary region of the new TF and required a manual
+                // double-click to get a usable view. jumpToLatest is also
+                // self-healing for the offscreen-viewport edge case the old
+                // sanity-check guarded against.
+                if (this.data && this.data.length > 0) {
+                    this.jumpToLatest();
                 } else {
                     this._chartViewRestored = false;
                     this.fitToView();
@@ -11880,6 +11863,18 @@ class Chart {
             this._endTimeframeSwitching();
             return;
         }
+
+        // TradingView-style reset on every TF switch. Match what double-click
+        // on the time axis does (jumpToLatest): default candleWidth, autoScale
+        // ON, no preserved priceZoom/priceOffset. Done BEFORE enterReplayMode
+        // so its internal getReplayAutoScrollState() computes offsetX against
+        // the reset candleWidth and lands the playhead at the right edge with
+        // the same geometry as a fresh load.
+        this.candleWidth = 8;
+        this.priceZoom = 1;
+        this.priceOffset = 0;
+        this.autoScale = true;
+        this._chartViewRestored = false;
 
         try {
             replay.enterReplayMode();
