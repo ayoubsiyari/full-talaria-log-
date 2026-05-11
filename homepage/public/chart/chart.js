@@ -2608,7 +2608,7 @@ class Chart {
                     const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
                         ? this.zoomLevel.allowedWidths
                         : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-                    const minWidth = widths[0];
+                    const minWidth = this._getEffectiveMinCandleWidth(widths);
                     const maxWidth = widths[widths.length - 1];
                     this.candleWidth = Math.max(minWidth, Math.min(maxWidth, v.candleWidth));
                 }
@@ -9028,7 +9028,7 @@ class Chart {
         const allowedWidths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
             ? this.zoomLevel.allowedWidths
             : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-        const minWidth = allowedWidths[0];
+        const minWidth = this._getEffectiveMinCandleWidth(allowedWidths);
         const maxWidth = allowedWidths[allowedWidths.length - 1];
         
         if (this.candleWidth < minWidth) this.candleWidth = minWidth;
@@ -9060,7 +9060,7 @@ class Chart {
         const allowedWidths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
             ? this.zoomLevel.allowedWidths
             : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-        const minWidth = allowedWidths[0];
+        const minWidth = this._getEffectiveMinCandleWidth(allowedWidths);
         const maxWidth = allowedWidths[allowedWidths.length - 1];
         
         this.zoomAnimation.targetOffsetX = Math.max(minOffset, Math.min(maxOffset, this.zoomAnimation.targetOffsetX));
@@ -9130,7 +9130,7 @@ class Chart {
         const allowedWidths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
             ? this.zoomLevel.allowedWidths
             : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-        const minWidth = allowedWidths[0];
+        const minWidth = this._getEffectiveMinCandleWidth(allowedWidths);
         const maxWidth = allowedWidths[allowedWidths.length - 1];
         const newCandleWidth = Math.max(minWidth, Math.min(maxWidth, chartWidth / selectedCandles - 2));
         
@@ -12453,6 +12453,42 @@ class Chart {
         this._candleWidthAtCache = this.candleWidth;
         return this._candleSpacingCache;
     }
+
+    /**
+     * Effective minimum candleWidth — caps zoom-out so no more than
+     * MAX_VISIBLE_CANDLES bars fit on screen at once (TradingView-style).
+     *
+     * The floor is the larger of:
+     *   • the static floor (allowedWidths[0], usually 0.2)
+     *   • a viewport-derived floor: the smallest w such that
+     *     `_getSpacingForCandleWidth(w) >= plotW / MAX_VISIBLE_CANDLES`.
+     *
+     * Inverse of `_getSpacingForCandleWidth` (piecewise):
+     *   w ≤ 0.5      → spacing = w           (degenerate, clamped at 0.2)
+     *   0.5 < w ≤ 8  → spacing = w + (w - 0.5) · 2/7.5   → w = (S·7.5 + 1) / 9.5
+     *   w > 8        → spacing = w + 2                   → w = S − 2
+     *
+     * Recomputed on every call so window resize / panel layout changes are
+     * always reflected without explicit invalidation.
+     */
+    _getEffectiveMinCandleWidth(allowedWidths) {
+        const MAX_VISIBLE_CANDLES = 260;
+        const widths = (allowedWidths && allowedWidths.length) ? allowedWidths : [0.2];
+        const staticFloor = widths[0];
+        const m = this.margin || { l: 0, r: 60 };
+        const plotW = (this.w || 0) - (m.l || 0) - (m.r || 0);
+        if (!Number.isFinite(plotW) || plotW <= 1) return staticFloor;
+        const minSpacing = plotW / MAX_VISIBLE_CANDLES;
+        let viewportFloor;
+        if (minSpacing >= 10) {
+            viewportFloor = minSpacing - 2;
+        } else if (minSpacing > 0.5) {
+            viewportFloor = (minSpacing * 7.5 + 1) / 9.5;
+        } else {
+            viewportFloor = minSpacing;
+        }
+        return Math.max(staticFloor, viewportFloor);
+    }
     
     /**
      * Calculate scales for chart rendering
@@ -12721,7 +12757,7 @@ class Chart {
         const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
             ? this.zoomLevel.allowedWidths
             : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-        const minWidth = widths[0];
+        const minWidth = this._getEffectiveMinCandleWidth(widths);
         const maxWidth = widths[widths.length - 1];
         
         // Apply zoom with shared candle width bounds
@@ -15227,7 +15263,7 @@ class Chart {
             const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
                 ? this.zoomLevel.allowedWidths
                 : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-            const minWidth = widths[0];
+            const minWidth = this._getEffectiveMinCandleWidth(widths);
             const maxWidth = widths[widths.length - 1];
             this.candleWidth = Math.max(minWidth, Math.min(maxWidth, targetCandleWidth));
         }
@@ -15966,7 +16002,7 @@ class Chart {
 
                 // Smooth horizontal zoom using a small factor, then snap zoom index
                 const widths = this.zoomLevel.allowedWidths || [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-                const minWidth = widths[0];
+                const minWidth = this._getEffectiveMinCandleWidth(widths);
                 const maxWidth = widths[widths.length - 1];
 
                 const timeZoomFactor = zoomDirection > 0 ? baseTimeZoomFactor : 1 / baseTimeZoomFactor;
@@ -16226,7 +16262,7 @@ class Chart {
                     const sensitivity = 0.001;
                     const zoomFactor = 1 + dx * sensitivity;
                     const widths = this.zoomLevel.allowedWidths || [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-                    const minWidth = widths[0];
+                    const minWidth = this._getEffectiveMinCandleWidth(widths);
                     const maxWidth = widths[widths.length - 1];
                     const newWidth = Math.max(minWidth, Math.min(maxWidth, this.candleWidth * zoomFactor));
 
@@ -17527,7 +17563,7 @@ class Chart {
                 const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
                     ? this.zoomLevel.allowedWidths
                     : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-                const minWidth = widths[0];
+                const minWidth = this._getEffectiveMinCandleWidth(widths);
                 const maxWidth = widths[widths.length - 1];
                 this.candleWidth = Math.max(minWidth, Math.min(maxWidth, initialCandleWidth * scale));
                 
