@@ -2297,8 +2297,12 @@ export default function MultichartGrid({
                                 }
                             }, 0);
                         }
-                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
-                        try { if (om.updateOrderLines) om.updateOrderLines(ch); } catch (_) {}
+                        if (kind === "pending" && typeof om.refreshPendingOrderGraphicsForChart === "function") {
+                            om.refreshPendingOrderGraphicsForChart(order, ch);
+                        } else {
+                            try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                            try { if (om.updateOrderLines) om.updateOrderLines(ch); } catch (_) {}
+                        }
                         return Promise.resolve({ ok: true });
                     }
                     case "syncPendingOrder": {
@@ -2310,12 +2314,23 @@ export default function MultichartGrid({
                             return Promise.resolve({ skipped: true, reason: "no_local_pending" });
                         }
                         const omSync = ch.orderManager;
-                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
-                        try {
-                            if (omSync && typeof omSync.updateOrderLines === "function") {
-                                omSync.updateOrderLines(ch);
-                            }
-                        } catch (_) {}
+                        let po = null;
+                        if (omSync && omSync.pendingOrders) {
+                            po = omSync.pendingOrders.find((o) => o && o.id === snap.id);
+                        }
+                        if (!po && omSync && omSync.orderService && omSync.orderService.pendingOrders) {
+                            po = omSync.orderService.pendingOrders.find((o) => o && o.id === snap.id);
+                        }
+                        if (po && typeof omSync.refreshPendingOrderGraphicsForChart === "function") {
+                            omSync.refreshPendingOrderGraphicsForChart(po, ch);
+                        } else {
+                            try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                            try {
+                                if (omSync && typeof omSync.updateOrderLines === "function") {
+                                    omSync.updateOrderLines(ch);
+                                }
+                            } catch (_) {}
+                        }
                         return Promise.resolve({ ok: true });
                     }
                     case "closeOrder": {

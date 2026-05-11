@@ -29554,6 +29554,43 @@ class OrderManager {
         }
     }
 
+    /**
+     * Rebuild pending entry + SL/TP/BE SVG on `chart` after multichart mirror
+     * (`addOrder` / `syncPendingOrder`). `registerPendingOrder` only mutates
+     * arrays + emits — it does not call drawPendingOrderLine, so peers would
+     * otherwise miss full horizontal lines (only stray axis hints).
+     */
+    refreshPendingOrderGraphicsForChart(pendingOrder, chart) {
+        if (!pendingOrder || pendingOrder.id == null || !chart?.svg) return;
+        try {
+            this.removePendingOrderLine(pendingOrder.id);
+        } catch (_e) { /* ignore */ }
+        try {
+            this.removePendingSLTPLines(pendingOrder.id);
+        } catch (_e) { /* ignore */ }
+        try {
+            this.removeMultiTPAvgLine(pendingOrder.id);
+        } catch (_e) { /* ignore */ }
+
+        if (!this._positionTickerMatchesChartSymbol(pendingOrder, chart)) return;
+
+        try {
+            this.drawPendingOrderLine(pendingOrder, chart);
+            this.drawPendingOrderTargets(pendingOrder, chart);
+            if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 1) {
+                this.drawMultiTPAvgLine(pendingOrder, 'pending');
+            }
+            if (typeof this.positionPendingOrderTargets === 'function') {
+                this.positionPendingOrderTargets(chart);
+            }
+            if (typeof this.updateOrderLines === 'function') {
+                this.updateOrderLines(chart);
+            }
+        } catch (e) {
+            console.warn('refreshPendingOrderGraphicsForChart failed', pendingOrder.id, e);
+        }
+    }
+
     drawPendingOrderTargets(pendingOrder, targetChart = null) {
         if (targetChart == null && this._isMultiPanelLayout()) {
             const charts = this._collectLayoutCharts();

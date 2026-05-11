@@ -923,11 +923,14 @@
                             }
                         }, 0);
                     }
-                    // Force a render so the line shows up immediately.
-                    try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
-                    try {
-                        if (om2.updateOrderLines) om2.updateOrderLines(ch);
-                    } catch (_) {}
+                    if (kind === 'pending' && typeof om2.refreshPendingOrderGraphicsForChart === 'function') {
+                        om2.refreshPendingOrderGraphicsForChart(ord, ch);
+                    } else {
+                        try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
+                        try {
+                            if (om2.updateOrderLines) om2.updateOrderLines(ch);
+                        } catch (_) {}
+                    }
                     return { ok: true };
                 }
                 case 'syncPendingOrder': {
@@ -939,12 +942,23 @@
                         return { skipped: true, reason: 'no_local_pending' };
                     }
                     var omSnap = ch.orderManager;
-                    try { if (typeof ch.render === 'function') ch.render(); } catch (_e) {}
-                    try {
-                        if (omSnap && typeof omSnap.updateOrderLines === 'function') {
-                            omSnap.updateOrderLines(ch);
-                        }
-                    } catch (_e2) {}
+                    var po = null;
+                    if (omSnap && omSnap.pendingOrders) {
+                        po = omSnap.pendingOrders.find(function (o) { return o && o.id === snapS.id; });
+                    }
+                    if (!po && omSnap && omSnap.orderService && omSnap.orderService.pendingOrders) {
+                        po = omSnap.orderService.pendingOrders.find(function (o) { return o && o.id === snapS.id; });
+                    }
+                    if (po && typeof omSnap.refreshPendingOrderGraphicsForChart === 'function') {
+                        omSnap.refreshPendingOrderGraphicsForChart(po, ch);
+                    } else {
+                        try { if (typeof ch.render === 'function') ch.render(); } catch (_e) {}
+                        try {
+                            if (omSnap && typeof omSnap.updateOrderLines === 'function') {
+                                omSnap.updateOrderLines(ch);
+                            }
+                        } catch (_e2) {}
+                    }
                     return { ok: true };
                 }
                 case 'closeOrder': {
