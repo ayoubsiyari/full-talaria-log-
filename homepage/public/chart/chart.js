@@ -1232,23 +1232,25 @@ class Chart {
             this.updateLoaderStep(1, 'active');
             this.updateLoaderProgress(20, 'Loading chart data...');
 
-            // Anchor at session end (or last available bar when no end date) and skip
-            // the session start_ts clamp so we pull every prior daily bar the server holds.
-            const sessionEndMs = (() => {
-                const r = session.endDate || session.end_date;
+            // TradingView-style streaming initial load: fetch a small slice
+            // (~5,000 bars) ending shortly after session-start. The chart paints
+            // immediately; checkViewportLoadMore streams older pre-session bars
+            // when the user pans left, and newer bars when replay advances.
+            const sessionStartMs = (() => {
+                const r = session.startDate || session.start_date;
                 if (!r) return null;
-                const t = this._sessionEndToInclusiveUtcMs(r);
-                return Number.isFinite(t) ? Math.floor(t) : null;
+                const t = new Date(r).getTime();
+                return Number.isFinite(t) ? t : null;
             })();
-            const historyRange = sessionEndMs != null ? { endTs: sessionEndMs } : null;
+            const fetchOpts = this._buildBacktestStreamingFetchOpts(replayRawTf, sessionStartMs);
 
             let result = await this._fetchSmartWindow(
                 fileId,
                 replayRawTf,
                 session,
-                'end',
-                historyRange,
-                { skipSessionDates: true }
+                fetchOpts.anchor,
+                fetchOpts.windowRange,
+                fetchOpts.smartOpts
             );
 
             if (!this._smartResponseHasPayload(result)) {
@@ -1260,6 +1262,7 @@ class Chart {
                 );
                 result = await this._fetchSmartWindow(fileId, replayRawTf, session, 'end', null, {
                     skipSessionDates: true,
+                    limit: 5000,
                 });
             }
 
@@ -1397,6 +1400,58 @@ class Chart {
         }
 
         return params;
+    }
+
+    /**
+     * TradingView-style streaming fetch options for a backtest window.
+     *
+     * Returns a SMALL slice (~5,000 bars) of the requested timeframe ending
+     * shortly after `anchorTimestampMs` (the playhead — session-start on the
+     * initial load, saved replay timestamp on a TF switch). The chart paints
+     * almost instantly with this slice; older bars stream in as the user pans
+     * left (`checkViewportLoadMore('backward')`) and newer bars stream in as
+     * replay advances (`checkViewportLoadMore('forward')`).
+     *
+     * This replaces the legacy "fetch up to 100,000 bars ending at sessionEnd"
+     * pattern, which made TF switches feel heavy on small timeframes and
+     * starved the chart of pre-session history on wide sessions (the file ran
+     * out of bars before the playhead because we burned the 100k cap on the
+     * post-session tail).
+     *
+     * @param {string} timeframe   e.g. '1m', '15m', '1d'
+     * @param {number} anchorTimestampMs   playhead ms (session-start or saved replay TS)
+     * @returns {{anchor:string, windowRange:{endTs:number}|null, smartOpts:{skipSessionDates:boolean,limit:number}}}
+     */
+    _buildBacktestStreamingFetchOpts(timeframe, anchorTimestampMs) {
+        const STREAMING_INITIAL_LIMIT = 5000;
+        // Small forward runway: 500 bars after the playhead so the first replay
+        // ticks don't immediately stall on a forward pan-load.
+        const STREAMING_FORWARD_BUFFER_BARS = 500;
+
+        const tfMs = Number(this.parseTimeframe(timeframe));
+        const safeTfMs = Number.isFinite(tfMs) && tfMs > 0 ? tfMs : 60_000;
+
+        const session = this.backtestingSession || {};
+        const sessionEndMs = (() => {
+            const r = session.endDate || session.end_date;
+            if (!r) return null;
+            const t = this._sessionEndToInclusiveUtcMs(r);
+            return Number.isFinite(t) ? Math.floor(t) : null;
+        })();
+
+        const anchor = Number.isFinite(anchorTimestampMs) ? anchorTimestampMs : null;
+        let endTs = anchor != null
+            ? anchor + STREAMING_FORWARD_BUFFER_BARS * safeTfMs
+            : null;
+        // Don't ask for bars past sessionEnd — replay is bounded by it.
+        if (sessionEndMs != null && endTs != null) endTs = Math.min(endTs, sessionEndMs);
+        if (endTs == null && sessionEndMs != null) endTs = sessionEndMs;
+
+        return {
+            anchor: 'end',
+            windowRange: endTs != null ? { endTs } : null,
+            smartOpts: { skipSessionDates: true, limit: STREAMING_INITIAL_LIMIT },
+        };
     }
 
     _smartCacheKeyFromParams(fileId, params) {
@@ -11797,17 +11852,18 @@ class Chart {
             console.warn('[backtest] exitReplayMode before refetch failed', e);
         }
 
-        // SAME fetch shape as the initial backtest load (see startBacktesting path):
-        // anchor='end' + endTs=sessionEnd + skipSessionDates=true → server returns the
-        // maximum pre-session history available for this TF.
+        // TradingView-style streaming: fetch a SMALL slice (~5000 bars) ending
+        // near the saved playhead, then let checkViewportLoadMore stream older /
+        // newer bars as the user pans / replay advances.
         const session = this.backtestingSession || {};
-        const sessionEndMs = (() => {
-            const r = session.endDate || session.end_date;
+        const sessionStartMs = (() => {
+            const r = session.startDate || session.start_date;
             if (!r) return null;
-            const t = this._sessionEndToInclusiveUtcMs(r);
-            return Number.isFinite(t) ? Math.floor(t) : null;
+            const t = new Date(r).getTime();
+            return Number.isFinite(t) ? t : null;
         })();
-        const historyRange = sessionEndMs != null ? { endTs: sessionEndMs } : null;
+        const anchorTimestamp = savedReplayTimestamp != null ? savedReplayTimestamp : sessionStartMs;
+        const fetchOpts = this._buildBacktestStreamingFetchOpts(timeframe, anchorTimestamp);
 
         let result;
         try {
@@ -11816,12 +11872,12 @@ class Chart {
                 this.currentFileId,
                 timeframe,
                 session,
-                'end',
-                historyRange,
-                { skipSessionDates: true }
+                fetchOpts.anchor,
+                fetchOpts.windowRange,
+                fetchOpts.smartOpts
             );
-            // Initial-load retry parity: if the end-clamped fetch comes back empty
-            // (file ends before sessionEndMs), retry without the end clamp.
+            // Retry without the end clamp if the windowed fetch came back empty
+            // (e.g. file ends before our endTs target).
             if (!this._smartResponseHasPayload(result)) {
                 result = await this._fetchSmartWindow(
                     this.currentFileId,
@@ -11829,7 +11885,7 @@ class Chart {
                     session,
                     'end',
                     null,
-                    { skipSessionDates: true }
+                    { skipSessionDates: true, limit: 5000 }
                 );
             }
         } catch (e) {
@@ -11960,7 +12016,8 @@ class Chart {
         if (!force && direction === 'backward' && !this._serverCursors.hasMoreLeft) return false;
         if (!force && direction === 'forward' && !this._serverCursors.hasMoreRight) return false;
 
-        // Respect configured backtesting bounds
+        // Forward clamp: backtest replay is bounded by sessionEnd — once the
+        // loaded data already reaches sessionEnd, there's nothing newer to load.
         if (direction === 'forward' && hasSessionEnd) {
             const lastCursorTs = Number(this._serverCursors.lastTs);
             if (Number.isFinite(lastCursorTs) && lastCursorTs >= sessionEndTs) {
@@ -11968,13 +12025,9 @@ class Chart {
                 return false;
             }
         }
-        if (direction === 'backward' && hasSessionStart) {
-            const firstCursorTs = Number(this._serverCursors.firstTs);
-            if (Number.isFinite(firstCursorTs) && firstCursorTs <= sessionStartTs) {
-                this._serverCursors.hasMoreLeft = false;
-                return false;
-            }
-        }
+        // NB: no backward sessionStart clamp. Backtest users expect to pan back
+        // into pre-session history just like on TradingView — the server's
+        // `has_more_left` flag (checked above) is the only authoritative gate.
         
         // Debounce: replay needs tighter turnaround than manual panning.
         const debounceMs = isReplay ? 80 : 500;
@@ -12068,8 +12121,9 @@ class Chart {
                     });
                 }
 
+                // Only clamp at sessionEnd. Pre-session bars are kept so backward
+                // streaming exposes the full historical lead-up (TradingView-style).
                 const boundedCandles = newCandles.filter(c => {
-                    if (hasSessionStart && c.t < sessionStartTs) return false;
                     if (hasSessionEnd && c.t > sessionEndTs) return false;
                     return true;
                 });
@@ -12078,9 +12132,6 @@ class Chart {
                     if (direction === 'forward' && hasSessionEnd) {
                         this._serverCursors.hasMoreRight = false;
                     }
-                    if (direction === 'backward' && hasSessionStart) {
-                        this._serverCursors.hasMoreLeft = false;
-                    }
                     return;
                 }
 
@@ -12088,12 +12139,6 @@ class Chart {
                     const hitSessionEnd = boundedCandles[boundedCandles.length - 1].t >= sessionEndTs;
                     if (hitSessionEnd) {
                         this._serverCursors.hasMoreRight = false;
-                    }
-                }
-                if (direction === 'backward' && hasSessionStart) {
-                    const hitSessionStart = boundedCandles[0].t <= sessionStartTs;
-                    if (hitSessionStart) {
-                        this._serverCursors.hasMoreLeft = false;
                     }
                 }
                 
