@@ -14492,14 +14492,20 @@ const TalariaV8bLive = () => {
               onClick={e=>{e.stopPropagation();
                 try {
                   const om = window.chart?.orderManager;
-                  if (om) {
-                    const sel = getSelectedDrawingAcrossCharts(editingDrawingRef.current);
-                    if (sel && (sel.type === 'long-position' || sel.type === 'short-position')) {
+                  const sel = om ? getSelectedDrawingAcrossCharts(editingDrawingRef.current) : null;
+                  const isRR = sel && (sel.type === 'long-position' || sel.type === 'short-position');
+                  if (om && isRR) {
+                    om.openOrderPanel();
+                    setTimeout(() => {
                       om.pushRiskRewardToolToManager(sel);
-                      om.openOrderPanel();
-                      setOrderPanelOpen(true);
-                      return;
-                    }
+                      om.calculatePositionFromRisk();
+                      om.calculateAdvancedRiskReward();
+                      om.updatePlaceButtonText?.();
+                      om._applyPrecisionToInputs?.();
+                      requestAnimationFrame(() => om.updatePreviewLines());
+                    }, 150);
+                    setOrderPanelOpen(true);
+                    return;
                   }
                 } catch(_){}
                 setOrderPanelOpen(v=>!v);
