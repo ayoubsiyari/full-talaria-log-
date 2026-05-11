@@ -109,6 +109,22 @@ function v9IsMultiPanelLayoutActive() {
   return !!(g && typeof g.runCommand === "function");
 }
 
+/**
+ * True when this document is a multichart tile iframe (`?multichart=1` /
+ * `html.multichart-embed`). UI like Settings must not open modals here —
+ * they are trapped to the iframe viewport; the parent shell opens them instead.
+ */
+function v9IsMultichartIframeEmbed() {
+  if (typeof window === "undefined") return false;
+  try {
+    if (window.parent === window) return false;
+    if (document.documentElement && document.documentElement.classList.contains("multichart-embed")) return true;
+    return new URLSearchParams(window.location.search || "").get("multichart") === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
 /** Chart instance that should drive the V9 pair + timeframe display. */
 function v9ActiveChartInstance() {
   return typeof window !== "undefined" ? (window.chart || null) : null;
@@ -8920,6 +8936,25 @@ const TalariaV8bLive = () => {
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelectedId(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   closeWindowsRef.current = closeWindows;
+
+  /** Multichart iframe tiles: ask parent to open Settings (full-viewport). Host: open locally. */
+  const openV9SettingsModalRef = useRef((/** @type {{ fromLogo?: boolean }} */ _opts) => {});
+  openV9SettingsModalRef.current = (opts) => {
+    if (typeof window !== "undefined" && v9IsMultichartIframeEmbed()) {
+      if (opts && opts.fromLogo) {
+        try { setLogoMenu(false); } catch (_) {}
+      }
+      try {
+        const targetOrigin = window.location.origin || "*";
+        window.parent.postMessage({ type: "v9-multichart-open-settings" }, targetOrigin);
+      } catch (_) {}
+      return;
+    }
+    try {
+      closeWindows();
+    } catch (_) {}
+    setSettingsOpen(true);
+  };
   // closeAll is triggered by backdrop/outside clicks.
   const closeAll = () => {
     setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false);
@@ -8988,14 +9023,29 @@ const TalariaV8bLive = () => {
   // Chart right-click → Settings: same as logo menu → Settings (see chart.js openSettingsFromContextMenu)
   useEffect(() => {
     const onOpenSettings = (e) => {
-      try {
-        closeWindowsRef.current?.();
-      } catch (_) {}
-      setSettingsOpen(true);
+      openV9SettingsModalRef.current({});
       if (e && typeof e.preventDefault === "function") e.preventDefault();
     };
     window.addEventListener("talaria-v9-open-settings", onOpenSettings);
     return () => window.removeEventListener("talaria-v9-open-settings", onOpenSettings);
+  }, []);
+
+  // Multichart iframe tiles → parent shell opens Settings so the modal is not
+  // clipped to the iframe's small viewport.
+  useEffect(() => {
+    const onMsg = (ev) => {
+      const d = ev && ev.data;
+      if (!d || typeof d !== "object" || d.type !== "v9-multichart-open-settings") return;
+      try {
+        if (window.location.origin && ev.origin && ev.origin !== window.location.origin) return;
+      } catch (_) {}
+      try {
+        closeWindowsRef.current?.();
+      } catch (_) {}
+      setSettingsOpen(true);
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
   }, []);
 
   // Render a tool button
@@ -15354,7 +15404,7 @@ const TalariaV8bLive = () => {
         </div>
         );
       })()}
-      {(settingsOpen || closing.has("settings")) && (
+      {(settingsOpen || closing.has("settings")) && typeof document !== "undefined" && createPortal(
         <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${settingsPos.y}px)`,left:`calc(50% + ${settingsPos.x}px)`,transform:"translate(-50%,-50%)",width:460,height:560,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("settings")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"settings",startX:e.clientX,startY:e.clientY,ox:settingsPos.x,oy:settingsPos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
@@ -15623,7 +15673,7 @@ const TalariaV8bLive = () => {
             <button type="button" {...modalPointerActivate(() => { setColorPicker(null); cpBarAnchorRef.current = null; setSettDrop(null); animClose(setSettingsOpen, "settings"); })} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="settOk"?`linear-gradient(135deg,${c.acL},${c.ac})`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="settOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
-      )}
+      , document.body)}
       {(profileOpen || closing.has("profile")) && (()=>{
         const profTabs = [["account","Account"],["billing","Billing"]];
         const profTabIdx = profTabs.findIndex(([id])=>id===profileTab);
@@ -16403,7 +16453,7 @@ const TalariaV8bLive = () => {
           <div style={{padding:"4px 0"}}>
             <div style={{padding:"5px 14px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>MENU</div>
             {[
-              {icon:"settings",label:"Settings",hk:"lm-settings",col:c.acL,alwaysCol:false,action:()=>{setLogoMenu(false);closeWindows();setSettingsOpen(true);}},
+              {icon:"settings",label:"Settings",hk:"lm-settings",col:c.acL,alwaysCol:false,action:()=>{openV9SettingsModalRef.current({ fromLogo: true });}},
               {icon:"user",label:"Profile",hk:"lm-profile",col:c.acL,alwaysCol:false,action:()=>{setLogoMenu(false);closeWindows();setSettingsOpen(false);setProfileOpen(true);}},
               {icon:"help",label:"Help & Support",hk:"lm-faq",col:"#F0A030",alwaysCol:true,action:()=>{setLogoMenu(false);closeWindows();setSettingsOpen(false);setFaqOpen(true);}},
             ].map((item)=>{
