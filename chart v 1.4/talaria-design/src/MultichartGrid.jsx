@@ -2396,12 +2396,21 @@ export default function MultichartGrid({
             return Promise.all(proms).then(() => undefined);
         }
 
+        /** chart.js legacy ids for continuous freehand (see drawing-tools-manager). */
+        function isPersistentFreehandLegacyTool(lt) {
+            const x = String(lt || "").toLowerCase();
+            return x === "brush" || x === "highlighter";
+        }
+
         /**
-         * Arm the V9 drawing tool on the FOCUSED panel only; clear every other
-         * chart (host + iframe). Called from TalariaV8bLive whenever the rail
-         * tool changes and on multichartFocusChanged — prevents the old
-         * "broadcast to all iframes" behaviour where every panel stayed armed
-         * after the user clicked another tile.
+         * Multichart drawing-tool routing (called from TalariaV8bLive on rail
+         * changes and on multichartFocusChanged):
+         *
+         *   • brush / highlighter — arm EVERY chart (host + all iframes) so the
+         *     tool stays active when switching tiles (TradingView-style: one
+         *     stroke can mirror via drawing sync; right-click clears per chart.js).
+         *   • any other tool — arm the FOCUSED panel only and clear all others
+         *     so switching tiles does not leave stale drawing mode elsewhere.
          */
         function syncDrawingToolAcrossPanels(legacyTool) {
             const mgr = managerRef.current;
@@ -2425,6 +2434,18 @@ export default function MultichartGrid({
                 return mgr.sendCommand(panelId, "clearActiveDrawingTool", null).catch(() => {});
             }
 
+            function runSet(panelId) {
+                if (panelId === HOST_PANEL_ID) {
+                    return applyHostCommand("setActiveDrawingTool", { tool: lt }).catch(() => {});
+                }
+                if (!mgr) return Promise.resolve();
+                return mgr.sendCommand(panelId, "setActiveDrawingTool", { tool: lt }).catch(() => {});
+            }
+
+            if (!clearFocused && isPersistentFreehandLegacyTool(lt)) {
+                return Promise.all(ids.map(runSet));
+            }
+
             const clears = ids.filter((id) => id !== focus).map(runClear);
             return Promise.all(clears).then(() => {
                 if (clearFocused) return runClear(focus);
@@ -2441,6 +2462,7 @@ export default function MultichartGrid({
             runCommand,
             runCommandIframes,
             syncDrawingToolAcrossPanels,
+            isPersistentFreehandLegacyTool,
             getPanelIndicators,
             getFocusedPanelId: () => focusedPanelIdRef.current,
             hostPanelId: HOST_PANEL_ID,

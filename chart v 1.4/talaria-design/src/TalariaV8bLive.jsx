@@ -7629,8 +7629,8 @@ const TalariaV8bLive = () => {
       //     mousedown on a tile that is not focused yet — the stroke still
       //     starts (TradingView behaviour).
       //   • multichartFocusChanged: syncDrawingToolAcrossPanels — arm ONLY the
-      //     focused chart and clear all others so switching panels does not
-      //     leave the previous tile in drawing mode.
+      //     focused chart for most tools; brush + highlighter arm every panel
+      //     so freehand stays active across tiles until chart.js clears it.
       //
       // IMPORTANT: iframe panel-cmd round-trips are async. If we fire
       // runCommandIframes without awaiting and immediately setTool on the
@@ -7664,14 +7664,22 @@ const TalariaV8bLive = () => {
           const finishAfterSync = () => {
             if (cancelled) return;
             if (fid && grid.hostPanelId != null && fid !== grid.hostPanelId) {
-              try {
-                const h = window.chart;
-                const dmc = h && h.drawingManager;
-                if (dmc) {
-                  if (typeof dmc.clearTool === "function") dmc.clearTool();
-                  else dmc.currentTool = null;
-                }
-              } catch (_) {}
+              // Brush / highlighter stay armed on every tile (including host)
+              // until chart.js clears them (e.g. right-click) — do not strip the
+              // host when an iframe has focus (syncDrawingToolAcrossPanels already
+              // set the tool on all panels).
+              const leaveHostArmed = typeof grid.isPersistentFreehandLegacyTool === "function"
+                && grid.isPersistentFreehandLegacyTool(legacyParam);
+              if (!leaveHostArmed) {
+                try {
+                  const h = window.chart;
+                  const dmc = h && h.drawingManager;
+                  if (dmc) {
+                    if (typeof dmc.clearTool === "function") dmc.clearTool();
+                    else dmc.currentTool = null;
+                  }
+                } catch (_) {}
+              }
               return;
             }
             if (fid != null && grid.hostPanelId != null && fid === grid.hostPanelId) {
