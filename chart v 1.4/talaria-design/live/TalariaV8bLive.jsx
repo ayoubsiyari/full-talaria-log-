@@ -506,37 +506,24 @@ function v9VisibilityPatchFromDrawing(d) {
 
 function v9ApplyPointsFromTlStyle(d, tlStyle) {
   if (!d || !Array.isArray(d.points) || d.points.length === 0 || !tlStyle) return false;
-  const next = d.points.map((p, i) => {
+  let changed = false;
+  for (let i = 0; i < Math.min(d.points.length, 7); i++) {
     const n = i + 1;
-    const pk = `pt${n}Price`;
-    const bk = `pt${n}Bar`;
-    let x = p.x;
-    let y = p.y;
-    const rawP = tlStyle[pk];
+    const rawP = tlStyle[`pt${n}Price`];
     if (rawP !== undefined && rawP !== null && String(rawP).trim() !== "") {
       const py = parseFloat(String(rawP).replace(/,/g, ""));
-      if (Number.isFinite(py)) y = py;
+      if (Number.isFinite(py) && py !== d.points[i].y) { d.points[i].y = py; changed = true; }
     }
-    const rawB = tlStyle[bk];
+    const rawB = tlStyle[`pt${n}Bar`];
     if (rawB !== undefined && rawB !== null && String(rawB).trim() !== "") {
       const px = parseInt(String(rawB), 10);
-      if (Number.isFinite(px)) x = px;
+      if (Number.isFinite(px) && px !== d.points[i].x) { d.points[i].x = px; changed = true; }
     }
-    return { ...p, x, y };
-  });
-  const same =
-    next.length === d.points.length &&
-    next.every((np, i) => {
-      const op = d.points[i];
-      return op && np.x === op.x && np.y === op.y;
-    });
-  if (same) return false;
-  if (typeof d.update === "function") {
-    d.update(next);
-  } else {
-    d.points = next;
-    if (d.meta) d.meta.updatedAt = Date.now();
-    if (typeof d.recalculateTimestamps === "function") d.recalculateTimestamps();
+  }
+  if (!changed) return false;
+  if (d.meta) d.meta.updatedAt = Date.now();
+  if (typeof d.recalculateTimestamps === "function") {
+    try { d.recalculateTimestamps(); } catch (_) {}
   }
   return true;
 }
@@ -8774,8 +8761,13 @@ const TalariaV8bLive = () => {
           d.style.trendLineColor = tlStyle.lineColor;
           d.style.trendLineWidth = widthNum;
         }
-        try { v9ApplyPointsFromTlStyle(d, tlStyle); } catch (_) {}
+        let pointsMoved = false;
+        try { pointsMoved = v9ApplyPointsFromTlStyle(d, tlStyle); } catch (_) {}
         try { v9ApplyVisibilityFromTlStyle(d, tlStyle); } catch (_) {}
+        if (pointsMoved) {
+          try { dm.renderDrawing?.(d); } catch (_) {}
+          try { dm.saveDrawings?.(); } catch (_) {}
+        }
         if (d.type === "parallel-channel" && Array.isArray(tlStyle.chLines)) {
           d.levels = v9ChLinesToParallelLevels(tlStyle.chLines);
         }
@@ -8910,8 +8902,13 @@ const TalariaV8bLive = () => {
           tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
         } catch (_) {}
         v9ApplyTxtStyleToDrawing(d, txtStyle);
-        try { v9ApplyPointsFromTlStyle(d, txtStyle); } catch (_) {}
+        let txtPointsMoved = false;
+        try { txtPointsMoved = v9ApplyPointsFromTlStyle(d, txtStyle); } catch (_) {}
         try { v9ApplyVisibilityFromTlStyle(d, txtStyle); } catch (_) {}
+        if (txtPointsMoved) {
+          try { dm.renderDrawing?.(d); } catch (_) {}
+          try { dm.saveDrawings?.(); } catch (_) {}
+        }
         if (tb && typeof tb.onUpdate === "function") {
           try {
             tb.onUpdate(d);
