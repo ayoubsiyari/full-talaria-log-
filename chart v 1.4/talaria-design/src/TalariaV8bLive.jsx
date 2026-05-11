@@ -9860,9 +9860,9 @@ const TalariaV8bLive = () => {
                   {showLine && <div style={{ display:"grid", gridTemplateColumns:`1fr auto auto auto ${(showEp||isBrushTool||(isPatternTool&&!isElliottTool))?"auto":""}`, columnGap:12, rowGap:0, alignItems:"start", marginRight:(isBrushTool&&!showEp)?65:0 }}>
                     {/* Column headers */}
                     <div/><div/>
-                    <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
+                    {showStyle ? <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
                       <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>STYLE</span>
-                    </div>
+                    </div> : <div/>}
                     <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
                       <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span>
                     </div>
