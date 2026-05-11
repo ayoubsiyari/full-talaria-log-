@@ -26,6 +26,9 @@
         throw new Error('multichart-manager: MultichartGuards must load first');
     }
 
+    /** panel-cmd `loadFile` / heavy ops: iframes may still be parsing dist-v9 after bridge-ready. */
+    var PANEL_CMD_TIMEOUT_MS = 25000;
+
     function uuid() {
         return Date.now().toString(16) + '-' + (Math.random() * 1e9 | 0).toString(16);
     }
@@ -399,9 +402,8 @@
      *
      * Returns a Promise that resolves with the iframe's reply payload
      * (cmd-result.data, may be null) on success, or rejects with the
-     * iframe's error message. Times out after 8 s — long enough for
-     * loadFile + applyIndicator on slow networks but short enough to
-     * fail loud rather than hang forever.
+     * iframe's error message. Times out after PANEL_CMD_TIMEOUT_MS (25s)
+     * so loadFile can finish while the dist-v9 iframe is still settling.
      *
      * @param {string} panelId    e.g. 'B', 'C', 'D'
      * @param {string} cmd        'setTimeframe' | 'loadFile' | …
@@ -462,7 +464,7 @@
                     self._pendingCmds.delete(requestId);
                     reject(new Error('panel-cmd timeout: ' + cmd + ' → ' + panelId));
                 }
-            }, 8000);
+            }, PANEL_CMD_TIMEOUT_MS);
             self._pendingCmds.set(requestId, {
                 resolve: resolve,
                 reject:  reject,
