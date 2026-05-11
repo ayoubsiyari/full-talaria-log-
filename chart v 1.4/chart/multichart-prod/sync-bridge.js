@@ -82,6 +82,9 @@
      *
      *   • Never sets candleWidth so small that candles disappear (MIN_BARS).
      *   • Always centres on the closest candle to the synced midpoint.
+     *   • If the source visible window has no time overlap with this chart's
+     *     bar span, falls back to fitToView() (avoids multichart "wrong era"
+     *     empty margins when host and iframe use different files / ranges).
      *   • If post-alignment the visible bar count would be 0 (e.g. midpoint
      *     fell outside this chart's data range), falls back to fitToView()
      *     so the user always sees SOMETHING. Without this guard, panning
@@ -108,6 +111,30 @@
             const ms = chart.inferBarDurationMs ? chart.inferBarDurationMs() : 60000;
             if (Number.isFinite(ms) && ms > 0) barSec = Math.max(1, Math.floor(ms / 1000));
         } catch (_) {}
+
+        // Half-open overlap: source [startSec, endSec) vs recipient
+        // [firstBar, lastBar + barSec). No overlap → skip snap (wrong-era UX).
+        if (Number.isFinite(startSec) && Number.isFinite(endSec) && endSec > startSec) {
+            let r0 = Infinity;
+            let r1 = -Infinity;
+            for (let i = 0; i < chart.data.length; i++) {
+                const t = +chart.data[i].t;
+                if (!Number.isFinite(t)) continue;
+                const s = toSeconds(t);
+                if (s < r0) r0 = s;
+                if (s > r1) r1 = s;
+            }
+            if (Number.isFinite(r0) && Number.isFinite(r1) && r1 >= r0) {
+                const recEndExclusive = r1 + barSec;
+                if (!(startSec < recEndExclusive && r0 < endSec)) {
+                    try { chart.fitToView && chart.fitToView(); } catch (_) {}
+                    if (chart.priceScale) chart.priceScale.autoScale = true;
+                    chart.autoScale = true;
+                    if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+                    return;
+                }
+            }
+        }
 
         // How many recipient-bars are in the source's visible window?
         const spanSec = Math.max(1, endSec - startSec);
