@@ -23,6 +23,7 @@ class ReplaySystem {
         this.replayTimestamp = null;      // Current virtual replay time (milliseconds)
         this.replayStartTimestamp = null; // Starting timestamp of replay data
         this.replayEndTimestamp = null;   // Ending timestamp of replay data
+        this.sessionStartIndex = 0;      // Minimum index the user can roll back to (backtest range floor)
         this.tickElapsedMs = 0;           // Elapsed milliseconds within current candle animation
 
         // Tick animation state
@@ -140,7 +141,8 @@ class ReplaySystem {
             }
 
             if (idx !== null) {
-                this.currentIndex = Math.min(Math.max(idx, 0), this.fullRawData.length - 1);
+                const persistMinIdx = this.sessionStartIndex || 0;
+                this.currentIndex = Math.min(Math.max(idx, persistMinIdx), this.fullRawData.length - 1);
                 this.replayTimestamp = this.fullRawData[this.currentIndex]?.t || this.replayTimestamp;
                 this.tickElapsedMs = typeof state.tickElapsedMs === 'number' ? state.tickElapsedMs : 0;
                 this.speed = typeof state.speed === 'number' ? this.normalizeSpeed(state.speed) : this.speed;
@@ -537,7 +539,9 @@ class ReplaySystem {
             if (!this.slider || !this.fullRawData) return;
             const rect = this.slider.getBoundingClientRect();
             const percent = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-            const targetIndex = Math.round(percent * (this.fullRawData.length - 1));
+            const sliderMin = this.sessionStartIndex || 0;
+            const sliderMax = this.fullRawData.length - 1;
+            const targetIndex = Math.round(sliderMin + percent * (sliderMax - sliderMin));
             this.seekTo(targetIndex, { fromDrag: true });
         };
 
@@ -1223,6 +1227,12 @@ class ReplaySystem {
                 return;
             }
             const targetTime = chart.data[candleIndex].t;
+            const mmFloor = this.sessionStartIndex || 0;
+            const mmFloorTs = this.fullRawData && this.fullRawData[mmFloor] ? this.fullRawData[mmFloor].t : null;
+            if (mmFloorTs != null && targetTime < mmFloorTs) {
+                this.hideAllGoBackVisualsMulti();
+                return;
+            }
             this.applyGoBackVisualsForTimestamp(targetTime);
             return;
         }
@@ -1239,7 +1249,23 @@ class ReplaySystem {
             if (this.cutLineLabel) this.cutLineLabel.style.opacity = '0';
             return;
         }
-        
+
+        // In go-back mode, reject positions before the session start
+        if (this.isGoingBack) {
+            const spFloor = this.sessionStartIndex || 0;
+            const spFloorTs = this.fullRawData && this.fullRawData[spFloor] ? this.fullRawData[spFloor].t : null;
+            if (spFloorTs != null) {
+                const hoverIdx = this.getCandleIndexAtX(x);
+                const hoverCandle = hoverIdx >= 0 && this.chart.data[hoverIdx];
+                if (hoverCandle && hoverCandle.t < spFloorTs) {
+                    if (this.cutLine) this.cutLine.attr('opacity', 0);
+                    if (this.cutLineLabel) this.cutLineLabel.style.opacity = '0';
+                    if (this.pickModeOverlay) this.pickModeOverlay.style.width = '0';
+                    return;
+                }
+            }
+        }
+
         // Update cut line position
         if (this.cutLine) {
             this.cutLine
@@ -1861,7 +1887,8 @@ class ReplaySystem {
         // bucket (from its open through the next bar’s open, exclusive). Previously we
         // stepped back one raw bar so the click excluded the bar — that felt wrong vs
         // “cut where I clicked”.
-        let newRawIndex = 0;
+        const goBackFloor = this.sessionStartIndex || 0;
+        let newRawIndex = goBackFloor;
         if (Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
             let lastInBucket = -1;
             for (let i = 0; i < this.fullRawData.length; i++) {
@@ -1871,13 +1898,13 @@ class ReplaySystem {
                 if (rt >= tStart) lastInBucket = i;
             }
             if (lastInBucket >= 0) {
-                newRawIndex = lastInBucket;
+                newRawIndex = Math.max(lastInBucket, goBackFloor);
             } else {
                 let idx = (typeof this._bsearchTimestamp === 'function')
                     ? this._bsearchTimestamp(this.fullRawData, tStart)
                     : this.fullRawData.findIndex(c => (c && c.t) >= tStart);
-                if (idx < 0) idx = 0;
-                newRawIndex = Math.max(0, Math.min(idx, this.fullRawData.length - 1));
+                if (idx < 0) idx = goBackFloor;
+                newRawIndex = Math.max(goBackFloor, Math.min(idx, this.fullRawData.length - 1));
             }
         }
 
@@ -1917,7 +1944,8 @@ class ReplaySystem {
         this.animatingCandle = null;
         this.tickProgress = 0;
         this.tickElapsedMs = 0;
-        this.currentIndex = newRawIndex;
+        const goBackMinIdx = this.sessionStartIndex || 0;
+        this.currentIndex = Math.max(newRawIndex, goBackMinIdx);
 
         const rawBar = this.fullRawData[newRawIndex];
         if (rawBar && Number.isFinite(rawBar.t)) {
@@ -2101,9 +2129,11 @@ class ReplaySystem {
                 }
             }
             this.currentIndex = Math.max(0, startIdx);
+            this.sessionStartIndex = this.currentIndex;
         } else {
             // Normal replay: start at 10% for context
             this.currentIndex = Math.floor(this.chart.rawData.length * 0.1);
+            this.sessionStartIndex = 0;
         }
         
         // Store full datasets
@@ -4161,8 +4191,9 @@ class ReplaySystem {
             console.warn('🚫 Step backward blocked: back navigation disabled by session policy');
             return;
         }
-        
-        if (this.currentIndex <= 0) {
+
+        const minIdx = this.sessionStartIndex || 0;
+        if (this.currentIndex <= minIdx) {
             return;
         }
 
@@ -4176,7 +4207,7 @@ class ReplaySystem {
         
         if (!selectedTimeframe) {
             // No timeframe selector - go back by one raw candle
-            this.currentIndex--;
+            this.currentIndex = Math.max(this.currentIndex - 1, minIdx);
             if (this.fullRawData[this.currentIndex]) {
                 this.replayTimestamp = this.fullRawData[this.currentIndex].t;
                 this.tickElapsedMs = 0;
@@ -4196,7 +4227,6 @@ class ReplaySystem {
         for (let i = 0; i < resampledData.length; i++) {
             if (resampledData[i].t <= currentTimestamp) {
                 currentResampledIndex = i;
-                // Keep going to find the last one we're in or past
             } else {
                 break;
             }
@@ -4204,8 +4234,7 @@ class ReplaySystem {
         
         
         if (currentResampledIndex === -1 || currentResampledIndex <= 0) {
-            // Already at first candle of selected timeframe
-            this.currentIndex = 0;
+            this.currentIndex = minIdx;
             if (this.fullRawData[this.currentIndex]) {
                 this.replayTimestamp = this.fullRawData[this.currentIndex].t;
                 this.tickElapsedMs = 0;
@@ -4215,21 +4244,17 @@ class ReplaySystem {
         }
         
         // Move to the END of the previous resampled candle
-        // Find the last raw candle before the current resampled candle starts
-        const prevResampledIndex = currentResampledIndex - 1;
         const currentResampledStart = resampledData[currentResampledIndex].t;
         
-        let targetIndex;
-        // Find last raw candle before current resampled candle starts
-        targetIndex = 0; // default to first
-        for (let i = this.currentIndex - 1; i >= 0; i--) {
+        let targetIndex = minIdx;
+        for (let i = this.currentIndex - 1; i >= minIdx; i--) {
             if (this.fullRawData[i].t < currentResampledStart) {
                 targetIndex = i;
                 break;
             }
         }
         
-        this.currentIndex = targetIndex;
+        this.currentIndex = Math.max(targetIndex, minIdx);
         if (this.fullRawData[this.currentIndex]) {
             this.replayTimestamp = this.fullRawData[this.currentIndex].t;
             this.tickElapsedMs = 0;
@@ -4306,7 +4331,8 @@ class ReplaySystem {
      * Seek to specific position
      */
     seekTo(index, { fromDrag = false } = {}) {
-        this.currentIndex = Math.max(0, Math.min(index, this.fullRawData.length - 1));
+        const seekMinIdx = this.sessionStartIndex || 0;
+        this.currentIndex = Math.max(seekMinIdx, Math.min(index, this.fullRawData.length - 1));
         
         // === UPDATE VIRTUAL TIME: Sync replayTimestamp with new position ===
         if (this.fullRawData && this.fullRawData[this.currentIndex]) {
@@ -4369,7 +4395,8 @@ class ReplaySystem {
         if (idx < 0) {
             idx = this.fullRawData.length - 1;
         }
-        idx = Math.min(Math.max(idx, 0), this.fullRawData.length - 1);
+        const minIdx = this.sessionStartIndex || 0;
+        idx = Math.min(Math.max(idx, minIdx), this.fullRawData.length - 1);
 
         this.currentIndex = idx;
         this.replayTimestamp = this.fullRawData[idx]?.t ?? ts;
@@ -4838,7 +4865,9 @@ class ReplaySystem {
 
         const progressFill = document.getElementById('replayProgressFill');
         if (progressFill) {
-            const percent = (this.currentIndex / (this.fullRawData.length - 1)) * 100;
+            const sliderMin = this.sessionStartIndex || 0;
+            const range = Math.max(1, this.fullRawData.length - 1 - sliderMin);
+            const percent = ((this.currentIndex - sliderMin) / range) * 100;
             progressFill.style.width = `${percent}%`;
         }
     }
@@ -4848,10 +4877,11 @@ class ReplaySystem {
             return;
         }
 
-        const max = Math.max(0, this.fullRawData.length - 1);
-        this.slider.min = 0;
+        const min = this.sessionStartIndex || 0;
+        const max = Math.max(min, this.fullRawData.length - 1);
+        this.slider.min = min;
         this.slider.max = max;
-        this.slider.value = Math.min(this.currentIndex, max);
+        this.slider.value = Math.max(Math.min(this.currentIndex, max), min);
     }
 
     /**
