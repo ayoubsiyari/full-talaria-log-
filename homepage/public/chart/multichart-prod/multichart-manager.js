@@ -662,11 +662,6 @@
     // "EUR/USD", "EURUSD", "eur-usd", "EUR USD" all compare equal —
     // matches the convention the order-system already uses on the
     // React side (see MultichartGrid: normalize = s => s.replace(/\//g, '').toUpperCase()).
-    function _normalizeSymbol(s) {
-        if (s == null) return '';
-        return String(s).replace(/[\/\-:\s\.]+/g, '').toUpperCase();
-    }
-
     /** PEER fan-out with allowlist filter. */
     MultichartManager.prototype._fanOut = function (msg, sourceId) {
         // Allowlist filter on the way through the manager too — defense in depth.
@@ -678,50 +673,14 @@
 
         const t = msg.type;
 
-        // ─── Same-symbol forced sync (visibleRange) ─────────────────
-        //
-        // User contract: when two panels show the SAME pair, their
-        // visible time window must always lock together — even if
-        // the user-facing "Time / Date Range" sync toggle is OFF.
-        // The toggle remains useful for cross-symbol sync (different
-        // pair, same time range), but for same-pair panels the lock
-        // is mandatory: switching both panels from 1D → 5min should
-        // land them on the SAME candle, same time, same auto-scaled
-        // price (price ranges follow naturally once time + symbol
-        // match because chart.js auto-scales to the visible window).
-        //
-        // We compute this BEFORE the syncMode gate so visibleRange
-        // can fan out even when the toggle is off — but ONLY to
-        // peers whose symbol matches the source.
-        let sameSymbolPeers = null;
-        if (t === 'visibleRange') {
-            const src = this.charts.get(sourceId);
-            const srcSym = _normalizeSymbol(src && src.state && src.state.symbol);
-            if (srcSym && srcSym !== '—' && srcSym !== '') {
-                sameSymbolPeers = [];
-                for (const c of this.charts.values()) {
-                    if (c.id === sourceId) continue;
-                    const peerSym = _normalizeSymbol(c.state && c.state.symbol);
-                    if (peerSym && peerSym === srcSym) sameSymbolPeers.push(c);
-                }
-            }
-        }
-
-        // Sync-mode gate (does NOT block the same-symbol path above)
+        // Sync-mode gate — when Date/Time range sync is OFF, do not forward
+        // visibleRange at all (no "same-symbol exception": that caused iframe
+        // pans to move the host while host pans did nothing when host state.symbol
+        // lagged iframes).
         if (t === 'crosshair' || t === 'crosshair-clear') {
             if (!this.syncMode.crosshair) return;
         } else if (t === 'visibleRange') {
-            // If the toggle is off but we have same-symbol peers,
-            // deliver ONLY to them and skip cross-symbol fan-out.
-            if (!this.syncMode.visibleRange) {
-                if (sameSymbolPeers && sameSymbolPeers.length) {
-                    const out0 = cleaned.clean;
-                    for (const c of sameSymbolPeers) this._send(c, out0);
-                    this._log('out', 'visibleRange from ' + sourceId
-                        + ' → ' + sameSymbolPeers.length + ' same-symbol peer(s)');
-                }
-                return;
-            }
+            if (!this.syncMode.visibleRange) return;
         } else if (t === 'symbol') {
             if (!this.syncMode.symbol) return;
         } else if (t === 'drawing-add' || t === 'drawing-update'
