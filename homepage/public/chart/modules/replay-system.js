@@ -4461,8 +4461,14 @@ class ReplaySystem {
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
 
-        // Scroll to latest position; follow chrome hides again once the replay head is in view.
-        this.updateChartData(true);
+        // Reset zoom and scroll to latest candle (same as double-click on time axis).
+        if (this.chart && typeof this.chart.jumpToLatest === 'function') {
+            this.chart.jumpToLatest();
+        }
+
+        if (this.isActive) {
+            this.updateChartData(true);
+        }
 
         requestAnimationFrame(() => {
             this.updateAutoScrollIndicator();
@@ -4492,15 +4498,16 @@ class ReplaySystem {
         const r = wrap.getBoundingClientRect();
         const padR = 120;
         const padB = 70;
-        const btnH = 44;
+        const btnH = 36;
+        const z = (typeof window !== 'undefined' && typeof window.__v9Zoom === 'number' && window.__v9Zoom > 0) ? window.__v9Zoom : 1;
         let topPx = Math.round(r.bottom - padB - btnH);
 
         // If stacked indicator panels exist, pin follow button to the main chart pane
         // (just above the top separator), so it never overlaps separate indicator panes.
         const spi = this.chart?.separatePanelInfo;
         if (spi && Number.isFinite(spi.top)) {
-            const separatorTop = Math.round(r.top + spi.top);
-            topPx = separatorTop - btnH - 10;
+            const separatorTop = Math.round(r.top + spi.top * z);
+            topPx = separatorTop - btnH - 8;
         }
 
         const minTop = Math.round(r.top + 8);
@@ -4521,9 +4528,9 @@ class ReplaySystem {
      */
     ensureReplayFollowButton() {
         const followIconSvg =
-            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
-            '<path d="M6.8 6.8l4.9 5.2-4.9 5.2"/>' +
-            '<path d="M12.3 6.8l4.9 5.2-4.9 5.2"/>' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none">' +
+            '<rect x="1" y="1" width="22" height="22" rx="4" fill="#2962FF"/>' +
+            '<path d="M9.5 6.5 L17.5 12 L9.5 17.5 Z" fill="#fff"/>' +
             '</svg>';
         let btn = this.followBtn;
         if (btn && document.body.contains(btn)) return btn;
@@ -4547,8 +4554,8 @@ class ReplaySystem {
                 display: 'none',
                 alignItems: 'center',
                 justifyContent: 'center',
-                width: '44px',
-                height: '44px',
+                width: '36px',
+                height: '36px',
                 padding: '0',
                 margin: '0',
                 boxSizing: 'border-box',
@@ -4556,15 +4563,15 @@ class ReplaySystem {
                 appearance: 'none',
                 font: 'inherit',
                 outline: 'none',
-                background: 'rgba(14, 17, 28, 0.92)',
-                backdropFilter: 'blur(14px)',
-                WebkitBackdropFilter: 'blur(14px)',
-                border: '1px solid rgba(140, 160, 255, 0.28)',
-                borderRadius: '10px',
-                color: 'rgba(210, 218, 255, 0.9)',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: '6px',
+                color: '#fff',
                 cursor: 'pointer',
-                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.045)',
+                boxShadow: '0 2px 12px rgba(0, 0, 0, 0.35)',
                 pointerEvents: 'auto',
+                opacity: '0.5',
+                transition: 'transform 0.12s ease, opacity 0.12s ease',
             });
             document.body.appendChild(btn);
         }
@@ -4714,34 +4721,32 @@ class ReplaySystem {
      */
     updateAutoScrollIndicator() {
         const btn = this.ensureReplayFollowButton();
-        const hideChrome = !this.isActive || this.isPickingPoint;
-        const needsCatchUp = !this.autoScrollEnabled || !this.isLastCandleVisible();
+        const hidePicking = this.isActive && this.isPickingPoint;
+        const lastCandleHidden = !this.isLastCandleVisible();
         const chartSurfaceOk = this._isReplayFollowChartSurfaceVisible();
-        // Show only when replay is behind the live edge (last candle hidden) or follow is disabled.
-        const showFollow = !hideChrome && needsCatchUp && chartSurfaceOk;
+        // Show whenever the last candle is scrolled off-screen (replay or normal browsing).
+        const showFollow = !hidePicking && lastCandleHidden && chartSurfaceOk;
 
         if (btn) {
             if (!showFollow) {
                 btn.style.display = 'none';
                 btn.classList.remove('replay-follow--attention');
             } else {
-                // Fixed overlay — reposition when wrapper moves/resizes.
                 this.positionReplayFollowChrome(btn);
                 btn.style.display = 'flex';
-                btn.style.opacity = '1';
                 btn.style.visibility = 'visible';
                 btn.classList.add('replay-follow--attention');
             }
         }
 
-        // Panel follow buttons — same rules as `#replayFollow`: replay on, not picking, catch-up needed, tile visible.
+        // Panel follow buttons — show when last candle is off-screen.
         const pm = window.panelManager;
         if (pm && pm.panels) {
             pm.panels.forEach((panel, idx) => {
                 const pBtn = document.getElementById(`panelFollow${idx}`);
                 if (!pBtn) return;
 
-                if (hideChrome) {
+                if (hidePicking) {
                     pBtn.style.display = 'none';
                     pBtn.classList.remove('replay-follow--attention');
                     return;
@@ -4754,8 +4759,7 @@ class ReplaySystem {
                     return;
                 }
 
-                const panelNeedsCatchUp =
-                    !this.autoScrollEnabled || !this.isLastCandleVisible(pc);
+                const panelNeedsCatchUp = !this.isLastCandleVisible(pc);
                 const panelSurfaceOk = this._isReplayFollowPanelSurfaceVisible(panel);
                 const showPanelFollow = panelNeedsCatchUp && panelSurfaceOk;
 
@@ -4764,7 +4768,6 @@ class ReplaySystem {
                     pBtn.classList.remove('replay-follow--attention');
                 } else {
                     pBtn.style.display = 'flex';
-                    pBtn.style.opacity = '1';
                     pBtn.style.visibility = 'visible';
                     pBtn.classList.add('replay-follow--attention');
                 }

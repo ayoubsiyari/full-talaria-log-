@@ -8578,7 +8578,7 @@ class Chart {
 	                svgNode.style.width = this.w + 'px';
 	                svgNode.style.height = this.h + 'px';
 	            }
-	            if (this.replaySystem && this.replaySystem.isActive) {
+	            if (this.replaySystem) {
 	                this.replaySystem.updateAutoScrollIndicator();
 	            }
 	        }
@@ -12981,8 +12981,17 @@ class Chart {
         if (this.renderPending) {
             this.render();
             this.renderPending = false;
+
+            // Update follow button visibility after each render (throttled).
+            if (this.replaySystem && typeof this.replaySystem.updateAutoScrollIndicator === 'function') {
+                const now2 = performance.now();
+                if (!this._lastFollowBtnCheck || now2 - this._lastFollowBtnCheck > 200) {
+                    this._lastFollowBtnCheck = now2;
+                    try { this.replaySystem.updateAutoScrollIndicator(); } catch (_) {}
+                }
+            }
         }
-        
+
         // Calculate FPS
         const now = performance.now();
         this.frameCount++;
