@@ -356,6 +356,7 @@ const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
   text: new Set(["text", "note", "priceNote", "callout", "comment", "pin", "priceLabel", "signpost", "flag", "image", "emoji"]),
   crosshair: new Set(["crosshair", "cursorDot", "cursorArrow", "eraser"]),
   brush: new Set(["vwap", "volProfile", "anchoredVol"]),
+  trash: new Set(["trash", "trashDraw", "trashInd"]),
 });
 
 function v9RailSubtoolOrFallback(groupId, sel, fallback) {
@@ -14638,6 +14639,7 @@ const TalariaV8bLive = () => {
                         if (item.icon === "trashDraw") ch?.clearOnlyDrawings?.({ confirmPrompt: false });
                         else if (item.icon === "trashInd") ch?.clearOnlyIndicators?.({ confirmPrompt: false });
                         else if (item.icon === "trash") ch?.clearDrawingsAndIndicators?.({ confirmPrompt: false });
+                        setGroupSelected(p => v9SanitizeGroupSelected({ ...p, trash: item }));
                         closeDropdown();
                         return;
                       }
