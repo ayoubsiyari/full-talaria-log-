@@ -154,6 +154,8 @@ class OrderManager {
         this._lastPreviewChartWidth = null;
         this.pendingTargetLines = [];
         this._pendingPositionsPanelRaf = null;
+        /** rAF handle for coalesced multichart `order:pending-updated` emits while dragging pending lines */
+        this._pendingMirrorSyncRaf = null;
 
         /** Resampled bars per fileId+timeframe for off-chart mark / SL-TP (matches main chart TF) */
         this._miSeriesByFileId = new Map();
@@ -392,6 +394,36 @@ class OrderManager {
                 if (this.previewLines?.entry?.labelGroup) return;
                 this.updatePreviewLines();
             } catch (_e) { /* ignore */ }
+        });
+    }
+
+    /**
+     * Multichart: emit a serializable snapshot so the parent can fan out pending
+     * entry / SL / TP / BE moves to every panel on the same pair.
+     */
+    _emitPendingMirrorSync(pendingOrder) {
+        try {
+            if (!pendingOrder || pendingOrder.id == null) return;
+            if (!this.orderService || typeof this.orderService.emit !== 'function') return;
+            let snap;
+            try {
+                snap = typeof structuredClone === 'function'
+                    ? structuredClone(pendingOrder)
+                    : JSON.parse(JSON.stringify(pendingOrder));
+            } catch (_e) {
+                return;
+            }
+            this.orderService.emit('order:pending-updated', snap);
+        } catch (_e) { /* ignore */ }
+    }
+
+    /** At most one mirror sync per animation frame while dragging pending geometry. */
+    _schedulePendingMirrorSync(pendingOrder) {
+        if (!pendingOrder || pendingOrder.id == null) return;
+        if (this._pendingMirrorSyncRaf) return;
+        this._pendingMirrorSyncRaf = requestAnimationFrame(() => {
+            this._pendingMirrorSyncRaf = null;
+            this._emitPendingMirrorSync(pendingOrder);
         });
     }
 
@@ -29310,6 +29342,7 @@ class OrderManager {
                 }
 
                 pendingOrder.entryPrice = newPrice;
+                self._schedulePendingMirrorSync(pendingOrder);
                 self._schedulePendingOrdersPanelRefresh();
 
                 // Record current candle so the order won't fill on price action
@@ -29418,6 +29451,7 @@ class OrderManager {
                     ? `$${Number(pendingOrder.riskAmount).toFixed(2)} risk · ${qPlaced.toFixed(2)} lots`
                     : `${qPlaced.toFixed(2)} lots`;
                 self.showNotification(`✏️ Entry → ${formattedPrice} | ${notifDetail}`, 'info');
+                self._emitPendingMirrorSync(pendingOrder);
             });
         
         // Apply drag to line, labelBox, and priceBox
@@ -30235,6 +30269,7 @@ class OrderManager {
                         });
                     }
                 }
+                self._schedulePendingMirrorSync(pendingOrder);
             })
             .on('end', function() {
                 if (!isDragging) return;
@@ -30328,6 +30363,7 @@ class OrderManager {
                     ? `$${(pendingOrder.riskAmount != null ? pendingOrder.riskAmount : 0).toFixed(2)} risk · ${self._getPendingPlacedQuantity(pendingOrder).toFixed(2)} lots`
                     : `${pendingOrder.quantity.toFixed(2)} lots`;
                 self.showNotification(`✏️ ${target.type} → ${formattedPrice} | ${slDetail}`, 'info');
+                self._emitPendingMirrorSync(pendingOrder);
             });
         
         // Apply drag to BOTH line AND labelGroup (same as executed orders)

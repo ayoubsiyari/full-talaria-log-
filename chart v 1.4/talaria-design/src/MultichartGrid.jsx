@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260511T2200";
+const BRIDGE_VERSION = "20260511T2300";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -2301,6 +2301,23 @@ export default function MultichartGrid({
                         try { if (om.updateOrderLines) om.updateOrderLines(ch); } catch (_) {}
                         return Promise.resolve({ ok: true });
                     }
+                    case "syncPendingOrder": {
+                        const snap = args && args.order;
+                        if (!snap || snap.id == null) {
+                            return Promise.reject(new Error("syncPendingOrder: missing args.order"));
+                        }
+                        if (!applyMirroredPendingOrderSnapshot(ch, snap)) {
+                            return Promise.resolve({ skipped: true, reason: "no_local_pending" });
+                        }
+                        const omSync = ch.orderManager;
+                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                        try {
+                            if (omSync && typeof omSync.updateOrderLines === "function") {
+                                omSync.updateOrderLines(ch);
+                            }
+                        } catch (_) {}
+                        return Promise.resolve({ ok: true });
+                    }
                     case "closeOrder": {
                         const om = ch.orderManager;
                         if (!om || typeof om.closePosition !== "function") {
@@ -2495,16 +2512,16 @@ export default function MultichartGrid({
     //
     //   2. SUBSCRIBE to the host's orderService eventBus so any order
     //      that's `:opened` or `:pending` on the host gets fanned out
-    //      to all peer iframes whose currentSymbol matches. This
-    //      covers the case where the user kept Panel A focused and
-    //      placed via the rail — the order appears on the host AND
-    //      on every same-pair iframe.
+    //      to all peer iframes whose currentSymbol matches; and
+    //      `order:pending-updated` (entry / SL / TP drag) is merged on
+    //      every same-pair panel in lockstep via `syncPendingOrder`.
     //
     //   3. LISTEN for `iframe-order` postMessage envelopes (sent by
     //      panel-cmd-bridge.installOrderForwarders inside each iframe)
     //      and fan them out the same way: to the host (if symbol
     //      matches) and to every other iframe (if symbol matches),
-    //      excluding the source.
+    //      excluding the source — including `pending-updated` from
+    //      iframe drag mirrors.
     //
     // Symbol matching uses normalizeOrderTickerForMirror (slashes, dashes,
     // spaces, dots stripped — same idea as multichart-manager). We also
@@ -2593,6 +2610,35 @@ export default function MultichartGrid({
             return out;
         }
 
+        /** Merge multichart `pending-updated` snapshot into local pending/open lists by order id. */
+        function applyMirroredPendingOrderSnapshot(chart, snap) {
+            const om = chart && chart.orderManager;
+            if (!om || !snap || snap.id == null) return false;
+            const id = snap.id;
+            let hit = false;
+            function mergeInto(list) {
+                if (!Array.isArray(list)) return;
+                list.forEach((o) => {
+                    if (!o || o.id !== id) return;
+                    Object.keys(snap).forEach((k) => {
+                        if (k === "id") return;
+                        try {
+                            o[k] = snap[k];
+                        } catch (_) { /* ignore */ }
+                    });
+                    hit = true;
+                });
+            }
+            mergeInto(om.pendingOrders);
+            mergeInto(om.orders);
+            const svc = om.orderService;
+            if (svc) {
+                mergeInto(svc.pendingOrders);
+                mergeInto(svc.orders);
+            }
+            return hit;
+        }
+
         // Send addOrder to the given panel (host or iframe) using the
         // existing runCommand bus. Wrapped in try/catch so a single
         // bad panel can't break the others.
@@ -2619,6 +2665,23 @@ export default function MultichartGrid({
                 ? String(order.sourceFileId) : "";
             if (!symNorm && !orderFid) return;
             const peers = findPanelsForSymbol(symNorm, sourceId, order);
+            const grid = window.__multichartGrid;
+            if (kind === "pending-updated") {
+                if (!grid || typeof grid.runCommand !== "function") return;
+                for (const p of peers) {
+                    try {
+                        grid.runCommand("syncPendingOrder", { order }, { panelId: p.id })
+                            .catch((e) => {
+                                console.warn("[MultichartGrid] syncPendingOrder",
+                                    p.id, "failed:", e && e.message || e);
+                            });
+                    } catch (e) {
+                        console.warn("[MultichartGrid] syncPendingOrder", p.id, "threw:", e);
+                    }
+                }
+                return;
+            }
+            if (kind !== "opened" && kind !== "pending") return;
             for (const p of peers) {
                 mirrorTo(p.id, p.isHost, kind, order);
             }
@@ -2627,6 +2690,7 @@ export default function MultichartGrid({
         // ─── 1. host eventBus subscription ─────────────────────────
         let hostOffOpened = null;
         let hostOffPending = null;
+        let hostOffPendingUpdated = null;
         let hostOffClosed = null;
         function tryInstallHostBus() {
             const ch = window.chart;
@@ -2644,6 +2708,10 @@ export default function MultichartGrid({
                 if (!o || o.id == null) return;
                 if (hostOrderStateRef.current.suppressEmitId === o.id) return;
                 broadcastOrder(HOST_PANEL_ID, "pending", o);
+            });
+            hostOffPendingUpdated = bus.on("order:pending-updated", (o) => {
+                if (!o || o.id == null) return;
+                broadcastOrder(HOST_PANEL_ID, "pending-updated", o);
             });
             // Note: we do NOT mirror order:closed yet — the chart
             // engine handles SL/TP hits + manual closes per-panel
@@ -2671,7 +2739,7 @@ export default function MultichartGrid({
             const kind     = msg.kind;
             const order    = msg.order;
             if (!order || order.id == null) return;
-            if (kind !== "opened" && kind !== "pending") return;
+            if (kind !== "opened" && kind !== "pending" && kind !== "pending-updated") return;
             broadcastOrder(sourceId, kind, order);
         }
         window.addEventListener("message", onIframeOrder);
@@ -2716,9 +2784,10 @@ export default function MultichartGrid({
         return () => {
             document.removeEventListener("click", onPlaceOrderClickCapture, true);
             window.removeEventListener("message", onIframeOrder);
-            try { if (typeof hostOffOpened  === "function") hostOffOpened(); }  catch (_) {}
+            try { if (typeof hostOffOpened === "function") hostOffOpened(); } catch (_) {}
             try { if (typeof hostOffPending === "function") hostOffPending(); } catch (_) {}
-            try { if (typeof hostOffClosed  === "function") hostOffClosed(); }  catch (_) {}
+            try { if (typeof hostOffPendingUpdated === "function") hostOffPendingUpdated(); } catch (_) {}
+            try { if (typeof hostOffClosed === "function") hostOffClosed(); } catch (_) {}
             hostOrderStateRef.current.listenerInstalled = false;
         };
         // Mount-once. Refs supply the latest focused panel + manager

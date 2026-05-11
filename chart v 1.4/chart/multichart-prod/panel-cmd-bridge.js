@@ -219,6 +219,7 @@
         panelOrderState.busSubscribed = true;
         bus.on('order:opened',          function (o) { postIframeOrder('opened',          o); });
         bus.on('order:pending',         function (o) { postIframeOrder('pending',         o); });
+        bus.on('order:pending-updated', function (o) { postIframeOrder('pending-updated', o); });
         bus.on('order:closed',          function (o) { postIframeOrder('closed',          o); });
         bus.on('order:pending-removed', function (o) { postIframeOrder('pending-removed', o); });
         log('order forwarders installed');
@@ -395,6 +396,32 @@
         // listener (race when applyCommand resolves on the same
         // microtask as the first chartDataLoaded dispatch).
         setTimeout(drainPendingReplay, 250);
+    }
+
+    function applyMirroredPendingSnapshot(ch, snap) {
+        var om = ch && ch.orderManager;
+        if (!om || !snap || snap.id == null) return false;
+        var id = snap.id;
+        var hit = false;
+        function mergeInto(list) {
+            if (!list || !list.forEach) return;
+            list.forEach(function (o) {
+                if (!o || o.id !== id) return;
+                Object.keys(snap).forEach(function (k) {
+                    if (k === 'id') return;
+                    try { o[k] = snap[k]; } catch (_e) {}
+                });
+                hit = true;
+            });
+        }
+        mergeInto(om.pendingOrders);
+        mergeInto(om.orders);
+        var svc = om.orderService;
+        if (svc) {
+            mergeInto(svc.pendingOrders);
+            mergeInto(svc.orders);
+        }
+        return hit;
     }
 
     // Apply a single command. Returns a promise that resolves on success
@@ -903,6 +930,23 @@
                     } catch (_) {}
                     return { ok: true };
                 }
+                case 'syncPendingOrder': {
+                    var snapS = args && args.order;
+                    if (!snapS || typeof snapS !== 'object' || snapS.id == null) {
+                        throw new Error('syncPendingOrder: missing args.order');
+                    }
+                    if (!applyMirroredPendingSnapshot(ch, snapS)) {
+                        return { skipped: true, reason: 'no_local_pending' };
+                    }
+                    var omSnap = ch.orderManager;
+                    try { if (typeof ch.render === 'function') ch.render(); } catch (_e) {}
+                    try {
+                        if (omSnap && typeof omSnap.updateOrderLines === 'function') {
+                            omSnap.updateOrderLines(ch);
+                        }
+                    } catch (_e2) {}
+                    return { ok: true };
+                }
                 case 'closeOrder': {
                     var omC = ch.orderManager;
                     if (!omC) throw new Error('orderManager not available');
@@ -1002,6 +1046,7 @@
                 'replaySetMode',
                 'placeOrder',
                 'addOrder',
+                'syncPendingOrder',
                 'closeOrder',
                 'cancelOrder',
             ],
