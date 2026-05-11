@@ -7326,7 +7326,7 @@ const TalariaV8bLive = () => {
   // Group 11 - Actions
   const actionTools = [
     { id: "trash", icon: "trash", label: "Delete", danger: true, dd: [
-      {h:"DELETE"},{icon:"trashDraw",label:"Delete Drawings"},{icon:"trashInd",label:"Delete Indicators"},{icon:"trash",label:"Delete Objects"}
+      {h:"DELETE"},{icon:"trashDraw",label:"Delete Drawings"},{icon:"trashInd",label:"Delete Indicators"},{icon:"trash",label:"Delete All Objects"}
     ]},
     { id: "pinbar", icon: "pin", label: "Pinned Tools" },
     { id: "undo", icon: "undo", label: "Undo", action: true },
