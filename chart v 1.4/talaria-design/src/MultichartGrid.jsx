@@ -2253,29 +2253,10 @@ export default function MultichartGrid({
                 .then((d) => (d && Array.isArray(d.indicators)) ? d.indicators : []);
         }
 
-        // runCommandIframes broadcasts the command to every IFRAME panel
-        // (B / C / D), explicitly SKIPPING the host. Used by drawings:
-        // TradingView arms the active drawing tool on every panel so
-        // whichever one the user clicks first is already armed when the
-        // canvas's mousedown fires.
-        //
-        // We deliberately skip the host here — the parent's React tree
-        // already has its OWN proven legacy code path that wires
-        // `chart.drawingManager.setTool` directly. Routing the host
-        // through this bus introduced a feedback loop where the
-        // chart engine's internal `finalizeDrawing → clearTool`
-        // (line 3759 of drawing-tools-manager.js) hit our wrapped
-        // clearTool → syncRailIfCursor → setTool("crosshair") → React
-        // re-render → drawing-tool effect → runCommandAll →
-        // dm.clearTool again. That chain crashed the page when
-        // drawing on the host with iframes open. By keeping the
-        // host on the legacy direct path, the host's drawing flow
-        // is byte-identical to single-chart mode (zero regression
-        // risk for the most-used panel).
-        //
-        // Returns Promise<void> (resolves once every iframe call has
-        // settled; individual rejections are swallowed so one bad
-        // iframe doesn't break the others).
+        // runCommandIframes — still used for rare broadcast-style ops; the
+        // drawing-tool path moved to syncDrawingToolAcrossPanels so we do
+        // NOT keep every iframe armed at once (that made clicks on any
+        // panel start a stroke even after "switching" focus).
         function runCommandIframes(cmd, args) {
             const mgr = managerRef.current;
             if (!mgr || !mgr.charts || typeof mgr.charts.values !== "function") {
@@ -2293,12 +2274,54 @@ export default function MultichartGrid({
             return Promise.all(proms).then(() => undefined);
         }
 
+        /**
+         * Arm the V9 drawing tool on the FOCUSED panel only; clear every other
+         * chart (host + iframe). Called from TalariaV8bLive whenever the rail
+         * tool changes and on multichartFocusChanged — prevents the old
+         * "broadcast to all iframes" behaviour where every panel stayed armed
+         * after the user clicked another tile.
+         */
+        function syncDrawingToolAcrossPanels(legacyTool) {
+            const mgr = managerRef.current;
+            const focus = focusedPanelIdRef.current || HOST_PANEL_ID;
+            const ids = [];
+            if (mgr && mgr.charts && typeof mgr.charts.keys === "function") {
+                for (const id of mgr.charts.keys()) ids.push(id);
+            } else {
+                ids.push(HOST_PANEL_ID);
+            }
+            const lt = legacyTool == null ? "" : String(legacyTool);
+            const clearFocused = !lt
+                || lt.toLowerCase() === "crosshair"
+                || lt.toLowerCase() === "cursor";
+
+            function runClear(panelId) {
+                if (panelId === HOST_PANEL_ID) {
+                    return applyHostCommand("clearActiveDrawingTool", null).catch(() => {});
+                }
+                if (!mgr) return Promise.resolve();
+                return mgr.sendCommand(panelId, "clearActiveDrawingTool", null).catch(() => {});
+            }
+
+            const clears = ids.filter((id) => id !== focus).map(runClear);
+            return Promise.all(clears).then(() => {
+                if (clearFocused) return runClear(focus);
+                if (focus === HOST_PANEL_ID) {
+                    return applyHostCommand("setActiveDrawingTool", { tool: lt }).catch(() => {});
+                }
+                if (!mgr) return Promise.resolve();
+                return mgr.sendCommand(focus, "setActiveDrawingTool", { tool: lt }).catch(() => {});
+            });
+        }
+
         window.__multichartGrid = {
             isMounted,
             runCommand,
             runCommandIframes,
+            syncDrawingToolAcrossPanels,
             getPanelIndicators,
             getFocusedPanelId: () => focusedPanelIdRef.current,
+            hostPanelId: HOST_PANEL_ID,
         };
 
         return () => {

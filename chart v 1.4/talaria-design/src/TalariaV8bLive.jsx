@@ -7569,47 +7569,50 @@ const TalariaV8bLive = () => {
     const apply = () => {
       if (cancelled) return;
 
-      // Phase 7.2.4 — multichart routing. If MultichartGrid is mounted,
-      // BROADCAST the active drawing tool to every panel (host + all
-      // iframes), matching TradingView UX. Why broadcast and not focus-
-      // only: the user often picks a tool and then mousedowns on a
-      // panel that wasn't focused yet (e.g. focus was on B, click on
-      // A's canvas to draw). The focus change is processed AFTER the
-      // mousedown event, so if we only armed the focused panel, A
-      // would still have currentTool=null when its canvas processed
-      // the mousedown, and the click would be treated as a pan
-      // instead of starting a stroke. Broadcasting means whichever
-      // panel the user clicks first is already armed.
-      //
-      // Wrapped in try/catch so a synchronous throw inside the bus
-      // (very unlikely but possible if window.__multichartGrid is
-      // partially set up) cannot bubble into React render and blank
-      // the page.
-      // Multichart routing: BROADCAST the active drawing tool to iframe
-      // panels (B / C / D) so they're armed and ready when the user
-      // clicks them. The HOST (Panel A / parent's window.chart) is
-      // intentionally NOT routed through the bus — it falls through to
-      // the legacy direct dm.setTool path below, which has been
-      // working for years.
-      //
-      // Why: routing the host through the bus produced a feedback loop
-      // that crashed the page when drawing on Panel A with iframes
-      // open. chart.js's finalizeDrawing internally calls clearTool
-      // (drawing-tools-manager.js:3759). Our React effect wraps
-      // clearTool to setTool("crosshair") in React state. That
-      // re-fires this effect; the multichart branch then called
-      // dm.clearTool again on the host, deep inside the still-running
-      // finalize stack. Keeping the host on the legacy direct path
-      // makes its drawing flow byte-identical to single-chart mode.
+      // Phase 7.2.4 — multichart routing (two modes):
+      //   • Toolbar / chartDataLoaded / panelSelected: BROADCAST the tool to
+      //     every iframe (runCommandIframes) so the user can pick a tool and
+      //     mousedown on a tile that is not focused yet — the stroke still
+      //     starts (TradingView behaviour).
+      //   • multichartFocusChanged: syncDrawingToolAcrossPanels — arm ONLY the
+      //     focused chart and clear all others so switching panels does not
+      //     leave the previous tile in drawing mode.
       const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
-      if (grid && typeof grid.runCommandIframes === "function") {
+      const focusOnlyMultichartTool =
+        typeof window !== "undefined" && window.__v9MultichartFocusToolTick;
+      if (grid && typeof grid.syncDrawingToolAcrossPanels === "function" && focusOnlyMultichartTool) {
+        try {
+          let legacyParam = null;
+          if (editingDrawingRef.current) {
+            legacyParam = null;
+          } else if (v9SelectionToolbarSyncRef.current) {
+            legacyParam = resolveLegacyTool() || null;
+          } else {
+            legacyParam = resolveLegacyTool() || null;
+          }
+          void grid.syncDrawingToolAcrossPanels(legacyParam).catch(() => {});
+          const fid = typeof grid.getFocusedPanelId === "function"
+            ? grid.getFocusedPanelId()
+            : null;
+          if (fid && grid.hostPanelId != null && fid !== grid.hostPanelId) {
+            try {
+              const h = window.chart;
+              const dmc = h && h.drawingManager;
+              if (dmc) {
+                if (typeof dmc.clearTool === "function") dmc.clearTool();
+                else dmc.currentTool = null;
+              }
+            } catch (_) {}
+            return;
+          }
+        } catch (err) {
+          console.warn("[V9 tool bridge multichart focus] threw:", err);
+        }
+      } else if (grid && typeof grid.runCommandIframes === "function") {
         try {
           if (editingDrawingRef.current) {
             grid.runCommandIframes("clearActiveDrawingTool", null).catch(() => {});
           } else if (v9SelectionToolbarSyncRef.current) {
-            // Don't consume v9SelectionToolbarSyncRef here — the legacy
-            // block below still needs to read it to decide whether to
-            // suppress the sync-back. Just peek.
             const legacy = resolveLegacyTool();
             if (!legacy) {
               grid.runCommandIframes("clearActiveDrawingTool", null).catch(() => {});
@@ -7628,8 +7631,6 @@ const TalariaV8bLive = () => {
         } catch (err) {
           console.warn("[V9 tool bridge iframes] threw:", err);
         }
-        // Do NOT return — fall through to the legacy block below so
-        // the host's window.chart gets its tool set the original way.
       }
 
       const ch =
@@ -7688,20 +7689,27 @@ const TalariaV8bLive = () => {
       n = 0;
       apply();
     };
+    const onMultichartFocusChanged = () => {
+      n = 0;
+      try {
+        if (typeof window !== "undefined") window.__v9MultichartFocusToolTick = true;
+        apply();
+      } finally {
+        if (typeof window !== "undefined") window.__v9MultichartFocusToolTick = false;
+      }
+    };
     window.addEventListener("panelSelected", onPanelSelected);
     window.addEventListener("panelsCreated", onPanelSelected);
     window.addEventListener("chartDataLoaded", onPanelSelected);
-    // Phase 7.2.4: when the user clicks a different multichart panel,
-    // re-apply the current drawing tool to that panel so the toolbar
-    // selection follows focus (matching single-chart UX where the
-    // active tool is always the user's last pick).
-    window.addEventListener("multichartFocusChanged", onPanelSelected);
+    // Phase 7.2.4: tile focus — disarm non-focused panels (see apply branch
+    // guarded by __v9MultichartFocusToolTick + syncDrawingToolAcrossPanels).
+    window.addEventListener("multichartFocusChanged", onMultichartFocusChanged);
     return () => {
       cancelled = true;
       window.removeEventListener("panelSelected", onPanelSelected);
       window.removeEventListener("panelsCreated", onPanelSelected);
       window.removeEventListener("chartDataLoaded", onPanelSelected);
-      window.removeEventListener("multichartFocusChanged", onPanelSelected);
+      window.removeEventListener("multichartFocusChanged", onMultichartFocusChanged);
     };
     // layoutPanels.n is in deps so we re-run when the multichart grid
     // mounts/unmounts (1 ↔ N panels) and pick the right routing branch.
