@@ -4915,7 +4915,7 @@ const TalariaV8bLive = () => {
   colorPickerRef.current = colorPicker;
   cpDraggingRef.current = cpDragging;
   const DEFAULT_CHART_SETTINGS = {
-    theme: "Talaria Dark", chartType: "candlestick", precision: "0.00000", timezone: "UTC",
+    theme: "Talaria Dark", chartType: "candlestick", precision: "Default", timezone: "UTC",
     textColor: "#8CA0FF", background: "#07080E", gridColor: "rgba(140,160,255,0.15)", crosshairColor: "rgba(255,255,255,0.4)",
     priceLine: true, priceLineColor: "#FF5068",
     scaleTextColor: "rgba(255,255,255,0.25)", scaleLineColor: "rgba(140,160,255,0.12)",
@@ -17735,7 +17735,7 @@ const TalariaV8bLive = () => {
                           })()}
 
                           {gotoAddType==="price"&&(()=>{
-                            const decimals=(settings.precision||"0.00000").split(".")[1]?.length||5;
+                            const decimals=(()=>{const p=settings.precision||"Default";if(p==="Default"||p.toLowerCase()==="default"){const ch=window.chart;if(ch&&typeof ch._resolveDefaultPrecision==="function")return ch._resolveDefaultPrecision();return 2;}const after=p.split(".")[1];return after?after.length:5;})();
                             const step=Math.pow(10,-decimals);
                             const spinPrice=(dir)=>{const v=parseFloat(gotoNewPrice)||0;setGotoNewPrice((v+dir*step).toFixed(decimals));};
                             const spinSx={flex:1,background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"0 6px",fontSize:11,lineHeight:1,fontFamily:F,display:"flex",alignItems:"center",justifyContent:"center",transition:"color 0.1s"};
@@ -20652,7 +20652,7 @@ const TalariaV8bLive = () => {
         const tplOpts = [...(customTemplates.length>0?[{divider:"SAVED"},...customTemplates,{divider:"DEFAULT"}]:[]),...defaultTplOpts];
         const tzScrollH = Math.min(320, Math.max(160, (typeof window !== "undefined" ? window.innerHeight : 720) / Z - 130));
         const tzRefUiMs = getV9ChartBarTimeMs(v9ActiveChartInstance());
-        const cfgMap = { gridStyle:{key:"gridLineStyle",type:"style"}, gridThick:{key:"gridLineThickness",type:"thick"}, priceStyle:{key:"priceLineStyle",type:"style"}, priceThick:{key:"priceLineThickness",type:"thick"}, chartTimeFormat:{key:"timeFormat",type:"select",opts:["24h","12h"]}, chartTimezone:{key:"timezone",type:"select",opts:getChartTimezoneSelectOptions(tzRefUiMs),scrollMaxPx:tzScrollH}, chartPrecision:{key:"precision",type:"select",opts:["0.00000","0.0000","0.000","0.00","0.0"]}, chartTemplate:{key:"chartTemplate",type:"template",opts:tplOpts,scrollMaxPx:tzScrollH} };
+        const cfgMap = { gridStyle:{key:"gridLineStyle",type:"style"}, gridThick:{key:"gridLineThickness",type:"thick"}, priceStyle:{key:"priceLineStyle",type:"style"}, priceThick:{key:"priceLineThickness",type:"thick"}, chartTimeFormat:{key:"timeFormat",type:"select",opts:["24h","12h"]}, chartTimezone:{key:"timezone",type:"select",opts:getChartTimezoneSelectOptions(tzRefUiMs),scrollMaxPx:tzScrollH}, chartPrecision:{key:"precision",type:"select",opts:["Default","0.00000","0.0000","0.000","0.00","0.0"]}, chartTemplate:{key:"chartTemplate",type:"template",opts:tplOpts,scrollMaxPx:tzScrollH} };
         if (settDrop==="profLang") return <>
           <div data-sdrop="1" data-sett-drop-root="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||140,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
