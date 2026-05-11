@@ -17078,6 +17078,7 @@ const TalariaV8bLive = () => {
               this node (Safari can disagree canvas vs overlay rects when the chart area is flex-sized). */}
           <div style={{ flex: 1, position: "relative", background: c.bg, minHeight: 0 }}>
             <div ref={chartCanvasRef} id="chart-container"
+              onContextMenu={(e) => e.preventDefault()}
               onMouseDown={(e) => {
                 if (!indOpen) return;
                 const t = e.target;
@@ -17124,7 +17125,7 @@ const TalariaV8bLive = () => {
                   those INLINE per layout; React re-renders would reset style={{ inset:0 }} and
                   wipe sizing, so #chartWrapper spans the full chart and stacks over other panels
                   (ghost main OHLC / broken tiles). Default fill comes from live/index.html CSS. */}
-              <div id="chartWrapper" className="chart-wrapper">
+              <div id="chartWrapper" className="chart-wrapper" onContextMenu={(e) => e.preventDefault()}>
                 <canvas id="chartCanvas" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", background: "transparent" }} />
                 <svg id="drawingSvg" />
                 {/* Axis cursor zones — chart.js reserves 60px right and 30px bottom margin.
