@@ -13716,12 +13716,66 @@ class Chart {
         if (Number.isFinite(this._symbolPrecision) && this._symbolPrecision >= 0) {
             return this._symbolPrecision;
         }
+        // Data-driven fallback: examine actual OHLC values in the loaded series
+        // to infer the native precision. Much more reliable than the price-range
+        // heuristic below because it reflects the instrument's real tick size
+        // regardless of symbol resolution state.
+        const dataDec = this._inferPrecisionFromData();
+        if (Number.isFinite(dataDec) && dataDec >= 0) {
+            this._symbolPrecision = dataDec;
+            return dataDec;
+        }
         if (priceRange < 0.01) return 6;
         if (priceRange < 0.1)  return 4;
         if (priceRange < 1)    return 3;
         if (priceRange < 10)   return 2;
         if (priceRange < 1000) return 2;
         return 0;
+    }
+
+    /**
+     * Examine loaded OHLC prices to infer the instrument's native decimal
+     * precision. Samples up to 200 bars and returns the maximum number of
+     * significant (non-trailing-zero) decimal places found. Cached per
+     * data version so it only recomputes when the series changes.
+     */
+    _inferPrecisionFromData() {
+        if (!this.data || this.data.length === 0) return null;
+        if (this._dataPrecisionVersion === this.dataVersion
+            && Number.isFinite(this._dataPrecisionCached)) {
+            return this._dataPrecisionCached;
+        }
+        let maxDec = 0;
+        const step = Math.max(1, Math.floor(this.data.length / 200));
+        for (let i = 0; i < this.data.length; i += step) {
+            const bar = this.data[i];
+            if (!bar) continue;
+            const vals = [bar.o, bar.h, bar.l, bar.c];
+            for (let j = 0; j < vals.length; j++) {
+                const v = Number(vals[j]);
+                if (!Number.isFinite(v)) continue;
+                const d = this._significantDecimals(v);
+                if (d > maxDec) maxDec = d;
+            }
+            if (maxDec >= 6) break;
+        }
+        this._dataPrecisionVersion = this.dataVersion;
+        this._dataPrecisionCached = maxDec;
+        return maxDec;
+    }
+
+    /**
+     * Count significant (non-trailing-zero) decimal places of a number.
+     * E.g. 1881.50 → 2, 1.23456 → 5, 2020.0 → 0, 0.25 → 2.
+     */
+    _significantDecimals(value) {
+        if (!Number.isFinite(value)) return 0;
+        const s = value.toPrecision(15);
+        const dot = s.indexOf('.');
+        if (dot === -1) return 0;
+        let end = s.length;
+        while (end > dot + 1 && s[end - 1] === '0') end--;
+        return end - dot - 1;
     }
 
     /**
