@@ -203,9 +203,14 @@
         /* ── Multi-panel selection ring + resize handles (mirror chart/legacy-index.html) ──
            panel-manager adds .panel-selected, .panel-selection-frame, .panel-resize-handle */
         /* Exclude .panel-resize-handle — #chart-container * loses borders via border:none !important,
-           which strips the thin side borders that widen the grab hit area (legacy keeps handles usable). */
+           which strips the thin side borders that widen the grab hit area (legacy keeps handles usable).
+           Also exclude the V9 multi-panel focus frame ([data-multichart-focus-frame]) and the legacy
+           per-iframe focus border ([data-multichart-focus-border]) — see MultichartGrid.jsx. Without
+           these exclusions the unified blue selection ring (3px solid #2962ff + outer/inset glow)
+           that React paints over the focused panel was being stripped, so clicking a panel showed
+           no visual "this is selected" state. */
         #chart-container canvas,
-        #chart-container *:not(.panel-resize-handle) {
+        #chart-container *:not(.panel-resize-handle):not([data-multichart-focus-frame]):not([data-multichart-focus-border]) {
             user-select: none;
             -webkit-user-select: none;
             -webkit-user-drag: none;
