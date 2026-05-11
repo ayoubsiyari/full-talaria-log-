@@ -99,15 +99,14 @@ function cpBuildColor(r, g, b, a) {
 }
 
 /**
- * Multi-panel layouts have been removed from the codebase. The V9 build is
- * single-chart only, so this always returns false and every guarded code
- * path that was previously routing through panelManager falls back to
- * window.chart. Kept as a function (not an inlined `false`) so the dozens
- * of callers below don't all need touching, and so a future re-enable is
- * a one-line change.
+ * True when the in-page MultichartGrid has registered `window.__multichartGrid`
+ * (split layouts with iframe peers). Used so timeframe / OHLC / rail-sync
+ * guards don't treat iframe-only activity as if it happened on `window.chart`.
  */
 function v9IsMultiPanelLayoutActive() {
-  return false;
+  if (typeof window === "undefined") return false;
+  const g = window.__multichartGrid;
+  return !!(g && typeof g.runCommand === "function");
 }
 
 /** Chart instance that should drive the V9 pair + timeframe display. */
@@ -7654,37 +7653,47 @@ const TalariaV8bLive = () => {
           const fid = typeof grid.getFocusedPanelId === "function"
             ? grid.getFocusedPanelId()
             : null;
-          void grid.syncDrawingToolAcrossPanels(legacyParam)
-            .then(() => {
-              if (cancelled) return;
-              if (fid && grid.hostPanelId != null && fid !== grid.hostPanelId) {
+          // Refocusing host (A) after drawing on iframe B/C: multichart sync had cleared
+          // the host's drawingManager while React still shows the last tool — do not push
+          // that stale selection back onto A (bug: rail shows Trend Line on A but A is cursor).
+          if (fid != null && grid.hostPanelId != null && fid === grid.hostPanelId) {
+            const hdm = window.chart && window.chart.drawingManager;
+            const ct = hdm && hdm.currentTool;
+            if (!ct && legacyParam) legacyParam = null;
+          }
+          const finishAfterSync = () => {
+            if (cancelled) return;
+            if (fid && grid.hostPanelId != null && fid !== grid.hostPanelId) {
+              try {
+                const h = window.chart;
+                const dmc = h && h.drawingManager;
+                if (dmc) {
+                  if (typeof dmc.clearTool === "function") dmc.clearTool();
+                  else dmc.currentTool = null;
+                }
+              } catch (_) {}
+              return;
+            }
+            if (fid != null && grid.hostPanelId != null && fid === grid.hostPanelId) {
+              const hdm = window.chart && window.chart.drawingManager;
+              const ct = hdm && hdm.currentTool;
+              if (!ct) {
                 try {
-                  const h = window.chart;
-                  const dmc = h && h.drawingManager;
-                  if (dmc) {
-                    if (typeof dmc.clearTool === "function") dmc.clearTool();
-                    else dmc.currentTool = null;
-                  }
+                  setTool("crosshair");
+                  setDropdown(null);
+                  setBtnPressed(null);
                 } catch (_) {}
                 return;
               }
-              applyHostDm();
-            })
+            }
+            applyHostDm();
+          };
+          void grid.syncDrawingToolAcrossPanels(legacyParam)
+            .then(finishAfterSync)
             .catch((err) => {
               console.warn("[V9 tool bridge multichart focus] sync failed:", err);
               if (cancelled) return;
-              if (fid && grid.hostPanelId != null && fid !== grid.hostPanelId) {
-                try {
-                  const h = window.chart;
-                  const dmc = h && h.drawingManager;
-                  if (dmc) {
-                    if (typeof dmc.clearTool === "function") dmc.clearTool();
-                    else dmc.currentTool = null;
-                  }
-                } catch (_) {}
-                return;
-              }
-              applyHostDm();
+              finishAfterSync();
             });
           return;
         } catch (err) {
@@ -7769,6 +7778,17 @@ const TalariaV8bLive = () => {
         // Syncing React from those mirrored clears races the tool bridge and forces
         // the V9 rail back to Cursor even when the user immediately picks a draw tool.
         if (mirrored) return;
+        // Multichart: `getActiveChart()` still returns `window.chart` (host). When an
+        // iframe tile has focus, syncDrawingToolAcrossPanels clears the host — that
+        // must NOT snap the V9 rail to crosshair while the user keeps a draw tool
+        // selected for the iframe (bug: pick tool → click panel → rail clears).
+        const g = typeof window !== "undefined" && window.__multichartGrid;
+        if (g && typeof g.getFocusedPanelId === "function" && g.hostPanelId != null) {
+          const fid = g.getFocusedPanelId() || g.hostPanelId;
+          const hostDm = window.chart && window.chart.drawingManager;
+          if (fid !== g.hostPanelId && dm === hostDm) return;
+          if (fid === g.hostPanelId && hostDm && dm !== hostDm) return;
+        }
         const activeCh =
           typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
         const activeDm = activeCh && activeCh.drawingManager;
