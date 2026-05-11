@@ -357,6 +357,8 @@ const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
   crosshair: new Set(["crosshair", "cursorDot", "cursorArrow", "eraser"]),
   brush: new Set(["vwap", "volProfile", "anchoredVol"]),
   trash: new Set(["trash", "trashDraw", "trashInd"]),
+  eye: new Set(["eye", "eyeAll", "eyeInd", "eyePos", "eyeHide"]),
+  magnet: new Set(["magnet", "magnetOff", "magnetWeak", "magnetStrong"]),
 });
 
 function v9RailSubtoolOrFallback(groupId, sel, fallback) {
@@ -14626,12 +14628,13 @@ const TalariaV8bLive = () => {
                         else if (item.icon === "eyeInd") ch.handleVisibilityMenuAction("indicators");
                         else if (item.icon === "eyePos") ch.handleVisibilityMenuAction("positions");
                         else if (item.icon === "eyeHide") ch.handleVisibilityMenuAction("all");
+                        setGroupSelected(p => v9SanitizeGroupSelected({ ...p, eye: item }));
                         closeDropdown();
                         return;
                       }
                       if (activeKey === "magnet") {
                         applyV9MagnetMode(item);
-                        setGroupSelected((p) => ({ ...p, magnet: item }));
+                        setGroupSelected(p => v9SanitizeGroupSelected({ ...p, magnet: item }));
                         closeDropdown();
                         return;
                       }
