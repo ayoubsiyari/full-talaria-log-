@@ -4521,9 +4521,9 @@ class ReplaySystem {
      */
     ensureReplayFollowButton() {
         const followIconSvg =
-            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
-            '<path d="M6.8 6.8l4.9 5.2-4.9 5.2"/>' +
-            '<path d="M12.3 6.8l4.9 5.2-4.9 5.2"/>' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none">' +
+            '<rect x="1" y="1" width="22" height="22" rx="4" fill="#2962FF"/>' +
+            '<path d="M9.5 6.5 L17.5 12 L9.5 17.5 Z" fill="#fff"/>' +
             '</svg>';
         let btn = this.followBtn;
         if (btn && document.body.contains(btn)) return btn;
@@ -4547,8 +4547,8 @@ class ReplaySystem {
                 display: 'none',
                 alignItems: 'center',
                 justifyContent: 'center',
-                width: '44px',
-                height: '44px',
+                width: '36px',
+                height: '36px',
                 padding: '0',
                 margin: '0',
                 boxSizing: 'border-box',
@@ -4556,15 +4556,14 @@ class ReplaySystem {
                 appearance: 'none',
                 font: 'inherit',
                 outline: 'none',
-                background: 'rgba(14, 17, 28, 0.92)',
-                backdropFilter: 'blur(14px)',
-                WebkitBackdropFilter: 'blur(14px)',
-                border: '1px solid rgba(140, 160, 255, 0.28)',
-                borderRadius: '10px',
-                color: 'rgba(210, 218, 255, 0.9)',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: '6px',
+                color: '#fff',
                 cursor: 'pointer',
-                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.045)',
+                boxShadow: '0 2px 12px rgba(0, 0, 0, 0.35)',
                 pointerEvents: 'auto',
+                transition: 'transform 0.12s ease, box-shadow 0.12s ease',
             });
             document.body.appendChild(btn);
         }
