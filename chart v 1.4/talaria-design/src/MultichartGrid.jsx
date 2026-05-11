@@ -528,6 +528,30 @@ function readHostChartFileAndTf() {
     }
 }
 
+/**
+ * Resolve `mode=` for iframe URLs from the parent URL or, when missing there,
+ * from `window.chart` (same idea as readHostChartFileAndTf).
+ *
+ * Without `mode=backtest|propfirm`, embed-bridge calls loadFileData →
+ * _buildSmartWindowParams clamps to the session window (short 1m slice).
+ * With mode=backtest, chart.js checkBacktestingMode runs autoLoadBacktestingData
+ * → full 1D history ending at session end (matches panel A).
+ */
+function readHostChartMode() {
+    try {
+        const u = new URLSearchParams(window.location.search || "");
+        const m = (u.get("mode") || "").toLowerCase();
+        if (m === "backtest" || m === "propfirm" || m === "live") return m;
+        const ch = window.chart;
+        if (!ch) return null;
+        if (ch.isPropFirmMode) return "propfirm";
+        if (ch.isBacktestMode) return "backtest";
+        return null;
+    } catch (_) {
+        return null;
+    }
+}
+
 // ─── iframe URL ─────────────────────────────────────────────────────────────
 function buildIframeSrc({ panelId, fileId, tf, sessionId, mode }) {
     const params = new URLSearchParams();
@@ -1080,7 +1104,7 @@ export default function MultichartGrid({
                         fileId:    cfg.fileId,
                         tf:        cfg.tf,
                         sessionId: cfg.sessionId || initialSessionIdRef.current || null,
-                        mode:      cfg.mode      || initialModeRef.current      || null,
+                        mode:      cfg.mode || initialModeRef.current || readHostChartMode(),
                     });
                 },
                 onLog: function (entry) {
@@ -1232,12 +1256,13 @@ export default function MultichartGrid({
                 const propTf = initialTimeframeRef.current && String(initialTimeframeRef.current).trim();
                 const effFile = propFid || hostNt.fileId || null;
                 const effTf = propTf || hostNt.tf || "1m";
+                const effMode = initialModeRef.current || readHostChartMode();
                 mgr.addChart({
                     id:        tile.id,
                     tf:        effTf,
                     fileId:    effFile,
                     sessionId: initialSessionIdRef.current || null,
-                    mode:      initialModeRef.current      || null,
+                    mode:      effMode,
                 }, cellEl);
             } catch (e) {
                 console.error("[MultichartGrid] addChart failed for", tile.id, e);

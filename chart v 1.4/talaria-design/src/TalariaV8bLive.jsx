@@ -17050,6 +17050,10 @@ const TalariaV8bLive = () => {
                 try {
                   const m = new URLSearchParams(window.location.search).get("mode");
                   if (m === "backtest" || m === "propfirm" || m === "live") initMode = m;
+                  if (!initMode && window.chart) {
+                    if (window.chart.isPropFirmMode) initMode = "propfirm";
+                    else if (window.chart.isBacktestMode) initMode = "backtest";
+                  }
                 } catch (_) {}
                 // Capture the active trading sessionId so iframe panels
                 // build the same drawings storage key as the parent
