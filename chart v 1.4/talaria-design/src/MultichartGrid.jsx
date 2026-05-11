@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260513T1200";
+const BRIDGE_VERSION = "20260514T0900";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1526,6 +1526,8 @@ export default function MultichartGrid({
     // ready change.
     const replayStateRef = useRef({
         lastBroadcastTs: 0,
+        /** Dedupe multichart `replayTick` / `replayEnter`: `${ts}:${idx}` — futures data may repeat `t`. */
+        lastReplayDedupe: null,
         everEntered: false,
         // Tri-state — has the PARENT chart's replaySystem ever entered
         // replay since the page loaded?
@@ -1630,7 +1632,10 @@ export default function MultichartGrid({
             if (!mgr) return;
             const ts = ev && ev.detail && ev.detail.timestamp;
             if (!Number.isFinite(ts)) return;
-            if (ts === replayStateRef.current.lastBroadcastTs) return;
+            const idx = ev.detail && ev.detail.currentIndex;
+            const dedupe = Number.isFinite(idx) ? `${ts}:${idx}` : String(ts);
+            if (dedupe === replayStateRef.current.lastReplayDedupe) return;
+            replayStateRef.current.lastReplayDedupe = dedupe;
             replayStateRef.current.lastBroadcastTs = ts;
             const cmd = replayStateRef.current.everEntered ? "replayTick" : "replayEnter";
             replayStateRef.current.everEntered = true;
@@ -1778,6 +1783,7 @@ export default function MultichartGrid({
                     broadcastToIframes("replayExit", {});
                     replayStateRef.current.everEntered = false;
                     replayStateRef.current.lastBroadcastTs = 0;
+                    replayStateRef.current.lastReplayDedupe = null;
                     return patchOriginalExit();
                 };
 

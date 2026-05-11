@@ -153,7 +153,8 @@ class ReplaySystem {
                 if (typeof window.updateSpeedDisplay === 'function') {
                     window.updateSpeedDisplay(this.speed);
                 }
-                this.updateChartData(false);
+                // Align viewport with restored playhead (false left stale chart pan from session chartView).
+                this.updateChartData(true);
             }
         } catch (e) {
             console.warn('⚠️ Failed to apply persisted replay state', e);
@@ -2236,8 +2237,26 @@ class ReplaySystem {
 
         if (!Number.isFinite(candleSpacing) || candleSpacing <= 0) return null;
 
+        // Internal layout width can lag the visible DOM (multi-panel split, first resize frame).
+        // Returning null used to leave offsetX at 0 → viewport on the *left* of a long backtest
+        // slice so min/max OHLC across the whole loaded window "explodes" the Y-axis (~years of FX range).
+        let effectiveW = Number(chartInstance.w) || 0;
+        if (effectiveW < 80) {
+            try {
+                const canvas = chartInstance.canvas;
+                const el = canvas && canvas.parentElement;
+                const rw = el ? el.getBoundingClientRect().width : 0;
+                if (Number.isFinite(rw) && rw >= 80) effectiveW = rw;
+            } catch (_e) { /* ignore */ }
+        }
+        // Conservative default: slightly underestimate width → scroll a touch further right so the
+        // playhead sits near the edge instead of leaving the chart squashed to the full history range.
+        if (effectiveW < 80) {
+            effectiveW = 320;
+        }
+
         const m = chartInstance.margin || { l: 0, r: 70 };
-        const chartAreaW = Math.max(0, (chartInstance.w || 0) - (m.l || 0) - (m.r || 0));
+        const chartAreaW = Math.max(0, effectiveW - (m.l || 0) - (m.r || 0));
         const numVisibleCandles = Math.max(1, Math.floor(chartAreaW / candleSpacing));
 
         const configuredGapCandles = Math.max(
@@ -2374,8 +2393,8 @@ class ReplaySystem {
             this.chart.orderManager.updatePositions();
         }
         
-        // Sync all panel charts with the current replay position
-        this.syncPanelCharts();
+        // Sync all panel charts with the current replay position (main already aligned above)
+        this.syncPanelCharts(true);
         
         // Update follow button visibility based on whether last candle is visible
         this.updateAutoScrollIndicator();
@@ -3344,7 +3363,7 @@ class ReplaySystem {
         // Sync panels (throttle every 3rd update to keep fast mode responsive)
         if (!this._fastSyncCounter) this._fastSyncCounter = 0;
         if (++this._fastSyncCounter % 3 === 0) {
-            this.syncPanelCharts();
+            this.syncPanelCharts(true);
         }
 
         // Keep follow button responsive in fast mode (injected fixed overlay must stay aligned with #chartWrapper).
@@ -3838,13 +3857,15 @@ class ReplaySystem {
             
             try {
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
+                let appliedSlice = false;
 
                 if (hasOwnData) {
                     const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
                     const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
                     pc.rawData = panelSlice;
                     pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
-                } else {
+                    appliedSlice = true;
+                } else if (this._panelSharesMainReplayDataset(pc, mainChart)) {
                     if (mainSymbol && pc.currentSymbol !== mainSymbol) {
                         pc.currentSymbol = mainSymbol;
                         if (mainChart) pc.currentFileId = mainChart.currentFileId;
@@ -3858,8 +3879,13 @@ class ReplaySystem {
                     }
                     pc.rawData = [...slicedRaw];
                     pc.data = pc.resampleData(slicedRaw, pc.currentTimeframe);
+                    appliedSlice = true;
                 }
-                
+
+                if (!appliedSlice) {
+                    return;
+                }
+
                 if (this.tickProgress % 18 === 0 && typeof pc.recalculateIndicators === 'function') {
                     try { pc.recalculateIndicators(); } catch (e) {}
                 }
@@ -4746,7 +4772,13 @@ class ReplaySystem {
                         ? String(this.chart.currentSymbol)
                         : '';
                     window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
-                        detail: { timestamp: ts, symbol: sym }
+                        detail: {
+                            timestamp: ts,
+                            symbol: sym,
+                            // Multichart fan-out dedupes on (timestamp, index): futures
+                            // stitched series can repeat bar timestamps; index disambiguates.
+                            currentIndex: this.currentIndex,
+                        }
                     }));
                 }
             } catch (e) { /* ignore */ }
@@ -4784,7 +4816,11 @@ class ReplaySystem {
                     ? String(this.chart.currentSymbol)
                     : '';
                 window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
-                    detail: { timestamp: ts, symbol: sym }
+                    detail: {
+                        timestamp: ts,
+                        symbol: sym,
+                        currentIndex: this.currentIndex,
+                    }
                 }));
             }
         } catch (e) { /* ignore */ }
@@ -5078,13 +5114,87 @@ class ReplaySystem {
         return Math.min(idx, panelFullRawData.length - 1);
     }
 
-    syncPanelCharts() {
+    /**
+     * Follower tiles should only ingest {@link #fullRawData} when they represent the **same dataset**
+     * as `window.chart`. Otherwise sync used to overwrite a second pair with the main pair's bars
+     * whenever `_panelFullRawData` was still empty — mixed prices and a collapsed Y-axis.
+     */
+    _panelSharesMainReplayDataset(pc, mainChart) {
+        if (!pc || !mainChart) return false;
+        const pf = pc.currentFileId != null && String(pc.currentFileId) !== '' ? String(pc.currentFileId) : '';
+        const mf = mainChart.currentFileId != null && String(mainChart.currentFileId) !== '' ? String(mainChart.currentFileId) : '';
+        if (pf && mf) return pf === mf;
+        return false;
+    }
+
+    /**
+     * Re-apply the replay prefix slice to the main chart (window.chart / panel 0).
+     * refitMultiPanelViewports, layout open, and other hooks call {@link #syncPanelCharts} without
+     * going through updateChartData — if we only update secondary panels, the main can keep a
+     * merged/prefetched series and the Y-scale "explodes" (mixed price decades).
+     * @param {Array} slicedRawData - same cut as fullRawData.slice(0, currentIndex + 1)
+     */
+    _realignMainChartWithReplaySlice(slicedRawData) {
+        const mainChart = this.chart;
+        if (!mainChart || !Array.isArray(slicedRawData) || slicedRawData.length === 0) return;
+        try {
+            mainChart.priceZoom = 1;
+            mainChart.priceOffset = 0;
+            mainChart.autoScale = true;
+            if (mainChart.priceScale) {
+                mainChart.priceScale.autoScale = true;
+                mainChart.priceScale.locked = false;
+            }
+            mainChart.manualCenterPrice = null;
+            mainChart.manualRange = null;
+            mainChart._pendingChartViewSanityCheck = true;
+
+            mainChart.rawData = slicedRawData;
+            mainChart.data = mainChart.resampleData(slicedRawData, mainChart.currentTimeframe);
+            if (typeof mainChart.bumpDataVersion === 'function') mainChart.bumpDataVersion();
+        } catch (e) {
+            console.warn('replay: main chart resample in syncPanelCharts failed', e);
+            return;
+        }
+        if (typeof mainChart.recalculateIndicators === 'function') {
+            try { mainChart.recalculateIndicators(); } catch (_e) { /* ignore */ }
+        }
+        if (mainChart.drawingManager && typeof mainChart.drawingManager.redrawAll === 'function') {
+            try { mainChart.drawingManager.redrawAll(); } catch (_e) { /* ignore */ }
+        }
+        if (this.autoScrollEnabled) {
+            const st = this.getReplayAutoScrollState(mainChart);
+            if (st) mainChart.offsetX = st.offsetX;
+        }
+        if (typeof mainChart.constrainOffset === 'function') {
+            try { mainChart.constrainOffset(); } catch (_e) { /* ignore */ }
+        }
+        if (mainChart.orderManager && typeof mainChart.orderManager.updatePositions === 'function') {
+            try { mainChart.orderManager.updatePositions(); } catch (_e) { /* ignore */ }
+        }
+        mainChart.renderPending = true;
+        if (typeof mainChart.render === 'function') mainChart.render();
+    }
+
+    /**
+     * Push the current replay slice to follower panel charts.
+     * @param {boolean} [mainAlreadyAligned=false] - When true, {@link #updateChartData} or
+     * {@link #updateChartDataFast} just set main rawData — skip re-touching panel 0.
+     */
+    syncPanelCharts(mainAlreadyAligned = false) {
         if (!window.panelManager || !window.panelManager.panels || window.panelManager.panels.length === 0) {
             return;
         }
-        
+        if (!this.fullRawData || this.fullRawData.length === 0) {
+            return;
+        }
+
         const sliceEnd = Math.max(this.currentIndex + 1, 1);
         const slicedRawData = this.fullRawData.slice(0, sliceEnd);
+        if (!mainAlreadyAligned && this.isActive) {
+            this._realignMainChartWithReplaySlice(slicedRawData);
+        }
+
         const replayTs = this.replayTimestamp;
         
         const mainChart = this.chart;
@@ -5098,19 +5208,20 @@ class ReplaySystem {
             
             try {
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
+                let appliedSlice = false;
 
                 if (hasOwnData) {
                     const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
                     const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
                     pc.rawData = panelSlice;
                     pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
-                } else {
+                    appliedSlice = true;
+                } else if (this._panelSharesMainReplayDataset(pc, mainChart)) {
                     if (mainSymbol && pc.currentSymbol !== mainSymbol) {
                         pc.currentSymbol = mainSymbol;
                         pc.currentFileId = mainFileId;
                         if (typeof pc.updateChartTitle === 'function') pc.updateChartTitle(mainSymbol);
                         if (typeof pc.updateChartOHLCSymbol === 'function') pc.updateChartOHLCSymbol(mainSymbol);
-                        // Reset Y-axis scale for the new pair's price range
                         pc.priceZoom = 1;
                         pc.priceOffset = 0;
                         pc.autoScale = true;
@@ -5121,8 +5232,13 @@ class ReplaySystem {
                     }
                     pc.rawData = slicedRawData;
                     pc.data = pc.resampleData(slicedRawData, pc.currentTimeframe);
+                    appliedSlice = true;
                 }
-                
+
+                if (!appliedSlice) {
+                    return;
+                }
+
                 if (typeof pc.bumpDataVersion === 'function') pc.bumpDataVersion();
                 
                 if (typeof pc.recalculateIndicators === 'function') {

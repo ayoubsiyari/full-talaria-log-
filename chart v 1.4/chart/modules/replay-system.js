@@ -4772,7 +4772,13 @@ class ReplaySystem {
                         ? String(this.chart.currentSymbol)
                         : '';
                     window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
-                        detail: { timestamp: ts, symbol: sym }
+                        detail: {
+                            timestamp: ts,
+                            symbol: sym,
+                            // Multichart fan-out dedupes on (timestamp, index): futures
+                            // stitched series can repeat bar timestamps; index disambiguates.
+                            currentIndex: this.currentIndex,
+                        }
                     }));
                 }
             } catch (e) { /* ignore */ }
@@ -4810,7 +4816,11 @@ class ReplaySystem {
                     ? String(this.chart.currentSymbol)
                     : '';
                 window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
-                    detail: { timestamp: ts, symbol: sym }
+                    detail: {
+                        timestamp: ts,
+                        symbol: sym,
+                        currentIndex: this.currentIndex,
+                    }
                 }));
             }
         } catch (e) { /* ignore */ }
