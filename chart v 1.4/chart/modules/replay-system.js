@@ -4521,7 +4521,7 @@ class ReplaySystem {
      */
     ensureReplayFollowButton() {
         const followIconSvg =
-            '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none">' +
             '<rect x="1" y="1" width="22" height="22" rx="4" fill="#2962FF"/>' +
             '<path d="M9.5 6.5 L17.5 12 L9.5 17.5 Z" fill="#fff"/>' +
             '</svg>';
@@ -4563,7 +4563,8 @@ class ReplaySystem {
                 cursor: 'pointer',
                 boxShadow: '0 2px 12px rgba(0, 0, 0, 0.35)',
                 pointerEvents: 'auto',
-                transition: 'transform 0.12s ease, box-shadow 0.12s ease',
+                opacity: '0.5',
+                transition: 'transform 0.12s ease, opacity 0.12s ease',
             });
             document.body.appendChild(btn);
         }
