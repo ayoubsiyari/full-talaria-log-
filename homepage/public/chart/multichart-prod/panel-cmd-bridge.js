@@ -923,7 +923,9 @@
                             }
                         }, 0);
                     }
-                    if (kind === 'pending' && typeof om2.refreshPendingOrderGraphicsForChart === 'function') {
+                    if (kind === 'pending' && typeof om2.scheduleRefreshPendingOrderGraphicsForChart === 'function') {
+                        om2.scheduleRefreshPendingOrderGraphicsForChart(ord, ch);
+                    } else if (kind === 'pending' && typeof om2.refreshPendingOrderGraphicsForChart === 'function') {
                         om2.refreshPendingOrderGraphicsForChart(ord, ch);
                     } else {
                         try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
@@ -949,7 +951,9 @@
                     if (!po && omSnap && omSnap.orderService && omSnap.orderService.pendingOrders) {
                         po = omSnap.orderService.pendingOrders.find(function (o) { return o && o.id === snapS.id; });
                     }
-                    if (po && typeof omSnap.refreshPendingOrderGraphicsForChart === 'function') {
+                    if (po && typeof omSnap.scheduleRefreshPendingOrderGraphicsForChart === 'function') {
+                        omSnap.scheduleRefreshPendingOrderGraphicsForChart(po, ch);
+                    } else if (po && typeof omSnap.refreshPendingOrderGraphicsForChart === 'function') {
                         omSnap.refreshPendingOrderGraphicsForChart(po, ch);
                     } else {
                         try { if (typeof ch.render === 'function') ch.render(); } catch (_e) {}

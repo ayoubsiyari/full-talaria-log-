@@ -29591,6 +29591,50 @@ class OrderManager {
         }
     }
 
+    /**
+     * Multichart mirror: `refreshPendingOrderGraphicsForChart` often races peer
+     * `currentFileId` / symbol hydration (and duplicate `addOrder` skips retry).
+     * Re-run across rAF until the pending entry line exists or the budget is spent,
+     * plus one refresh on `chartDataLoaded` when bars land.
+     */
+    scheduleRefreshPendingOrderGraphicsForChart(pendingOrder, chart, opts) {
+        const maxRaf = (opts && Number.isFinite(opts.maxRaf)) ? Math.max(4, opts.maxRaf | 0) : 72;
+        if (!pendingOrder || pendingOrder.id == null || !chart) return;
+        const om = this;
+        const id = pendingOrder.id;
+        const hasEntryLine = () => (om.orderLines || []).some(
+            (ol) => ol && ol.isPending && ol.orderId === id && (ol.chart || om.chart) === chart
+        );
+        let left = maxRaf;
+        const onData = () => {
+            try {
+                om.refreshPendingOrderGraphicsForChart(pendingOrder, chart);
+            } catch (_e) { /* ignore */ }
+        };
+        const tick = () => {
+            try {
+                om.refreshPendingOrderGraphicsForChart(pendingOrder, chart);
+            } catch (_e) { /* ignore */ }
+            if (hasEntryLine()) return;
+            left -= 1;
+            if (left <= 0) return;
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(tick);
+            }
+        };
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            try {
+                window.addEventListener('chartDataLoaded', onData, { once: true });
+            } catch (_e) { /* ignore */ }
+        }
+        try {
+            om.refreshPendingOrderGraphicsForChart(pendingOrder, chart);
+        } catch (_e) { /* ignore */ }
+        if (!hasEntryLine() && typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(tick);
+        }
+    }
+
     drawPendingOrderTargets(pendingOrder, targetChart = null) {
         if (targetChart == null && this._isMultiPanelLayout()) {
             const charts = this._collectLayoutCharts();

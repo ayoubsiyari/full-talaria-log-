@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260511T2300";
+const BRIDGE_VERSION = "20260512T1900";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -2297,7 +2297,9 @@ export default function MultichartGrid({
                                 }
                             }, 0);
                         }
-                        if (kind === "pending" && typeof om.refreshPendingOrderGraphicsForChart === "function") {
+                        if (kind === "pending" && typeof om.scheduleRefreshPendingOrderGraphicsForChart === "function") {
+                            om.scheduleRefreshPendingOrderGraphicsForChart(order, ch);
+                        } else if (kind === "pending" && typeof om.refreshPendingOrderGraphicsForChart === "function") {
                             om.refreshPendingOrderGraphicsForChart(order, ch);
                         } else {
                             try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
@@ -2321,7 +2323,9 @@ export default function MultichartGrid({
                         if (!po && omSync && omSync.orderService && omSync.orderService.pendingOrders) {
                             po = omSync.orderService.pendingOrders.find((o) => o && o.id === snap.id);
                         }
-                        if (po && typeof omSync.refreshPendingOrderGraphicsForChart === "function") {
+                        if (po && typeof omSync.scheduleRefreshPendingOrderGraphicsForChart === "function") {
+                            omSync.scheduleRefreshPendingOrderGraphicsForChart(po, ch);
+                        } else if (po && typeof omSync.refreshPendingOrderGraphicsForChart === "function") {
                             omSync.refreshPendingOrderGraphicsForChart(po, ch);
                         } else {
                             try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
