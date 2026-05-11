@@ -529,23 +529,25 @@ function readHostChartFileAndTf() {
 }
 
 /**
- * Resolve `mode=` for iframe URLs from the parent URL or, when missing there,
- * from `window.chart` (same idea as readHostChartFileAndTf).
+ * Resolve `mode=` for iframe URLs from the **parent page URL only**.
  *
- * Without `mode=backtest|propfirm`, embed-bridge calls loadFileData →
- * _buildSmartWindowParams clamps to the session window (short 1m slice).
- * With mode=backtest, chart.js checkBacktestingMode runs autoLoadBacktestingData
- * → full 1D history ending at session end (matches panel A).
+ * Do NOT infer from `window.chart.isBacktestMode` / `isPropFirmMode`: the
+ * journal often opens backtest without `?mode=` on the URL while the chart
+ * engine is already in a session. Adding `mode=backtest` in that case makes
+ * embed-bridge skip `loadFileData` and defer to `checkBacktestingMode` →
+ * `autoLoadBacktestingData`, which can fail to complete inside the iframe
+ * (session/bootstrap/redirect timing) so the multichart manager never sees
+ * `bridge-ready` and panels stick on "LOADING …".
+ *
+ * embed-bridge mirrors `parent.chart.backtestingSession` before
+ * `loadFileData`, so the non-`mode=` path still loads the correct session
+ * window for B/C/D (see embed-bridge.js "mirrored parent backtestingSession").
  */
-function readHostChartMode() {
+function readUrlChartMode() {
     try {
         const u = new URLSearchParams(window.location.search || "");
         const m = (u.get("mode") || "").toLowerCase();
         if (m === "backtest" || m === "propfirm" || m === "live") return m;
-        const ch = window.chart;
-        if (!ch) return null;
-        if (ch.isPropFirmMode) return "propfirm";
-        if (ch.isBacktestMode) return "backtest";
         return null;
     } catch (_) {
         return null;
@@ -1104,7 +1106,7 @@ export default function MultichartGrid({
                         fileId:    cfg.fileId,
                         tf:        cfg.tf,
                         sessionId: cfg.sessionId || initialSessionIdRef.current || null,
-                        mode:      cfg.mode || initialModeRef.current || readHostChartMode(),
+                        mode:      cfg.mode || initialModeRef.current || readUrlChartMode(),
                     });
                 },
                 onLog: function (entry) {
@@ -1256,7 +1258,7 @@ export default function MultichartGrid({
                 const propTf = initialTimeframeRef.current && String(initialTimeframeRef.current).trim();
                 const effFile = propFid || hostNt.fileId || null;
                 const effTf = propTf || hostNt.tf || "1m";
-                const effMode = initialModeRef.current || readHostChartMode();
+                const effMode = initialModeRef.current || readUrlChartMode();
                 mgr.addChart({
                     id:        tile.id,
                     tf:        effTf,
