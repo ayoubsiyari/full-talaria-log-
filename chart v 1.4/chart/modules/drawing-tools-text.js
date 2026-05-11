@@ -3033,7 +3033,7 @@ class PriceLabelTool extends BaseDrawing {
             .attr('cx', x1)
             .attr('cy', y1)
             .attr('r', 4 * scaleFactor)
-            .attr('fill', lineColor)
+            .attr('fill', this.style.stroke || '#2962ff')
             .style('pointer-events', 'none');
 
         // Create handles at both endpoints
