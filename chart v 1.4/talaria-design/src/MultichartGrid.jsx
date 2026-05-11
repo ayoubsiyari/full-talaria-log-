@@ -374,6 +374,124 @@ function resolveLayout(layoutId, panelCount) {
     return LAYOUT_TEMPLATES[fb];
 }
 
+/**
+ * Pixel gap between CSS grid tracks — must match `gap` on the multichart grid container.
+ */
+const MULTICHART_GRID_GAP_PX = 4;
+
+/**
+ * Parse `grid-column` / `grid-row` placement like "1 / 4" or shorthand "2".
+ * When `spec` is missing, the tile is treated as spanning the full axis (auto-flow layouts).
+ */
+function parseGridLineRange(spec, maxLine) {
+    if (spec == null || spec === "") {
+        return { start: 1, end: maxLine };
+    }
+    const s = String(spec).trim();
+    const parts = s.split(/\s*\/\s*/);
+    if (parts.length === 1) {
+        const n = parseInt(parts[0], 10);
+        if (!Number.isFinite(n)) return { start: 1, end: maxLine };
+        return { start: n, end: n + 1 };
+    }
+    const a = parseInt(parts[0], 10);
+    const b = parseInt(parts[1], 10);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return { start: 1, end: maxLine };
+    return { start: a, end: b };
+}
+
+/**
+ * Column gutters where two tiles actually meet on a row (asymmetric layouts like 5a:
+ * 2+3 split). Merges contiguous rows that share the same vertical boundary so we
+ * still render one full-height handle when appropriate.
+ */
+function computeColumnSplitterSegments(layoutTiles, numColTracks, numRowTracks) {
+    const maxColLine = numColTracks + 1;
+    const maxRowLine = numRowTracks + 1;
+    const tiles = layoutTiles.map((t) => ({
+        id: t.id,
+        col: parseGridLineRange(t.gridColumn, maxColLine),
+        row: parseGridLineRange(t.gridRow, maxRowLine),
+    }));
+    const segments = [];
+    for (let r = 0; r < numRowTracks; r++) {
+        const inRow = tiles.filter(
+            (t) => t.row.start <= r + 1 && t.row.end >= r + 2
+        );
+        inRow.sort((a, b) => a.col.start - b.col.start);
+        for (let i = 1; i < inRow.length; i++) {
+            const left = inRow[i - 1];
+            const right = inRow[i];
+            if (left.col.end !== right.col.start) continue;
+            const line = left.col.end;
+            const gutterIndex = line - 2;
+            if (gutterIndex < 0 || gutterIndex >= numColTracks - 1) continue;
+            const last = segments[segments.length - 1];
+            if (last && last.gutterIndex === gutterIndex && last.row1 === r - 1) {
+                last.row1 = r;
+            } else {
+                segments.push({ gutterIndex, row0: r, row1: r });
+            }
+        }
+    }
+    return segments;
+}
+
+/**
+ * Row gutters where tiles stack vertically within a column strip — may be shorter than
+ * full grid width (e.g. 3l). Adjacent column strips with the same horizontal boundary merge.
+ */
+function computeRowSplitterSegments(layoutTiles, numColTracks, numRowTracks) {
+    const maxColLine = numColTracks + 1;
+    const maxRowLine = numRowTracks + 1;
+    const tiles = layoutTiles.map((t) => ({
+        id: t.id,
+        col: parseGridLineRange(t.gridColumn, maxColLine),
+        row: parseGridLineRange(t.gridRow, maxRowLine),
+    }));
+    const segments = [];
+    for (let c = 0; c < numColTracks; c++) {
+        const inCol = tiles.filter(
+            (t) => t.col.start <= c + 1 && t.col.end >= c + 2
+        );
+        inCol.sort((a, b) => a.row.start - b.row.start);
+        for (let i = 1; i < inCol.length; i++) {
+            const top = inCol[i - 1];
+            const bot = inCol[i];
+            if (top.row.end !== bot.row.start) continue;
+            const line = top.row.end;
+            const gutterIndex = line - 2;
+            if (gutterIndex < 0 || gutterIndex >= numRowTracks - 1) continue;
+            const last = segments[segments.length - 1];
+            if (last && last.gutterIndex === gutterIndex && last.col1 === c - 1) {
+                last.col1 = c;
+            } else {
+                segments.push({ gutterIndex, col0: c, col1: c });
+            }
+        }
+    }
+    return segments;
+}
+
+/** Top/left pixel start and end of each grid track (excluding gaps inside the band). */
+function trackBandsPx(fracs, totalPx, gap) {
+    if (!fracs || !fracs.length || totalPx <= 0) return [];
+    const sumF = fracs.reduce((a, b) => a + b, 0) || 1;
+    const N = fracs.length;
+    const avail = Math.max(0, totalPx - (N - 1) * gap);
+    const out = [];
+    let pos = 0;
+    for (let i = 0; i < N; i++) {
+        const sz = (fracs[i] / sumF) * avail;
+        const start = pos;
+        const end = pos + sz;
+        out.push({ start, end });
+        pos = end;
+        if (i < N - 1) pos += gap;
+    }
+    return out;
+}
+
 // ─── iframe URL ─────────────────────────────────────────────────────────────
 function buildIframeSrc({ panelId, fileId, tf, sessionId, mode }) {
     const params = new URLSearchParams();
@@ -2444,7 +2562,6 @@ export default function MultichartGrid({
     // Without the gap subtraction the splitter slides ~3-4px PAST
     // the actual divider on each move (visible drift the user sees
     // as "lag"), which is what made it feel "not smooth".
-    const GRID_GAP_PX = 4;
     function makeSplitterDown(axis /* 'col' | 'row' */, idx) {
         return function onDown(ev) {
             ev.preventDefault();
@@ -2456,7 +2573,7 @@ export default function MultichartGrid({
             const sumFracs   = startFracs.reduce((a, b) => a + b, 0) || 1;
             const N          = startFracs.length;
             const totalPx    = (axis === "col" ? rect.width : rect.height) || 1;
-            const availPx    = Math.max(1, totalPx - (N - 1) * GRID_GAP_PX);
+            const availPx    = Math.max(1, totalPx - (N - 1) * MULTICHART_GRID_GAP_PX);
             const startMouse = (axis === "col" ? ev.clientX : ev.clientY);
             const sumPair    = (startFracs[idx] || 0) + (startFracs[idx + 1] || 0);
 
@@ -2628,12 +2745,102 @@ export default function MultichartGrid({
         return () => ro.disconnect();
     }, []);
 
-    const colSplitPx = colFractions.length > 1
-        ? gapCenterPx(colFractions, containerSize.w, GRID_GAP_PX)
-        : [];
-    const rowSplitPx = rowFractions.length > 1
-        ? gapCenterPx(rowFractions, containerSize.h, GRID_GAP_PX)
-        : [];
+    const hasExplicitGridPlacement = useMemo(
+        () => layout.tiles.some((t) => !!(t.gridColumn || t.gridRow)),
+        [layout]
+    );
+
+    const columnSplittersToRender = useMemo(() => {
+        const gap = MULTICHART_GRID_GAP_PX;
+        const W = containerSize.w;
+        const H = containerSize.h;
+        if (colFractions.length < 2 || W <= 0) return [];
+        const colCenter = gapCenterPx(colFractions, W, gap);
+        if (!hasExplicitGridPlacement) {
+            return colCenter.map((px, i) => ({
+                key: `col-splitter-${i}`,
+                gutterIndex: i,
+                left: Math.round(px) - 5,
+                top: 0,
+                height: H,
+            }));
+        }
+        const rowBands = trackBandsPx(rowFractions, H, gap);
+        const segs = computeColumnSplitterSegments(
+            layout.tiles,
+            colFractions.length,
+            rowFractions.length
+        );
+        return segs
+            .map((s, idx) => {
+                const top = rowBands[s.row0]?.start ?? 0;
+                const bot = rowBands[s.row1]?.end ?? H;
+                const px = colCenter[s.gutterIndex];
+                if (!Number.isFinite(px)) return null;
+                const height = Math.max(8, Math.round(bot - top));
+                return {
+                    key: `col-splitter-${s.gutterIndex}-r${s.row0}-${s.row1}-${idx}`,
+                    gutterIndex: s.gutterIndex,
+                    left: Math.round(px) - 5,
+                    top: Math.round(top),
+                    height,
+                };
+            })
+            .filter(Boolean);
+    }, [
+        hasExplicitGridPlacement,
+        layout.tiles,
+        colFractions,
+        rowFractions,
+        containerSize.w,
+        containerSize.h,
+    ]);
+
+    const rowSplittersToRender = useMemo(() => {
+        const gap = MULTICHART_GRID_GAP_PX;
+        const W = containerSize.w;
+        const H = containerSize.h;
+        if (rowFractions.length < 2 || H <= 0) return [];
+        const rowCenter = gapCenterPx(rowFractions, H, gap);
+        if (!hasExplicitGridPlacement) {
+            return rowCenter.map((px, i) => ({
+                key: `row-splitter-${i}`,
+                gutterIndex: i,
+                top: Math.round(px) - 5,
+                left: 0,
+                width: W,
+            }));
+        }
+        const colBands = trackBandsPx(colFractions, W, gap);
+        const segs = computeRowSplitterSegments(
+            layout.tiles,
+            colFractions.length,
+            rowFractions.length
+        );
+        return segs
+            .map((s, idx) => {
+                const lef = colBands[s.col0]?.start ?? 0;
+                const rig = colBands[s.col1]?.end ?? W;
+                const px = rowCenter[s.gutterIndex];
+                if (!Number.isFinite(px)) return null;
+                const width = Math.max(8, Math.round(rig - lef));
+                return {
+                    key: `row-splitter-${s.gutterIndex}-c${s.col0}-${s.col1}-${idx}`,
+                    gutterIndex: s.gutterIndex,
+                    top: Math.round(px) - 5,
+                    left: Math.round(lef),
+                    width,
+                };
+            })
+            .filter(Boolean);
+    }, [
+        hasExplicitGridPlacement,
+        layout.tiles,
+        colFractions,
+        rowFractions,
+        containerSize.w,
+        containerSize.h,
+    ]);
 
     return (
         <>
@@ -2650,7 +2857,7 @@ export default function MultichartGrid({
                 // between panels is unmistakable. Combined with the
                 // lighter background color below the splitter reads
                 // as a clean TradingView-style separator.
-                gap: "4px",
+                gap: `${MULTICHART_GRID_GAP_PX}px`,
                 background: "#2a2e3a",
                 zIndex: 12,
             }}
@@ -2748,17 +2955,17 @@ export default function MultichartGrid({
 
                 Hover state paints the gap a soft blue so the user
                 sees what they're about to grab. */}
-            {colSplitPx.map((px, i) => (
+            {columnSplittersToRender.map((s) => (
                 <div
-                    key={`col-splitter-${i}`}
-                    data-col-splitter={i}
-                    onMouseDown={makeSplitterDown("col", i)}
+                    key={s.key}
+                    data-col-splitter={s.gutterIndex}
+                    onMouseDown={makeSplitterDown("col", s.gutterIndex)}
                     style={{
                         position: "absolute",
-                        top: 0,
-                        bottom: 0,
-                        left: `${Math.round(px) - 5}px`,
+                        top: `${s.top}px`,
+                        left: `${s.left}px`,
                         width: "10px",
+                        height: `${s.height}px`,
                         cursor: "col-resize",
                         zIndex: 30,
                         background: "transparent",
@@ -2771,16 +2978,16 @@ export default function MultichartGrid({
             {/* ─── Draggable row splitters ────────────────────────────
                 Mirror of column splitters but along the horizontal
                 axis. */}
-            {rowSplitPx.map((px, i) => (
+            {rowSplittersToRender.map((s) => (
                 <div
-                    key={`row-splitter-${i}`}
-                    data-row-splitter={i}
-                    onMouseDown={makeSplitterDown("row", i)}
+                    key={s.key}
+                    data-row-splitter={s.gutterIndex}
+                    onMouseDown={makeSplitterDown("row", s.gutterIndex)}
                     style={{
                         position: "absolute",
-                        left: 0,
-                        right: 0,
-                        top: `${Math.round(px) - 5}px`,
+                        left: `${s.left}px`,
+                        width: `${s.width}px`,
+                        top: `${s.top}px`,
                         height: "10px",
                         cursor: "row-resize",
                         zIndex: 30,
