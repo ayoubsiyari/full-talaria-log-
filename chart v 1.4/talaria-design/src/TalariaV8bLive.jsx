@@ -16894,7 +16894,11 @@ const TalariaV8bLive = () => {
                   })}
                   {/* Sync toggles section */}
                   <div style={{ height: 1, background: `linear-gradient(90deg,transparent,${c.br},transparent)`, margin: "10px 0 6px" }}/>
-                  <div style={{ fontSize: 9, color: c.tm, letterSpacing: "0.06em", fontWeight: 700, marginBottom: 4 }}>SYNC</div>
+                  <div style={{ fontSize: 9, color: c.tm, letterSpacing: "0.06em", fontWeight: 700, marginBottom: 2 }}>SYNC</div>
+                  <div style={{ fontSize: 9, color: c.tm, opacity: 0.78, lineHeight: 1.35, marginBottom: 8, maxWidth: 232 }}>
+                    Crosshair, Symbol, Drawings, Time, and Date range control the items named on each row.
+                    Replay (playhead) is always shared across tiles. Indicators and Chart type switches apply to the classic panel manager only; multichart iframe tiles use the focused panel for new indicators until full fan-out is wired.
+                  </div>
                   {LAYOUT_SYNC_ITEMS.map(([key, label]) => {
                     const on = !!layoutSync[key];
                     const isH = swHov===`ddsync-${key}`;

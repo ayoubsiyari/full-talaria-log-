@@ -1418,6 +1418,10 @@ export default function MultichartGrid({
         const mgr = managerRef.current;
         if (!mgr || typeof mgr.setSyncMode !== "function") return;
         try {
+            // Only these four map into MultichartManager / sync-bridge postMessage
+            // fan-out. `layoutSync.interval`, `indicators`, and `chartType` are
+            // handled elsewhere (React timeframe listener; legacy panelManager;
+            // indicator chips always target the focused panel in V9).
             mgr.setSyncMode({
                 crosshair:    !!(layoutSync && layoutSync.crosshair),
                 visibleRange: !!(layoutSync && (layoutSync.dateRange || layoutSync.time)),
