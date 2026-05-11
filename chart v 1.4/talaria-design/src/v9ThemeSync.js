@@ -137,6 +137,15 @@ export function applyV9ThemeSettingsToChart(settings) {
       changed = true;
     }
   }
+  if (typeof settings.showOrderHistory === "boolean" && cs.showOrderHistory !== settings.showOrderHistory) {
+    cs.showOrderHistory = settings.showOrderHistory;
+    changed = true;
+  }
+  if (typeof settings.showOpenOrders === "boolean" && cs.showOpenOrders !== settings.showOpenOrders) {
+    cs.showOpenOrders = settings.showOpenOrders;
+    changed = true;
+  }
+
   const wantUnified = !!settings.unifiedBarColor;
   if (cs.unifiedBarColorEnabled !== wantUnified) {
     cs.unifiedBarColorEnabled = wantUnified;
@@ -185,6 +194,12 @@ export function applyV9ThemeSettingsToChart(settings) {
       for (const k of Object.keys(map)) {
         const v = map[k];
         if (v != null) pcs[k] = v;
+      }
+      if (typeof settings.showOrderHistory === "boolean") {
+        pcs.showOrderHistory = settings.showOrderHistory;
+      }
+      if (typeof settings.showOpenOrders === "boolean") {
+        pcs.showOpenOrders = settings.showOpenOrders;
       }
       if (pcs.unifiedBarColorEnabled !== wantUnified) pcs.unifiedBarColorEnabled = wantUnified;
       if (settings.unifiedBarColorVal) pcs.unifiedBarColor = settings.unifiedBarColorVal;

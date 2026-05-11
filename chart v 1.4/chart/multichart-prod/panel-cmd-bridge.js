@@ -549,6 +549,32 @@
                     return { indicators: items };
                 }
 
+                // ─── V9 chart UI settings (theme, TZ, precision, …) ────
+                //
+                // Parent shell broadcasts the same snapshot to every
+                // multichart iframe so all tiles match the host's Settings
+                // panel. Uses window.talariaApplyV9ThemeSettings (installed
+                // by TalariaV8bLive) then mirrors into React state via a
+                // document CustomEvent (iframe chrome is hidden but state
+                // stays consistent for any future UI).
+                case 'applyV9UiSettings': {
+                    var sSet = args.settings;
+                    if (!sSet || typeof sSet !== 'object') {
+                        throw new Error('applyV9UiSettings: missing args.settings');
+                    }
+                    try {
+                        if (typeof global.talariaApplyV9ThemeSettings === 'function') {
+                            global.talariaApplyV9ThemeSettings(sSet);
+                        }
+                    } catch (eTh) {
+                        warn('applyV9UiSettings: talariaApplyV9ThemeSettings threw', eTh && eTh.message);
+                    }
+                    try {
+                        global.dispatchEvent(new CustomEvent('talariaV9ApplyExternalSettings', { detail: sSet }));
+                    } catch (_eEv) { /* noop */ }
+                    return;
+                }
+
                 // ─── replay sync ───────────────────────────────────────
                 //
                 // Parent broadcasts the host's replay state so every
@@ -1055,6 +1081,7 @@
                 'addIndicator',
                 'removeIndicator',
                 'getIndicators',
+                'applyV9UiSettings',
                 'replayEnter',
                 'replayTick',
                 'replayExit',

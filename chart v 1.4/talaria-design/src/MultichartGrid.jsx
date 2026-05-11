@@ -1138,6 +1138,11 @@ export default function MultichartGrid({
                         next.add(id);
                         return next;
                     });
+                    // New iframe panels boot with default V9 settings; push the
+                    // host shell's current snapshot so every tile matches.
+                    try {
+                        window.dispatchEvent(new CustomEvent("multichartUiPeersDirty", { detail: { panelId: id } }));
+                    } catch (_) {}
                 },
                 // Phase 7.2.4: iframe-side `panel-focus` events bubble up
                 // here. Iframe events don't propagate to the parent DOM,
@@ -2442,6 +2447,22 @@ export default function MultichartGrid({
             return Promise.all(proms).then(() => undefined);
         }
 
+        /** Fire-and-forget panel-cmd to every iframe (host excluded). */
+        function broadcastToIframesNoReply(cmd, args) {
+            const mgr = managerRef.current;
+            if (!mgr || !mgr.charts || typeof mgr.charts.values !== "function") return;
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host) continue;
+                try {
+                    if (typeof mgr.sendCommandNoReply === "function") {
+                        mgr.sendCommandNoReply(c.id, cmd, args);
+                    }
+                } catch (e) {
+                    console.warn("[MultichartGrid] broadcastToIframesNoReply", c.id, cmd, e && e.message || e);
+                }
+            }
+        }
+
         /** chart.js legacy ids for continuous freehand (see drawing-tools-manager). */
         function isPersistentFreehandLegacyTool(lt) {
             const x = String(lt || "").toLowerCase();
@@ -2507,6 +2528,7 @@ export default function MultichartGrid({
             isMounted,
             runCommand,
             runCommandIframes,
+            broadcastToIframesNoReply,
             syncDrawingToolAcrossPanels,
             isPersistentFreehandLegacyTool,
             getPanelIndicators,

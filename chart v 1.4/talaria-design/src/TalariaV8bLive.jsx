@@ -5014,6 +5014,57 @@ const TalariaV8bLive = () => {
     return () => clearInterval(id);
   }, [settings]);
 
+  // Multichart: keep every iframe tile on the same V9 Settings snapshot as
+  // the host shell (timezone, precision, colours, trading toggles, …).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (layoutPanels.n <= 1) return;
+    const grid = window.__multichartGrid;
+    if (!grid || typeof grid.broadcastToIframesNoReply !== "function") return;
+    const t = window.setTimeout(() => {
+      if (!v9IsMultiPanelLayoutActive()) return;
+      let snap;
+      try {
+        snap = JSON.parse(JSON.stringify(settingsRef.current));
+      } catch (_) {
+        snap = { ...settingsRef.current };
+      }
+      grid.broadcastToIframesNoReply("applyV9UiSettings", { settings: snap });
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [settings, layoutPanels.n, layoutPanels.li]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const pushToPeers = () => {
+      if (!v9IsMultiPanelLayoutActive()) return;
+      const grid = window.__multichartGrid;
+      if (!grid || typeof grid.broadcastToIframesNoReply !== "function") return;
+      let snap;
+      try {
+        snap = JSON.parse(JSON.stringify(settingsRef.current));
+      } catch (_) {
+        snap = { ...settingsRef.current };
+      }
+      grid.broadcastToIframesNoReply("applyV9UiSettings", { settings: snap });
+    };
+    window.addEventListener("multichartUiPeersDirty", pushToPeers);
+    return () => window.removeEventListener("multichartUiPeersDirty", pushToPeers);
+  }, []);
+
+  // Iframe panels: parent-broadcast settings merge into React state (chart
+  // canvas is already updated in panel-cmd-bridge before this event).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onExternal = (ev) => {
+      const patch = ev && ev.detail;
+      if (!patch || typeof patch !== "object") return;
+      setSettings((prev) => ({ ...prev, ...patch }));
+    };
+    window.addEventListener("talariaV9ApplyExternalSettings", onExternal);
+    return () => window.removeEventListener("talariaV9ApplyExternalSettings", onExternal);
+  }, []);
+
   // Single source of truth: indicator menu rows + chart.js runtime type.
   // This keeps V9 menu and chart engine in sync (no missing/unsupported duplicates).
   const INDICATOR_CATALOG = [
