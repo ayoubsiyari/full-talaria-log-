@@ -14702,7 +14702,7 @@ const TalariaV8bLive = () => {
       {/* Visibility: chart selection AND drawing maps to a line/shape rail group.
           Text/label drawings map to group "text" (not in TL_LINE_SHAPE_GROUPS) — without
           this guard, effectiveTlGroup is null and tlSubTool defaulted to Trend Line. */}
-      {tlBarSelected && tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) && (()=>{
+      {tlBarSelected && tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) && tlBarDrawingGroupRaw !== "brush" && (()=>{
         const TlBtn = ({id, isAct, children, onClick, w, tip}) => {
           const isH = hov === id;
           const isDel = id === "tl-del";
@@ -15321,7 +15321,7 @@ const TalariaV8bLive = () => {
 
 
       {/* ── Anchored VWAP floating toolbar ── */}
-      {tlBarSelected && tool === "brush" && (groupSelected.brush?.icon ?? "vwap") === "vwap" && (()=>{
+      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && (groupSelected.brush?.icon ?? "vwap") === "vwap" && (()=>{
         const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
         const VBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
@@ -15491,7 +15491,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Fixed Range Volume Profile floating toolbar ── */}
-      {tlBarSelected && tool === "brush" && (groupSelected.brush?.icon ?? "vwap") === "volProfile" && (()=>{
+      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && (groupSelected.brush?.icon ?? "vwap") === "volProfile" && (()=>{
         const VPBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "vpb-del";
@@ -15584,7 +15584,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Anchored Volume Profile floating toolbar ── */}
-      {tlBarSelected && tool === "brush" && (groupSelected.brush?.icon ?? "vwap") === "anchoredVol" && (()=>{
+      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && (groupSelected.brush?.icon ?? "vwap") === "anchoredVol" && (()=>{
         const AVBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "avb-del";
