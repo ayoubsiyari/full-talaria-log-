@@ -5924,8 +5924,11 @@ class DrawingToolsManager {
                 this.svg.style('pointer-events', 'all');
             } else if (drawingSelected) {
                 this.svg.style('z-index', '11');
-                // Must allow pointer events so selected drawings (handles, risk/reward + buttons, borders) work.
-                this.svg.style('pointer-events', 'all');
+                // VP/AV drawings: keep SVG pointer-events none so chart can pan through the body;
+                // resize handles have their own pointer-events and still work.
+                const onlyVpSelected = this.selectedDrawings.every(d =>
+                    d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile');
+                this.svg.style('pointer-events', onlyVpSelected ? 'none' : 'all');
             } else if (hoverResizeHandles) {
                 this.svg.style('z-index', '11');
                 // Root stays none — strokes/handles use pointer-events; lifts layer above .axis-cursor-zone.

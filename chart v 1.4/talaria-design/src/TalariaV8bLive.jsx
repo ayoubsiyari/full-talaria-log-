@@ -15603,7 +15603,7 @@ const TalariaV8bLive = () => {
         };
         const VPSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
-          <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
+          <div data-sdrop="1" data-tlbar="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
             style={{ position:"fixed", top:vpBarPos.y, left:vpBarPos.x, zIndex:11000,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                      boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
@@ -15696,7 +15696,7 @@ const TalariaV8bLive = () => {
         };
         const AVSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
-          <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
+          <div data-sdrop="1" data-tlbar="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
             style={{ position:"fixed", top:avBarPos.y, left:avBarPos.x, zIndex:11000,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                      boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
