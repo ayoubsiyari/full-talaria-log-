@@ -4334,7 +4334,9 @@ const TalariaV8bLive = () => {
         const el = document.getElementById("chart-container");
         if (sm && typeof sm.captureCanvasDirect === "function" && el) {
           try {
-            const rect = el.getBoundingClientRect();
+            const gridEl = document.querySelector("[data-multichart-grid]");
+            const refEl = gridEl || el;
+            const rect = refEl.getBoundingClientRect();
             const rw = rect.width || 1;
             const rh = rect.height || 1;
             const dpr =
@@ -4343,7 +4345,10 @@ const TalariaV8bLive = () => {
                 : 2;
             const maxLongEdge = 4096;
             const captureScale = Math.max(1, Math.min(dpr, maxLongEdge / Math.max(rw, rh)));
-            const canvas = await sm.captureCanvasDirect(el, captureScale);
+            let canvas = (typeof sm.captureMultichartComposite === "function")
+              ? await sm.captureMultichartComposite(captureScale)
+              : null;
+            if (!canvas) canvas = await sm.captureCanvasDirect(el, captureScale);
             if (cancelled || !canvas) return;
             setCanvasDims({ w: canvas.width, h: canvas.height });
             setScreenshotPreviewUrl(canvas.toDataURL("image/jpeg", 0.92));

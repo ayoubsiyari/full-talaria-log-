@@ -761,7 +761,9 @@ class ScreenshotManager {
             if (!targetElement) targetElement = document.body;
 
             hidden = this._hideUIOverlays();
-            const canvas = await this.captureCanvasDirect(targetElement, 2);
+            // Use multichart composite when multiple panels are active
+            let canvas = await this.captureMultichartComposite(2);
+            if (!canvas) canvas = await this.captureCanvasDirect(targetElement, 2);
             this._restoreUIOverlays(hidden);
             hidden = []; // already restored — prevent double-restore in finally
             if (!canvas) throw new Error('Canvas capture returned null');
@@ -1377,7 +1379,69 @@ class ScreenshotManager {
 
         return out;
     }
-    
+
+    /**
+     * Capture ALL multichart panels (host + iframes) as a single composite
+     * canvas matching the on-screen grid layout. Falls back to the normal
+     * single-panel capture when multichart is not active.
+     */
+    async captureMultichartComposite(scale = 2) {
+        const gridEl = document.querySelector('[data-multichart-grid]');
+        if (!gridEl) return null;
+        const iframes = gridEl.querySelectorAll('iframe');
+        if (!iframes.length) return null;
+
+        const gridRect = gridEl.getBoundingClientRect();
+        if (!gridRect.width || !gridRect.height) return null;
+
+        const out = document.createElement('canvas');
+        out.width  = Math.round(gridRect.width  * scale);
+        out.height = Math.round(gridRect.height * scale);
+        const ctx = out.getContext('2d');
+        if (!ctx) return null;
+
+        ctx.fillStyle = this.getScreenshotBackgroundColor(gridEl) || '#050028';
+        ctx.fillRect(0, 0, out.width, out.height);
+
+        const mapRect = (elRect) => ({
+            x: (elRect.left - gridRect.left) * scale,
+            y: (elRect.top  - gridRect.top)  * scale,
+            w: elRect.width  * scale,
+            h: elRect.height * scale,
+        });
+
+        // 1. Capture host panel (lives in the main document)
+        const hostCell = gridEl.querySelector('[data-multichart-host-cell]');
+        const hostContainer = document.getElementById('chart-container');
+        if (hostCell && hostContainer) {
+            try {
+                const hostCanvas = await this.captureCanvasDirect(hostContainer, scale);
+                if (hostCanvas) {
+                    const p = mapRect(hostCell.getBoundingClientRect());
+                    ctx.drawImage(hostCanvas, p.x, p.y, p.w, p.h);
+                }
+            } catch (_) {}
+        }
+
+        // 2. Capture each iframe panel (same-origin → direct DOM access)
+        for (const iframe of iframes) {
+            try {
+                const iDoc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
+                if (!iDoc) continue;
+                const iContainer = iDoc.getElementById('chart-container');
+                if (!iContainer) continue;
+                const panelCanvas = await this.captureCanvasDirect(iContainer, scale);
+                if (!panelCanvas) continue;
+                const p = mapRect(iframe.getBoundingClientRect());
+                ctx.drawImage(panelCanvas, p.x, p.y, p.w, p.h);
+            } catch (e) {
+                console.warn('[screenshot] iframe capture failed:', e && e.message);
+            }
+        }
+
+        return out;
+    }
+
     /**
      * Capture screenshot silently (for auto-capture on trade execution)
      * Returns base64 data URL
