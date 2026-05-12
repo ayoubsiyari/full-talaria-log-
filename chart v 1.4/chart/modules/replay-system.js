@@ -4529,7 +4529,7 @@ class ReplaySystem {
     ensureReplayFollowButton() {
         const followIconSvg =
             '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none">' +
-            '<rect x="1" y="1" width="22" height="22" rx="4" fill="#2962FF"/>' +
+            '<rect x="1" y="1" width="22" height="22" rx="0" fill="#2962FF"/>' +
             '<path d="M9.5 6.5 L17.5 12 L9.5 17.5 Z" fill="#fff"/>' +
             '</svg>';
         let btn = this.followBtn;
