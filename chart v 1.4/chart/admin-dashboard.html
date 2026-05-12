@@ -1797,6 +1797,10 @@ select { cursor: pointer; }
                 <div class="fr-sync-stat-value" id="frSyncValRecovered">0</div>
               </div>
             </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap">
+              <button type="button" class="btn sm" id="frAutoCleanupBtn" onclick="runAutoCleanupDuplicates()" style="background:color-mix(in oklab,var(--accent) 15%,var(--panel));border-color:var(--accent)" title="Merges small duplicates into the biggest dataset for each ticker, then removes the small entries. The big datasets are NEVER deleted.">Auto-cleanup duplicates</button>
+              <span id="frAutoCleanupStatus" style="font-size:12px;color:var(--text-muted)"></span>
+            </div>
             <div id="frDailySyncAlerts" style="display:none;margin-top:8px;padding:10px 12px;border-radius:6px;font-size:12px;line-height:1.5"></div>
           </div>
         </div>
@@ -5297,6 +5301,32 @@ async function refreshDailySyncOverview() {
   } catch (e) {
     if (badge) { badge.textContent = 'error'; badge.style.color = '#ef4444'; }
     if (valStatus) { valStatus.textContent = 'Connection error'; valStatus.className = 'fr-sync-stat-value err'; }
+  }
+}
+
+async function runAutoCleanupDuplicates() {
+  const btn = $('frAutoCleanupBtn');
+  const status = $('frAutoCleanupStatus');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'Scanning and merging duplicates…';
+  try {
+    const res = await api('/api/admin/datasets/duplicates/auto-cleanup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    var msg = res.message || ('Cleaned ' + (res.cleaned || 0) + ' duplicate(s)');
+    if (status) { status.textContent = msg; status.style.color = '#22c55e'; }
+    if (typeof toast === 'function') toast(msg, 'ok');
+    try { await refreshFirstrateNightlyHealth({ rescan: true }); } catch (_) {}
+    try { await refreshDailySyncOverview(); } catch (_) {}
+    try { await loadDatasets(true); } catch (_) {}
+  } catch (e) {
+    var errMsg = (e && e.message) ? e.message : String(e);
+    if (status) { status.textContent = 'Error: ' + errMsg; status.style.color = '#ef4444'; }
+    if (typeof toast === 'function') toast('Cleanup failed: ' + errMsg, 'err');
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

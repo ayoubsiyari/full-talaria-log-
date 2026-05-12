@@ -9841,6 +9841,121 @@ async def admin_dataset_duplicates_consolidate(
     }
 
 
+def _collect_all_duplicate_groups() -> list[dict]:
+    """
+    Like `_collect_firstrate_duplicate_groups` but scans ALL datasets regardless
+    of import source. Groups by (canonical_ticker, asset_class) so Dukascopy +
+    FirstRate + manual upload duplicates are all caught.
+    """
+    db = SessionLocal()
+    try:
+        files = db.query(CSVFile).all()
+    finally:
+        db.close()
+
+    grouped: dict[tuple[str, str], list[dict]] = {}
+    for f in files:
+        ticker = (
+            _firstrate_extract_ticker_from_filename(f.original_name or "") or ""
+        ).upper()
+        if not ticker:
+            continue
+        asset_class = _firstrate_classify_ticker(ticker) or ""
+        if not asset_class:
+            continue
+        key = (ticker, asset_class)
+        grouped.setdefault(key, []).append({
+            "id": int(f.id),
+            "original_name": f.original_name,
+            "filename": f.filename,
+            "row_count": int(f.row_count or 0),
+        })
+
+    out: list[dict] = []
+    for (ticker, asset_class), rows in grouped.items():
+        if len(rows) < 2:
+            continue
+        rows.sort(key=lambda r: int(r["row_count"] or 0), reverse=True)
+        out.append({
+            "ticker": ticker,
+            "asset_class": asset_class,
+            "rows": rows,
+        })
+    out.sort(key=lambda g: (g["asset_class"], g["ticker"]))
+    return out
+
+
+@app.post("/api/admin/datasets/duplicates/auto-cleanup")
+async def admin_dataset_duplicates_auto_cleanup(request: Request):
+    """
+    One-click duplicate cleanup: for every group of datasets sharing the same
+    canonical ticker, keep the biggest one (most rows), merge any unique bars
+    from the smaller duplicates into it, then delete the small entries.
+
+    Safe: the big dataset is NEVER deleted — only the small duplicates are
+    removed after their bars are merged into the winner.
+    """
+    _require_admin(request)
+    groups = _collect_all_duplicate_groups()
+    if not groups:
+        return {"success": True, "message": "No duplicates found", "cleaned": 0, "groups_processed": 0}
+
+    db = SessionLocal()
+    cleaned_total = 0
+    groups_ok = 0
+    errors: list[dict] = []
+    try:
+        for g in groups:
+            rows = g.get("rows") or []
+            if len(rows) < 2:
+                continue
+            winner_row = max(rows, key=lambda r: int(r.get("row_count") or 0))
+            winner_id = int(winner_row["id"])
+            loser_ids = [int(r["id"]) for r in rows if int(r["id"]) != winner_id]
+            if not loser_ids:
+                continue
+            winner_file = db.query(CSVFile).filter(CSVFile.id == winner_id).first()
+            if not winner_file:
+                errors.append({"ticker": g.get("ticker"), "error": f"winner id={winner_id} not found"})
+                continue
+            winner_path = _resolve_dataset_csv_for_file(winner_file)
+            group_cleaned = 0
+            for lid in loser_ids:
+                loser_file = db.query(CSVFile).filter(CSVFile.id == lid).first()
+                if not loser_file:
+                    continue
+                loser_path = _resolve_dataset_csv_for_file(loser_file)
+                try:
+                    if loser_path.exists() and winner_path.exists():
+                        _merge_canonical_ohlcv_csvs(
+                            existing=winner_path,
+                            incoming=loser_path,
+                            dest=winner_path,
+                        )
+                except Exception:
+                    pass
+                _purge_dataset_rows(db, loser_file)
+                group_cleaned += 1
+            winner_file.row_count = count_csv_rows(str(winner_path)) if winner_path.exists() else winner_file.row_count
+            db.commit()
+            build_binary_for_file(winner_file.id, winner_path, winner_file.original_name)
+            cleaned_total += group_cleaned
+            groups_ok += 1
+    except Exception as e:
+        db.rollback()
+        errors.append({"error": str(e)[:500]})
+    finally:
+        db.close()
+
+    return {
+        "success": True,
+        "message": f"Cleaned {cleaned_total} duplicate(s) across {groups_ok} group(s). Big datasets preserved.",
+        "cleaned": cleaned_total,
+        "groups_processed": groups_ok,
+        "errors": errors if errors else None,
+    }
+
+
 @app.delete("/api/admin/datasets/{file_id}")
 async def admin_delete_dataset(file_id: int, request: Request):
     _require_admin(request)
