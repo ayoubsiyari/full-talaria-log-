@@ -13551,6 +13551,8 @@ class Chart {
         const useReplayIndexCadence = useUniformIntradayTicks && isReplayActive;
         const suppressIntradayBoundaryLabels = useReplayIndexCadence;
         const allowStandaloneBoundaries = !useUniformIntradayTicks;
+        // When zoomed out on daily+, suppress day-level boundaries and show only month/year
+        const suppressDayBoundaries = isDailyOrHigher && visibleBarsCount > 90;
         const monthNames        = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         const minSpacing        = 50;
 
@@ -13586,7 +13588,7 @@ class Chart {
             if (prevYear !== -1) {
                 if (year !== prevYear)        { isBoundary = true; boundaryLabel = String(year); }
                 else if (month !== prevMonth) { isBoundary = true; boundaryLabel = monthNames[month]; }
-                else if (day !== prevDay)     { isBoundary = true; boundaryLabel = String(day); }
+                else if (!suppressDayBoundaries && day !== prevDay) { isBoundary = true; boundaryLabel = String(day); }
             }
             prevDay = day; prevMonth = month; prevYear = year;
 
@@ -13674,7 +13676,7 @@ class Chart {
                 if (fPrevYear !== -1) {
                     if (fYear !== fPrevYear)        { fIsBoundary = true; fBoundaryLabel = String(fYear); }
                     else if (fMonth !== fPrevMonth)  { fIsBoundary = true; fBoundaryLabel = monthNames[fMonth]; }
-                    else if (fDay !== fPrevDay)      { fIsBoundary = true; fBoundaryLabel = String(fDay); }
+                    else if (!suppressDayBoundaries && fDay !== fPrevDay) { fIsBoundary = true; fBoundaryLabel = String(fDay); }
                 }
                 fPrevDay = fDay; fPrevMonth = fMonth; fPrevYear = fYear;
 
@@ -18805,8 +18807,9 @@ class Chart {
         const hasSnappedCandle = dataIdx >= 0 && dataIdx < this.data.length;
         const snappedCandle = hasSnappedCandle ? this.data[dataIdx] : null;
 
-        // Pointer-aligned geometry (CSS px, canvas/wrapper space)
-        const lineX = x;
+        // Snap vertical crosshair to the nearest candle center (TradingView-style).
+        const snappedIdx = Math.round(rawDataIdx);
+        const lineX = this.dataIndexToPixel(snappedIdx);
         const lineY = y;
 
         let crosshairPrice = this.yScale ? this.yScale.invert(y) : null;
@@ -19017,8 +19020,8 @@ class Chart {
                 timeframeMs = this._estimateTimeframeStepMs();
             }
             
-            // Time at pointer X (matches vertical line, which tracks raw x).
-            const idxForTime = rawDataIdx;
+            // Time at snapped candle position (matches vertical line snap).
+            const idxForTime = snappedIdx;
             // Extrapolate past last / before first using last bar step (not firstBar + index * avg — wrong with gaps).
             let timestamp = typeof this.estimateTimestampForDataIndex === 'function'
                 ? this.estimateTimestampForDataIndex(idxForTime)
