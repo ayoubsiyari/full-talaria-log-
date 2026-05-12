@@ -9965,71 +9965,69 @@ const TalariaV8bLive = () => {
     const pressCol = isPressed ? c.acL : col;
     const hArr = hov === t.id + "-arr";
     const arrCol = act ? accentCol : hArr ? c.tx : c.tm;
-    return (
-      <div key={t.id} style={{ position: "relative", width: "100%", display: "flex", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
-        {/* Left rail: match TalariaV8b.jsx dimensions (Live has no root zoom). */}
-        <button
-          type="button"
-          ref={ref}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            if (t.action) setBtnPressed(t.id);
-          }}
-          onPointerUp={t.action ? () => setBtnPressed(null) : undefined}
-          onMouseEnter={() => setHov(t.id)}
-          onMouseLeave={() => { setHov(null); setBtnPressed(null); }}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (t.id === "pinbar") { setPinnedBarOpen(v => !v); return; }
-            if (t.action) {
-              // Wire to legacy undo/redo (chart.drawingManager.history) so V9
-              // buttons drive the same stack as keyboard shortcuts and the
-              // legacy index. drawingManager.history is created in init when
-              // UndoRedoManager class is loaded.
-              const dm = window.chart && window.chart.drawingManager;
-              const hist = dm && dm.history;
-              try {
-                if (t.id === "undo" && hist && hist.undo) hist.undo();
-                else if (t.id === "redo" && hist && hist.redo) hist.redo();
-              } catch (err) { console.warn('[V9] undo/redo failed:', err); }
-              return;
-            }
-            if (t.id === "lock") {
-              const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-              const dm = ch && ch.drawingManager;
-              const tb = dm && dm.toolbar;
-              if (dm) {
-                const list = [];
-                if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
-                  dm.selectedDrawings.forEach(d => { if (d) list.push(d); });
-                } else if (dm.selectedDrawing) list.push(dm.selectedDrawing);
-                else if (tb && tb.currentDrawing) list.push(tb.currentDrawing);
-                if (list.length) {
-                  list.forEach(d => { try { dm.toggleLock(d); } catch (_) {} });
-                } else if (typeof tb?.showNotification === "function") {
-                  tb.showNotification("Select a drawing first");
-                } else if (typeof ch?.showNotification === "function") {
-                  ch.showNotification("Select a drawing first");
-                }
+    const mainBtnStyle = {
+      height: 32,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
+      border: "none",
+      cursor: "default",
+      color: pressCol,
+      padding: 0,
+      boxSizing: "border-box",
+      touchAction: "manipulation",
+      transition: "color 0.15s ease, background 0.12s",
+      position: "relative",
+      fontFamily: F,
+      ...(t.dd ? { width: "auto", flex: "0 0 auto", minWidth: 0 } : { width: "100%", flex: "1 1 auto", minWidth: 0 }),
+    };
+    const mainBtn = (
+      <button
+        type="button"
+        ref={ref}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          if (t.action) setBtnPressed(t.id);
+        }}
+        onPointerUp={t.action ? () => setBtnPressed(null) : undefined}
+        onMouseEnter={() => setHov(t.id)}
+        onMouseLeave={() => { setHov(null); setBtnPressed(null); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+          if (t.id === "pinbar") { setPinnedBarOpen(v => !v); return; }
+          if (t.action) {
+            const dm = window.chart && window.chart.drawingManager;
+            const hist = dm && dm.history;
+            try {
+              if (t.id === "undo" && hist && hist.undo) hist.undo();
+              else if (t.id === "redo" && hist && hist.redo) hist.redo();
+            } catch (err) { console.warn('[V9] undo/redo failed:', err); }
+            return;
+          }
+          if (t.id === "lock") {
+            const dm = ch && ch.drawingManager;
+            const tb = dm && dm.toolbar;
+            if (dm) {
+              const list = [];
+              if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+                dm.selectedDrawings.forEach(d => { if (d) list.push(d); });
+              } else if (dm.selectedDrawing) list.push(dm.selectedDrawing);
+              else if (tb && tb.currentDrawing) list.push(tb.currentDrawing);
+              if (list.length) {
+                list.forEach(d => { try { dm.toggleLock(d); } catch (_) {} });
+              } else if (typeof tb?.showNotification === "function") {
+                tb.showNotification("Select a drawing first");
+              } else if (typeof ch?.showNotification === "function") {
+                ch.showNotification("Select a drawing first");
               }
-              setDropdown(null);
-              return;
             }
-            if (t.dd) {
-              if (!["eye", "magnet", "trash"].includes(t.id)) {
-                editingDrawingRef.current = null;
-                if (tlBarSelected) {
-                  setTlBarSelected(false); setTlBarSelectedType(null);
-                  try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll(); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
-                }
-                if (tlSettOpen) closeTlSett(); if (txtSettOpen) closeTxtSett();
-                if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett();
-                v9UserExplicitToolRef.current = true;
-                setTool(t.id);
-              }
-              if (dropdown) closeDropdown();
-            }
-            else {
+            setDropdown(null);
+            return;
+          }
+          if (t.dd) {
+            if (!["eye", "magnet", "trash"].includes(t.id)) {
               editingDrawingRef.current = null;
               if (tlBarSelected) {
                 setTlBarSelected(false); setTlBarSelectedType(null);
@@ -10038,52 +10036,72 @@ const TalariaV8bLive = () => {
               if (tlSettOpen) closeTlSett(); if (txtSettOpen) closeTxtSett();
               if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett();
               v9UserExplicitToolRef.current = true;
-              setTool(t.id); setDropdown(null);
+              setTool(t.id);
             }
-          }}
-          style={{
-            width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "center",
-            background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
-            border: "none", cursor: "default", color: pressCol,
-            padding: 0, paddingLeft: 0, paddingRight: t.dd ? 11 : 0,
-            boxSizing: "border-box", touchAction: "manipulation",
-            transition: "color 0.15s ease, background 0.12s", position: "relative", fontFamily: F,
-          }}>
-          {/* pointer-events:none on icon so the whole <button type="button"> hit box counts — SVG paths alone miss gaps between strokes */}
-          {t.id === "pinbar"
-            ? <span style={{ display: "flex", pointerEvents: "none", transform: h && !act ? "rotate(-25deg) scale(1.15)" : "none", transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
-            : <span style={{ display: "flex", pointerEvents: "none" }}><I n={railIcon} s={17} cl={pressCol}/></span>
+            if (dropdown) closeDropdown();
           }
-        </button>
+          else {
+            editingDrawingRef.current = null;
+            if (tlBarSelected) {
+              setTlBarSelected(false); setTlBarSelectedType(null);
+              try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll(); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
+            }
+            if (tlSettOpen) closeTlSett(); if (txtSettOpen) closeTxtSett();
+            if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett();
+            v9UserExplicitToolRef.current = true;
+            setTool(t.id); setDropdown(null);
+          }
+        }}
+        style={mainBtnStyle}
+      >
+        {t.id === "pinbar"
+          ? <span style={{ display: "flex", pointerEvents: "none", transform: h && !act ? "rotate(-25deg) scale(1.15)" : "none", transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
+          : <span style={{ display: "flex", pointerEvents: "none" }}><I n={railIcon} s={17} cl={pressCol}/></span>
+        }
+      </button>
+    );
+    return (
+      <div key={t.id} style={{ position: "relative", width: "100%", display: "block", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
+        <div style={{ width: "100%", height: 32, display: "flex", alignItems: "stretch", justifyContent: "center", gap: 0, boxSizing: "border-box" }}>
+          {mainBtn}
+          {t.dd && (
+            <button
+              type="button"
+              aria-label="Open tool menu"
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseEnter={() => setHov(t.id + "-arr")}
+              onMouseLeave={() => setHov(null)}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                openDd(e.currentTarget.parentElement);
+              }}
+              style={{
+                width: 6,
+                height: 32,
+                flex: "0 0 6px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: hArr ? "rgba(255,255,255,0.06)" : "transparent",
+                border: "none",
+                cursor: "default",
+                padding: 0,
+                margin: 0,
+                transition: "background 0.12s",
+                fontFamily: F,
+                touchAction: "manipulation",
+              }}
+            >
+              <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{ transition: "fill 0.12s", pointerEvents: "none", display: "block" }}>
+                <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
+              </svg>
+            </button>
+          )}
+        </div>
         {act && <div style={{ position: "absolute", left: 0, top: "10%", bottom: "10%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 4px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
         {h && !act && !isPressed && <div style={{ position: "absolute", left: 0, top: "12%", bottom: "12%", width: 1, background: `linear-gradient(180deg, transparent, `+c.hvLn+`, transparent)`, pointerEvents: "none", zIndex: 2 }}/>}
         {isPressed && <div style={{ position: "absolute", left: 0, top: "10%", bottom: "10%", width: 2, background: `linear-gradient(180deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 4px ${c.acG}`, pointerEvents: "none", zIndex: 2 }}/>}
-        {t.dd && (
-          <button
-            type="button"
-            aria-label="Open tool menu"
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseEnter={() => setHov(t.id + "-arr")}
-            onMouseLeave={() => setHov(null)}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              openDd(e.currentTarget.parentElement);
-            }}
-            style={{
-              position: "absolute", right: 0, top: 0,
-              width: 8, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
-              background: hArr ? "rgba(255,255,255,0.06)" : "transparent",
-              border: "none", cursor: "default",
-              padding: 0, flexShrink: 0,
-              transition: "background 0.12s", fontFamily: F,
-              zIndex: 3, touchAction: "manipulation",
-            }}>
-            <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{ transition: "fill 0.12s", pointerEvents: "none", display: "block" }}>
-              <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
-            </svg>
-          </button>
-        )}
         {h && !ddOpen && !t.dd && <div style={{ position: "absolute", left: "calc(100% + 10px)", top: "50%", transform: "translateY(-50%)", background: c.el, border: `1px solid ${c.brH}`, padding: "4px 10px", fontSize: 12, fontWeight: 600, fontFamily: F, color: c.tx, whiteSpace: "nowrap", zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.6)", borderLeft: `2px solid ${act ? accentCol : c.brH}`, pointerEvents: "none" }}>{t.label}</div>}
       </div>
     );
