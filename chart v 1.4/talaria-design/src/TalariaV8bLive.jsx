@@ -15022,6 +15022,17 @@ const TalariaV8bLive = () => {
                     const pushLevels = () => {
                       try {
                         om.pushRiskRewardToolToManager(sel);
+                        // Ensure SL/TP checkboxes are enabled so the React panel shows the levels.
+                        const slChk = document.getElementById('enableSL');
+                        if (slChk && !slChk.checked) { slChk.checked = true; slChk.dispatchEvent(new Event('change', {bubbles:true})); }
+                        const tpChk = document.getElementById('enableTP');
+                        if (tpChk && !tpChk.checked) { tpChk.checked = true; tpChk.dispatchEvent(new Event('change', {bubbles:true})); }
+                        // Set buy/sell tab to match the drawing direction.
+                        const isLong = sel.meta?.orientation === 'long' || sel.type === 'long-position';
+                        const buyTab = document.getElementById('buyTab');
+                        const sellTab = document.getElementById('sellTab');
+                        if (isLong && buyTab && !buyTab.classList.contains('active')) { buyTab.click(); }
+                        if (!isLong && sellTab && !sellTab.classList.contains('active')) { sellTab.click(); }
                         om._autoDetectOrderTypeFromEntry();
                         om.calculatePositionFromRisk();
                         om.calculateAdvancedRiskReward();
