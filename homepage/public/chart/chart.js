@@ -16039,58 +16039,6 @@ class Chart {
 
         this.ctx.restore();
     }
-dgeH * 0.55));
-                    this.ctx.font = `600 ${pillFont}px system-ui,"Segoe UI",sans-serif`;
-                    const tw = this.ctx.measureText(pillText).width;
-                    const pillW = tw + 6;
-                    const pillH = pillFont + 3;
-                    const pillY = cy + badgeH / 2 + 3;
-                    this.ctx.beginPath();
-                    const prx = pillH / 2;
-                    if (typeof this.ctx.roundRect === 'function') {
-                        this.ctx.roundRect(clusterCenterX - pillW / 2, pillY, pillW, pillH, prx);
-                    } else {
-                        this._economicCalendarRoundRectPath(this.ctx, clusterCenterX - pillW / 2, pillY, pillW, pillH, prx);
-                    }
-                    this.ctx.fillStyle = 'rgba(41,98,255,0.85)';
-                    this.ctx.fill();
-                    this.ctx.fillStyle = '#fff';
-                    this.ctx.fillText(pillText, clusterCenterX, pillY + pillH / 2);
-                }
-
-                for (let k = 0; k < n; k++) {
-                    this._economicCalendarHitRegions.push({
-                        left: clusterCenterX - badgeW / 2 - 4,
-                        right: clusterCenterX + badgeW / 2 + 4,
-                        top: cy - badgeH - 4,
-                        bottom: cy + badgeH + 14,
-                        event: cluster[k].e
-                    });
-                }
-            } else {
-                // Expanded: show individual flags side by side
-                for (let k = 0; k < n; k++) {
-                    const { e, x } = cluster[k];
-                    const offset = (k - (n - 1) / 2) * clusterGap;
-                    const xi = x + offset;
-                    _drawSingleFlag(e, xi, cy);
-                    if (Number.isFinite(xi)) {
-                        this._economicCalendarHitRegions.push({
-                            left: xi - badgeW / 2 - 2,
-                            right: xi + badgeW / 2 + 2,
-                            top: cy - badgeH / 2 - 2,
-                            bottom: cy + badgeH / 2 + 2,
-                            event: e
-                        });
-                    }
-                }
-            }
-            c = d;
-        }
-
-        this.ctx.restore();
-    }
-}
 
     _escapeHtmlForEconTooltip(str) {
         if (str == null) return '';
