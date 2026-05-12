@@ -4571,7 +4571,7 @@ class ReplaySystem {
                 outline: 'none',
                 background: 'transparent',
                 border: 'none',
-                borderRadius: '6px',
+                borderRadius: '0',
                 color: '#fff',
                 cursor: 'pointer',
                 boxShadow: '0 2px 12px rgba(0, 0, 0, 0.35)',

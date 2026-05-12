@@ -762,15 +762,15 @@ class ScreenshotManager {
 
             hidden = this._hideUIOverlays();
             // Use multichart composite when multiple panels are active
-            let canvas = await this.captureMultichartComposite(2);
+            const isMultichart = !!document.querySelector('[data-multichart-grid] iframe');
+            let canvas = isMultichart ? await this.captureMultichartComposite(2) : null;
             if (!canvas) canvas = await this.captureCanvasDirect(targetElement, 2);
             this._restoreUIOverlays(hidden);
             hidden = []; // already restored — prevent double-restore in finally
             if (!canvas) throw new Error('Canvas capture returned null');
 
-            // Overlay OHLC info (HTML element not captured by canvas compositor)
-            this.addOHLCOverlay(canvas, 2);
-            // Add watermark
+            // OHLC overlay: composite already stamps per-panel; single-panel needs it here
+            if (!isMultichart) this.addOHLCOverlay(canvas, 2);
             this.addWatermark(canvas);
             await this.addBrandLogo(canvas, targetElement);
 
@@ -1382,8 +1382,9 @@ class ScreenshotManager {
 
     /**
      * Capture ALL multichart panels (host + iframes) as a single composite
-     * canvas matching the on-screen grid layout. Falls back to the normal
-     * single-panel capture when multichart is not active.
+     * canvas matching the on-screen grid layout, with no gap between panels
+     * and OHLC info stamped on each panel. Falls back to null when
+     * multichart is not active.
      */
     async captureMultichartComposite(scale = 2) {
         const gridEl = document.querySelector('[data-multichart-grid]');
@@ -1391,55 +1392,155 @@ class ScreenshotManager {
         const iframes = gridEl.querySelectorAll('iframe');
         if (!iframes.length) return null;
 
-        const gridRect = gridEl.getBoundingClientRect();
-        if (!gridRect.width || !gridRect.height) return null;
+        // Collect every panel cell with its capture source
+        const cells = [];
+        for (const cell of gridEl.querySelectorAll('[data-panel-id]')) {
+            const r = cell.getBoundingClientRect();
+            if (!r.width || !r.height) continue;
+            const isHost = cell.hasAttribute('data-multichart-host-cell');
+            const iframe = isHost ? null : cell.querySelector('iframe');
+            cells.push({ el: cell, r, isHost, iframe });
+        }
+        if (!cells.length) return null;
+
+        // Determine column / row structure from unique positions
+        const uniqX = [...new Set(cells.map(c => Math.round(c.r.left)))].sort((a, b) => a - b);
+        const uniqY = [...new Set(cells.map(c => Math.round(c.r.top)))].sort((a, b) => a - b);
+
+        // Gapless layout: cumulative offsets using actual cell widths
+        const colWidths = uniqX.map((x) => {
+            const match = cells.find(c => Math.round(c.r.left) === x);
+            return match ? Math.round(match.r.width) : 0;
+        });
+        const rowHeights = uniqY.map((y) => {
+            const match = cells.find(c => Math.round(c.r.top) === y);
+            return match ? Math.round(match.r.height) : 0;
+        });
+        const totalW = colWidths.reduce((s, w) => s + w, 0);
+        const totalH = rowHeights.reduce((s, h) => s + h, 0);
+        if (!totalW || !totalH) return null;
 
         const out = document.createElement('canvas');
-        out.width  = Math.round(gridRect.width  * scale);
-        out.height = Math.round(gridRect.height * scale);
+        out.width  = Math.round(totalW * scale);
+        out.height = Math.round(totalH * scale);
         const ctx = out.getContext('2d');
         if (!ctx) return null;
 
         ctx.fillStyle = this.getScreenshotBackgroundColor(gridEl) || '#050028';
         ctx.fillRect(0, 0, out.width, out.height);
 
-        const mapRect = (elRect) => ({
-            x: (elRect.left - gridRect.left) * scale,
-            y: (elRect.top  - gridRect.top)  * scale,
-            w: elRect.width  * scale,
-            h: elRect.height * scale,
-        });
+        // Cumulative offsets (gapless)
+        const colOff = [0];
+        for (let i = 0; i < colWidths.length - 1; i++) colOff.push(colOff[i] + colWidths[i]);
+        const rowOff = [0];
+        for (let i = 0; i < rowHeights.length - 1; i++) rowOff.push(rowOff[i] + rowHeights[i]);
 
-        // 1. Capture host panel (lives in the main document)
-        const hostCell = gridEl.querySelector('[data-multichart-host-cell]');
-        const hostContainer = document.getElementById('chart-container');
-        if (hostCell && hostContainer) {
+        for (const cell of cells) {
+            const col = uniqX.indexOf(Math.round(cell.r.left));
+            const row = uniqY.indexOf(Math.round(cell.r.top));
+            const dx = colOff[col] * scale;
+            const dy = rowOff[row] * scale;
+            const dw = Math.round(cell.r.width  * scale);
+            const dh = Math.round(cell.r.height * scale);
+
             try {
-                const hostCanvas = await this.captureCanvasDirect(hostContainer, scale);
-                if (hostCanvas) {
-                    const p = mapRect(hostCell.getBoundingClientRect());
-                    ctx.drawImage(hostCanvas, p.x, p.y, p.w, p.h);
+                let container = null;
+                let panelDoc  = document;
+                if (cell.isHost) {
+                    container = document.getElementById('chart-container');
+                } else if (cell.iframe) {
+                    panelDoc = cell.iframe.contentDocument
+                           || (cell.iframe.contentWindow && cell.iframe.contentWindow.document);
+                    container = panelDoc && panelDoc.getElementById('chart-container');
                 }
-            } catch (_) {}
-        }
+                if (!container) continue;
 
-        // 2. Capture each iframe panel (same-origin → direct DOM access)
-        for (const iframe of iframes) {
-            try {
-                const iDoc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
-                if (!iDoc) continue;
-                const iContainer = iDoc.getElementById('chart-container');
-                if (!iContainer) continue;
-                const panelCanvas = await this.captureCanvasDirect(iContainer, scale);
+                const panelCanvas = await this.captureCanvasDirect(container, scale);
                 if (!panelCanvas) continue;
-                const p = mapRect(iframe.getBoundingClientRect());
-                ctx.drawImage(panelCanvas, p.x, p.y, p.w, p.h);
+
+                // Stamp OHLC overlay onto the individual panel canvas
+                this._addOHLCOverlayFromDoc(panelCanvas, panelDoc, scale);
+
+                ctx.drawImage(panelCanvas, dx, dy, dw, dh);
             } catch (e) {
-                console.warn('[screenshot] iframe capture failed:', e && e.message);
+                console.warn('[screenshot] panel capture failed:', e && e.message);
             }
         }
 
         return out;
+    }
+
+    /**
+     * Draw OHLC symbol/timeframe + O H L C values onto a canvas,
+     * reading text from the given document (main doc or iframe doc).
+     */
+    _addOHLCOverlayFromDoc(canvas, doc, scale = 2) {
+        if (!canvas || !doc) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const get = (id) => {
+            const el = doc.getElementById(id);
+            return el ? (el.textContent || '').trim() : '';
+        };
+        const symbol    = get('chartSymbol');
+        const timeframe = get('chartTimeframe');
+        const openVal   = get('open');
+        const highVal   = get('high');
+        const lowVal    = get('low');
+        const closeVal  = get('close');
+        const change    = get('chartChange');
+
+        if (!symbol && !openVal) return;
+
+        const pad   = Math.round(10 * scale);
+        const lineH = Math.round(15 * scale);
+        const fs1   = Math.round(11 * scale);
+        const fs2   = Math.round(9  * scale);
+        const ff    = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+        ctx.save();
+        ctx.textBaseline = 'top';
+        let y = pad;
+
+        if (symbol || timeframe) {
+            ctx.font = `400 ${fs1}px ${ff}`;
+            let x = pad;
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            ctx.fillText(symbol || '', x, y);
+            x += ctx.measureText(symbol || '').width;
+            if (symbol && timeframe) {
+                ctx.fillStyle = 'rgba(255,255,255,0.60)';
+                ctx.fillText(' · ', x, y);
+                x += ctx.measureText(' · ').width;
+            }
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            ctx.fillText(timeframe || '', x, y);
+            y += lineH;
+        }
+        if (openVal) {
+            ctx.font = `300 ${fs2}px ${ff}`;
+            let x = pad;
+            const colGap = Math.round(8 * scale);
+            for (const { label, value } of [
+                { label: 'O', value: openVal }, { label: 'H', value: highVal },
+                { label: 'L', value: lowVal  }, { label: 'C', value: closeVal },
+            ]) {
+                if (!value || value === '—') continue;
+                ctx.fillStyle = 'rgba(255,255,255,0.60)';
+                ctx.fillText(label, x, y);
+                x += ctx.measureText(label).width + Math.round(2 * scale);
+                ctx.fillStyle = 'rgba(255,255,255,0.95)';
+                ctx.fillText(value, x, y);
+                x += ctx.measureText(value).width + colGap;
+            }
+            if (change && change !== '—') {
+                ctx.fillStyle = change.startsWith('+')
+                    ? 'rgba(8,153,129,0.92)' : 'rgba(242,54,69,0.92)';
+                ctx.fillText(change, x, y);
+            }
+        }
+        ctx.restore();
     }
 
     /**
