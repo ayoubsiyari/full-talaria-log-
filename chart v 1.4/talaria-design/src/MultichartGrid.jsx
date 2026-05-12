@@ -1325,19 +1325,22 @@ export default function MultichartGrid({
         };
     }, [layout.tiles, managerReady]);
 
-    // When the host chart's file/tf becomes available after the first paint,
-    // props update but existing iframes keep their old src (no fileId).
-    // Push loadFile + setTimeframe so panels recover without remounting.
-    // Only target panels that already sent bridge-ready — panel-cmd has no
-    // queue before panel-cmd-ready, so early sendCommand would time out.
-    // `readyPanels` re-runs this when each iframe becomes listenable.
-    // (initial* mirror the host; this aligns iframes that booted empty.)
+    // When a NEW iframe becomes bridge-ready, push the host's current
+    // file + timeframe so it boots with data even if the iframe URL was
+    // missing a fileId (e.g. props were empty on first paint).
+    //
+    // IMPORTANT: only depends on `readyPanels` (+ managerReady).
+    // initialFileId / initialTimeframe are deliberately read from REFS
+    // (not props) so that a timeframe change on Panel A does NOT push
+    // to every iframe — that would override Panel B's independent tf
+    // even when sync.interval is off.  Timeframe sync is handled by the
+    // dedicated "Interval sync" effect below which checks layoutSync.
     useEffect(() => {
         if (!managerReady) return;
         const hostNt = readHostChartFileAndTf();
-        const fid = (initialFileId && String(initialFileId).trim())
+        const fid = (initialFileIdRef.current && String(initialFileIdRef.current).trim())
             || hostNt.fileId;
-        const tf = (initialTimeframe && String(initialTimeframe).trim())
+        const tf = (initialTimeframeRef.current && String(initialTimeframeRef.current).trim())
             || hostNt.tf;
         if (!fid) return;
         const mgr = managerRef.current;
@@ -1349,7 +1352,8 @@ export default function MultichartGrid({
                 if (tf) mgr.sendCommandNoReply(c.id, "setTimeframe", { tf });
             } catch (_) {}
         }
-    }, [managerReady, initialFileId, initialTimeframe, readyPanels]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [managerReady, readyPanels]);
 
     // ─── Host-tile positioning ──────────────────────────────────────────
     //
