@@ -161,19 +161,20 @@ class Chart {
             .append('div')
             .attr('class', 'chart-context-menu')
             .attr('id', menuId)
-            .style('position', 'fixed')  // Use fixed positioning for better panel support
+            .style('position', 'fixed')
             .style('display', 'none')
             .style('visibility', 'hidden')
             .style('opacity', '0')
             .style('transform', 'none')
             .style('transition', 'none')
-            .style('background', 'rgba(5, 0, 40, 0.97)')
-            .style('border', '1px solid #2a2e39')
+            .style('background', '#131722')
+            .style('border', '1px solid rgba(140,160,255,0.22)')
             .style('border-radius', '4px')
-            .style('padding', '8px 0')
-            .style('box-shadow', '0 4px 12px rgba(0,0,0,0.4)')
-            .style('z-index', '10000')  // Higher z-index for panels
-            .style('min-width', '160px');
+            .style('padding', '6px 0')
+            .style('box-shadow', '0 10px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)')
+            .style('z-index', '10000')
+            .style('min-width', '160px')
+            .style('font-family', "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif");
         this.rawData = []; // Store raw data - will be populated from CSV
         this.data = []; // Working data (resampled based on timeframe)
         this.dataVersion = 0; // Increment whenever data changes (used for caching)
@@ -19585,10 +19586,10 @@ class Chart {
             .style('width', 'fit-content')
             .style('max-width', '330px')
             .style('padding', '6px 0')
-            .style('background', 'rgba(25, 27, 33, 0.97)')
-            .style('border', '1px solid rgba(104, 113, 133, 0.35)')
-            .style('border-radius', '14px')
-            .style('box-shadow', '0 18px 46px rgba(0,0,0,0.45)')
+            .style('background', '#131722')
+            .style('border', '1px solid rgba(140,160,255,0.22)')
+            .style('border-radius', '4px')
+            .style('box-shadow', '0 10px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)')
             .html('');
 
         // ── 1. Buy / Sell / Add Order ──────────────────────────────
@@ -19935,8 +19936,8 @@ class Chart {
     addTradingViewContextMenuDivider(menu) {
         menu.append('div')
             .style('height', '1px')
-            .style('background', 'rgba(104, 113, 133, 0.38)')
-            .style('margin', '6px 0');
+            .style('background', 'rgba(140,160,255,0.15)')
+            .style('margin', '4px 8px');
     }
 
     getTradingViewContextMenuIcon(iconKey = '') {
@@ -19963,13 +19964,14 @@ class Chart {
 
         const item = menu.append('div')
             .attr('class', 'context-menu-item tv-context-menu-item')
-            .style('padding', '8px 12px')
+            .style('padding', '7px 14px')
             .style('cursor', 'default')
             .style('user-select', 'none')
-            .style('transition', 'background 0.12s ease')
-            .style('color', '#d7d9df')
+            .style('transition', 'background 0.1s')
+            .style('color', 'rgba(209,212,220,0.9)')
             .style('font-size', '12px')
-            .style('line-height', '1.2');
+            .style('line-height', '1.3')
+            .style('font-family', 'inherit');
 
         const row = item.append('div')
             .style('display', 'flex')
@@ -19986,13 +19988,14 @@ class Chart {
         if (icon) {
             const iconWrap = left.append('span')
                 .attr('class', 'tv-context-icon')
-                .style('width', 'var(--talaria-ui-icon-size, 18px)')
-                .style('height', 'var(--talaria-ui-icon-size, 18px)')
+                .style('width', '18px')
+                .style('height', '18px')
                 .style('display', 'inline-flex')
                 .style('align-items', 'center')
                 .style('justify-content', 'center')
-                .style('opacity', '0.9')
-                .style('flex-shrink', '0');
+                .style('opacity', '0.7')
+                .style('flex-shrink', '0')
+                .style('color', 'rgba(140,160,255,0.85)');
 
             const iconSvg = this.getTradingViewContextMenuIcon(icon);
             if (iconSvg) {
@@ -20011,18 +20014,18 @@ class Chart {
         if (hasSubmenu) {
             row.append('span')
                 .style('flex-shrink', '0')
-                .style('color', 'rgba(189, 194, 207, 0.65)')
-                .style('font-size', '16px')
+                .style('color', 'rgba(140,160,255,0.5)')
+                .style('font-size', '14px')
                 .style('font-weight', '500')
                 .text('›');
         }
 
         item.on('mouseenter', function() {
-            d3.select(this).style('background', 'rgba(92, 99, 116, 0.24)');
+            d3.select(this).style('background', 'rgba(74,106,255,0.08)').style('color', '#e1e3ea');
         });
 
         item.on('mouseleave', function() {
-            d3.select(this).style('background', 'transparent');
+            d3.select(this).style('background', 'transparent').style('color', 'rgba(209,212,220,0.9)');
         });
 
         item.on('click', async () => {
