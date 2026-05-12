@@ -2186,30 +2186,38 @@ class ReplaySystem {
         requestAnimationFrame(() => this.updateAutoScrollIndicator());
 
         // Refresh-safety: on a hard refresh, enterReplayMode can fire before the
-        // canvas has its real dimensions (chart.w === 0). In that case the offsetX
-        // computed by updateChartData() uses the 320px fallback inside
-        // getReplayAutoScrollState(), placing candles far off-screen — the user
-        // then has to double-click the time axis (jumpToLatest) to see them.
-        // Retry resize + alignment until the chart has valid dimensions (up to ~3s).
+        // canvas has its real dimensions (chart.w === 0), AND the async session
+        // state restore (loadTradingSessionStateIfNeeded) can overwrite offsetX,
+        // candleWidth, priceOffset, priceZoom, autoScale with stale saved values
+        // AFTER this function returns. Both leave candles off-screen until the
+        // user double-clicks the time axis (jumpToLatest).
+        // Run multiple alignment passes over ~2.5s to catch all late overwrites.
         let realignAttempts = 0;
         const realignAfterLayout = () => {
             if (!this.isActive) return;
+            if (this.userHasPanned) return;
             try {
-                if (typeof this.chart.resize === 'function') this.chart.resize();
+                if (typeof this.chart.resize === 'function') {
+                    this.chart._lastResizeDpr = 0;
+                    this.chart.resize();
+                }
             } catch (e) { /* ignore */ }
-            const w = Number(this.chart.w) || 0;
-            if (this.autoScrollEnabled && !this.userHasPanned) {
+            if (this.autoScrollEnabled) {
+                this.chart.autoScale = true;
+                this.chart.priceOffset = 0;
+                this.chart.priceZoom = 1;
                 const st = this.getReplayAutoScrollState(this.chart);
                 if (st && Number.isFinite(st.offsetX)) {
                     this.chart.offsetX = st.offsetX;
                     if (typeof this.chart.constrainOffset === 'function') {
                         this.chart.constrainOffset();
                     }
-                    this.chart.scheduleRender();
                 }
+                this.chart.renderPending = true;
+                if (typeof this.chart.render === 'function') this.chart.render();
             }
-            if (w < 80 && ++realignAttempts < 15) {
-                setTimeout(realignAfterLayout, 200);
+            if (++realignAttempts < 8) {
+                setTimeout(realignAfterLayout, realignAttempts <= 3 ? 200 : 500);
             }
         };
         requestAnimationFrame(realignAfterLayout);

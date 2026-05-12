@@ -3140,8 +3140,11 @@ const TalariaV8bLive = () => {
             if (window.chart && window.chart.resize) {
               window.chart._lastResizeDpr = 0;
               window.chart.resize();
-              window.chart._chartViewRestored = false;
-              window.chart.fitToView && window.chart.fitToView();
+              const replayOwnsViewport = !!(window.chart.isBacktestMode && window.chart.replaySystem);
+              if (!replayOwnsViewport) {
+                window.chart._chartViewRestored = false;
+                window.chart.fitToView && window.chart.fitToView();
+              }
               window.chart.render && window.chart.render();
             }
           } catch (_) {}

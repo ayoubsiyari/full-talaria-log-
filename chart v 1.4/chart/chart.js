@@ -2740,6 +2740,7 @@ class Chart {
             // Restore chart view (pan/zoom position)
             if (state.chartView && typeof state.chartView === 'object') {
                 const v = state.chartView;
+                const replayIsActive = !!(this.replaySystem && this.replaySystem.isActive);
                 // Replay uses virtual time + auto-scroll to pin the playhead; restoring saved chart pan
                 // from the same session blob overwrote that alignment — footer showed 21:10 while the
                 // viewport stayed hours earlier on 1m (15m looked "fine" because one aggregated candle).
@@ -2747,7 +2748,7 @@ class Chart {
                     state.replay &&
                     typeof state.replay === 'object' &&
                     Object.keys(state.replay).length > 0;
-                if (typeof v.offsetX === 'number' && Number.isFinite(v.offsetX) && !replayOwnsHorizontalPan) {
+                if (typeof v.offsetX === 'number' && Number.isFinite(v.offsetX) && !replayOwnsHorizontalPan && !replayIsActive) {
                     this.offsetX = v.offsetX;
                 }
                 if (typeof v.candleWidth === 'number' && Number.isFinite(v.candleWidth)) {
@@ -2758,16 +2759,24 @@ class Chart {
                     const maxWidth = widths[widths.length - 1];
                     this.candleWidth = Math.max(minWidth, Math.min(maxWidth, v.candleWidth));
                 }
-                if (typeof v.priceOffset === 'number' && Number.isFinite(v.priceOffset)) {
-                    this.priceOffset = v.priceOffset;
-                }
-                if (typeof v.priceZoom === 'number' && Number.isFinite(v.priceZoom)) {
-                    this.priceZoom = Math.max(this.minPriceZoom, v.priceZoom);
-                }
-                if (typeof v.autoScale === 'boolean') {
-                    this.autoScale = v.autoScale;
-                    if (this.priceScale) {
-                        this.priceScale.autoScale = v.autoScale;
+                // In backtest/replay mode, do NOT restore stale Y-axis positioning.
+                // The replay's auto-scroll alignment loop resets autoScale/priceOffset/
+                // priceZoom every pass so the viewport always frames the playhead candles.
+                // Restoring saved values here would compete with that loop and leave the
+                // Y-axis on a completely different price range (e.g. 1240 when current
+                // candles are at 5700), requiring a manual double-click to fix.
+                if (!replayIsActive) {
+                    if (typeof v.priceOffset === 'number' && Number.isFinite(v.priceOffset)) {
+                        this.priceOffset = v.priceOffset;
+                    }
+                    if (typeof v.priceZoom === 'number' && Number.isFinite(v.priceZoom)) {
+                        this.priceZoom = Math.max(this.minPriceZoom, v.priceZoom);
+                    }
+                    if (typeof v.autoScale === 'boolean') {
+                        this.autoScale = v.autoScale;
+                        if (this.priceScale) {
+                            this.priceScale.autoScale = v.autoScale;
+                        }
                     }
                 }
                 if (typeof v.candleWidthIndex === 'number' && this.zoomLevel) {
@@ -2796,15 +2805,14 @@ class Chart {
                 // On a backtest/replay refresh, enterReplayMode() ran first with the default
                 // candleWidth (8) and already set offsetX via getReplayAutoScrollState(). The
                 // saved candleWidth restored above may differ wildly (e.g. 0.2 or 34), which
-                // changes candleSpacing — leaving the stale offsetX pointing far off-screen so
-                // no candles render until the user double-clicks the time axis (jumpToLatest).
-                // Recompute offsetX now against the freshly-restored candleWidth so the
-                // playhead stays near the right edge with TradingView-style auto-fit.
-                if (replayOwnsHorizontalPan &&
-                    this.replaySystem &&
-                    this.replaySystem.isActive &&
+                // changes candleSpacing — leaving the stale offsetX pointing far off-screen.
+                // ALWAYS recompute when replay is active (not just when replay state was saved).
+                if (replayIsActive &&
                     typeof this.replaySystem.getReplayAutoScrollState === 'function') {
                     const realignOffsetForReplay = () => {
+                        this.autoScale = true;
+                        this.priceOffset = 0;
+                        this.priceZoom = 1;
                         const st = this.replaySystem.getReplayAutoScrollState(this);
                         if (st && Number.isFinite(st.offsetX)) {
                             this.offsetX = st.offsetX;
@@ -2812,9 +2820,6 @@ class Chart {
                         }
                     };
                     realignOffsetForReplay();
-                    // Second pass after layout settles: if the canvas was still 0×0 above
-                    // (refresh before React mounted #chartCanvas) the first realign used
-                    // the 320px fallback width. Re-run on the next frame with real dimensions.
                     requestAnimationFrame(() => {
                         if (typeof this.resize === 'function') this.resize();
                         realignOffsetForReplay();
@@ -13649,13 +13654,38 @@ class Chart {
                 futureIdx = lastRealIdx + Math.ceil((nextAlignedTs - lastTs) / timeframeMs);
             }
 
-            for (; futureIdx <= lastVisibleIdx; futureIdx += labelInterval) {
-                const ri  = Math.round(futureIdx);
+            // Emit future ticks at the same cadence AND detect month/year boundaries
+            // so the right side matches the left side's label density.
+            let fPrevMonth = -1, fPrevYear = -1;
+            {
+                const lastCandle = this.data[lastRealIdx];
+                if (lastCandle && lastCandle.t) {
+                    const ld = this.convertToTimezone(lastCandle.t);
+                    fPrevMonth = ld.getUTCMonth();
+                    fPrevYear  = ld.getUTCFullYear();
+                }
+            }
+            const futureEnd = Math.ceil(lastVisibleIdx);
+            for (let fi = lastRealIdx + 1; fi <= futureEnd; fi++) {
+                const ri  = fi;
                 const tz2 = this.convertToTimezone(last.t + (ri - lastRealIdx) * timeframeMs);
-                const lbl = isDailyOrHigher
-                    ? monthNames[tz2.getUTCMonth()] + ' ' + tz2.getUTCDate()
-                    : this._formatSessionClock(tz2, false);
-                candidates.push({ idx: ri, isBoundary: false, label: lbl });
+                const fMonth = tz2.getUTCMonth(), fYear = tz2.getUTCFullYear();
+                let fIsBoundary = false, fBoundaryLabel = null;
+                if (fPrevYear !== -1) {
+                    if (fYear !== fPrevYear)        { fIsBoundary = true; fBoundaryLabel = String(fYear); }
+                    else if (fMonth !== fPrevMonth)  { fIsBoundary = true; fBoundaryLabel = monthNames[fMonth]; }
+                }
+                fPrevMonth = fMonth; fPrevYear = fYear;
+
+                const isRoundFuture = (fi === futureIdx) || ((fi - futureIdx) % labelInterval === 0 && fi >= futureIdx);
+                if (!isRoundFuture && !fIsBoundary) continue;
+
+                const lbl = (fIsBoundary && fBoundaryLabel)
+                    ? fBoundaryLabel
+                    : (isDailyOrHigher
+                        ? monthNames[fMonth] + ' ' + tz2.getUTCDate()
+                        : this._formatSessionClock(tz2, false));
+                candidates.push({ idx: ri, isBoundary: !!(fIsBoundary && fBoundaryLabel), label: lbl });
             }
         }
 
