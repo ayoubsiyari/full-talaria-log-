@@ -1921,12 +1921,40 @@ export default function MultichartGrid({
     // catches B up via the lazy-enter in panel-cmd-bridge replayTick,
     // but for paused replay (no ticks) B would stay misaligned forever.
     // Sending replayEnter the moment B is ready closes that window.
+    const orderSyncedPanelsRef = useRef(new Set([HOST_PANEL_ID]));
     useEffect(() => {
         // Defer to next microtask so the manager's `c.ready` flag has
         // been set (onChartReady runs synchronously before this state
         // update is processed, but the iframe's mgr.charts.get(id) may
         // not yet reflect c.ready=true in the same tick).
-        const t = setTimeout(_primeReplayFromParent, 0);
+        const t = setTimeout(() => {
+            _primeReplayFromParent();
+
+            // Push host's existing open positions + pending orders to
+            // newly-ready panels so order level lines appear immediately.
+            try {
+                const ch = (typeof window !== "undefined") ? window.chart : null;
+                const om = ch && ch.orderManager;
+                const grid = window.__multichartGrid;
+                if (om && grid && typeof grid.runCommand === "function") {
+                    const openPositions = om.orders || om.positions || [];
+                    const pendingOrders = om.pendingOrders || [];
+                    for (const panelId of readyPanels) {
+                        if (panelId === HOST_PANEL_ID) continue;
+                        if (orderSyncedPanelsRef.current.has(panelId)) continue;
+                        orderSyncedPanelsRef.current.add(panelId);
+                        for (const pos of openPositions) {
+                            if (!pos || pos.id == null) continue;
+                            try { grid.runCommand("addOrder", { order: pos, kind: "opened" }, { panelId }).catch(() => {}); } catch (_) {}
+                        }
+                        for (const pend of pendingOrders) {
+                            if (!pend || pend.id == null) continue;
+                            try { grid.runCommand("addOrder", { order: pend, kind: "pending" }, { panelId }).catch(() => {}); } catch (_) {}
+                        }
+                    }
+                }
+            } catch (_) {}
+        }, 0);
         return () => clearTimeout(t);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [readyPanels]);
