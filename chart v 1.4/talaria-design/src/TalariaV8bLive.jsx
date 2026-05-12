@@ -757,6 +757,20 @@ function v9TxtStylePatchFromDrawing(d) {
     out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
   }
 
+  if (t === "pin") {
+    out.pinLabelColor = s.fill || s.stroke || "#2962ff";
+    out.bgColor = s.backgroundColor || "#363a45";
+    out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
+    out.borderColor = s.borderColor || "#555";
+    out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
+  } else if (t === "signpost" || t === "signpost-2") {
+    out.bgColor = s.color || "#787b86";
+    out.bgOn = true;
+  } else if (t === "flag-mark") {
+    out.bgColor = s.fill || s.stroke || "#787b86";
+    out.bgOn = true;
+  }
+
   if (s.textAlign) out.horizAlign = s.textAlign;
   if (typeof d.text === "string") out.content = d.text;
   return out;
@@ -844,6 +858,23 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
     applyTextBlock();
     if (txt.bgOn && txt.bgColor != null) s.fill = txt.bgColor;
     else if (!txt.bgOn) s.fill = "#787b86";
+    return;
+  }
+  if (t === "pin") {
+    applyCommon();
+    if (txt.content != null) { d.text = String(txt.content); try { if (typeof d.setText === "function") d.setText(d.text); } catch (_) {} }
+    if (txt.pinLabelColor != null) { s.fill = txt.pinLabelColor; s.stroke = txt.pinLabelColor; }
+    s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
+    s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "none";
+    return;
+  }
+  if (t === "signpost" || t === "signpost-2") {
+    if (txt.bgOn && txt.bgColor != null) s.color = txt.bgColor;
+    if (txt.content != null) { d.text = String(txt.content); try { if (typeof d.setText === "function") d.setText(d.text); } catch (_) {} }
+    return;
+  }
+  if (t === "flag-mark") {
+    if (txt.bgOn && txt.bgColor != null) { s.fill = txt.bgColor; s.stroke = txt.bgColor; }
     return;
   }
   applyCommon();
@@ -9328,6 +9359,7 @@ const TalariaV8bLive = () => {
     txtStyle.wrapText,
     txtStyle.content,
     txtStyle.horizAlign,
+    txtStyle.pinLabelColor,
     txtStyle.pt1Price, txtStyle.pt1Bar, txtStyle.pt2Price, txtStyle.pt2Bar,
     txtStyle.visMinutes, txtStyle.visHours, txtStyle.visDays, txtStyle.visWeeks, txtStyle.visMonths,
     tool,
