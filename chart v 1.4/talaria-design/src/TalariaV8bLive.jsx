@@ -17835,7 +17835,7 @@ const TalariaV8bLive = () => {
         <button type="button" ref={supportBtnRef}
           onClick={(e) => { e.stopPropagation(); closeWindows(); setSettingsOpen(false); setLayoutDropdownOpen(false); setRightPanel(null); setOrderPanelOpen(false); setSupportChatOpen(prev => !prev); }}
           onMouseEnter={e=>{setHov("u-support");showTip("Support",e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
-          style={{ width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", border:"none", cursor:"default", position:"relative", marginRight:4,
+          style={{ width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", border:"none", cursor:"default", position:"relative", marginRight:12,
             background: supportChatOpen ? "rgba(74,106,255,0.10)" : hov==="u-support" ? c.hv : "transparent", transition:"background 0.12s" }}>
           <I n="chat" s={16} cl={supportChatOpen ? c.acL : hov==="u-support" ? c.tx : c.ts}/>
           {supportUnread > 0 && <div style={{ position:"absolute", top:1, right:1, minWidth:14, height:14, borderRadius:7, background:"#e53935", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", lineHeight:1, pointerEvents:"none" }}>{supportUnread > 99 ? "99+" : supportUnread}</div>}

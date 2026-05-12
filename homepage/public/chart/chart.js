@@ -15911,12 +15911,58 @@ class Chart {
             }
         }
 
-        const clusterGap = badgeW + 10;
-        const mergeDist = badgeW * 1.35;
+        const clusterGap = badgeW + 4;
+        const mergeDist = badgeW * 1.6;
+        const maxSpreadPerCluster = badgeW * 3.5;
 
         this.ctx.save();
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
+
+        const _drawSingleFlag = (e, xi, flagCy) => {
+            if (!Number.isFinite(xi)) return;
+            if (xi + halfBadgeW < plotClipL || xi - halfBadgeW > plotClipR) return;
+            const flagUrl = typeof api.getFlagImageUrl === 'function'
+                ? api.getFlagImageUrl(e.country || e.currency || '') : null;
+            let drew = false;
+            if (flagUrl) {
+                const entry = this._ensureEconomicCalendarFlagImage(flagUrl);
+                const { img } = entry || {};
+                if (img && !entry.failed && img.complete && img.naturalWidth) {
+                    drew = this._drawEconomicCalendarFlagBadge(this.ctx, xi, flagCy, badgeW, badgeH, img, strokeCol);
+                }
+            }
+            if (!drew) {
+                const bx = xi - badgeW / 2;
+                const by = flagCy - badgeH / 2;
+                const rx = Math.max(1, Math.min(2.5, badgeW * 0.125));
+                this.ctx.beginPath();
+                if (typeof this.ctx.roundRect === 'function') {
+                    this.ctx.roundRect(bx, by, badgeW, badgeH, rx);
+                } else {
+                    this._economicCalendarRoundRectPath(this.ctx, bx, by, badgeW, badgeH, rx);
+                }
+                this.ctx.fillStyle = fillCol;
+                this.ctx.fill();
+                this.ctx.strokeStyle = strokeCol;
+                this.ctx.lineWidth = Math.max(1, badgeW * 0.06);
+                this.ctx.stroke();
+                const iso = typeof api.getCalendarFlagCode === 'function' ? api.getCalendarFlagCode(e) : '';
+                if (iso && /^[A-Z]{2}$/i.test(iso)) {
+                    const codeStr = String(iso).toUpperCase();
+                    const codeFont = Math.max(7, Math.min(11, badgeH * 0.42));
+                    this.ctx.font = `700 ${codeFont}px system-ui,"Segoe UI",sans-serif`;
+                    this.ctx.fillStyle = emojiFill;
+                    this.ctx.fillText(codeStr, xi, flagCy);
+                } else {
+                    const flagStr = getFlagEmojiFallback(e);
+                    const innerFont = Math.max(8, Math.min(12, badgeH * 0.85));
+                    this.ctx.font = `${innerFont}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+                    this.ctx.fillStyle = emojiFill;
+                    this.ctx.fillText(flagStr, xi, flagCy);
+                }
+            }
+        };
 
         let c = 0;
         while (c < placements.length) {
@@ -15926,74 +15972,125 @@ class Chart {
             }
             const cluster = placements.slice(c, d);
             const n = cluster.length;
-            for (let k = 0; k < n; k++) {
-                const { e, x } = cluster[k];
-                const offset = (k - (n - 1) / 2) * clusterGap;
-                const xi = x + offset;
-                if (!Number.isFinite(xi)) continue;
-                // Omit badges wholly outside the plot so they don’t hug the rim after clustering.
-                if (xi + halfBadgeW < plotClipL || xi - halfBadgeW > plotClipR) continue;
+            const clusterCenterX = cluster.reduce((s, p) => s + p.x, 0) / n;
+            const totalSpread = (n - 1) * clusterGap;
 
-                const flagUrl = typeof api.getFlagImageUrl === 'function'
-                    ? api.getFlagImageUrl(e.country || e.currency || '')
-                    : null;
+            if (n > 1 && totalSpread > maxSpreadPerCluster) {
+                // Collapsed cluster: stack top 2 flags + count pill (TradingView style)
+                const showCount = Math.min(n, 2);
+                const stackOffset = badgeH * 0.28;
+                const stackBaseY = cy - stackOffset * (showCount - 1);
 
-                let drew = false;
-                if (flagUrl) {
-                    const entry = this._ensureEconomicCalendarFlagImage(flagUrl);
-                    const { img } = entry || {};
-                    if (img && !entry.failed && img.complete && img.naturalWidth) {
-                        drew = this._drawEconomicCalendarFlagBadge(this.ctx, xi, cy, badgeW, badgeH, img, strokeCol);
-                    }
+                for (let s = showCount - 1; s >= 0; s--) {
+                    const scy = stackBaseY + s * stackOffset;
+                    _drawSingleFlag(cluster[s].e, clusterCenterX, scy);
                 }
 
-                if (!drew) {
-                    const bx = xi - badgeW / 2;
-                    const by = cy - badgeH / 2;
-                    const rx = Math.max(1, Math.min(2.5, badgeW * 0.125));
+                if (n > showCount) {
+                    const pillText = '+' + (n - showCount);
+                    const pillFont = Math.max(7, Math.min(10, badgeH * 0.55));
+                    this.ctx.font = `600 ${pillFont}px system-ui,"Segoe UI",sans-serif`;
+                    const tw = this.ctx.measureText(pillText).width;
+                    const pillW = tw + 6;
+                    const pillH = pillFont + 3;
+                    const pillY = cy + badgeH / 2 + 3;
                     this.ctx.beginPath();
+                    const prx = pillH / 2;
                     if (typeof this.ctx.roundRect === 'function') {
-                        this.ctx.roundRect(bx, by, badgeW, badgeH, rx);
+                        this.ctx.roundRect(clusterCenterX - pillW / 2, pillY, pillW, pillH, prx);
                     } else {
-                        this._economicCalendarRoundRectPath(this.ctx, bx, by, badgeW, badgeH, rx);
+                        this._economicCalendarRoundRectPath(this.ctx, clusterCenterX - pillW / 2, pillY, pillW, pillH, prx);
                     }
-                    this.ctx.fillStyle = fillCol;
+                    this.ctx.fillStyle = 'rgba(41,98,255,0.85)';
                     this.ctx.fill();
-                    this.ctx.strokeStyle = strokeCol;
-                    this.ctx.lineWidth = Math.max(1, badgeW * 0.06);
-                    this.ctx.stroke();
-
-                    const iso = typeof api.getCalendarFlagCode === 'function'
-                        ? api.getCalendarFlagCode(e)
-                        : '';
-                    if (iso && /^[A-Z]{2}$/i.test(iso)) {
-                        const codeStr = String(iso).toUpperCase();
-                        const codeFont = Math.max(7, Math.min(11, badgeH * 0.42));
-                        this.ctx.font = `700 ${codeFont}px system-ui,"Segoe UI",sans-serif`;
-                        this.ctx.fillStyle = emojiFill;
-                        this.ctx.fillText(codeStr, xi, cy);
-                    } else {
-                        const flagStr = getFlagEmojiFallback(e);
-                        const innerFont = Math.max(8, Math.min(12, badgeH * 0.85));
-                        this.ctx.font = `${innerFont}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
-                        this.ctx.fillStyle = emojiFill;
-                        this.ctx.fillText(flagStr, xi, cy);
-                    }
+                    this.ctx.fillStyle = '#fff';
+                    this.ctx.fillText(pillText, clusterCenterX, pillY + pillH / 2);
                 }
 
-                this._economicCalendarHitRegions.push({
-                    left: xi - badgeW / 2 - 2,
-                    right: xi + badgeW / 2 + 2,
-                    top: cy - badgeH / 2 - 2,
-                    bottom: cy + badgeH / 2 + 2,
-                    event: e
-                });
+                for (let k = 0; k < n; k++) {
+                    this._economicCalendarHitRegions.push({
+                        left: clusterCenterX - badgeW / 2 - 4,
+                        right: clusterCenterX + badgeW / 2 + 4,
+                        top: cy - badgeH - 4,
+                        bottom: cy + badgeH + 14,
+                        event: cluster[k].e
+                    });
+                }
+            } else {
+                // Expanded: show individual flags side by side
+                for (let k = 0; k < n; k++) {
+                    const { e, x } = cluster[k];
+                    const offset = (k - (n - 1) / 2) * clusterGap;
+                    const xi = x + offset;
+                    _drawSingleFlag(e, xi, cy);
+                    if (Number.isFinite(xi)) {
+                        this._economicCalendarHitRegions.push({
+                            left: xi - badgeW / 2 - 2,
+                            right: xi + badgeW / 2 + 2,
+                            top: cy - badgeH / 2 - 2,
+                            bottom: cy + badgeH / 2 + 2,
+                            event: e
+                        });
+                    }
+                }
             }
             c = d;
         }
 
         this.ctx.restore();
     }
+dgeH * 0.55));
+                    this.ctx.font = `600 ${pillFont}px system-ui,"Segoe UI",sans-serif`;
+                    const tw = this.ctx.measureText(pillText).width;
+                    const pillW = tw + 6;
+                    const pillH = pillFont + 3;
+                    const pillY = cy + badgeH / 2 + 3;
+                    this.ctx.beginPath();
+                    const prx = pillH / 2;
+                    if (typeof this.ctx.roundRect === 'function') {
+                        this.ctx.roundRect(clusterCenterX - pillW / 2, pillY, pillW, pillH, prx);
+                    } else {
+                        this._economicCalendarRoundRectPath(this.ctx, clusterCenterX - pillW / 2, pillY, pillW, pillH, prx);
+                    }
+                    this.ctx.fillStyle = 'rgba(41,98,255,0.85)';
+                    this.ctx.fill();
+                    this.ctx.fillStyle = '#fff';
+                    this.ctx.fillText(pillText, clusterCenterX, pillY + pillH / 2);
+                }
+
+                for (let k = 0; k < n; k++) {
+                    this._economicCalendarHitRegions.push({
+                        left: clusterCenterX - badgeW / 2 - 4,
+                        right: clusterCenterX + badgeW / 2 + 4,
+                        top: cy - badgeH - 4,
+                        bottom: cy + badgeH + 14,
+                        event: cluster[k].e
+                    });
+                }
+            } else {
+                // Expanded: show individual flags side by side
+                for (let k = 0; k < n; k++) {
+                    const { e, x } = cluster[k];
+                    const offset = (k - (n - 1) / 2) * clusterGap;
+                    const xi = x + offset;
+                    _drawSingleFlag(e, xi, cy);
+                    if (Number.isFinite(xi)) {
+                        this._economicCalendarHitRegions.push({
+                            left: xi - badgeW / 2 - 2,
+                            right: xi + badgeW / 2 + 2,
+                            top: cy - badgeH / 2 - 2,
+                            bottom: cy + badgeH / 2 + 2,
+                            event: e
+                        });
+                    }
+                }
+            }
+            c = d;
+        }
+
+        this.ctx.restore();
+    }
+}
 
     _escapeHtmlForEconTooltip(str) {
         if (str == null) return '';
