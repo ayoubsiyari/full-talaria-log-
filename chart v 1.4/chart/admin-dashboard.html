@@ -640,6 +640,65 @@ select { cursor: pointer; }
 .fr-sync-stat-value.warn { color: #eab308; }
 .fr-sync-stat-value.err { color: #ef4444; }
 
+/* ── Unclassified Datasets Panel ───────────────────── */
+.fr-unclassified-panel {
+  margin-bottom: 14px;
+  border: 1px solid rgba(234,179,8,.2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+.fr-unclassified-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; cursor: pointer;
+  background: rgba(234,179,8,.04);
+  font-size: 12px; font-weight: 600; color: #eab308;
+  transition: background .15s;
+}
+.fr-unclassified-header:hover { background: rgba(234,179,8,.08); }
+.fr-unclassified-header.open svg#frUnclassifiedChevron { transform: rotate(180deg); }
+.fr-unclassified-toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 16px; border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+.fr-unclassified-sel-count { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+.fr-unclassified-list {
+  max-height: 320px; overflow-y: auto;
+  border-top: 1px solid var(--border);
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.1) transparent;
+}
+.fr-unclassified-row {
+  display: grid;
+  grid-template-columns: 28px 1fr 100px 80px 90px;
+  align-items: center; gap: 8px;
+  padding: 7px 16px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background .1s;
+}
+.fr-unclassified-row:hover { background: rgba(255,255,255,.02); }
+.fr-unclassified-row.checked { background: rgba(239,68,68,.05); }
+.fr-unclassified-row input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; }
+.fr-unclassified-row .uc-name {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fr-unclassified-row .uc-ticker { color: var(--text-muted); font-size: 10px; }
+.fr-unclassified-row .uc-rows { color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
+.fr-unclassified-row .uc-date { color: var(--text-muted); font-size: 10px; }
+.fr-unclassified-row-head {
+  display: grid;
+  grid-template-columns: 28px 1fr 100px 80px 90px;
+  align-items: center; gap: 8px;
+  padding: 6px 16px;
+  font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-overlay);
+  position: sticky; top: 0; z-index: 1;
+}
+.fr-unclassified-status { padding: 8px 16px; font-size: 11px; color: var(--text-muted); background: var(--surface-raised); border-top: 1px solid var(--border); }
+
 /* ── Bulk Dataset Management Panel ─────────────────── */
 .fr-bulk-panel {
   margin-bottom: 16px;
@@ -1968,6 +2027,29 @@ select { cursor: pointer; }
             <p id="frHealthHeadline" style="margin:0 0 12px;font-size:12px;color:var(--text-muted);line-height:1.5">Checking last nightly run…</p>
             <div id="frHealthClassGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:10px"></div>
             <p id="frHealthRegistryNote" style="display:none;margin:0 0 14px;font-size:11px;color:var(--text-muted);line-height:1.5"></p>
+
+            <!-- Unclassified datasets panel -->
+            <div id="frUnclassifiedPanel" class="fr-unclassified-panel" style="display:none">
+              <div class="fr-unclassified-header" onclick="_toggleUnclassifiedList()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span id="frUnclassifiedTitle">86 unclassified datasets</span>
+                <svg id="frUnclassifiedChevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition:transform .2s;margin-left:auto"><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+              <div id="frUnclassifiedBody" style="display:none">
+                <div class="fr-unclassified-toolbar">
+                  <input type="search" id="frUnclassifiedFilter" class="input fr-bulk-filter" placeholder="Filter by name…" oninput="_filterUnclassifiedList()" style="width:200px">
+                  <button type="button" class="btn sm" onclick="_unclassifiedSelectAll(true)">Select all</button>
+                  <button type="button" class="btn sm" onclick="_unclassifiedSelectAll(false)">Deselect all</button>
+                  <span class="fr-unclassified-sel-count" id="frUnclassifiedSelCount">0 selected</span>
+                  <button type="button" class="btn sm fr-bulk-delete-btn" id="frUnclassifiedDeleteBtn" onclick="_deleteUnclassifiedSelected()" disabled style="margin-left:auto">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                    Delete selected
+                  </button>
+                </div>
+                <div id="frUnclassifiedList" class="fr-unclassified-list"></div>
+                <div id="frUnclassifiedStatus" class="fr-unclassified-status"></div>
+              </div>
+            </div>
 
             <!-- Bulk dataset management panel (stocks/any class) -->
             <div id="frBulkManagePanel" class="fr-bulk-panel" style="display:none">
@@ -5798,7 +5880,7 @@ function _renderFirstrateNightlyHealth() {
           tracked +
           ' that map to fx / crypto / futures / stock for FirstRate nightly sync freshness. The other ' +
           excl +
-          ' still appear in the registry but are skipped here (unmappable filename, exotic symbol, or non–FirstRate-style upload).';
+          ' are unclassified (shown above — click to expand, review, and delete or fix them).';
         noteEl.style.display = '';
       } else {
         noteEl.textContent =
@@ -5953,6 +6035,7 @@ async function refreshFirstrateNightlyHealth(opts) {
     const data = await api(url);
     _firstrateHealthCache = data;
     _renderFirstrateNightlyHealth();
+    _renderUnclassifiedPanel();
     if (rescan && typeof toast === 'function') {
       const upd = Number(data && data.rescan_updates) || 0;
       toast(upd > 0
@@ -6061,6 +6144,129 @@ document.addEventListener('click', function (e) {
     _openBulkManage(t.getAttribute('data-fr-manage-class'));
   }
 });
+
+// ── Unclassified datasets panel ──────────────────────────────────────────────
+
+var _unclassifiedCache = [];
+
+function _renderUnclassifiedPanel() {
+  var panel = $('frUnclassifiedPanel');
+  var titleEl = $('frUnclassifiedTitle');
+  if (!panel || !_firstrateHealthCache) return;
+  var items = _firstrateHealthCache.unclassified || [];
+  _unclassifiedCache = items;
+  if (!items.length) { panel.style.display = 'none'; return; }
+  panel.style.display = '';
+  if (titleEl) titleEl.textContent = items.length + ' unclassified dataset' + (items.length === 1 ? '' : 's') + ' — click to view & manage';
+  _renderUnclassifiedList(items);
+}
+
+function _toggleUnclassifiedList() {
+  var body = $('frUnclassifiedBody');
+  var header = document.querySelector('.fr-unclassified-header');
+  if (!body) return;
+  var isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (header) header.classList.toggle('open', !isOpen);
+}
+
+function _renderUnclassifiedList(items) {
+  var listEl = $('frUnclassifiedList');
+  if (!listEl) return;
+  var html = '<div class="fr-unclassified-row-head"><span></span><span>Original name</span><span>Ticker guess</span><span style="text-align:right">Rows</span><span>Uploaded</span></div>';
+  if (!items || !items.length) {
+    html += '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:11px">No unclassified datasets match the filter.</div>';
+    listEl.innerHTML = html;
+    return;
+  }
+  items.forEach(function (d) {
+    var rows = d.row_count
+      ? (d.row_count > 1000000 ? (d.row_count / 1000000).toFixed(1) + 'M'
+        : (d.row_count > 1000 ? Math.round(d.row_count / 1000) + 'K' : String(d.row_count)))
+      : '0';
+    var date = d.upload_date ? d.upload_date.slice(0, 10) : '—';
+    var ticker = d.extracted_ticker || '<em style="opacity:.5">none</em>';
+    html +=
+      '<label class="fr-unclassified-row">' +
+        '<input type="checkbox" class="fr-uc-cb" data-id="' + d.id + '">' +
+        '<span class="uc-name" title="' + (d.original_name || '').replace(/"/g, '&quot;') + '">' + (d.original_name || d.filename || '—') + '</span>' +
+        '<span class="uc-ticker">' + ticker + '</span>' +
+        '<span class="uc-rows">' + rows + '</span>' +
+        '<span class="uc-date">' + date + '</span>' +
+      '</label>';
+  });
+  listEl.innerHTML = html;
+  listEl.removeEventListener('change', _onUnclassifiedChange);
+  listEl.addEventListener('change', _onUnclassifiedChange);
+  _updateUnclassifiedSelCount();
+}
+
+function _onUnclassifiedChange(e) {
+  var row = e.target && e.target.closest('.fr-unclassified-row');
+  if (row) { if (e.target.checked) row.classList.add('checked'); else row.classList.remove('checked'); }
+  _updateUnclassifiedSelCount();
+}
+
+function _updateUnclassifiedSelCount() {
+  var cbs = document.querySelectorAll('.fr-uc-cb:checked');
+  var total = document.querySelectorAll('.fr-uc-cb').length;
+  var n = cbs ? cbs.length : 0;
+  var el = $('frUnclassifiedSelCount');
+  var btn = $('frUnclassifiedDeleteBtn');
+  if (el) el.textContent = n + ' of ' + total + ' selected';
+  if (btn) btn.disabled = (n === 0);
+}
+
+function _unclassifiedSelectAll(checked) {
+  document.querySelectorAll('.fr-uc-cb').forEach(function (cb) {
+    cb.checked = checked;
+    var row = cb.closest('.fr-unclassified-row');
+    if (row) { if (checked) row.classList.add('checked'); else row.classList.remove('checked'); }
+  });
+  _updateUnclassifiedSelCount();
+}
+
+function _filterUnclassifiedList() {
+  var filterEl = $('frUnclassifiedFilter');
+  var q = (filterEl ? filterEl.value : '').trim().toLowerCase();
+  if (!q) { _renderUnclassifiedList(_unclassifiedCache); return; }
+  var filtered = _unclassifiedCache.filter(function (d) {
+    return (d.original_name || '').toLowerCase().indexOf(q) !== -1 ||
+           (d.extracted_ticker || '').toLowerCase().indexOf(q) !== -1 ||
+           (d.filename || '').toLowerCase().indexOf(q) !== -1;
+  });
+  _renderUnclassifiedList(filtered);
+}
+
+async function _deleteUnclassifiedSelected() {
+  var cbsArr = Array.from(document.querySelectorAll('.fr-uc-cb:checked'));
+  if (!cbsArr.length) return;
+  var ids = cbsArr.map(function (cb) { return { id: parseInt(cb.getAttribute('data-id'), 10), el: cb.closest('.fr-unclassified-row') }; });
+  var statusEl = $('frUnclassifiedStatus');
+  if (!confirm('Delete ' + ids.length + ' unclassified dataset(s)?\n\nThis permanently removes their CSV files and binary data.\nThis cannot be undone.')) return;
+  var btn = $('frUnclassifiedDeleteBtn');
+  if (btn) btn.disabled = true;
+  if (statusEl) { statusEl.textContent = 'Deleting 0/' + ids.length + '…'; statusEl.style.color = ''; }
+  var done = 0, errors = 0;
+  for (var i = 0; i < ids.length; i++) {
+    try {
+      await api('/api/admin/datasets/' + ids[i].id, { method: 'DELETE' });
+      done++;
+      if (ids[i].el) { ids[i].el.style.opacity = '0.15'; ids[i].el.style.pointerEvents = 'none'; }
+    } catch (e) {
+      errors++;
+      if (ids[i].el) ids[i].el.style.background = 'rgba(239,68,68,.1)';
+    }
+    if (statusEl) statusEl.textContent = 'Deleting ' + (done + errors) + '/' + ids.length + (errors ? ' (' + errors + ' err)' : '') + '…';
+  }
+  if (statusEl) {
+    statusEl.textContent = 'Done — ' + done + ' deleted' + (errors ? ', ' + errors + ' failed' : '');
+    statusEl.style.color = errors ? '#eab308' : '#22c55e';
+  }
+  if (btn) btn.disabled = false;
+  if (typeof toast === 'function') toast('Deleted ' + done + ' unclassified dataset(s).' + (errors ? ' ' + errors + ' failed.' : ''), done > 0 ? 'ok' : 'err');
+  try { await refreshFirstrateNightlyHealth({ rescan: false }); } catch (_) {}
+}
 
 // Popular tickers to KEEP (not delete) when "Keep only popular" is clicked.
 var _POPULAR_STOCKS = [

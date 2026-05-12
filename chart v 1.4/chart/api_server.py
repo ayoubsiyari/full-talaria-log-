@@ -9102,12 +9102,21 @@ async def admin_firstrate_fx_nightly_health(request: Request, rescan: int = 0):
     agg_by_file = {int(a.file_id): a for a in aggs}
 
     datasets: list[dict] = []
+    unclassified: list[dict] = []
     rescan_updates = 0  # count of aggregates refreshed from disk this call
     for f in files:
         ticker = _firstrate_extract_ticker_from_filename(f.original_name or "")
         asset_class = _firstrate_classify_ticker(ticker) if ticker else None
         if not asset_class:
-            continue  # skip uploads we can't confidently place
+            unclassified.append({
+                "id": int(f.id),
+                "original_name": f.original_name or "",
+                "filename": f.filename or "",
+                "row_count": int(f.row_count or 0),
+                "upload_date": f.upload_date.isoformat() if f.upload_date else None,
+                "extracted_ticker": ticker or None,
+            })
+            continue
 
         agg = agg_by_file.get(int(f.id))
         last_ts = None
@@ -9258,6 +9267,7 @@ async def admin_firstrate_fx_nightly_health(request: Request, rescan: int = 0):
         },
         "classes": sorted(classes.values(), key=lambda c: c["asset_class"]),
         "datasets": datasets,
+        "unclassified": sorted(unclassified, key=lambda u: (u["original_name"] or "").lower()),
     }
 
 

@@ -2165,6 +2165,15 @@ class DrawingToolsManager {
             }
 
             if (drawing) {
+                // Volume profile bodies should not intercept chart panning.
+                // Only resize handles should be interactive; let everything else fall through.
+                const isVpType = drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile' || drawing.type === 'anchored-volume-profile';
+                if (isVpType && !resizeHandleNode && !customHandleNode) {
+                    drawing = null;
+                }
+            }
+
+            if (drawing) {
                 // Let + buttons handle activation on pointerdown/mousedown (click can be suppressed).
                 if (rawTargetNode && rawTargetNode.closest && rawTargetNode.closest('.rr-plus-btn')) {
                     event.stopPropagation();

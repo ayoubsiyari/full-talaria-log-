@@ -1187,7 +1187,7 @@ class VolumeProfileTool extends BaseDrawing {
                 .attr('y2', bottom)
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', boundaryHitWidth)
-                .style('pointer-events', 'stroke')
+                .style('pointer-events', this.selected ? 'stroke' : 'none')
                 .style('cursor', 'ew-resize')
                 .attr('data-point-index', pointIndex);
         });
@@ -1585,8 +1585,8 @@ class VolumeProfileTool extends BaseDrawing {
                 .attr('stroke', this.style.pocColor || '#e6edf3')
                 .attr('stroke-width', 1.35)
                 .attr('opacity', Math.min(1, globalOpacity * 0.95))
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+                .style('pointer-events', 'none')
+                .style('cursor', 'default');
         }
 
         if (this.style.showVAH !== false) {
@@ -1601,8 +1601,8 @@ class VolumeProfileTool extends BaseDrawing {
                     .attr('stroke', this.style.VAHColor || '#089981')
                     .attr('stroke-width', 1.2)
                     .attr('opacity', Math.min(1, globalOpacity * 0.9))
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
+                    .style('pointer-events', 'none')
+                    .style('cursor', 'default');
             }
         }
 
@@ -1680,8 +1680,8 @@ class VolumeProfileTool extends BaseDrawing {
                     .attr('stroke', this.style.VALColor || '#f23645')
                     .attr('stroke-width', 1.2)
                     .attr('opacity', Math.min(1, globalOpacity * 0.9))
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
+                    .style('pointer-events', 'none')
+                    .style('cursor', 'default');
             }
         }
 
