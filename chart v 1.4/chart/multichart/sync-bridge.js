@@ -418,7 +418,7 @@
 
         // ─── inbound: parent -> chart ──────────────────────────────────────
 
-        global.addEventListener('message', function (ev) {
+        if (!opts.skipMessageListener) global.addEventListener('message', function (ev) {
             // (parent origin check could be added here in prod)
             const msg = ev.data;
             if (!msg || typeof msg !== 'object') return;

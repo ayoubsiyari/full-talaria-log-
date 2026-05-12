@@ -140,6 +140,12 @@ function ensureHostBridge() {
             // emitting; absence of those lines means the wrapper isn't
             // being reached by chart.js.
             verbose:      true,
+            // Host bridge receives inbound ONLY via directDeliver (called by
+            // the manager after passing through the syncMode gate). Without
+            // this, the host's window 'message' listener picks up iframe
+            // postMessages directly, bypassing the sync-off gate — causing
+            // panel A to move when the user pans panel B even with sync off.
+            skipMessageListener: true,
         });
         window.__multichartHostBridge = bridge;
         try { console.log("[MultichartGrid] host bridge installed on window.chart as", HOST_PANEL_ID); } catch (_) {}

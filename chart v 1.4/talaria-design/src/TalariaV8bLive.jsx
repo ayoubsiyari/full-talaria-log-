@@ -15187,7 +15187,7 @@ const TalariaV8bLive = () => {
               {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={tlStyle.bgColor}/></svg>}
             </TlBtn>}
             {/* btn 3: line style */}
-            {(!tlSubTool.icon.startsWith("fib") || tlSubTool.icon === "fibFan") && !["arrowMarker","arrowUp","arrowDn","draw","brush","elliott5","elliottABC","elliottTri","elliottWXY","elliottWXYXZ","xabcd","headShoulders","abcdPattern","triPattern","threeDrives"].includes(tlSubTool.icon) && <TlBtn id="tl-sty2" isAct={tlBarDrop==="style"} w="auto"
+            {(!tlSubTool.icon.startsWith("fib") || tlSubTool.icon === "fibFan") && !["arrowMarker","arrowUp","arrowDn","draw","brush","elliott5","elliottABC","elliottTri","elliottWXY","elliottWXYXZ","xabcd","headShoulders","abcdPattern","triPattern","threeDrives","regressionCh"].includes(tlSubTool.icon) && <TlBtn id="tl-sty2" isAct={tlBarDrop==="style"} w="auto"
               onClick={e=>{e.stopPropagation();if(tlBarDrop==="style"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("style");}}>
               {(_,isAct,col)=><div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
                 <svg width={20} height={8} viewBox="0 0 20 8">
