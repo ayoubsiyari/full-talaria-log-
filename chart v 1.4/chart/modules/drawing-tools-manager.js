@@ -2020,9 +2020,10 @@ class DrawingToolsManager {
                 const shouldBlockVolumeProfileTextDirectMove = (isVolumeProfileLevelLineTarget || isVolumeProfileValuesLabelTarget)
                     && best
                     && this.isVolumeProfileToolType(best.type);
+                const blockVpMove = best && (best.type === 'volume-profile' || best.type === 'fixed-range-volume-profile' || best.type === 'anchored-volume-profile');
                 const deferRRBest = best && (best.type === 'long-position' || best.type === 'short-position')
                     && this._findRiskRewardInteractiveHandleRole(best, mouseX, mouseY);
-                if (best && !best.locked && !shouldBlockVolumeProfileTextDirectMove && !deferRRBest) {
+                if (best && !best.locked && !shouldBlockVolumeProfileTextDirectMove && !deferRRBest && !blockVpMove) {
                     event.preventDefault();
                     event.stopPropagation();
                     this.selectDrawing(best, false);
@@ -2039,11 +2040,12 @@ class DrawingToolsManager {
                 const hasSelectedVolumeProfileAtPoint = selectedAtPoint.some(d => this.isVolumeProfileToolType(d.type));
                 const shouldBlockSelectedVolumeProfileTextDirectMove = (isVolumeProfileLevelLineTarget || isVolumeProfileValuesLabelTarget)
                     && hasSelectedVolumeProfileAtPoint;
+                const blockSelectedVpMove = selectedAtPoint.some(d => d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile');
                 const deferRRSelected = selectedAtPoint.some((d) =>
                     (d.type === 'long-position' || d.type === 'short-position')
                     && this._findRiskRewardInteractiveHandleRole(d, mouseX, mouseY)
                 );
-                if (selectedAtPoint.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileTextDirectMove && !deferRRSelected) {
+                if (selectedAtPoint.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileTextDirectMove && !deferRRSelected && !blockSelectedVpMove) {
                     event.preventDefault();
                     event.stopPropagation();
                     this._startDirectMoveDrag(selectedAtPoint, event);
@@ -4730,11 +4732,15 @@ class DrawingToolsManager {
         
         // Apply drag to interactive elements (not the group which has pointer-events: none)
         const isVolumeProfileType = this.isVolumeProfileToolType(drawing.type);
+        const isAnchoredVolumeProfile = drawing.type === 'anchored-volume-profile';
+        const isFixedRangeVolumeProfile = drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile';
         const dragSelector = drawing.type === 'anchored-vwap'
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
-            : isVolumeProfileType
-                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
-                : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
+            : (isAnchoredVolumeProfile || isFixedRangeVolumeProfile)
+                ? '.resize-handle, .resize-handle-hit, .resize-handle-group'
+                : isVolumeProfileType
+                    ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
+                    : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
         
