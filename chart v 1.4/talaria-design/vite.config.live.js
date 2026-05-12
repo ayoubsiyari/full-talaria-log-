@@ -73,6 +73,8 @@ export default defineConfig({
             '/chart/image':                 { target: BACKEND, changeOrigin: true },
             '/chart/settings-panel.js':     { target: BACKEND, changeOrigin: true },
             '/chart/settings-panel-ext.js': { target: BACKEND, changeOrigin: true },
+            '/chart/multichart-prod':       { target: BACKEND, changeOrigin: true },
+            '/chart/multichart':            { target: BACKEND, changeOrigin: true },
             // Backend API + websockets
             '/api':  { target: BACKEND, changeOrigin: true },
             '/ws':   { target: BACKEND, changeOrigin: true, ws: true },
