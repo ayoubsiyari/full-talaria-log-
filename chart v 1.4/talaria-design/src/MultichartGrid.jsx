@@ -134,12 +134,10 @@ function ensureHostBridge() {
         const bridge = window.MultichartBridge.installBridge(ch, {
             chartId:      HOST_PANEL_ID,
             parentOrigin: "*",
-            // Phase 7.2.7: leave verbose ON for the host while we shake out
-            // sync issues. Outbound logs (`[bridge:A] out crosshair {...}`,
-            // `[bridge:A] out visibleRange {...}`) confirm the host is
-            // emitting; absence of those lines means the wrapper isn't
-            // being reached by chart.js.
-            verbose:      true,
+            // Verbose OFF: each outbound (crosshair + visibleRange) fires a
+            // console.log per frame (~120/s). With DevTools open this creates
+            // significant GC pressure and frame drops on both panels.
+            verbose:      false,
             // Host bridge receives inbound ONLY via directDeliver (called by
             // the manager after passing through the syncMode gate). Without
             // this, the host's window 'message' listener picks up iframe
@@ -672,6 +670,10 @@ const LOADING_STYLE_CSS = `
     letter-spacing: 0.18em; text-transform: uppercase;
     color: rgba(255,255,255,0.32);
     font-family: 'Exo 2', system-ui, sans-serif;
+}
+[data-multichart-grid] iframe {
+    will-change: transform;
+    contain: strict;
 }
 `;
 
@@ -2136,6 +2138,11 @@ export default function MultichartGrid({
     const lastBroadcastTfRef = useRef({});       // panelId -> tf
     const lastBroadcastFileRef = useRef({});     // panelId -> fileId
 
+    // Track last-dispatched focus state per panel so dispatchFocusChanged
+    // only fires when tf/symbol/fileId actually changed (not on every
+    // visibleRange frame — that was causing 60fps event dispatch storms).
+    const lastFocusDispatchRef = useRef({});     // panelId -> {symbol, timeframe, fileId}
+
     // Fire when ANY panel's state updates. Two responsibilities:
     //
     //   (a) Update focused-panel mirror UI (existing behavior — drives
@@ -2150,9 +2157,19 @@ export default function MultichartGrid({
     //       (effects above), and each iframe reports tf / fileId via
     //       sync-bridge `chart-state` postMessage which lands here.
     onStateAnyRef.current = (id, state) => {
-        // (a) focus mirror
+        // (a) focus mirror — only dispatch when tf/symbol/fileId actually
+        // changed. visibleRange updates (panning) fire at 60fps and must
+        // NOT trigger event dispatch + React re-renders.
         if (id === focusedPanelIdRef.current) {
-            dispatchFocusChanged(id);
+            const cur = readPanelState(id);
+            const prev = lastFocusDispatchRef.current[id];
+            if (!prev
+                || (cur && (cur.symbol !== prev.symbol
+                    || cur.timeframe !== prev.timeframe
+                    || cur.fileId !== prev.fileId))) {
+                lastFocusDispatchRef.current[id] = cur ? { ...cur } : null;
+                dispatchFocusChanged(id);
+            }
         }
 
         // (b) bidirectional fan-out — only act on iframe sources; host
