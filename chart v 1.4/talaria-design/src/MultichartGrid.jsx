@@ -1456,6 +1456,37 @@ export default function MultichartGrid({
         } catch (_) {}
     }, [layoutSync, managerReady]);
 
+    // ─── Capture-phase sync gate ─────────────────────────────────────────
+    //
+    // The host bridge's `message` listener (sync-bridge.js) applies
+    // inbound postMessages directly to Panel A's chart, bypassing the
+    // manager's syncMode gate. Even with `skipMessageListener: true`
+    // on new code, the browser may still be running a cached copy of
+    // sync-bridge without that guard. This capture-phase listener fires
+    // BEFORE any bubble-phase listener and blocks sync messages when
+    // the corresponding sync mode is OFF — belt-and-suspenders defense.
+    useEffect(() => {
+        const mgr = managerRef.current;
+        if (!mgr) return;
+
+        function syncGate(ev) {
+            const msg = ev.data;
+            if (!msg || typeof msg !== "object" || !msg.type) return;
+            const t = msg.type;
+            const sm = mgr.syncMode;
+            let blocked = false;
+            if ((t === "crosshair" || t === "crosshair-clear") && !sm.crosshair) blocked = true;
+            else if (t === "visibleRange" && !sm.visibleRange) blocked = true;
+            else if (t === "symbol" && !sm.symbol) blocked = true;
+            else if ((t === "drawing-add" || t === "drawing-update"
+                   || t === "drawing-remove" || t === "drawing-clear") && !sm.drawings) blocked = true;
+            if (blocked) ev.stopImmediatePropagation();
+        }
+
+        window.addEventListener("message", syncGate, true);
+        return () => window.removeEventListener("message", syncGate, true);
+    }, [managerReady]);
+
     // ─── Interval (timeframe) sync ──────────────────────────────────────
     //
     // The manager's syncMode does NOT cover Interval — chart.js's
