@@ -2190,13 +2190,14 @@ class ReplaySystem {
         // computed by updateChartData() uses the 320px fallback inside
         // getReplayAutoScrollState(), placing candles far off-screen — the user
         // then has to double-click the time axis (jumpToLatest) to see them.
-        // Re-run resize + alignment once the browser has laid out the chart so the
-        // playhead lands near the right edge automatically, TradingView-style.
+        // Retry resize + alignment until the chart has valid dimensions (up to ~3s).
+        let realignAttempts = 0;
         const realignAfterLayout = () => {
             if (!this.isActive) return;
             try {
                 if (typeof this.chart.resize === 'function') this.chart.resize();
             } catch (e) { /* ignore */ }
+            const w = Number(this.chart.w) || 0;
             if (this.autoScrollEnabled && !this.userHasPanned) {
                 const st = this.getReplayAutoScrollState(this.chart);
                 if (st && Number.isFinite(st.offsetX)) {
@@ -2207,12 +2208,11 @@ class ReplaySystem {
                     this.chart.scheduleRender();
                 }
             }
+            if (w < 80 && ++realignAttempts < 15) {
+                setTimeout(realignAfterLayout, 200);
+            }
         };
-        requestAnimationFrame(() => {
-            realignAfterLayout();
-            // Second pass after typewriter loader fades + React tree finishes mounting.
-            setTimeout(realignAfterLayout, 150);
-        });
+        requestAnimationFrame(realignAfterLayout);
     }
 
     /**
@@ -4553,7 +4553,7 @@ class ReplaySystem {
             // No id — avoids duplicate id="replayFollow" if V9 React mounts after injection.
             btn.dataset.talariaReplayFollow = 'injected';
             btn.className = 'replay-follow-float-btn';
-            btn.title = 'Follow replay — scroll with playback';
+            btn.title = '';
             btn.setAttribute('aria-label', 'Follow replay candle');
             btn.innerHTML = followIconSvg;
             Object.assign(btn.style, {
