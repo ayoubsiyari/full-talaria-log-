@@ -13562,7 +13562,8 @@ class Chart {
             : 0;
 
         const scanFromRaw = Math.floor(Math.max(0, firstVisibleIdx));
-        const scanFrom = Math.max(0, scanFromRaw - labelInterval * 3);
+        const bufferCandles = Math.max(labelInterval * 3, Math.ceil((minSpacing * 4) / Math.max(0.001, candleSpacing)));
+        const scanFrom = Math.max(0, scanFromRaw - bufferCandles);
         const scanTo   = Math.min(this.data.length - 1, Math.ceil(lastVisibleIdx));
 
         // Single pass – collect candidates
