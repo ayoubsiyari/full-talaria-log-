@@ -13615,14 +13615,17 @@ class Chart {
             }
 
             const hasBoundary = isBoundary && !!boundaryLabel;
-            const shouldEmitTick = isRound || (!suppressIntradayBoundaryLabels && allowStandaloneBoundaries && hasBoundary);
+            // When zoomed out on daily+, show ONLY month/year boundaries (no round ticks)
+            const shouldEmitTick = suppressDayBoundaries
+                ? hasBoundary
+                : (isRound || (!suppressIntradayBoundaryLabels && allowStandaloneBoundaries && hasBoundary));
             if (!shouldEmitTick) continue;
 
-            // TradingView-like intraday behavior: keep tick spacing uniform,
-            // and only show boundary text when it lands on an existing round tick.
-            const useBoundaryLabel = !suppressIntradayBoundaryLabels
-                && hasBoundary
-                && (allowStandaloneBoundaries || isRound);
+            const useBoundaryLabel = suppressDayBoundaries
+                ? hasBoundary
+                : (!suppressIntradayBoundaryLabels
+                    && hasBoundary
+                    && (allowStandaloneBoundaries || isRound));
 
             let label;
             if (useBoundaryLabel) {
@@ -13682,10 +13685,14 @@ class Chart {
 
                 const isRoundFuture = (fi === futureIdx) || ((fi - futureIdx) % labelInterval === 0 && fi >= futureIdx);
                 const hasFBoundary = fIsBoundary && !!fBoundaryLabel;
-                const shouldEmitFuture = isRoundFuture || (allowStandaloneBoundaries && hasFBoundary);
+                const shouldEmitFuture = suppressDayBoundaries
+                    ? hasFBoundary
+                    : (isRoundFuture || (allowStandaloneBoundaries && hasFBoundary));
                 if (!shouldEmitFuture) continue;
 
-                const useFBoundaryLabel = hasFBoundary && (allowStandaloneBoundaries || isRoundFuture);
+                const useFBoundaryLabel = suppressDayBoundaries
+                    ? hasFBoundary
+                    : (hasFBoundary && (allowStandaloneBoundaries || isRoundFuture));
                 const lbl = useFBoundaryLabel
                     ? fBoundaryLabel
                     : (isDailyOrHigher
@@ -15848,7 +15855,8 @@ class Chart {
         // Match TalariaV8bLive news row: <FlagSvg w={16} h={10} />
         const badgeW = Math.max(14, Math.min(22, cs * 1.12));
         const badgeH = badgeW * (10 / 16);
-        const axisLineY = this.h - m.b;
+        const indPanelH = this.separateIndicatorPanelHeight || 0;
+        const axisLineY = this.h - m.b - indPanelH;
         const gapAboveLine = 8;
         let cy = axisLineY - badgeH / 2 - gapAboveLine;
         cy = Math.max(m.t + badgeH / 2 + 6, cy);
