@@ -628,6 +628,18 @@ select { cursor: pointer; }
 .ds-pipeline ul { margin: 8px 0 0 18px; }
 .ds-pipeline code { font-size: 10px; color: var(--accent); }
 
+/* ── Daily Sync Overview ────────────────────────── */
+.fr-sync-stat {
+  padding: 12px 14px; border-radius: 8px;
+  background: color-mix(in oklab, var(--accent) 6%, var(--panel));
+  border: 1px solid var(--border);
+}
+.fr-sync-stat-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+.fr-sync-stat-value { font-size: 14px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.fr-sync-stat-value.ok { color: #22c55e; }
+.fr-sync-stat-value.warn { color: #eab308; }
+.fr-sync-stat-value.err { color: #ef4444; }
+
 /* ── Dataset registry (all datasets / health) ─────── */
 .dr-registry-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .dr-registry-wrap th, .dr-registry-wrap td {
@@ -1758,6 +1770,37 @@ select { cursor: pointer; }
           </div>
         </div>
 
+        <!-- Daily Sync Overview — at-a-glance status of the nightly auto-update pipeline -->
+        <div class="card" id="frDailySyncCard" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 30%, var(--border))">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <div class="card-title">Daily Sync Overview</div>
+            <span class="card-badge" id="frDailySyncBadge" style="background:var(--panel);color:var(--text-muted)">checking…</span>
+            <div style="margin-left:auto"><button type="button" class="btn sm" onclick="refreshDailySyncOverview()">Refresh</button></div>
+          </div>
+          <div class="card-body" style="padding-top:4px">
+            <div id="frDailySyncGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:10px">
+              <div class="fr-sync-stat" id="frSyncStatStatus">
+                <div class="fr-sync-stat-label">Status</div>
+                <div class="fr-sync-stat-value" id="frSyncValStatus">—</div>
+              </div>
+              <div class="fr-sync-stat" id="frSyncStatLastRun">
+                <div class="fr-sync-stat-label">Last Successful Sync</div>
+                <div class="fr-sync-stat-value" id="frSyncValLastRun">—</div>
+              </div>
+              <div class="fr-sync-stat" id="frSyncStatNextRun">
+                <div class="fr-sync-stat-label">Next Scheduled</div>
+                <div class="fr-sync-stat-value" id="frSyncValNextRun">—</div>
+              </div>
+              <div class="fr-sync-stat" id="frSyncStatRecovered">
+                <div class="fr-sync-stat-label">Auto-Recovered Jobs</div>
+                <div class="fr-sync-stat-value" id="frSyncValRecovered">0</div>
+              </div>
+            </div>
+            <div id="frDailySyncAlerts" style="display:none;margin-top:8px;padding:10px 12px;border-radius:6px;font-size:12px;line-height:1.5"></div>
+          </div>
+        </div>
+
         <!-- Live FirstRate import status (polls VPS job files) -->
         <div class="card" id="frLiveImportCard" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 35%, var(--border))">
           <div class="card-hdr">
@@ -2871,6 +2914,7 @@ let insightsOverviewCache = null;
       loadSubStats().catch(function (e) { console.error('loadSubStats', e); }),
       loadFirstrateSchedule().catch(function (e) { console.error('loadFirstrateSchedule', e); }),
       refreshFirstrateNightlyHealth().catch(function (e) { console.error('refreshFirstrateNightlyHealth', e); }),
+      refreshDailySyncOverview().catch(function (e) { console.error('refreshDailySyncOverview', e); }),
     ]);
     try { seedDefaultInstrumentPairsIfNeeded(); } catch (e) { console.error('seedDefaultInstrumentPairsIfNeeded', e); }
     try { ensureFirstrateLivePoll(); } catch (e) { console.error('ensureFirstrateLivePoll', e); }
@@ -4954,6 +4998,9 @@ function ensureFirstrateLivePoll() {
   if (window._frLivePollId) return;
   window._frLivePollId = setInterval(updateFirstrateLivePanel, 1200);
   updateFirstrateLivePanel();
+  if (!window._frDailySyncPollId) {
+    window._frDailySyncPollId = setInterval(refreshDailySyncOverview, 30000);
+  }
 }
 
 async function updateFirstrateLivePanel() {
@@ -5131,6 +5178,126 @@ function _syncFirstrateScheduleModeUi() {
   const wrap = document.getElementById('fr_sched_interval_wrap');
   if (!modeSel || !wrap) return;
   wrap.style.display = (modeSel.value === 'interval') ? '' : 'none';
+}
+
+// ---------------------------------------------------------------------------
+// Daily Sync Overview card — single at-a-glance view of the nightly pipeline.
+// Combines schedule config, live job info, and recent-jobs history to answer
+// the admin's main question: "is my data staying up to date each day?"
+// ---------------------------------------------------------------------------
+async function refreshDailySyncOverview() {
+  const badge = $('frDailySyncBadge');
+  const valStatus = $('frSyncValStatus');
+  const valLastRun = $('frSyncValLastRun');
+  const valNextRun = $('frSyncValNextRun');
+  const valRecovered = $('frSyncValRecovered');
+  const alertsEl = $('frDailySyncAlerts');
+  if (!badge) return;
+  try {
+    const d = await api('/api/admin/datasets/firstrate-fx/live-status');
+    const sched = d.schedule || {};
+    const primary = d.primary_job || (d.active_jobs && d.active_jobs[0]) || null;
+    const recentJobs = d.recent_jobs || [];
+    const lastDone = recentJobs.find(function (j) { return j.status === 'done'; });
+    const uidOk = d.has_firstrate_userid !== false;
+
+    // Count auto-recovered (stuck jobs the server cleaned up)
+    var recoveredCount = 0;
+    recentJobs.forEach(function (j) {
+      if (j.status === 'failed' && j.error && j.error.indexOf('Auto-marked failed') !== -1) recoveredCount++;
+    });
+    if (valRecovered) {
+      valRecovered.textContent = String(recoveredCount);
+      valRecovered.className = 'fr-sync-stat-value' + (recoveredCount > 0 ? ' warn' : '');
+    }
+
+    // Status
+    if (!uidOk) {
+      if (valStatus) { valStatus.textContent = 'No API Key'; valStatus.className = 'fr-sync-stat-value err'; }
+      if (badge) { badge.textContent = 'error'; badge.style.background = 'color-mix(in oklab, #ef4444 20%, var(--panel))'; badge.style.color = '#ef4444'; }
+    } else if (!sched.enabled) {
+      if (valStatus) { valStatus.textContent = 'Disabled'; valStatus.className = 'fr-sync-stat-value warn'; }
+      if (badge) { badge.textContent = 'off'; badge.style.background = 'color-mix(in oklab, #eab308 18%, var(--panel))'; badge.style.color = '#eab308'; }
+    } else if (primary && (primary.status === 'running' || primary.status === 'queued')) {
+      if (valStatus) { valStatus.textContent = 'Syncing now…'; valStatus.className = 'fr-sync-stat-value ok'; }
+      if (badge) { badge.textContent = 'active'; badge.style.background = 'color-mix(in oklab, #22c55e 18%, var(--panel))'; badge.style.color = '#22c55e'; }
+    } else if (lastDone) {
+      if (valStatus) { valStatus.textContent = 'Active'; valStatus.className = 'fr-sync-stat-value ok'; }
+      if (badge) { badge.textContent = 'ok'; badge.style.background = 'color-mix(in oklab, #22c55e 18%, var(--panel))'; badge.style.color = '#22c55e'; }
+    } else {
+      var lastFailed = recentJobs.find(function (j) { return j.status === 'failed'; });
+      if (lastFailed) {
+        if (valStatus) { valStatus.textContent = 'Last Run Failed'; valStatus.className = 'fr-sync-stat-value err'; }
+        if (badge) { badge.textContent = 'failed'; badge.style.background = 'color-mix(in oklab, #ef4444 20%, var(--panel))'; badge.style.color = '#ef4444'; }
+      } else {
+        if (valStatus) { valStatus.textContent = 'Waiting'; valStatus.className = 'fr-sync-stat-value'; }
+        if (badge) { badge.textContent = 'pending'; badge.style.background = 'var(--panel)'; badge.style.color = 'var(--text-muted)'; }
+      }
+    }
+
+    // Last successful sync
+    if (valLastRun) {
+      if (lastDone && lastDone.updated_at) {
+        var ts = lastDone.updated_at.replace('T', ' ').slice(0, 16) + ' UTC';
+        valLastRun.textContent = ts;
+        valLastRun.className = 'fr-sync-stat-value ok';
+      } else if (sched.last_run_finished_at) {
+        var ts2 = String(sched.last_run_finished_at).replace('T', ' ').replace('Z', '').slice(0, 16) + ' UTC';
+        valLastRun.textContent = ts2;
+        valLastRun.className = 'fr-sync-stat-value';
+      } else {
+        valLastRun.textContent = 'Never';
+        valLastRun.className = 'fr-sync-stat-value warn';
+      }
+    }
+
+    // Next scheduled
+    if (valNextRun) {
+      if (!sched.enabled) {
+        valNextRun.textContent = 'Disabled';
+        valNextRun.className = 'fr-sync-stat-value warn';
+      } else if (String(sched.mode || 'nightly') === 'nightly') {
+        var hour = Math.max(0, Math.min(23, parseInt(sched.nightly_utc_hour, 10) || 2));
+        try {
+          var now = new Date();
+          var next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hour, 0, 0));
+          if (next.getTime() <= now.getTime()) next.setUTCDate(next.getUTCDate() + 1);
+          valNextRun.textContent = next.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' today';
+          if (next.getUTCDate() !== now.getUTCDate()) valNextRun.textContent = next.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + next.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch (_) {
+          valNextRun.textContent = String(hour).padStart(2, '0') + ':00 UTC';
+        }
+        valNextRun.className = 'fr-sync-stat-value';
+      } else {
+        var intMin = parseInt(sched.interval_minutes, 10) || 1440;
+        valNextRun.textContent = 'Every ' + (intMin >= 60 ? (intMin / 60).toFixed(0) + 'h' : intMin + 'min');
+        valNextRun.className = 'fr-sync-stat-value';
+      }
+    }
+
+    // Alert banner for stuck-job recovery or errors
+    if (alertsEl) {
+      var alerts = [];
+      if (recoveredCount > 0) {
+        alerts.push('⚠️ ' + recoveredCount + ' stuck job(s) were auto-recovered. The scheduler resumed successfully. Check recent job history for details.');
+      }
+      if (sched.last_error) {
+        alerts.push('❌ Schedule error: ' + String(sched.last_error).slice(0, 200));
+      }
+      if (alerts.length) {
+        alertsEl.style.display = '';
+        alertsEl.style.background = recoveredCount > 0 ? 'color-mix(in oklab, #eab308 12%, transparent)' : 'color-mix(in oklab, #ef4444 12%, transparent)';
+        alertsEl.style.border = '1px solid ' + (recoveredCount > 0 ? 'color-mix(in oklab, #eab308 30%, var(--border))' : 'color-mix(in oklab, #ef4444 30%, var(--border))');
+        alertsEl.style.color = 'var(--text)';
+        alertsEl.innerHTML = alerts.join('<br>');
+      } else {
+        alertsEl.style.display = 'none';
+      }
+    }
+  } catch (e) {
+    if (badge) { badge.textContent = 'error'; badge.style.color = '#ef4444'; }
+    if (valStatus) { valStatus.textContent = 'Connection error'; valStatus.className = 'fr-sync-stat-value err'; }
+  }
 }
 
 async function refreshFirstrateScheduleStatus() {

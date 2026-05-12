@@ -1929,20 +1929,19 @@ def _upsert_or_create_dataset_from_csv(
         try:
             db_file = db.query(CSVFile).filter(CSVFile.original_name == original_name).first()
 
-            # Canonical-ticker fallback: scoped to rows that look FirstRate-
-            # imported (on-disk filename contains `_firstrate_`) so we don't
-            # accidentally absorb arbitrary user uploads that happen to share
-            # a ticker.
+            # Canonical-ticker fallback: find any existing dataset with the
+            # same canonical ticker, regardless of import source.  Prefer
+            # FirstRate-imported rows (filename contains `_firstrate_`) but
+            # also match Dukascopy / manual uploads so a nightly delta pull
+            # merges into the existing series instead of creating duplicates.
             if db_file is None and match_canonical_ticker:
                 wanted_ticker = (match_canonical_ticker or "").strip().upper()
                 wanted_class = (match_canonical_class or "").strip().lower() or None
                 if wanted_ticker:
                     candidates = db.query(CSVFile).all()
-                    matches = []
+                    firstrate_matches = []
+                    any_source_matches = []
                     for cand in candidates:
-                        cand_disk = (cand.filename or "").lower()
-                        if "_firstrate_" not in cand_disk:
-                            continue
                         cand_orig = cand.original_name or ""
                         cand_ticker = (
                             _firstrate_extract_ticker_from_filename(cand_orig) or ""
@@ -1953,11 +1952,42 @@ def _upsert_or_create_dataset_from_csv(
                             cand_class = _firstrate_classify_ticker(cand_ticker)
                             if cand_class != wanted_class:
                                 continue
-                        matches.append(cand)
+                        cand_disk = (cand.filename or "").lower()
+                        if "_firstrate_" in cand_disk:
+                            firstrate_matches.append(cand)
+                        else:
+                            any_source_matches.append(cand)
+                    # Prefer FirstRate-sourced datasets; fall back to any source.
+                    matches = firstrate_matches or any_source_matches
                     if matches:
                         db_file = max(matches, key=lambda r: int(r.row_count or 0))
+                    # Auto-consolidate: merge stale duplicates into winner so
+                    # they don't accumulate over repeated nightly imports.
+                    all_matches = firstrate_matches + any_source_matches
+                    if db_file and len(all_matches) > 1:
+                        losers = [m for m in all_matches if m.id != db_file.id]
+                        winner_path = _resolve_dataset_csv_for_file(db_file)
+                        for loser in losers:
+                            try:
+                                loser_path = _resolve_dataset_csv_for_file(loser)
+                                if loser_path.exists() and winner_path.exists():
+                                    _merge_canonical_ohlcv_csvs(
+                                        existing=winner_path,
+                                        incoming=loser_path,
+                                        dest=winner_path,
+                                    )
+                                db.delete(loser)
+                                if loser_path.exists():
+                                    loser_path.unlink(missing_ok=True)
+                            except Exception:
+                                pass
+                        db.commit()
 
             if db_file:
+                # Normalize the original_name to the canonical label so future
+                # strict lookups always succeed (avoids re-triggering fallback).
+                if db_file.original_name != original_name:
+                    db_file.original_name = original_name
                 final_path = _resolve_dataset_csv_for_file(db_file)
                 new_rows_added = 0
                 if final_path.exists() and count_csv_rows(str(final_path)) > 0:
@@ -2473,12 +2503,35 @@ def _save_firstrate_schedule(cfg: dict) -> None:
 
 def _firstrate_has_active_import_job() -> bool:
     _firstrate_cleanup_jobs()
+    now = datetime.utcnow()
+    STALE_RUNNING_MINUTES = 240  # 4 hours — if no progress update, assume crashed
+    STALE_QUEUED_MINUTES = 30    # 30 min — queued but never started
     for p in FIrstrate_JOBS_DIR.glob("*.json"):
         try:
             with open(p, "r", encoding="utf-8") as f:
                 st = json.load(f)
-            if st.get("status") in ("queued", "running"):
-                return True
+            status = st.get("status")
+            if status not in ("queued", "running"):
+                continue
+            updated_raw = st.get("updated_at") or st.get("created_at") or ""
+            try:
+                last_update = datetime.fromisoformat(str(updated_raw).replace("Z", ""))
+            except Exception:
+                last_update = None
+            if last_update:
+                elapsed_min = (now - last_update).total_seconds() / 60.0
+                threshold = STALE_RUNNING_MINUTES if status == "running" else STALE_QUEUED_MINUTES
+                if elapsed_min > threshold:
+                    st["status"] = "failed"
+                    st["phase"] = "failed"
+                    st["message"] = (
+                        f"Auto-marked failed: no progress update for "
+                        f"{int(elapsed_min)} min (threshold {threshold} min)"
+                    )
+                    st["error"] = st["message"]
+                    _firstrate_write_job(st.get("job_id") or p.stem, st)
+                    continue
+            return True
         except Exception:
             continue
     return False
