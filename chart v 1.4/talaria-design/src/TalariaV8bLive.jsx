@@ -17985,6 +17985,150 @@ const TalariaV8bLive = () => {
           })(),
           document.body
         )}
+        {/* ─── Support Chat dropdown popover ─── */}
+        {supportChatOpen && supportBtnRef.current && createPortal(
+          (() => {
+            const btnR = supportBtnRef.current.getBoundingClientRect();
+            const POP_W = 360, POP_H = 500;
+            const right = Math.max(8, window.innerWidth - btnR.right - 4);
+            const top = Math.round(btnR.bottom + 6);
+            const catLabel = { bug: "Bug", error: "Error", other: "Other" };
+            const fmtTime = (iso) => { if (!iso) return ""; try { const d = new Date(iso); return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
+            return (
+              <div ref={supportPopRef} data-v9-chrome="1" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+                style={{ position:"fixed", top, right, width:POP_W, height:POP_H, maxHeight:"min(75vh,560px)", background:c.sf, border:`1px solid rgba(140,160,255,0.32)`, borderRadius:6, boxShadow:"0 10px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)", zIndex:9999, display:"flex", flexDirection:"column", fontFamily:F, overflow:"hidden", animation:"tlrWinIn 0.18s ease" }}>
+                {/* ── Header ── */}
+                <div style={{ padding:"10px 14px", borderBottom:`1px solid ${c.br}`, display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                  {supportSelThread && !supportNewThread ? (
+                    <>
+                      <div onClick={()=>{setSupportSelThread(null);setSupportMessages([]);setSupportError(null);}} style={{ cursor:"default", display:"flex", alignItems:"center", padding:"2px 4px", borderRadius:3, background:hov==="sup-back"?c.hv:"transparent" }} onMouseEnter={()=>setHov("sup-back")} onMouseLeave={()=>setHov(null)}>
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={c.ts} strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+                      </div>
+                      <span style={{ fontSize:13, fontWeight:700, color:c.tx, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{supportSelThread.subject}</span>
+                      {supportSelThread.status === "closed" && <span style={{ fontSize:10, color:"#e53935", fontWeight:700, background:"rgba(229,57,53,0.12)", padding:"1px 6px", borderRadius:3 }}>Closed</span>}
+                    </>
+                  ) : (
+                    <>
+                      <I n="chat" s={16} cl={c.acL}/>
+                      <span style={{ fontSize:14, fontWeight:700, color:c.tx, flex:1 }}>{supportNewThread ? "New Thread" : "Support"}</span>
+                      {!supportNewThread && <div onClick={()=>{setSupportNewThread(true);setSupportError(null);}} style={{ cursor:"default", padding:"3px 10px", borderRadius:4, background:c.acD, color:c.acL, fontSize:11, fontWeight:700 }} onMouseEnter={()=>setHov("sup-new")} onMouseLeave={()=>setHov(null)}>+ New</div>}
+                      {supportNewThread && <div onClick={()=>{setSupportNewThread(false);setSupportError(null);}} style={{ cursor:"default", padding:"3px 8px", borderRadius:4, background:hov==="sup-cancel"?c.hv:"transparent", color:c.ts, fontSize:11, fontWeight:600 }} onMouseEnter={()=>setHov("sup-cancel")} onMouseLeave={()=>setHov(null)}>Cancel</div>}
+                    </>
+                  )}
+                </div>
+                {/* ── Error bar ── */}
+                {supportError && <div style={{ padding:"6px 14px", background:"rgba(229,57,53,0.12)", color:"#e53935", fontSize:11, fontWeight:600, borderBottom:`1px solid ${c.br}` }}>{supportError}</div>}
+                {/* ── Body ── */}
+                {supportLoading ? (
+                  <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", color:c.ts, fontSize:13 }}>Loading…</div>
+                ) : supportNewThread ? (
+                  /* ── New Thread Form ── */
+                  <div style={{ flex:1, overflowY:"auto", padding:"12px 14px", display:"flex", flexDirection:"column", gap:10 }}>
+                    <div>
+                      <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:4 }}>Subject</label>
+                      <input type="text" value={supportNewSubject} onChange={e=>setSupportNewSubject(e.target.value)} placeholder="Brief description…" maxLength={200}
+                        style={{ width:"100%", boxSizing:"border-box", padding:"6px 10px", fontSize:12, background:c.bg, color:c.tx, border:`1px solid ${c.br}`, borderRadius:4, outline:"none", fontFamily:F }} onFocus={e=>e.target.style.borderColor=c.acL} onBlur={e=>e.target.style.borderColor=c.br}/>
+                    </div>
+                    <div>
+                      <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:4 }}>Category</label>
+                      <select value={supportNewCategory} onChange={e=>setSupportNewCategory(e.target.value)}
+                        style={{ width:"100%", padding:"6px 10px", fontSize:12, background:c.bg, color:c.tx, border:`1px solid ${c.br}`, borderRadius:4, outline:"none", fontFamily:F }}>
+                        <option value="bug">Bug</option><option value="error">Error</option><option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:4 }}>Message</label>
+                      <textarea value={supportNewBody} onChange={e=>setSupportNewBody(e.target.value)} placeholder="Describe your issue…" rows={4}
+                        style={{ width:"100%", boxSizing:"border-box", padding:"6px 10px", fontSize:12, background:c.bg, color:c.tx, border:`1px solid ${c.br}`, borderRadius:4, outline:"none", fontFamily:F, resize:"vertical" }} onFocus={e=>e.target.style.borderColor=c.acL} onBlur={e=>e.target.style.borderColor=c.br}/>
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <label style={{ cursor:"default", display:"flex", alignItems:"center", gap:4, fontSize:11, color:c.ts }}>
+                        <I n="attach" s={13} cl={c.ts}/>
+                        <span>{supportNewFile ? supportNewFile.name.slice(0,20) : "Attach image"}</span>
+                        <input ref={supportNewFileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{const f=e.target.files?.[0]; if(f) setSupportNewFile(f);}}/>
+                      </label>
+                      {supportNewFile && <span onClick={()=>{setSupportNewFile(null);if(supportNewFileRef.current)supportNewFileRef.current.value="";}} style={{ cursor:"default", fontSize:10, color:"#e53935" }}>✕</span>}
+                    </div>
+                    <button type="button" disabled={supportSending || (!supportNewSubject.trim() || (!supportNewBody.trim() && !supportNewFile))} onClick={supportCreateThread}
+                      style={{ padding:"8px 0", fontSize:13, fontWeight:700, borderRadius:4, border:"none", cursor:"default", background:c.acL, color:"#fff", opacity:supportSending?0.6:1, marginTop:4 }}>
+                      {supportSending ? "Sending…" : "Create Thread"}
+                    </button>
+                  </div>
+                ) : supportSelThread ? (
+                  /* ── Chat View ── */
+                  <>
+                    <div style={{ flex:1, overflowY:"auto", padding:"10px 14px", display:"flex", flexDirection:"column", gap:6 }}>
+                      {supportMessages.length === 0 && <div style={{ color:c.ts, fontSize:12, textAlign:"center", padding:20 }}>No messages yet.</div>}
+                      {supportMessages.map(msg => {
+                        const isOwn = msg.sender_user_id === supportSelThread.user_id;
+                        return (
+                          <div key={msg.id} style={{ display:"flex", flexDirection:"column", alignItems:isOwn?"flex-end":"flex-start", maxWidth:"85%" , alignSelf:isOwn?"flex-end":"flex-start" }}>
+                            <div style={{ padding:"7px 11px", borderRadius:isOwn?"12px 12px 2px 12px":"12px 12px 12px 2px", background:isOwn?c.acD:"rgba(255,255,255,0.06)", border:`1px solid ${isOwn?"rgba(74,106,255,0.25)":"rgba(255,255,255,0.08)"}`, maxWidth:"100%" }}>
+                              {msg.attachment && msg.attachment.url && (msg.attachment.mime_type||"").startsWith("image/") && (
+                                <img src={msg.attachment.url} alt="" style={{ maxWidth:"100%", maxHeight:160, borderRadius:4, marginBottom:msg.body?6:0, display:"block" }}/>
+                              )}
+                              {msg.body && <div style={{ fontSize:12, color:c.tx, wordBreak:"break-word", whiteSpace:"pre-wrap", lineHeight:1.45 }}>{msg.body}</div>}
+                            </div>
+                            <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:2 }}>
+                              <span style={{ fontSize:9, color:c.tm }}>{fmtTime(msg.created_at)}</span>
+                              {isOwn && <span style={{ fontSize:9, color:msg.read_by_counterparty?c.acL:c.tm }}>{msg.read_by_counterparty?"Read":"Sent"}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div ref={supportMsgEndRef}/>
+                    </div>
+                    {supportSelThread.status !== "closed" && (
+                      <div style={{ padding:"8px 10px", borderTop:`1px solid ${c.br}`, display:"flex", alignItems:"flex-end", gap:6, flexShrink:0 }}>
+                        <label style={{ cursor:"default", display:"flex", alignItems:"center", padding:4, borderRadius:4, background:hov==="sup-att"?c.hv:"transparent" }} onMouseEnter={()=>setHov("sup-att")} onMouseLeave={()=>setHov(null)}>
+                          <I n="attach" s={16} cl={supportReplyFile?c.acL:c.ts}/>
+                          <input ref={supportReplyFileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{const f=e.target.files?.[0]; if(f) setSupportReplyFile(f);}}/>
+                        </label>
+                        <div style={{ flex:1, display:"flex", flexDirection:"column", gap:2 }}>
+                          {supportReplyFile && (
+                            <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:c.ts }}>
+                              <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:180 }}>{supportReplyFile.name}</span>
+                              <span onClick={()=>{setSupportReplyFile(null);if(supportReplyFileRef.current)supportReplyFileRef.current.value="";}} style={{ cursor:"default", color:"#e53935" }}>✕</span>
+                            </div>
+                          )}
+                          <textarea value={supportReply} onChange={e=>setSupportReply(e.target.value)} placeholder="Type a message…" rows={1}
+                            onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();supportSendReply();}}}
+                            style={{ width:"100%", boxSizing:"border-box", padding:"6px 10px", fontSize:12, background:c.bg, color:c.tx, border:`1px solid ${c.br}`, borderRadius:6, outline:"none", fontFamily:F, resize:"none", maxHeight:80 }}
+                            onFocus={e=>e.target.style.borderColor=c.acL} onBlur={e=>e.target.style.borderColor=c.br}/>
+                        </div>
+                        <div onClick={()=>{ if(!supportSending) supportSendReply(); }} style={{ cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", width:30, height:30, borderRadius:6, background:c.acL, opacity:supportSending?0.5:1, flexShrink:0 }} onMouseEnter={()=>setHov("sup-send")} onMouseLeave={()=>setHov(null)}>
+                          <I n="send" s={14} cl="#fff"/>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* ── Thread List ── */
+                  <div style={{ flex:1, overflowY:"auto" }}>
+                    {supportThreads.length === 0 ? (
+                      <div style={{ padding:30, textAlign:"center", color:c.ts, fontSize:12 }}>No support threads yet.<br/>Click <b>+ New</b> to start one.</div>
+                    ) : supportThreads.map(t => (
+                      <div key={t.id} onClick={()=>{setSupportSelThread(t);setSupportError(null);}}
+                        onMouseEnter={()=>setHov(`sup-t-${t.id}`)} onMouseLeave={()=>setHov(null)}
+                        style={{ padding:"10px 14px", borderBottom:`1px solid ${c.br}`, cursor:"default", background:hov===`sup-t-${t.id}`?c.hv:"transparent", transition:"background 0.1s" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          <span style={{ fontSize:12, fontWeight:600, color:c.tx, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.subject}</span>
+                          <span style={{ fontSize:9, fontWeight:700, color:t.status==="open"?"#4caf50":"#e53935", background:t.status==="open"?"rgba(76,175,80,0.12)":"rgba(229,57,53,0.12)", padding:"1px 6px", borderRadius:3, flexShrink:0 }}>{t.status==="open"?"Open":"Closed"}</span>
+                        </div>
+                        <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:3 }}>
+                          <span style={{ fontSize:10, color:c.tm, background:"rgba(140,160,255,0.1)", padding:"0 5px", borderRadius:2, textTransform:"capitalize" }}>{catLabel[t.category]||t.category}</span>
+                          {t.last_message_preview && <span style={{ fontSize:10, color:c.tm, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.last_message_preview}</span>}
+                          {t.last_message_at && <span style={{ fontSize:9, color:c.tm, flexShrink:0 }}>{fmtTime(t.last_message_at)}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })(),
+          document.body
+        )}
       </div>
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
         <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 40, flexShrink: 0, boxSizing: "border-box", background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 1, paddingLeft:4, paddingRight: 2, overflowY: "auto", overflowX: "hidden" }}>
