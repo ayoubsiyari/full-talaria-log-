@@ -8485,6 +8485,9 @@ const TalariaV8bLive = () => {
     setVwapStyle,
     setVpStyle,
     setAvStyle,
+    setVpBarPos,
+    setAvBarPos,
+    Z,
     v9SelectionToolbarSyncRef,
     drawingTypeToPanelGroupRef,
     editingDrawingRef,
@@ -8653,6 +8656,31 @@ const TalariaV8bLive = () => {
                 volumeOn: ds.showVolume !== false, volumeType: VOL_R[ds.volumeDisplay] || prev.volumeType,
                 valueAreaVol: String(ds.valueAreaVolume ?? prev.valueAreaVol), extendRight: !!ds.extendRight,
               }));
+            }
+            // Position the dedicated VP/AV toolbar near the drawing
+            if (dt === 'volume-profile' || dt === 'fixed-range-volume-profile' || dt === 'anchored-volume-profile') {
+              try {
+                const gEl = drawing.group && drawing.group.node ? drawing.group.node() : null;
+                const ch2 = window.chart;
+                const cEl = ch2 && ch2.container;
+                if (gEl && cEl) {
+                  const bbox = gEl.getBBox();
+                  const svg = gEl.ownerSVGElement;
+                  const svgR = svg ? svg.getBoundingClientRect() : (cEl.getBoundingClientRect ? cEl.getBoundingClientRect() : {left:0,top:0});
+                  const zz = br.Z || 1;
+                  const bx = (svgR.left + bbox.x * (svgR.width / (svg ? (svg.viewBox.baseVal.width || svgR.width) : svgR.width))) / zz;
+                  const by2 = (svgR.top + bbox.y * (svgR.height / (svg ? (svg.viewBox.baseVal.height || svgR.height) : svgR.height))) / zz;
+                  const barW2 = 220;
+                  const vpW3 = window.innerWidth / zz;
+                  const nx = Math.max(8, Math.min(bx + (bbox.width / 2) / zz - barW2 / 2, vpW3 - barW2 - 8));
+                  const ny2 = Math.max(8, by2 - 44);
+                  if (dt === 'volume-profile' || dt === 'fixed-range-volume-profile') {
+                    br.setVpBarPos({ x: nx, y: ny2 });
+                  } else {
+                    br.setAvBarPos({ x: nx, y: ny2 });
+                  }
+                }
+              } catch (_) {}
             }
           }
         } catch (_) {}
@@ -8848,6 +8876,32 @@ const TalariaV8bLive = () => {
               valueAreaVol: String(s.valueAreaVolume ?? prev.valueAreaVol),
               extendRight: !!s.extendRight,
             }));
+          }
+          // Position dedicated VP/AV toolbar near the drawing
+          if (t === 'volume-profile' || t === 'fixed-range-volume-profile' || t === 'anchored-volume-profile') {
+            try {
+              const gEl = live && live.group && live.group.node ? live.group.node() : null;
+              if (gEl) {
+                const bbox = gEl.getBBox();
+                const svg = gEl.ownerSVGElement;
+                const svgR = svg ? svg.getBoundingClientRect() : {left:0,top:0,width:1,height:1};
+                const zz = br.Z || 1;
+                const scX = svgR.width / (svg && svg.viewBox.baseVal.width ? svg.viewBox.baseVal.width : svgR.width);
+                const scY = svgR.height / (svg && svg.viewBox.baseVal.height ? svg.viewBox.baseVal.height : svgR.height);
+                const bx = (svgR.left + bbox.x * scX) / zz;
+                const by2 = (svgR.top + bbox.y * scY) / zz;
+                const bw = bbox.width * scX / zz;
+                const barW2 = 220;
+                const vpW3 = window.innerWidth / zz;
+                const nx = Math.max(8, Math.min(bx + bw / 2 - barW2 / 2, vpW3 - barW2 - 8));
+                const ny2 = Math.max(8, by2 - 44);
+                if (t === 'volume-profile' || t === 'fixed-range-volume-profile') {
+                  br.setVpBarPos({ x: nx, y: ny2 });
+                } else {
+                  br.setAvBarPos({ x: nx, y: ny2 });
+                }
+              }
+            } catch (_) {}
           }
         }
       } catch (_) {}
@@ -14725,7 +14779,7 @@ const TalariaV8bLive = () => {
       {/* Visibility: chart selection AND drawing maps to a line/shape rail group.
           Text/label drawings map to group "text" (not in TL_LINE_SHAPE_GROUPS) — without
           this guard, effectiveTlGroup is null and tlSubTool defaulted to Trend Line. */}
-      {tlBarSelected && tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) && (tlBarDrawingGroupRaw !== "brush" || (groupSelected.brush?.icon === "volProfile") || (groupSelected.brush?.icon === "anchoredVol")) && (()=>{
+      {tlBarSelected && tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) && tlBarDrawingGroupRaw !== "brush" && (()=>{
         const TlBtn = ({id, isAct, children, onClick, w, tip}) => {
           const isH = hov === id;
           const isDel = id === "tl-del";
@@ -15531,7 +15585,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Fixed Range Volume Profile floating toolbar ── */}
-      {false && tlBarSelected && tlBarDrawingGroupRaw === "brush" && (groupSelected.brush?.icon ?? "vwap") === "volProfile" && (()=>{
+      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && (groupSelected.brush?.icon ?? "vwap") === "volProfile" && (()=>{
         const VPBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "vpb-del";
@@ -15624,7 +15678,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Anchored Volume Profile floating toolbar ── */}
-      {false && tlBarSelected && tlBarDrawingGroupRaw === "brush" && (groupSelected.brush?.icon ?? "vwap") === "anchoredVol" && (()=>{
+      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && (groupSelected.brush?.icon ?? "vwap") === "anchoredVol" && (()=>{
         const AVBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "avb-del";
