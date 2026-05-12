@@ -933,11 +933,9 @@
             }
         }
 
-        if (!opts.skipMessageListener) {
-            global.addEventListener('message', function (ev) {
-                applyInbound(ev.data);
-            });
-        }
+        global.addEventListener('message', function (ev) {
+            applyInbound(ev.data);
+        });
 
         function applyCrosshair(m) {
             const before = G.snapshotPriceState(chart);
