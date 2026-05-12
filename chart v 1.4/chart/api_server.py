@@ -2448,6 +2448,7 @@ def _default_firstrate_schedule() -> dict:
         "mode": (os.getenv("FIrstrate_SCHEDULE_MODE", "nightly").strip().lower() or "nightly"),
         "nightly_utc_hour": int(os.getenv("FIrstrate_SCHEDULE_NIGHTLY_UTC_HOUR", "2")),
         "auto_all_types": os.getenv("FIrstrate_SCHEDULE_AUTO_ALL_TYPES", "true").strip().lower() in {"1", "true", "yes", "on"},
+        "excluded_types": [x.strip().lower() for x in os.getenv("FIrstrate_SCHEDULE_EXCLUDED_TYPES", "").split(",") if x.strip()],
         "interval_minutes": int(os.getenv("FIrstrate_SCHEDULE_INTERVAL_MINUTES", "1440")),
         "period": (os.getenv("FIrstrate_SCHEDULE_PERIOD", "day").strip() or "day"),
         "timeframe": (os.getenv("FIrstrate_SCHEDULE_TIMEFRAME", "1min").strip() or "1min"),
@@ -2487,7 +2488,7 @@ def _load_firstrate_schedule() -> dict:
         if not isinstance(data, dict):
             return _default_firstrate_schedule()
         base = _default_firstrate_schedule()
-        for k in list(base.keys()) + ["purge_confirmation", "pairs", "instrument_type", "adjustment"]:
+        for k in list(base.keys()) + ["purge_confirmation", "pairs", "instrument_type", "adjustment", "excluded_types"]:
             if k in data:
                 base[k] = data[k]
         return base
@@ -2571,6 +2572,9 @@ def _firstrate_pending_types_for_nightly(cfg: dict) -> tuple[dict[str, list[str]
       has data for gets a delta pull.
     - If off: honours the legacy single `instrument_type` + `pairs` config.
 
+    Respects `excluded_types` — any asset class in that list is silently dropped
+    from the buckets so the scheduler never downloads it.
+
     Only buckets with at least one ticker are returned.
     """
     if bool(cfg.get("auto_all_types", True)):
@@ -2579,6 +2583,10 @@ def _firstrate_pending_types_for_nightly(cfg: dict) -> tuple[dict[str, list[str]
         inst = str(cfg.get("instrument_type") or "fx").strip().lower()
         pairs = cfg.get("pairs") if isinstance(cfg.get("pairs"), list) else []
         buckets = {inst: list(pairs)} if inst else {}
+    # Remove excluded asset classes so they never get queued.
+    excluded = set(str(x).strip().lower() for x in (cfg.get("excluded_types") or []) if x)
+    if excluded:
+        buckets = {k: v for k, v in buckets.items() if k not in excluded}
     # Strip empties so we don't queue a no-op job for a class with no tickers.
     buckets = {k: v for k, v in buckets.items() if v}
     done = list(cfg.get("last_run_types_today") or [])
@@ -6644,6 +6652,8 @@ class AdminFirstrateScheduleIn(BaseModel):
     # When true, nightly mode pulls every asset class present in the registry
     # (ignores `instrument_type` / `pairs`).
     auto_all_types: bool | None = None
+    # Asset classes to SKIP during auto_all_types nightly sync (e.g. ["stock", "etf"]).
+    excluded_types: list[str] | None = None
     interval_minutes: int | None = Field(default=None, ge=15, le=10080)
     instrument_type: str | None = None
     adjustment: str | None = None
@@ -9328,6 +9338,8 @@ async def admin_firstrate_fx_schedule_put(payload: AdminFirstrateScheduleIn, req
         cur["download_timeout_sec"] = float(p.download_timeout_sec)
     if p.pairs is not None:
         cur["pairs"] = [str(x).strip() for x in p.pairs if str(x).strip()]
+    if p.excluded_types is not None:
+        cur["excluded_types"] = [str(x).strip().lower() for x in p.excluded_types if str(x).strip()]
     if cur.get("delete_existing_first") and not (cur.get("purge_confirmation") or "").strip():
         raise HTTPException(
             status_code=400,

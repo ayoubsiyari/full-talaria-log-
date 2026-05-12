@@ -1695,6 +1695,16 @@ select { cursor: pointer; }
                       <input type="checkbox" id="fr_sched_auto_all" checked>
                       Pull every asset class I already have data for
                     </label>
+                    <div id="fr_sched_excluded_wrap" style="margin:0 0 10px 26px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:color-mix(in oklab, var(--panel) 80%, transparent)">
+                      <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Skip these asset classes (won't download):</div>
+                      <div style="display:flex;flex-wrap:wrap;gap:10px">
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="fr_excl_stock" value="stock"> Stock</label>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="fr_excl_etf" value="etf"> ETF</label>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="fr_excl_crypto" value="crypto"> Crypto</label>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="fr_excl_futures" value="futures"> Futures</label>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="fr_excl_fx" value="fx"> Forex</label>
+                      </div>
+                    </div>
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px;font-size:12px">
                       <input type="checkbox" id="fr_sched_upsert" checked>
                       Merge into existing datasets (recommended — preserves history)
@@ -5165,6 +5175,10 @@ function _renderNightlyPreview(schedule, preview) {
     if (next.getTime() <= now.getTime()) next.setUTCDate(next.getUTCDate() + 1);
     lines.push('  (' + next.toLocaleString() + ' local)');
   } catch (_) { /* ignore clock errors */ }
+  var excluded = Array.isArray(s.excluded_types) ? s.excluded_types : [];
+  if (excluded.length) {
+    lines.push('⛔ Excluded (won\'t download): ' + excluded.join(', '));
+  }
   lines.push('Covers ' + (p.type_count || 0) + ' asset class(es), ' + (p.ticker_count || 0) + ' ticker(s):');
   const order = ['futures', 'crypto', 'fx', 'stock'];
   const seen = new Set();
@@ -5172,6 +5186,10 @@ function _renderNightlyPreview(schedule, preview) {
   order.forEach(function (k) {
     if (!buckets[k] || !buckets[k].length) return;
     seen.add(k);
+    if (excluded.indexOf(k) !== -1) {
+      lines.push('  ⊘ ' + k + ' (' + buckets[k].length + '): SKIPPED');
+      return;
+    }
     const list = buckets[k];
     const head = list.slice(0, 12).join(', ');
     const rest = list.length > 12 ? ' … +' + (list.length - 12) + ' more' : '';
@@ -5179,6 +5197,10 @@ function _renderNightlyPreview(schedule, preview) {
   });
   Object.keys(buckets).forEach(function (k) {
     if (seen.has(k) || !buckets[k] || !buckets[k].length) return;
+    if (excluded.indexOf(k) !== -1) {
+      lines.push('  ⊘ ' + k + ' (' + buckets[k].length + '): SKIPPED');
+      return;
+    }
     const list = buckets[k];
     lines.push('  • ' + k + ' (' + list.length + '): ' + list.slice(0, 12).join(', ') + (list.length > 12 ? ' …' : ''));
   });
@@ -5454,6 +5476,11 @@ async function loadFirstrateSchedule() {
     if ($('fr_sched_mode')) $('fr_sched_mode').value = String(s.mode || 'nightly');
     if ($('fr_sched_nightly_hour')) $('fr_sched_nightly_hour').value = String(Math.max(0, Math.min(23, parseInt(s.nightly_utc_hour, 10) || 2)));
     if ($('fr_sched_auto_all')) $('fr_sched_auto_all').checked = (s.auto_all_types !== false);
+    var excl = Array.isArray(s.excluded_types) ? s.excluded_types : [];
+    ['stock', 'etf', 'crypto', 'futures', 'fx'].forEach(function (t) {
+      var cb = $('fr_excl_' + t);
+      if (cb) cb.checked = excl.indexOf(t) !== -1;
+    });
     if ($('fr_sched_interval')) $('fr_sched_interval').value = String(Math.max(15, parseInt(s.interval_minutes, 10) || 1440));
     if ($('fr_period') && s.period) $('fr_period').value = s.period;
     if ($('fr_tf') && s.timeframe) $('fr_tf').value = s.timeframe;
@@ -5498,11 +5525,17 @@ async function saveFirstrateSchedule() {
     const st = $('fr_type') ? $('fr_type').value : 'fx';
     const selAdj = $('fr_adjustment');
     const mode = ($('fr_sched_mode') && $('fr_sched_mode').value) || 'nightly';
+    var excludedTypes = [];
+    ['stock', 'etf', 'crypto', 'futures', 'fx'].forEach(function (t) {
+      var cb = $('fr_excl_' + t);
+      if (cb && cb.checked) excludedTypes.push(t);
+    });
     const payload = {
       enabled: !!($('fr_sched_enabled') && $('fr_sched_enabled').checked),
       mode: mode,
       nightly_utc_hour: parseInt(($('fr_sched_nightly_hour') && $('fr_sched_nightly_hour').value) || '2', 10),
       auto_all_types: !!($('fr_sched_auto_all') && $('fr_sched_auto_all').checked),
+      excluded_types: excludedTypes,
       interval_minutes: parseInt(($('fr_sched_interval') && $('fr_sched_interval').value) || '1440', 10),
       instrument_type: st,
       period: $('fr_period').value,

@@ -67,21 +67,48 @@ class RulerTool extends BaseDrawing {
         // Calculate measurements
         const priceDiff = p2.y - p1.y;
         const pricePercent = ((priceDiff / p1.y) * 100).toFixed(2);
-        const timeDiff = p2.x - p1.x;
-        const timeDiffMs = timeDiff;
-        
+        const barDiff = p2.x - p1.x;
+        const barCount = Math.abs(Math.round(barDiff));
+
+        // Derive time difference from timestamps when chart data is available,
+        // otherwise estimate from bar count * candle interval.
+        let timeDiffMs = 0;
+        const chart = scales.chart || this.chart;
+        if (chart && chart.data && chart.data.length > 0) {
+            const i1 = Math.max(0, Math.min(chart.data.length - 1, Math.round(p1.x)));
+            const i2 = Math.max(0, Math.min(chart.data.length - 1, Math.round(p2.x)));
+            const t1 = chart.data[i1] ? chart.data[i1].t : 0;
+            const t2 = chart.data[i2] ? chart.data[i2].t : 0;
+            timeDiffMs = Math.abs(t2 - t1);
+        } else if (chart && chart.currentTimeframe) {
+            const tfMs = typeof CoordinateUtils !== 'undefined' && CoordinateUtils.getIntervalFromTimeframe
+                ? CoordinateUtils.getIntervalFromTimeframe(chart.currentTimeframe) : 60000;
+            timeDiffMs = barCount * (tfMs || 60000);
+        }
+
         // Format time difference
         let timeStr;
-        const minutes = Math.floor(timeDiffMs / 60000);
-        const hours = Math.floor(minutes / 60);
+        const totalMinutes = Math.floor(timeDiffMs / 60000);
+        const hours = Math.floor(totalMinutes / 60);
         const days = Math.floor(hours / 24);
         
         if (days > 0) {
             timeStr = `${days}d ${hours % 24}h`;
         } else if (hours > 0) {
-            timeStr = `${hours}h ${minutes % 60}m`;
+            timeStr = `${hours}h ${totalMinutes % 60}m`;
         } else {
-            timeStr = `${minutes}m`;
+            timeStr = `${totalMinutes}m`;
+        }
+
+        // Format price with instrument-appropriate precision
+        let pricePrecision = 5;
+        if (chart && typeof chart._resolveDefaultPrecision === 'function') {
+            const resolved = chart._resolveDefaultPrecision();
+            if (Number.isFinite(resolved) && resolved >= 0) pricePrecision = resolved;
+        } else if (chart && chart.chartSettings && chart.chartSettings.precision) {
+            const p = String(chart.chartSettings.precision);
+            const dotIdx = p.indexOf('.');
+            if (dotIdx >= 0) pricePrecision = p.length - dotIdx - 1;
         }
 
         // Draw measurement label if enabled
@@ -91,9 +118,9 @@ class RulerTool extends BaseDrawing {
 
             // Create label text
             const labelText = [
-                `Δ Price: ${Math.abs(priceDiff).toFixed(5)} (${pricePercent}%)`,
+                `Δ Price: ${Math.abs(priceDiff).toFixed(pricePrecision)} (${pricePercent}%)`,
                 `Δ Time: ${timeStr}`,
-                `Bars: ${Math.abs(Math.floor(timeDiff / 60000))}`
+                `Bars: ${barCount}`
             ];
 
             // Calculate label dimensions

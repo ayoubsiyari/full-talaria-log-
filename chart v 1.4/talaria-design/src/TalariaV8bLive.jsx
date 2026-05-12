@@ -5954,7 +5954,7 @@ const TalariaV8bLive = () => {
          'disjoint-channel', 'pitchfork'].includes(type)) return 'channel';
     if (['brush', 'highlighter'].includes(type)) return 'brush2';
     if (['ruler', 'short-position', 'long-position', 'price-range',
-         'date-range', 'date-and-price-range'].includes(type)) return 'measure';
+         'date-range', 'date-and-price-range', 'date-price-range'].includes(type)) return 'measure';
     if (['trendline', 'horizontal', 'vertical', 'horizontal-ray', 'ray',
          'extended-line', 'cross-line', 'polyline', 'path', 'curve', 'double-curve'].includes(type)) {
       return 'trendline';
@@ -7539,7 +7539,7 @@ const TalariaV8bLive = () => {
     abcdPattern: 'abcd-pattern', triPattern: 'triangle-pattern',
     threeDrives: 'three-drives',
     // Projections
-    shortPos: 'short-position', longPos: 'long-position', measure: 'ruler',
+    shortPos: 'short-position', longPos: 'long-position', measure: 'date-price-range',
     // Volume
     vwap: 'anchored-vwap', volProfile: 'fixed-range-volume-profile',
     anchoredVol: 'anchored-volume-profile',
@@ -7658,7 +7658,7 @@ const TalariaV8bLive = () => {
   const V9_GROUP_DEFAULT = {
     crosshair: null, brush2: 'brush', trendline: 'trendline', rect: 'rectangle',
     channel: 'parallel-channel', fib: 'fibonacci-retracement', text: 'text',
-    pattern: 'elliott-impulse', measure: 'ruler', brush: 'anchored-vwap',
+    pattern: 'elliott-impulse', measure: 'date-price-range', brush: 'anchored-vwap',
     eye: null, magnet: null, lock: null,
   };
 
