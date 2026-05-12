@@ -102,7 +102,14 @@ class ReplaySystem {
         if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) return;
 
         try {
-            const idxFromState = typeof state.currentIndex === 'number' && Number.isFinite(state.currentIndex)
+            // Only trust the saved currentIndex if the timeframe matches the
+            // current chart. A 1H session saves index ~12000 but on reload the
+            // chart forces 1D (~500 bars) — blindly using the old index clamps
+            // to the last bar, making it look like "all data is gone."
+            const tfMatches = !state.timeframe || state.timeframe === this.chart.currentTimeframe;
+            const idxFromState = tfMatches
+                && typeof state.currentIndex === 'number'
+                && Number.isFinite(state.currentIndex)
                 ? Math.floor(state.currentIndex)
                 : null;
 
@@ -127,7 +134,7 @@ class ReplaySystem {
                 }
 
                 if (ts !== null) {
-                    idx = 0;
+                    idx = this.sessionStartIndex || 0;
                     for (let i = 0; i < this.fullRawData.length; i++) {
                         const t = this.fullRawData[i]?.t;
                         const tn = typeof t === 'number' ? t : (typeof t === 'string' ? Date.parse(t) : NaN);
@@ -135,7 +142,6 @@ class ReplaySystem {
                             idx = i;
                             break;
                         }
-                        idx = i;
                     }
                 }
             }

@@ -2459,6 +2459,18 @@ class Chart {
                     /* ignore */
                 }
             }
+            if (this.replaySystem && this.replaySystem.isActive) {
+                payload.replay = {
+                    currentIndex: this.replaySystem.currentIndex,
+                    replayTimestamp: this.replaySystem.replayTimestamp,
+                    timeframe: this.currentTimeframe,
+                    speed: this.replaySystem.speed,
+                    tickElapsedMs: this.replaySystem.tickElapsedMs,
+                    playbackMode: typeof this.replaySystem.getPlaybackMode === 'function'
+                        ? this.replaySystem.getPlaybackMode() : undefined,
+                    isActive: true,
+                };
+            }
             userStorage.setItem(this._tradingSessionLocalBackupKey(sessionId), JSON.stringify(payload));
         } catch (e) {
             console.warn('local session backup write failed', e);
@@ -2538,6 +2550,15 @@ class Chart {
         if (!backupHasRuntime && typeof om.updatePositionsPanel === 'function') {
             om.updatePositionsPanel();
         }
+
+        if (backup.replay && typeof backup.replay === 'object' && backup.replay.isActive) {
+            this._pendingReplayState = backup.replay;
+            if (this.replaySystem && this.replaySystem.isActive && typeof this.replaySystem.applyPersistedState === 'function') {
+                this.replaySystem.applyPersistedState(backup.replay);
+                this._pendingReplayState = null;
+            }
+        }
+
         if (typeof this.showNotification === 'function') {
             this.showNotification(
                 'Restored trades from browser backup — API save failed. Configure nginx /api proxy so data syncs to the server.'
@@ -2880,10 +2901,11 @@ class Chart {
         if (!patch || typeof patch !== 'object') return false;
         if (this._sessionStatePatchIsJournalRelated(patch)) return true;
         if (Object.prototype.hasOwnProperty.call(patch, 'drawings')) return true;
-        // Replay coverage metrics only — safe before GET /state hydrates (server merges replay shallow + dashboard deep).
         if (patch.replay && typeof patch.replay === 'object') {
             const rk = Object.keys(patch.replay);
             if (rk.length === 1 && rk[0] === 'dashboard') return true;
+            const allowedReplayKeys = ['replayTimestamp', 'currentIndex', 'tickElapsedMs', 'speed', 'playbackMode', 'timeframe', 'isActive', 'dashboard'];
+            if (rk.every(k => allowedReplayKeys.includes(k))) return true;
         }
         return false;
     }

@@ -1194,6 +1194,16 @@ class VolumeProfileTool extends BaseDrawing {
         });
 
         this.group.append('line')
+            .attr('class', 'volume-profile-boundary shape-border-hit')
+            .attr('x1', left)
+            .attr('y1', top)
+            .attr('x2', left)
+            .attr('y2', bottom)
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', 14)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'pointer');
+        this.group.append('line')
             .attr('class', 'volume-profile-boundary')
             .attr('x1', left)
             .attr('y1', top)
@@ -1204,6 +1214,16 @@ class VolumeProfileTool extends BaseDrawing {
             .attr('opacity', Math.min(1, globalOpacity * 0.95))
             .style('pointer-events', 'none');
 
+        this.group.append('line')
+            .attr('class', 'volume-profile-boundary shape-border-hit')
+            .attr('x1', right)
+            .attr('y1', top)
+            .attr('x2', right)
+            .attr('y2', bottom)
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', 14)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'pointer');
         this.group.append('line')
             .attr('class', 'volume-profile-boundary')
             .attr('x1', right)
@@ -1578,6 +1598,16 @@ class VolumeProfileTool extends BaseDrawing {
         if (this.style.showPOC !== false) {
             const pocY = bottom - ((pocIndex + 0.5) * barHeight);
             this.group.append('line')
+                .attr('class', 'volume-profile-level-line volume-profile-poc-line shape-border-hit')
+                .attr('x1', levelLineStartX)
+                .attr('y1', pocY)
+                .attr('x2', levelLineEndX)
+                .attr('y2', pocY)
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', 14)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'pointer');
+            this.group.append('line')
                 .attr('class', 'volume-profile-level-line volume-profile-poc-line')
                 .attr('x1', levelLineStartX)
                 .attr('y1', pocY)
@@ -1593,6 +1623,16 @@ class VolumeProfileTool extends BaseDrawing {
         if (this.style.showVAH !== false) {
             const vahY = bottom - ((valueAreaHigh + 0.5) * barHeight);
             if (Number.isFinite(vahY)) {
+                this.group.append('line')
+                    .attr('class', 'volume-profile-level-line volume-profile-vah-line shape-border-hit')
+                    .attr('x1', levelLineStartX)
+                    .attr('y1', vahY)
+                    .attr('x2', levelLineEndX)
+                    .attr('y2', vahY)
+                    .attr('stroke', 'transparent')
+                    .attr('stroke-width', 14)
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'pointer');
                 this.group.append('line')
                     .attr('class', 'volume-profile-level-line volume-profile-vah-line')
                     .attr('x1', levelLineStartX)
@@ -1672,6 +1712,16 @@ class VolumeProfileTool extends BaseDrawing {
         if (this.style.showVAL !== false) {
             const valY = bottom - ((valueAreaLow + 0.5) * barHeight);
             if (Number.isFinite(valY)) {
+                this.group.append('line')
+                    .attr('class', 'volume-profile-level-line volume-profile-val-line shape-border-hit')
+                    .attr('x1', levelLineStartX)
+                    .attr('y1', valY)
+                    .attr('x2', levelLineEndX)
+                    .attr('y2', valY)
+                    .attr('stroke', 'transparent')
+                    .attr('stroke-width', 14)
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'pointer');
                 this.group.append('line')
                     .attr('class', 'volume-profile-level-line volume-profile-val-line')
                     .attr('x1', levelLineStartX)
