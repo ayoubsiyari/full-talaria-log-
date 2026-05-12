@@ -8378,6 +8378,7 @@ const TalariaV8bLive = () => {
         // Force tool group → JSX conditional renders the panel.
         setTool(group);
 
+        if (dropdown) closeDropdown();
         if (group === 'text') {
           setTxtSettPos({ x: px, y: py });
           setTxtSettOpen(true);
@@ -12788,7 +12789,7 @@ const TalariaV8bLive = () => {
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TxBtn>
           <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
-          <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
+          <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{if(dropdown)closeDropdown();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
             {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
           </TxBtn>
           {/* three dots — more options */}
@@ -15180,6 +15181,7 @@ const TalariaV8bLive = () => {
           {/* btn 7: settings */}
           <TlBtn id="tl-sett" isAct={tlSettOpen||closing.has("tlsett")}
             onClick={e=>{
+              if (dropdown) closeDropdown();
               if (tlBarDrop) closeTlBarDrop();
               setColorPicker(null);
               if (tlSettOpen || closing.has("tlsett")) { closeTlSett(); return; }
@@ -15551,7 +15553,7 @@ const TalariaV8bLive = () => {
             <VSep/>
             {/* btn: settings */}
             <VBtn id="vb-sett" isAct={vwapSettOpen||closing.has("vwapsett")}
-              onClick={e=>{e.stopPropagation();setVwapBarDrop(null);setColorPicker(null);if(vwapSettOpen||closing.has("vwapsett")){closeVwapSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-428));const y=r.bottom/Z+8;setVwapSettPos({x,y});setVwapSettOpen(true);setVwapSettTab("style");}}}>
+              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setVwapBarDrop(null);setColorPicker(null);if(vwapSettOpen||closing.has("vwapsett")){closeVwapSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-428));const y=r.bottom/Z+8;setVwapSettPos({x,y});setVwapSettOpen(true);setVwapSettTab("style");}}}>
               {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
             </VBtn>
             {/* btn: more */}
@@ -15644,7 +15646,7 @@ const TalariaV8bLive = () => {
             <VPSep/>
             {/* btn: settings */}
             <VPBtn id="vpb-sett" isAct={vpSettOpen||closing.has("vpsett")}
-              onClick={e=>{e.stopPropagation();setVpBarDrop(null);setColorPicker(null);if(vpSettOpen||closing.has("vpsett")){closeVpSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW2=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW2-428));const y=r.bottom/Z+8;setVpSettPos({x,y});setVpSettOpen(true);setVpSettTab("style");}}}>
+              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setVpBarDrop(null);setColorPicker(null);if(vpSettOpen||closing.has("vpsett")){closeVpSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW2=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW2-428));const y=r.bottom/Z+8;setVpSettPos({x,y});setVpSettOpen(true);setVpSettTab("style");}}}>
               {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
             </VPBtn>
             {/* btn: more */}
@@ -15737,7 +15739,7 @@ const TalariaV8bLive = () => {
             <AVSep/>
             {/* btn: settings */}
             <AVBtn id="avb-sett" isAct={avSettOpen||closing.has("avsett")}
-              onClick={e=>{e.stopPropagation();setAvBarDrop(null);setColorPicker(null);if(avSettOpen||closing.has("avsett")){closeAvSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();const r=e.currentTarget.getBoundingClientRect();const avW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,avW-428));const y=r.bottom/Z+8;setAvSettPos({x,y});setAvSettOpen(true);setAvSettTab("style");}}}>
+              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setAvBarDrop(null);setColorPicker(null);if(avSettOpen||closing.has("avsett")){closeAvSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();const r=e.currentTarget.getBoundingClientRect();const avW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,avW-428));const y=r.bottom/Z+8;setAvSettPos({x,y});setAvSettOpen(true);setAvSettTab("style");}}}>
               {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
             </AVBtn>
             {/* btn: more */}

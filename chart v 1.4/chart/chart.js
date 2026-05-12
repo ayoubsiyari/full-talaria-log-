@@ -11938,10 +11938,12 @@ class Chart {
             console.warn('[backtest] exitReplayMode before refetch failed', e);
         }
 
-        // SAME fetch shape as the initial backtest load: anchor='end' + endTs=sessionEnd
-        // + skipSessionDates=true → server returns the maximum slice of history available
-        // for this TF (up to the 100k backtest limit). Identical loading style across all
-        // timeframes is what the user asked for.
+        // Anchor data fetch around the current replay position rather than session end.
+        // For lower timeframes (e.g. 1min) the 100k bar limit only covers ~69 days.
+        // If we always anchor at session end (e.g. 2026) and the replay position is in
+        // 2023, that timestamp won't exist in the loaded window → chart jumps to 2026.
+        // Instead, set endTs = replayTimestamp + forward buffer so the replay position
+        // is guaranteed to be within the fetched range.
         const session = this.backtestingSession || {};
         const sessionEndMs = (() => {
             const r = session.endDate || session.end_date;
@@ -11949,7 +11951,21 @@ class Chart {
             const t = this._sessionEndToInclusiveUtcMs(r);
             return Number.isFinite(t) ? Math.floor(t) : null;
         })();
-        const historyRange = sessionEndMs != null ? { endTs: sessionEndMs } : null;
+
+        const tfMs = this.parseTimeframe(timeframe);
+        const forwardBufferBars = 20000;
+        const forwardBufferMs = forwardBufferBars * tfMs;
+
+        let anchorEndTs = sessionEndMs;
+        if (Number.isFinite(savedReplayTimestamp) && Number.isFinite(tfMs) && tfMs > 0) {
+            const replayAnchoredEnd = savedReplayTimestamp + forwardBufferMs;
+            if (sessionEndMs != null) {
+                anchorEndTs = Math.min(replayAnchoredEnd, sessionEndMs);
+            } else {
+                anchorEndTs = replayAnchoredEnd;
+            }
+        }
+        const historyRange = anchorEndTs != null ? { endTs: anchorEndTs } : null;
 
         let result;
         try {
