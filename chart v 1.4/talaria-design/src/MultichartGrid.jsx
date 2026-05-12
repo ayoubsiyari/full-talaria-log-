@@ -134,12 +134,12 @@ function ensureHostBridge() {
         const bridge = window.MultichartBridge.installBridge(ch, {
             chartId:      HOST_PANEL_ID,
             parentOrigin: "*",
-            // Phase 7.2.7: leave verbose ON for the host while we shake out
-            // sync issues. Outbound logs (`[bridge:A] out crosshair {...}`,
-            // `[bridge:A] out visibleRange {...}`) confirm the host is
-            // emitting; absence of those lines means the wrapper isn't
-            // being reached by chart.js.
             verbose:      true,
+            // The host receives inbound sync via directDeliver (called by
+            // the manager's _fanOut which respects syncMode gates). Skip
+            // the raw message listener so iframe postMessages don't bypass
+            // sync-mode checks and move Panel A when sync is off.
+            skipMessageListener: true,
         });
         window.__multichartHostBridge = bridge;
         try { console.log("[MultichartGrid] host bridge installed on window.chart as", HOST_PANEL_ID); } catch (_) {}
