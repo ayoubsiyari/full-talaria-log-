@@ -9708,20 +9708,26 @@ const TalariaV8bLive = () => {
             }
             if (t.dd) {
               if (!["eye", "magnet", "trash"].includes(t.id)) {
+                editingDrawingRef.current = null;
                 if (tlBarSelected) {
                   setTlBarSelected(false); setTlBarSelectedType(null);
                   try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll(); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
                 }
+                if (tlSettOpen) closeTlSett(); if (txtSettOpen) closeTxtSett();
+                if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett();
                 v9UserExplicitToolRef.current = true;
                 setTool(t.id);
               }
               if (dropdown) closeDropdown();
             }
             else {
+              editingDrawingRef.current = null;
               if (tlBarSelected) {
                 setTlBarSelected(false); setTlBarSelectedType(null);
                 try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll(); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
               }
+              if (tlSettOpen) closeTlSett(); if (txtSettOpen) closeTxtSett();
+              if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett();
               v9UserExplicitToolRef.current = true;
               setTool(t.id); setDropdown(null);
             }
@@ -15295,16 +15301,19 @@ const TalariaV8bLive = () => {
                         }
                       } catch (_) {}
                     }
+                    editingDrawingRef.current = null;
                     v9UserExplicitToolRef.current = true;
+                    if (tlSettOpen) closeTlSett();
+                    if (txtSettOpen) closeTxtSett();
+                    if (vwapSettOpen) closeVwapSett();
+                    if (vpSettOpen) closeVpSett();
+                    if (avSettOpen) closeAvSett();
                     setTool(activeKey); setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [activeKey]: item })); closeDropdown();
                     if (item.icon === "emoji") {
                       const r = e.currentTarget.getBoundingClientRect();
                       setEmojiPanelPos({ x: (r.right + 8) / Z, y: r.top / Z });
                       setEmojiPanelOpen(true);
                     }
-                    if (vwapSettOpen) closeVwapSett();
-                    if (vpSettOpen) closeVpSett();
-                    if (avSettOpen) closeAvSett();
                   }}
                   style={{
                     display: "flex", alignItems: "center", padding: "4px 8px 4px 14px",
