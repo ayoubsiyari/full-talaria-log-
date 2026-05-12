@@ -11470,11 +11470,14 @@ class Chart {
             const newTfMs = typeof this.parseTimeframe === 'function'
                 ? this.parseTimeframe(normalizedTf)
                 : NaN;
+            // Always refetch from server during backtest when the timeframe changes,
+            // regardless of direction.  Client-side resample of fine-grained rawData
+            // (e.g. 100k 1m bars ≈ 69 days) to a coarse TF (1D) produces very few
+            // candles and loses the deep history the server can provide for that TF.
             const needsServerRefetch = this.isBacktestMode
                 && this.currentFileId
                 && Number.isFinite(rawTfMs) && rawTfMs > 0
-                && Number.isFinite(newTfMs) && newTfMs > 0
-                && newTfMs < rawTfMs;
+                && Number.isFinite(newTfMs) && newTfMs > 0;
 
             if (needsServerRefetch) {
                 // _loadTimeframeFromServer commits + ends the switching state when data arrives.
@@ -12141,7 +12144,9 @@ class Chart {
         }
         
         // Debounce: replay needs tighter turnaround than manual panning.
-        const debounceMs = isReplay ? 80 : 500;
+        // Keep non-replay debounce short so pan-left fills the viewport quickly
+        // instead of trickling candles in small batches.
+        const debounceMs = isReplay ? 80 : 120;
         const now = Date.now();
         if (!force && this._lastPanLoadTime && now - this._lastPanLoadTime < debounceMs) return true;
         
@@ -12420,6 +12425,13 @@ class Chart {
             .finally(() => { 
                 this._panLoading = false; 
                 this._lastPanLoadTime = Date.now();
+
+                // Re-check immediately: if the viewport still shows empty space
+                // after this batch, fire the next fetch right away so the user
+                // sees continuous filling instead of small trickles.
+                if (typeof this.constrainOffset === 'function') {
+                    requestAnimationFrame(() => this.constrainOffset());
+                }
             });
 
         return true;

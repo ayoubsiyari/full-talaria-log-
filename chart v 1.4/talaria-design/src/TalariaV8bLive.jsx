@@ -8198,6 +8198,11 @@ const TalariaV8bLive = () => {
           lineWidth: String(s.strokeWidth ?? prev.lineWidth),
           lineType: LEGACY_DASH_TO_V9[(s.dashArray ?? s.strokeDasharray ?? '')] || prev.lineType,
           bgColor: s.fill || s.backgroundColor || prev.bgColor,
+          showBg: typeof s.showBackground === 'boolean' ? s.showBackground : prev.showBg,
+          showBorder: typeof s.borderEnabled === 'boolean' ? s.borderEnabled : prev.showBorder,
+          borderColor: s.borderColor || prev.borderColor,
+          borderType: LEGACY_DASH_TO_V9[(s.borderDasharray || '')] || prev.borderType,
+          borderWidth: s.borderWidth != null ? String(s.borderWidth) : prev.borderWidth,
           ep1: s.startStyle || prev.ep1,
           ep2: s.endStyle || prev.ep2,
           extendLeft: !!s.extendLeft,
@@ -8210,9 +8215,12 @@ const TalariaV8bLive = () => {
           ...(() => {
             const info = s.infoSettings;
             const types = v9ShowInfoTypesFromChartInfoSettings(info);
-            const showInfo = info
-              ? (info.showInfo === true || (types.length > 0 && info.showInfo !== false))
-              : false;
+            // Range tool uses showLabel as master toggle; fall back to infoSettings.showInfo
+            const showInfo = typeof s.showLabel === 'boolean'
+              ? s.showLabel
+              : (info
+                ? (info.showInfo === true || (types.length > 0 && info.showInfo !== false))
+                : false);
             return {
               showInfo,
               showInfoTypes: types.length > 0 ? types : (prev.showInfoTypes || ['Price range']),
@@ -8220,7 +8228,7 @@ const TalariaV8bLive = () => {
           })(),
           labelColor: s.labelColor || prev.labelColor,
           labelFontSize: String(s.labelFontSize ?? prev.labelFontSize),
-          labelBg: !!s.labelBackground,
+          labelBg: typeof s.showLabelBackground === 'boolean' ? s.showLabelBackground : (typeof s.labelBackground === 'boolean' ? s.labelBackground : prev.labelBg),
           labelBgColor: s.labelBackgroundColor || prev.labelBgColor,
           textContent: typeof drawing.text === 'string' ? drawing.text : prev.textContent,
           textColor: s.textColor || prev.textColor,
@@ -8780,6 +8788,12 @@ const TalariaV8bLive = () => {
       // Fill (shapes, channels, range tool background, etc.)
       fill: tlStyle.bgColor,
       backgroundColor: tlStyle.bgColor,
+      showBackground: !!tlStyle.showBg,
+      // Border (range tool)
+      borderEnabled: !!tlStyle.showBorder,
+      borderColor: tlStyle.borderColor,
+      borderDasharray: V9_DASH_TO_LEGACY[tlStyle.borderType] ?? '',
+      borderWidth: parseInt(tlStyle.borderWidth, 10) || 1,
       // Endpoints (V9 uses 'normal' / 'arrow' / 'arrowFilled' etc; chart.js
       // drawing-tools-lines.js reads style.startStyle / style.endStyle).
       startStyle: tlStyle.ep1,
@@ -8795,10 +8809,13 @@ const TalariaV8bLive = () => {
                 : tlStyle.rangeType === 'Date and time' ? 'time'
                 : 'both',
       infoSettings: v9ChartInfoSettingsFromTlStyle(tlStyle),
+      // Range tool: master label toggle (controls whether the info label renders)
+      showLabel: !!tlStyle.showInfo,
       // Label sub-styling (used by range tool / fib labels)
       labelColor: tlStyle.labelColor,
       labelFontSize: parseInt(tlStyle.labelFontSize, 10) || 12,
       labelBackground: !!tlStyle.labelBg,
+      showLabelBackground: !!tlStyle.labelBg,
       labelBackgroundColor: tlStyle.labelBgColor,
       // Line/shape label text (Text tab — matches drawing-tools-lines renderTextLabel)
       textColor: tlStyle.textColor,
@@ -8921,7 +8938,8 @@ const TalariaV8bLive = () => {
       chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
     } catch (err) { console.warn('[V9 style bridge] failed:', err); }
   }, [
-    tlStyle.lineColor, tlStyle.lineWidth, tlStyle.lineType, tlStyle.bgColor,
+    tlStyle.lineColor, tlStyle.lineWidth, tlStyle.lineType, tlStyle.bgColor, tlStyle.showBg,
+    tlStyle.showBorder, tlStyle.borderColor, tlStyle.borderType, tlStyle.borderWidth,
     tlStyle.midLine, tlStyle.midLineColor, tlStyle.midLineType, tlStyle.midLineWidth,
     tlStyle.ep1, tlStyle.ep2, tlStyle.extendLeft, tlStyle.extendRight,
     tlStyle.priceLabels, tlStyle.timeLabels, tlStyle.rangeType,

@@ -12144,7 +12144,9 @@ class Chart {
         }
         
         // Debounce: replay needs tighter turnaround than manual panning.
-        const debounceMs = isReplay ? 80 : 500;
+        // Keep non-replay debounce short so pan-left fills the viewport quickly
+        // instead of trickling candles in small batches.
+        const debounceMs = isReplay ? 80 : 120;
         const now = Date.now();
         if (!force && this._lastPanLoadTime && now - this._lastPanLoadTime < debounceMs) return true;
         
@@ -12423,6 +12425,13 @@ class Chart {
             .finally(() => { 
                 this._panLoading = false; 
                 this._lastPanLoadTime = Date.now();
+
+                // Re-check immediately: if the viewport still shows empty space
+                // after this batch, fire the next fetch right away so the user
+                // sees continuous filling instead of small trickles.
+                if (typeof this.constrainOffset === 'function') {
+                    requestAnimationFrame(() => this.constrainOffset());
+                }
             });
 
         return true;
