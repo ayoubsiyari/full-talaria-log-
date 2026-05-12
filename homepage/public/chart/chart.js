@@ -13561,7 +13561,8 @@ class Chart {
             ? this.data[0].t
             : 0;
 
-        const scanFrom = Math.max(0, Math.floor(Math.max(0, firstVisibleIdx)));
+        const scanFromRaw = Math.floor(Math.max(0, firstVisibleIdx));
+        const scanFrom = Math.max(0, scanFromRaw - labelInterval * 3);
         const scanTo   = Math.min(this.data.length - 1, Math.ceil(lastVisibleIdx));
 
         // Single pass – collect candidates
@@ -13657,16 +13658,20 @@ class Chart {
             }
         }
 
-        // Sort and filter by minimum pixel spacing
+        // Sort and filter by minimum pixel spacing.
+        // Off-screen ticks participate in spacing so the grid stays stable while panning.
         candidates.sort((a, b) => a.idx - b.idx);
         const ticks = [];
         let lastX = -Infinity;
+        const viewLeft  = m.l + 20;
+        const viewRight = this.w - m.r - 20;
         for (const c of candidates) {
             const x = this.dataIndexToPixel(c.idx);
-            if (x < m.l + 20 || x > this.w - m.r - 20) continue;
             const gap = useUniformIntradayTicks ? 0 : ((c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing);
             if (gap <= 0 || x - lastX >= gap || lastX === -Infinity) {
-                ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
+                if (x >= viewLeft && x <= viewRight) {
+                    ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
+                }
                 lastX = x;
             }
         }
