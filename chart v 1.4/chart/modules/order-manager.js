@@ -6485,6 +6485,13 @@ class OrderManager {
      * Create and show trade journal modal
      */
     showTradeJournalModal(order, isClosing = false, closeData = null) {
+        // In multichart iframes, suppress the modal — the host chart
+        // (Panel A) already shows it as a full-screen overlay so the
+        // user sees only one global "Trade Closed" dialog.
+        if (window.__multichartBridge || (window.parent && window.parent !== window)) {
+            return;
+        }
+
         // Remove existing modal if any
         const existingModal = document.getElementById('tradeJournalModal');
         if (existingModal) existingModal.remove();
