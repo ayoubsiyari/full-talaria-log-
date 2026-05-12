@@ -1537,12 +1537,12 @@ export default function MultichartGrid({
     //   • Parent exits replay → monkey-patched exitReplayMode broadcasts
     //     `replayExit` so iframes return to full-file view.
     //
-    // We ALSO mirror parent's play/pause/speed/playbackMode to iframes
-    // so each panel runs its OWN replay loop in lockstep — see the
-    // monkey-patch block below. This gives smooth tick animation on
-    // every panel without bouncing every animation frame through
-    // postMessage. The replayTick fan-out above still runs on each
-    // bar advance to correct any drift between local loops.
+    // PASSIVE MODEL: iframes do NOT run their own replay loops.
+    // Every candle advance on the parent fires replayVirtualTimeChanged,
+    // which the onReplayTick handler below forwards as a replayTick
+    // command to every iframe. panel-cmd-bridge's scheduleCoalescedSeek
+    // calls goToReplayTimestamp on the next rAF — giving exact sync
+    // with zero drift.
     //
     // The shared replay state is held in a ref so the listener effect
     // (mount-once) and the prime-on-ready effect (depends on
@@ -1599,29 +1599,19 @@ export default function MultichartGrid({
                 // prime call (e.g. user exits later) can distinguish
                 // exit from bootstrap-in-flight.
                 replayStateRef.current.parentEverEntered = true;
-                // Capture parent's current play/speed/mode so a panel
-                // that joins mid-playback boots into the same loop
-                // (otherwise it would sit paused at parent's ts until
-                // the user clicks pause-then-play).
-                const parentIsPlaying = !!rs.isPlaying;
-                const parentSpeed = Number(rs.speed) || 1;
-                const parentMode = (typeof rs.getPlaybackMode === "function")
-                    ? rs.getPlaybackMode()
-                    : (rs.playbackMode || "tick");
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.ready) continue;
                     try { mgr.sendCommand(c.id, "replayEnter", { timestamp: ts }); }
                     catch (_) {}
-                    // After enter, push the current speed + mode so the
-                    // iframe's local loop matches before play arrives.
-                    try { mgr.sendCommand(c.id, "replaySetSpeed", { speed: parentSpeed }); }
+                    // PASSIVE MODEL: iframes never run their own play
+                    // loop.  They advance ONLY via the parent's
+                    // replayTick (one seek per parent candle advance).
+                    // Send replayPause to clear any stale
+                    // pendingPlayDesired left from a previous session or
+                    // auto-enter.  Speed/mode are irrelevant since the
+                    // iframe is always paused.
+                    try { mgr.sendCommand(c.id, "replayPause", {}); }
                     catch (_) {}
-                    try { mgr.sendCommand(c.id, "replaySetMode", { mode: parentMode }); }
-                    catch (_) {}
-                    if (parentIsPlaying) {
-                        try { mgr.sendCommand(c.id, "replayPlay", { speed: parentSpeed, mode: parentMode }); }
-                        catch (_) {}
-                    }
                 }
             } else if (replayStateRef.current.parentEverEntered === true) {
                 // Parent IS NOT currently in replay BUT has entered
@@ -1681,32 +1671,6 @@ export default function MultichartGrid({
                         mgr.sendCommand(c.id, cmd, { timestamp: ts });
                     }
                 } catch (_) { /* ignore — the next tick retries */ }
-            }
-
-            // Push the host's visible range to all iframes so viewports
-            // stay aligned during replay (same zoom / scroll position).
-            // Without this, each panel auto-scrolls independently and
-            // shows a different viewport width even at the same timestamp.
-            let host = null;
-            for (const c of mgr.charts.values()) {
-                if (c && c.host) { host = c; break; }
-            }
-            if (host && typeof host.directRead === "function") {
-                let range = null;
-                try { range = host.directRead(); } catch (_) {}
-                if (range && Number.isFinite(range.startSec) && Number.isFinite(range.endSec)) {
-                    const rangeMsg = {
-                        type:        "visibleRange",
-                        startTime:   range.startSec,
-                        endTime:     range.endSec,
-                        source:      host.id,
-                        causationId: "replay-range-" + Date.now().toString(16),
-                    };
-                    for (const c of mgr.charts.values()) {
-                        if (!c || c.host || !c.ready) continue;
-                        try { mgr._send(c, rangeMsg); } catch (_) {}
-                    }
-                }
             }
         };
 
@@ -1838,68 +1802,79 @@ export default function MultichartGrid({
                     return patchOriginalExit();
                 };
 
-                // ── play → broadcast replayPlay {speed, mode} ──
+                // ── PASSIVE MODEL ──────────────────────────────────
                 //
-                // Send AFTER calling original so the parent's UI/state
-                // is already updated when iframes start their loops.
-                // Read speed + mode from `this` (the replaySystem) AFTER
-                // play() so any lazy initialization (saved tick state,
-                // etc.) has run.
+                // Iframes do NOT run their own replay loops. They
+                // advance ONLY via the parent's replayTick broadcast
+                // (one goToReplayTimestamp per parent candle advance).
+                //
+                // Why: running independent play loops in each iframe
+                // caused drift (Panel B would get minutes/days ahead
+                // of Panel A) because JavaScript timers are not
+                // synchronised across windows, and the 3-candle
+                // drift-tolerance in panel-cmd-bridge meant small
+                // accumulated offsets were never corrected.
+                //
+                // With passive iframes the parent is the single source
+                // of truth: its replayVirtualTimeChanged fires, the
+                // React effect sends replayTick to every iframe, and
+                // panel-cmd-bridge's scheduleCoalescedSeek moves each
+                // iframe to exactly the parent's timestamp on the next
+                // requestAnimationFrame.
+                //
+                // We still monkey-patch play/pause so we can send a
+                // single replayTick with the FINAL position on pause
+                // (ensuring the iframe doesn't freeze one candle behind
+                // the parent when the user hits pause between two
+                // replayVirtualTimeChanged dispatches).
                 if (typeof patchedRs.play === "function") {
                     patchOriginalPlay = patchedRs.play.bind(patchedRs);
                     patchedRs.play = function () {
                         const result = patchOriginalPlay();
-                        try {
-                            const speed = Number(this.speed) || 1;
-                            const mode = (typeof this.getPlaybackMode === "function")
-                                ? this.getPlaybackMode()
-                                : (this.playbackMode || "tick");
-                            broadcastToIframes("replayPlay", { speed, mode });
-                        } catch (_) {}
+                        // No broadcast — iframes are passive.
                         return result;
                     };
                 }
 
-                // ── pause → broadcast replayPause ──
                 if (typeof patchedRs.pause === "function") {
                     patchOriginalPause = patchedRs.pause.bind(patchedRs);
                     patchedRs.pause = function () {
                         const result = patchOriginalPause();
-                        broadcastToIframes("replayPause", {});
+                        // Send one final replayTick so the iframe
+                        // lands on the exact pause position.
+                        try {
+                            const ts = Number(this.replayTimestamp);
+                            if (Number.isFinite(ts)) {
+                                const mgr = managerRef.current;
+                                if (mgr) {
+                                    for (const c of mgr.charts.values()) {
+                                        if (!c || c.host || !c.ready) continue;
+                                        try {
+                                            if (typeof mgr.sendCommandNoReply === "function") {
+                                                mgr.sendCommandNoReply(c.id, "replayTick", { timestamp: ts });
+                                            } else {
+                                                mgr.sendCommand(c.id, "replayTick", { timestamp: ts });
+                                            }
+                                        } catch (_) {}
+                                    }
+                                }
+                            }
+                        } catch (_) {}
                         return result;
                     };
                 }
 
-                // ── setSpeed → broadcast replaySetSpeed {speed} ──
-                //
-                // Re-read from `this` post-call because setSpeed
-                // normalizes (clamp 1..100) and we want iframes to
-                // receive the post-clamp value, not the raw input.
                 if (typeof patchedRs.setSpeed === "function") {
                     patchOriginalSetSpeed = patchedRs.setSpeed.bind(patchedRs);
                     patchedRs.setSpeed = function (speed) {
-                        const result = patchOriginalSetSpeed(speed);
-                        try {
-                            broadcastToIframes("replaySetSpeed", {
-                                speed: Number(this.speed) || 1,
-                            });
-                        } catch (_) {}
-                        return result;
+                        return patchOriginalSetSpeed(speed);
                     };
                 }
 
-                // ── setPlaybackMode → broadcast replaySetMode {mode} ──
                 if (typeof patchedRs.setPlaybackMode === "function") {
                     patchOriginalSetMode = patchedRs.setPlaybackMode.bind(patchedRs);
                     patchedRs.setPlaybackMode = function (mode, opts) {
-                        const result = patchOriginalSetMode(mode, opts);
-                        try {
-                            const m = (typeof this.getPlaybackMode === "function")
-                                ? this.getPlaybackMode()
-                                : (this.playbackMode || "tick");
-                            broadcastToIframes("replaySetMode", { mode: m });
-                        } catch (_) {}
-                        return result;
+                        return patchOriginalSetMode(mode, opts);
                     };
                 }
 

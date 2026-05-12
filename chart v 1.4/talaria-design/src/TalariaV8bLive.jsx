@@ -15198,7 +15198,7 @@ const TalariaV8bLive = () => {
               </div>}
             </TlBtn>}
             {/* btn 4: line width */}
-            {!["arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <TlBtn id="tl-wid2" isAct={tlBarDrop==="width"} w="auto"
+            {!["arrowMarker","arrowUp","arrowDn","regressionCh"].includes(tlSubTool.icon) && <TlBtn id="tl-wid2" isAct={tlBarDrop==="width"} w="auto"
               onClick={e=>{e.stopPropagation();if(tlBarDrop==="width"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("width");}}>
               {(_,isAct,col)=> tlSubTool.icon === "brush"
                 ? <div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
