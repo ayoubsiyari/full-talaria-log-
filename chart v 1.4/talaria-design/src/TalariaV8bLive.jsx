@@ -5544,16 +5544,22 @@ const TalariaV8bLive = () => {
     setTimeout(() => { setTxtSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("txtsett"); return n; }); }, 155);
   };
   const closeVwapSett = () => {
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
     setClosing(s => new Set([...s, "vwapsett"]));
     setVwapStyleDrop(null);
     setTimeout(() => { setVwapSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("vwapsett"); return n; }); }, 155);
   };
   const closeVpSett = () => {
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
     setClosing(s => new Set([...s, "vpsett"]));
     setVpStyleDrop(null);
     setTimeout(() => { setVpSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("vpsett"); return n; }); }, 155);
   };
   const closeAvSett = () => {
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
     setClosing(s => new Set([...s, "avsett"]));
     setAvStyleDrop(null);
     setTimeout(() => { setAvSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("avsett"); return n; }); }, 155);
