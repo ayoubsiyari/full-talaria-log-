@@ -4891,9 +4891,8 @@ class ReplaySystem {
      * Handle timeframe change during replay
      * Uses VIRTUAL TIME to maintain consistent price across all timeframes
      * @param {Object} [initiatorChart] - Chart instance that called setTimeframe (defaults to main {@link #chart})
-     * @param {Object} [savedViewState] - Pre-captured view state from setTimeframe (centerTimestamp, priceZoom, priceOffset)
      */
-    onTimeframeChange(initiatorChart, savedViewState) {
+    onTimeframeChange(initiatorChart) {
         if (!this.isActive) {
             return;
         }
@@ -4971,13 +4970,9 @@ class ReplaySystem {
         this.isPlaying = false;
         this.animatingCandle = null;
         
-        // Use pre-captured view state from setTimeframe (before it reset candleWidth/priceZoom/etc.)
-        // to restore the viewport at the same visible region after resample.
-        const savedPriceOffset = (savedViewState && Number.isFinite(savedViewState.priceOffset))
-            ? savedViewState.priceOffset : this.chart.priceOffset;
-        const savedPriceZoom = (savedViewState && Number.isFinite(savedViewState.priceZoom))
-            ? savedViewState.priceZoom : this.chart.priceZoom;
-        const savedCenterTs = savedViewState ? savedViewState.centerTimestamp : null;
+        // Save view position
+        const savedPriceOffset = this.chart.priceOffset;
+        const savedPriceZoom = this.chart.priceZoom;
         
         // Update chart data with current position (client-side resample)
         this.updateChartData(false);
@@ -5019,9 +5014,8 @@ class ReplaySystem {
                 }
             }
             
-            // Position view: if we have a saved center timestamp from the previous
-            // viewport, restore to that same time region so the chart doesn't jump.
-            // Fall back to replay-follow alignment when auto-scroll is active.
+            // Position view — align with replay follow viewport (same as updateChartData), not dead-center,
+            // so 1h/daily switches do not shove the playhead off-screen or rubber-band jump.
             const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() :
                 (this.chart.candleWidth + (this.chart.candleGap || 2));
             if (this.autoScrollEnabled) {
@@ -5031,16 +5025,6 @@ class ReplaySystem {
                 } else {
                     this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
                 }
-            } else if (Number.isFinite(savedCenterTs) && this.chart.data && this.chart.data.length > 0) {
-                // Restore the viewport to the same center timestamp the user was viewing
-                let centerIdx = 0;
-                let minDiff = Infinity;
-                for (let ci = 0; ci < this.chart.data.length; ci++) {
-                    const d = Math.abs(this.chart.data[ci].t - savedCenterTs);
-                    if (d < minDiff) { minDiff = d; centerIdx = ci; }
-                }
-                const cw = this.chart.w - (this.chart.margin ? this.chart.margin.l + this.chart.margin.r : 0);
-                this.chart.offsetX = cw / 2 - (centerIdx * candleSpacing) - candleSpacing / 2;
             } else {
                 this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
             }

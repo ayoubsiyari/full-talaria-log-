@@ -9885,75 +9885,175 @@ def _collect_all_duplicate_groups() -> list[dict]:
     return out
 
 
+_CLEANUP_JOB_PATH = UPLOAD_DIR / "_cleanup_job.json"
+
+
+def _write_cleanup_job(state: dict) -> None:
+    state["updated_at"] = datetime.utcnow().isoformat() + "Z"
+    tmp = _CLEANUP_JOB_PATH.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f)
+    tmp.replace(_CLEANUP_JOB_PATH)
+
+
+def _read_cleanup_job() -> dict | None:
+    if not _CLEANUP_JOB_PATH.exists():
+        return None
+    try:
+        with open(_CLEANUP_JOB_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _run_cleanup_job_background() -> None:
+    """Background thread: runs the duplicate cleanup and writes per-ticker progress."""
+    state = _read_cleanup_job()
+    if not state:
+        return
+    try:
+        groups = _collect_all_duplicate_groups()
+        if not groups:
+            state["status"] = "done"
+            state["message"] = "No duplicates found — all clean!"
+            state["tickers_total"] = 0
+            state["tickers_done"] = 0
+            _write_cleanup_job(state)
+            return
+
+        state["status"] = "running"
+        state["tickers_total"] = len(groups)
+        state["tickers_done"] = 0
+        state["cleaned"] = 0
+        state["ticker_results"] = []
+        state["errors"] = []
+        _write_cleanup_job(state)
+
+        db = SessionLocal()
+        try:
+            for idx, g in enumerate(groups):
+                ticker = g.get("ticker", "?")
+                asset_class = g.get("asset_class", "?")
+                rows = g.get("rows") or []
+                state["current_ticker"] = ticker
+                state["current_class"] = asset_class
+                state["phase"] = f"Merging {ticker} ({asset_class})"
+                _write_cleanup_job(state)
+
+                if len(rows) < 2:
+                    state["ticker_results"].append({
+                        "ticker": ticker, "class": asset_class,
+                        "status": "skipped", "reason": "only 1 entry"
+                    })
+                    state["tickers_done"] = idx + 1
+                    _write_cleanup_job(state)
+                    continue
+
+                winner_row = max(rows, key=lambda r: int(r.get("row_count") or 0))
+                winner_id = int(winner_row["id"])
+                loser_ids = [int(r["id"]) for r in rows if int(r["id"]) != winner_id]
+
+                winner_file = db.query(CSVFile).filter(CSVFile.id == winner_id).first()
+                if not winner_file:
+                    state["errors"].append({"ticker": ticker, "error": "winner not found in DB"})
+                    state["ticker_results"].append({
+                        "ticker": ticker, "class": asset_class,
+                        "status": "error", "reason": "winner not found"
+                    })
+                    state["tickers_done"] = idx + 1
+                    _write_cleanup_job(state)
+                    continue
+
+                winner_path = _resolve_dataset_csv_for_file(winner_file)
+                merged_count = 0
+                for lid in loser_ids:
+                    loser_file = db.query(CSVFile).filter(CSVFile.id == lid).first()
+                    if not loser_file:
+                        continue
+                    loser_path = _resolve_dataset_csv_for_file(loser_file)
+                    try:
+                        if loser_path.exists() and winner_path.exists():
+                            _merge_canonical_ohlcv_csvs(
+                                existing=winner_path,
+                                incoming=loser_path,
+                                dest=winner_path,
+                            )
+                    except Exception:
+                        pass
+                    _purge_dataset_rows(db, loser_file)
+                    merged_count += 1
+
+                winner_file.row_count = count_csv_rows(str(winner_path)) if winner_path.exists() else winner_file.row_count
+                db.commit()
+                build_binary_for_file(winner_file.id, winner_path, winner_file.original_name)
+
+                state["cleaned"] = int(state.get("cleaned") or 0) + merged_count
+                state["tickers_done"] = idx + 1
+                state["ticker_results"].append({
+                    "ticker": ticker, "class": asset_class,
+                    "status": "done",
+                    "kept_rows": int(winner_file.row_count or 0),
+                    "removed": merged_count,
+                })
+                _write_cleanup_job(state)
+        finally:
+            db.close()
+
+        state["status"] = "done"
+        state["phase"] = "complete"
+        state["current_ticker"] = None
+        state["message"] = (
+            f"Done — cleaned {state.get('cleaned', 0)} duplicate(s) "
+            f"across {state.get('tickers_done', 0)} ticker(s). Big datasets preserved."
+        )
+        _write_cleanup_job(state)
+
+    except Exception as e:
+        state["status"] = "failed"
+        state["phase"] = "failed"
+        state["message"] = str(e)[:1000]
+        state["error"] = str(e)[:2000]
+        _write_cleanup_job(state)
+
+
 @app.post("/api/admin/datasets/duplicates/auto-cleanup")
 async def admin_dataset_duplicates_auto_cleanup(request: Request):
     """
-    One-click duplicate cleanup: for every group of datasets sharing the same
-    canonical ticker, keep the biggest one (most rows), merge any unique bars
-    from the smaller duplicates into it, then delete the small entries.
-
-    Safe: the big dataset is NEVER deleted — only the small duplicates are
-    removed after their bars are merged into the winner.
+    Start a background duplicate cleanup job. Returns immediately with a job
+    status — poll GET /api/admin/datasets/duplicates/auto-cleanup/status for
+    live per-ticker progress.
     """
     _require_admin(request)
-    groups = _collect_all_duplicate_groups()
-    if not groups:
-        return {"success": True, "message": "No duplicates found", "cleaned": 0, "groups_processed": 0}
+    existing = _read_cleanup_job()
+    if existing and existing.get("status") in ("running", "queued"):
+        return {"success": True, "already_running": True, "job": existing}
 
-    db = SessionLocal()
-    cleaned_total = 0
-    groups_ok = 0
-    errors: list[dict] = []
-    try:
-        for g in groups:
-            rows = g.get("rows") or []
-            if len(rows) < 2:
-                continue
-            winner_row = max(rows, key=lambda r: int(r.get("row_count") or 0))
-            winner_id = int(winner_row["id"])
-            loser_ids = [int(r["id"]) for r in rows if int(r["id"]) != winner_id]
-            if not loser_ids:
-                continue
-            winner_file = db.query(CSVFile).filter(CSVFile.id == winner_id).first()
-            if not winner_file:
-                errors.append({"ticker": g.get("ticker"), "error": f"winner id={winner_id} not found"})
-                continue
-            winner_path = _resolve_dataset_csv_for_file(winner_file)
-            group_cleaned = 0
-            for lid in loser_ids:
-                loser_file = db.query(CSVFile).filter(CSVFile.id == lid).first()
-                if not loser_file:
-                    continue
-                loser_path = _resolve_dataset_csv_for_file(loser_file)
-                try:
-                    if loser_path.exists() and winner_path.exists():
-                        _merge_canonical_ohlcv_csvs(
-                            existing=winner_path,
-                            incoming=loser_path,
-                            dest=winner_path,
-                        )
-                except Exception:
-                    pass
-                _purge_dataset_rows(db, loser_file)
-                group_cleaned += 1
-            winner_file.row_count = count_csv_rows(str(winner_path)) if winner_path.exists() else winner_file.row_count
-            db.commit()
-            build_binary_for_file(winner_file.id, winner_path, winner_file.original_name)
-            cleaned_total += group_cleaned
-            groups_ok += 1
-    except Exception as e:
-        db.rollback()
-        errors.append({"error": str(e)[:500]})
-    finally:
-        db.close()
-
-    return {
-        "success": True,
-        "message": f"Cleaned {cleaned_total} duplicate(s) across {groups_ok} group(s). Big datasets preserved.",
-        "cleaned": cleaned_total,
-        "groups_processed": groups_ok,
-        "errors": errors if errors else None,
+    state = {
+        "status": "queued",
+        "phase": "scanning",
+        "message": "Starting duplicate scan…",
+        "started_at": datetime.utcnow().isoformat() + "Z",
+        "tickers_total": 0,
+        "tickers_done": 0,
+        "cleaned": 0,
+        "current_ticker": None,
+        "current_class": None,
+        "ticker_results": [],
+        "errors": [],
     }
+    _write_cleanup_job(state)
+    threading.Thread(target=_run_cleanup_job_background, daemon=True, name="cleanup-duplicates").start()
+    return {"success": True, "job": state}
+
+
+@app.get("/api/admin/datasets/duplicates/auto-cleanup/status")
+async def admin_dataset_duplicates_auto_cleanup_status(request: Request):
+    """Poll live progress of the duplicate cleanup job."""
+    _require_admin(request)
+    state = _read_cleanup_job()
+    if not state:
+        return {"success": True, "job": None, "message": "No cleanup job found"}
+    return {"success": True, "job": state}
 
 
 @app.delete("/api/admin/datasets/{file_id}")

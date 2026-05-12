@@ -11484,27 +11484,19 @@ class Chart {
 
             // Client-side resample path: commit synchronously THEN let replay redraw,
             // so onTimeframeChange's resampleData() reads the new timeframe.
-
-            // Capture the current viewport center BEFORE resetting view state so
-            // onTimeframeChange can restore the same visible region after resample.
-            const savedCenterTs = this._getVisibleCenterTimestamp();
-            const savedPriceZoom = this.priceZoom;
-            const savedPriceOffset = this.priceOffset;
-
             this._commitTimeframeChange(normalizedTf);
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(normalizedTf);
             }
+            // TradingView-style reset on every TF switch (double-click parity).
+            // Reset BEFORE onTimeframeChange so the replay viewport is computed
+            // against default candleWidth + autoScale, identical to a fresh load.
             this.candleWidth = 8;
             this.priceZoom = 1;
             this.priceOffset = 0;
             this.autoScale = true;
             this._chartViewRestored = false;
-            this.replaySystem.onTimeframeChange(this, {
-                centerTimestamp: savedCenterTs,
-                priceZoom: savedPriceZoom,
-                priceOffset: savedPriceOffset
-            });
+            this.replaySystem.onTimeframeChange(this);
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 requestAnimationFrame(() => this.compareOverlay.refreshForTimeframe(normalizedTf));
             }
@@ -11524,9 +11516,6 @@ class Chart {
             return;
         }
 
-        // Capture center timestamp before resample so we can restore the same view region.
-        const localCenterTs = this._getVisibleCenterTimestamp();
-
         // Commit BEFORE resample so the new data + new timeframe land together.
         this._commitTimeframeChange(normalizedTf);
         this.data = this.resampleData(this.rawData, normalizedTf);
@@ -11535,15 +11524,14 @@ class Chart {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
         }
 
+        // TradingView-style reset on every TF switch: same effect as the user
+        // double-clicking the time axis (default candleWidth, autoScale ON,
+        // latest data visible). Replaces the previous "preserve the visible
+        // center timestamp + previous candleWidth" logic, which would land the
+        // user on an arbitrary region of the new TF and required a manual
+        // double-click to get back to a usable view.
         this.resize();
-        if (this.data && this.data.length > 0 && Number.isFinite(localCenterTs)) {
-            this.candleWidth = 8;
-            this.priceZoom = 1;
-            this.priceOffset = 0;
-            this.autoScale = true;
-            this._chartViewRestored = false;
-            this._restorePositionToTimestamp(localCenterTs, 8);
-        } else if (this.data && this.data.length > 0) {
+        if (this.data && this.data.length > 0) {
             this.jumpToLatest();
         } else {
             this._chartViewRestored = false;
@@ -11772,11 +11760,6 @@ class Chart {
      */
     async _loadTimeframeFromServer(timeframe, options = {}) {
         const loadId = ++this._timeframeLoadSeq;
-
-        // Capture the viewport center BEFORE anything changes, so we can
-        // restore the same visible time region after the new data arrives.
-        const preSwitchCenterTs = this._getVisibleCenterTimestamp();
-
         // Direct callers (not via setTimeframe) need the same freeze + loading dots
         // so the time axis doesn't reformat mid-fetch. Idempotent when setTimeframe
         // already armed it.
@@ -11822,16 +11805,16 @@ class Chart {
             this._commitTimeframeChange(timeframe);
             this._ingestSmartWindowResult(result, { skipFitToView: true });
 
-            // Provide a temporary valid offsetX so any intermediate renders
-            // triggered by chartDataLoaded listeners don't produce "all candles
-            // outside viewport" warnings.  The rAF below sets the final position.
+            // Immediately put the chart into a renderable state.
+            // _commitLoadedBars (inside ingest) synchronously dispatches `chartDataLoaded`
+            // which some listeners react to with a render. Without a valid offsetX for
+            // the NEW dataset, those intermediate renders produce
+            // "No candles drawn! All N candles are outside viewport" warnings and a
+            // blank chart on smaller-data timeframes (e.g. 1h with only a few bars).
+            // The rAF below refines the view (restore center timestamp) once dimensions settle.
             if (Array.isArray(this.data) && this.data.length > 0) {
                 this._chartViewRestored = false;
-                if (Number.isFinite(preSwitchCenterTs)) {
-                    this._restorePositionToTimestamp(preSwitchCenterTs, 8);
-                } else {
-                    this.fitToView();
-                }
+                this.fitToView();
             }
 
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
@@ -11843,19 +11826,16 @@ class Chart {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
 
-                // Restore the viewport to the same visible time region the user
-                // was looking at before the switch. This prevents the disorienting
-                // "jump to latest" that makes drawings appear to move.
-                // Fall back to jumpToLatest only when no valid center was captured
-                // (e.g. chart had no data before the switch).
-                if (this.data && this.data.length > 0 && Number.isFinite(preSwitchCenterTs)) {
-                    this.candleWidth = 8;
-                    this.priceZoom = 1;
-                    this.priceOffset = 0;
-                    this.autoScale = true;
-                    this._chartViewRestored = false;
-                    this._restorePositionToTimestamp(preSwitchCenterTs, 8);
-                } else if (this.data && this.data.length > 0) {
+                // TradingView-style reset on every TF switch: identical to the
+                // user double-clicking the time axis (default candleWidth,
+                // autoScale ON, latest candle at the right edge). Previously we
+                // tried to preserve the visible center timestamp + previous
+                // candleWidth across the switch, but that often landed the user
+                // on an arbitrary region of the new TF and required a manual
+                // double-click to get a usable view. jumpToLatest is also
+                // self-healing for the offscreen-viewport edge case the old
+                // sanity-check guarded against.
+                if (this.data && this.data.length > 0) {
                     this.jumpToLatest();
                 } else {
                     this._chartViewRestored = false;

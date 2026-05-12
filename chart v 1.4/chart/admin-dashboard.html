@@ -1797,9 +1797,23 @@ select { cursor: pointer; }
                 <div class="fr-sync-stat-value" id="frSyncValRecovered">0</div>
               </div>
             </div>
-            <div style="display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap">
-              <button type="button" class="btn sm" id="frAutoCleanupBtn" onclick="runAutoCleanupDuplicates()" style="background:color-mix(in oklab,var(--accent) 15%,var(--panel));border-color:var(--accent)" title="Merges small duplicates into the biggest dataset for each ticker, then removes the small entries. The big datasets are NEVER deleted.">Auto-cleanup duplicates</button>
-              <span id="frAutoCleanupStatus" style="font-size:12px;color:var(--text-muted)"></span>
+            <div style="margin-top:8px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+                <button type="button" class="btn sm" id="frAutoCleanupBtn" onclick="runAutoCleanupDuplicates()" style="background:color-mix(in oklab,var(--accent) 15%,var(--panel));border-color:var(--accent)" title="Merges small duplicates into the biggest dataset for each ticker, then removes the small entries. The big datasets are NEVER deleted.">Auto-cleanup duplicates</button>
+                <span id="frAutoCleanupPhase" style="font-size:12px;color:var(--text-muted)"></span>
+              </div>
+              <!-- Progress panel (shown during/after cleanup) -->
+              <div id="frCleanupProgress" style="display:none;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--panel)">
+                <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+                  <span id="frCleanupCurrentLabel" style="font-size:12px;font-weight:600;color:var(--text);flex:1">Preparing…</span>
+                  <span id="frCleanupPctLabel" style="font-size:12px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums"></span>
+                </div>
+                <div style="height:6px;background:var(--border)">
+                  <div id="frCleanupBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),color-mix(in oklab,var(--accent) 70%,white));transition:width .3s ease"></div>
+                </div>
+                <div id="frCleanupTickerList" style="max-height:200px;overflow-y:auto;padding:8px 14px;font-size:11px;line-height:1.8;font-family:ui-monospace,monospace"></div>
+                <div id="frCleanupDoneMsg" style="display:none;padding:10px 14px;border-top:1px solid var(--border);font-size:12px;font-weight:600;color:#22c55e"></div>
+              </div>
             </div>
             <div id="frDailySyncAlerts" style="display:none;margin-top:8px;padding:10px 12px;border-radius:6px;font-size:12px;line-height:1.5"></div>
           </div>
@@ -5304,31 +5318,127 @@ async function refreshDailySyncOverview() {
   }
 }
 
+var _cleanupPollTimer = null;
+
 async function runAutoCleanupDuplicates() {
   const btn = $('frAutoCleanupBtn');
-  const status = $('frAutoCleanupStatus');
+  const phase = $('frAutoCleanupPhase');
   if (btn) btn.disabled = true;
-  if (status) status.textContent = 'Scanning and merging duplicates…';
+  if (phase) phase.textContent = 'Starting…';
   try {
-    const res = await api('/api/admin/datasets/duplicates/auto-cleanup', {
+    await api('/api/admin/datasets/duplicates/auto-cleanup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
     });
-    var msg = res.message || ('Cleaned ' + (res.cleaned || 0) + ' duplicate(s)');
-    if (status) { status.textContent = msg; status.style.color = '#22c55e'; }
-    if (typeof toast === 'function') toast(msg, 'ok');
-    try { await refreshFirstrateNightlyHealth({ rescan: true }); } catch (_) {}
-    try { await refreshDailySyncOverview(); } catch (_) {}
-    try { await loadDatasets(true); } catch (_) {}
+    _startCleanupPoll();
   } catch (e) {
     var errMsg = (e && e.message) ? e.message : String(e);
-    if (status) { status.textContent = 'Error: ' + errMsg; status.style.color = '#ef4444'; }
-    if (typeof toast === 'function') toast('Cleanup failed: ' + errMsg, 'err');
-  } finally {
+    if (phase) { phase.textContent = 'Error: ' + errMsg; phase.style.color = '#ef4444'; }
     if (btn) btn.disabled = false;
   }
 }
+
+function _startCleanupPoll() {
+  _pollCleanupStatus();
+  if (_cleanupPollTimer) clearInterval(_cleanupPollTimer);
+  _cleanupPollTimer = setInterval(_pollCleanupStatus, 800);
+}
+
+async function _pollCleanupStatus() {
+  const btn = $('frAutoCleanupBtn');
+  const phase = $('frAutoCleanupPhase');
+  const panel = $('frCleanupProgress');
+  const label = $('frCleanupCurrentLabel');
+  const pctLabel = $('frCleanupPctLabel');
+  const bar = $('frCleanupBar');
+  const tickerList = $('frCleanupTickerList');
+  const doneMsg = $('frCleanupDoneMsg');
+  try {
+    const res = await api('/api/admin/datasets/duplicates/auto-cleanup/status');
+    const job = res.job;
+    if (!job) {
+      if (phase) phase.textContent = 'No cleanup job found';
+      _stopCleanupPoll();
+      return;
+    }
+    if (panel) panel.style.display = '';
+    var total = parseInt(job.tickers_total, 10) || 0;
+    var done = parseInt(job.tickers_done, 10) || 0;
+    var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    var status = job.status || '';
+
+    if (bar) bar.style.width = pct + '%';
+    if (pctLabel) pctLabel.textContent = total > 0 ? done + '/' + total + ' · ' + pct + '%' : '';
+
+    if (status === 'running' || status === 'queued') {
+      if (btn) btn.disabled = true;
+      var cur = job.current_ticker || '…';
+      if (label) label.textContent = (job.phase || 'Processing') + (job.current_ticker ? '' : '');
+      if (phase) { phase.textContent = cur + ' (' + (job.current_class || '') + ')'; phase.style.color = 'var(--accent)'; }
+    } else if (status === 'done') {
+      if (btn) btn.disabled = false;
+      if (label) label.textContent = 'Cleanup complete';
+      if (phase) { phase.textContent = ''; }
+      if (doneMsg) {
+        doneMsg.style.display = '';
+        doneMsg.textContent = job.message || ('Done — cleaned ' + (job.cleaned || 0) + ' duplicate(s)');
+      }
+      if (bar) bar.style.width = '100%';
+      if (pctLabel) pctLabel.textContent = '100%';
+      _stopCleanupPoll();
+      try { refreshFirstrateNightlyHealth({ rescan: true }); } catch (_) {}
+      try { refreshDailySyncOverview(); } catch (_) {}
+      try { loadDatasets(true); } catch (_) {}
+    } else if (status === 'failed') {
+      if (btn) btn.disabled = false;
+      if (label) label.textContent = 'Failed: ' + (job.message || 'unknown error');
+      if (label) label.style.color = '#ef4444';
+      if (phase) { phase.textContent = ''; }
+      _stopCleanupPoll();
+    }
+
+    // Render per-ticker results
+    if (tickerList && Array.isArray(job.ticker_results)) {
+      var html = '';
+      job.ticker_results.forEach(function (t) {
+        var icon = t.status === 'done' ? '<span style="color:#22c55e">✓</span>'
+                 : t.status === 'error' ? '<span style="color:#ef4444">✗</span>'
+                 : '<span style="color:#eab308">⊘</span>';
+        var info = t.status === 'done'
+          ? '<span style="color:var(--text-muted)"> kept ' + (t.kept_rows || 0).toLocaleString() + ' rows, removed ' + (t.removed || 0) + ' dup(s)</span>'
+          : t.reason ? '<span style="color:var(--text-muted)"> ' + t.reason + '</span>' : '';
+        html += '<div>' + icon + ' <strong>' + t.ticker + '</strong> <span style="color:var(--text-muted)">(' + (t.class || '') + ')</span>' + info + '</div>';
+      });
+      // Show current ticker being processed
+      if (status === 'running' && job.current_ticker) {
+        html += '<div><span style="color:var(--accent)">⟳</span> <strong>' + job.current_ticker + '</strong> <span style="color:var(--text-muted)">(' + (job.current_class || '') + ')</span> <span style="color:var(--accent)">merging…</span></div>';
+      }
+      tickerList.innerHTML = html;
+      tickerList.scrollTop = tickerList.scrollHeight;
+    }
+  } catch (e) {
+    // network glitch — keep polling
+  }
+}
+
+function _stopCleanupPoll() {
+  if (_cleanupPollTimer) { clearInterval(_cleanupPollTimer); _cleanupPollTimer = null; }
+}
+
+// On page load, check if a cleanup job is already running (survives refresh)
+(function _checkCleanupOnLoad() {
+  setTimeout(async function () {
+    try {
+      const res = await api('/api/admin/datasets/duplicates/auto-cleanup/status');
+      if (res && res.job && (res.job.status === 'running' || res.job.status === 'queued')) {
+        _startCleanupPoll();
+      } else if (res && res.job && res.job.status === 'done') {
+        _pollCleanupStatus();
+      }
+    } catch (_) {}
+  }, 1500);
+})();
 
 async function refreshFirstrateScheduleStatus() {
   await loadFirstrateSchedule();
