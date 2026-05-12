@@ -15019,7 +15019,7 @@ const TalariaV8bLive = () => {
                       om.toggleOrderPanel();
                       setOrderPanelOpen(true);
                     }
-                    const pushLevels = () => {
+                    const applyRRToPanel = () => {
                       try {
                         const isLong = sel.meta?.orientation === 'long' || sel.type === 'long-position';
                         const prec = typeof om.getPricePrecision === 'function' ? om.getPricePrecision() : 5;
@@ -15027,24 +15027,20 @@ const TalariaV8bLive = () => {
                         const sl = sel.points[1].y;
                         const allT = typeof sel._allTargetPrices === 'function' ? sel._allTargetPrices() : [sel.points[2].y];
                         const tp = isLong ? Math.max(...allT) : Math.min(...allT);
+                        const entryStr = entry.toFixed(prec);
+                        const slStr = sl.toFixed(prec);
+                        const tpStr = tp.toFixed(prec);
 
-                        // Update React state directly to avoid race with forward bridge.
-                        setEntryRows([{ id: 0, price: entry.toFixed(prec), risk: "100" }]);
-                        setSlRows([{ id: 0, price: sl.toFixed(prec) }]);
-                        setSlEnabled(true);
-                        setTpRows([{ id: 0, price: tp.toFixed(prec), qty: "100", enabled: true }]);
-                        setBuySell(isLong ? "buy" : "sell");
-
-                        // Also push to native DOM so order-manager calculations work.
+                        // Push to native DOM first.
                         om.pushRiskRewardToolToManager(sel);
                         const slChk = document.getElementById('enableSL');
-                        if (slChk && !slChk.checked) { slChk.checked = true; slChk.dispatchEvent(new Event('change', {bubbles:true})); }
+                        if (slChk) { slChk.checked = true; slChk.dispatchEvent(new Event('change', {bubbles:true})); }
                         const tpChk = document.getElementById('enableTP');
-                        if (tpChk && !tpChk.checked) { tpChk.checked = true; tpChk.dispatchEvent(new Event('change', {bubbles:true})); }
+                        if (tpChk) { tpChk.checked = true; tpChk.dispatchEvent(new Event('change', {bubbles:true})); }
                         const buyTab = document.getElementById('buyTab');
                         const sellTab = document.getElementById('sellTab');
-                        if (isLong && buyTab && !buyTab.classList.contains('active')) { buyTab.click(); }
-                        if (!isLong && sellTab && !sellTab.classList.contains('active')) { sellTab.click(); }
+                        if (isLong && buyTab) { buyTab.classList.add('active'); if(sellTab) sellTab.classList.remove('active'); }
+                        if (!isLong && sellTab) { sellTab.classList.add('active'); if(buyTab) buyTab.classList.remove('active'); }
                         om._autoDetectOrderTypeFromEntry();
                         om.calculatePositionFromRisk();
                         om.calculateAdvancedRiskReward();
@@ -15052,15 +15048,26 @@ const TalariaV8bLive = () => {
                         om._updateBreakevenSummary?.();
                         om._updateTrailingSummary?.();
                         om._applyPrecisionToInputs?.();
+
+                        // Update React state directly — must come AFTER DOM so forward bridge
+                        // picks up the already-correct DOM values and doesn't overwrite them.
+                        setEntryRows([{ id: 0, price: entryStr, risk: "100" }]);
+                        setSlRows([{ id: 0, price: slStr }]);
+                        setSlEnabled(true);
+                        setTpRows([{ id: 0, price: tpStr, qty: "100", enabled: true }]);
+                        setBuySell(isLong ? "buy" : "sell");
+
                         requestAnimationFrame(() => {
                           om.updatePreviewLines();
                           if (om.chart && typeof om.chart.updateSVGPointerEvents === 'function') {
                             om.chart.updateSVGPointerEvents();
                           }
                         });
-                      } catch(_){}
+                      } catch(err){ console.error('[V9 RR Set Order]', err); }
                     };
-                    setTimeout(pushLevels, alreadyOpen ? 50 : 250);
+                    const delay = alreadyOpen ? 50 : 300;
+                    setTimeout(applyRRToPanel, delay);
+                    setTimeout(applyRRToPanel, delay + 200);
                     return;
                   }
                 } catch(_){}
