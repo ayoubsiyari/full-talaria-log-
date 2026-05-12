@@ -1185,6 +1185,42 @@ export default function MultichartGrid({
             // syncMode useEffect below pushes any updates after this anyway.
             setManagerReady(true);
 
+            // ─── Sync-gate interceptor ────────────────────────────────
+            //
+            // The host bridge (installed below) adds a window 'message'
+            // listener that unconditionally applies inbound sync messages
+            // (visibleRange, crosshair) to the host chart. The manager's
+            // _fanOut gates these by syncMode, but the host bridge's own
+            // listener bypasses the manager entirely.
+            //
+            // Fix: register an interceptor between the manager's listener
+            // (already registered above) and the host bridge's listener
+            // (registered below). It calls stopImmediatePropagation() on
+            // sync messages when the corresponding sync mode is off,
+            // preventing the host bridge from applying them. The manager
+            // already processed the event (its listener fires first).
+            const syncInterceptor = function (ev) {
+                const msg = ev.data;
+                if (!msg || typeof msg !== 'object' || !msg.type) return;
+                const mgr = managerRef.current;
+                if (!mgr) return;
+                const t = msg.type;
+                if (t === 'visibleRange' && !mgr.syncMode.visibleRange) {
+                    ev.stopImmediatePropagation();
+                } else if ((t === 'crosshair' || t === 'crosshair-clear') && !mgr.syncMode.crosshair) {
+                    ev.stopImmediatePropagation();
+                } else if (t === 'symbol' && !mgr.syncMode.symbol) {
+                    ev.stopImmediatePropagation();
+                } else if ((t === 'drawing-add' || t === 'drawing-update' || t === 'drawing-remove' || t === 'drawing-clear') && !mgr.syncMode.drawings) {
+                    ev.stopImmediatePropagation();
+                }
+            };
+            window.addEventListener('message', syncInterceptor);
+            if (!window.__multichartCleanups) window.__multichartCleanups = [];
+            window.__multichartCleanups.push(function () {
+                window.removeEventListener('message', syncInterceptor);
+            });
+
             // ─── Install + register the host bridge ───────────────────
             //
             // Tile A (HOST_PANEL_ID) is the parent's already-loaded
@@ -1224,6 +1260,10 @@ export default function MultichartGrid({
             cancelled = true;
             if (typeof window !== "undefined") {
                 window.__multichartRealData = prevMultichartRealData;
+                if (window.__multichartCleanups) {
+                    window.__multichartCleanups.forEach(function (fn) { try { fn(); } catch (_) {} });
+                    window.__multichartCleanups = [];
+                }
             }
             if (managerRef.current) {
                 try { managerRef.current.dispose(); } catch (_) {}
