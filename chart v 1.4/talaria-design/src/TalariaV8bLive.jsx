@@ -15021,14 +15021,26 @@ const TalariaV8bLive = () => {
                     }
                     const pushLevels = () => {
                       try {
+                        const isLong = sel.meta?.orientation === 'long' || sel.type === 'long-position';
+                        const prec = typeof om.getPricePrecision === 'function' ? om.getPricePrecision() : 5;
+                        const entry = sel.points[0].y;
+                        const sl = sel.points[1].y;
+                        const allT = typeof sel._allTargetPrices === 'function' ? sel._allTargetPrices() : [sel.points[2].y];
+                        const tp = isLong ? Math.max(...allT) : Math.min(...allT);
+
+                        // Update React state directly to avoid race with forward bridge.
+                        setEntryRows([{ id: 0, price: entry.toFixed(prec), risk: "100" }]);
+                        setSlRows([{ id: 0, price: sl.toFixed(prec) }]);
+                        setSlEnabled(true);
+                        setTpRows([{ id: 0, price: tp.toFixed(prec), qty: "100", enabled: true }]);
+                        setBuySell(isLong ? "buy" : "sell");
+
+                        // Also push to native DOM so order-manager calculations work.
                         om.pushRiskRewardToolToManager(sel);
-                        // Ensure SL/TP checkboxes are enabled so the React panel shows the levels.
                         const slChk = document.getElementById('enableSL');
                         if (slChk && !slChk.checked) { slChk.checked = true; slChk.dispatchEvent(new Event('change', {bubbles:true})); }
                         const tpChk = document.getElementById('enableTP');
                         if (tpChk && !tpChk.checked) { tpChk.checked = true; tpChk.dispatchEvent(new Event('change', {bubbles:true})); }
-                        // Set buy/sell tab to match the drawing direction.
-                        const isLong = sel.meta?.orientation === 'long' || sel.type === 'long-position';
                         const buyTab = document.getElementById('buyTab');
                         const sellTab = document.getElementById('sellTab');
                         if (isLong && buyTab && !buyTab.classList.contains('active')) { buyTab.click(); }
