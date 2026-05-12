@@ -33405,6 +33405,7 @@ class OrderManager {
      * Journal can list MFE/MAE while DOM markers were removed — this keeps chart and journal in sync.
      */
     _redrawMfeMaeMarkersFromState() {
+        return;
         const rows = [];
         const seen = new Set();
         const push = (row) => {
@@ -33510,9 +33511,7 @@ class OrderManager {
      * Draw MFE/MAE markers on chart (aligned with entry-marker coordinate system).
      */
     drawMfeMaeMarkers(position) {
-        if (!position || position.id == null) return;
-
-        this.removeMfeMaeMarkers(position.id);
+        return;
 
         const self = this;
         const paint = () => {
