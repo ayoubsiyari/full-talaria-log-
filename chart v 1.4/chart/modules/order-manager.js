@@ -19830,11 +19830,36 @@ class OrderManager {
      * Active long/short R/R drawing (for syncing the order panel when the tool is selected).
      */
     _getSelectedRiskRewardDrawing() {
-        const dm = this.chart?.drawingManager;
-        const d = dm?.selectedDrawing;
-        if (!d || (d.type !== 'long-position' && d.type !== 'short-position')) return null;
-        if (!d.points || d.points.length < 3) return null;
-        return d;
+        const check = (dm) => {
+            if (!dm) return null;
+            const sels = (dm.selectedDrawings && dm.selectedDrawings.length)
+                ? dm.selectedDrawings
+                : (dm.selectedDrawing ? [dm.selectedDrawing] : []);
+            for (const d of sels) {
+                if (d && (d.type === 'long-position' || d.type === 'short-position')
+                    && d.points && d.points.length >= 3) return d;
+            }
+            return null;
+        };
+        const main = check(this.chart?.drawingManager);
+        if (main) return main;
+        try {
+            const ac = typeof window.getActiveChart === 'function' ? window.getActiveChart() : null;
+            if (ac && ac !== this.chart) {
+                const found = check(ac.drawingManager);
+                if (found) return found;
+            }
+            const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
+            if (grid && grid._panels) {
+                for (const [, p] of grid._panels) {
+                    if (p?.chart && p.chart !== this.chart) {
+                        const found = check(p.chart.drawingManager);
+                        if (found) return found;
+                    }
+                }
+            }
+        } catch (_) {}
+        return null;
     }
 
     /**
