@@ -1131,6 +1131,20 @@ class DrawingToolsManager {
                 if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
                     drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
                 }
+
+                // VP/AV body hits from the canvas (not on a handle/label SVG element) must
+                // not consume the event — let the chart's pan handler run instead.
+                {
+                    const rawTgt = event.target;
+                    const isExplicitVpTarget = !!(rawTgt && rawTgt.closest
+                        && rawTgt.closest('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group'));
+                    if (!isExplicitVpTarget && drawingsAtPoint.length > 0) {
+                        const onlyVp = drawingsAtPoint.every(d => d && (
+                            d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile'));
+                        if (onlyVp) return;
+                    }
+                }
+
                 if ((!drawingsAtPoint || drawingsAtPoint.length === 0) && event.detail >= 2) {
                     const openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
                     if (openedFromDoubleClick) {
@@ -1894,6 +1908,19 @@ class DrawingToolsManager {
             
             // Find all drawings at this point using geometric hit test
             let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
+
+            // VP/AV body hits from SVG (not on a handle) must not block panning.
+            // Filter them out so the handler falls through to "empty space" → deselect + pointer-events none.
+            {
+                const tgt = event.target;
+                const isExplicitVpTarget = !!(tgt && tgt.closest
+                    && tgt.closest('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group'));
+                if (!isExplicitVpTarget) {
+                    drawingsAtPoint = drawingsAtPoint.filter(d => !(
+                        d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile'));
+                }
+            }
+
             const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
             if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
                 drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
@@ -9007,6 +9034,17 @@ class DrawingToolsManager {
         const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
         if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
             drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
+        }
+
+        // VP/AV body hover should not show move cursor or lift SVG — only handle/label hover should.
+        {
+            const hoverTgt = event.target;
+            const isExplicitVpHover = !!(hoverTgt && hoverTgt.closest
+                && hoverTgt.closest('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group'));
+            if (!isExplicitVpHover) {
+                drawingsAtPoint = drawingsAtPoint.filter(d => !(
+                    d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile'));
+            }
         }
 
         if (drawingsAtPoint.length > 0) {

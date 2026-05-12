@@ -1131,6 +1131,20 @@ class DrawingToolsManager {
                 if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
                     drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
                 }
+
+                // VP/AV body hits from the canvas (not on a handle/label SVG element) must
+                // not consume the event — let the chart's pan handler run instead.
+                {
+                    const rawTgt = event.target;
+                    const isExplicitVpTarget = !!(rawTgt && rawTgt.closest
+                        && rawTgt.closest('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group'));
+                    if (!isExplicitVpTarget && drawingsAtPoint.length > 0) {
+                        const onlyVp = drawingsAtPoint.every(d => d && (
+                            d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile'));
+                        if (onlyVp) return;
+                    }
+                }
+
                 if ((!drawingsAtPoint || drawingsAtPoint.length === 0) && event.detail >= 2) {
                     const openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
                     if (openedFromDoubleClick) {
@@ -1870,6 +1884,17 @@ class DrawingToolsManager {
         // [debug removed]
         
         if (!this.currentTool) {
+            // VP/AV body clicks must pass through to the canvas for panning.
+            // Only resize handles should be interactive; bail early for everything else.
+            {
+                const tgt = event.target;
+                const vpGroup = tgt && tgt.closest ? tgt.closest('.drawing-volume-profile, .drawing-anchored-volume-profile') : null;
+                if (vpGroup) {
+                    const isHandle = tgt.closest('.resize-handle, .resize-handle-hit, .resize-handle-group');
+                    if (!isHandle) return;
+                }
+            }
+
             // Same layout space as Chart (wrapper + __v9Zoom); raw SVG rect alone can mismatch selection vs hit-test.
             const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
             
@@ -1883,6 +1908,19 @@ class DrawingToolsManager {
             
             // Find all drawings at this point using geometric hit test
             let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
+
+            // VP/AV body hits from SVG (not on a handle) must not block panning.
+            // Filter them out so the handler falls through to "empty space" → deselect + pointer-events none.
+            {
+                const tgt = event.target;
+                const isExplicitVpTarget = !!(tgt && tgt.closest
+                    && tgt.closest('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group'));
+                if (!isExplicitVpTarget) {
+                    drawingsAtPoint = drawingsAtPoint.filter(d => !(
+                        d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile'));
+                }
+            }
+
             const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
             if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
                 drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
@@ -2020,9 +2058,10 @@ class DrawingToolsManager {
                 const shouldBlockVolumeProfileTextDirectMove = (isVolumeProfileLevelLineTarget || isVolumeProfileValuesLabelTarget)
                     && best
                     && this.isVolumeProfileToolType(best.type);
+                const blockVpMove = best && (best.type === 'volume-profile' || best.type === 'fixed-range-volume-profile' || best.type === 'anchored-volume-profile');
                 const deferRRBest = best && (best.type === 'long-position' || best.type === 'short-position')
                     && this._findRiskRewardInteractiveHandleRole(best, mouseX, mouseY);
-                if (best && !best.locked && !shouldBlockVolumeProfileTextDirectMove && !deferRRBest) {
+                if (best && !best.locked && !shouldBlockVolumeProfileTextDirectMove && !deferRRBest && !blockVpMove) {
                     event.preventDefault();
                     event.stopPropagation();
                     this.selectDrawing(best, false);
@@ -2039,11 +2078,12 @@ class DrawingToolsManager {
                 const hasSelectedVolumeProfileAtPoint = selectedAtPoint.some(d => this.isVolumeProfileToolType(d.type));
                 const shouldBlockSelectedVolumeProfileTextDirectMove = (isVolumeProfileLevelLineTarget || isVolumeProfileValuesLabelTarget)
                     && hasSelectedVolumeProfileAtPoint;
+                const blockSelectedVpMove = selectedAtPoint.some(d => d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile');
                 const deferRRSelected = selectedAtPoint.some((d) =>
                     (d.type === 'long-position' || d.type === 'short-position')
                     && this._findRiskRewardInteractiveHandleRole(d, mouseX, mouseY)
                 );
-                if (selectedAtPoint.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileTextDirectMove && !deferRRSelected) {
+                if (selectedAtPoint.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileTextDirectMove && !deferRRSelected && !blockSelectedVpMove) {
                     event.preventDefault();
                     event.stopPropagation();
                     this._startDirectMoveDrag(selectedAtPoint, event);
@@ -2159,6 +2199,15 @@ class DrawingToolsManager {
                         drawing = plusDrawing;
                         drawingGroup = plusDrawingGroup;
                     }
+                }
+            }
+
+            if (drawing) {
+                // Volume profile bodies should not intercept chart panning.
+                // Only resize handles should be interactive; let everything else fall through.
+                const isVpType = drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile' || drawing.type === 'anchored-volume-profile';
+                if (isVpType && !resizeHandleNode && !customHandleNode) {
+                    drawing = null;
                 }
             }
 
@@ -4730,11 +4779,15 @@ class DrawingToolsManager {
         
         // Apply drag to interactive elements (not the group which has pointer-events: none)
         const isVolumeProfileType = this.isVolumeProfileToolType(drawing.type);
+        const isAnchoredVolumeProfile = drawing.type === 'anchored-volume-profile';
+        const isFixedRangeVolumeProfile = drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile';
         const dragSelector = drawing.type === 'anchored-vwap'
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
-            : isVolumeProfileType
-                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
-                : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
+            : (isAnchoredVolumeProfile || isFixedRangeVolumeProfile)
+                ? '.resize-handle, .resize-handle-hit, .resize-handle-group'
+                : isVolumeProfileType
+                    ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
+                    : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
         
@@ -5909,8 +5962,11 @@ class DrawingToolsManager {
                 this.svg.style('pointer-events', 'all');
             } else if (drawingSelected) {
                 this.svg.style('z-index', '11');
-                // Must allow pointer events so selected drawings (handles, risk/reward + buttons, borders) work.
-                this.svg.style('pointer-events', 'all');
+                // VP/AV drawings: keep SVG pointer-events none so chart can pan through the body;
+                // resize handles have their own pointer-events and still work.
+                const onlyVpSelected = this.selectedDrawings.every(d =>
+                    d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile');
+                this.svg.style('pointer-events', onlyVpSelected ? 'none' : 'all');
             } else if (hoverResizeHandles) {
                 this.svg.style('z-index', '11');
                 // Root stays none — strokes/handles use pointer-events; lifts layer above .axis-cursor-zone.
@@ -8978,6 +9034,17 @@ class DrawingToolsManager {
         const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
         if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
             drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
+        }
+
+        // VP/AV body hover should not show move cursor or lift SVG — only handle/label hover should.
+        {
+            const hoverTgt = event.target;
+            const isExplicitVpHover = !!(hoverTgt && hoverTgt.closest
+                && hoverTgt.closest('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group'));
+            if (!isExplicitVpHover) {
+                drawingsAtPoint = drawingsAtPoint.filter(d => !(
+                    d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile'));
+            }
         }
 
         if (drawingsAtPoint.length > 0) {
