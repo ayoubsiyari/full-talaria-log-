@@ -4665,6 +4665,7 @@ const TalariaV8bLive = () => {
   const [panelMode, setPanelMode] = useState("advanced");
   /** Short windows where React row counts intentionally lead OM (panel add/delete) so reverse poll must not fight the forward bridge. */
   const omPanelBridgeRef = useRef({ entryAdd: 0, entryDel: 0, tpAdd: 0, tpDel: 0 });
+  const rrPushLockRef = useRef(0);
   const OM_PANEL_BRIDGE_LEAD_MS = 750;
   const isOmBridgeLead = (ts) => !!(ts && Date.now() - ts < OM_PANEL_BRIDGE_LEAD_MS);
   const isWide = panelDetached && detachSize.w >= 520;
@@ -6506,20 +6507,24 @@ const TalariaV8bLive = () => {
         });
       }
 
-      setSlRows((rows) => {
-        if (!rows.length) return rows;
-        const slpN = parseFloat(slp);
-        const cur = parseFloat(rows[0].price || "0");
-        if (Number.isFinite(slpN) && Number.isFinite(cur) && Math.abs(cur - slpN) < 1e-8) return rows;
-        const next = [...rows];
-        next[0] = { ...next[0], price: slp };
-        return next;
-      });
+      const rrLocked = rrPushLockRef.current && Date.now() < rrPushLockRef.current;
 
-      const slOn = !!document.getElementById("enableSL")?.checked;
-      setSlEnabled((prev) => (prev === slOn ? prev : slOn));
+      if (!rrLocked) {
+        setSlRows((rows) => {
+          if (!rows.length) return rows;
+          const slpN = parseFloat(slp);
+          const cur = parseFloat(rows[0].price || "0");
+          if (Number.isFinite(slpN) && Number.isFinite(cur) && Math.abs(cur - slpN) < 1e-8) return rows;
+          const next = [...rows];
+          next[0] = { ...next[0], price: slp };
+          return next;
+        });
 
-      if (omMultiTp && om.tpTargets.length >= 1) {
+        const slOn = !!document.getElementById("enableSL")?.checked;
+        setSlEnabled((prev) => (prev === slOn ? prev : slOn));
+      }
+
+      if (!rrLocked && omMultiTp && om.tpTargets.length >= 1) {
         const nextTp = om.tpTargets.map((t) => ({
           id: t.id,
           price: String(t.price ?? "0"),
@@ -6542,11 +6547,10 @@ const TalariaV8bLive = () => {
           return nextTp;
         });
         if (nextTp.length > 1) setPanelMode("advanced");
-      } else {
+      } else if (!rrLocked) {
         setTpRows((rows) => {
           if (!rows.length) return rows;
           const tpOn = !!document.getElementById("enableTP")?.checked;
-          // Don't collapse while user just clicked "+" — OM is still single-TP until forward bridge enables multi.
           if (rows.length > 1 && !isOmBridgeLead(omPanelBridgeRef.current.tpAdd)) {
             const r0 = rows[0];
             return [{ ...r0, price: tpp, qty: r0.qty ?? "100", enabled: tpOn }];
@@ -15019,6 +15023,7 @@ const TalariaV8bLive = () => {
                       om.toggleOrderPanel();
                       setOrderPanelOpen(true);
                     }
+                    rrPushLockRef.current = Date.now() + 2000;
                     const applyRRToPanel = () => {
                       try {
                         const isLong = sel.meta?.orientation === 'long' || sel.type === 'long-position';
@@ -15031,7 +15036,6 @@ const TalariaV8bLive = () => {
                         const slStr = sl.toFixed(prec);
                         const tpStr = tp.toFixed(prec);
 
-                        // Push to native DOM first.
                         om.pushRiskRewardToolToManager(sel);
                         const slChk = document.getElementById('enableSL');
                         if (slChk) { slChk.checked = true; slChk.dispatchEvent(new Event('change', {bubbles:true})); }
@@ -15041,6 +15045,10 @@ const TalariaV8bLive = () => {
                         const sellTab = document.getElementById('sellTab');
                         if (isLong && buyTab) { buyTab.classList.add('active'); if(sellTab) sellTab.classList.remove('active'); }
                         if (!isLong && sellTab) { sellTab.classList.add('active'); if(buyTab) buyTab.classList.remove('active'); }
+
+                        om.slManuallyPositioned = true;
+                        om.tpManuallyPositioned = true;
+
                         om._autoDetectOrderTypeFromEntry();
                         om.calculatePositionFromRisk();
                         om.calculateAdvancedRiskReward();
@@ -15049,8 +15057,6 @@ const TalariaV8bLive = () => {
                         om._updateTrailingSummary?.();
                         om._applyPrecisionToInputs?.();
 
-                        // Update React state directly — must come AFTER DOM so forward bridge
-                        // picks up the already-correct DOM values and doesn't overwrite them.
                         setEntryRows([{ id: 0, price: entryStr, risk: "100" }]);
                         setSlRows([{ id: 0, price: slStr }]);
                         setSlEnabled(true);
@@ -15065,9 +15071,10 @@ const TalariaV8bLive = () => {
                         });
                       } catch(err){ console.error('[V9 RR Set Order]', err); }
                     };
-                    const delay = alreadyOpen ? 50 : 300;
+                    const delay = alreadyOpen ? 50 : 350;
                     setTimeout(applyRRToPanel, delay);
-                    setTimeout(applyRRToPanel, delay + 200);
+                    setTimeout(applyRRToPanel, delay + 300);
+                    setTimeout(() => { rrPushLockRef.current = 0; }, 2500);
                     return;
                   }
                 } catch(_){}
