@@ -15798,6 +15798,22 @@ class Chart {
         return true;
     }
 
+    /**
+     * Flag CDN images decode asynchronously; each onload used to call scheduleRender() and could
+     * force a full chart paint every frame during a burst. Coalesce to one redraw shortly after
+     * the last completion so pan/zoom stay smooth while news markers hydrate.
+     */
+    _scheduleEconomicCalendarFlagRedraw() {
+        if (this._econCalFlagRedrawTimer) {
+            clearTimeout(this._econCalFlagRedrawTimer);
+            this._econCalFlagRedrawTimer = null;
+        }
+        this._econCalFlagRedrawTimer = setTimeout(() => {
+            this._econCalFlagRedrawTimer = null;
+            if (typeof this.scheduleRender === 'function') this.scheduleRender();
+        }, 110);
+    }
+
     _ensureEconomicCalendarFlagImage(url) {
         if (!url) return null;
         if (!this._econCalFlagImgCache) this._econCalFlagImgCache = new Map();
@@ -15806,7 +15822,11 @@ class Chart {
         const img = new Image();
         entry = { img, failed: false, url };
         const bump = () => {
-            if (typeof this.scheduleRender === 'function') this.scheduleRender();
+            if (typeof this._scheduleEconomicCalendarFlagRedraw === 'function') {
+                this._scheduleEconomicCalendarFlagRedraw();
+            } else if (typeof this.scheduleRender === 'function') {
+                this.scheduleRender();
+            }
         };
         img.onload = () => {
             bump();
@@ -15840,6 +15860,20 @@ class Chart {
             return;
         }
         if (!events || events.length === 0 || !this.ctx) return;
+
+        const d0 = this.data[0].t;
+        const d1 = this.data[this.data.length - 1].t;
+        const barMinT = Math.min(d0, d1) - 2 * 86400000;
+        const barMaxT = Math.max(d0, d1) + 2 * 86400000;
+        const eventsInRange = [];
+        for (let ei = 0; ei < events.length; ei++) {
+            const ev = events[ei];
+            const tt = ev && ev.t;
+            if (!Number.isFinite(tt) || tt < barMinT || tt > barMaxT) continue;
+            eventsInRange.push(ev);
+        }
+        if (eventsInRange.length === 0) return;
+        events = eventsInRange;
 
         const m = this.margin;
         const cs = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8;
@@ -15883,8 +15917,13 @@ class Chart {
 
         placements.sort((a, b) => a.x - b.x);
 
+        const prefetchMargin = Math.max(80, badgeD * 4);
         if (typeof api.getFlagImageUrl === 'function') {
             for (let pi = 0; pi < placements.length; pi++) {
+                const px = placements[pi].x;
+                if (px + halfBadgeR < plotClipL - prefetchMargin || px - halfBadgeR > plotClipR + prefetchMargin) {
+                    continue;
+                }
                 const u = api.getFlagImageUrl(placements[pi].e.country || placements[pi].e.currency || '');
                 if (u) this._ensureEconomicCalendarFlagImage(u);
             }

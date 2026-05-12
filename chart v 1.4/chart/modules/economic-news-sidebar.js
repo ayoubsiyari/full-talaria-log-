@@ -74,6 +74,25 @@
 
     function clearChartMarkerCache() {
         chartMarkerEventByKey = {};
+        _axisEventsCacheFp = '';
+        _axisEventsCacheArr = null;
+    }
+
+    /** Fingerprint for getEvents() memo — chart redraws often; avoid sorting/filtering hundreds of rows every frame. */
+    var _axisEventsCacheFp = '';
+    var _axisEventsCacheArr = null;
+
+    function axisEventsCacheFingerprint() {
+        var sym = '';
+        try {
+            var ch = mainChart();
+            if (ch && ch.currentSymbol != null) sym = String(ch.currentSymbol);
+        } catch (e0) {}
+        var nk = 0;
+        for (var k in chartMarkerEventByKey) {
+            if (Object.prototype.hasOwnProperty.call(chartMarkerEventByKey, k)) nk++;
+        }
+        return nk + '|' + (state.loadedRangeKey || '') + '|' + (state.events ? state.events.length : 0) + '|' + sym + '|' + JSON.stringify(state.filters);
     }
 
     function mainChart() {
@@ -942,6 +961,10 @@
      */
     window.__economicCalendarForChart = {
         getEvents: function () {
+            var fp = axisEventsCacheFingerprint();
+            if (fp === _axisEventsCacheFp && _axisEventsCacheArr) {
+                return _axisEventsCacheArr;
+            }
             var source = [];
             var keys = Object.keys(chartMarkerEventByKey);
             if (keys.length > 0) {
@@ -951,11 +974,18 @@
             } else if (state.events && state.events.length) {
                 source = state.events.slice();
             }
-            if (!source.length) return [];
+            if (!source.length) {
+                _axisEventsCacheFp = fp;
+                _axisEventsCacheArr = [];
+                return _axisEventsCacheArr;
+            }
             source.sort(function (a, b) { return a.t - b.t; });
-            return source.filter(function (e) {
+            var out = source.filter(function (e) {
                 return passesUserFilters(e);
             });
+            _axisEventsCacheFp = fp;
+            _axisEventsCacheArr = out;
+            return out;
         },
         getFlagEmoji: function (code) {
             return flagEmoji(code);
