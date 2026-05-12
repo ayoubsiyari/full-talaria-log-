@@ -5274,7 +5274,12 @@ async function updateFirstrateLivePanel() {
         ((phase === 'normalize' || phase === 'done') ? (' · files ' + fd + '/' + ft) : '') +
         (primary.instrument_type ? ' · ' + primary.instrument_type : '') +
         (primary.period ? ' · ' + primary.period + ' ' + (primary.timeframe || '') : '');
-      detail.textContent = (primary.message || '') + (primary.error ? '\n' + primary.error : '');
+      var detailMsg = primary.message || '';
+      if (primary.current_file && phase === 'normalize' && st === 'running') {
+        detailMsg = 'Processing: ' + primary.current_file;
+        if (primary.message && primary.message.indexOf('error') !== -1) detailMsg += '\n' + primary.message;
+      }
+      detail.textContent = detailMsg + (primary.error ? '\n' + primary.error : '');
       if (primary.job_id && primary.job_id !== _frLivePrevJobId && st === 'done') {
         _frLivePrevJobId = primary.job_id;
         try { await loadDatasets(true); } catch (e) {}

@@ -6063,6 +6063,14 @@ def _run_firstrate_import_job(job_id: str) -> None:
                 stem_safe = re.sub(r"[^A-Za-z0-9_\-]+", "_", stem_raw).strip("_")[:96] or "instrument"
                 out_name = f"{ts_prefix}_b{bundle_idx:02d}_{src_idx:04d}_firstrate_{stem_safe}_{timeframe}.csv"
                 dest_csv = UPLOAD_DIR / out_name
+
+                files_done_so_far = int((st.get("files_done") if isinstance(st, dict) else 0) or 0)
+                files_total_so_far = int((st.get("files_total") if isinstance(st, dict) else 0) or 0)
+                st = _firstrate_read_job(job_id) or state
+                st["message"] = f"Normalizing {src.name} ({files_done_so_far + 1}/{files_total_so_far})"
+                st["current_file"] = src.name
+                _firstrate_write_job(job_id, st)
+
                 try:
                     n = normalize_firstrate_csv_to_standard(src, dest_csv, instrument_type)
                 except Exception as exc:
@@ -6070,7 +6078,8 @@ def _run_firstrate_import_job(job_id: str) -> None:
                     st = _firstrate_read_job(job_id) or state
                     st["files_done"] = int(st.get("files_done") or 0) + 1
                     st["skipped_files"] = list(skipped)
-                    st["message"] = f"Normalize error on {src.name}"
+                    st["message"] = f"Normalize error on {src.name} — skipped"
+                    st["current_file"] = None
                     _firstrate_write_job(job_id, st)
                     continue
 
@@ -6083,6 +6092,8 @@ def _run_firstrate_import_job(job_id: str) -> None:
                     st = _firstrate_read_job(job_id) or state
                     st["files_done"] = int(st.get("files_done") or 0) + 1
                     st["skipped_files"] = list(skipped)
+                    st["message"] = f"Skipped {src.name} (0 rows)"
+                    st["current_file"] = None
                     _firstrate_write_job(job_id, st)
                     continue
 
