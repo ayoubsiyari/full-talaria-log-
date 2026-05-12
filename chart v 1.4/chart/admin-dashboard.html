@@ -640,6 +640,108 @@ select { cursor: pointer; }
 .fr-sync-stat-value.warn { color: #eab308; }
 .fr-sync-stat-value.err { color: #ef4444; }
 
+/* ── Bulk Dataset Management Panel ─────────────────── */
+.fr-bulk-panel {
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+.fr-bulk-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
+}
+.fr-bulk-header-left {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 14px; font-weight: 600; color: var(--text);
+}
+.fr-bulk-header-left svg { color: var(--accent); flex-shrink: 0; }
+.fr-bulk-class-sel { max-width: 110px; font-size: 12px; padding: 4px 8px; border-radius: var(--radius-xs); }
+.fr-bulk-close-btn { font-size: 18px; line-height: 1; padding: 4px 10px; border-radius: var(--radius-xs); opacity: .6; }
+.fr-bulk-close-btn:hover { opacity: 1; background: var(--danger-subtle); color: var(--danger); }
+
+.fr-bulk-stats {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-overlay);
+}
+.fr-bulk-stat-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--text-secondary);
+  background: rgba(255,255,255,.04); padding: 3px 10px; border-radius: 20px;
+}
+.fr-bulk-stat-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.fr-bulk-stat-total { margin-left: auto; font-size: 11px; color: var(--text-muted); font-weight: 600; }
+
+.fr-bulk-toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.fr-bulk-action-btn.popular {
+  background: linear-gradient(135deg, rgba(139,92,246,.15), rgba(59,130,246,.1));
+  border-color: rgba(139,92,246,.3); color: var(--accent-hover);
+}
+.fr-bulk-action-btn.popular:hover { background: linear-gradient(135deg, rgba(139,92,246,.25), rgba(59,130,246,.15)); }
+.fr-bulk-action-btn.popular svg { color: #fbbf24; }
+.fr-bulk-toolbar-right { margin-left: auto; }
+.fr-bulk-filter { width: 160px; font-size: 11px; padding: 5px 10px; border-radius: var(--radius-xs); }
+
+.fr-bulk-list-wrap {
+  max-height: 360px; overflow-y: auto;
+  padding: 12px 18px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.1) transparent;
+}
+.fr-bulk-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 2px 14px;
+}
+.fr-bulk-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: var(--radius-xs);
+  cursor: pointer; transition: background .12s ease;
+  font-size: 12px; font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+.fr-bulk-item:hover { background: rgba(255,255,255,.04); }
+.fr-bulk-item.checked { background: rgba(239,68,68,.06); }
+.fr-bulk-item input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); flex-shrink: 0; cursor: pointer; }
+.fr-bulk-item .ticker-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.fr-bulk-item .ticker-rows { font-size: 9px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fr-bulk-item .freshness-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.fr-bulk-item.is-popular .ticker-name { color: var(--accent-hover); }
+.fr-bulk-item.is-popular::after {
+  content: ''; display: inline-block; width: 10px; height: 10px; margin-left: 2px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fbbf24'%3E%3Cpath d='M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14 2 9.27l6.91-1.01z'/%3E%3C/svg%3E") center/contain no-repeat;
+  flex-shrink: 0;
+}
+
+.fr-bulk-footer {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+.fr-bulk-selected-badge {
+  font-size: 12px; font-weight: 700; color: var(--text);
+  background: rgba(255,255,255,.06); padding: 4px 12px; border-radius: 20px;
+}
+.fr-bulk-delete-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--danger); color: white; border-color: var(--danger);
+  font-weight: 600; padding: 6px 14px; border-radius: var(--radius-xs);
+  transition: opacity .15s, transform .1s;
+}
+.fr-bulk-delete-btn:disabled { opacity: .35; cursor: not-allowed; }
+.fr-bulk-delete-btn:not(:disabled):hover { opacity: .9; transform: scale(1.02); }
+.fr-bulk-status-msg { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+
 /* ── Dataset registry (all datasets / health) ─────── */
 .dr-registry-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .dr-registry-wrap th, .dr-registry-wrap td {
@@ -1868,27 +1970,57 @@ select { cursor: pointer; }
             <p id="frHealthRegistryNote" style="display:none;margin:0 0 14px;font-size:11px;color:var(--text-muted);line-height:1.5"></p>
 
             <!-- Bulk dataset management panel (stocks/any class) -->
-            <div id="frBulkManagePanel" style="display:none;margin-bottom:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
-              <div style="padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <strong id="frBulkTitle" style="font-size:13px">Manage datasets</strong>
-                <select id="frBulkClassSelect" class="input" style="max-width:130px;font-size:12px" onchange="_loadBulkManageClass()">
-                  <option value="stock">stock</option>
-                  <option value="etf">etf</option>
-                  <option value="crypto">crypto</option>
-                  <option value="futures">futures</option>
-                  <option value="fx">fx</option>
-                </select>
-                <button type="button" class="btn sm" onclick="_bulkSelectPopular()" title="Uncheck popular tickers (they stay), check all others for deletion">Keep only popular</button>
+            <div id="frBulkManagePanel" class="fr-bulk-panel" style="display:none">
+              <!-- Header -->
+              <div class="fr-bulk-header">
+                <div class="fr-bulk-header-left">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                  <strong id="frBulkTitle">Manage stock datasets</strong>
+                  <select id="frBulkClassSelect" class="input fr-bulk-class-sel" onchange="_loadBulkManageClass()">
+                    <option value="stock">Stock</option>
+                    <option value="etf">ETF</option>
+                    <option value="crypto">Crypto</option>
+                    <option value="futures">Futures</option>
+                    <option value="fx">Forex</option>
+                  </select>
+                </div>
+                <button type="button" class="btn sm fr-bulk-close-btn" onclick="_closeBulkManage()" title="Close panel">&times;</button>
+              </div>
+
+              <!-- Stats bar -->
+              <div class="fr-bulk-stats" id="frBulkStatsBar">
+                <div class="fr-bulk-stat-pill"><span class="fr-bulk-stat-dot" style="background:#22c55e"></span><span id="frBulkFreshN">0</span> fresh</div>
+                <div class="fr-bulk-stat-pill"><span class="fr-bulk-stat-dot" style="background:#eab308"></span><span id="frBulkStaleN">0</span> stale</div>
+                <div class="fr-bulk-stat-pill"><span class="fr-bulk-stat-dot" style="background:#ef4444"></span><span id="frBulkMissingN">0</span> missing</div>
+                <span class="fr-bulk-stat-total" id="frBulkCount">0 total</span>
+              </div>
+
+              <!-- Toolbar -->
+              <div class="fr-bulk-toolbar">
+                <button type="button" class="btn sm fr-bulk-action-btn popular" onclick="_bulkSelectPopular()" title="Mark unpopular tickers for deletion, keep the well-known ones">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14 2 9.27l6.91-1.01z"/></svg>
+                  Keep only popular
+                </button>
                 <button type="button" class="btn sm" onclick="_bulkSelectAll(true)">Select all</button>
                 <button type="button" class="btn sm" onclick="_bulkSelectAll(false)">Deselect all</button>
-                <span id="frBulkCount" style="font-size:11px;color:var(--text-muted);margin-left:auto"></span>
-                <button type="button" class="btn sm" onclick="_closeBulkManage()" style="font-size:11px;padding:2px 8px">Close</button>
+                <div class="fr-bulk-toolbar-right">
+                  <input type="search" id="frBulkFilterInput" class="input fr-bulk-filter" placeholder="Filter tickers…" oninput="_filterBulkList()">
+                </div>
               </div>
-              <div id="frBulkList" style="max-height:320px;overflow-y:auto;padding:10px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:4px 12px;font-size:11px;font-family:ui-monospace,monospace"></div>
-              <div style="padding:10px 14px;border-top:1px solid var(--border);background:var(--panel);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <span id="frBulkSelectedCount" style="font-size:12px;font-weight:600;color:var(--text)">0 selected</span>
-                <button type="button" class="btn sm" id="frBulkDeleteBtn" onclick="_bulkDeleteSelected()" style="background:#ef4444;color:white;border-color:#ef4444" disabled>Delete selected datasets</button>
-                <span id="frBulkDeleteStatus" style="font-size:11px;color:var(--text-muted)"></span>
+
+              <!-- Ticker grid -->
+              <div class="fr-bulk-list-wrap">
+                <div id="frBulkList" class="fr-bulk-list"></div>
+              </div>
+
+              <!-- Footer -->
+              <div class="fr-bulk-footer">
+                <span class="fr-bulk-selected-badge" id="frBulkSelectedCount">0 selected</span>
+                <button type="button" class="btn sm fr-bulk-delete-btn" id="frBulkDeleteBtn" onclick="_bulkDeleteSelected()" disabled>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                  Delete selected
+                </button>
+                <span id="frBulkDeleteStatus" class="fr-bulk-status-msg"></span>
               </div>
             </div>
 
@@ -1903,7 +2035,9 @@ select { cursor: pointer; }
                 <option value="stale">stale only</option>
                 <option value="missing">missing only</option>
               </select>
-              <button type="button" class="btn sm" onclick="_openBulkManage('stock')" style="margin-left:auto;font-size:11px;white-space:nowrap" title="Open the bulk stock management panel to delete unwanted stocks">Manage stocks</button>
+              <button type="button" class="btn sm" onclick="_openBulkManage('stock')" style="margin-left:auto;font-size:11px;white-space:nowrap;background:linear-gradient(135deg,rgba(139,92,246,.12),rgba(59,130,246,.08));border-color:rgba(139,92,246,.25);color:var(--accent-hover)" title="Open bulk dataset management to view/delete stocks">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:3px"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>Manage datasets
+              </button>
             </div>
             <div style="max-height:420px;overflow:auto;border:1px solid var(--border);border-radius:6px">
               <table id="frHealthTable" style="width:100%;border-collapse:collapse;font-size:12px">
@@ -5743,7 +5877,7 @@ function _renderFirstrateNightlyHealth() {
             '<br>' + jobBit +
           '</div>' +
           (fixBtns ? '<div style="display:flex;gap:6px;margin-top:6px">' + fixBtns + '</div>' : '') +
-          '<div style="margin-top:6px"><button type="button" class="btn sm" data-fr-manage-class="' + c.asset_class + '" style="font-size:10px;padding:2px 6px;opacity:.7" title="View all ' + c.asset_class + ' tickers and bulk-delete unwanted ones">Manage ' + c.ticker_count + ' tickers</button></div>' +
+          '<div style="margin-top:6px"><button type="button" class="btn sm" data-fr-manage-class="' + c.asset_class + '" style="font-size:10px;padding:3px 8px;opacity:.8;border-color:rgba(139,92,246,.2)" title="View all ' + c.asset_class + ' tickers and bulk-delete unwanted ones">Manage ' + c.ticker_count + ' tickers</button></div>' +
         '</div>'
       );
     }).join('') || '<p style="color:var(--text-muted);font-size:12px;grid-column:1/-1;margin:0">No FirstRate-classified datasets detected yet.</p>';
@@ -5948,6 +6082,7 @@ function _openBulkManage(assetClass) {
   if (select) select.value = assetClass || 'stock';
   panel.style.display = '';
   _loadBulkManageClass();
+  setTimeout(function () { panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 60);
 }
 
 function _closeBulkManage() {
@@ -5955,63 +6090,139 @@ function _closeBulkManage() {
   if (panel) panel.style.display = 'none';
 }
 
+var _bulkDatasetCache = [];
+
 function _loadBulkManageClass() {
   var select = $('frBulkClassSelect');
   var listEl = $('frBulkList');
   var countEl = $('frBulkCount');
   var titleEl = $('frBulkTitle');
+  var filterEl = $('frBulkFilterInput');
   if (!select || !listEl || !_firstrateHealthCache) return;
   var cls = select.value;
-  if (titleEl) titleEl.textContent = 'Manage ' + cls + ' datasets';
+  var clsLabel = cls.charAt(0).toUpperCase() + cls.slice(1);
+  if (titleEl) titleEl.textContent = 'Manage ' + clsLabel + ' datasets';
+  if (filterEl) filterEl.value = '';
+
   var datasets = (_firstrateHealthCache.datasets || []).filter(function (d) {
     return d.asset_class === cls;
   });
   datasets.sort(function (a, b) { return a.ticker.localeCompare(b.ticker); });
-  if (countEl) countEl.textContent = datasets.length + ' dataset(s)';
+  _bulkDatasetCache = datasets;
+
+  var fresh = 0, stale = 0, missing = 0;
+  datasets.forEach(function (d) {
+    if (d.freshness === 'fresh') fresh++;
+    else if (d.freshness === 'stale') stale++;
+    else missing++;
+  });
+  var fEl = $('frBulkFreshN'); if (fEl) fEl.textContent = fresh;
+  var sEl = $('frBulkStaleN'); if (sEl) sEl.textContent = stale;
+  var mEl = $('frBulkMissingN'); if (mEl) mEl.textContent = missing;
+  if (countEl) countEl.textContent = datasets.length + ' total';
+
+  _renderBulkList(datasets);
+}
+
+function _getPopularSetForClass(cls) {
+  var popular = [];
+  if (cls === 'stock' || cls === 'etf') popular = _POPULAR_STOCKS;
+  else if (cls === 'crypto') popular = _POPULAR_CRYPTO;
+  else if (cls === 'futures') popular = _POPULAR_FUTURES;
+  var set = {};
+  popular.forEach(function (t) { set[t.toUpperCase()] = true; });
+  return set;
+}
+
+function _renderBulkList(datasets) {
+  var listEl = $('frBulkList');
+  if (!listEl) return;
+  var select = $('frBulkClassSelect');
+  var cls = select ? select.value : 'stock';
+  var popularSet = _getPopularSetForClass(cls);
+
+  if (!datasets || !datasets.length) {
+    listEl.innerHTML = '<div style="grid-column:1/-1;padding:24px;text-align:center;color:var(--text-muted)">No datasets found for this class.</div>';
+    _updateBulkSelectedCount();
+    return;
+  }
 
   var html = '';
   datasets.forEach(function (d) {
     var color = d.freshness === 'fresh' ? '#22c55e' : d.freshness === 'stale' ? '#eab308' : '#ef4444';
-    var rows = d.row_count ? (d.row_count > 1000000 ? (d.row_count / 1000000).toFixed(1) + 'M' : (d.row_count > 1000 ? Math.round(d.row_count / 1000) + 'K' : d.row_count)) : '?';
-    html += '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:2px 0">' +
-      '<input type="checkbox" class="fr-bulk-cb" data-ticker="' + d.ticker + '" data-id="' + d.id + '">' +
-      '<span style="color:' + color + ';font-size:9px">●</span>' +
-      '<span>' + d.ticker + '</span>' +
-      '<span style="color:var(--text-muted);font-size:9px;margin-left:auto">' + rows + '</span>' +
-    '</label>';
+    var rows = d.row_count
+      ? (d.row_count > 1000000 ? (d.row_count / 1000000).toFixed(1) + 'M rows'
+        : (d.row_count > 1000 ? Math.round(d.row_count / 1000) + 'K rows' : d.row_count + ' rows'))
+      : '—';
+    var isPopular = popularSet[(d.ticker || '').toUpperCase()];
+    html +=
+      '<label class="fr-bulk-item' + (isPopular ? ' is-popular' : '') + '">' +
+        '<input type="checkbox" class="fr-bulk-cb" data-ticker="' + d.ticker + '" data-id="' + d.id + '">' +
+        '<span class="freshness-dot" style="background:' + color + '"></span>' +
+        '<span class="ticker-name">' + d.ticker + '</span>' +
+        '<span class="ticker-rows">' + rows + '</span>' +
+      '</label>';
   });
-  listEl.innerHTML = html || '<p style="color:var(--text-muted);margin:0;padding:10px">No datasets for this class.</p>';
+  listEl.innerHTML = html;
   _updateBulkSelectedCount();
-  listEl.addEventListener('change', _updateBulkSelectedCount);
+  listEl.removeEventListener('change', _onBulkListChange);
+  listEl.addEventListener('change', _onBulkListChange);
+}
+
+function _onBulkListChange(e) {
+  var item = e.target && e.target.closest('.fr-bulk-item');
+  if (item) {
+    if (e.target.checked) item.classList.add('checked');
+    else item.classList.remove('checked');
+  }
+  _updateBulkSelectedCount();
+}
+
+function _filterBulkList() {
+  var filterEl = $('frBulkFilterInput');
+  var q = (filterEl ? filterEl.value : '').trim().toUpperCase();
+  if (!q) {
+    _renderBulkList(_bulkDatasetCache);
+    return;
+  }
+  var filtered = _bulkDatasetCache.filter(function (d) {
+    return d.ticker && d.ticker.toUpperCase().indexOf(q) !== -1;
+  });
+  _renderBulkList(filtered);
 }
 
 function _updateBulkSelectedCount() {
   var cbs = document.querySelectorAll('.fr-bulk-cb:checked');
+  var total = document.querySelectorAll('.fr-bulk-cb').length;
   var countEl = $('frBulkSelectedCount');
   var btn = $('frBulkDeleteBtn');
   var n = cbs ? cbs.length : 0;
-  if (countEl) countEl.textContent = n + ' selected';
-  if (btn) btn.disabled = (n === 0);
+  if (countEl) countEl.textContent = n + ' of ' + total + ' selected';
+  if (btn) {
+    btn.disabled = (n === 0);
+    btn.querySelector('span') || (btn.innerHTML = btn.innerHTML);
+  }
 }
 
 function _bulkSelectAll(checked) {
-  document.querySelectorAll('.fr-bulk-cb').forEach(function (cb) { cb.checked = checked; });
+  document.querySelectorAll('.fr-bulk-cb').forEach(function (cb) {
+    cb.checked = checked;
+    var item = cb.closest('.fr-bulk-item');
+    if (item) { if (checked) item.classList.add('checked'); else item.classList.remove('checked'); }
+  });
   _updateBulkSelectedCount();
 }
 
 function _bulkSelectPopular() {
   var select = $('frBulkClassSelect');
   var cls = select ? select.value : 'stock';
-  var popular = [];
-  if (cls === 'stock' || cls === 'etf') popular = _POPULAR_STOCKS;
-  else if (cls === 'crypto') popular = _POPULAR_CRYPTO;
-  else if (cls === 'futures') popular = _POPULAR_FUTURES;
-  else popular = [];
-  var popularSet = {};
-  popular.forEach(function (t) { popularSet[t.toUpperCase()] = true; });
+  var popularSet = _getPopularSetForClass(cls);
   document.querySelectorAll('.fr-bulk-cb').forEach(function (cb) {
     var ticker = (cb.getAttribute('data-ticker') || '').toUpperCase();
-    cb.checked = !popularSet[ticker];
+    var shouldCheck = !popularSet[ticker];
+    cb.checked = shouldCheck;
+    var item = cb.closest('.fr-bulk-item');
+    if (item) { if (shouldCheck) item.classList.add('checked'); else item.classList.remove('checked'); }
   });
   _updateBulkSelectedCount();
   var total = document.querySelectorAll('.fr-bulk-cb').length;
@@ -6020,32 +6231,35 @@ function _bulkSelectPopular() {
 }
 
 async function _bulkDeleteSelected() {
-  var cbs = document.querySelectorAll('.fr-bulk-cb:checked');
-  if (!cbs || !cbs.length) return;
-  var ids = [];
-  cbs.forEach(function (cb) { ids.push(parseInt(cb.getAttribute('data-id'), 10)); });
+  var cbsArr = Array.from(document.querySelectorAll('.fr-bulk-cb:checked'));
+  if (!cbsArr.length) return;
+  var ids = cbsArr.map(function (cb) { return { id: parseInt(cb.getAttribute('data-id'), 10), el: cb.closest('.fr-bulk-item') }; });
   var statusEl = $('frBulkDeleteStatus');
   var btn = $('frBulkDeleteBtn');
-  if (!confirm('Delete ' + ids.length + ' dataset(s)? This removes their CSV files and binary tiles. The action cannot be undone.')) return;
+  var badge = $('frBulkSelectedCount');
+  if (!confirm('Delete ' + ids.length + ' dataset(s)?\n\nThis permanently removes their CSV files and binary tiles.\nThis action cannot be undone.')) return;
   if (btn) btn.disabled = true;
-  if (statusEl) statusEl.textContent = 'Deleting 0/' + ids.length + '…';
+  if (statusEl) { statusEl.textContent = 'Deleting 0/' + ids.length + '…'; statusEl.style.color = ''; }
   var done = 0;
   var errors = 0;
   for (var i = 0; i < ids.length; i++) {
     try {
-      await api('/api/admin/datasets/' + ids[i], { method: 'DELETE' });
+      await api('/api/admin/datasets/' + ids[i].id, { method: 'DELETE' });
       done++;
+      if (ids[i].el) { ids[i].el.style.opacity = '0.2'; ids[i].el.style.pointerEvents = 'none'; }
     } catch (e) {
       errors++;
+      if (ids[i].el) ids[i].el.style.background = 'rgba(239,68,68,.12)';
     }
-    if (statusEl) statusEl.textContent = 'Deleting ' + (done + errors) + '/' + ids.length + (errors ? ' (' + errors + ' errors)' : '') + '…';
+    if (statusEl) statusEl.textContent = 'Deleting ' + (done + errors) + '/' + ids.length + (errors ? ' (' + errors + ' err)' : '') + '…';
+    if (badge) badge.textContent = (ids.length - done - errors) + ' remaining';
   }
   if (statusEl) {
-    statusEl.textContent = 'Done — deleted ' + done + ', errors: ' + errors;
+    statusEl.textContent = 'Done — ' + done + ' deleted' + (errors ? ', ' + errors + ' failed' : '');
     statusEl.style.color = errors ? '#eab308' : '#22c55e';
   }
   if (btn) btn.disabled = false;
-  if (typeof toast === 'function') toast('Deleted ' + done + ' dataset(s). ' + (errors ? errors + ' failed.' : ''), done > 0 ? 'ok' : 'err');
+  if (typeof toast === 'function') toast('Deleted ' + done + ' dataset(s).' + (errors ? ' ' + errors + ' failed.' : ''), done > 0 ? 'ok' : 'err');
   try { await refreshFirstrateNightlyHealth({ rescan: true }); } catch (_) {}
   _loadBulkManageClass();
 }

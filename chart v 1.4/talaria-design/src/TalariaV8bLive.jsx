@@ -8099,6 +8099,9 @@ const TalariaV8bLive = () => {
   const suppressForwardBridge = useRef(false);
   const suppressTxtForwardBridge = useRef(false);
   const suppressRrForwardBridge = useRef(false);
+  const suppressVwapBridge = useRef(false);
+  const suppressVpBridge = useRef(false);
+  const suppressAvBridge = useRef(false);
 
   // Legacy chart.js saves drawings and updates `d.levels` / style directly; React `tlStyle` does not
   // hear those edits. The forward bridge below would then push *stale* `tlStyle.fibLevels` back onto
@@ -8360,16 +8363,44 @@ const TalariaV8bLive = () => {
         setTool(group);
 
         if (group === 'text') {
-          // Text tools have their own dedicated settings panel (txtSettOpen).
-          // The generic tlSettOpen panel requires effectiveTlGroup which only
-          // covers line/shape groups — text is intentionally excluded from that
-          // set, so we open the text panel directly instead.
           setTxtSettPos({ x: px, y: py });
           setTxtSettOpen(true);
+        } else if (drawing.type === 'anchored-vwap') {
+          closeTlSett(); closeTxtSett(); closeVpSett(); closeAvSett();
+          suppressVwapBridge.current = true;
+          const ds = drawing.style || {};
+          const DASH_R2 = {'':'solid','5,5':'dashed','2,4':'dotted','7,4,2,4':'dashdot','2,2':'dotted'};
+          const SRC_R2 = {close:"Close",open:"Open",high:"High",low:"Low",hl2:"(H+L)/2",hlc3:"(H+L+C)/3",ohlc4:"(O+H+L+C)/4"};
+          const CALC_R2 = {standard_deviation:"Std Deviation",percentage:"Percentage"};
+          setVwapStyle(prev => ({...prev, vwapColor: ds.stroke||ds.color||prev.vwapColor, vwapLineWidth: String(ds.strokeWidth??prev.vwapLineWidth), vwapLineType: DASH_R2[ds.strokeDasharray||'']||prev.vwapLineType, source: SRC_R2[ds.source]||prev.source, bandsCalcMode: CALC_R2[ds.vwapBandsCalculationMode]||prev.bandsCalcMode, priceLabels: ds.showPriceLabel !== false, timeLabels: ds.showTimeLabel !== false, ...(() => { const p = {}; [1,2,3].forEach(n => { p[`band${n}On`] = ds[`vwapBand${n}Enabled`] !== false; p[`band${n}Color`] = ds[`vwapUpperBand${n}Color`]||prev[`band${n}Color`]; p[`band${n}LineType`] = DASH_R2[ds[`vwapUpperBand${n}Type`]||'']||prev[`band${n}LineType`]; p[`band${n}LineWidth`] = String(ds[`vwapUpperBand${n}Width`]??prev[`band${n}LineWidth`]); p[`bg${n}On`] = !!ds[`vwapBand${n}BackgroundEnabled`]; p[`bg${n}Color`] = ds[`vwapBand${n}BackgroundColor`]||prev[`bg${n}Color`]; p[`mult${n}On`] = ds[`vwapBand${n}Enabled`] !== false; p[`mult${n}Val`] = String(ds[`vwapBand${n}Multiplier`]??prev[`mult${n}Val`]); }); return p; })() }));
+          setVwapSettPos({ x: px, y: py });
+          setVwapSettOpen(true);
+          setVwapSettTab("style");
+        } else if (drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile') {
+          closeTlSett(); closeTxtSett(); closeVwapSett(); closeAvSett();
+          suppressVpBridge.current = true;
+          const ds = drawing.style || {};
+          const PLC_R2 = {left:"Left",right:"Right"};
+          const ROW_R2 = {numberOfRows:"Number of Rows",ticksPerRow:"Ticks per Row"};
+          const VOL_R2 = {upDown:"Up/Down",total:"Total",delta:"Delta"};
+          setVpStyle(prev => ({...prev, valuesOn: ds.showValues !== false, valuesColor: ds.valuesColor||prev.valuesColor, widthPct: String(Math.round((ds.profileWidthRatio??0.3)*100)), placement: PLC_R2[ds.profilePlacement]||prev.placement, zoneBgOn: ds.showBackground !== false, zoneBgColor: ds.fill||prev.zoneBgColor, zoneBgAlpha: Math.round((ds.backgroundOpacity??0.85)*100), upVolColor: ds.buyColor||prev.upVolColor, downVolColor: ds.sellColor||prev.downVolColor, valueAreaUpColor: ds.valueAreaBuyColor||prev.valueAreaUpColor, valueAreaDownColor: ds.valueAreaSellColor||prev.valueAreaDownColor, pocOn: ds.showPOC !== false, pocColor: ds.pocColor||prev.pocColor, vahOn: ds.showVAH !== false, vahColor: ds.VAHColor||prev.vahColor, valOn: ds.showVAL !== false, valColor: ds.VALColor||prev.valColor, devPocOn: !!ds.showDevelopingPOC, devPocColor: ds.developingPOCColor||prev.devPocColor, devVAOn: !!ds.showDevelopingVA, devVAColor: ds.developingVAColor||prev.devVAColor, rowsLayout: ROW_R2[ds.rowsLayout]||prev.rowsLayout, rowSize: String(ds.rowSize??prev.rowSize), volumeOn: ds.showVolume !== false, volumeType: VOL_R2[ds.volumeDisplay]||prev.volumeType, valueAreaVol: String(ds.valueAreaVolume??prev.valueAreaVol), extendRight: !!ds.extendRight }));
+          setVpSettPos({ x: px, y: py });
+          setVpSettOpen(true);
+          setVpSettTab("style");
+        } else if (drawing.type === 'anchored-volume-profile') {
+          closeTlSett(); closeTxtSett(); closeVwapSett(); closeVpSett();
+          suppressAvBridge.current = true;
+          const ds = drawing.style || {};
+          const PLC_R3 = {left:"Left",right:"Right"};
+          const ROW_R3 = {numberOfRows:"Number of Rows",ticksPerRow:"Ticks per Row"};
+          const VOL_R3 = {upDown:"Up/Down",total:"Total",delta:"Delta"};
+          setAvStyle(prev => ({...prev, valuesOn: ds.showValues !== false, valuesColor: ds.valuesColor||prev.valuesColor, widthPct: String(Math.round((ds.profileWidthRatio??0.3)*100)), placement: PLC_R3[ds.profilePlacement]||prev.placement, zoneBgOn: ds.showBackground !== false, zoneBgColor: ds.fill||prev.zoneBgColor, zoneBgAlpha: Math.round((ds.backgroundOpacity??0.85)*100), upVolColor: ds.buyColor||prev.upVolColor, downVolColor: ds.sellColor||prev.downVolColor, valueAreaUpColor: ds.valueAreaBuyColor||prev.valueAreaUpColor, valueAreaDownColor: ds.valueAreaSellColor||prev.valueAreaDownColor, pocOn: ds.showPOC !== false, pocColor: ds.pocColor||prev.pocColor, vahOn: ds.showVAH !== false, vahColor: ds.VAHColor||prev.vahColor, valOn: ds.showVAL !== false, valColor: ds.VALColor||prev.valColor, devPocOn: !!ds.showDevelopingPOC, devPocColor: ds.developingPOCColor||prev.devPocColor, devVAOn: !!ds.showDevelopingVA, devVAColor: ds.developingVAColor||prev.devVAColor, rowsLayout: ROW_R3[ds.rowsLayout]||prev.rowsLayout, rowSize: String(ds.rowSize??prev.rowSize), volumeOn: ds.showVolume !== false, volumeType: VOL_R3[ds.volumeDisplay]||prev.volumeType, valueAreaVol: String(ds.valueAreaVolume??prev.valueAreaVol), extendRight: !!ds.extendRight }));
+          setAvSettPos({ x: px, y: py });
+          setAvSettOpen(true);
+          setAvSettTab("style");
         } else {
           setTlSettPos({ x: px, y: py });
           setTlSettOpen(true);
-          // Match legacy index: level edits live on the Input tab — open there for Gann tools.
           if (drawing.type === "gann-box" || drawing.type === "gann-square-fixed" || drawing.type === "gann-fan") {
             setTlSettTab("input");
           }
@@ -8441,6 +8472,9 @@ const TalariaV8bLive = () => {
     suppressRrForwardBridge,
     setTxtStyle,
     setRrStyle,
+    setVwapStyle,
+    setVpStyle,
+    setAvStyle,
     v9SelectionToolbarSyncRef,
     drawingTypeToPanelGroupRef,
     editingDrawingRef,
@@ -8534,6 +8568,80 @@ const TalariaV8bLive = () => {
                 labelColor: rs.labelTextColor || rs.textColor || prev.labelColor,
                 showPriceLabels: typeof rs.showPriceLabels === 'boolean' ? rs.showPriceLabels : prev.showPriceLabels,
                 showTimeLabels: typeof rs.showTimeLabels === 'boolean' ? rs.showTimeLabels : prev.showTimeLabels,
+              }));
+            }
+            // Volume tools hydration via tb.show
+            const dt = drawing.type;
+            const ds = drawing.style || {};
+            const DASH_R = {'':'solid','5,5':'dashed','2,4':'dotted','7,4,2,4':'dashdot','2,2':'dotted'};
+            const SRC_R = {close:"Close",open:"Open",high:"High",low:"Low",hl2:"(H+L)/2",hlc3:"(H+L+C)/3",ohlc4:"(O+H+L+C)/4"};
+            const CALC_R = {standard_deviation:"Std Deviation",percentage:"Percentage"};
+            const ROW_R = {numberOfRows:"Number of Rows",ticksPerRow:"Ticks per Row"};
+            const VOL_R = {upDown:"Up/Down",total:"Total",delta:"Delta"};
+            const PLC_R = {left:"Left",right:"Right"};
+            if (dt === 'anchored-vwap') {
+              suppressVwapBridge.current = true;
+              br.setVwapStyle(prev => ({
+                ...prev,
+                vwapColor: ds.stroke || ds.color || prev.vwapColor,
+                vwapLineWidth: String(ds.strokeWidth ?? prev.vwapLineWidth),
+                vwapLineType: DASH_R[ds.strokeDasharray || ''] || prev.vwapLineType,
+                source: SRC_R[ds.source] || prev.source,
+                bandsCalcMode: CALC_R[ds.vwapBandsCalculationMode] || prev.bandsCalcMode,
+                priceLabels: ds.showPriceLabel !== false,
+                timeLabels: ds.showTimeLabel !== false,
+                ...(() => { const p = {}; [1,2,3].forEach(n => {
+                  p[`band${n}On`] = ds[`vwapBand${n}Enabled`] !== false;
+                  p[`band${n}Color`] = ds[`vwapUpperBand${n}Color`] || prev[`band${n}Color`];
+                  p[`band${n}LineType`] = DASH_R[ds[`vwapUpperBand${n}Type`] || ''] || prev[`band${n}LineType`];
+                  p[`band${n}LineWidth`] = String(ds[`vwapUpperBand${n}Width`] ?? prev[`band${n}LineWidth`]);
+                  p[`bg${n}On`] = !!ds[`vwapBand${n}BackgroundEnabled`];
+                  p[`bg${n}Color`] = ds[`vwapBand${n}BackgroundColor`] || prev[`bg${n}Color`];
+                  p[`mult${n}On`] = ds[`vwapBand${n}Enabled`] !== false;
+                  p[`mult${n}Val`] = String(ds[`vwapBand${n}Multiplier`] ?? prev[`mult${n}Val`]);
+                }); return p; })(),
+              }));
+            }
+            if (dt === 'volume-profile' || dt === 'fixed-range-volume-profile') {
+              suppressVpBridge.current = true;
+              br.setVpStyle(prev => ({
+                ...prev, valuesOn: ds.showValues !== false, valuesColor: ds.valuesColor || prev.valuesColor,
+                widthPct: String(Math.round((ds.profileWidthRatio ?? 0.3) * 100)),
+                placement: PLC_R[ds.profilePlacement] || prev.placement,
+                zoneBgOn: ds.showBackground !== false, zoneBgColor: ds.fill || prev.zoneBgColor,
+                zoneBgAlpha: Math.round((ds.backgroundOpacity ?? 0.85) * 100),
+                upVolColor: ds.buyColor || prev.upVolColor, downVolColor: ds.sellColor || prev.downVolColor,
+                valueAreaUpColor: ds.valueAreaBuyColor || prev.valueAreaUpColor,
+                valueAreaDownColor: ds.valueAreaSellColor || prev.valueAreaDownColor,
+                pocOn: ds.showPOC !== false, pocColor: ds.pocColor || prev.pocColor,
+                vahOn: ds.showVAH !== false, vahColor: ds.VAHColor || prev.vahColor,
+                valOn: ds.showVAL !== false, valColor: ds.VALColor || prev.valColor,
+                devPocOn: !!ds.showDevelopingPOC, devPocColor: ds.developingPOCColor || prev.devPocColor,
+                devVAOn: !!ds.showDevelopingVA, devVAColor: ds.developingVAColor || prev.devVAColor,
+                rowsLayout: ROW_R[ds.rowsLayout] || prev.rowsLayout, rowSize: String(ds.rowSize ?? prev.rowSize),
+                volumeOn: ds.showVolume !== false, volumeType: VOL_R[ds.volumeDisplay] || prev.volumeType,
+                valueAreaVol: String(ds.valueAreaVolume ?? prev.valueAreaVol), extendRight: !!ds.extendRight,
+              }));
+            }
+            if (dt === 'anchored-volume-profile') {
+              suppressAvBridge.current = true;
+              br.setAvStyle(prev => ({
+                ...prev, valuesOn: ds.showValues !== false, valuesColor: ds.valuesColor || prev.valuesColor,
+                widthPct: String(Math.round((ds.profileWidthRatio ?? 0.3) * 100)),
+                placement: PLC_R[ds.profilePlacement] || prev.placement,
+                zoneBgOn: ds.showBackground !== false, zoneBgColor: ds.fill || prev.zoneBgColor,
+                zoneBgAlpha: Math.round((ds.backgroundOpacity ?? 0.85) * 100),
+                upVolColor: ds.buyColor || prev.upVolColor, downVolColor: ds.sellColor || prev.downVolColor,
+                valueAreaUpColor: ds.valueAreaBuyColor || prev.valueAreaUpColor,
+                valueAreaDownColor: ds.valueAreaSellColor || prev.valueAreaDownColor,
+                pocOn: ds.showPOC !== false, pocColor: ds.pocColor || prev.pocColor,
+                vahOn: ds.showVAH !== false, vahColor: ds.VAHColor || prev.vahColor,
+                valOn: ds.showVAL !== false, valColor: ds.VALColor || prev.valColor,
+                devPocOn: !!ds.showDevelopingPOC, devPocColor: ds.developingPOCColor || prev.devPocColor,
+                devVAOn: !!ds.showDevelopingVA, devVAColor: ds.developingVAColor || prev.devVAColor,
+                rowsLayout: ROW_R[ds.rowsLayout] || prev.rowsLayout, rowSize: String(ds.rowSize ?? prev.rowSize),
+                volumeOn: ds.showVolume !== false, volumeType: VOL_R[ds.volumeDisplay] || prev.volumeType,
+                valueAreaVol: String(ds.valueAreaVolume ?? prev.valueAreaVol), extendRight: !!ds.extendRight,
               }));
             }
           }
@@ -8643,6 +8751,93 @@ const TalariaV8bLive = () => {
           if (tp && Object.keys(tp).length) {
             br.suppressTxtForwardBridge.current = true;
             br.setTxtStyle((s) => ({ ...s, ...tp }));
+          }
+        }
+        // Hydrate volume tool panels from selected drawing
+        if (drawing && drawing.style) {
+          const s = drawing.style;
+          const DASH_REV = {'':'solid','5,5':'dashed','2,4':'dotted','7,4,2,4':'dashdot','2,2':'dotted'};
+          const SRC_REV = {close:"Close",open:"Open",high:"High",low:"Low",hl2:"(H+L)/2",hlc3:"(H+L+C)/3",ohlc4:"(O+H+L+C)/4"};
+          const CALC_REV = {standard_deviation:"Std Deviation",percentage:"Percentage"};
+          const ROW_REV = {numberOfRows:"Number of Rows",ticksPerRow:"Ticks per Row"};
+          const VOL_REV = {upDown:"Up/Down",total:"Total",delta:"Delta"};
+          const PLC_REV = {left:"Left",right:"Right"};
+          if (t === 'anchored-vwap') {
+            suppressVwapBridge.current = true;
+            br.setVwapStyle(prev => ({
+              ...prev,
+              vwapColor: s.stroke || s.color || prev.vwapColor,
+              vwapLineWidth: String(s.strokeWidth ?? prev.vwapLineWidth),
+              vwapLineType: DASH_REV[s.strokeDasharray || ''] || prev.vwapLineType,
+              source: SRC_REV[s.source] || prev.source,
+              bandsCalcMode: CALC_REV[s.vwapBandsCalculationMode] || prev.bandsCalcMode,
+              priceLabels: s.showPriceLabel !== false,
+              timeLabels: s.showTimeLabel !== false,
+              ...(() => {
+                const p = {};
+                [1,2,3].forEach(n => {
+                  p[`band${n}On`] = s[`vwapBand${n}Enabled`] !== false;
+                  p[`band${n}Color`] = s[`vwapUpperBand${n}Color`] || prev[`band${n}Color`];
+                  p[`band${n}LineType`] = DASH_REV[s[`vwapUpperBand${n}Type`] || ''] || prev[`band${n}LineType`];
+                  p[`band${n}LineWidth`] = String(s[`vwapUpperBand${n}Width`] ?? prev[`band${n}LineWidth`]);
+                  p[`bg${n}On`] = !!s[`vwapBand${n}BackgroundEnabled`];
+                  p[`bg${n}Color`] = s[`vwapBand${n}BackgroundColor`] || prev[`bg${n}Color`];
+                  p[`mult${n}On`] = s[`vwapBand${n}Enabled`] !== false;
+                  p[`mult${n}Val`] = String(s[`vwapBand${n}Multiplier`] ?? prev[`mult${n}Val`]);
+                });
+                return p;
+              })(),
+            }));
+          }
+          if (t === 'volume-profile' || t === 'fixed-range-volume-profile') {
+            suppressVpBridge.current = true;
+            br.setVpStyle(prev => ({
+              ...prev,
+              valuesOn: s.showValues !== false, valuesColor: s.valuesColor || prev.valuesColor,
+              widthPct: String(Math.round((s.profileWidthRatio ?? 0.3) * 100)),
+              placement: PLC_REV[s.profilePlacement] || prev.placement,
+              zoneBgOn: s.showBackground !== false, zoneBgColor: s.fill || prev.zoneBgColor,
+              zoneBgAlpha: Math.round((s.backgroundOpacity ?? 0.85) * 100),
+              upVolColor: s.buyColor || prev.upVolColor,
+              downVolColor: s.sellColor || prev.downVolColor,
+              valueAreaUpColor: s.valueAreaBuyColor || prev.valueAreaUpColor,
+              valueAreaDownColor: s.valueAreaSellColor || prev.valueAreaDownColor,
+              pocOn: s.showPOC !== false, pocColor: s.pocColor || prev.pocColor,
+              vahOn: s.showVAH !== false, vahColor: s.VAHColor || prev.vahColor,
+              valOn: s.showVAL !== false, valColor: s.VALColor || prev.valColor,
+              devPocOn: !!s.showDevelopingPOC, devPocColor: s.developingPOCColor || prev.devPocColor,
+              devVAOn: !!s.showDevelopingVA, devVAColor: s.developingVAColor || prev.devVAColor,
+              rowsLayout: ROW_REV[s.rowsLayout] || prev.rowsLayout,
+              rowSize: String(s.rowSize ?? prev.rowSize),
+              volumeOn: s.showVolume !== false, volumeType: VOL_REV[s.volumeDisplay] || prev.volumeType,
+              valueAreaVol: String(s.valueAreaVolume ?? prev.valueAreaVol),
+              extendRight: !!s.extendRight,
+            }));
+          }
+          if (t === 'anchored-volume-profile') {
+            suppressAvBridge.current = true;
+            br.setAvStyle(prev => ({
+              ...prev,
+              valuesOn: s.showValues !== false, valuesColor: s.valuesColor || prev.valuesColor,
+              widthPct: String(Math.round((s.profileWidthRatio ?? 0.3) * 100)),
+              placement: PLC_REV[s.profilePlacement] || prev.placement,
+              zoneBgOn: s.showBackground !== false, zoneBgColor: s.fill || prev.zoneBgColor,
+              zoneBgAlpha: Math.round((s.backgroundOpacity ?? 0.85) * 100),
+              upVolColor: s.buyColor || prev.upVolColor,
+              downVolColor: s.sellColor || prev.downVolColor,
+              valueAreaUpColor: s.valueAreaBuyColor || prev.valueAreaUpColor,
+              valueAreaDownColor: s.valueAreaSellColor || prev.valueAreaDownColor,
+              pocOn: s.showPOC !== false, pocColor: s.pocColor || prev.pocColor,
+              vahOn: s.showVAH !== false, vahColor: s.VAHColor || prev.vahColor,
+              valOn: s.showVAL !== false, valColor: s.VALColor || prev.valColor,
+              devPocOn: !!s.showDevelopingPOC, devPocColor: s.developingPOCColor || prev.devPocColor,
+              devVAOn: !!s.showDevelopingVA, devVAColor: s.developingVAColor || prev.devVAColor,
+              rowsLayout: ROW_REV[s.rowsLayout] || prev.rowsLayout,
+              rowSize: String(s.rowSize ?? prev.rowSize),
+              volumeOn: s.showVolume !== false, volumeType: VOL_REV[s.volumeDisplay] || prev.volumeType,
+              valueAreaVol: String(s.valueAreaVolume ?? prev.valueAreaVol),
+              extendRight: !!s.extendRight,
+            }));
           }
         }
       } catch (_) {}
@@ -9124,6 +9319,189 @@ const TalariaV8bLive = () => {
     rrStyle.profitColor, rrStyle.lossColor, rrStyle.entryColor,
     rrStyle.labelFontSize, rrStyle.labelColor,
     rrStyle.showPriceLabels, rrStyle.showTimeLabels,
+  ]);
+
+  // ─── V9 vwapStyle → selected anchored-vwap drawing ────────────────────
+  const vwapBridgeReady = useRef(false);
+  useLayoutEffect(() => {
+    if (!vwapBridgeReady.current) { vwapBridgeReady.current = true; return; }
+    if (suppressVwapBridge.current) { suppressVwapBridge.current = false; return; }
+    try {
+      const DASH = { solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' };
+      const SRC_MAP = { "Close":"close","Open":"open","High":"high","Low":"low","(H+L)/2":"hl2","(H+L+C)/3":"hlc3","(O+H+L+C)/4":"ohlc4" };
+      const CALC_MAP = { "Std Deviation":"standard_deviation","Percentage":"percentage" };
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || !d.style || d.type !== 'anchored-vwap') return;
+        const tb = dm.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+        d.style.stroke = vwapStyle.vwapColor;
+        d.style.color = vwapStyle.vwapColor;
+        d.style.strokeWidth = parseInt(vwapStyle.vwapLineWidth, 10) || 2;
+        d.style.strokeDasharray = DASH[vwapStyle.vwapLineType] ?? '';
+        d.style.source = SRC_MAP[vwapStyle.source] || 'hlc3';
+        d.style.vwapBandsCalculationMode = CALC_MAP[vwapStyle.bandsCalcMode] || 'standard_deviation';
+        d.style.showPriceLabel = !!vwapStyle.priceLabels;
+        d.style.showTimeLabel = !!vwapStyle.timeLabels;
+        [1,2,3].forEach(n => {
+          const on = vwapStyle[`band${n}On`];
+          const col = vwapStyle[`band${n}Color`];
+          const lt = DASH[vwapStyle[`band${n}LineType`]] ?? '2,2';
+          const lw = parseInt(vwapStyle[`band${n}LineWidth`], 10) || 1;
+          const bgOn = vwapStyle[`bg${n}On`];
+          const bgCol = vwapStyle[`bg${n}Color`];
+          const multOn = vwapStyle[`mult${n}On`];
+          const multVal = parseFloat(vwapStyle[`mult${n}Val`]) || n;
+          d.style[`vwapBand${n}Enabled`] = !!on;
+          d.style[`vwapUpperBand${n}Enabled`] = !!on;
+          d.style[`vwapLowerBand${n}Enabled`] = !!on;
+          d.style[`vwapUpperBand${n}Color`] = col;
+          d.style[`vwapLowerBand${n}Color`] = col;
+          d.style[`vwapUpperBand${n}Type`] = lt;
+          d.style[`vwapLowerBand${n}Type`] = lt;
+          d.style[`vwapUpperBand${n}Width`] = lw;
+          d.style[`vwapLowerBand${n}Width`] = lw;
+          d.style[`vwapBand${n}BackgroundEnabled`] = !!bgOn;
+          d.style[`vwapBand${n}BackgroundColor`] = bgCol;
+          d.style[`vwapBand${n}Multiplier`] = multVal;
+          if (multOn !== undefined) d.style[`vwapBand${n}Enabled`] = !!multOn && !!on;
+        });
+        d._cache = d._cache || {};
+        d._cache.vwapPoints = null;
+        d._cache.bands = null;
+        try { dm.renderDrawing?.(d); } catch (_) {}
+        try { dm.saveDrawings?.(); } catch (_) {}
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach(ch => ch.scheduleRender && ch.scheduleRender());
+    } catch (err) { console.warn("[V9 vwapStyle bridge] failed:", err); }
+  }, [
+    vwapStyle.vwapColor, vwapStyle.vwapLineType, vwapStyle.vwapLineWidth,
+    vwapStyle.band1On, vwapStyle.band1Color, vwapStyle.band1LineType, vwapStyle.band1LineWidth,
+    vwapStyle.bg1On, vwapStyle.bg1Color,
+    vwapStyle.band2On, vwapStyle.band2Color, vwapStyle.band2LineType, vwapStyle.band2LineWidth,
+    vwapStyle.bg2On, vwapStyle.bg2Color,
+    vwapStyle.band3On, vwapStyle.band3Color, vwapStyle.band3LineType, vwapStyle.band3LineWidth,
+    vwapStyle.bg3On, vwapStyle.bg3Color,
+    vwapStyle.priceLabels, vwapStyle.timeLabels,
+    vwapStyle.bandsCalcMode, vwapStyle.source,
+    vwapStyle.mult1On, vwapStyle.mult1Val,
+    vwapStyle.mult2On, vwapStyle.mult2Val,
+    vwapStyle.mult3On, vwapStyle.mult3Val,
+  ]);
+
+  // ─── V9 vpStyle → selected volume-profile / fixed-range-volume-profile drawing ─
+  const vpBridgeReady = useRef(false);
+  useLayoutEffect(() => {
+    if (!vpBridgeReady.current) { vpBridgeReady.current = true; return; }
+    if (suppressVpBridge.current) { suppressVpBridge.current = false; return; }
+    try {
+      const ROW_MAP = { "Number of Rows":"numberOfRows","Ticks per Row":"ticksPerRow" };
+      const VOL_MAP = { "Up/Down":"upDown","Total":"total","Delta":"delta" };
+      const PLC_MAP = { "Left":"left","Right":"right" };
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || !d.style || (d.type !== 'volume-profile' && d.type !== 'fixed-range-volume-profile')) return;
+        const tb = dm.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+        d.style.showValues = !!vpStyle.valuesOn;
+        d.style.valuesColor = vpStyle.valuesColor;
+        d.style.profileWidthRatio = Math.max(0.01, Math.min(1, (parseInt(vpStyle.widthPct,10)||30)/100));
+        d.style.profilePlacement = PLC_MAP[vpStyle.placement] || 'left';
+        d.style.showBackground = !!vpStyle.zoneBgOn;
+        d.style.fill = vpStyle.zoneBgColor;
+        d.style.backgroundOpacity = (vpStyle.zoneBgAlpha ?? 85) / 100;
+        d.style.buyColor = vpStyle.upVolColor;
+        d.style.sellColor = vpStyle.downVolColor;
+        d.style.valueAreaBuyColor = vpStyle.valueAreaUpColor;
+        d.style.valueAreaSellColor = vpStyle.valueAreaDownColor;
+        d.style.showPOC = !!vpStyle.pocOn;
+        d.style.pocColor = vpStyle.pocColor;
+        d.style.showVAH = !!vpStyle.vahOn;
+        d.style.VAHColor = vpStyle.vahColor;
+        d.style.showVAL = !!vpStyle.valOn;
+        d.style.VALColor = vpStyle.valColor;
+        d.style.showDevelopingPOC = !!vpStyle.devPocOn;
+        d.style.developingPOCColor = vpStyle.devPocColor;
+        d.style.showDevelopingVA = !!vpStyle.devVAOn;
+        d.style.developingVAColor = vpStyle.devVAColor;
+        d.style.rowsLayout = ROW_MAP[vpStyle.rowsLayout] || 'numberOfRows';
+        d.style.rowSize = parseInt(vpStyle.rowSize,10) || 24;
+        d.style.showVolume = !!vpStyle.volumeOn;
+        d.style.volumeDisplay = VOL_MAP[vpStyle.volumeType] || 'upDown';
+        d.style.valueAreaVolume = parseInt(vpStyle.valueAreaVol,10) || 70;
+        d.style.extendRight = !!vpStyle.extendRight;
+        try { dm.renderDrawing?.(d); } catch (_) {}
+        try { dm.saveDrawings?.(); } catch (_) {}
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach(ch => ch.scheduleRender && ch.scheduleRender());
+    } catch (err) { console.warn("[V9 vpStyle bridge] failed:", err); }
+  }, [
+    vpStyle.valuesOn, vpStyle.valuesColor, vpStyle.widthPct, vpStyle.placement,
+    vpStyle.zoneBgOn, vpStyle.zoneBgColor, vpStyle.zoneBgAlpha,
+    vpStyle.upVolColor, vpStyle.downVolColor, vpStyle.valueAreaUpColor, vpStyle.valueAreaDownColor,
+    vpStyle.pocOn, vpStyle.pocColor, vpStyle.vahOn, vpStyle.vahColor, vpStyle.valOn, vpStyle.valColor,
+    vpStyle.devPocOn, vpStyle.devPocColor, vpStyle.devVAOn, vpStyle.devVAColor,
+    vpStyle.rowsLayout, vpStyle.rowSize, vpStyle.volumeOn, vpStyle.volumeType, vpStyle.valueAreaVol,
+    vpStyle.extendRight,
+  ]);
+
+  // ─── V9 avStyle → selected anchored-volume-profile drawing ─────────────
+  const avBridgeReady = useRef(false);
+  useLayoutEffect(() => {
+    if (!avBridgeReady.current) { avBridgeReady.current = true; return; }
+    if (suppressAvBridge.current) { suppressAvBridge.current = false; return; }
+    try {
+      const ROW_MAP = { "Number of Rows":"numberOfRows","Ticks per Row":"ticksPerRow" };
+      const VOL_MAP = { "Up/Down":"upDown","Total":"total","Delta":"delta" };
+      const PLC_MAP = { "Left":"left","Right":"right" };
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || !d.style || d.type !== 'anchored-volume-profile') return;
+        const tb = dm.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+        d.style.showValues = !!avStyle.valuesOn;
+        d.style.valuesColor = avStyle.valuesColor;
+        d.style.profileWidthRatio = Math.max(0.01, Math.min(1, (parseInt(avStyle.widthPct,10)||30)/100));
+        d.style.profilePlacement = PLC_MAP[avStyle.placement] || 'left';
+        d.style.showBackground = !!avStyle.zoneBgOn;
+        d.style.fill = avStyle.zoneBgColor;
+        d.style.backgroundOpacity = (avStyle.zoneBgAlpha ?? 85) / 100;
+        d.style.buyColor = avStyle.upVolColor;
+        d.style.sellColor = avStyle.downVolColor;
+        d.style.valueAreaBuyColor = avStyle.valueAreaUpColor;
+        d.style.valueAreaSellColor = avStyle.valueAreaDownColor;
+        d.style.showPOC = !!avStyle.pocOn;
+        d.style.pocColor = avStyle.pocColor;
+        d.style.showVAH = !!avStyle.vahOn;
+        d.style.VAHColor = avStyle.vahColor;
+        d.style.showVAL = !!avStyle.valOn;
+        d.style.VALColor = avStyle.valColor;
+        d.style.showDevelopingPOC = !!avStyle.devPocOn;
+        d.style.developingPOCColor = avStyle.devPocColor;
+        d.style.showDevelopingVA = !!avStyle.devVAOn;
+        d.style.developingVAColor = avStyle.devVAColor;
+        d.style.rowsLayout = ROW_MAP[avStyle.rowsLayout] || 'numberOfRows';
+        d.style.rowSize = parseInt(avStyle.rowSize,10) || 24;
+        d.style.showVolume = !!avStyle.volumeOn;
+        d.style.volumeDisplay = VOL_MAP[avStyle.volumeType] || 'upDown';
+        d.style.valueAreaVolume = parseInt(avStyle.valueAreaVol,10) || 70;
+        d.style.extendRight = !!avStyle.extendRight;
+        try { dm.renderDrawing?.(d); } catch (_) {}
+        try { dm.saveDrawings?.(); } catch (_) {}
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach(ch => ch.scheduleRender && ch.scheduleRender());
+    } catch (err) { console.warn("[V9 avStyle bridge] failed:", err); }
+  }, [
+    avStyle.valuesOn, avStyle.valuesColor, avStyle.widthPct, avStyle.placement,
+    avStyle.zoneBgOn, avStyle.zoneBgColor, avStyle.zoneBgAlpha,
+    avStyle.upVolColor, avStyle.downVolColor, avStyle.valueAreaUpColor, avStyle.valueAreaDownColor,
+    avStyle.pocOn, avStyle.pocColor, avStyle.vahOn, avStyle.vahColor, avStyle.valOn, avStyle.valColor,
+    avStyle.devPocOn, avStyle.devPocColor, avStyle.devVAOn, avStyle.devVAColor,
+    avStyle.rowsLayout, avStyle.rowSize, avStyle.volumeOn, avStyle.volumeType, avStyle.valueAreaVol,
+    avStyle.extendRight,
   ]);
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelectedId(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
