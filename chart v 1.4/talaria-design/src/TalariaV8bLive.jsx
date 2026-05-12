@@ -14495,26 +14495,31 @@ const TalariaV8bLive = () => {
                   const sel = om ? getSelectedDrawingAcrossCharts(editingDrawingRef.current) : null;
                   const isRR = sel && (sel.type === 'long-position' || sel.type === 'short-position');
                   if (om && isRR) {
-                    om.openOrderPanel();
-                    setOrderPanelOpen(true);
+                    const panel = document.getElementById('orderPanel');
+                    const alreadyOpen = panel && panel.classList.contains('visible');
+                    if (!alreadyOpen) {
+                      om.toggleOrderPanel();
+                      setOrderPanelOpen(true);
+                    }
                     const pushLevels = () => {
                       try {
                         om.pushRiskRewardToolToManager(sel);
-                        const isLong = sel.meta?.orientation === 'long' || sel.type === 'long-position';
-                        const side = isLong ? 'BUY' : 'SELL';
-                        om.orderSide = side;
-                        const buyTab = document.querySelector('.order-side-tab[data-side="BUY"],.buy-tab');
-                        const sellTab = document.querySelector('.order-side-tab[data-side="SELL"],.sell-tab');
-                        if (buyTab) buyTab.classList.toggle('active', side === 'BUY');
-                        if (sellTab) sellTab.classList.toggle('active', side === 'SELL');
+                        om._autoDetectOrderTypeFromEntry();
                         om.calculatePositionFromRisk();
                         om.calculateAdvancedRiskReward();
                         om.updatePlaceButtonText?.();
+                        om._updateBreakevenSummary?.();
+                        om._updateTrailingSummary?.();
                         om._applyPrecisionToInputs?.();
-                        requestAnimationFrame(() => om.updatePreviewLines());
+                        requestAnimationFrame(() => {
+                          om.updatePreviewLines();
+                          if (om.chart && typeof om.chart.updateSVGPointerEvents === 'function') {
+                            om.chart.updateSVGPointerEvents();
+                          }
+                        });
                       } catch(_){}
                     };
-                    setTimeout(pushLevels, 250);
+                    setTimeout(pushLevels, alreadyOpen ? 50 : 250);
                     return;
                   }
                 } catch(_){}
