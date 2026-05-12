@@ -13546,13 +13546,18 @@ class Chart {
 
         const isCalendarTf      = /w$/i.test(timeframe) || /mo$/i.test(timeframe);
         const isDailyOrHigher   = timeframeMs >= 86400000;
-        const useUniformIntradayTicks = !isCalendarTf && !isDailyOrHigher;
+        // When intraday is zoomed out enough that visible range spans many days,
+        // switch from time labels to calendar day/month labels (TradingView-style).
+        const visibleDays = (visibleBarsCount * timeframeMs) / 86400000;
+        const intradayCalendarMode = !isDailyOrHigher && !isCalendarTf && visibleDays > 14;
+        const useUniformIntradayTicks = !isCalendarTf && !isDailyOrHigher && !intradayCalendarMode;
         const isReplayActive = !!(this.replaySystem && this.replaySystem.isActive);
         const useReplayIndexCadence = useUniformIntradayTicks && isReplayActive;
         const suppressIntradayBoundaryLabels = useReplayIndexCadence;
         const allowStandaloneBoundaries = !useUniformIntradayTicks;
-        // When zoomed out on daily+, suppress day-level boundaries and show only month/year
-        const suppressDayBoundaries = isDailyOrHigher && visibleBarsCount > 90;
+        // When zoomed out on daily+ or intraday-calendar-mode with many days, show only month/year
+        const suppressDayBoundaries = (isDailyOrHigher && visibleBarsCount > 90)
+            || (intradayCalendarMode && visibleDays > 120);
         const monthNames        = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         const minSpacing        = 50;
 
@@ -13630,7 +13635,7 @@ class Chart {
             let label;
             if (useBoundaryLabel) {
                 label = boundaryLabel;
-            } else if (isDailyOrHigher) {
+            } else if (isDailyOrHigher || intradayCalendarMode) {
                 label = monthNames[month] + ' ' + day;
             } else {
                 label = this._formatSessionClock(tzDate, false);
@@ -13695,7 +13700,7 @@ class Chart {
                     : (hasFBoundary && (allowStandaloneBoundaries || isRoundFuture));
                 const lbl = useFBoundaryLabel
                     ? fBoundaryLabel
-                    : (isDailyOrHigher
+                    : ((isDailyOrHigher || intradayCalendarMode)
                         ? monthNames[fMonth] + ' ' + tz2.getUTCDate()
                         : this._formatSessionClock(tz2, false));
                 candidates.push({ idx: fi, isBoundary: !!useFBoundaryLabel, label: lbl });
@@ -15748,8 +15753,12 @@ class Chart {
             const candle = data[i];
             const nextCandle = data[i + 1];
             if (!nextCandle || timestamp < nextCandle.t) {
-                const fractionWithinCandle = (timestamp - candle.t) / interval;
-                return i + fractionWithinCandle;
+                if (!nextCandle) {
+                    return i + Math.min((timestamp - candle.t) / interval, 0.5);
+                }
+                const actualGap = nextCandle.t - candle.t;
+                if (actualGap <= 0) return i;
+                return i + (timestamp - candle.t) / actualGap;
             }
         }
         return data.length - 1;
