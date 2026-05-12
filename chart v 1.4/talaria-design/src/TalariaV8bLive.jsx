@@ -1651,7 +1651,10 @@ function v9TlStylePatchFromDrawing(d) {
         })()
       : {}),
     ...(typeof d.text === 'string' ? { textContent: d.text } : {}),
-    ...(s.textColor ? { textColor: s.textColor } : {}),
+    ...(s.textColor ? { textColor: s.textColor }
+       : s.labelTextColor ? { textColor: s.labelTextColor }
+       : s.ratioTextColor ? { textColor: s.ratioTextColor }
+       : {}),
     ...(s.fontSize != null ? { textSize: String(s.fontSize) } : {}),
     ...(s.fontWeight != null && s.fontWeight !== '' ? { textBold: bold } : {}),
     ...(s.fontStyle ? { textItalic: s.fontStyle === 'italic' } : {}),
@@ -9225,6 +9228,14 @@ const TalariaV8bLive = () => {
         } else if (d.type === "gann-fan") {
           v9ApplyGannFanFromTlStyle(d, tlStyle);
         }
+        const patTypes = ["xabcd-pattern","cypher-pattern","head-shoulders","abcd-pattern","triangle-pattern","three-drives",
+          "elliott-impulse","elliott-correction","elliott-triangle","elliott-double-combo","elliott-triple-combo"];
+        if (patTypes.includes(d.type)) {
+          if (tlStyle.textColor) {
+            d.style.labelTextColor = tlStyle.textColor;
+            d.style.ratioTextColor = tlStyle.textColor;
+          }
+        }
         // Prefer onUpdate (history + render + persist + saveDrawings).
         if (tb && typeof tb.onUpdate === 'function') {
           try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
@@ -10550,7 +10561,7 @@ const TalariaV8bLive = () => {
                   </div>
                 </>);
                 return (<>
-                  {showLine && <div style={{ display:"grid", gridTemplateColumns:`1fr auto auto auto ${(showEp||isBrushTool||(isPatternTool&&!isElliottTool))?"auto":""}`, columnGap:12, rowGap:0, alignItems:"start", marginRight:(isBrushTool&&!showEp)?65:0 }}>
+                  {showLine && <div style={{ display:"grid", gridTemplateColumns:`1fr auto auto auto ${(showEp||isBrushTool||isPatternTool)?"auto":""}`, columnGap:12, rowGap:0, alignItems:"start", marginRight:(isBrushTool&&!showEp)?65:0 }}>
                     {/* Column headers */}
                     <div/><div/>
                     {showStyle ? <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
@@ -10559,7 +10570,7 @@ const TalariaV8bLive = () => {
                     <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
                       <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span>
                     </div>
-                    {(showEp||isBrushTool||(isPatternTool&&!isElliottTool)) && (
+                    {(showEp||isBrushTool||isPatternTool) && (
                       showEp ? (
                         <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
                           <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>ENDPOINTS</span>
@@ -10646,7 +10657,7 @@ const TalariaV8bLive = () => {
                       )}
                     </div>}
                     {/* Endpoints / 5th-col filler for pattern tools */}
-                    {(isPatternTool&&!isElliottTool) && <div/>}
+                    {isPatternTool && <div/>}
                     {(showEp||isBrushTool) && (showEp ? <div style={{ display:"flex", gap:3, alignItems:"center", justifyContent:"center", padding:"8px 0" }}>
                         {[["ep1",false],["ep2",true]].map(([k,rightAlign])=>{
                           const dk=`ep-${k}`; const val=tlStyle[k]||"normal"; const isOpen=tlStyleDrop===dk;
@@ -10685,8 +10696,8 @@ const TalariaV8bLive = () => {
                           );
                         })}
                     </div> : <div/>)}
-                    {/* ── LABEL row (pure pattern tools only) ── */}
-                    {(isPatternTool&&!isElliottTool) && <>
+                    {/* ── LABEL row (pattern + Elliott tools) ── */}
+                    {isPatternTool && <>
                       <span style={{ fontSize:12, color:c.ts, padding:"8px 0", alignSelf:"center" }}>Label</span>
                       <div style={{ padding:"8px 0" }}>{colorSwatch("tlTextColor", tlStyle.textColor)}</div>
                       <div style={{ padding:"8px 0", position:"relative" }}>
@@ -10798,7 +10809,7 @@ const TalariaV8bLive = () => {
                     {hasBg && <>
                       <span style={{ fontSize:12, color:c.ts, padding:"8px 0", alignSelf:"center" }}>Background</span>
                       <div style={{ padding:"8px 0" }}>{colorSwatch("tlBgColor", tlStyle.bgColor)}</div>
-                      <div/><div/>{(showEp||(isPatternTool&&!isElliottTool)) && <div/>}
+                      <div/><div/>{(showEp||isPatternTool) && <div/>}
                     </>}
                   </div>}
                   {/* ── Channel / Regression lines rows ── */}
@@ -15153,8 +15164,8 @@ const TalariaV8bLive = () => {
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
               {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={tlStyle.bgColor}/></svg>}
             </TlBtn>}
-            {/* btn 2b-pat-fcol: font color for pure pattern tools */}
-            {(isPatternTool&&!isElliottTool) && <TlBtn id="tl-pat-fcol" isAct={colorPicker==="tlTextColor"}
+            {/* btn 2b-pat-fcol: font/label color for pattern + Elliott tools */}
+            {isPatternTool && <TlBtn id="tl-pat-fcol" isAct={colorPicker==="tlTextColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlTextColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.textColor||"#ffffff");const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlTextColor");}}}>
               {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                 <span style={{fontSize:16,fontWeight:700,color:col,lineHeight:1,fontFamily:F}}>A</span>
