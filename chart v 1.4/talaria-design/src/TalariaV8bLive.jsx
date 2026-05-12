@@ -5939,7 +5939,7 @@ const TalariaV8bLive = () => {
          'price-label', 'price-label-2', 'signpost', 'signpost-2', 'flag-mark', 'image', 'emoji', 'pin', 'table'].includes(type)) {
       return 'text';
     }
-    if (['anchored-vwap', 'fixed-range-volume-profile', 'anchored-volume-profile'].includes(type)) return 'brush';
+    if (['anchored-vwap', 'fixed-range-volume-profile', 'volume-profile', 'anchored-volume-profile'].includes(type)) return 'brush';
     if (type.startsWith('fibonacci-') || type.startsWith('fib-') || type.startsWith('trend-fib-')) return 'fib';
     // Gann tools live on the Fibonacci & Gann rail (`gannBox` … are in V9_RAIL_ICONS_BY_GROUP.fib, not `pattern`).
     // Mapping them to `pattern` caused v9SanitizeGroupSelected to strip the selection → Elliott fallback → no Input tab.
@@ -7555,6 +7555,7 @@ const TalariaV8bLive = () => {
       if (legacy && !m[legacy]) m[legacy] = v9;
     });
     if (!m["rotated-rectangle"]) m["rotated-rectangle"] = "rect";
+    if (!m["volume-profile"]) m["volume-profile"] = "volProfile";
     return m;
   }, []);
 
