@@ -17823,6 +17823,17 @@ const TalariaV8bLive = () => {
           </div>
         </div>
         <div style={{ flex: 1 }}/>
+        {/* ── Support Chat button (left of Place Order) ── */}
+        <button type="button" ref={supportBtnRef}
+          onClick={(e) => { e.stopPropagation(); closeWindows(); setSettingsOpen(false); setLayoutDropdownOpen(false); setRightPanel(null); setOrderPanelOpen(false); setSupportChatOpen(prev => !prev); }}
+          onMouseEnter={e=>{setHov("u-support");showTip("Support",e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
+          style={{ width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", border:"none", cursor:"default", position:"relative", marginRight:4,
+            background: supportChatOpen ? "rgba(74,106,255,0.10)" : hov==="u-support" ? c.hv : "transparent", transition:"background 0.12s" }}>
+          <I n="chat" s={16} cl={supportChatOpen ? c.acL : hov==="u-support" ? c.tx : c.ts}/>
+          {supportUnread > 0 && <div style={{ position:"absolute", top:1, right:1, minWidth:14, height:14, borderRadius:7, background:"#e53935", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", lineHeight:1, pointerEvents:"none" }}>{supportUnread > 99 ? "99+" : supportUnread}</div>}
+          {supportChatOpen && <div style={{ position:"absolute", bottom:0, left:"15%", right:"15%", height:2, background:`linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow:`0 0 6px ${c.acG}` }}/>}
+          {hov==="u-support" && !supportChatOpen && <div style={{ position:"absolute", bottom:0, left:"25%", right:"25%", height:1, background:`linear-gradient(90deg, transparent, ${c.hvLn}, transparent)` }}/>}
+        </button>
         <button type="button" onClick={(e) => { e.stopPropagation(); setRightPanel(null); setOrderPanelOpen(prev => !prev); }}
           onMouseEnter={() => setHov("place-order")} onMouseLeave={() => setHov(null)}
           onMouseDown={() => setHov("place-order_dn")} onMouseUp={() => setHov("place-order")}
@@ -17847,24 +17858,22 @@ const TalariaV8bLive = () => {
              the same variants grid + sync toggles the right-panel layout
              tab uses. Selecting a variant drives `layoutPanels` which
              MultichartGrid (Phase 7.2.2) reacts to. */}
-        {[{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"layout",icon:"layout",label:"Layouts"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"},{id:"support",icon:"chat",label:"Support"}].map(({id,icon,label}) => (
+        {[{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"layout",icon:"layout",label:"Layouts"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
           <button type="button" key={id}
-            ref={(el) => { if (id === "layout") layoutDropdownBtnRef.current = el; if (id === "support") supportBtnRef.current = el; }}
+            ref={(el) => { if (id === "layout") layoutDropdownBtnRef.current = el; }}
             onClick={(e) => {
               if(id==="layout"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setRightPanel(null); setOrderPanelOpen(false); setLayoutDropdownOpen(prev => !prev); setSupportChatOpen(false); return; }
               if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} }
               if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); }
               if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} }
               if(id==="expand"){ e.stopPropagation(); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }
-              if(id==="support"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setLayoutDropdownOpen(false); setRightPanel(null); setOrderPanelOpen(false); setSupportChatOpen(prev => !prev); }
             }}
             onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
-              background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&layoutDropdownOpen) || (id==="expand"&&isFullscreen) || (id==="support"&&supportChatOpen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
+              background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&layoutDropdownOpen) || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
               transition: "background 0.12s" }}>
-            {(() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&layoutDropdownOpen) || (id==="expand"&&isFullscreen) || (id==="support"&&supportChatOpen); return <>
+            {(() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&layoutDropdownOpen) || (id==="expand"&&isFullscreen); return <>
               <I n={id==="expand"&&isFullscreen?"compress":icon} s={16} cl={isActive ? c.acL : hov===`u-${id}` ? c.tx : c.ts}/>
-              {id==="support" && supportUnread > 0 && <div style={{ position:"absolute", top:1, right:1, minWidth:14, height:14, borderRadius:7, background:"#e53935", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", lineHeight:1, pointerEvents:"none" }}>{supportUnread > 99 ? "99+" : supportUnread}</div>}
               {isActive && <div style={{ position: "absolute", bottom: 0, left: "15%", right: "15%", height: 2, background: `linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
               {hov===`u-${id}` && !isActive && <div style={{ position: "absolute", bottom: 0, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
             </>; })()}
