@@ -1682,6 +1682,32 @@ export default function MultichartGrid({
                     }
                 } catch (_) { /* ignore — the next tick retries */ }
             }
+
+            // Push the host's visible range to all iframes so viewports
+            // stay aligned during replay (same zoom / scroll position).
+            // Without this, each panel auto-scrolls independently and
+            // shows a different viewport width even at the same timestamp.
+            let host = null;
+            for (const c of mgr.charts.values()) {
+                if (c && c.host) { host = c; break; }
+            }
+            if (host && typeof host.directRead === "function") {
+                let range = null;
+                try { range = host.directRead(); } catch (_) {}
+                if (range && Number.isFinite(range.startSec) && Number.isFinite(range.endSec)) {
+                    const rangeMsg = {
+                        type:        "visibleRange",
+                        startTime:   range.startSec,
+                        endTime:     range.endSec,
+                        source:      host.id,
+                        causationId: "replay-range-" + Date.now().toString(16),
+                    };
+                    for (const c of mgr.charts.values()) {
+                        if (!c || c.host || !c.ready) continue;
+                        try { mgr._send(c, rangeMsg); } catch (_) {}
+                    }
+                }
+            }
         };
 
         window.addEventListener("replayVirtualTimeChanged", onReplayTick);
