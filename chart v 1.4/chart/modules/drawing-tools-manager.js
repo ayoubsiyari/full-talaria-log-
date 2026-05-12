@@ -1870,6 +1870,17 @@ class DrawingToolsManager {
         // [debug removed]
         
         if (!this.currentTool) {
+            // VP/AV body clicks must pass through to the canvas for panning.
+            // Only resize handles should be interactive; bail early for everything else.
+            {
+                const tgt = event.target;
+                const vpGroup = tgt && tgt.closest ? tgt.closest('.drawing-volume-profile, .drawing-anchored-volume-profile') : null;
+                if (vpGroup) {
+                    const isHandle = tgt.closest('.resize-handle, .resize-handle-hit, .resize-handle-group');
+                    if (!isHandle) return;
+                }
+            }
+
             // Same layout space as Chart (wrapper + __v9Zoom); raw SVG rect alone can mismatch selection vs hit-test.
             const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
             
