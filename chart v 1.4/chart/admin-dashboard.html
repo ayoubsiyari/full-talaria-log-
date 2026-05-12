@@ -5687,6 +5687,13 @@ function _renderFirstrateNightlyHealth() {
         'title="Pull latest day bundle for ' + c.asset_class + ' from FirstRate and merge into existing datasets"',
       ];
       if (!hasTickers) btnAttrs.push('disabled');
+      var fixBtns = '';
+      if (c.stale_count > 0) {
+        fixBtns += '<button type="button" class="btn sm" data-fr-fix-stale="' + c.asset_class + '" style="font-size:10px;padding:2px 6px;color:#eab308;border-color:#eab308" title="Download week bundle for ' + c.stale_count + ' stale ticker(s) to bring them up to date">Fix ' + c.stale_count + ' stale</button>';
+      }
+      if (c.missing_count > 0) {
+        fixBtns += '<button type="button" class="btn sm" data-fr-fix-missing="' + c.asset_class + '" style="font-size:10px;padding:2px 6px;color:#ef4444;border-color:#ef4444" title="Download month bundle for ' + c.missing_count + ' missing ticker(s) to recover their data">Fix ' + c.missing_count + ' missing</button>';
+      }
       return (
         '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel)">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px">' +
@@ -5708,6 +5715,7 @@ function _renderFirstrateNightlyHealth() {
             (c.total_new_rows_last_run ? ' · +' + c.total_new_rows_last_run.toLocaleString() + ' bars merged' : '') +
             '<br>' + jobBit +
           '</div>' +
+          (fixBtns ? '<div style="display:flex;gap:6px;margin-top:6px">' + fixBtns + '</div>' : '') +
         '</div>'
       );
     }).join('') || '<p style="color:var(--text-muted);font-size:12px;grid-column:1/-1;margin:0">No FirstRate-classified datasets detected yet.</p>';
@@ -5870,11 +5878,67 @@ async function _runFirstrateClassNow(assetClass, btn) {
 
 document.addEventListener('click', function (e) {
   const t = e && e.target;
-  if (!t || !t.matches || !t.matches('button[data-fr-run-class]')) return;
-  e.preventDefault();
-  const cls = t.getAttribute('data-fr-run-class');
-  _runFirstrateClassNow(cls, t);
+  if (!t || !t.matches) return;
+  if (t.matches('button[data-fr-run-class]')) {
+    e.preventDefault();
+    const cls = t.getAttribute('data-fr-run-class');
+    _runFirstrateClassNow(cls, t);
+  } else if (t.matches('button[data-fr-fix-stale]')) {
+    e.preventDefault();
+    _fixStaleOrMissing(t.getAttribute('data-fr-fix-stale'), 'stale', t);
+  } else if (t.matches('button[data-fr-fix-missing]')) {
+    e.preventDefault();
+    _fixStaleOrMissing(t.getAttribute('data-fr-fix-missing'), 'missing', t);
+  }
 });
+
+async function _fixStaleOrMissing(assetClass, freshness, btn) {
+  if (!assetClass || !_firstrateHealthCache) return;
+  var datasets = _firstrateHealthCache.datasets || [];
+  var tickers = [];
+  datasets.forEach(function (d) {
+    if (d.asset_class === assetClass && d.freshness === freshness) {
+      if (d.ticker && tickers.indexOf(d.ticker) === -1) tickers.push(d.ticker);
+    }
+  });
+  if (!tickers.length) {
+    if (typeof toast === 'function') toast('No ' + freshness + ' tickers found for ' + assetClass, 'err');
+    return;
+  }
+  var period = freshness === 'stale' ? 'week' : 'month';
+  var origLabel = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Downloading…'; }
+  try {
+    var body = {
+      period: period,
+      timeframe: '1min',
+      instrument_type: assetClass,
+      upsert_existing: true,
+      delete_existing_first: false,
+      pairs: tickers,
+    };
+    var data = await api('/api/admin/datasets/firstrate-fx/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (typeof toast === 'function') {
+      toast('Fixing ' + tickers.length + ' ' + freshness + ' ' + assetClass + ' ticker(s) — downloading ' + period + ' data…', 'ok');
+    }
+    if (btn) btn.textContent = tickers.length + ' tickers…';
+    if (data && data.job_id && typeof waitForFirstrateJob === 'function') {
+      await waitForFirstrateJob(data.job_id);
+    }
+    if (typeof toast === 'function') toast(assetClass + ' ' + freshness + ' fix complete!', 'ok');
+  } catch (e) {
+    if (typeof toast === 'function') {
+      toast('Fix ' + freshness + ' ' + assetClass + ' failed: ' + (e && e.message ? e.message : e), 'err');
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = origLabel; }
+    try { await refreshFirstrateNightlyHealth({ rescan: true }); } catch (_) {}
+  }
+}
 
 // ───────────────────────────────────────────────────────────
 // FirstRate duplicate-dataset cleanup tool

@@ -11470,11 +11470,14 @@ class Chart {
             const newTfMs = typeof this.parseTimeframe === 'function'
                 ? this.parseTimeframe(normalizedTf)
                 : NaN;
+            // Always refetch from server during backtest when the timeframe changes,
+            // regardless of direction.  Client-side resample of fine-grained rawData
+            // (e.g. 100k 1m bars ≈ 69 days) to a coarse TF (1D) produces very few
+            // candles and loses the deep history the server can provide for that TF.
             const needsServerRefetch = this.isBacktestMode
                 && this.currentFileId
                 && Number.isFinite(rawTfMs) && rawTfMs > 0
-                && Number.isFinite(newTfMs) && newTfMs > 0
-                && newTfMs < rawTfMs;
+                && Number.isFinite(newTfMs) && newTfMs > 0;
 
             if (needsServerRefetch) {
                 // _loadTimeframeFromServer commits + ends the switching state when data arrives.
