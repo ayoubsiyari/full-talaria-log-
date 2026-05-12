@@ -7726,6 +7726,11 @@ const TalariaV8bLive = () => {
   // Runs whenever V9's tool / groupSelected changes. Polls briefly because
   // chart.js / drawingManager may not be initialized yet on first mount.
   useEffect(() => {
+    // Close volume-tool settings/toolbars when switching away from their tool
+    const brushIcon = groupSelected.brush?.icon ?? "vwap";
+    if (tool !== "brush" || brushIcon !== "vwap") { if (vwapSettOpen) closeVwapSett(); }
+    if (tool !== "brush" || brushIcon !== "volProfile") { if (vpSettOpen) closeVpSett(); }
+    if (tool !== "brush" || brushIcon !== "anchoredVol") { if (avSettOpen) closeAvSett(); }
     let cancelled = false; let n = 0;
     /** Push tool into the in-process host chart (and poll until drawingManager exists). */
     const applyHostDm = () => {
@@ -15273,36 +15278,10 @@ const TalariaV8bLive = () => {
                         setEmojiPanelPos({ x: (r.right + 8) / Z, y: r.top / Z });
                         setEmojiPanelOpen(true);
                       }
-                      if (item.icon === "vwap") {
-                        const r = e.currentTarget.getBoundingClientRect();
-                        const vpW = window.innerWidth / Z;
-                        const x = Math.max(8, Math.min(r.right / Z + 8, vpW - 428));
-                        const y = Math.max(8, r.top / Z);
-                        setVwapSettPos({ x, y });
-                        if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vpSettOpen)closeVpSett();
-                        setVwapSettOpen(true);
-                        setVwapSettTab("style");
-                      }
-                      if (item.icon === "volProfile") {
-                        const r = e.currentTarget.getBoundingClientRect();
-                        const vpW = window.innerWidth / Z;
-                        const x = Math.max(8, Math.min(r.right / Z + 8, vpW - 428));
-                        const y = Math.max(8, r.top / Z);
-                        setVpSettPos({ x, y });
-                        if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(avSettOpen)closeAvSett();
-                        setVpSettOpen(true);
-                        setVpSettTab("style");
-                      }
-                      if (item.icon === "anchoredVol") {
-                        const r = e.currentTarget.getBoundingClientRect();
-                        const vpW = window.innerWidth / Z;
-                        const x = Math.max(8, Math.min(r.right / Z + 8, vpW - 428));
-                        const y = Math.max(8, r.top / Z);
-                        setAvSettPos({ x, y });
-                        if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();
-                        setAvSettOpen(true);
-                        setAvSettTab("style");
-                      }
+                      // Close any open volume-tool settings when selecting a new tool
+                      if (vwapSettOpen) closeVwapSett();
+                      if (vpSettOpen) closeVpSett();
+                      if (avSettOpen) closeAvSett();
                     }}
                     style={{
                       flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "2px 0",
@@ -15341,7 +15320,7 @@ const TalariaV8bLive = () => {
 
 
       {/* ── Anchored VWAP floating toolbar ── */}
-      {tool === "brush" && (groupSelected.brush?.icon ?? "vwap") === "vwap" && (()=>{
+      {tlBarSelected && tool === "brush" && (groupSelected.brush?.icon ?? "vwap") === "vwap" && (()=>{
         const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
         const VBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
@@ -15511,7 +15490,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Fixed Range Volume Profile floating toolbar ── */}
-      {tool === "brush" && (groupSelected.brush?.icon ?? "vwap") === "volProfile" && (()=>{
+      {tlBarSelected && tool === "brush" && (groupSelected.brush?.icon ?? "vwap") === "volProfile" && (()=>{
         const VPBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "vpb-del";
@@ -15604,7 +15583,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Anchored Volume Profile floating toolbar ── */}
-      {tool === "brush" && (groupSelected.brush?.icon ?? "vwap") === "anchoredVol" && (()=>{
+      {tlBarSelected && tool === "brush" && (groupSelected.brush?.icon ?? "vwap") === "anchoredVol" && (()=>{
         const AVBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "avb-del";
