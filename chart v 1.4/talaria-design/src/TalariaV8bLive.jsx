@@ -9965,11 +9965,6 @@ const TalariaV8bLive = () => {
     const pressCol = isPressed ? c.acL : col;
     const hArr = hov === t.id + "-arr";
     const arrCol = act ? accentCol : hArr ? c.tx : c.tm;
-    /* Selection strip at left:0; idle = flush. Active/pressed: 4px past 2px bar. Hover dim line: 2px. */
-    const railAccentPad =
-      act || isPressed ? 4
-        : h && !act && !isPressed ? 2
-        : 0;
     return (
       <div key={t.id} style={{ position: "relative", width: "100%", display: "flex", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
         {/* Left rail: match TalariaV8b.jsx dimensions (Live has no root zoom). */}
@@ -10047,17 +10042,17 @@ const TalariaV8bLive = () => {
             }
           }}
           style={{
-            width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "flex-start",
+            width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "center",
             background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
             border: "none", cursor: "default", color: pressCol,
-            padding: 0, paddingLeft: railAccentPad, paddingRight: t.dd ? 11 : 4,
+            padding: 0, paddingLeft: 0, paddingRight: t.dd ? 11 : 0,
             boxSizing: "border-box", touchAction: "manipulation",
-            transition: "color 0.15s ease, background 0.12s, padding-left 0.12s", position: "relative", fontFamily: F,
+            transition: "color 0.15s ease, background 0.12s", position: "relative", fontFamily: F,
           }}>
           {/* pointer-events:none on icon so the whole <button type="button"> hit box counts — SVG paths alone miss gaps between strokes */}
           {t.id === "pinbar"
-            ? <span style={{ display: "flex", pointerEvents: "none", transform: `${h && !act ? "rotate(-25deg) scale(1.15)" : "scale(1)"} translateX(2px)`, transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
-            : <span style={{ display: "flex", pointerEvents: "none", transform: "translateX(2px)" }}><I n={railIcon} s={17} cl={pressCol}/></span>
+            ? <span style={{ display: "flex", pointerEvents: "none", transform: h && !act ? "rotate(-25deg) scale(1.15)" : "none", transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
+            : <span style={{ display: "flex", pointerEvents: "none" }}><I n={railIcon} s={17} cl={pressCol}/></span>
           }
         </button>
         {act && <div style={{ position: "absolute", left: 0, top: "10%", bottom: "10%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 4px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}

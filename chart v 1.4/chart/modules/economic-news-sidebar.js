@@ -32,6 +32,50 @@
     var calendarLoadId = 0;
     var calendarPanDebounceTimer = null;
 
+    /**
+     * Accumulated events for time-axis markers only. `state.events` is replaced each fetch for the
+     * news list; this object keeps prior loads so flags do not vanish when panning to another date range.
+     * Keys: stableEventKey(e) -> event object.
+     */
+    var chartMarkerEventByKey = {};
+
+    function stableEventKey(e) {
+        if (!e || !Number.isFinite(e.t)) return '';
+        var ev = e.event != null ? String(e.event) : '';
+        var ck = e.countryKey != null ? String(e.countryKey) : '';
+        return e.t + '|' + ck + '|' + ev.slice(0, 160);
+    }
+
+    function mergeIntoChartMarkerCache(list) {
+        if (!list || !list.length) return;
+        for (var i = 0; i < list.length; i++) {
+            var e = list[i];
+            var k = stableEventKey(e);
+            if (k) chartMarkerEventByKey[k] = e;
+        }
+    }
+
+    /** Drop cached markers far outside loaded bars so memory stays bounded. */
+    function pruneChartMarkerCache() {
+        var ch = mainChart();
+        if (!ch || !ch.data || ch.data.length === 0) return;
+        var t0 = ch.data[0].t;
+        var t1 = ch.data[ch.data.length - 1].t;
+        var minT = Math.min(t0, t1) - 21 * 86400000;
+        var maxT = Math.max(t0, t1) + 21 * 86400000;
+        for (var key in chartMarkerEventByKey) {
+            if (!Object.prototype.hasOwnProperty.call(chartMarkerEventByKey, key)) continue;
+            var e = chartMarkerEventByKey[key];
+            if (!e || !Number.isFinite(e.t) || e.t < minT || e.t > maxT) {
+                delete chartMarkerEventByKey[key];
+            }
+        }
+    }
+
+    function clearChartMarkerCache() {
+        chartMarkerEventByKey = {};
+    }
+
     function mainChart() {
         return window.chart || window.mainChart || null;
     }
@@ -711,6 +755,8 @@
             out.sort(function (a, b) { return a.t - b.t; });
             if (myId !== calendarLoadId) return;
             state.events = out;
+            mergeIntoChartMarkerCache(out);
+            pruneChartMarkerCache();
             state.loaded = true;
             state.loadedRangeKey = rng.rangeKey;
         } catch (err) {
@@ -896,8 +942,18 @@
      */
     window.__economicCalendarForChart = {
         getEvents: function () {
-            if (!state.events || !state.events.length) return [];
-            return state.events.filter(function (e) {
+            var source = [];
+            var keys = Object.keys(chartMarkerEventByKey);
+            if (keys.length > 0) {
+                for (var ki = 0; ki < keys.length; ki++) {
+                    source.push(chartMarkerEventByKey[keys[ki]]);
+                }
+            } else if (state.events && state.events.length) {
+                source = state.events.slice();
+            }
+            if (!source.length) return [];
+            source.sort(function (a, b) { return a.t - b.t; });
+            return source.filter(function (e) {
                 return passesUserFilters(e);
             });
         },
@@ -949,6 +1005,7 @@
     window.refreshEconomicNewsSidebar = function () {
         state.loaded = false;
         state.loadedRangeKey = null;
+        clearChartMarkerCache();
         loadCalendar(true);
     };
 
