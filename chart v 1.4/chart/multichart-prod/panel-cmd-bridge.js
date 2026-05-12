@@ -629,45 +629,14 @@
                     if (!rsT || !rsT.isActive) {
                         return applyReplayEnter(ch, ts2);
                     }
-                    // ─── candle-animation preservation ─────────────
-                    // If iframe is mid-playback, SKIP the seek.
-                    // goToReplayTimestamp resets `animatingCandle =
-                    // null` and `tickProgress = 0`, which kills the
-                    // in-progress candle build and the user sees
-                    // discrete candle jumps instead of the smooth
-                    // tick-by-tick draw the original chart shows.
+                    // ─── ALWAYS seek to parent's position ───────────
+                    // Every replayTick forces the iframe to the exact
+                    // parent timestamp via scheduleCoalescedSeek (rAF-
+                    // coalesced, so at most one seek per frame). This
+                    // eliminates drift entirely — the iframe's own play
+                    // loop provides smooth animation between seeks, and
+                    // the seek snaps it back each frame.
                     //
-                    // Both panels run their own play loops anchored
-                    // at the SAME start timestamp + speed + mode
-                    // (broadcast on enter via _primeReplayFromParent
-                    // and on every replaySetSpeed / replaySetMode
-                    // change), so they advance in lockstep without
-                    // needing a per-candle resync. Drift correction
-                    // happens naturally on pause: once parent pauses,
-                    // its final replayTick lands and iframe seeks.
-                    //
-                    // Only seek if iframe has drifted MORE than a
-                    // few candles (catastrophic drift, e.g. tab was
-                    // backgrounded — setTimeout throttles to ~1Hz,
-                    // iframe falls minutes behind, needs to catch up).
-                    if (rsT.isPlaying) {
-                        var localTs = Number(rsT.replayTimestamp);
-                        if (Number.isFinite(localTs)) {
-                            // Estimate "candles behind" using the
-                            // chart's timeframe step. Allow up to 3
-                            // candles of drift before correcting.
-                            var step = (ch.currentTimeframeMs
-                                ? Number(ch.currentTimeframeMs)
-                                : 60000);
-                            if (!Number.isFinite(step) || step <= 0) step = 60000;
-                            var driftMs = Math.abs(ts2 - localTs);
-                            if (driftMs <= step * 3) {
-                                // Within tolerance — let the local
-                                // animation continue uninterrupted.
-                                return;
-                            }
-                        }
-                    }
                     // Hot path: just stash the latest ts and let the
                     // rAF coalescer apply it. Older queued ts are
                     // dropped so iframe never falls behind regardless
