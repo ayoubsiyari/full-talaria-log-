@@ -15775,36 +15775,25 @@ class Chart {
     }
 
     /**
-     * Circular flag badge (TradingView-style): flag image cover-clipped inside a circle with blue ring.
+     * Circular flag badge: flag image cover-clipped inside a circle (no border).
      */
     _drawEconomicCalendarFlagBadge(ctx, xi, cy, diameter, img) {
         const r = diameter / 2;
-        const ringW = Math.max(1.5, Math.min(2.75, diameter * 0.11));
-        const innerR = Math.max(r - ringW * 0.55, r * 0.72);
         const iw = img.naturalWidth || img.width;
         const ih = img.naturalHeight || img.height;
         if (!iw || !ih) {
             return false;
         }
-        const side = innerR * 2;
+        const side = diameter;
         const scale = Math.max(side / iw, side / ih);
         const dw = iw * scale;
         const dh = ih * scale;
 
         ctx.save();
         ctx.beginPath();
-        ctx.arc(xi, cy, innerR, 0, Math.PI * 2);
+        ctx.arc(xi, cy, r, 0, Math.PI * 2);
         ctx.clip();
         ctx.drawImage(img, xi - dw / 2, cy - dh / 2, dw, dh);
-        ctx.restore();
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(xi, cy, r - ringW / 2, 0, Math.PI * 2);
-        ctx.strokeStyle = '#2962ff';
-        ctx.lineWidth = ringW;
-        ctx.lineJoin = 'round';
-        ctx.stroke();
         ctx.restore();
         return true;
     }
@@ -15866,7 +15855,6 @@ class Chart {
         const lightish = bodyLight || !bg || /#f{3,6}\b|#fff|white|rgb\s*\(\s*255/i.test(bg) || /245|250|252/.test(bg);
         const fillCol = lightish ? 'rgba(255,255,255,0.96)' : 'rgba(54,58,69,0.96)';
         const emojiFill = lightish ? 'rgba(30,32,38,0.96)' : 'rgba(240,243,248,0.98)';
-        const tvBlue = '#2962ff';
 
         const getFlagEmojiFallback = (ev) => {
             if (ev.flagEmoji) return ev.flagEmoji;
@@ -15924,17 +15912,11 @@ class Chart {
                 }
             }
             if (!drew) {
-                const ringW = Math.max(1.5, Math.min(2.75, badgeD * 0.11));
-                const innerR = Math.max(badgeD / 2 - ringW * 0.55, badgeD * 0.36);
+                const innerR = badgeD / 2;
                 this.ctx.beginPath();
                 this.ctx.arc(xi, flagCy, innerR, 0, Math.PI * 2);
                 this.ctx.fillStyle = fillCol;
                 this.ctx.fill();
-                this.ctx.beginPath();
-                this.ctx.arc(xi, flagCy, badgeD / 2 - ringW / 2, 0, Math.PI * 2);
-                this.ctx.strokeStyle = tvBlue;
-                this.ctx.lineWidth = ringW;
-                this.ctx.stroke();
                 const iso = typeof api.getCalendarFlagCode === 'function' ? api.getCalendarFlagCode(e) : '';
                 if (iso && /^[A-Z]{2}$/i.test(iso)) {
                     const codeStr = String(iso).toUpperCase();
@@ -15964,7 +15946,7 @@ class Chart {
             const totalSpread = (n - 1) * clusterGap;
 
             if (n > 1 && totalSpread > maxSpreadPerCluster) {
-                // Collapsed cluster: stack top 2 flags + count pill (TradingView style)
+                // Collapsed cluster: stack top 2 flags when zoomed out
                 const showCount = Math.min(n, 2);
                 const stackOffset = badgeD * 0.28;
                 const stackBaseY = cy - stackOffset * (showCount - 1);
@@ -15974,33 +15956,12 @@ class Chart {
                     _drawSingleFlag(cluster[s].e, clusterCenterX, scy);
                 }
 
-                if (n > showCount) {
-                    const pillText = '+' + (n - showCount);
-                    const pillFont = Math.max(7, Math.min(10, badgeD * 0.55));
-                    this.ctx.font = `600 ${pillFont}px system-ui,"Segoe UI",sans-serif`;
-                    const tw = this.ctx.measureText(pillText).width;
-                    const pillW = tw + 6;
-                    const pillH = pillFont + 3;
-                    const pillY = cy + badgeD / 2 + 3;
-                    this.ctx.beginPath();
-                    const prx = pillH / 2;
-                    if (typeof this.ctx.roundRect === 'function') {
-                        this.ctx.roundRect(clusterCenterX - pillW / 2, pillY, pillW, pillH, prx);
-                    } else {
-                        this._economicCalendarRoundRectPath(this.ctx, clusterCenterX - pillW / 2, pillY, pillW, pillH, prx);
-                    }
-                    this.ctx.fillStyle = 'rgba(41,98,255,0.85)';
-                    this.ctx.fill();
-                    this.ctx.fillStyle = '#fff';
-                    this.ctx.fillText(pillText, clusterCenterX, pillY + pillH / 2);
-                }
-
                 for (let k = 0; k < n; k++) {
                     this._economicCalendarHitRegions.push({
                         left: clusterCenterX - halfBadgeR - 4,
                         right: clusterCenterX + halfBadgeR + 4,
                         top: cy - badgeD - 4,
-                        bottom: cy + badgeD + 14,
+                        bottom: cy + halfBadgeR + 2,
                         event: cluster[k].e
                     });
                 }
