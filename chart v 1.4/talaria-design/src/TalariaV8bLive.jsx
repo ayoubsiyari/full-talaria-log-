@@ -15237,64 +15237,65 @@ const TalariaV8bLive = () => {
                 <div key={i}
                   onMouseEnter={() => setHov(`dd-${i}`)} onMouseLeave={() => { setHov(null); setBtnPressed(null); }}
                   onPointerDown={() => setBtnPressed(`dd-${i}`)} onPointerUp={() => setBtnPressed(null)}
+                  onClick={(e) => {
+                    if (e.target.closest && e.target.closest('[data-ddpin]')) return;
+                    const ch =
+                      typeof window.getActiveChart === "function"
+                        ? window.getActiveChart()
+                        : window.chart;
+                    if (activeKey === "eye" && ch && typeof ch.handleVisibilityMenuAction === "function") {
+                      if (item.icon === "eyeAll") ch.handleVisibilityMenuAction("drawings");
+                      else if (item.icon === "eyeInd") ch.handleVisibilityMenuAction("indicators");
+                      else if (item.icon === "eyePos") ch.handleVisibilityMenuAction("positions");
+                      else if (item.icon === "eyeHide") ch.handleVisibilityMenuAction("all");
+                      setGroupSelected(p => v9SanitizeGroupSelected({ ...p, eye: item }));
+                      closeDropdown();
+                      return;
+                    }
+                    if (activeKey === "magnet") {
+                      applyV9MagnetMode(item);
+                      setGroupSelected(p => v9SanitizeGroupSelected({ ...p, magnet: item }));
+                      closeDropdown();
+                      return;
+                    }
+                    if (activeKey === "trash") {
+                      if (item.icon === "trashDraw") ch?.clearOnlyDrawings?.({ confirmPrompt: false });
+                      else if (item.icon === "trashInd") ch?.clearOnlyIndicators?.({ confirmPrompt: false });
+                      else if (item.icon === "trash") ch?.clearDrawingsAndIndicators?.({ confirmPrompt: false });
+                      setGroupSelected(p => v9SanitizeGroupSelected({ ...p, trash: item }));
+                      closeDropdown();
+                      return;
+                    }
+                    setTool(activeKey); setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [activeKey]: item })); closeDropdown();
+                    if (item.icon === "emoji") {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setEmojiPanelPos({ x: (r.right + 8) / Z, y: r.top / Z });
+                      setEmojiPanelOpen(true);
+                    }
+                    if (vwapSettOpen) closeVwapSett();
+                    if (vpSettOpen) closeVpSett();
+                    if (avSettOpen) closeAvSett();
+                  }}
                   style={{
                     display: "flex", alignItems: "center", padding: "4px 8px 4px 14px",
                     background: isSelected ? c.acD : rowHov ? "rgba(255,255,255,0.07)" : "transparent",
                     position: "relative", transition: "background 0.1s",
-                    transform: btnPressed===`dd-${i}` ? "scale(0.97)" : "scale(1)",
+                    cursor: "default",
                   }}>
                   {isSelected && <div style={{position:"absolute",left:0,top:"10%",bottom:"10%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 4px ${c.acG}`}}/>}
-                  <button type="button"
-                    onClick={(e) => {
-                      const ch =
-                        typeof window.getActiveChart === "function"
-                          ? window.getActiveChart()
-                          : window.chart;
-                      if (activeKey === "eye" && ch && typeof ch.handleVisibilityMenuAction === "function") {
-                        if (item.icon === "eyeAll") ch.handleVisibilityMenuAction("drawings");
-                        else if (item.icon === "eyeInd") ch.handleVisibilityMenuAction("indicators");
-                        else if (item.icon === "eyePos") ch.handleVisibilityMenuAction("positions");
-                        else if (item.icon === "eyeHide") ch.handleVisibilityMenuAction("all");
-                        setGroupSelected(p => v9SanitizeGroupSelected({ ...p, eye: item }));
-                        closeDropdown();
-                        return;
-                      }
-                      if (activeKey === "magnet") {
-                        applyV9MagnetMode(item);
-                        setGroupSelected(p => v9SanitizeGroupSelected({ ...p, magnet: item }));
-                        closeDropdown();
-                        return;
-                      }
-                      if (activeKey === "trash") {
-                        if (item.icon === "trashDraw") ch?.clearOnlyDrawings?.({ confirmPrompt: false });
-                        else if (item.icon === "trashInd") ch?.clearOnlyIndicators?.({ confirmPrompt: false });
-                        else if (item.icon === "trash") ch?.clearDrawingsAndIndicators?.({ confirmPrompt: false });
-                        setGroupSelected(p => v9SanitizeGroupSelected({ ...p, trash: item }));
-                        closeDropdown();
-                        return;
-                      }
-                      setTool(activeKey); setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [activeKey]: item })); closeDropdown();
-                      if (item.icon === "emoji") {
-                        const r = e.currentTarget.getBoundingClientRect();
-                        setEmojiPanelPos({ x: (r.right + 8) / Z, y: r.top / Z });
-                        setEmojiPanelOpen(true);
-                      }
-                      // Close any open volume-tool settings when selecting a new tool
-                      if (vwapSettOpen) closeVwapSett();
-                      if (vpSettOpen) closeVpSett();
-                      if (avSettOpen) closeAvSett();
-                    }}
+                  <div
                     style={{
                       flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "2px 0",
-                      background: "transparent", border: "none", cursor: "default",
                       color: isSelected ? c.acL : rowHov ? c.tx : c.ts,
                       fontSize: 12, fontWeight: isSelected ? 700 : 500, fontFamily: F,
+                      pointerEvents: "none",
                     }}>
                     <I n={item.icon} s={15} cl={isSelected ? c.acL : rowHov ? c.tx : c.ts}/>
                     {item.label}
-                  </button>
+                  </div>
                   
                   {!["eye","magnet","trash"].includes(activeKey) && <div
+                    data-ddpin="1"
                     onPointerDown={(e) => {
                       e.stopPropagation(); e.preventDefault();
                       setToolPinned(prev => prev.includes(item.label) ? prev.filter(x => x !== item.label) : prev.length >= 20 ? prev : [...prev, item.label]);
