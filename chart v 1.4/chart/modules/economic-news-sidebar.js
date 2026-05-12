@@ -102,6 +102,8 @@
 
     /** Finnhub allows from/to range; one day when no bars, full span when short series, visible window when very long. */
     var MAX_CALENDAR_FETCH_DAYS = 120;
+    var lastFetchFinishedAt = 0;
+    var FETCH_COOLDOWN_MS = 5000;
 
     /** Always fetch through at least this many days after reference "now" so the Upcoming tab can show a full week. */
     var UPCOMING_NEWS_DAYS_AHEAD = 7;
@@ -682,6 +684,7 @@
 
     async function loadCalendar(force) {
         if (state.loading && !force) return;
+        if (!force && lastFetchFinishedAt && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) return;
         var myId = ++calendarLoadId;
         state.loading = true;
         state.error = null;
@@ -713,11 +716,14 @@
         } catch (err) {
             if (myId !== calendarLoadId) return;
             state.error = (err && err.message) ? String(err.message) : 'Failed to load calendar';
-            state.events = [];
-            state.loaded = false;
-            state.loadedRangeKey = null;
+            // Keep existing events visible on error — don't clear flags from chart
+            if (!state.events || state.events.length === 0) {
+                state.loaded = false;
+                state.loadedRangeKey = null;
+            }
         } finally {
             if (myId !== calendarLoadId) return;
+            lastFetchFinishedAt = Date.now();
             state.loading = false;
             render();
             startCountdownLoop();
@@ -1007,9 +1013,14 @@
             calendarPanDebounceTimer = null;
             try {
                 var rng = getCalendarFetchRange();
-                if (!state.loading && (!state.loaded || state.loadedRangeKey !== rng.rangeKey)) {
-                    loadCalendar();
+                if (state.loading) return;
+                if (state.loaded && state.loadedRangeKey === rng.rangeKey) return;
+                // Skip reload if new range is within the already-loaded range
+                if (state.loaded && state.loadedRangeKey) {
+                    var parts = state.loadedRangeKey.split('|');
+                    if (parts.length === 2 && rng.fromStr >= parts[0] && rng.toStr <= parts[1]) return;
                 }
+                loadCalendar();
             } catch (err) {}
         }, 350);
     };

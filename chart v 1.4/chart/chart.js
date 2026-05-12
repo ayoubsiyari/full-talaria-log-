@@ -404,13 +404,13 @@ class Chart {
         // Load saved tool defaults from localStorage
         this.loadToolDefaults();
         
-        // Chart appearance settings - TradingView professional colors
+        // Chart appearance settings - TradingView Dark with black background
         this.chartSettings = {
             // Chart Type
             chartType: 'candles', // 'candles', 'hollow', 'heikinashi', 'bars', 'line', 'area', 'baseline'
             
-            // Background - Dark theme as default
-            backgroundColor: '#050028',
+            // Background - Black
+            backgroundColor: '#000000',
             backgroundStyle: 'Solid', // 'Solid' or 'Gradient'
             
             // Grid
@@ -438,7 +438,7 @@ class Chart {
             watermarkPattern: 'solid',
             
             // Scales
-            scaleTextColor: '#ffffff',
+            scaleTextColor: '#787b86',
             scaleTextSize: 12,
             scaleLinesColor: '#2a2e39',
             scaleLinePattern: 'solid',
@@ -479,8 +479,8 @@ class Chart {
             settingsPanelAccentColor: '#2962ff',
             settingsPanelSecondaryColor: '#7b61ff',
             settingsPanelTextColor: '#e0e3ea',
-            settingsPanelBgColor: '#050028',
-            settingsPanelSidebarBgColor: '#050028',
+            settingsPanelBgColor: '#000000',
+            settingsPanelSidebarBgColor: '#000000',
             
             // Volume
             volumeUpColor: 'rgba(8, 153, 129, 0.5)',
@@ -6845,18 +6845,18 @@ class Chart {
             /* ── TALARIA THEMES ── */
             'talaria-dark': {
                 name: 'Talaria Dark',
-                backgroundColor: '#050028',
-                gridColor: 'rgba(41, 98, 255, 0.1)',
-                bodyUpColor: '#00d4aa', bodyDownColor: '#ff4757',
-                borderUpColor: '#00d4aa', borderDownColor: '#ff4757',
-                wickUpColor: '#00d4aa', wickDownColor: '#ff4757',
-                scaleTextColor: '#ffffff', scaleLinesColor: '#2a2e39',
-                symbolTextColor: '#ffffff',
-                crosshairColor: 'rgba(41, 98, 255, 0.3)',
-                cursorLabelTextColor: '#050028', cursorLabelBgColor: '#2962ff',
-                volumeUpColor: 'rgba(0, 212, 170, 0.5)', volumeDownColor: 'rgba(255, 71, 87, 0.5)',
-                settingsPanelBgColor: '#050028', settingsPanelAccentColor: '#2962ff',
-                settingsPanelSecondaryColor: '#00d4aa', settingsPanelTextColor: '#ffffff'
+                backgroundColor: '#000000',
+                gridColor: 'rgba(42, 46, 57, 0.6)',
+                bodyUpColor: '#089981', bodyDownColor: '#f23645',
+                borderUpColor: '#089981', borderDownColor: '#f23645',
+                wickUpColor: '#089981', wickDownColor: '#f23645',
+                scaleTextColor: '#787b86', scaleLinesColor: '#2a2e39',
+                symbolTextColor: '#787b86',
+                crosshairColor: 'rgba(120, 123, 134, 0.4)',
+                cursorLabelTextColor: '#d1d4dc', cursorLabelBgColor: '#434651',
+                volumeUpColor: 'rgba(8, 153, 129, 0.5)', volumeDownColor: 'rgba(242, 54, 69, 0.5)',
+                settingsPanelBgColor: '#000000', settingsPanelAccentColor: '#2962ff',
+                settingsPanelSecondaryColor: '#089981', settingsPanelTextColor: '#d1d4dc'
             },
             /* ── PREMIUM THEMES ── */
             'midnight': {
