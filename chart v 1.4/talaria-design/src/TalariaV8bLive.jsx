@@ -9704,10 +9704,38 @@ const TalariaV8bLive = () => {
             }
             if (t.dd) {
               // Main icon: activate tool only. Chevron is the only control that opens/toggles the menu.
-              if (!["eye", "magnet", "trash"].includes(t.id)) setTool(t.id);
+              if (!["eye", "magnet", "trash"].includes(t.id)) {
+                if (tlBarSelected) {
+                  setTlBarSelected(false); setTlBarSelectedType(null);
+                  try {
+                    const dmSel = ch && ch.drawingManager;
+                    if (dmSel) {
+                      if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll();
+                      else if (typeof dmSel.clearSelection === 'function') dmSel.clearSelection();
+                      else if (dmSel.selectedDrawing) { dmSel.selectedDrawing = null; if (dmSel.selectedDrawings) dmSel.selectedDrawings = []; }
+                      if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide();
+                    }
+                  } catch (_) {}
+                }
+                setTool(t.id);
+              }
               if (dropdown) closeDropdown();
             }
-            else { setTool(t.id); setDropdown(null); }
+            else {
+              if (tlBarSelected) {
+                setTlBarSelected(false); setTlBarSelectedType(null);
+                try {
+                  const dmSel = ch && ch.drawingManager;
+                  if (dmSel) {
+                    if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll();
+                    else if (typeof dmSel.clearSelection === 'function') dmSel.clearSelection();
+                    else if (dmSel.selectedDrawing) { dmSel.selectedDrawing = null; if (dmSel.selectedDrawings) dmSel.selectedDrawings = []; }
+                    if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide();
+                  }
+                } catch (_) {}
+              }
+              setTool(t.id); setDropdown(null);
+            }
           }}
           style={{
             width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "flex-start",
@@ -15265,6 +15293,22 @@ const TalariaV8bLive = () => {
                       setGroupSelected(p => v9SanitizeGroupSelected({ ...p, trash: item }));
                       closeDropdown();
                       return;
+                    }
+                    // Clear any selected drawing before activating the new tool —
+                    // otherwise dm.currentTool stays null and the multichart sync
+                    // logic nullifies the tool selection (can't place drawing).
+                    if (tlBarSelected) {
+                      setTlBarSelected(false);
+                      setTlBarSelectedType(null);
+                      try {
+                        const dm = ch && ch.drawingManager;
+                        if (dm) {
+                          if (typeof dm.deselectAll === 'function') dm.deselectAll();
+                          else if (typeof dm.clearSelection === 'function') dm.clearSelection();
+                          else if (dm.selectedDrawing) { dm.selectedDrawing = null; if (dm.selectedDrawings) dm.selectedDrawings = []; }
+                          if (dm.toolbar && typeof dm.toolbar.hide === 'function') dm.toolbar.hide();
+                        }
+                      } catch (_) {}
                     }
                     setTool(activeKey); setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [activeKey]: item })); closeDropdown();
                     if (item.icon === "emoji") {
