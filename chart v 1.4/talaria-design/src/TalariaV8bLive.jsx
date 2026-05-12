@@ -4710,6 +4710,201 @@ const TalariaV8bLive = () => {
   const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: true, interval: false, dateRange: false, indicators: false, chartType: false });
   const [layoutTab, setLayoutTab] = useState("panels");
 
+  // ── Support Chat Widget state ─────────────────────────────────────────
+  const [supportChatOpen, setSupportChatOpen] = useState(false);
+  const [supportThreads, setSupportThreads] = useState([]);
+  const [supportSelThread, setSupportSelThread] = useState(null);
+  const [supportMessages, setSupportMessages] = useState([]);
+  const [supportUnread, setSupportUnread] = useState(0);
+  const [supportNewThread, setSupportNewThread] = useState(false);
+  const [supportReply, setSupportReply] = useState("");
+  const [supportNewSubject, setSupportNewSubject] = useState("");
+  const [supportNewCategory, setSupportNewCategory] = useState("other");
+  const [supportNewBody, setSupportNewBody] = useState("");
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [supportSending, setSupportSending] = useState(false);
+  const [supportError, setSupportError] = useState(null);
+  const supportBtnRef = useRef(null);
+  const supportPopRef = useRef(null);
+  const supportWsRef = useRef(null);
+  const supportMsgEndRef = useRef(null);
+  const supportReplyFileRef = useRef(null);
+  const supportNewFileRef = useRef(null);
+  const [supportReplyFile, setSupportReplyFile] = useState(null);
+  const [supportNewFile, setSupportNewFile] = useState(null);
+  const supportThreadsRef = useRef(supportThreads);
+  supportThreadsRef.current = supportThreads;
+  const supportPingTimerRef = useRef(null);
+
+  const supportApi = async (url, opts = {}) => {
+    const headers = { ...(opts.headers || {}) };
+    if (opts.body != null && !(opts.body instanceof FormData) && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+    const res = await fetch(url, { ...opts, credentials: "include", headers });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Error ${res.status}`);
+    }
+    return res.json();
+  };
+
+  const supportWsUrl = () => {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${proto}//${window.location.host}/ws/support`;
+  };
+
+  const supportLoadThreads = async () => {
+    try {
+      const data = await supportApi("/api/support/threads");
+      setSupportThreads(data.threads || []);
+    } catch (e) { console.warn("[Support] loadThreads", e); }
+  };
+
+  const supportLoadMessages = async (threadId) => {
+    try {
+      const data = await supportApi(`/api/support/threads/${threadId}/messages?limit=200`);
+      setSupportMessages(data.messages || []);
+    } catch (e) { console.warn("[Support] loadMessages", e); }
+  };
+
+  const supportMarkRead = async (threadId) => {
+    try { await supportApi(`/api/support/threads/${threadId}/read`, { method: "PATCH", body: JSON.stringify({}) }); } catch {}
+  };
+
+  const supportLoadNotifications = async () => {
+    try {
+      const data = await supportApi("/api/notifications?limit=50");
+      const unread = (data.notifications || []).filter(n => !n.read_at).length;
+      setSupportUnread(unread);
+    } catch {}
+  };
+
+  const supportDisconnectWs = () => {
+    if (supportPingTimerRef.current) { clearInterval(supportPingTimerRef.current); supportPingTimerRef.current = null; }
+    if (supportWsRef.current) { try { supportWsRef.current.close(); } catch {} supportWsRef.current = null; }
+  };
+
+  const supportConnectWs = (threadId) => {
+    supportDisconnectWs();
+    try {
+      const ws = new WebSocket(supportWsUrl());
+      supportWsRef.current = ws;
+      ws.onopen = () => {
+        try {
+          ws.send(JSON.stringify({ type: "subscribe_inbox" }));
+          if (threadId) ws.send(JSON.stringify({ type: "subscribe", thread_id: threadId }));
+        } catch {}
+        supportPingTimerRef.current = setInterval(() => { try { ws.send(JSON.stringify({ type: "ping" })); } catch {} }, 30000);
+      };
+      ws.onmessage = (ev) => {
+        try {
+          const d = JSON.parse(ev.data);
+          if (d.type === "notification_ping") { supportLoadNotifications(); supportLoadThreads(); return; }
+          if (d.type === "message" && d.message && d.thread_id === threadId) {
+            setSupportMessages(prev => prev.some(x => x.id === d.message.id) ? prev : [...prev, d.message]);
+            supportLoadThreads();
+          }
+        } catch {}
+      };
+      ws.onclose = () => { if (supportWsRef.current === ws) supportWsRef.current = null; };
+    } catch (e) { console.warn("[Support] WS connect failed", e); }
+  };
+
+  const supportSendReply = async () => {
+    const body = supportReply.trim();
+    if ((!body && !supportReplyFile) || !supportSelThread) return;
+    if (supportReplyFile && supportReplyFile.size > 2 * 1024 * 1024) { setSupportError("Image must be 2 MB or smaller."); return; }
+    setSupportSending(true); setSupportError(null);
+    try {
+      if (supportReplyFile) {
+        const fd = new FormData(); fd.append("body", body); fd.append("file", supportReplyFile);
+        await supportApi(`/api/support/threads/${supportSelThread.id}/messages`, { method: "POST", body: fd });
+      } else {
+        await supportApi(`/api/support/threads/${supportSelThread.id}/messages`, { method: "POST", body: JSON.stringify({ body }) });
+      }
+      setSupportReply(""); setSupportReplyFile(null);
+      if (supportReplyFileRef.current) supportReplyFileRef.current.value = "";
+      await supportLoadMessages(supportSelThread.id);
+      await supportMarkRead(supportSelThread.id);
+      await supportLoadThreads();
+      await supportLoadNotifications();
+    } catch (e) { setSupportError(e.message); }
+    setSupportSending(false);
+  };
+
+  const supportCreateThread = async () => {
+    const subject = supportNewSubject.trim();
+    const body = supportNewBody.trim();
+    if (!subject || (!body && !supportNewFile)) return;
+    if (supportNewFile && supportNewFile.size > 2 * 1024 * 1024) { setSupportError("Image must be 2 MB or smaller."); return; }
+    setSupportSending(true); setSupportError(null);
+    try {
+      let data;
+      if (supportNewFile) {
+        const fd = new FormData(); fd.append("subject", subject); fd.append("category", supportNewCategory); fd.append("body", body); fd.append("file", supportNewFile);
+        data = await supportApi("/api/support/threads", { method: "POST", body: fd });
+      } else {
+        data = await supportApi("/api/support/threads", { method: "POST", body: JSON.stringify({ subject, category: supportNewCategory, body }) });
+      }
+      setSupportNewSubject(""); setSupportNewBody(""); setSupportNewFile(null); setSupportNewCategory("other");
+      if (supportNewFileRef.current) supportNewFileRef.current.value = "";
+      setSupportNewThread(false);
+      await supportLoadThreads();
+      if (data.thread?.id) {
+        const thread = data.thread;
+        setSupportSelThread(thread);
+        await supportLoadMessages(thread.id);
+        await supportMarkRead(thread.id);
+        supportConnectWs(thread.id);
+      }
+    } catch (e) { setSupportError(e.message); }
+    setSupportSending(false);
+  };
+
+  // click-away listener for support chat
+  useEffect(() => {
+    if (!supportChatOpen) return;
+    const onDocDown = (e) => {
+      const t = e.target;
+      if (supportBtnRef.current && supportBtnRef.current.contains(t)) return;
+      if (supportPopRef.current && supportPopRef.current.contains(t)) return;
+      setSupportChatOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setSupportChatOpen(false); };
+    document.addEventListener("mousedown", onDocDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDocDown, true); document.removeEventListener("keydown", onKey); };
+  }, [supportChatOpen]);
+
+  // load threads + notifications when panel opens; connect WS
+  useEffect(() => {
+    if (supportChatOpen) {
+      setSupportLoading(true);
+      Promise.all([supportLoadThreads(), supportLoadNotifications()]).finally(() => setSupportLoading(false));
+      if (!supportWsRef.current) supportConnectWs(supportSelThread?.id);
+    }
+    return () => { if (!supportChatOpen) supportDisconnectWs(); };
+  }, [supportChatOpen]);
+
+  // when thread selected, load messages + reconnect WS
+  useEffect(() => {
+    if (supportSelThread) {
+      supportLoadMessages(supportSelThread.id);
+      supportMarkRead(supportSelThread.id);
+      supportConnectWs(supportSelThread.id);
+      supportLoadNotifications();
+    }
+  }, [supportSelThread?.id]);
+
+  // scroll to bottom on new messages
+  useEffect(() => {
+    supportMsgEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [supportMessages]);
+
+  // load unread count on mount
+  useEffect(() => { supportLoadNotifications(); }, []);
+
   /** Same keys as the legacy News country filter (economic-news-sidebar.js). */
   const ECON_CAL_COUNTRIES = ["US", "EU", "GB", "JP", "AU", "CA", "DE", "FR", "IT", "CN", "CH"];
   const [ecoNewsRev, setEcoNewsRev] = useState(0);
@@ -7322,6 +7517,9 @@ const TalariaV8bLive = () => {
       search:     "M784-120 532-372q-30 24-69 38t-83 14q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l252 252-56 56ZM380-400q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z",
       edit:       "M200-200h57l391-391-57-57-391 391v57Zm-80 80v-170l585-583 167 171-582 582H120Zm640-584-56-56 56 56Zm-141 85-28-29 57 57-29-28Z",
       filter:     "M400-240v-80h160v80H400ZM240-440v-80h480v80H240ZM120-640v-80h720v80H120Z",
+      chat:       "M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Zm126-240h594v-480H160v525l46-45Zm-46 0v-480 480Z",
+      send:       "M120-160v-640l760 320-760 320Zm80-120 474-200-474-200v140l240 60-240 60v140Zm0 0v-400 400Z",
+      attach:     "M720-330q0 104-73 177T470-80q-104 0-177-73t-73-177v-370q0-75 52.5-127.5T400-880q75 0 127.5 52.5T580-700v350q0 46-32 78t-78 32q-46 0-78-32t-32-78v-370h80v370q0 13 8.5 21.5T470-320q13 0 21.5-8.5T500-350v-350q0-42-29-71t-71-29q-42 0-71 29t-29 71v370q0 71 49.5 120.5T470-160q71 0 120.5-49.5T640-330v-390h80v390Z",
     };
     const d = P[n];
     return d ? F(d) : null;
@@ -17649,22 +17847,24 @@ const TalariaV8bLive = () => {
              the same variants grid + sync toggles the right-panel layout
              tab uses. Selecting a variant drives `layoutPanels` which
              MultichartGrid (Phase 7.2.2) reacts to. */}
-        {[{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"layout",icon:"layout",label:"Layouts"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
+        {[{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"layout",icon:"layout",label:"Layouts"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"},{id:"support",icon:"chat",label:"Support"}].map(({id,icon,label}) => (
           <button type="button" key={id}
-            ref={(el) => { if (id === "layout") layoutDropdownBtnRef.current = el; }}
+            ref={(el) => { if (id === "layout") layoutDropdownBtnRef.current = el; if (id === "support") supportBtnRef.current = el; }}
             onClick={(e) => {
-              if(id==="layout"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setRightPanel(null); setOrderPanelOpen(false); setLayoutDropdownOpen(prev => !prev); return; }
-              if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); setLayoutDropdownOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} }
-              if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setLayoutDropdownOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); }
-              if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); setLayoutDropdownOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} }
-              if(id==="expand"){ e.stopPropagation(); setLayoutDropdownOpen(false); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }
+              if(id==="layout"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setRightPanel(null); setOrderPanelOpen(false); setLayoutDropdownOpen(prev => !prev); setSupportChatOpen(false); return; }
+              if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} }
+              if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); }
+              if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} }
+              if(id==="expand"){ e.stopPropagation(); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }
+              if(id==="support"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setLayoutDropdownOpen(false); setRightPanel(null); setOrderPanelOpen(false); setSupportChatOpen(prev => !prev); }
             }}
             onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
-              background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&layoutDropdownOpen) || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
+              background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&layoutDropdownOpen) || (id==="expand"&&isFullscreen) || (id==="support"&&supportChatOpen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
               transition: "background 0.12s" }}>
-            {(() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&layoutDropdownOpen) || (id==="expand"&&isFullscreen); return <>
+            {(() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&layoutDropdownOpen) || (id==="expand"&&isFullscreen) || (id==="support"&&supportChatOpen); return <>
               <I n={id==="expand"&&isFullscreen?"compress":icon} s={16} cl={isActive ? c.acL : hov===`u-${id}` ? c.tx : c.ts}/>
+              {id==="support" && supportUnread > 0 && <div style={{ position:"absolute", top:1, right:1, minWidth:14, height:14, borderRadius:7, background:"#e53935", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", lineHeight:1, pointerEvents:"none" }}>{supportUnread > 99 ? "99+" : supportUnread}</div>}
               {isActive && <div style={{ position: "absolute", bottom: 0, left: "15%", right: "15%", height: 2, background: `linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
               {hov===`u-${id}` && !isActive && <div style={{ position: "absolute", bottom: 0, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
             </>; })()}

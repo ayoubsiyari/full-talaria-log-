@@ -669,6 +669,19 @@
             // metadata reports is a category error.
             if (!SYNC_MSG_TYPES[msg.type]) return;
 
+            // Sync-mode gate: if the parent set a syncModeGate reference,
+            // respect its toggles. This prevents the raw message listener
+            // (which bypasses the manager's _fanOut gate) from applying
+            // sync messages that the user has explicitly turned off.
+            if (syncModeGate) {
+                var mt = msg.type;
+                if ((mt === 'crosshair' || mt === 'crosshair-clear') && !syncModeGate.crosshair) return;
+                if (mt === 'visibleRange' && !syncModeGate.visibleRange) return;
+                if (mt === 'symbol' && !syncModeGate.symbol) return;
+                if ((mt === 'drawing-add' || mt === 'drawing-update'
+                  || mt === 'drawing-remove' || mt === 'drawing-clear') && !syncModeGate.drawings) return;
+            }
+
             const cleaned = G.filterForbiddenFields(msg);
             if (cleaned.dropped.length) {
                 console.error('[bridge:' + chartId + '] inbound forbidden fields dropped:', cleaned.dropped);
@@ -933,6 +946,13 @@
             }
         }
 
+        // Sync-mode gate: when set to a manager's syncMode object, applyInbound
+        // will skip messages whose category is toggled OFF. The host bridge
+        // sets this after the manager is created so that raw message-listener
+        // delivery respects the same gates as _fanOut. Iframe bridges leave
+        // it null (their inbound messages already passed the manager's gate).
+        var syncModeGate = null;
+
         if (!opts.skipMessageListener) {
             global.addEventListener('message', function (ev) {
                 applyInbound(ev.data);
@@ -1060,6 +1080,9 @@
             deliver: applyInbound,
             setVisibleTimeRange: function (s, e) { setVisibleTimeRange(chart, s, e); },
             readVisibleTimeRange: function () { return readVisibleTimeRange(chart); },
+            // Let the parent wire the manager's syncMode object so the
+            // bridge's own message listener respects sync toggles.
+            setSyncModeGate: function (ref) { syncModeGate = ref || null; },
         };
     }
 

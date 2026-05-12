@@ -135,11 +135,6 @@ function ensureHostBridge() {
             chartId:      HOST_PANEL_ID,
             parentOrigin: "*",
             verbose:      true,
-            // The host receives inbound sync via directDeliver (called by
-            // the manager's _fanOut which respects syncMode gates). Skip
-            // the raw message listener so iframe postMessages don't bypass
-            // sync-mode checks and move Panel A when sync is off.
-            skipMessageListener: true,
         });
         window.__multichartHostBridge = bridge;
         try { console.log("[MultichartGrid] host bridge installed on window.chart as", HOST_PANEL_ID); } catch (_) {}
@@ -1206,6 +1201,12 @@ export default function MultichartGrid({
                         tf:     initialTimeframeRef.current || "1m",
                         fileId: initialFileIdRef.current    || null,
                     }, hostBridge);
+                    // Wire the manager's syncMode object into the host bridge
+                    // so its message listener respects sync toggles (the raw
+                    // listener would otherwise bypass the manager's _fanOut gate).
+                    if (typeof hostBridge.setSyncModeGate === "function") {
+                        hostBridge.setSyncModeGate(managerRef.current.syncMode);
+                    }
                 } catch (e) {
                     console.error("[MultichartGrid] addHostChart failed:", e);
                 }
