@@ -13654,38 +13654,42 @@ class Chart {
                 futureIdx = lastRealIdx + Math.ceil((nextAlignedTs - lastTs) / timeframeMs);
             }
 
-            // Emit future ticks at the same cadence AND detect month/year boundaries
-            // so the right side matches the left side's label density.
-            let fPrevMonth = -1, fPrevYear = -1;
+            // Emit future ticks using the same boundary detection as the real data
+            // (day/month/year changes) so the right side matches the left side's density.
+            let fPrevDay = -1, fPrevMonth = -1, fPrevYear = -1;
             {
                 const lastCandle = this.data[lastRealIdx];
                 if (lastCandle && lastCandle.t) {
                     const ld = this.convertToTimezone(lastCandle.t);
+                    fPrevDay   = ld.getUTCDate();
                     fPrevMonth = ld.getUTCMonth();
                     fPrevYear  = ld.getUTCFullYear();
                 }
             }
             const futureEnd = Math.ceil(lastVisibleIdx);
             for (let fi = lastRealIdx + 1; fi <= futureEnd; fi++) {
-                const ri  = fi;
-                const tz2 = this.convertToTimezone(last.t + (ri - lastRealIdx) * timeframeMs);
-                const fMonth = tz2.getUTCMonth(), fYear = tz2.getUTCFullYear();
+                const tz2 = this.convertToTimezone(last.t + (fi - lastRealIdx) * timeframeMs);
+                const fDay = tz2.getUTCDate(), fMonth = tz2.getUTCMonth(), fYear = tz2.getUTCFullYear();
                 let fIsBoundary = false, fBoundaryLabel = null;
                 if (fPrevYear !== -1) {
                     if (fYear !== fPrevYear)        { fIsBoundary = true; fBoundaryLabel = String(fYear); }
                     else if (fMonth !== fPrevMonth)  { fIsBoundary = true; fBoundaryLabel = monthNames[fMonth]; }
+                    else if (fDay !== fPrevDay)      { fIsBoundary = true; fBoundaryLabel = String(fDay); }
                 }
-                fPrevMonth = fMonth; fPrevYear = fYear;
+                fPrevDay = fDay; fPrevMonth = fMonth; fPrevYear = fYear;
 
                 const isRoundFuture = (fi === futureIdx) || ((fi - futureIdx) % labelInterval === 0 && fi >= futureIdx);
-                if (!isRoundFuture && !fIsBoundary) continue;
+                const hasFBoundary = fIsBoundary && !!fBoundaryLabel;
+                const shouldEmitFuture = isRoundFuture || (allowStandaloneBoundaries && hasFBoundary);
+                if (!shouldEmitFuture) continue;
 
-                const lbl = (fIsBoundary && fBoundaryLabel)
+                const useFBoundaryLabel = hasFBoundary && (allowStandaloneBoundaries || isRoundFuture);
+                const lbl = useFBoundaryLabel
                     ? fBoundaryLabel
                     : (isDailyOrHigher
                         ? monthNames[fMonth] + ' ' + tz2.getUTCDate()
                         : this._formatSessionClock(tz2, false));
-                candidates.push({ idx: ri, isBoundary: !!(fIsBoundary && fBoundaryLabel), label: lbl });
+                candidates.push({ idx: fi, isBoundary: !!useFBoundaryLabel, label: lbl });
             }
         }
 
