@@ -7693,6 +7693,7 @@ const TalariaV8bLive = () => {
   // only clear chart.js. If we dm.setTool(legacy), drawing-tools-manager.setTool calls deselectAll()
   // and wipes the selection the user just made — and leaves draw mode armed.
   const v9SelectionToolbarSyncRef = useRef(false);
+  const v9UserExplicitToolRef = useRef(false);
 
   const getSelectedDrawingForTemplate = useCallback(() => {
     try {
@@ -7824,7 +7825,8 @@ const TalariaV8bLive = () => {
           // Refocusing host (A) after drawing on iframe B/C: multichart sync had cleared
           // the host's drawingManager while React still shows the last tool — do not push
           // that stale selection back onto A (bug: rail shows Trend Line on A but A is cursor).
-          if (fid != null && grid.hostPanelId != null && fid === grid.hostPanelId) {
+          // Skip this guard when the user explicitly picked a tool from the sidebar.
+          if (fid != null && grid.hostPanelId != null && fid === grid.hostPanelId && !v9UserExplicitToolRef.current) {
             const hdm = window.chart && window.chart.drawingManager;
             const ct = hdm && hdm.currentTool;
             if (!ct && legacyParam) legacyParam = null;
@@ -7850,7 +7852,7 @@ const TalariaV8bLive = () => {
               }
               return;
             }
-            if (fid != null && grid.hostPanelId != null && fid === grid.hostPanelId) {
+            if (fid != null && grid.hostPanelId != null && fid === grid.hostPanelId && !v9UserExplicitToolRef.current) {
               const hdm = window.chart && window.chart.drawingManager;
               const ct = hdm && hdm.currentTool;
               if (!ct) {
@@ -7862,6 +7864,7 @@ const TalariaV8bLive = () => {
                 return;
               }
             }
+            v9UserExplicitToolRef.current = false;
             applyHostDm();
           };
           void grid.syncDrawingToolAcrossPanels(legacyParam)
@@ -7903,6 +7906,7 @@ const TalariaV8bLive = () => {
         }
       }
 
+      v9UserExplicitToolRef.current = false;
       applyHostDm();
     };
     apply();
@@ -9703,20 +9707,12 @@ const TalariaV8bLive = () => {
               return;
             }
             if (t.dd) {
-              // Main icon: activate tool only. Chevron is the only control that opens/toggles the menu.
               if (!["eye", "magnet", "trash"].includes(t.id)) {
                 if (tlBarSelected) {
                   setTlBarSelected(false); setTlBarSelectedType(null);
-                  try {
-                    const dmSel = ch && ch.drawingManager;
-                    if (dmSel) {
-                      if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll();
-                      else if (typeof dmSel.clearSelection === 'function') dmSel.clearSelection();
-                      else if (dmSel.selectedDrawing) { dmSel.selectedDrawing = null; if (dmSel.selectedDrawings) dmSel.selectedDrawings = []; }
-                      if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide();
-                    }
-                  } catch (_) {}
+                  try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll(); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
                 }
+                v9UserExplicitToolRef.current = true;
                 setTool(t.id);
               }
               if (dropdown) closeDropdown();
@@ -9724,16 +9720,9 @@ const TalariaV8bLive = () => {
             else {
               if (tlBarSelected) {
                 setTlBarSelected(false); setTlBarSelectedType(null);
-                try {
-                  const dmSel = ch && ch.drawingManager;
-                  if (dmSel) {
-                    if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll();
-                    else if (typeof dmSel.clearSelection === 'function') dmSel.clearSelection();
-                    else if (dmSel.selectedDrawing) { dmSel.selectedDrawing = null; if (dmSel.selectedDrawings) dmSel.selectedDrawings = []; }
-                    if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide();
-                  }
-                } catch (_) {}
+                try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll(); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
               }
+              v9UserExplicitToolRef.current = true;
               setTool(t.id); setDropdown(null);
             }
           }}
@@ -15294,9 +15283,6 @@ const TalariaV8bLive = () => {
                       closeDropdown();
                       return;
                     }
-                    // Clear any selected drawing before activating the new tool —
-                    // otherwise dm.currentTool stays null and the multichart sync
-                    // logic nullifies the tool selection (can't place drawing).
                     if (tlBarSelected) {
                       setTlBarSelected(false);
                       setTlBarSelectedType(null);
@@ -15304,12 +15290,12 @@ const TalariaV8bLive = () => {
                         const dm = ch && ch.drawingManager;
                         if (dm) {
                           if (typeof dm.deselectAll === 'function') dm.deselectAll();
-                          else if (typeof dm.clearSelection === 'function') dm.clearSelection();
                           else if (dm.selectedDrawing) { dm.selectedDrawing = null; if (dm.selectedDrawings) dm.selectedDrawings = []; }
                           if (dm.toolbar && typeof dm.toolbar.hide === 'function') dm.toolbar.hide();
                         }
                       } catch (_) {}
                     }
+                    v9UserExplicitToolRef.current = true;
                     setTool(activeKey); setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [activeKey]: item })); closeDropdown();
                     if (item.icon === "emoji") {
                       const r = e.currentTarget.getBoundingClientRect();
