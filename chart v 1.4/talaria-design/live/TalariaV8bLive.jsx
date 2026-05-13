@@ -9190,6 +9190,7 @@ const TalariaV8bLive = () => {
   const renderTB = (t, ref) => {
     /** Reserve same right gutter as chevron column so every icon shares one vertical axis. */
     const RAIL_TRAIL_W = 12;
+    const RAIL_ICON_CENTER_NUDGE = RAIL_TRAIL_W / 2;
     const railIcon = v9LeftRailIconForButton(t, groupSelected);
     const ddOpen = dropdown === t.id;
     const act = t.id === "pinbar" ? pinnedBarOpen : tool === t.id;
@@ -9300,8 +9301,8 @@ const TalariaV8bLive = () => {
           }}>
           {/* pointer-events:none on icon so the whole <button type="button"> hit box counts — SVG paths alone miss gaps between strokes */}
           {t.id === "pinbar"
-            ? <span style={{ display: "flex", pointerEvents: "none", transform: `${h && !act ? "rotate(-25deg) scale(1.15)" : "scale(1)"}`, transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
-            : <span style={{ display: "flex", pointerEvents: "none" }}><I n={railIcon} s={17} cl={pressCol}/></span>
+            ? <span style={{ display: "flex", pointerEvents: "none", transform: `${h && !act ? "rotate(-25deg) scale(1.15) " : ""}translateX(${RAIL_ICON_CENTER_NUDGE}px)`, transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
+            : <span style={{ display: "flex", pointerEvents: "none", transform: `translateX(${RAIL_ICON_CENTER_NUDGE}px)` }}><I n={railIcon} s={17} cl={pressCol}/></span>
           }
         </button>
         {act && <div style={{ position: "absolute", left: 0, top: "10%", bottom: "10%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 4px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}

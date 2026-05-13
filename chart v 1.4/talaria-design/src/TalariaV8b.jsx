@@ -1783,6 +1783,7 @@ const TalariaV8b = () => {
   // Render a tool button
   const renderTB = (t, ref) => {
     const RAIL_TRAIL_W = 12;
+    const RAIL_ICON_CENTER_NUDGE = RAIL_TRAIL_W / 2;
     const activeIcon = (t.dd && (groupSelected[t.id]?.icon || t.dd.find(x=>!x.h)?.icon)) || t.icon;
     const ddOpen = dropdown === t.id;
     const act = t.id === "pinbar" ? pinnedBarOpen : tool === t.id;
@@ -1850,8 +1851,8 @@ const TalariaV8b = () => {
             transition: "color 0.15s ease, background 0.12s", position: "relative", fontFamily: F,
           }}>
           {t.id === "pinbar"
-            ? <span style={{display:"flex",transform:h&&!act?"rotate(-25deg) scale(1.15)":"scale(1)",transition:"transform 0.15s"}}><I n={act?"pinFill":"pin"} s={17} cl={pressCol}/></span>
-            : <I n={activeIcon} s={17} cl={pressCol}/>
+            ? <span style={{display:"flex", pointerEvents:"none", transform:h&&!act?`rotate(-25deg) scale(1.15) translateX(${RAIL_ICON_CENTER_NUDGE}px)`:`translateX(${RAIL_ICON_CENTER_NUDGE}px)`,transition:"transform 0.15s"}}><I n={act?"pinFill":"pin"} s={17} cl={pressCol}/></span>
+            : <span style={{ display: "flex", pointerEvents: "none", transform: `translateX(${RAIL_ICON_CENTER_NUDGE}px)` }}><I n={activeIcon} s={17} cl={pressCol}/></span>
           }
         </button>
         {t.dd ? (
