@@ -10211,6 +10211,9 @@ const TalariaV8bLive = () => {
               gap: 10,
               paddingLeft: 4,
               paddingRight: replayOhlcBadgeVisible ? 33 : undefined,
+              /* Fill header row so width does not track OHLC text length — keeps #navIntegrityBadge (right:0) fixed. */
+              flex: "1 1 0%",
+              minWidth: 0,
             }}
           >
             <div className="ohlc-item">
@@ -10374,10 +10377,10 @@ const TalariaV8bLive = () => {
         .ohlc-info.collapsed .ohlc-legend-chevron svg{transform:rotate(0deg)}
         .ohlc-info.collapsed .ohlc-body{display:none !important}
         .ohlc-header{display:flex !important;align-items:center !important;flex-wrap:wrap !important;column-gap:10px !important;row-gap:2px !important}
-        .ohlc-symbol-block{font-size:13px !important;line-height:1.25 !important;color:var(--ohlc-fg,#fff) !important}
+        .ohlc-symbol-block{flex:0 0 auto !important;font-size:13px !important;line-height:1.25 !important;color:var(--ohlc-fg,#fff) !important}
         .ohlc-symbol-block #chartSymbol{color:var(--ohlc-fg,#fff) !important}
         .ohlc-symbol-block #chartTimeframe{color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important}
-        .ohlc-stats{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important;flex-wrap:wrap !important}
+        .ohlc-stats{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important;flex-wrap:nowrap !important;flex:1 1 0% !important;min-width:0 !important}
         .ohlc-item{display:inline-flex !important;align-items:center !important;gap:3px !important}
         .ohlc-label{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;opacity:1 !important}
         .ohlc-value{font-size:9px !important;font-weight:80 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
