@@ -21312,27 +21312,28 @@ class OrderManager {
         
         // Validate lot size/quantity
         if (quantity !== null) {
-            const isFutures = this.marketType === 'futures';
-            const minQty = isFutures ? 1 : this._getQtyMin();
+            const qtyStep = this._getQtyStep();
+            const isWholeQtyInstrument = this.marketType === 'futures' || qtyStep >= 1;
+            const minQty = isWholeQtyInstrument ? Math.max(1, this._getQtyMin()) : this._getQtyMin();
             if (!quantity || quantity <= 0) {
-                errors.push(isFutures ? '⚠️ Futures orders require at least 1 contract' : '⚠️ Position size must be greater than 0 lots');
+                errors.push(isWholeQtyInstrument ? '⚠️ Futures orders require at least 1 contract' : '⚠️ Position size must be greater than 0 lots');
                 
                 // Additional context for risk-based modes
                 if (positionSizeMode === 'risk-usd' || positionSizeMode === 'risk-percent') {
                     if (!slEnabled || !slPrice || slPrice <= 0) {
                         errors.push('⚠️ Set a Stop Loss to calculate position size');
-                    } else if (isFutures) {
+                    } else if (isWholeQtyInstrument) {
                         errors.push('⚠️ Increase risk or reduce stop distance until size is at least 1 contract');
                     }
                 }
                 
                 // Additional context for lot size mode
                 if (positionSizeMode === 'lot-size') {
-                    errors.push(isFutures ? '⚠️ Enter 1 or more whole contracts' : '⚠️ Enter a lot size value');
+                    errors.push(isWholeQtyInstrument ? '⚠️ Enter 1 or more whole contracts' : '⚠️ Enter a lot size value');
                 }
-            } else if (isFutures && quantity < minQty) {
+            } else if (isWholeQtyInstrument && quantity < minQty) {
                 errors.push('⚠️ Futures orders require at least 1 contract');
-            } else if (isFutures && Math.abs(quantity - Math.round(quantity)) > 1e-9) {
+            } else if (isWholeQtyInstrument && Math.abs(quantity - Math.round(quantity)) > 1e-9) {
                 errors.push('⚠️ Futures contracts must be whole numbers');
             }
         }
@@ -21696,6 +21697,41 @@ class OrderManager {
                 }
                 totalLots += levelLots;
             });
+
+            const qtyStep = this._getQtyStep();
+            const isWholeQtyInstrument = this.marketType === 'futures' || qtyStep >= 1;
+            if (isWholeQtyInstrument) {
+                const minQty = Math.max(1, this._getQtyMin());
+                const invalidLevel = validLevels.some((level) => {
+                    const slPips = slEnabled && slPrice > 0
+                        ? Math.abs(level.price - slPrice) / pipSz
+                        : 0;
+                    let levelLots;
+                    if (placeMode === 'lot-size' && slPips > 0) {
+                        levelLots = level.amount || 0;
+                    } else if (slPips > 0) {
+                        const rUsd = this._getMultiEntryLevelRiskUsd(level);
+                        levelLots = rUsd / (slPips * pipVal);
+                    } else {
+                        levelLots = parseFloat(document.getElementById('lotSizeAmount')?.value || 1) / validLevels.length;
+                    }
+                    return !Number.isFinite(levelLots) || levelLots < minQty || Math.abs(levelLots - Math.round(levelLots)) > 1e-9;
+                });
+                if (totalLots < minQty || invalidLevel) {
+                    const msg = 'Futures orders require at least 1 whole contract per entry.';
+                    const orderValidationBox = document.getElementById('orderValidation');
+                    if (orderValidationBox) {
+                        orderValidationBox.className = 'order-validation order-validation--error';
+                        orderValidationBox.innerHTML = `
+                            <div class="order-validation__item">
+                                <span class="order-validation__icon">⚠️</span>
+                                <span>${msg} Increase risk or reduce stop distance.</span>
+                            </div>`;
+                    }
+                    this.showNotification(msg, 'warning');
+                    return;
+                }
+            }
 
             const aggregateRisk = validLevels.reduce((s, l) => s + this._getMultiEntryLevelRiskUsd(l), 0);
             const sessionValidationErrors = [];
