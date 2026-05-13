@@ -251,14 +251,17 @@
 
     /**
      * Multichart iframe: same as clicking the floating #replayFollow button on
-     * that tile — replaySystem.enableAutoScroll(). Re-enables follow + jumpToLatest
-     * + updateChartData so the panel's X range matches the replay head (main tile
-     * was fixed via host loadPanelFileData; this path fixes iframe followers).
+     * that tile — replaySystem.scheduleReplayFollowOnceLayoutSettled() when available.
      */
     function scheduleMultichartPanelReplayFollow(ch) {
         if (!ch) return;
         var rs = ch.replaySystem;
-        if (!rs || !rs.isActive || typeof rs.enableAutoScroll !== 'function') return;
+        if (!rs || !rs.isActive) return;
+        if (typeof rs.scheduleReplayFollowOnceLayoutSettled === 'function') {
+            rs.scheduleReplayFollowOnceLayoutSettled();
+            return;
+        }
+        if (typeof rs.enableAutoScroll !== 'function') return;
         var raf = global.requestAnimationFrame || function (fn) {
             return setTimeout(fn, 16);
         };
@@ -490,7 +493,13 @@
                     // loadFileData on every panel and loop. Same trick
                     // setTimeframe uses above.
                     var fidStr = String(fileId);
-                    if (String(ch.currentFileId || '') === fidStr) return;
+                    if (String(ch.currentFileId || '') === fidStr) {
+                        // File already loaded (common when a new tile opens on the same
+                        // session instrument). Still snap replay viewport — otherwise the
+                        // tile stays on fitToView until the user hits Follow.
+                        scheduleMultichartPanelReplayFollow(ch);
+                        return;
+                    }
                     var p = ch.loadFileData(fidStr);
                     if (p && typeof p.then === 'function') {
                         return p.then(function () {

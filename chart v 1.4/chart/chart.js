@@ -2215,10 +2215,13 @@ class Chart {
                 this.render();
 
                 // Same as clicking the floating "Follow replay" (#replayFollow) button:
-                // replaySystem.enableAutoScroll() — after a new panel's data loads, the
-                // main chart + followers can stay on mismatched X ranges until follow runs.
+                // replaySystem.scheduleReplayFollowOnceLayoutSettled() — multi-panel
+                // width is often wrong for one frame; retries match the main chart.
                 const rsFollow = mainChart && mainChart.replaySystem;
-                if (rsFollow && rsFollow.isActive && typeof rsFollow.enableAutoScroll === 'function') {
+                if (rsFollow && rsFollow.isActive
+                    && typeof rsFollow.scheduleReplayFollowOnceLayoutSettled === 'function') {
+                    rsFollow.scheduleReplayFollowOnceLayoutSettled();
+                } else if (rsFollow && rsFollow.isActive && typeof rsFollow.enableAutoScroll === 'function') {
                     requestAnimationFrame(() => {
                         try {
                             rsFollow.enableAutoScroll();

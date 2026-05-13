@@ -1138,6 +1138,18 @@ export default function MultichartGrid({
                     try {
                         window.dispatchEvent(new CustomEvent("multichartUiPeersDirty", { detail: { panelId: id } }));
                     } catch (_) {}
+                    // After a new tile mounts, the host split layout often gets its
+                    // final width one frame late — replay getReplayAutoScrollState
+                    // was wrong until the user hit Follow. Re-run the same follow
+                    // pass on the HOST replaySystem (shared with in-page panels).
+                    setTimeout(function () {
+                        try {
+                            var rs = window.chart && window.chart.replaySystem;
+                            if (rs && rs.isActive && typeof rs.scheduleReplayFollowOnceLayoutSettled === "function") {
+                                rs.scheduleReplayFollowOnceLayoutSettled();
+                            }
+                        } catch (_) { /* ignore */ }
+                    }, 0);
                 },
                 // Phase 7.2.4: iframe-side `panel-focus` events bubble up
                 // here. Iframe events don't propagate to the parent DOM,

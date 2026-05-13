@@ -9967,6 +9967,8 @@ const TalariaV8bLive = () => {
 
   // Render a tool button
   const renderTB = (t, ref) => {
+    /** Fixed right column: chevron OR spacer — keeps all tool icons on one vertical axis (TradingView-style). */
+    const RAIL_TRAIL_W = 12;
     const railIcon = v9LeftRailIconForButton(t, groupSelected);
     const ddOpen = dropdown === t.id;
     const act = t.id === "pinbar" ? pinnedBarOpen : tool === t.id;
@@ -10003,7 +10005,9 @@ const TalariaV8bLive = () => {
       transition: "color 0.15s ease, background 0.12s",
       position: "relative",
       fontFamily: F,
-      ...(t.dd ? { width: "auto", flex: "1 1 auto", minWidth: 0 } : { width: "100%", flex: "1 1 auto", minWidth: 0 }),
+      flex: "1 1 0",
+      minWidth: 0,
+      width: "auto",
     };
     const mainBtn = (
       <button
@@ -10106,7 +10110,7 @@ const TalariaV8bLive = () => {
           onMouseLeave={t.dd ? () => { setHov(null); setBtnPressed(null); } : undefined}
         >
           {mainBtn}
-          {t.dd && (
+          {t.dd ? (
             <button
               type="button"
               aria-label="Open tool menu"
@@ -10117,9 +10121,9 @@ const TalariaV8bLive = () => {
                 openDd(e.currentTarget.parentElement);
               }}
               style={{
-                width: 12,
+                width: RAIL_TRAIL_W,
                 height: 32,
-                flex: "0 0 12px",
+                flex: `0 0 ${RAIL_TRAIL_W}px`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -10137,6 +10141,18 @@ const TalariaV8bLive = () => {
                 <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
               </svg>
             </button>
+          ) : (
+            <div
+              key={`rail-trail-${t.id}`}
+              aria-hidden
+              style={{
+                width: RAIL_TRAIL_W,
+                height: 32,
+                flex: `0 0 ${RAIL_TRAIL_W}px`,
+                flexShrink: 0,
+                pointerEvents: "none",
+              }}
+            />
           )}
         </div>
         {act && <div style={{ position: "absolute", left: 0, top: "10%", bottom: "10%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 4px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}

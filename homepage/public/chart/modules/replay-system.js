@@ -4574,6 +4574,34 @@ class ReplaySystem {
     }
 
     /**
+     * Re-run follow replay across the main chart + panel tiles after layout has
+     * settled. A single rAF is often too early: panel split / iframe width is still
+     * 0 or stale, so getReplayAutoScrollState under-scrolls until the user clicks
+     * the floating #replayFollow (enableAutoScroll) manually.
+     */
+    scheduleReplayFollowOnceLayoutSettled() {
+        if (!this.isActive) return;
+        const run = () => {
+            try {
+                this.enableAutoScroll();
+            } catch (_) { /* ignore */ }
+        };
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    run();
+                    setTimeout(run, 95);
+                    setTimeout(run, 280);
+                });
+            });
+        } else {
+            setTimeout(run, 0);
+            setTimeout(run, 120);
+            setTimeout(run, 300);
+        }
+    }
+
+    /**
      * Fixed overlay: pin `#replayFollow` to the chart wrapper’s bottom-right in viewport space.
      * Does not follow pan/scroll (unlike anchoring to the last bar’s X).
      */
