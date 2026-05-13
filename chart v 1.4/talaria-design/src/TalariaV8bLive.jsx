@@ -2870,6 +2870,7 @@ const TalariaV8bLive = () => {
   const [dlgTab, setDlgTab] = useState("style");
   const [tickCandle, setTickCandle] = useState("candle");
   const [playing, setPlaying] = useState(true);
+  const [replayPlayStarting, setReplayPlayStarting] = useState(false);
   const [speed, setSpeed] = useState(30);
   const [buySell, setBuySell] = useState("buy");
   const [orderType, setOrderType] = useState("market");
@@ -3931,6 +3932,9 @@ const TalariaV8bLive = () => {
       if (cancelled) return;
       const rs = getReplaySystem();
       if (rs) {
+        if (typeof rs.isPlayStarting === 'boolean' && rs.isPlayStarting !== replayPlayStarting) {
+          setReplayPlayStarting(!!rs.isPlayStarting);
+        }
         if (typeof rs.isPlaying === 'boolean' && rs.isPlaying !== playing) {
           setPlaying(rs.isPlaying);
         }
@@ -3942,7 +3946,7 @@ const TalariaV8bLive = () => {
     const id = setInterval(sync, 250);
     return () => { cancelled = true; clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, replayMode, speed]);
+  }, [playing, replayPlayStarting, replayMode, speed]);
 
   // Push V9 mode changes into the replaySystem (skip if user just synced from rs).
   useEffect(() => {
@@ -10309,6 +10313,7 @@ const TalariaV8bLive = () => {
         @keyframes tlrPanelIn { from{opacity:0;transform:translateX(8px)} to{opacity:1;transform:translateX(0)} }
         @keyframes tlrDotPulse { 0%,100% { opacity:0.35; transform:scale(0.85); } 50% { opacity:1; transform:scale(1.3); } }
         @keyframes tlrIdPulse { 0%,100% { color:rgba(0,212,161,0.55); } 50% { color:rgba(0,212,161,1); } }
+        @keyframes tlrReplayPlaySpin { to { transform: rotate(360deg); } }
         .tlr-gloss{position:relative}.tlr-gloss::after{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,rgba(255,255,255,0.13) 0%,rgba(255,255,255,0.04) 45%,transparent 100%);pointer-events:none;z-index:9999;border-radius:inherit}.tlr-nospinner::-webkit-outer-spin-button,.tlr-nospinner::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
         .tlr-nospinner{-moz-appearance:textfield}
         .tlr-unit-sel{background:transparent;border:1px solid rgba(140,160,255,0.2);color:rgba(255,255,255,0.7);font-size:10px;padding:2px 4px;outline:none;cursor:default;appearance:none;-webkit-appearance:none}
@@ -18496,22 +18501,31 @@ const TalariaV8bLive = () => {
                   setRollback(true);
                   return;
                 }
-                if (!rs) { setPlaying(p=>!p); return; }
+                if (!rs) { setPlaying(p=>!p); setReplayPlayStarting(false); return; }
                 if (rs.isPlaying) {
                   if (typeof rs.pause === 'function') rs.pause();
                 } else {
                   if (typeof rs.play === 'function') rs.play();
                 }
                 setPlaying(!!rs.isPlaying);
+                if (typeof rs.isPlayStarting === 'boolean') setReplayPlayStarting(!!rs.isPlayStarting);
               }}
-              onMouseEnter={e=>{setHov("rp-play");showTip(playing?"Pause":"Play",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
+              onMouseEnter={e=>{setHov("rp-play");showTip(replayPlayStarting?"Starting…":playing?"Pause":"Play",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
               style={{padding:"4px 5px",position:"relative",background:hov==="rp-play"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"background 0.12s"}}>
-              <I n={playing?"pause":"play"} s={18} cl={hov==="rp-play"?(playing?"#FFA060":c.gn):(playing?"#FF8C42":"rgba(0,212,161,0.7)")}/>
+              {replayPlayStarting?(
+                <svg width={18} height={18} viewBox="0 0 24 24" style={{color:hov==="rp-play"?c.gn:"rgba(0,212,161,0.75)",display:"block"}}>
+                  <g style={{transformBox:"fill-box",transformOrigin:"50% 50%",animation:"tlrReplayPlaySpin 0.7s linear infinite"}}>
+                    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeOpacity="0.22" strokeWidth="2.2"/>
+                    <path d="M 12 3 A 9 9 0 0 1 21 12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+                  </g>
+                </svg>
+              ):(
+              <I n={playing?"pause":"play"} s={18} cl={hov==="rp-play"?(playing?"#FFA060":c.gn):(playing?"#FF8C42":"rgba(0,212,161,0.7)")}/>)}
               <div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,
-                background:`linear-gradient(90deg,transparent,${playing?"#FF8C42":c.gn},transparent)`,
-                boxShadow:`0 0 6px ${playing?"rgba(255,140,66,0.5)":"rgba(0,212,161,0.4)"}`,
+                background:`linear-gradient(90deg,transparent,${replayPlayStarting?c.acL:playing?"#FF8C42":c.gn},transparent)`,
+                boxShadow:`0 0 6px ${replayPlayStarting?c.acG:playing?"rgba(255,140,66,0.5)":"rgba(0,212,161,0.4)"}`,
                 animation:undefined,
-                opacity:playing?(hov==="rp-play"?1:0.7):undefined}}/>
+                opacity:replayPlayStarting?0.95:(playing?(hov==="rp-play"?1:0.7):undefined)}}/>
             </button>
             {/* Speed */}
             {/* Speed — 15-step slide bar */}

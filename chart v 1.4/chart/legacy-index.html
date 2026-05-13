@@ -15165,6 +15165,50 @@
 
         }
 
+        @keyframes replayPlayBtnSpin {
+
+            to { transform: rotate(360deg); }
+
+        }
+
+        .speed-slider-play-btn.replay-play-btn-loading {
+
+            position: relative;
+
+            pointer-events: none;
+
+        }
+
+        .speed-slider-play-btn.replay-play-btn-loading .play-icon,
+
+        .speed-slider-play-btn.replay-play-btn-loading .pause-icon {
+
+            opacity: 0 !important;
+
+            visibility: hidden !important;
+
+        }
+
+        .speed-slider-play-btn.replay-play-btn-loading::after {
+
+            content: '';
+
+            position: absolute;
+
+            width: 14px;
+
+            height: 14px;
+
+            border: 2px solid rgba(16, 185, 129, 0.22);
+
+            border-top-color: currentColor;
+
+            border-radius: 50%;
+
+            animation: replayPlayBtnSpin 0.65s linear infinite;
+
+        }
+
         
 
         /* Light mode - speed slider play button */
@@ -16034,6 +16078,66 @@
             background: #050028;
 
             border-color: rgba(157, 78, 255, 0.5);
+
+        }
+
+        #replayPlayPause.replay-play-btn-loading,
+
+        #replayPlayPauseClone.replay-play-btn-loading {
+
+            position: relative;
+
+            pointer-events: none;
+
+        }
+
+        #replayPlayPause.replay-play-btn-loading .play-icon,
+
+        #replayPlayPause.replay-play-btn-loading .pause-icon,
+
+        #replayPlayPause.replay-play-btn-loading .play-text,
+
+        #replayPlayPause.replay-play-btn-loading .pause-text,
+
+        #replayPlayPauseClone.replay-play-btn-loading .play-icon,
+
+        #replayPlayPauseClone.replay-play-btn-loading .pause-icon,
+
+        #replayPlayPauseClone.replay-play-btn-loading .play-text,
+
+        #replayPlayPauseClone.replay-play-btn-loading .pause-text {
+
+            opacity: 0 !important;
+
+            visibility: hidden !important;
+
+        }
+
+        #replayPlayPause.replay-play-btn-loading::after,
+
+        #replayPlayPauseClone.replay-play-btn-loading::after {
+
+            content: '';
+
+            position: absolute;
+
+            left: 50%;
+
+            top: 50%;
+
+            width: 14px;
+
+            height: 14px;
+
+            margin: -7px 0 0 -7px;
+
+            border: 2px solid rgba(167, 139, 250, 0.35);
+
+            border-top-color: rgba(196, 181, 253, 0.95);
+
+            border-radius: 50%;
+
+            animation: replayPlayBtnSpin 0.65s linear infinite;
 
         }
 

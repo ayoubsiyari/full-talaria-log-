@@ -29,6 +29,11 @@ class ReplaySystem {
         /** Throttle replay "session ended" / "already at end" toasts (many paths hit pause together). */
         this._replayToastAt = 0;
 
+        /** True after Play until heavy start work finishes (V9 / large TF may take a moment). */
+        this.isPlayStarting = false;
+        this._playStartRaf1 = null;
+        this._playStartRaf2 = null;
+
         // Tick animation state
         this.playbackMode = 'tick'; // 'tick' (animated) | 'candle' (no intra-candle animation)
         this.tickAnimationEnabled = true;
@@ -926,7 +931,7 @@ class ReplaySystem {
         this.toolbar.classList.add('visible');
         this.toolbarVisible = true;
         this.updateReplayButtonState(true);
-        this.togglePlayUI(this.isPlaying);
+        this.syncPlayPauseButtonVisuals();
         this.syncPlaybackModeControls();
         // Always sync the speed bar UI to the actual running speed
         this.updateSpeedButtonUI(this.speed);
@@ -947,39 +952,62 @@ class ReplaySystem {
         this.replayBtn.classList.toggle('active', !!active);
     }
 
-    togglePlayUI(isPlaying) {
-        
-        // Update the SPEED BAR play button (main play button)
-        const speedBtn = document.getElementById('speedSliderPlayBtn');
-        if (speedBtn) {
-            if (isPlaying) {
-                speedBtn.classList.add('playing');
+    /**
+     * Cancel deferred play() start (e.g. user hit Pause before the next frame ran).
+     */
+    _cancelDeferredPlayStart() {
+        if (this._playStartRaf1 != null) {
+            cancelAnimationFrame(this._playStartRaf1);
+            this._playStartRaf1 = null;
+        }
+        if (this._playStartRaf2 != null) {
+            cancelAnimationFrame(this._playStartRaf2);
+            this._playStartRaf2 = null;
+        }
+        this.isPlayStarting = false;
+    }
+
+    /**
+     * Sync play / pause / loading spinner on speed-bar and legacy replay toolbar buttons.
+     */
+    syncPlayPauseButtonVisuals() {
+        const loading = !!this.isPlayStarting;
+        const playing = !!this.isPlaying;
+
+        const applySpeedBtn = (btn) => {
+            if (!btn) return;
+            btn.classList.toggle('replay-play-btn-loading', loading);
+            if (loading) return;
+            if (playing) {
+                btn.classList.add('playing');
             } else {
-                speedBtn.classList.remove('playing');
+                btn.classList.remove('playing');
             }
-            
-            // Click animation
-            speedBtn.classList.add('btn-clicked');
-            setTimeout(() => speedBtn.classList.remove('btn-clicked'), 150);
-            
-        }
-        
-        // Also update the old replayPlayPause button if it exists (for backwards compatibility)
-        const oldBtn = document.getElementById('replayPlayPause');
-        if (oldBtn) {
-            const playIcon = oldBtn.querySelector('.play-icon');
-            const pauseIcon = oldBtn.querySelector('.pause-icon');
-            const playText = oldBtn.querySelector('.play-text');
-            const pauseText = oldBtn.querySelector('.pause-text');
-            
-            if (playIcon) playIcon.style.display = isPlaying ? 'none' : 'block';
-            if (pauseIcon) pauseIcon.style.display = isPlaying ? 'block' : 'none';
-            if (playText) playText.style.display = isPlaying ? 'none' : 'inline';
-            if (pauseText) pauseText.style.display = isPlaying ? 'inline' : 'none';
-            
-            oldBtn.classList.toggle('replay-playing', isPlaying);
-            oldBtn.classList.toggle('replay-paused', !isPlaying);
-        }
+        };
+
+        applySpeedBtn(document.getElementById('speedSliderPlayBtn'));
+        applySpeedBtn(document.getElementById('speedSliderPlayBtnClone'));
+
+        const applyReplayToolbarBtn = (btn) => {
+            if (!btn) return;
+            btn.classList.toggle('replay-play-btn-loading', loading);
+            if (loading) return;
+            const playIcon = btn.querySelector('.play-icon');
+            const pauseIcon = btn.querySelector('.pause-icon');
+            const playText = btn.querySelector('.play-text');
+            const pauseText = btn.querySelector('.pause-text');
+
+            if (playIcon) playIcon.style.display = playing ? 'none' : 'block';
+            if (pauseIcon) pauseIcon.style.display = playing ? 'block' : 'none';
+            if (playText) playText.style.display = playing ? 'none' : 'inline';
+            if (pauseText) pauseText.style.display = playing ? 'inline' : 'none';
+
+            btn.classList.toggle('replay-playing', playing);
+            btn.classList.toggle('replay-paused', !playing);
+        };
+
+        applyReplayToolbarBtn(document.getElementById('replayPlayPause'));
+        applyReplayToolbarBtn(document.getElementById('replayPlayPauseClone'));
     }
 
     /**
@@ -2485,7 +2513,7 @@ class ReplaySystem {
      * Force sync play/pause button UI to actual isPlaying state
      */
     syncPlayPauseUI() {
-        this.togglePlayUI(this.isPlaying);
+        this.syncPlayPauseButtonVisuals();
     }
 
     /**
@@ -2562,49 +2590,53 @@ class ReplaySystem {
 
         // Tick mode can resume partial animation state. Candle mode always resumes on full candles.
         const isResumingTick = useTickAnimation && this.animatingCandle && this.tickProgress > 0;
-        if (isResumingTick) {
-            this._preserveTickProgress = true;
-        } else {
-            this._preserveTickProgress = false;
-        }
-        
-        // Stop any existing playback first (will preserve state if _preserveTickProgress is set)
-        this.stopAllPlayback();
+        const preserveTick = !!isResumingTick;
 
-        // Refresh SL/TP/entry guards so the current candle's pre-existing OHLC
-        // doesn't immediately trigger orders when playback resumes after a seek.
-        if (this.chart?.orderManager?._refreshAllGuardsToCurrentCandle) {
-            this.chart.orderManager._refreshAllGuardsToCurrentCandle();
-        }
-        
-        this.isPlaying = true;
+        // Defer heavy start so the browser can paint a loading spinner on the play control first
+        // (daily / large resamples can block the main thread for a noticeable moment).
+        this._cancelDeferredPlayStart();
+        this.isPlayStarting = true;
+        this.syncPlayPauseButtonVisuals();
 
-        // UX (esp. V9): starting playback should scroll the viewport with the replay head again.
-        // Panning during playback still calls onUserPan() and disables auto-scroll until follow is clicked.
-        this.autoScrollEnabled = true;
-        this.userHasPanned = false;
+        this._playStartRaf1 = requestAnimationFrame(() => {
+            this._playStartRaf1 = null;
+            this._playStartRaf2 = requestAnimationFrame(() => {
+                this._playStartRaf2 = null;
+                try {
+                    this._preserveTickProgress = preserveTick;
+                    this.stopAllPlayback();
 
-        // Update button UI immediately
-        this.togglePlayUI(true);
-        
-        this.showTickProgress(false);
+                    if (this.chart?.orderManager?._refreshAllGuardsToCurrentCandle) {
+                        this.chart.orderManager._refreshAllGuardsToCurrentCandle();
+                    }
 
-        if (useTickAnimation) {
-            this.startTickAnimation();
-            if (!isResumingTick) {
-            }
-        } else {
-            // Candle mode should advance complete candles only.
-            this.animatingCandle = null;
-            this.tickProgress = 0;
-            this.tickElapsedMs = 0;
-            this.startCandleByCandle(true);
-        }
+                    this.isPlaying = true;
 
-        requestAnimationFrame(() => {
-            try {
-                this.updateAutoScrollIndicator();
-            } catch (_) {}
+                    // UX (esp. V9): starting playback should scroll the viewport with the replay head again.
+                    this.autoScrollEnabled = true;
+                    this.userHasPanned = false;
+
+                    this.showTickProgress(false);
+
+                    if (useTickAnimation) {
+                        this.startTickAnimation();
+                    } else {
+                        this.animatingCandle = null;
+                        this.tickProgress = 0;
+                        this.tickElapsedMs = 0;
+                        this.startCandleByCandle(true);
+                    }
+
+                    requestAnimationFrame(() => {
+                        try {
+                            this.updateAutoScrollIndicator();
+                        } catch (_) {}
+                    });
+                } finally {
+                    this.isPlayStarting = false;
+                    this.syncPlayPauseButtonVisuals();
+                }
+            });
         });
     }
     
@@ -4078,6 +4110,8 @@ class ReplaySystem {
      * Pause playback and normalize to canonical closed-candle state.
      */
     pause() {
+        this._cancelDeferredPlayStart();
+
         // Set state first
         this.isPlaying = false;
         
@@ -4114,7 +4148,7 @@ class ReplaySystem {
         this.showTickProgress(false);
         
         // Update button UI immediately
-        this.togglePlayUI(false);
+        this.syncPlayPauseButtonVisuals();
         
     }
 
