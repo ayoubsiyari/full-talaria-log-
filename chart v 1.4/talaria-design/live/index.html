@@ -529,13 +529,22 @@
             z-index: 1;
         }
 
-        /* Navigation integrity badge — pinned to .ohlc-stats right; C row holds #close + #chartChange. */
-        #chart-container #chartWrapper .nav-integrity-badge,
-        #panels-container .nav-integrity-badge {
-            position: absolute !important;
-            right: 0 !important;
-            top: 50% !important;
-            transform: translateY(-50%) !important;
+        /* Replay rollback: fixed 32px column after OHLC flow — icon does not slide when %/change text grows (chart.js sets #ohlc-info width). */
+        #chart-container #chartWrapper .ohlc-nav-badge-slot,
+        #panels-container .ohlc-nav-badge-slot {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+        #chart-container #chartWrapper .ohlc-nav-badge-slot .nav-integrity-badge,
+        #panels-container .ohlc-nav-badge-slot .nav-integrity-badge {
+            position: relative !important;
+            right: auto !important;
+            top: auto !important;
+            transform: none !important;
             display: inline-flex !important;
             align-items: center;
             justify-content: center;

@@ -14060,6 +14060,9 @@ class Chart {
             (typeof document !== 'undefined' && document.getElementById('ohlcInfo' + idSuffix)) ||
             this.ctx.canvas?.parentElement?.querySelector('.ohlc-info');
         if (!el) return;
+        // Fixed width (not shrink-to-fit max-width only) keeps the OHLC legend strip stable so
+        // replay UI (e.g. .ohlc-nav-badge-slot) does not jump when #chartChange text length changes.
+        el.style.width = maxPx + 'px';
         el.style.maxWidth = maxPx + 'px';
         el.style.boxSizing = 'border-box';
     }
