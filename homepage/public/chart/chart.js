@@ -2213,6 +2213,18 @@ class Chart {
                     this.fitToView();
                 }
                 this.render();
+
+                // Same as clicking the floating "Follow replay" (#replayFollow) button:
+                // replaySystem.enableAutoScroll() — after a new panel's data loads, the
+                // main chart + followers can stay on mismatched X ranges until follow runs.
+                const rsFollow = mainChart && mainChart.replaySystem;
+                if (rsFollow && rsFollow.isActive && typeof rsFollow.enableAutoScroll === 'function') {
+                    requestAnimationFrame(() => {
+                        try {
+                            rsFollow.enableAutoScroll();
+                        } catch (_e) { /* ignore */ }
+                    });
+                }
             });
             this._hidePanelLoadingOverlay();
 

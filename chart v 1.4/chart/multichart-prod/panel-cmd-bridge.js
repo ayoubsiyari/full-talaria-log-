@@ -249,6 +249,30 @@
         });
     }
 
+    /**
+     * Multichart iframe: same as clicking the floating #replayFollow button on
+     * that tile — replaySystem.enableAutoScroll(). Re-enables follow + jumpToLatest
+     * + updateChartData so the panel's X range matches the replay head (main tile
+     * was fixed via host loadPanelFileData; this path fixes iframe followers).
+     */
+    function scheduleMultichartPanelReplayFollow(ch) {
+        if (!ch) return;
+        var rs = ch.replaySystem;
+        if (!rs || !rs.isActive || typeof rs.enableAutoScroll !== 'function') return;
+        var raf = global.requestAnimationFrame || function (fn) {
+            return setTimeout(fn, 16);
+        };
+        raf(function () {
+            raf(function () {
+                try {
+                    rs.enableAutoScroll();
+                } catch (e) {
+                    warn('multichart replay follow: enableAutoScroll threw', e && e.message);
+                }
+            });
+        });
+    }
+
     function applyReplayEnter(ch, ts) {
         if (!Number.isFinite(ts)) {
             // Caller (e.g. _primeReplayFromParent) sent enter without a
@@ -303,6 +327,7 @@
         // — without it the iframe sits paused at parent's ts even
         // though the parent has been playing for minutes.
         try { drainPendingPlay(ch); } catch (_) {}
+        scheduleMultichartPanelReplayFollow(ch);
         log('replayEnter applied: ts=' + ts
             + ' isActive=' + rs.isActive
             + ' chartDataLen=' + (ch.data ? ch.data.length : 0));
@@ -467,8 +492,12 @@
                     var fidStr = String(fileId);
                     if (String(ch.currentFileId || '') === fidStr) return;
                     var p = ch.loadFileData(fidStr);
-                    // loadFileData may be sync OR return a promise.
-                    if (p && typeof p.then === 'function') return p;
+                    if (p && typeof p.then === 'function') {
+                        return p.then(function () {
+                            scheduleMultichartPanelReplayFollow(ch);
+                        });
+                    }
+                    scheduleMultichartPanelReplayFollow(ch);
                     return;
                 }
 
