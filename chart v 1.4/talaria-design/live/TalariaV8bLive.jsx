@@ -9498,7 +9498,20 @@ const TalariaV8bLive = () => {
           <div
             id="ohlcIndicators"
             className="ohlc-indicators"
-            style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 0, marginTop: 0, width: "100%", maxWidth: "100%", fontSize: 10.5, lineHeight: 1.2, pointerEvents: "auto", position: "relative", zIndex: 100 }}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: 0,
+              marginTop: 0,
+              width: "100%",
+              maxWidth: "100%",
+              fontSize: 10.5,
+              lineHeight: 1.2,
+              pointerEvents: "none",
+              position: "relative",
+              zIndex: 100,
+            }}
           />
         </div>
         <div className="ohlc-legend-footer">
@@ -9616,13 +9629,14 @@ const TalariaV8bLive = () => {
         .ohlc-item-close-change .ohlc-change{margin-left:0 !important;min-width:0 !important;flex:1 1 auto !important;overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important;text-align:left !important}
         .ohlc-nav-badge-slot{display:flex !important;align-items:center !important;justify-content:center !important;flex-shrink:0 !important;overflow:hidden !important;box-sizing:border-box !important}
         .ohlc-nav-badge-slot .nav-integrity-badge{position:relative !important;margin-left:0 !important;flex-shrink:0 !important}
-        .ohlc-body{margin-top:1px !important}
-        .ohlc-indicators{min-width:0;color:var(--ohlc-ind,rgba(255,255,255,0.72)) !important}
+        .ohlc-body{margin-top:1px !important;pointer-events:none !important}
+        .ohlc-indicators{min-width:0;color:var(--ohlc-ind,rgba(255,255,255,0.72)) !important;pointer-events:none !important}
         .ohlc-indicators *{color:inherit}
         .ohlc-indicators > div{max-width:100%}
+        .ohlc-indicators .talaria-ind-legend-row{pointer-events:auto !important;cursor:default;width:fit-content;max-width:100%;align-self:flex-start}
         @media (hover:hover) and (pointer:fine){
-          .talaria-ind-legend-row .talaria-ind-actions{opacity:0;transition:opacity .12s ease;pointer-events:none}
-          .talaria-ind-legend-row:hover .talaria-ind-actions{opacity:1;pointer-events:auto}
+          .ohlc-indicators .talaria-ind-legend-row .talaria-ind-actions{opacity:0;transition:opacity .12s ease;pointer-events:none}
+          .ohlc-indicators .talaria-ind-legend-row:hover .talaria-ind-actions{opacity:1;pointer-events:auto}
         }
 
       `}</style>

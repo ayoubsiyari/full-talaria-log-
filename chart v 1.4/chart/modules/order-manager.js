@@ -3711,6 +3711,7 @@ class OrderManager {
     _getQtyStep() {
         const cfg = this.getMarketConfig();
         let step = (cfg && Number.isFinite(cfg.sizeStep) && cfg.sizeStep > 0) ? cfg.sizeStep : 0.01;
+        if (this.marketType === 'futures') return 1;
         try {
             if (window.marketCalcEngine && typeof window.marketCalcEngine.getCalculator === 'function') {
                 const sym = (typeof this._getSymbol === 'function') ? this._getSymbol() : this.chart?.currentSymbol;
@@ -3728,6 +3729,7 @@ class OrderManager {
     _getQtyMin() {
         const cfg = this.getMarketConfig();
         let min = (cfg && Number.isFinite(cfg.minSize) && cfg.minSize > 0) ? cfg.minSize : 0.01;
+        if (this.marketType === 'futures') return 1;
         try {
             if (window.marketCalcEngine && typeof window.marketCalcEngine.getCalculator === 'function') {
                 const sym = (typeof this._getSymbol === 'function') ? this._getSymbol() : this.chart?.currentSymbol;
@@ -13792,7 +13794,9 @@ class OrderManager {
                 canPlace = false;
                 
                 // Provide specific reason based on mode
-                if (this.positionSizeMode === 'lot-size') {
+                if (this.marketType === 'futures') {
+                    reason = 'Minimum 1 Contract';
+                } else if (this.positionSizeMode === 'lot-size') {
                     reason = `Enter ${positionLabel}`;
                 } else if ((this.positionSizeMode === 'risk-usd' || this.positionSizeMode === 'risk-percent')) {
                     if (!enableSL || !slPrice || slPrice <= 0) {
@@ -13980,11 +13984,13 @@ class OrderManager {
                 return;
             }
             
-            // Update orderQuantity (instrument-aware formatting: futures = integer contracts)
+            // Update orderQuantity (instrument-aware formatting: futures = integer contracts).
+            // Use floor-snap, not toFixed(0), so 0.8 futures contracts becomes invalid instead of rounding up to 1.
+            const snappedLotSize = this._roundQtyToStep(lotSize);
             const qtyInput = document.getElementById('orderQuantity');
             if (qtyInput) {
-                qtyInput.value = this._formatQty(lotSize);
-                console.log(`📊 Lot Size Mode: Setting orderQuantity to ${this._formatQty(lotSize)}`);
+                qtyInput.value = this._formatQty(snappedLotSize);
+                console.log(`📊 Lot Size Mode: Setting orderQuantity to ${this._formatQty(snappedLotSize)} (raw ${lotSize})`);
             }
             
             // Update preview lines to show new lot size on Entry label
@@ -21288,20 +21294,28 @@ class OrderManager {
         
         // Validate lot size/quantity
         if (quantity !== null) {
+            const isFutures = this.marketType === 'futures';
+            const minQty = isFutures ? 1 : this._getQtyMin();
             if (!quantity || quantity <= 0) {
-                errors.push('⚠️ Position size must be greater than 0 lots');
+                errors.push(isFutures ? '⚠️ Futures orders require at least 1 contract' : '⚠️ Position size must be greater than 0 lots');
                 
                 // Additional context for risk-based modes
                 if (positionSizeMode === 'risk-usd' || positionSizeMode === 'risk-percent') {
                     if (!slEnabled || !slPrice || slPrice <= 0) {
                         errors.push('⚠️ Set a Stop Loss to calculate position size');
+                    } else if (isFutures) {
+                        errors.push('⚠️ Increase risk or reduce stop distance until size is at least 1 contract');
                     }
                 }
                 
                 // Additional context for lot size mode
                 if (positionSizeMode === 'lot-size') {
-                    errors.push('⚠️ Enter a lot size value');
+                    errors.push(isFutures ? '⚠️ Enter 1 or more whole contracts' : '⚠️ Enter a lot size value');
                 }
+            } else if (isFutures && quantity < minQty) {
+                errors.push('⚠️ Futures orders require at least 1 contract');
+            } else if (isFutures && Math.abs(quantity - Math.round(quantity)) > 1e-9) {
+                errors.push('⚠️ Futures contracts must be whole numbers');
             }
         }
         

@@ -6888,6 +6888,8 @@ const TalariaV8bLive = () => {
 
       const oqNum = parseFloat(document.getElementById("orderQuantity")?.value ?? "");
       const lotsStr = Number.isFinite(oqNum) ? oqNum.toFixed(2) : "";
+      const qtyStr = Number.isFinite(oqNum) ? String(oqNum) : "0";
+      setOmOrderQtyTxt((prev) => (prev === qtyStr ? prev : qtyStr));
       setOmTpAvgLotsTxt((prev) => (prev === lotsStr ? prev : lotsStr));
       let wapStr = "";
       if (
@@ -10362,7 +10364,21 @@ const TalariaV8bLive = () => {
           <div
             id="ohlcIndicators"
             className="ohlc-indicators"
-            style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 0, marginTop: 0, width: "100%", maxWidth: "100%", fontSize: 10.5, lineHeight: 1.2, pointerEvents: "auto", position: "relative", zIndex: 100 }}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: 0,
+              marginTop: 0,
+              width: "100%",
+              maxWidth: "100%",
+              fontSize: 10.5,
+              lineHeight: 1.2,
+              /* Let drags reach the chart beside/narrow of each chip; rows opt back in below */
+              pointerEvents: "none",
+              position: "relative",
+              zIndex: 100,
+            }}
           />
         </div>
         <div className="ohlc-legend-footer">
@@ -10481,13 +10497,14 @@ const TalariaV8bLive = () => {
         .ohlc-item-close-change .ohlc-change{margin-left:0 !important;width:14ch !important;min-width:14ch !important;flex:0 0 14ch !important;overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important;text-align:left !important}
         .ohlc-nav-badge-slot{display:flex !important;align-items:center !important;justify-content:center !important;flex-shrink:0 !important;overflow:visible !important;box-sizing:border-box !important}
         .ohlc-nav-badge-slot .nav-integrity-badge{position:relative !important;margin-left:0 !important;flex-shrink:0 !important}
-        .ohlc-body{margin-top:1px !important}
-        .ohlc-indicators{min-width:0;color:var(--ohlc-ind,rgba(255,255,255,0.72)) !important}
+        .ohlc-body{margin-top:1px !important;pointer-events:none !important}
+        .ohlc-indicators{min-width:0;color:var(--ohlc-ind,rgba(255,255,255,0.72)) !important;pointer-events:none !important}
         .ohlc-indicators *{color:inherit}
         .ohlc-indicators > div{max-width:100%}
+        .ohlc-indicators .talaria-ind-legend-row{pointer-events:auto !important;cursor:default;width:fit-content;max-width:100%;align-self:flex-start}
         @media (hover:hover) and (pointer:fine){
-          .talaria-ind-legend-row .talaria-ind-actions{opacity:0;transition:opacity .12s ease;pointer-events:none}
-          .talaria-ind-legend-row:hover .talaria-ind-actions{opacity:1;pointer-events:auto}
+          .ohlc-indicators .talaria-ind-legend-row .talaria-ind-actions{opacity:0;transition:opacity .12s ease;pointer-events:none}
+          .ohlc-indicators .talaria-ind-legend-row:hover .talaria-ind-actions{opacity:1;pointer-events:auto}
         }
 
       `}</style>
@@ -20490,6 +20507,7 @@ const TalariaV8bLive = () => {
                     value={riskVal}
                     onChange={e => {
                       const v=e.target.value;
+                      if(sizeMode==="#" && currentSymbol.type==="futures" && !/^\d*$/.test(v)) return;
                       if((sizeMode==="#"||sizeMode==="$") && v.length>18) return;
                       if(/^-?\d*\.?\d*$/.test(v)) {
                         if(sizeMode==="%") { const n=parseFloat(v); if(!isNaN(n)&&n>100) return; }
@@ -20500,7 +20518,12 @@ const TalariaV8bLive = () => {
                     onBlur={e => {
                       const n=parseFloat(e.target.value);
                       markOrderControlBridge();
-                      if(!isNaN(n)) setRiskVal(String(Math.max(0, sizeMode==="%"?Math.min(100,n):sizeMode==="$"?Math.min(accountEquity,n):n)));
+                      if(!isNaN(n)) {
+                        const next = sizeMode==="#" && currentSymbol.type==="futures"
+                          ? Math.floor(Math.max(0, n))
+                          : Math.max(0, sizeMode==="%"?Math.min(100,n):sizeMode==="$"?Math.min(accountEquity,n):n);
+                        setRiskVal(String(next));
+                      }
                       else setRiskVal("0");
                     }}
                     style={{ width:`${Math.max(2, riskVal.length+0.5)}ch`, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:12, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", textAlign:"left", padding:0 }}
@@ -21756,6 +21779,21 @@ const TalariaV8bLive = () => {
 
           </div>{/* end grid */}
           </div>{/* end scrollable middle */}
+
+          {(() => {
+            const qty = parseFloat(omOrderQtyTxt || "0");
+            const hasSizingIntent =
+              (sizeMode === "#" && parseFloat(riskVal || "0") > 0) ||
+              (slEnabled && parseFloat(slRows[0]?.price || "0") > 0);
+            const show = currentSymbol.type === "futures" && hasSizingIntent && (!Number.isFinite(qty) || qty < 1);
+            return show ? (
+              <div style={{ margin:"5px 8px 0", padding:"5px 7px", flexShrink:0,
+                border:"1px solid rgba(255,190,80,0.28)", background:"rgba(255,190,80,0.08)",
+                color:"#FFD28A", fontSize:10, fontWeight:700, lineHeight:1.35 }}>
+                Futures require at least 1 whole contract. Increase risk or reduce stop distance.
+              </div>
+            ) : null;
+          })()}
 
           {/* 9 — R:R Bar */}
           {(() => {
