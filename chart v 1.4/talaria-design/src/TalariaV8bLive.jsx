@@ -10156,32 +10156,34 @@ const TalariaV8bLive = () => {
               <span className="ohlc-label">C</span>
               <span className="ohlc-value" id="close">—</span>
             </div>
-            <span className="ohlc-change" id="chartChange">—</span>
-            {/* After OHL C + change so the symbol row stays clean; visible during replay */}
-            <div
-              id="navIntegrityBadge"
-              className="nav-integrity-badge"
-              style={{ display: "none", flexShrink: 0, alignSelf: "center" }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.currentTarget.classList.toggle("show-tooltip");
-              }}
-            >
-              <div className="nav-badge-icon" style={{ width: 30, height: 30, border: "none", background: "transparent", padding: 0 }}>
-                {/* Exact replay-bar rollback icon */}
-                <svg className="nav-badge-go-back" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ width: 22, height: 22, display: "block" }}>
-                  <line x1="15" y1="4" x2="15" y2="7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                  <rect x="12" y="7" width="6" height="10" rx="0.5" fill="currentColor" />
-                  <line x1="15" y1="17" x2="15" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                  <line x1="12" y1="12" x2="4" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                  <polyline points="7,9 4,12 7,15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                  <line x1="3" y1="4" x2="3" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                </svg>
+            <span className="ohlc-trailing">
+              <span className="ohlc-change" id="chartChange">—</span>
+              {/* Tight to change % — rollback badge follows immediately (no wide reserved column) */}
+              <div
+                id="navIntegrityBadge"
+                className="nav-integrity-badge"
+                style={{ display: "none", flexShrink: 0, alignSelf: "center" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.currentTarget.classList.toggle("show-tooltip");
+                }}
+              >
+                <div className="nav-badge-icon" style={{ width: 30, height: 30, border: "none", background: "transparent", padding: 0 }}>
+                  {/* Exact replay-bar rollback icon */}
+                  <svg className="nav-badge-go-back" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ width: 22, height: 22, display: "block" }}>
+                    <line x1="15" y1="4" x2="15" y2="7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                    <rect x="12" y="7" width="6" height="10" rx="0.5" fill="currentColor" />
+                    <line x1="15" y1="17" x2="15" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                    <line x1="12" y1="12" x2="4" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                    <polyline points="7,9 4,12 7,15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    <line x1="3" y1="4" x2="3" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <div className="nav-badge-tooltip" id="navBadgeTooltip">
+                  <strong>Navigation</strong>
+                </div>
               </div>
-              <div className="nav-badge-tooltip" id="navBadgeTooltip">
-                <strong>Navigation</strong>
-              </div>
-            </div>
+            </span>
           </div>
         </div>
         <div className="ohlc-body">
@@ -10296,11 +10298,12 @@ const TalariaV8bLive = () => {
         .ohlc-symbol-block{font-size:13px !important;line-height:1.25 !important;color:var(--ohlc-fg,#fff) !important}
         .ohlc-symbol-block #chartSymbol{color:var(--ohlc-fg,#fff) !important}
         .ohlc-symbol-block #chartTimeframe{color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important}
-        .ohlc-stats{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important}
+        .ohlc-stats{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important;flex-wrap:wrap !important}
         .ohlc-item{display:inline-flex !important;align-items:center !important;gap:3px !important}
         .ohlc-label{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;opacity:1 !important}
-        .ohlc-value{font-size:9px !important;font-weight:80 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;display:inline-block !important;min-width:10ch !important;text-align:right !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
-        .ohlc-change{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;margin-left:2px !important;display:inline-block !important;min-width:28ch !important;text-align:right !important;white-space:nowrap !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
+        .ohlc-value{font-size:9px !important;font-weight:80 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
+        .ohlc-trailing{display:inline-flex !important;align-items:center !important;gap:6px !important;flex-shrink:0 !important;margin-left:2px !important}
+        .ohlc-change{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;margin-left:0 !important;white-space:nowrap !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
         .ohlc-body{margin-top:1px !important}
         .ohlc-indicators{min-width:0;color:var(--ohlc-ind,rgba(255,255,255,0.72)) !important}
         .ohlc-indicators *{color:inherit}
