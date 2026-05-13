@@ -5501,6 +5501,14 @@ const TalariaV8bLive = () => {
     acc[row.id] = row.type;
     return acc;
   }, {});
+  const MAX_ACTIVE_INDICATORS = 10;
+  const clampActiveIndicatorIds = (ids) => {
+    const out = [];
+    (Array.isArray(ids) ? ids : []).forEach((id) => {
+      if (ID_TO_TYPE[id] && !out.includes(id) && out.length < MAX_ACTIVE_INDICATORS) out.push(id);
+    });
+    return out;
+  };
 
   // ─── SYNC INDICATORS → chart.js ──────────────────────────────────────────
   // V9's indActive (array of V9 indicator IDs like "SMA", "RSI") drives
@@ -16356,7 +16364,7 @@ const TalariaV8bLive = () => {
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"4px 0"}}>
                     {[["Save current",()=>{setIndTplSaveMode(true);setIndTplName("");}],
-                      ["Clear all",()=>{setIndActive([]);setIndTplOpen(false);}]
+              ["Clear all",()=>{setIndActive([]);setIndTplOpen(false);}]
                     ].map(([lbl,action])=>{
                       const isH=swHov===`ind-tpl-act-${lbl}`, isAct=lbl==="Save current"&&indTplSaveMode;
                       return (
@@ -16395,7 +16403,7 @@ const TalariaV8bLive = () => {
                         onMouseEnter={()=>setSwHov(`ind-tpl-${idx}`)} onMouseLeave={()=>setSwHov(null)}
                         style={{display:"flex",alignItems:"center",padding:"4px 8px 4px 12px",cursor:"default",position:"relative",
                           background:swHov===`ind-tpl-${idx}`?c.hv2:"transparent",transition:"background 0.1s"}}>
-                        <span onClick={()=>{setIndActive([...tpl.ids]);setIndTplOpen(false);}}
+                        <span onClick={()=>{setIndActive(clampActiveIndicatorIds(tpl.ids));setIndTplOpen(false);}}
                           style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:12,color:swHov===`ind-tpl-${idx}`?c.tx:c.ts,fontWeight:500}}>{tpl.name}</span>
                         <div onClick={e=>{e.stopPropagation();setIndTemplates(ts=>ts.filter((_,i)=>i!==idx));}}
                           onMouseEnter={()=>setSwHov(`ind-tpl-del-${idx}`)} onMouseLeave={()=>setSwHov(`ind-tpl-${idx}`)}
@@ -16461,10 +16469,26 @@ const TalariaV8bLive = () => {
               const isAddHov=swHov===`add-${ind.id}`;
               const isAddDn=swHov===`add-${ind.id}_dn`;
               const indRowHov=isH||isPinHov||isAddHov||isAddDn;
-              const toggleIndActive=()=>setIndActive(prev=>isAct?prev.filter(x=>x!==ind.id):[...prev,ind.id]);
+              const showIndicatorLimitNotice=()=>{
+                try {
+                  const chart = typeof window !== "undefined"
+                    ? (typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart)
+                    : null;
+                  if (chart && typeof chart.showNotification === "function") chart.showNotification(`Maximum ${MAX_ACTIVE_INDICATORS} indicators allowed`);
+                } catch (_) {}
+              };
+              const addIndActive=(id)=>setIndActive(prev=>{
+                if (prev.includes(id)) return prev;
+                if (prev.length >= MAX_ACTIVE_INDICATORS) {
+                  showIndicatorLimitNotice();
+                  return prev;
+                }
+                return [...prev, id];
+              });
+              const toggleIndActive=()=>isAct?setIndActive(prev=>prev.filter(x=>x!==ind.id)):addIndActive(ind.id);
               const onIndicatorRowClick=()=>{
                 if (!isSel) { setIndSelectedId(ind.id); return; }
-                if (!isAct) setIndActive((prev)=>prev.includes(ind.id)?prev:[...prev,ind.id]);
+                if (!isAct) addIndActive(ind.id);
               };
               return (
                 <div key={ind.id}

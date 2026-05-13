@@ -59,6 +59,8 @@
         return 'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:2px;cursor:default;transition:background .15s,color .15s;flex-shrink:0;';
     }
 
+    const MAX_ACTIVE_INDICATORS = 10;
+
     function emitIndicatorsChanged(chart, action, indicator) {
         if (typeof global === 'undefined' || typeof global.dispatchEvent !== 'function') return;
         try {
@@ -2253,6 +2255,13 @@
     // Auto-initialize indicators if not done
     if (!this.indicators) {
         this.initIndicators();
+    }
+
+    if (this.indicators.active && this.indicators.active.length >= MAX_ACTIVE_INDICATORS) {
+        if (typeof this.showNotification === 'function') {
+            this.showNotification('Maximum ' + MAX_ACTIVE_INDICATORS + ' indicators allowed');
+        }
+        return null;
     }
     
     if (!this.data || this.data.length === 0) {
