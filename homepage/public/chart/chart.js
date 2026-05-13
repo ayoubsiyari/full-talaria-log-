@@ -12200,6 +12200,17 @@ class Chart {
 
         const isReplay = this.replaySystem && this.replaySystem.isActive && this.replaySystem.fullRawData;
 
+        const mainChart = typeof window !== 'undefined' ? window.chart : null;
+        const mainRs = mainChart && mainChart.replaySystem;
+        if (direction === 'forward'
+            && this.isPanel
+            && mainChart
+            && this !== mainChart
+            && mainRs && mainRs.isActive && mainRs.fullRawData
+            && !isReplay) {
+            return false;
+        }
+
         const session = this.backtestingSession || {};
         const sessionStartTs = session.startDate ? new Date(session.startDate).getTime() : null;
         const sessionEndTs = session.endDate ? new Date(session.endDate).getTime() : null;

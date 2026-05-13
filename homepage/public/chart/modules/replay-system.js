@@ -3984,13 +3984,8 @@ class ReplaySystem {
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
                 let appliedSlice = false;
 
-                if (hasOwnData) {
-                    const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
-                    const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
-                    pc.rawData = panelSlice;
-                    pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
-                    appliedSlice = true;
-                } else if (this._panelSharesMainReplayDataset(pc, mainChart)) {
+                // Prefer main replay slice when file matches — see syncPanelCharts.
+                if (this._panelSharesMainReplayDataset(pc, mainChart)) {
                     if (mainSymbol && pc.currentSymbol !== mainSymbol) {
                         pc.currentSymbol = mainSymbol;
                         if (mainChart) pc.currentFileId = mainChart.currentFileId;
@@ -4004,6 +3999,12 @@ class ReplaySystem {
                     }
                     pc.rawData = [...slicedRaw];
                     pc.data = pc.resampleData(slicedRaw, pc.currentTimeframe);
+                    appliedSlice = true;
+                } else if (hasOwnData) {
+                    const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
+                    const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
+                    pc.rawData = panelSlice;
+                    pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
                     appliedSlice = true;
                 }
 
@@ -5369,13 +5370,7 @@ class ReplaySystem {
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
                 let appliedSlice = false;
 
-                if (hasOwnData) {
-                    const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
-                    const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
-                    pc.rawData = panelSlice;
-                    pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
-                    appliedSlice = true;
-                } else if (this._panelSharesMainReplayDataset(pc, mainChart)) {
+                if (this._panelSharesMainReplayDataset(pc, mainChart)) {
                     if (mainSymbol && pc.currentSymbol !== mainSymbol) {
                         pc.currentSymbol = mainSymbol;
                         pc.currentFileId = mainFileId;
@@ -5391,6 +5386,12 @@ class ReplaySystem {
                     }
                     pc.rawData = slicedRawData;
                     pc.data = pc.resampleData(slicedRawData, pc.currentTimeframe);
+                    appliedSlice = true;
+                } else if (hasOwnData) {
+                    const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
+                    const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
+                    pc.rawData = panelSlice;
+                    pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
                     appliedSlice = true;
                 }
 
