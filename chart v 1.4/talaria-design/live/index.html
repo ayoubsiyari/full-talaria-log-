@@ -383,7 +383,7 @@
             flex: 1 1 0%;
             min-width: 0;
             flex-wrap: nowrap;
-            gap: 6px;
+            gap: 0;
             box-sizing: border-box;
         }
         #chart-container #chartWrapper .ohlc-stats-flow,
@@ -392,7 +392,7 @@
             align-items: center;
             flex-wrap: nowrap;
             gap: 6px;
-            flex: 0 1 auto;
+            flex: 1 1 0%;
             min-width: 0;
             overflow: hidden;
             box-sizing: border-box;
@@ -403,25 +403,25 @@
             align-items: center;
             gap: 2px;
         }
-        #chart-container #chartWrapper .ohlc-change-with-badge,
-        #panels-container .ohlc-change-with-badge {
+        #chart-container #chartWrapper .ohlc-item-close-change,
+        #panels-container .ohlc-item-close-change {
             display: inline-flex;
             align-items: center;
-            gap: 2px;
-            flex-shrink: 0;
+            gap: 6px;
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
             box-sizing: border-box;
         }
-        #chart-container #chartWrapper .ohlc-change-with-badge .ohlc-change,
-        #panels-container .ohlc-change-with-badge .ohlc-change {
-            display: inline-block;
-            width: 20ch;
-            min-width: 20ch;
-            max-width: 20ch;
-            text-align: right;
-            white-space: nowrap;
+        #chart-container #chartWrapper .ohlc-item-close-change .ohlc-change,
+        #panels-container .ohlc-item-close-change .ohlc-change {
+            margin-left: 0;
+            min-width: 0;
+            flex: 1 1 auto;
             overflow: hidden;
             text-overflow: ellipsis;
-            vertical-align: middle;
+            white-space: nowrap;
+            text-align: left;
             box-sizing: border-box;
         }
 
@@ -529,15 +529,17 @@
             z-index: 1;
         }
 
-        /* Navigation integrity badge — flex sibling after .ohlc-stats-flow (sits next to %, not chart-right). */
+        /* Navigation integrity badge — pinned to .ohlc-stats right; C row holds #close + #chartChange. */
         #chart-container #chartWrapper .nav-integrity-badge,
         #panels-container .nav-integrity-badge {
-            position: relative !important;
+            position: absolute !important;
+            right: 0 !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important;
             display: inline-flex !important;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
-            align-self: center;
             margin-left: 0 !important;
             cursor: default;
             pointer-events: auto;
