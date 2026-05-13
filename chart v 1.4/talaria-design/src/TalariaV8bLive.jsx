@@ -17874,12 +17874,8 @@ const TalariaV8bLive = () => {
           <span style={{ fontSize: 13, fontWeight: 700, color: "#fff", WebkitFontSmoothing: "antialiased" }}>Place Order</span>
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: c.br }}/>
-        {/* Phase 7.2.3: "layout" topbar entry restored. Click opens a
-             TradingView-style dropdown (LayoutDropdownPopover below) with
-             the same variants grid + sync toggles the right-panel layout
-             tab uses. Selecting a variant drives `layoutPanels` which
-             MultichartGrid (Phase 7.2.2) reacts to. */}
-        {[{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"layout",icon:"layout",label:"Layouts"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
+        {/* Phase 7.2.3: Panel layout first (right of Place Order), then objects / news / screenshot / fullscreen. */}
+        {[{id:"layout",icon:"layout",label:"Layouts"},{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
           <button type="button" key={id}
             ref={(el) => { if (id === "layout") layoutDropdownBtnRef.current = el; }}
             onClick={(e) => {
