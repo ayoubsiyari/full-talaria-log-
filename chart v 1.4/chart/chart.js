@@ -14060,6 +14060,10 @@ class Chart {
             (typeof document !== 'undefined' && document.getElementById('ohlcInfo' + idSuffix)) ||
             this.ctx.canvas?.parentElement?.querySelector('.ohlc-info');
         if (!el) return;
+        // Use a fixed width (not shrink-to-fit max-width only). Otherwise longer #chartChange
+        // text grows max-content width and the replay nav badge (right:0 inside .ohlc-stats)
+        // slides with the legend's right edge — looks like "% pushes the rollback icon".
+        el.style.width = maxPx + 'px';
         el.style.maxWidth = maxPx + 'px';
         el.style.boxSizing = 'border-box';
     }
