@@ -735,7 +735,7 @@ const INDICATOR_COLOR_RECENTS = ['#131722', '#2962FF', '#1E3A5F', '#262B3E'];
 const TALARIA_IND_CHIP_BORDER = 'transparent';
 const TALARIA_IND_CHIP_BG = 'transparent';
 const TALARIA_INDICATOR_CHIP_CSS =
-    'display:flex;align-items:center;gap:6px;width:100%;max-width:100%;min-width:0;min-height:20px;box-sizing:border-box;' +
+    'display:flex;align-items:center;gap:6px;width:fit-content;max-width:100%;align-self:flex-start;min-width:0;min-height:20px;box-sizing:border-box;' +
     'padding:1px 2px 1px 0;margin:0;border-radius:2px;line-height:1.2;' +
     'border:none;background:' + TALARIA_IND_CHIP_BG + ';' +
     'transform:translateZ(0);-webkit-transform:translateZ(0);' +
@@ -2298,7 +2298,7 @@ function setupIndicatorUI(chartInstance) {
             // Name (dimmed when hidden)
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
-            nameSpan.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
+            nameSpan.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;max-width:min(320px,58vw);';
             setTalariaIndChipNameEl(nameSpan, indicator.visible !== false);
             item.appendChild(nameSpan);
 
@@ -2392,8 +2392,9 @@ function setupIndicatorUI(chartInstance) {
             };
             actions.appendChild(settingsBtn);
 
-            // Click to EDIT when clicking the whole chip
+            // Click to EDIT on chip body only — not on eye / gear / remove (avoids full-width hit box)
             item.onclick = function(e) {
+                if (e.target.closest('.talaria-ind-actions')) return;
                 e.stopPropagation();
                 console.log(`📝 Opening settings for ${indicator.name} on panel ${self.panelIndex || 'main'}`);
                 createIndicatorSettingsPanel(self, type, indicator);
@@ -2713,7 +2714,7 @@ if (typeof Chart !== 'undefined') {
             // Name (dimmed when hidden)
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
-            nameSpan.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
+            nameSpan.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;max-width:min(320px,58vw);';
             setTalariaIndChipNameEl(nameSpan, indicator.visible !== false);
             item.appendChild(nameSpan);
 
@@ -2807,8 +2808,9 @@ if (typeof Chart !== 'undefined') {
             };
             actions.appendChild(settingsBtn);
 
-            // Click to EDIT when clicking the whole chip
+            // Click to EDIT on chip body only — not on eye / gear / remove
             item.onclick = function(e) {
+                if (e.target.closest('.talaria-ind-actions')) return;
                 e.stopPropagation();
                 console.log(`📝 Opening settings for ${indicator.name}`);
                 createIndicatorSettingsPanel(self, type, indicator);

@@ -37,7 +37,7 @@
     function getTalariaChipStyles() {
         const w = global;
         const fallbackChip =
-            'display:flex;align-items:center;gap:6px;width:100%;max-width:100%;min-width:0;min-height:20px;box-sizing:border-box;' +
+            'display:flex;align-items:center;gap:6px;width:fit-content;max-width:100%;align-self:flex-start;min-width:0;min-height:20px;box-sizing:border-box;' +
             'padding:1px 2px 1px 0;margin:0;border-radius:2px;line-height:1.2;' +
             'border:none;background:transparent;' +
             'transform:translateZ(0);-webkit-transform:translateZ(0);' +
@@ -5930,7 +5930,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const indicator = overlayIndicators[i];
             const item = document.createElement('div');
             item.className = 'talaria-ind-legend-row';
-            item.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:4px;background:transparent;border:none;border-radius:0;padding:0;font-family:Roboto,sans-serif;';
+            item.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:4px;width:fit-content;max-width:100%;align-self:flex-start;background:transparent;border:none;border-radius:0;padding:0;font-family:Roboto,sans-serif;';
 
             const nameSpan = document.createElement('span');
             nameSpan.textContent = '- ' + indicator.name;
@@ -6024,10 +6024,14 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             };
             actions.appendChild(settingsBtn);
 
-            item.onclick = function(e) {
+            const openIndSettings = function(e) {
                 e.stopPropagation();
                 if (typeof self.showIndicatorSettings === 'function') self.showIndicatorSettings(id);
             };
+            nameSpan.style.cursor = 'default';
+            nameSpan.onclick = openIndSettings;
+            valuesSpan.style.cursor = 'default';
+            valuesSpan.onclick = openIndSettings;
 
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
@@ -7164,15 +7168,15 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const showPlot = indicator.hidePlot !== true;
             const showValues = indicator.hideValues !== true;
 
-            // Full plot-width row so action icons stay pinned to the right (TradingView-style).
+            // Compact-width row (name + value + actions) so crosshair / chart hits pass beside the strip
             const bar = document.createElement('div');
             bar.className = 'talaria-ind-legend-row';
             bar.style.cssText = [
                 'position:absolute',
                 'top:' + (slotTop + 2) + 'px',
                 'left:' + (m.l + 6) + 'px',
-                'right:' + (m.r + 6) + 'px',
-                'width:auto',
+                'width:max-content',
+                'max-width:' + Math.max(120, (self.w || 0) - m.l - m.r - 12) + 'px',
                 'box-sizing:border-box',
                 'display:flex',
                 'align-items:center',
@@ -7183,7 +7187,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 'pointer-events:auto',
                 'user-select:none',
                 'font-family:Roboto,sans-serif'
-            ].join(';') + ';margin:0;width:auto;max-width:none;background:transparent;border:none;border-radius:0;padding:0;';
+            ].join(';') + ';margin:0;background:transparent;border:none;border-radius:0;padding:0;';
 
             const nameEl = document.createElement('span');
             nameEl.textContent = '- ' + indicator.name;
