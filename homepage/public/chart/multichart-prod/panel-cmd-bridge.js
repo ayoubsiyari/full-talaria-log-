@@ -494,6 +494,9 @@
                     // setTimeframe uses above.
                     var fidStr = String(fileId);
                     if (String(ch.currentFileId || '') === fidStr) {
+                        // File already loaded (common when a new tile opens on the same
+                        // session instrument). Still snap replay viewport — otherwise the
+                        // tile stays on fitToView until the user hits Follow.
                         scheduleMultichartPanelReplayFollow(ch);
                         return;
                     }

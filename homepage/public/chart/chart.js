@@ -12200,6 +12200,8 @@ class Chart {
 
         const isReplay = this.replaySystem && this.replaySystem.isActive && this.replaySystem.fullRawData;
 
+        // Follower tiles use their own ReplaySystem (usually inactive). Forward pan-load then
+        // merges into rawData and shows session "future" while window.chart replay is still paused.
         const mainChart = typeof window !== 'undefined' ? window.chart : null;
         const mainRs = mainChart && mainChart.replaySystem;
         if (direction === 'forward'
