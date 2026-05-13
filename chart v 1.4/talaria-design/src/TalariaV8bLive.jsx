@@ -3465,6 +3465,17 @@ const TalariaV8bLive = () => {
       }
     };
 
+    // chartDataLoaded can fire many times per load (ingest / resample / replay). Rebuild the session pair list
+    // at most once per animation frame so the toolbar stays in sync without redundant React updates (TV-style settle).
+    let rafSessionPairs = null;
+    const scheduleRefreshSessionPairs = () => {
+      if (rafSessionPairs != null) return;
+      rafSessionPairs = requestAnimationFrame(() => {
+        rafSessionPairs = null;
+        refreshSessionPairs();
+      });
+    };
+
     // Poll window.chart.currentSymbol until it stabilizes. Two reasons we can't
     // rely on chartDataLoaded alone:
     //   1. The event may have fired before V9 mounted.
@@ -3492,6 +3503,7 @@ const TalariaV8bLive = () => {
       return s;
     };
 
+    let lastMappedTf = null;
     const handleDataLoaded = (e) => {
       const d = e?.detail || {};
       const src = d.chart;
@@ -3501,13 +3513,22 @@ const TalariaV8bLive = () => {
       }
       apply(d.symbol, "event");
       const mappedTf = chartTfDetailToV9(d.timeframe);
-      if (mappedTf) setTf(mappedTf);
-      refreshSessionPairs();
+      if (mappedTf && mappedTf !== lastMappedTf) {
+        lastMappedTf = mappedTf;
+        setTf(mappedTf);
+      }
+      scheduleRefreshSessionPairs();
     };
     window.addEventListener('chartDataLoaded', handleDataLoaded);
     window.__v9RefreshSessionPairs = refreshSessionPairs;
     return () => {
       cancelled = true;
+      if (rafSessionPairs != null) {
+        try {
+          cancelAnimationFrame(rafSessionPairs);
+        } catch (_) {}
+        rafSessionPairs = null;
+      }
       try {
         delete window.__v9RefreshSessionPairs;
       } catch (_) {}

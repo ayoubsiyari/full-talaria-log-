@@ -26,6 +26,9 @@ class ReplaySystem {
         this.sessionStartIndex = 0;      // Minimum index the user can roll back to (backtest range floor)
         this.tickElapsedMs = 0;           // Elapsed milliseconds within current candle animation
 
+        /** Throttle replay "session ended" / "already at end" toasts (many paths hit pause together). */
+        this._replayToastAt = 0;
+
         // Tick animation state
         this.playbackMode = 'tick'; // 'tick' (animated) | 'candle' (no intra-candle animation)
         this.tickAnimationEnabled = true;
@@ -2486,6 +2489,51 @@ class ReplaySystem {
     }
 
     /**
+     * Small chart toast when backtest replay reaches the end of loaded data, or user hits Play at the end.
+     * Throttled so tick + candle + fast-mode paths do not spam the same frame burst.
+     */
+    _maybeNotifyReplayToast(message) {
+        const ch = this.chart;
+        if (!ch || typeof ch.showNotification !== 'function' || !message) return;
+        const now = Date.now();
+        if (now - (this._replayToastAt || 0) < 900) return;
+        this._replayToastAt = now;
+        try {
+            ch.showNotification(message);
+        } catch (_) {}
+    }
+
+    _isAtLastLoadedBar() {
+        return !!(this.fullRawData && this.fullRawData.length > 0
+            && this.currentIndex >= this.fullRawData.length - 1);
+    }
+
+    /** True when Play should no-op with "already at end" (still allow forward data probes + mid-tick resume on last bar). */
+    _playWouldBeNoOpAtSessionEnd() {
+        if (!this.isActive || !this._isAtLastLoadedBar()) return false;
+        const mode = this.getPlaybackMode();
+        if (mode === 'tick') {
+            const tpc = this.currentTicksPerCandle || this.ticksPerCandle || 72;
+            if (this.animatingCandle && Number.isFinite(this.tickProgress) && this.tickProgress < tpc) {
+                return false;
+            }
+            if (this._savedTickState && Number.isFinite(this._savedTickState.tickProgress)
+                && this._savedTickState.tickProgress < tpc) {
+                return false;
+            }
+        }
+        if (this.tryRequestForwardDataProbe()) return false;
+        return true;
+    }
+
+    /**
+     * Call when playback auto-stops because there is no more data to advance into.
+     */
+    _notifyReplayReachedEndOfData() {
+        this._maybeNotifyReplayToast('Backtest replay complete — you reached the end of this session.');
+    }
+
+    /**
      * Start playback using selected replay mode.
      */
     play() {
@@ -2504,6 +2552,12 @@ class ReplaySystem {
             this.tickProgress = this._savedTickState.tickProgress;
             this.tickElapsedMs = this._savedTickState.tickElapsedMs;
             this._savedTickState = null;
+        }
+
+        if (this._playWouldBeNoOpAtSessionEnd()) {
+            this._maybeNotifyReplayToast('Already at the end of this backtest — step back or move the replay head to continue.');
+            this.syncPlayPauseUI();
+            return;
         }
 
         // Tick mode can resume partial animation state. Candle mode always resumes on full candles.
@@ -2625,6 +2679,7 @@ class ReplaySystem {
                 return; // Don't pause yet — data may still arrive
             }
             this.pause();
+            this._notifyReplayReachedEndOfData();
             return;
         }
         
@@ -2906,6 +2961,7 @@ class ReplaySystem {
                 return;
             }
             this.pause();
+            this._notifyReplayReachedEndOfData();
             return;
         }
         this.edgeProbeRetryCount = 0;
@@ -3310,6 +3366,7 @@ class ReplaySystem {
                     return;
                 }
                 this.pause();
+                this._notifyReplayReachedEndOfData();
                 return;
             }
             
@@ -3990,6 +4047,7 @@ class ReplaySystem {
                 }
             } else {
                 this.pause();
+                this._notifyReplayReachedEndOfData();
             }
         }
     }

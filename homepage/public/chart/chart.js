@@ -2599,20 +2599,29 @@ class Chart {
         }
         this._sessionStateLoadRetryCount = 0;
 
-        try {
-            const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, { credentials: 'include' });
-            if (!res.ok) {
-                this._applyTradingSessionFromLocalBackupOnly(sessionId);
-                return;
-            }
-            const payload = await res.json();
-            const state = payload && payload.state ? payload.state : null;
-            if (!state) {
-                this._applyTradingSessionFromLocalBackupOnly(sessionId);
-                return;
-            }
+        // Deduplicate overlapping GET /state calls (e.g. initReplaySystem setTimeout(0) + enterReplayMode microtask).
+        // Same behavior as a single fetch; concurrent callers share one promise (TradingView-style: one restore pass).
+        const sid = String(sessionId);
+        if (!this._sessionStateLoadPromises) this._sessionStateLoadPromises = Object.create(null);
+        const inflight = this._sessionStateLoadPromises[sid];
+        if (inflight) return inflight;
 
-            this._sessionStateLoadedFor = String(sessionId);
+        let settledPromise;
+        settledPromise = (async () => {
+            try {
+                const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, { credentials: 'include' });
+                if (!res.ok) {
+                    this._applyTradingSessionFromLocalBackupOnly(sessionId);
+                    return;
+                }
+                const payload = await res.json();
+                const state = payload && payload.state ? payload.state : null;
+                if (!state) {
+                    this._applyTradingSessionFromLocalBackupOnly(sessionId);
+                    return;
+                }
+
+                this._sessionStateLoadedFor = String(sessionId);
 
             // Only merge server drawings when non-empty. Session payloads often include `drawings: []`
             // when the server never stored shapes — applying that would wipe shapes just loaded from localStorage.
@@ -2866,12 +2875,19 @@ class Chart {
                 }
             }
 
-            // Server state was applied this load; next refresh compares backup.savedAt to this for stale-server vs fresh-backup.
-            this._markSessionStateSyncedToServer(sessionId);
-        } catch (e) {
-            console.warn('⚠️ Failed to load trading session state', e);
-            this._applyTradingSessionFromLocalBackupOnly(sessionId);
-        }
+                // Server state was applied this load; next refresh compares backup.savedAt to this for stale-server vs fresh-backup.
+                this._markSessionStateSyncedToServer(sessionId);
+            } catch (e) {
+                console.warn('⚠️ Failed to load trading session state', e);
+                this._applyTradingSessionFromLocalBackupOnly(sessionId);
+            } finally {
+                if (this._sessionStateLoadPromises && this._sessionStateLoadPromises[sid] === settledPromise) {
+                    delete this._sessionStateLoadPromises[sid];
+                }
+            }
+        })();
+        this._sessionStateLoadPromises[sid] = settledPromise;
+        return settledPromise;
     }
 
     _applyPersistedIndicators() {
@@ -14228,8 +14244,8 @@ class Chart {
         const labelX = axisLeft ? 2 : this.w - m.r;
         const radius = 2;
         
-        // Check if in replay mode to combine labels
-        const inReplayMode = !!(this.replaySystem && this.replaySystem.isActive && this.replaySystem.isPlaying);
+        // Check if in replay mode to combine labels (show progress while paused too)
+        const inReplayMode = !!(this.replaySystem && this.replaySystem.isActive);
         let countdownText = '';
         
         if (inReplayMode) {
@@ -14262,9 +14278,10 @@ class Chart {
             // Calculate total progress: completed raw candles + current tick progress
             const ticksPerCandle = this.replaySystem.currentTicksPerCandle || this.replaySystem.ticksPerCandle || 72;
             const currentRawProgress = this.replaySystem.tickProgress / ticksPerCandle;
-            const progress = (completedRawCandles - 1 + currentRawProgress) / rawCandlesPerDisplay;
+            const rawProgress = (completedRawCandles - 1 + currentRawProgress) / rawCandlesPerDisplay;
+            const progress = Math.max(0, Math.min(1, rawProgress));
             
-            const remainingSeconds = Math.ceil(totalSeconds * (1 - Math.min(1, progress)));
+            const remainingSeconds = Math.ceil(totalSeconds * (1 - progress));
             const minutes = Math.floor(remainingSeconds / 60);
             const seconds = remainingSeconds % 60;
             countdownText = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
