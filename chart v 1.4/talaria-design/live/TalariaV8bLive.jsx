@@ -9207,15 +9207,32 @@ const TalariaV8bLive = () => {
     };
     const isPressed = t.action && btnPressed === t.id;
     const pressCol = isPressed ? c.acL : col;
-    const hArr = hov === t.id + "-arr";
-    const arrCol = act ? accentCol : hArr ? c.tx : c.tm;
+    const arrCol = act ? accentCol : h ? c.tx : c.tm;
     /* Selection strip at left:0; idle = flush. Active/pressed: 4px past 2px bar. Hover dim line: 2px. */
     const railAccentPad =
       act || isPressed ? 4
         : h && !act && !isPressed ? 2
         : 0;
     return (
-      <div key={t.id} style={{ position: "relative", width: "100%", display: "flex", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
+      <div
+        key={t.id}
+        style={{
+          position: "relative",
+          width: "100%",
+          display: "flex",
+          transform: isPressed ? "scale(0.88)" : "scale(1)",
+          transition: "transform 0.08s ease",
+          ...(t.dd
+            ? {
+                background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
+                borderRadius: 2,
+                transition: "transform 0.08s ease, background 0.12s",
+              }
+            : {}),
+        }}
+        onMouseEnter={t.dd ? () => setHov(t.id) : undefined}
+        onMouseLeave={t.dd ? () => { setHov(null); setBtnPressed(null); } : undefined}
+      >
         {/* Left rail: match TalariaV8b.jsx dimensions (Live has no root zoom). */}
         <button
           type="button"
@@ -9225,8 +9242,8 @@ const TalariaV8bLive = () => {
             if (t.action) setBtnPressed(t.id);
           }}
           onPointerUp={t.action ? () => setBtnPressed(null) : undefined}
-          onMouseEnter={() => setHov(t.id)}
-          onMouseLeave={() => { setHov(null); setBtnPressed(null); }}
+          onMouseEnter={t.dd ? undefined : () => setHov(t.id)}
+          onMouseLeave={t.dd ? undefined : () => { setHov(null); setBtnPressed(null); }}
           onClick={(e) => {
             e.stopPropagation();
             if (t.id === "pinbar") { setPinnedBarOpen(v => !v); return; }
@@ -9273,7 +9290,7 @@ const TalariaV8bLive = () => {
           }}
           style={{
             width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "flex-start",
-            background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
+            background: t.dd ? "transparent" : act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
             border: "none", cursor: "default", color: pressCol,
             padding: 0, paddingLeft: railAccentPad, paddingRight: t.dd ? 11 : 4,
             boxSizing: "border-box", touchAction: "manipulation",
@@ -9293,8 +9310,6 @@ const TalariaV8bLive = () => {
             type="button"
             aria-label="Open tool menu"
             onPointerDown={(e) => e.stopPropagation()}
-            onMouseEnter={() => setHov(t.id + "-arr")}
-            onMouseLeave={() => setHov(null)}
             onClick={(e) => {
               e.stopPropagation();
               e.preventDefault();
@@ -9302,11 +9317,11 @@ const TalariaV8bLive = () => {
             }}
             style={{
               position: "absolute", right: 0, top: 0,
-              width: 8, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
-              background: hArr ? "rgba(255,255,255,0.06)" : "transparent",
+              width: 12, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+              background: "transparent",
               border: "none", cursor: "default",
               padding: 0, flexShrink: 0,
-              transition: "background 0.12s", fontFamily: F,
+              transition: "color 0.12s", fontFamily: F,
               zIndex: 3, touchAction: "manipulation",
             }}>
             <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{ transition: "fill 0.12s", pointerEvents: "none", display: "block" }}>

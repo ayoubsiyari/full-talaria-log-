@@ -1801,17 +1801,34 @@ const TalariaV8b = () => {
     };
     const isPressed = t.action && btnPressed === t.id;
     const pressCol = isPressed ? c.acL : col;
-    const hArr = hov === t.id + "-arr";
-    const arrCol = act ? accentCol : hArr ? c.tx : c.tm;
+    const arrCol = act ? accentCol : h ? c.tx : c.tm;
     return (
-      <div key={t.id} style={{ position: "relative", width: "100%", display: "flex", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
+      <div
+        key={t.id}
+        style={{
+          position: "relative",
+          width: "100%",
+          display: "flex",
+          transform: isPressed ? "scale(0.88)" : "scale(1)",
+          transition: "transform 0.08s ease",
+          ...(t.dd
+            ? {
+                background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
+                borderRadius: 2,
+                transition: "transform 0.08s ease, background 0.12s",
+              }
+            : {}),
+        }}
+        onMouseEnter={t.dd ? () => setHov(t.id) : undefined}
+        onMouseLeave={t.dd ? () => { setHov(null); setBtnPressed(null); } : undefined}
+      >
         {/* Icon button — selects the tool only */}
         <button
           ref={ref}
           onPointerDown={t.action ? () => setBtnPressed(t.id) : undefined}
           onPointerUp={t.action ? () => setBtnPressed(null) : undefined}
-          onMouseEnter={() => setHov(t.id)}
-          onMouseLeave={() => { setHov(null); setBtnPressed(null); }}
+          onMouseEnter={t.dd ? undefined : () => setHov(t.id)}
+          onMouseLeave={t.dd ? undefined : () => { setHov(null); setBtnPressed(null); }}
           onClick={(e) => {
             e.stopPropagation();
             if (t.id === "pinbar") { setPinnedBarOpen(v => !v); return; }
@@ -1822,7 +1839,7 @@ const TalariaV8b = () => {
           }}
           style={{
             width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "flex-end",
-            background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
+            background: t.dd ? "transparent" : act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
             border: "none", cursor: "default", color: pressCol,
             padding: 0, paddingRight: 10,
             transition: "color 0.15s ease, background 0.12s", position: "relative", fontFamily: F,
@@ -1837,8 +1854,7 @@ const TalariaV8b = () => {
         {isPressed && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}`, pointerEvents: "none", zIndex: 2 }}/>}
         {/* Arrow button — opens dropdown independently */}
         {t.dd && <button
-          onMouseEnter={() => setHov(t.id + "-arr")}
-          onMouseLeave={() => setHov(null)}
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             setTool(t.id);
@@ -1846,11 +1862,12 @@ const TalariaV8b = () => {
           }}
           style={{
             position: "absolute", right: 0, top: 0,
-            width: 8, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
-            background: hArr ? "rgba(255,255,255,0.06)" : "transparent",
+            width: 12, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+            background: "transparent",
             border: "none", cursor: "default",
             padding: 0, flexShrink: 0,
-            transition: "background 0.12s", fontFamily: F,
+            transition: "color 0.12s", fontFamily: F,
+            zIndex: 3,
           }}>
           <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{transition:"fill 0.12s"}}>
             <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>

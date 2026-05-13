@@ -9986,14 +9986,14 @@ const TalariaV8bLive = () => {
     };
     const isPressed = t.action && btnPressed === t.id;
     const pressCol = isPressed ? c.acL : col;
-    const hArr = hov === t.id + "-arr";
-    const arrCol = act ? accentCol : hArr ? c.tx : c.tm;
+    // One row hover/selection for icon + chevron (TradingView-style); chevron still has its own click.
+    const arrCol = act ? accentCol : h ? c.tx : c.tm;
     const mainBtnStyle = {
       height: 32,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
+      background: t.dd ? "transparent" : act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
       border: "none",
       cursor: "default",
       color: pressCol,
@@ -10003,7 +10003,7 @@ const TalariaV8bLive = () => {
       transition: "color 0.15s ease, background 0.12s",
       position: "relative",
       fontFamily: F,
-      ...(t.dd ? { width: "auto", flex: "0 0 auto", minWidth: 0 } : { width: "100%", flex: "1 1 auto", minWidth: 0 }),
+      ...(t.dd ? { width: "auto", flex: "1 1 auto", minWidth: 0 } : { width: "100%", flex: "1 1 auto", minWidth: 0 }),
     };
     const mainBtn = (
       <button
@@ -10014,8 +10014,8 @@ const TalariaV8bLive = () => {
           if (t.action) setBtnPressed(t.id);
         }}
         onPointerUp={t.action ? () => setBtnPressed(null) : undefined}
-        onMouseEnter={() => setHov(t.id)}
-        onMouseLeave={() => { setHov(null); setBtnPressed(null); }}
+        onMouseEnter={t.dd ? undefined : () => setHov(t.id)}
+        onMouseLeave={t.dd ? undefined : () => { setHov(null); setBtnPressed(null); }}
         onClick={(e) => {
           e.stopPropagation();
           const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
@@ -10085,33 +10085,50 @@ const TalariaV8bLive = () => {
     );
     return (
       <div key={t.id} style={{ position: "relative", width: "100%", display: "block", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
-        <div style={{ width: "100%", height: 32, display: "flex", alignItems: "stretch", justifyContent: "center", gap: 0, boxSizing: "border-box" }}>
+        <div
+          style={{
+            width: "100%",
+            height: 32,
+            display: "flex",
+            alignItems: "stretch",
+            justifyContent: "center",
+            gap: 0,
+            boxSizing: "border-box",
+            ...(t.dd
+              ? {
+                  background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
+                  borderRadius: 2,
+                  transition: "background 0.12s",
+                }
+              : {}),
+          }}
+          onMouseEnter={t.dd ? () => setHov(t.id) : undefined}
+          onMouseLeave={t.dd ? () => { setHov(null); setBtnPressed(null); } : undefined}
+        >
           {mainBtn}
           {t.dd && (
             <button
               type="button"
               aria-label="Open tool menu"
               onPointerDown={(e) => e.stopPropagation()}
-              onMouseEnter={() => setHov(t.id + "-arr")}
-              onMouseLeave={() => setHov(null)}
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
                 openDd(e.currentTarget.parentElement);
               }}
               style={{
-                width: 6,
+                width: 12,
                 height: 32,
-                flex: "0 0 6px",
+                flex: "0 0 12px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                background: hArr ? "rgba(255,255,255,0.06)" : "transparent",
+                background: "transparent",
                 border: "none",
                 cursor: "default",
                 padding: 0,
                 margin: 0,
-                transition: "background 0.12s",
+                transition: "color 0.12s",
                 fontFamily: F,
                 touchAction: "manipulation",
               }}
