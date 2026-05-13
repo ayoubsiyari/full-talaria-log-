@@ -59,6 +59,22 @@
         return 'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:2px;cursor:default;transition:background .15s,color .15s;flex-shrink:0;';
     }
 
+    function emitIndicatorsChanged(chart, action, indicator) {
+        if (typeof global === 'undefined' || typeof global.dispatchEvent !== 'function') return;
+        try {
+            global.dispatchEvent(new CustomEvent('indicatorsChanged', {
+                detail: {
+                    chart: chart,
+                    action: action,
+                    indicator: indicator || null,
+                    indicators: chart && chart.indicators && Array.isArray(chart.indicators.active)
+                        ? chart.indicators.active.slice()
+                        : []
+                }
+            }));
+        } catch (_) {}
+    }
+
     /** Framed color tile — matches V9 sidebar buttons; prefers indicator-ui factory when loaded. */
     function createIndLegendSwatch(displayColor) {
         const w = global;
@@ -3022,6 +3038,7 @@
         
         this.updateOHLCIndicators();
         this.persistIndicators();
+        emitIndicatorsChanged(this, 'add', indicator);
         
         return indicator;
     };
@@ -4210,6 +4227,7 @@
             
             this.updateOHLCIndicators();
             this.persistIndicators();
+            emitIndicatorsChanged(this, 'remove', indicator);
         }
     };
     
@@ -4249,6 +4267,7 @@
         }
 
         this.persistIndicators();
+        emitIndicatorsChanged(this, 'clear', null);
         return true;
     };
     

@@ -5628,9 +5628,11 @@ const TalariaV8bLive = () => {
       };
 
       window.addEventListener("multichartFocusChanged", syncIndUiFromMultichartFocus);
+      window.addEventListener("indicatorsChanged", syncIndUiFromMultichartFocus);
       return () => {
         cancelled = true;
         window.removeEventListener("multichartFocusChanged", syncIndUiFromMultichartFocus);
+        window.removeEventListener("indicatorsChanged", syncIndUiFromMultichartFocus);
       };
     }
     // ─── /Phase 7.2.4 multichart branch ─────────────────────────────────
@@ -5746,11 +5748,13 @@ const TalariaV8bLive = () => {
     window.addEventListener("panelSelected", syncIndUiFromFocusedChart);
     window.addEventListener("panelsCreated", onPanelOrData);
     window.addEventListener("chartDataLoaded", onPanelOrData);
+    window.addEventListener("indicatorsChanged", syncIndUiFromFocusedChart);
     return () => {
       cancelled = true;
       window.removeEventListener("panelSelected", syncIndUiFromFocusedChart);
       window.removeEventListener("panelsCreated", onPanelOrData);
       window.removeEventListener("chartDataLoaded", onPanelOrData);
+      window.removeEventListener("indicatorsChanged", syncIndUiFromFocusedChart);
     };
     // Also re-run when the multichart grid mounts/unmounts (layoutPanels.n
     // crossing 1 ↔ N) so we switch between the legacy single-chart path
