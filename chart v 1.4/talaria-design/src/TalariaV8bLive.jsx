@@ -10263,8 +10263,9 @@ const TalariaV8bLive = () => {
                 id="chartChange"
                 style={{
                   marginLeft: 0,
-                  minWidth: 0,
-                  flex: "0 1 auto",
+                  width: "14ch",
+                  minWidth: "14ch",
+                  flex: "0 0 14ch",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -10283,7 +10284,7 @@ const TalariaV8bLive = () => {
                 width: replayOhlcBadgeVisible ? 32 : 0,
                 minWidth: replayOhlcBadgeVisible ? 32 : 0,
                 maxWidth: replayOhlcBadgeVisible ? 32 : 0,
-                overflow: "hidden",
+                overflow: "visible",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -10444,8 +10445,8 @@ const TalariaV8bLive = () => {
         .ohlc-label{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;opacity:1 !important}
         .ohlc-value{font-size:9px !important;font-weight:80 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
         .ohlc-change{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;margin-left:2px !important;white-space:nowrap !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
-        .ohlc-item-close-change .ohlc-change{margin-left:0 !important;min-width:0 !important;flex:0 1 auto !important;overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important;text-align:left !important}
-        .ohlc-nav-badge-slot{display:flex !important;align-items:center !important;justify-content:center !important;flex-shrink:0 !important;overflow:hidden !important;box-sizing:border-box !important}
+        .ohlc-item-close-change .ohlc-change{margin-left:0 !important;width:14ch !important;min-width:14ch !important;flex:0 0 14ch !important;overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important;text-align:left !important}
+        .ohlc-nav-badge-slot{display:flex !important;align-items:center !important;justify-content:center !important;flex-shrink:0 !important;overflow:visible !important;box-sizing:border-box !important}
         .ohlc-nav-badge-slot .nav-integrity-badge{position:relative !important;margin-left:0 !important;flex-shrink:0 !important}
         .ohlc-body{margin-top:1px !important}
         .ohlc-indicators{min-width:0;color:var(--ohlc-ind,rgba(255,255,255,0.72)) !important}
