@@ -10211,7 +10211,7 @@ const TalariaV8bLive = () => {
               alignItems: "center",
               minHeight: 22,
               overflow: "visible",
-              gap: replayOhlcBadgeVisible ? 2 : 0,
+              gap: 0,
               paddingLeft: 4,
               flex: "0 1 auto",
               minWidth: 0,
@@ -10279,10 +10279,10 @@ const TalariaV8bLive = () => {
             <div
               className="ohlc-nav-badge-slot"
               style={{
-                flex: replayOhlcBadgeVisible ? "0 0 32px" : "0 0 0px",
-                width: replayOhlcBadgeVisible ? 32 : 0,
-                minWidth: replayOhlcBadgeVisible ? 32 : 0,
-                maxWidth: replayOhlcBadgeVisible ? 32 : 0,
+                flex: replayOhlcBadgeVisible ? "0 0 22px" : "0 0 0px",
+                width: replayOhlcBadgeVisible ? 22 : 0,
+                minWidth: replayOhlcBadgeVisible ? 22 : 0,
+                maxWidth: replayOhlcBadgeVisible ? 22 : 0,
                 overflow: "hidden",
                 display: "flex",
                 alignItems: "center",
@@ -10306,7 +10306,7 @@ const TalariaV8bLive = () => {
                   e.currentTarget.classList.toggle("show-tooltip");
                 }}
               >
-                <div className="nav-badge-icon" style={{ width: 30, height: 30, border: "none", background: "transparent", padding: 0 }}>
+                <div className="nav-badge-icon" style={{ width: 22, height: 22, border: "none", background: "transparent", padding: 0 }}>
                   {/* Exact replay-bar rollback icon */}
                   <svg className="nav-badge-go-back" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ width: 22, height: 22, display: "block" }}>
                     <line x1="15" y1="4" x2="15" y2="7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
