@@ -2515,6 +2515,20 @@ class OrderManager {
                     risk = slDistanceInPips * quantity * this.pipValuePerLot;
                 }
             }
+
+            // Futures are whole-contract instruments. When desired risk snaps up/down to
+            // a valid contract count, display the actual SL exposure, not the requested risk input.
+            if (this.marketType === 'futures' && quantity > 0) {
+                let actualRisk = NaN;
+                if (window.marketCalcEngine) {
+                    actualRisk = this._engineRisk(entryPrice, slPrice, quantity, entryPrice);
+                }
+                if (!window.marketCalcEngine || !Number.isFinite(actualRisk)) {
+                    const slDistanceInPips = slDistance / (this.pipSize || 0.0001);
+                    actualRisk = slDistanceInPips * quantity * this.pipValuePerLot;
+                }
+                if (Number.isFinite(actualRisk) && actualRisk > 0) risk = actualRisk;
+            }
         }
         return { hasValidSL, slDistance, risk };
     }
@@ -14256,6 +14270,10 @@ class OrderManager {
                 const bt = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
                 const bal = bt === 'current' ? this.balance : this.initialBalance;
                 risk = (bal * rp) / 100;
+            }
+            if (this.marketType === 'futures' && hasValidSL) {
+                const actualRisk = this.multiEntryLevels.reduce((sum, l) => sum + this._getMultiEntryLevelRiskUsd(l), 0);
+                if (Number.isFinite(actualRisk) && actualRisk > 0) risk = actualRisk;
             }
         }
         
