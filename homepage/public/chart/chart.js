@@ -1542,6 +1542,14 @@ class Chart {
             this.recalculateIndicators();
         }
 
+        // GET /sessions/:id/state often finishes before the first OHLC ingest. In that case
+        // `loadTradingSessionStateIfNeeded` stores `state.indicators` in `_pendingIndicatorsState`
+        // but skips `_applyPersistedIndicators()` because `this.data` is still empty — and nothing
+        // retried after data arrived. Re-apply here whenever bars exist (no-op if nothing pending).
+        if (typeof this._applyPersistedIndicators === 'function') {
+            this._applyPersistedIndicators();
+        }
+
         this.updateDateRange();
 
         if (this.currentSymbol) {

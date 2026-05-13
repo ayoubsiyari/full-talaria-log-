@@ -719,16 +719,21 @@
 
     function boot() {
         pollFor(
-            function () { return !!window.chart; },
+            function () {
+                return !!window.chart
+                    && !!window.MultichartGuards
+                    && !!window.MultichartBridge;
+            },
             150,
             30000,
             installOnce,
             function () {
                 reportToShell('error',
-                    'window.chart never appeared after 30s — '
-                    + 'either the dist-v9 chart bundle failed to load, the user is unauthenticated '
-                    + '(check Network tab for a redirect to /signin), or chart.js threw during init '
-                    + '(open this iframe directly in a new tab to see its console)');
+                    'multichart boot timeout after 30s — need window.chart + MultichartGuards + MultichartBridge. '
+                    + 'If chart exists but bridge globals are missing, bridge scripts ran out of order or '
+                    + '/chart/multichart-prod/*.js failed to load (check Network tab). '
+                    + 'If chart is missing: auth redirect, bundle error, or chart.js init threw '
+                    + '(open this iframe URL in a new tab).');
             }
         );
     }

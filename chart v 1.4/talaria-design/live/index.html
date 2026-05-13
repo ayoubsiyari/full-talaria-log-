@@ -58,11 +58,13 @@
                    in some load orders), strip it again now. */
                 try { document.documentElement.classList.remove('bt-preload'); } catch (_) {}
             }, { once: true });
-            var V = '20260512T2345';
+            var V = '20260514T1200';
             function inject(src) {
                 var s = document.createElement('script');
                 s.src = src + '?v=' + V;
-                s.defer = true;
+                // Dynamic scripts default to async=true → execution order is NOT guaranteed.
+                // sync-bridge.js requires MultichartGuards from engine-api-guards.js first.
+                s.async = false;
                 document.head.appendChild(s);
             }
             inject('/chart/multichart-prod/engine-api-guards.js');
