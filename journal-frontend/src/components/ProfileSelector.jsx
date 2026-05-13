@@ -119,7 +119,7 @@ export default function ProfileSelector({ onSelect }) {
               fontSize: '1.5rem',
               fontWeight: 500,
               boxShadow: '0 4px 24px 0 rgba(0,0,0,0.04)',
-              cursor: 'pointer',
+              cursor:'default',
               transition: 'box-shadow 0.2s',
               position: 'relative',
               zIndex: 1

@@ -3966,7 +3966,7 @@ class OrderManager {
                 .mfe-mae-modal__title { margin: 0; font-size: 18px; font-weight: 600; color: #fff; }
                 body.light-mode .mfe-mae-modal__title { color: #131722; }
                 .mfe-mae-modal__close {
-                    background: transparent; border: none; color: #787b86; font-size: 24px; cursor: pointer;
+                    background: transparent; border: none; color: #787b86; font-size: 24px; cursor:default;
                     padding: 0; width: 32px; height: 32px; line-height: 1; border-radius: 6px;
                 }
                 body.light-mode .mfe-mae-modal__close:hover { color: #131722; border: 1px solid #e0e3eb; }
@@ -4001,7 +4001,7 @@ class OrderManager {
                 .mfe-mae-modal__input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
                 .mfe-mae-modal__hint { color: #787b86; font-size: 10px; margin-top: 4px; }
                 .mfe-mae-modal__actions { display: flex; gap: 12px; margin-top: 4px; }
-                .mfe-mae-modal__btn { flex: 1; padding: 12px 14px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; }
+                .mfe-mae-modal__btn { flex: 1; padding: 12px 14px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor:default; border: none; }
                 .mfe-mae-modal__btn--primary { background: #7c3aed; color: #fff; }
                 body.light-mode .mfe-mae-modal__btn--primary { background: #089981; color: #fff; }
                 body.light-mode .mfe-mae-modal__btn--primary:hover { background: #07806d; }
@@ -4143,7 +4143,7 @@ class OrderManager {
         modalContent.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h3 style="color: #fff; margin: 0; font-size: 18px;">⚙️ Instrument Settings</h3>
-                <button id="closeInstrumentSettings" style="background: transparent; border: none; color: #787b86; font-size: 24px; cursor: pointer; padding: 0; width: 32px; height: 32px;">×</button>
+                <button id="closeInstrumentSettings" style="background: transparent; border: none; color: #787b86; font-size: 24px; cursor:default; padding: 0; width: 32px; height: 32px;">×</button>
             </div>
             
             <div style="margin-bottom: 20px;">
@@ -4176,10 +4176,10 @@ class OrderManager {
             </div>
             
             <div style="display: flex; gap: 12px;">
-                <button id="saveInstrumentSettings" style="flex: 1; padding: 12px; background: #3b82f6; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                <button id="saveInstrumentSettings" style="flex: 1; padding: 12px; background: #3b82f6; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor:default;">
                     Save Settings
                 </button>
-                <button id="cancelInstrumentSettings" style="flex: 1; padding: 12px; background: transparent; color: #787b86; border: 1px solid #2a2e39; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                <button id="cancelInstrumentSettings" style="flex: 1; padding: 12px; background: transparent; color: #787b86; border: 1px solid #2a2e39; border-radius: 6px; font-size: 14px; font-weight: 600; cursor:default;">
                     Cancel
                 </button>
             </div>
@@ -4263,7 +4263,7 @@ class OrderManager {
                 setTimeout(() => {
                     const items = tradeHistoryList.querySelectorAll('.trade-history-item');
                     items.forEach((item) => {
-                        item.style.cursor = 'pointer';
+                        item.style.cursor = 'default';
                     });
 
                     if (!tradeHistoryList.dataset.boundClick) {
@@ -4434,7 +4434,7 @@ class OrderManager {
                     border-radius: 8px;
                     padding: 12px;
                     margin-bottom: 10px;
-                    cursor: pointer;
+                    cursor:default;
                     transition: all 0.25s ease;
                     user-select: none;
                     position: relative;
@@ -4511,7 +4511,7 @@ class OrderManager {
                         pointer-events: auto;
                     ">
                         ${trade.entryScreenshot ? `
-                            <div style="position: relative; cursor: pointer;" 
+                            <div style="position: relative; cursor:default;" 
                                  onclick="event.stopPropagation(); window.chart.orderManager.showScreenshotPreview('${trade.entryScreenshot}', 'Entry Screenshot')">
                                 <div style="color: #787b86; font-size: 8px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.3px;">Entry</div>
                                 <img src="${trade.entryScreenshot}" style="
@@ -4528,7 +4528,7 @@ class OrderManager {
                             </div>
                         ` : ''}
                         ${trade.exitScreenshot ? `
-                            <div style="position: relative; cursor: pointer;"
+                            <div style="position: relative; cursor:default;"
                                  onclick="event.stopPropagation(); window.chart.orderManager.showScreenshotPreview('${trade.exitScreenshot}', 'Exit Screenshot')">
                                 <div style="color: #787b86; font-size: 8px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.3px;">Exit</div>
                                 <img src="${trade.exitScreenshot}" style="
@@ -4728,7 +4728,7 @@ class OrderManager {
                     border: 1px solid rgba(148,163,184,0.2);
                     color: #94a3b8;
                     font-size: 20px;
-                    cursor: pointer;
+                    cursor:default;
                     padding: 6px;
                     width: 32px;
                     height: 32px;
@@ -4935,7 +4935,7 @@ class OrderManager {
                     : '';
                 const perLegBlock = useAggByTp && pcs.length > 1 ? `
                     <details style="margin-top:12px;border-radius:6px;border:1px solid rgba(148,163,184,0.2);background:rgba(0,0,0,0.15);">
-                        <summary style="cursor:pointer;padding:10px 12px;font-size:12px;font-weight:600;color:#cbd5e1;">Per-leg fills (${pcs.length})</summary>
+                        <summary style="cursor:default;padding:10px 12px;font-size:12px;font-weight:600;color:#cbd5e1;">Per-leg fills (${pcs.length})</summary>
                         <div style="overflow-x:auto;padding:0 8px 12px;">
                             <table style="width:100%;border-collapse:collapse;">
                                 <thead>
@@ -4979,7 +4979,7 @@ class OrderManager {
                 </div>` : '';
                 return `
             <details class="trade-details-partial-breakdown" open style="background: rgba(124,58,237,0.08); border: 1px solid rgba(124,58,237,0.35); border-radius: 8px; margin-bottom: 28px; overflow: hidden;">
-                <summary style="cursor: pointer; list-style: none; padding: 16px 20px; font-size: 14px; font-weight: 700; color: #e5e7eb; display: flex; align-items: center; justify-content: space-between; user-select: none;">
+                <summary style="cursor:default; list-style: none; padding: 16px 20px; font-size: 14px; font-weight: 700; color: #e5e7eb; display: flex; align-items: center; justify-content: space-between; user-select: none;">
                     <span>▼ Partial exits &amp; TP ladder</span>
                     <span style="font-size: 11px; font-weight: 600; color: #a78bfa; text-transform: uppercase; letter-spacing: 0.06em;">${summaryBadge}</span>
                 </summary>
@@ -5334,7 +5334,7 @@ class OrderManager {
                                             border: 1px solid rgba(148,163,184,0.2);
                                             border-radius: 8px;
                                             overflow: hidden;
-                                            cursor: pointer;
+                                            cursor:default;
                                             transition: all 0.2s;
                                         " onclick="window.chart.orderManager.showScreenshotPreview('${entry.screenshot}', 'Entry #${idx + 1}')" 
                                            onmouseover="this.style.borderColor='rgba(148,163,184,0.4)';" 
@@ -5356,7 +5356,7 @@ class OrderManager {
                                 border: 1px solid rgba(148,163,184,0.2);
                                 border-radius: 8px;
                                 overflow: hidden;
-                                cursor: pointer;
+                                cursor:default;
                                 transition: all 0.2s;
                                 max-width: 300px;
                             " onclick="window.chart.orderManager.showScreenshotPreview('${trade.exitScreenshot}', 'Exit Screenshot')" 
@@ -5383,7 +5383,7 @@ class OrderManager {
                                     border: 1px solid rgba(148,163,184,0.2);
                                     border-radius: 8px;
                                     overflow: hidden;
-                                    cursor: pointer;
+                                    cursor:default;
                                     transition: all 0.2s;
                                 " onclick="window.chart.orderManager.showScreenshotPreview('${trade.entryScreenshot}', 'Entry Screenshot')" 
                                    onmouseover="this.style.borderColor='rgba(148,163,184,0.4)'; this.style.transform='translateY(-2px)';" 
@@ -5410,7 +5410,7 @@ class OrderManager {
                                     border: 1px solid rgba(148,163,184,0.2);
                                     border-radius: 8px;
                                     overflow: hidden;
-                                    cursor: pointer;
+                                    cursor:default;
                                     transition: all 0.2s;
                                 " onclick="window.chart.orderManager.showScreenshotPreview('${trade.exitScreenshot}', 'Exit Screenshot')" 
                                    onmouseover="this.style.borderColor='rgba(148,163,184,0.4)'; this.style.transform='translateY(-2px)';" 
@@ -5439,7 +5439,7 @@ class OrderManager {
                                             border: 1px solid rgba(148,163,184,0.2);
                                             border-radius: 8px;
                                             overflow: hidden;
-                                            cursor: pointer;
+                                            cursor:default;
                                             transition: all 0.2s;
                                         " onclick="window.chart.orderManager.showScreenshotPreview(${JSON.stringify(r.dataUrl)}, ${JSON.stringify(r.name || `Attachment ${idx + 1}`)})"
                                            onmouseover="this.style.borderColor='rgba(148,163,184,0.4)';"
@@ -5468,7 +5468,7 @@ class OrderManager {
                         border-radius: 6px;
                         font-size: 13px;
                         font-weight: 600;
-                        cursor: pointer;
+                        cursor:default;
                         transition: all 0.2s;
                     " onmouseover="this.style.background='rgba(30,41,59,0.7)'; this.style.borderColor='rgba(148,163,184,0.5)';" onmouseout="this.style.background='rgba(30,41,59,0.5)'; this.style.borderColor='rgba(148,163,184,0.3)';">
                         ${!hasPreSection && !hasPostSection ? 'Add Notes' : 'Add Missing Notes'}
@@ -5483,7 +5483,7 @@ class OrderManager {
                     border-radius: 6px;
                     font-size: 13px;
                     font-weight: 600;
-                    cursor: pointer;
+                    cursor:default;
                     transition: all 0.2s;
                 " onmouseover="this.style.background='rgba(148,163,184,0.25)'; this.style.borderColor='rgba(148,163,184,0.5)';" onmouseout="this.style.background='rgba(148,163,184,0.15)'; this.style.borderColor='rgba(148,163,184,0.3)';">
                     Back to Journal
@@ -5595,7 +5595,7 @@ class OrderManager {
                         width: 32px;
                         height: 32px;
                         border-radius: 6px;
-                        cursor: pointer;
+                        cursor:default;
                         font-size: 20px;
                         display: flex;
                         align-items: center;
@@ -5781,7 +5781,7 @@ class OrderManager {
                         border-radius: 6px;
                         font-size: 13px;
                         font-weight: 600;
-                        cursor: pointer;
+                        cursor:default;
                         transition: all 0.2s;
                     " onmouseover="this.style.background='rgba(34,197,94,0.25)'; this.style.borderColor='rgba(34,197,94,0.5)';" onmouseout="this.style.background='rgba(34,197,94,0.15)'; this.style.borderColor='rgba(34,197,94,0.3)';">
                         Export to CSV
@@ -5794,7 +5794,7 @@ class OrderManager {
                         border-radius: 6px;
                         font-size: 13px;
                         font-weight: 600;
-                        cursor: pointer;
+                        cursor:default;
                         transition: all 0.2s;
                     " onmouseover="this.style.background='rgba(59,130,246,0.25)'; this.style.borderColor='rgba(59,130,246,0.5)';" onmouseout="this.style.background='rgba(59,130,246,0.15)'; this.style.borderColor='rgba(59,130,246,0.3)';">
                         Export to JSON
@@ -5804,7 +5804,7 @@ class OrderManager {
                         border: 1px solid rgba(148,163,184,0.2);
                         color: #94a3b8;
                         font-size: 20px;
-                        cursor: pointer;
+                        cursor:default;
                         padding: 6px;
                         width: 32px;
                         height: 32px;
@@ -6707,10 +6707,10 @@ class OrderManager {
             
             <!-- Buttons -->
             <div style="display: flex; gap: 12px;">
-                <button id="saveTradeNote" style="flex: 1; padding: 12px; background: #7c3aed; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                <button id="saveTradeNote" style="flex: 1; padding: 12px; background: #7c3aed; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor:default;">
                     ${isClosing ? 'Save & Complete' : 'Done'}
                 </button>
-                <button id="skipTradeNote" style="flex: 1; padding: 12px; background: transparent; color: #787b86; border: 1px solid #2a2e39; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                <button id="skipTradeNote" style="flex: 1; padding: 12px; background: transparent; color: #787b86; border: 1px solid #2a2e39; border-radius: 6px; font-size: 14px; font-weight: 600; cursor:default;">
                     Skip
                 </button>
             </div>
@@ -7458,7 +7458,7 @@ class OrderManager {
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    cursor: pointer;
+                    cursor:default;
                     z-index: 1;
                     color: #0f1319;
                     transition: filter 0.15s, background 0.15s;
@@ -7525,7 +7525,7 @@ class OrderManager {
                     background: transparent;
                     border: 1px solid var(--om-b);
                     color: var(--om-dim);
-                    cursor: pointer;
+                    cursor:default;
                     font-size: 18px;
                     line-height: 1;
                     width: 22px;
@@ -7561,7 +7561,7 @@ class OrderManager {
                     font-weight: 600;
                     font-size: 11px;
                     letter-spacing: 0.02em;
-                    cursor: pointer;
+                    cursor:default;
                     transition: background 0.1s ease, color 0.1s ease;
                     background: transparent;
                     color: var(--om-tab-dim);
@@ -8204,7 +8204,7 @@ class OrderManager {
                     display: flex;
                     align-items: center;
                     gap: 6px;
-                    cursor: pointer;
+                    cursor:default;
                     flex-shrink: 0;
                 }
                 .order-sl-card__toggle-label {
@@ -8319,7 +8319,7 @@ class OrderManager {
                     display: flex;
                     align-items: center;
                     gap: 6px;
-                    cursor: pointer;
+                    cursor:default;
                     flex-shrink: 0;
                 }
                 .order-tp-card__toggle-label {
@@ -8535,7 +8535,7 @@ class OrderManager {
                     padding: 2px 7px;
                     font-size: 9px;
                     font-weight: 600;
-                    cursor: pointer;
+                    cursor:default;
                     color: var(--om-tab-dim);
                     -webkit-text-fill-color: var(--om-tab-dim);
                     background: transparent;
@@ -8606,7 +8606,7 @@ class OrderManager {
                     font-size: 11px;
                     font-weight: 600;
                     letter-spacing: 0.02em;
-                    cursor: pointer;
+                    cursor:default;
                     margin-bottom: 0;
                     min-width: 0;
                     box-shadow: none;
@@ -8660,7 +8660,7 @@ class OrderManager {
                     padding: 2px 7px;
                     font-size: 9px;
                     font-weight: 600;
-                    cursor: pointer;
+                    cursor:default;
                     color: var(--om-dim);
                     transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
                 }
@@ -8679,7 +8679,7 @@ class OrderManager {
                 .toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
                 .toggle-switch input { opacity: 0; width: 0; height: 0; }
                 .toggle-switch__track {
-                    position: absolute; cursor: pointer;
+                    position: absolute; cursor:default;
                     inset: 0;
                     background: rgba(255,255,255,0.08);
                     border-radius: 999px;
@@ -8702,7 +8702,7 @@ class OrderManager {
                     color: var(--om-dim);
                     font-size: 11px;
                     font-weight: 600;
-                    cursor: pointer;
+                    cursor:default;
                     user-select: none;
                     transition: color 0.15s;
                 }
@@ -8714,7 +8714,7 @@ class OrderManager {
                     display: flex; align-items: center; gap: 5px;
                     font-size: 11px;
                     color: var(--om-dim);
-                    cursor: pointer;
+                    cursor:default;
                     transition: color 0.15s;
                 }
                 .order-radio-label input { accent-color: var(--om-ot-gold); }
@@ -8814,7 +8814,7 @@ class OrderManager {
                     color: var(--om-dim) !important;
                     font-size: 14px !important;
                     font-weight: 700 !important;
-                    cursor: pointer !important;
+                    cursor:default !important;
                     display: inline-flex !important;
                     align-items: center !important;
                     justify-content: center !important;
@@ -8889,7 +8889,7 @@ class OrderManager {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    cursor: pointer;
+                    cursor:default;
                     color: var(--om-dim);
                     font-size: 10px;
                     font-weight: 600;
@@ -8983,7 +8983,7 @@ class OrderManager {
                     font-size: 12px;
                     font-weight: 700;
                     letter-spacing: 0.02em;
-                    cursor: pointer;
+                    cursor:default;
                     transition: filter 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
                     box-shadow: 0 2px 12px rgba(34, 197, 94, 0.2);
                     margin-top: 2px;
@@ -9057,7 +9057,7 @@ class OrderManager {
                     color: var(--om-tx);
                     font-size: 14px;
                     font-weight: 700;
-                    cursor: pointer;
+                    cursor:default;
                     transition: border-color 0.15s ease, background 0.15s ease;
                 }
                 .order-btn-icon:hover {
@@ -9077,7 +9077,7 @@ class OrderManager {
                     padding: 6px 10px;
                     font-size: 12px;
                     color: var(--om-tx);
-                    cursor: pointer;
+                    cursor:default;
                     outline: none;
                     box-shadow: none;
                     font-family: 'DM Sans', sans-serif;
@@ -9203,7 +9203,7 @@ class OrderManager {
                     color: var(--om-ot-gold);
                     font-size: 11px;
                     font-weight: 700;
-                    cursor: pointer;
+                    cursor:default;
                     white-space: nowrap;
                     transition: all 0.15s ease;
                 }
@@ -9221,7 +9221,7 @@ class OrderManager {
                     font-size: 12px;
                     font-weight: 700;
                     letter-spacing: 0.02em;
-                    cursor: pointer;
+                    cursor:default;
                     transition: border-color 0.15s ease, background 0.15s ease;
                 }
                 .order-utility-btn:hover {
@@ -9258,7 +9258,7 @@ class OrderManager {
                     font-weight: 700;
                     letter-spacing: 0.06em;
                     text-transform: uppercase;
-                    cursor: pointer;
+                    cursor:default;
                     transition: all 0.15s ease;
                     font-family: 'DM Sans', sans-serif;
                 }
@@ -9375,7 +9375,7 @@ class OrderManager {
                     color: #ef4444;
                     font-size: 14px;
                     font-weight: 700;
-                    cursor: pointer;
+                    cursor:default;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -9413,7 +9413,7 @@ class OrderManager {
                     gap: 6px;
                     padding: 8px;
                     border-top: 1px dashed var(--om-b2);
-                    cursor: pointer;
+                    cursor:default;
                     transition: background 0.1s;
                 }
                 .multi-entry-add-row:hover {
@@ -9450,7 +9450,7 @@ class OrderManager {
                     color: var(--om-tx);
                     font-size: 10px;
                     font-weight: 600;
-                    cursor: pointer;
+                    cursor:default;
                     transition: all 0.15s;
                     font-family: 'DM Sans', sans-serif;
                 }
@@ -9623,7 +9623,7 @@ class OrderManager {
                     border: 1px solid var(--om-seg-border) !important;
                     background: var(--om-seg-bg) !important;
                     color: var(--om-dim) !important;
-                    cursor: pointer;
+                    cursor:default;
                     font-weight: 600;
                     text-transform: uppercase;
                     letter-spacing: 0.02em;
@@ -9783,7 +9783,7 @@ class OrderManager {
                     background: transparent;
                     color: #22c55e;
                     font-size: 10px;
-                    cursor: pointer;
+                    cursor:default;
                     padding: 0;
                     transition: all 0.1s;
                     font-family: var(--om-mono);
@@ -9801,7 +9801,7 @@ class OrderManager {
                     padding: 4px;
                     margin-top: 4px;
                     border-top: 1px dashed rgba(34, 197, 94, 0.2);
-                    cursor: pointer;
+                    cursor:default;
                     color: var(--om-dim);
                     transition: color 0.1s;
                 }
@@ -9994,7 +9994,7 @@ class OrderManager {
                     font-size: 11px;
                     font-weight: 600;
                     letter-spacing: 0.02em;
-                    cursor: pointer;
+                    cursor:default;
                     margin-bottom: 0;
                     min-width: 0;
                     background: transparent;
@@ -10031,7 +10031,7 @@ class OrderManager {
                     font-size: 11px;
                     font-weight: 600;
                     border-radius: 4px;
-                    cursor: pointer;
+                    cursor:default;
                     font-family: inherit;
                     line-height: 1.2;
                     margin: 0;
@@ -10168,7 +10168,7 @@ class OrderManager {
                     color: var(--om-dim) !important;
                     font-size: 14px !important;
                     font-weight: 700 !important;
-                    cursor: pointer !important;
+                    cursor:default !important;
                     display: inline-flex !important;
                     align-items: center !important;
                     justify-content: center !important;
@@ -10557,7 +10557,7 @@ class OrderManager {
                             color: var(--op-text);
                             font-size: 13px;
                             font-weight: 600;
-                            cursor: pointer;
+                            cursor:default;
                             transition: all 0.15s ease;
                         ">
                             <span id="marketTypeIcon" style="font-size: 18px;">💱</span>
@@ -10670,8 +10670,8 @@ class OrderManager {
                             <button class="position-mode-tab" type="button" data-mode="lot-size">#</button>
                         </div>
                         <div id="balanceSourceToggle" style="display: none; gap: 0; margin-left: auto;">
-                            <button class="balance-source-tab active" type="button" data-balance="current" style="font-size: 9px; padding: 2px 8px; border-radius: 4px 0 0 4px; background: #334155; color: #e2e8f0; border: 1px solid #475569; cursor: pointer; white-space: nowrap;">Current</button>
-                            <button class="balance-source-tab" type="button" data-balance="initial" style="font-size: 9px; padding: 2px 8px; border-radius: 0 4px 4px 0; background: transparent; color: #94a3b8; border: 1px solid #475569; border-left: none; cursor: pointer; white-space: nowrap;">Initial</button>
+                            <button class="balance-source-tab active" type="button" data-balance="current" style="font-size: 9px; padding: 2px 8px; border-radius: 4px 0 0 4px; background: #334155; color: #e2e8f0; border: 1px solid #475569; cursor:default; white-space: nowrap;">Current</button>
+                            <button class="balance-source-tab" type="button" data-balance="initial" style="font-size: 9px; padding: 2px 8px; border-radius: 0 4px 4px 0; background: transparent; color: #94a3b8; border: 1px solid #475569; border-left: none; cursor:default; white-space: nowrap;">Initial</button>
                         </div>
                         <div id="riskUSDInput" class="order-input-wrapper order-risk-compact__input" style="display: flex; gap: 4px; align-items: center;">
                             <span class="order-input-prefix">$</span>
@@ -12292,7 +12292,7 @@ class OrderManager {
             placeBtn.textContent = 'Make new order';
             placeBtn.disabled = false;
             placeBtn.style.opacity = '1';
-            placeBtn.style.cursor = 'pointer';
+            placeBtn.style.cursor = 'default';
             placeBtn.classList.remove('sell-mode');
             placeBtn.style.background = '#3b82f6';
         } else {
@@ -12740,7 +12740,7 @@ class OrderManager {
                 gap: 10px;
                 padding: 10px 12px;
                 border-radius: 6px;
-                cursor: pointer;
+                cursor:default;
                 transition: all 0.15s ease;
                 color: ${key === this.marketType ? '#fff' : '#9ca3af'};
                 background: ${key === this.marketType ? 'rgba(124, 58, 237, 0.2)' : 'transparent'};
@@ -13819,7 +13819,7 @@ class OrderManager {
             } else {
                 placeBtn.disabled = false;
                 placeBtn.style.opacity = '1';
-                placeBtn.style.cursor = 'pointer';
+                placeBtn.style.cursor = 'default';
                 
                 if (symbol) {
                     placeBtn.textContent = `${action} ${this._formatQty(quantity)} ${symbol}`;
@@ -13854,7 +13854,7 @@ class OrderManager {
             scaleCheckbox.disabled = false;
             if (scaleLabel) {
                 scaleLabel.style.opacity = '1';
-                scaleLabel.style.cursor = 'pointer';
+                scaleLabel.style.cursor = 'default';
                 scaleLabel.title = `Scale with existing ${orderSide} position`;
             }
         } else {
@@ -35267,7 +35267,7 @@ class OrderManager {
                     const breakdownHtml = this._historyPanelBreakdownHtml(trade);
 
                     return `
-                        <tr style="cursor: pointer;" onclick="window.chart.orderManager.showTradeDetailsFromBottom(${index})">
+                        <tr style="cursor:default;" onclick="window.chart.orderManager.showTradeDetailsFromBottom(${index})">
                             <td>${this.tradeJournal.length - index}</td>
                             <td>${normalizeTickerSymbol(trade)}</td>
                             <td><span class="replay-badge ${sideClass}">${direction}</span></td>
@@ -35447,7 +35447,7 @@ class OrderManager {
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;">
                     <div id="miDockMeta" style="font-size:11px;color:#94a3b8;">0</div>
-                    <button id="miDockToggleBtn" type="button" title="Minimize / Expand" style="height:22px;min-width:24px;padding:0 6px;border:1px solid rgba(148,163,184,0.35);background:rgba(15,23,42,0.85);color:#e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;">−</button>
+                    <button id="miDockToggleBtn" type="button" title="Minimize / Expand" style="height:22px;min-width:24px;padding:0 6px;border:1px solid rgba(148,163,184,0.35);background:rgba(15,23,42,0.85);color:#e5e7eb;border-radius:6px;cursor:default;font-size:12px;">−</button>
                 </div>
             </div>
             <div id="miDockBody" style="max-height:260px;overflow:auto;"></div>
@@ -35660,7 +35660,7 @@ class OrderManager {
             }
             const timeLabel = mins >= 1440 ? `${(mins / 1440).toFixed(1)}d` : mins >= 60 ? `${(mins / 60).toFixed(1)}h` : `${mins}m`;
             return `
-                <div data-switch-ticker="${ticker}" style="padding:8px 10px;border-top:1px solid rgba(255,255,255,0.07);cursor:pointer;display:grid;grid-template-columns:70px 52px 56px 1fr 82px 54px;gap:8px;align-items:center;">
+                <div data-switch-ticker="${ticker}" style="padding:8px 10px;border-top:1px solid rgba(255,255,255,0.07);cursor:default;display:grid;grid-template-columns:70px 52px 56px 1fr 82px 54px;gap:8px;align-items:center;">
                     <div style="font-size:12px;font-weight:700;">${ticker}</div>
                     <div style="font-size:11px;color:${pos.type === 'SELL' ? '#f87171' : '#4ade80'};">${pos.type || '-'}</div>
                     <div style="font-size:11px;">${Number(pos.quantity || 0).toFixed(2)}L</div>
@@ -36061,7 +36061,7 @@ class OrderManager {
             font-size: 12px;
             font-weight: 600;
             border-radius: 6px;
-            cursor: pointer;
+            cursor:default;
             border: 1px solid var(--om-b,#1a2030);
             background: var(--om-panel2,#141a22);
             color: var(--om-dim,#94a3b8);
@@ -36084,7 +36084,7 @@ class OrderManager {
             font-size: 12px;
             font-weight: 700;
             border-radius: 6px;
-            cursor: pointer;
+            cursor:default;
             border: 1px solid rgba(201, 168, 76, 0.45);
             background: rgba(201, 168, 76, 0.14);
             color: var(--om-ot-gold,#C9A84C);
@@ -36369,8 +36369,8 @@ class OrderManager {
                 </div>
                 <div id="modalBreakevenSettings" style="display: none;">
                     <div style="display: flex; gap: 6px; margin-bottom: 8px;">
-                        <button class="modal-be-mode-tab" data-mode="pips" style="flex: 1; padding: 6px; font-size: 10px; background: #7c3aed; border: none; color: #fff; border-radius: 4px; cursor: pointer;">Pips</button>
-                        <button class="modal-be-mode-tab" data-mode="amount" style="flex: 1; padding: 6px; font-size: 10px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Amount $</button>
+                        <button class="modal-be-mode-tab" data-mode="pips" style="flex: 1; padding: 6px; font-size: 10px; background: #7c3aed; border: none; color: #fff; border-radius: 4px; cursor:default;">Pips</button>
+                        <button class="modal-be-mode-tab" data-mode="amount" style="flex: 1; padding: 6px; font-size: 10px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor:default;">Amount $</button>
                     </div>
                     <div id="modalBreakevenPipsInput" style="display: flex;">
                         <input type="number" id="modalBreakevenPips" value="10" min="1" step="1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 6px; font-size: 11px; color: #fff;">
@@ -36396,8 +36396,8 @@ class OrderManager {
                 <div id="modalTrailingSettings" style="display: none;">
                     <label style="display: block; font-size: 10px; color: #9ca3af; margin-bottom: 4px;">Activate At</label>
                     <div style="display: flex; gap: 6px; margin-bottom: 8px;">
-                        <button class="modal-trail-mode-tab" data-mode="trail-rr" style="flex: 1; padding: 6px; font-size: 10px; background: #7c3aed; border: none; color: #fff; border-radius: 4px; cursor: pointer;">R:R</button>
-                        <button class="modal-trail-mode-tab" data-mode="trail-pips" style="flex: 1; padding: 6px; font-size: 10px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Pips</button>
+                        <button class="modal-trail-mode-tab" data-mode="trail-rr" style="flex: 1; padding: 6px; font-size: 10px; background: #7c3aed; border: none; color: #fff; border-radius: 4px; cursor:default;">R:R</button>
+                        <button class="modal-trail-mode-tab" data-mode="trail-pips" style="flex: 1; padding: 6px; font-size: 10px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor:default;">Pips</button>
                     </div>
                     <div id="modalTrailingRRInput" style="display: flex; margin-bottom: 8px;">
                         <input type="number" id="modalTrailingRR" value="1.5" min="0.1" step="0.1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 6px; font-size: 11px; color: #fff;">
@@ -36433,10 +36433,10 @@ class OrderManager {
             
             <!-- Buttons -->
             <div style="display: flex; gap: 10px;">
-                <button id="modalCancelBtn" style="flex: 1; padding: 10px; font-size: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 4px; cursor: pointer;">
+                <button id="modalCancelBtn" style="flex: 1; padding: 10px; font-size: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 4px; cursor:default;">
                     Cancel
                 </button>
-                <button id="modalSaveBtn" style="flex: 1; padding: 10px; font-size: 12px; background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.4); color: #22c55e; border-radius: 4px; cursor: pointer; font-weight: 600;">
+                <button id="modalSaveBtn" style="flex: 1; padding: 10px; font-size: 12px; background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.4); color: #22c55e; border-radius: 4px; cursor:default; font-weight: 600;">
                     💾 Save Setting
                 </button>
             </div>
@@ -36602,7 +36602,7 @@ class OrderManager {
         `;
         notification.textContent = message;
         if (opts && typeof opts.onClick === 'function') {
-            notification.style.cursor = 'pointer';
+            notification.style.cursor = 'default';
             notification.title = opts.title || 'Click to open related instrument';
             notification.addEventListener('click', () => {
                 try { opts.onClick(); } catch (e) { console.error(e); }

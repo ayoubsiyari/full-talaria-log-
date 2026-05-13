@@ -92,7 +92,7 @@ body {
   color: var(--text-muted);
   font-size: 13px;
   font-weight: 500;
-  cursor: pointer;
+  cursor:default;
   transition: all var(--transition);
   margin-bottom: 2px;
   text-decoration: none;
@@ -196,7 +196,7 @@ body {
   padding: 7px 16px;
   font-size: 12px;
   font-weight: 500;
-  cursor: pointer;
+  cursor:default;
   transition: all var(--transition);
   font-family: inherit;
   display: flex;
@@ -326,7 +326,7 @@ th {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: .6px;
-  cursor: pointer;
+  cursor:default;
   user-select: none;
   border-bottom: 1px solid var(--border);
   transition: color var(--transition);
@@ -377,7 +377,7 @@ tr:hover td { background: rgba(255,255,255,.02); }
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 500;
-  cursor: pointer;
+  cursor:default;
   transition: all var(--transition);
   font-family: inherit;
   display: inline-flex;
@@ -439,7 +439,7 @@ input:focus, select:focus, textarea:focus {
 }
 input::placeholder { color: var(--text-muted); }
 textarea { resize: vertical; min-height: 60px; }
-select { cursor: pointer; }
+select { cursor:default; }
 
 /* ── Modal ──────────────────────────────────────── */
 .modal-overlay {
@@ -498,7 +498,7 @@ select { cursor: pointer; }
   padding: 8px 14px;
   font-size: 12px;
   font-weight: 500;
-  cursor: pointer;
+  cursor:default;
   transition: all var(--transition);
   font-family: inherit;
 }
@@ -555,7 +555,7 @@ select { cursor: pointer; }
   padding: 40px;
   text-align: center;
   color: var(--text-muted);
-  cursor: pointer;
+  cursor:default;
   transition: all .2s ease;
   background: rgba(255,255,255,.01);
 }
@@ -650,7 +650,7 @@ select { cursor: pointer; }
 }
 .fr-unclassified-header {
   display: flex; align-items: center; gap: 8px;
-  padding: 10px 16px; cursor: pointer;
+  padding: 10px 16px; cursor:default;
   background: rgba(234,179,8,.04);
   font-size: 12px; font-weight: 600; color: #eab308;
   transition: background .15s;
@@ -679,7 +679,7 @@ select { cursor: pointer; }
 }
 .fr-unclassified-row:hover { background: rgba(255,255,255,.02); }
 .fr-unclassified-row.checked { background: rgba(239,68,68,.05); }
-.fr-unclassified-row input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; }
+.fr-unclassified-row input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor:default; }
 .fr-unclassified-row .uc-name {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -765,12 +765,12 @@ select { cursor: pointer; }
 .fr-bulk-item {
   display: flex; align-items: center; gap: 8px;
   padding: 6px 10px; border-radius: var(--radius-xs);
-  cursor: pointer; transition: background .12s ease;
+  cursor:default; transition: background .12s ease;
   font-size: 12px; font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 .fr-bulk-item:hover { background: rgba(255,255,255,.04); }
 .fr-bulk-item.checked { background: rgba(239,68,68,.06); }
-.fr-bulk-item input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); flex-shrink: 0; cursor: pointer; }
+.fr-bulk-item input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); flex-shrink: 0; cursor:default; }
 .fr-bulk-item .ticker-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .fr-bulk-item .ticker-rows { font-size: 9px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fr-bulk-item .freshness-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
@@ -807,7 +807,7 @@ select { cursor: pointer; }
   padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle;
 }
 .dr-registry-wrap th { color: var(--text-muted); font-weight: 600; font-size: 11px; white-space: nowrap; }
-.dr-registry-main { cursor: pointer; }
+.dr-registry-main { cursor:default; }
 .dr-registry-main:hover td { background: rgba(139,92,246,.06); }
 .dr-registry-detail td {
   padding: 0 !important; background: rgba(0,0,0,.14); border-bottom: 1px solid var(--border);
@@ -949,7 +949,7 @@ select { cursor: pointer; }
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  cursor: pointer;
+  cursor:default;
   transition: all var(--transition);
   background: transparent;
   width: 100%;
@@ -1092,7 +1092,7 @@ select { cursor: pointer; }
 .notif-item {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-subtle);
-  cursor: pointer;
+  cursor:default;
   text-align: left;
   font-size: 12px;
 }
@@ -1155,7 +1155,7 @@ select { cursor: pointer; }
 .support-thread-row {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-subtle);
-  cursor: pointer;
+  cursor:default;
   font-size: 12px;
 }
 .support-thread-row:hover { background: rgba(255,255,255,.03); }
@@ -1411,7 +1411,7 @@ select { cursor: pointer; }
       <div class="field fg-full"><label>Display name</label><input type="text" id="affName" placeholder="Partner or campaign name" maxlength="200"></div>
       <div class="field fg-full"><label>Promo code</label><input type="text" id="affPromoCode" placeholder="Same as coupon code (e.g. PARTNER20)" style="text-transform:uppercase" maxlength="64"></div>
       <details class="fg-full" id="affStripeCreateWrap" style="grid-column:1/-1">
-        <summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Advanced — create Stripe coupon from here (only if you do not use Coupons)</summary>
+        <summary style="cursor:default;font-size:12px;color:var(--text-muted)">Advanced — create Stripe coupon from here (only if you do not use Coupons)</summary>
         <div class="field fg-full" style="margin-top:10px">
           <label>% off (creates Stripe coupon + code)</label>
           <input type="number" id="affStripePct" min="0" max="100" step="1" placeholder="e.g. 20" style="max-width:220px">
@@ -1421,7 +1421,7 @@ select { cursor: pointer; }
       <div class="field fg-full"><label>Stripe coupon ID (optional)</label><input type="text" id="affStripeCouponId" placeholder="e.g. jTeqLdG8 — copy from Stripe or list above" maxlength="100"></div>
       <div class="field fg-full"><label>Contact email (optional)</label><input type="email" id="affContactEmail" placeholder="partner@example.com" maxlength="255"></div>
       <div class="field fg-full"><label>Notes</label><textarea id="affNotes" rows="2" placeholder="Internal notes"></textarea></div>
-      <div class="field"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="affActive" checked> Active</label></div>
+      <div class="field"><label style="display:flex;align-items:center;gap:8px;cursor:default"><input type="checkbox" id="affActive" checked> Active</label></div>
     </div>
     <div class="modal-actions">
       <button class="btn" onclick="$('affiliateModal').classList.remove('open')">Cancel</button>
@@ -1765,7 +1765,7 @@ select { cursor: pointer; }
                 <div class="field fg-full" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                   <button type="button" class="btn sm primary" id="fr_load_tickers_btn" style="display:none" onclick="loadFirstrateTickerCatalog()">Browse symbols (FirstRate API)</button>
                   <button type="button" class="btn sm" id="fr_last_update_btn" onclick="checkFirstrateLastUpdate()" title="Ask FirstRate for the publication date of the most recent update bundle for the selected instrument type. Use this before downloading to confirm there is fresh data available.">Check last update</button>
-                  <label style="font-size:11px;color:var(--text-muted);display:inline-flex;align-items:center;gap:4px;cursor:pointer" title="When on, asks for the date of the last full-history rebuild instead of the rolling day/week/month update.">
+                  <label style="font-size:11px;color:var(--text-muted);display:inline-flex;align-items:center;gap:4px;cursor:default" title="When on, asks for the date of the last full-history rebuild instead of the rolling day/week/month update.">
                     <input type="checkbox" id="fr_last_update_full"> full-history
                   </label>
                   <span id="fr_last_update_note" style="font-size:11px;color:var(--text-muted)"></span>
@@ -1814,16 +1814,16 @@ select { cursor: pointer; }
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Download &amp; import now
                   </button>
-                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text-muted)" title="When on, the newly downloaded candles are merged into the existing dataset with the same symbol: historical bars are preserved and any timestamp appearing in both is replaced with the vendor's freshest print. When off, a new dataset is created and the old one is kept untouched.">
+                  <label style="display:flex;align-items:center;gap:6px;cursor:default;font-size:12px;color:var(--text-muted)" title="When on, the newly downloaded candles are merged into the existing dataset with the same symbol: historical bars are preserved and any timestamp appearing in both is replaced with the vendor's freshest print. When off, a new dataset is created and the old one is kept untouched.">
                     <input type="checkbox" id="fr_upsert" checked>
                     Merge into existing dataset by symbol
                   </label>
                   <span id="frProgress" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
                 </div>
                 <details class="field fg-full" style="margin-top:12px;border-top:1px dashed var(--border);padding-top:12px">
-                  <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;user-select:none">Advanced &middot; automatic schedule &amp; dataset purge</summary>
+                  <summary style="cursor:default;font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;user-select:none">Advanced &middot; automatic schedule &amp; dataset purge</summary>
                   <div style="padding:14px 4px 4px">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px;color:var(--danger,#ff6b6b);font-size:12px">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:10px;color:var(--danger,#ff6b6b);font-size:12px">
                       <input type="checkbox" id="fr_delete_first">
                       Wipe all existing datasets before this import (requires confirmation phrase)
                     </label>
@@ -1831,7 +1831,7 @@ select { cursor: pointer; }
                     <p style="font-size:11px;color:var(--text-muted);margin:0 0 10px;line-height:1.55">
                       <strong>Nightly auto-sync</strong> pulls the <em>day</em> update bundle from FirstRate once per UTC day, <strong>for every asset class present in the registry</strong> (fx, crypto, futures, stocks), and merges new candles into each existing dataset (historical bars are preserved). No manual action required.
                     </p>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px;font-size:12px">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:10px;font-size:12px">
                       <input type="checkbox" id="fr_sched_enabled">
                       Enable nightly auto-sync on this VPS
                     </label>
@@ -1852,21 +1852,21 @@ select { cursor: pointer; }
                         <input type="number" id="fr_sched_interval" class="input" min="15" max="10080" value="1440" step="15">
                       </div>
                     </div>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:6px;font-size:12px" title="When on, the nightly run iterates every fx/crypto/futures/stock dataset you already have. When off, it uses the single instrument_type + pairs from the manual form above.">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;font-size:12px" title="When on, the nightly run iterates every fx/crypto/futures/stock dataset you already have. When off, it uses the single instrument_type + pairs from the manual form above.">
                       <input type="checkbox" id="fr_sched_auto_all" checked>
                       Pull every asset class I already have data for
                     </label>
                     <div id="fr_sched_excluded_wrap" style="margin:0 0 10px 26px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:color-mix(in oklab, var(--panel) 80%, transparent)">
                       <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Skip these asset classes (won't download):</div>
                       <div style="display:flex;flex-wrap:wrap;gap:10px">
-                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="fr_excl_stock" value="stock"> Stock</label>
-                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="fr_excl_etf" value="etf"> ETF</label>
-                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="fr_excl_crypto" value="crypto"> Crypto</label>
-                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="fr_excl_futures" value="futures"> Futures</label>
-                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="fr_excl_fx" value="fx"> Forex</label>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_stock" value="stock"> Stock</label>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_etf" value="etf"> ETF</label>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_crypto" value="crypto"> Crypto</label>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_futures" value="futures"> Futures</label>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_fx" value="fx"> Forex</label>
                       </div>
                     </div>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px;font-size:12px">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:10px;font-size:12px">
                       <input type="checkbox" id="fr_sched_upsert" checked>
                       Merge into existing datasets (recommended — preserves history)
                     </label>
@@ -2018,7 +2018,7 @@ select { cursor: pointer; }
             <span class="card-badge" id="frHealthBadgeSummary" style="background:var(--panel);color:var(--text-muted)">loading…</span>
             <div style="margin-left:auto;display:flex;gap:6px">
               <button type="button" class="btn sm" id="frHealthRefreshBtn" title="Re-read every 1m CSV from disk and update cached last-bar timestamps" onclick="refreshFirstrateNightlyHealth({rescan:true})">Refresh</button>
-              <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);cursor:pointer" title="Re-poll every 30s so you can watch the nightly run happen live.">
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);cursor:default" title="Re-poll every 30s so you can watch the nightly run happen live.">
                 <input type="checkbox" id="frHealthAutoRefresh"> auto
               </label>
             </div>
@@ -2307,7 +2307,7 @@ select { cursor: pointer; }
             <div class="card-hdr">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
               <div class="card-title">Server (VPS)</div>
-              <label style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted);font-weight:500;cursor:pointer">
+              <label style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted);font-weight:500;cursor:default">
                 <input type="checkbox" id="insightsLiveToggle" checked> Live poll (4s)
               </label>
             </div>
@@ -3373,7 +3373,7 @@ function renderBulkEmailPanel() {
     const tag = sub
       ? '<span class="badge badge-active" style="font-size:9px;margin-left:6px">' + esc(sub.plan_name || 'Sub') + '</span>'
       : (u.has_journal_access ? '<span class="badge badge-admin" style="font-size:9px;margin-left:6px">Journal</span>' : '');
-    return '<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;color:var(--text)">' +
+    return '<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);cursor:default;font-size:13px;color:var(--text)">' +
       '<input type="checkbox"' + checked + ' onchange=\'bulkEmailToggle(' + JSON.stringify(u.email) + ')\'>' +
       '<span style="flex:1;min-width:0"><span style="font-weight:600">' + esc(u.name || '') + '</span><span style="color:var(--text-muted);font-size:11px;display:block">' + esc(u.email || '') + '</span></span>' + tag + '</label>';
   }).join('');
@@ -3649,7 +3649,7 @@ function renderDatasetTable() {
     const isActive = s.is_active !== false && s.is_active !== 0;
     const stateColor = isActive ? 'var(--ok)' : 'var(--text-muted)';
     const sel = ds.id === selectedDsId ? 'background:rgba(139,92,246,.06)' : '';
-    return `<tr style="cursor:pointer;${sel}" onclick="selectDs(allDatasets.find(d=>d.id===${ds.id}))">
+    return `<tr style="cursor:default;${sel}" onclick="selectDs(allDatasets.find(d=>d.id===${ds.id}))">
       <td style="font-size:12px;color:var(--text-muted)">${ds.id}</td>
       <td style="font-weight:600">${esc(name)}</td>
       <td style="font-size:12px">${rows}</td>
@@ -6622,13 +6622,13 @@ async function scanFirstrateDuplicates() {
         const lastBar = r.last_bar_iso ? String(r.last_bar_iso).replace('T', ' ').slice(0, 16) : '—';
         return (
           '<tr>' +
-            '<td style="padding:4px 8px"><label style="display:flex;align-items:center;gap:4px;cursor:pointer">' +
+            '<td style="padding:4px 8px"><label style="display:flex;align-items:center;gap:4px;cursor:default">' +
               '<input type="radio" name="frdup_winner_' + groupKey + '" value="' + r.id + '"' +
                 (isSuggested ? ' checked' : '') +
                 ' data-fr-dup-group="' + groupKey + '" data-fr-dup-role="winner">' +
               (isSuggested ? '<span style="font-size:10px;color:#22c55e">suggested</span>' : '') +
             '</label></td>' +
-            '<td style="padding:4px 8px"><label style="display:flex;align-items:center;gap:4px;cursor:pointer">' +
+            '<td style="padding:4px 8px"><label style="display:flex;align-items:center;gap:4px;cursor:default">' +
               '<input type="checkbox" name="frdup_loser_' + groupKey + '" value="' + r.id + '" checked' +
                 ' data-fr-dup-group="' + groupKey + '" data-fr-dup-role="loser">' +
               '<span style="font-size:10px;color:var(--text-muted)">include</span>' +

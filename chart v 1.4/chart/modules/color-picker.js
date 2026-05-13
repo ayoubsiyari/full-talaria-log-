@@ -91,7 +91,7 @@ class ColorPicker {
                 height: 6px;
                 border-radius: 3px;
                 outline: none;
-                cursor: pointer;
+                cursor:default;
             }
             .custom-color-picker input[type="range"]::-webkit-slider-thumb {
                 -webkit-appearance: none;
@@ -100,7 +100,7 @@ class ColorPicker {
                 border-radius: 50%;
                 background: #ffffff;
                 border: 2px solid #3a3e49;
-                cursor: pointer;
+                cursor:default;
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
             }
             .custom-color-picker input[type="range"]::-moz-range-thumb {
@@ -109,14 +109,14 @@ class ColorPicker {
                 border-radius: 50%;
                 background: #ffffff;
                 border: 2px solid #3a3e49;
-                cursor: pointer;
+                cursor:default;
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
             }
             .custom-color-picker .color-swatch {
                 width: 22px;
                 height: 22px;
                 border-radius: 3px;
-                cursor: pointer;
+                cursor:default;
                 border: 1px solid rgba(42, 46, 57, 0.9);
                 box-sizing: border-box;
                 transition: all 0.15s ease;
@@ -322,7 +322,7 @@ class ColorPicker {
             [1, 2, 3, 4].forEach(w => {
                 const active = opts.thickness === w;
                 const btn = document.createElement('div');
-                btn.style.cssText = 'flex:1;height:32px;border-radius:6px;border:2px solid '+(active?accentColor:'rgba(255,255,255,0.12)')+';background:'+(active?accentSoft:'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;';
+                btn.style.cssText = 'flex:1;height:32px;border-radius:6px;border:2px solid '+(active?accentColor:'rgba(255,255,255,0.12)')+';background:'+(active?accentSoft:'transparent')+';cursor:default;display:flex;align-items:center;justify-content:center;';
                 const inner = document.createElement('div');
                 inner.style.cssText = 'width:80%;height:'+w+'px;background:#d1d4dc;border-radius:1px;';
                 btn.appendChild(inner);
@@ -345,7 +345,7 @@ class ColorPicker {
             ['solid', 'dashed', 'dotted'].forEach(s => {
                 const active = opts.lineStyle === s;
                 const btn = document.createElement('div');
-                btn.style.cssText = 'flex:1;height:32px;border-radius:6px;border:2px solid '+(active?accentColor:'rgba(255,255,255,0.12)')+';background:'+(active?accentSoft:'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;';
+                btn.style.cssText = 'flex:1;height:32px;border-radius:6px;border:2px solid '+(active?accentColor:'rgba(255,255,255,0.12)')+';background:'+(active?accentSoft:'transparent')+';cursor:default;display:flex;align-items:center;justify-content:center;';
                 const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
                 svg.setAttribute('width','30'); svg.setAttribute('height','10');
                 const line = document.createElementNS('http://www.w3.org/2000/svg','line');

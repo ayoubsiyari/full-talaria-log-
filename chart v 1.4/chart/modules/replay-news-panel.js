@@ -280,7 +280,7 @@
                 '.replay-news-inner{display:flex;flex-direction:column;min-height:0;flex:1;}',
                 '.replay-news-head{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);}',
                 '.replay-news-toggle{background:#1a1d24;border:1px solid rgba(255,255,255,0.12);color:#c8f060;',
-                'border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;}',
+                'border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:default;}',
                 '.replay-news-badge{font-size:10px;color:#a8a5b0;}',
                 '.replay-news-title{font-size:10px;color:#b0acb8;flex:1;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
                 '.replay-news-body{padding:8px 10px 10px;overflow:auto;min-height:0;flex:1;}',

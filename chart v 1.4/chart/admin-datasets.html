@@ -31,7 +31,7 @@
     @media(max-width:1060px){.layout{grid-template-columns:1fr}}
 
     /* Upload zone */
-    .drop-zone{border:2px dashed var(--border2);border-radius:12px;padding:28px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;background:#090f20}
+    .drop-zone{border:2px dashed var(--border2);border-radius:12px;padding:28px;text-align:center;cursor:default;transition:border-color .2s,background .2s;background:#090f20}
     .drop-zone:hover,.drop-zone.drag{border-color:var(--accent);background:#0d1a40}
     .drop-icon{font-size:30px;margin-bottom:8px}
     .drop-title{font-size:15px;font-weight:600;margin-bottom:4px}
@@ -45,7 +45,7 @@
     table{width:100%;border-collapse:collapse;font-size:13px}
     th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:7px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
     td{padding:10px 8px;border-bottom:1px solid #0f182e;vertical-align:middle}
-    tr.drow{cursor:pointer;transition:background .1s}
+    tr.drow{cursor:default;transition:background .1s}
     tr.drow:hover{background:#0f1c38}
     tr.drow.sel{background:#122040;box-shadow:inset 2px 0 0 var(--accent)}
     .ds-name{font-weight:600;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -60,7 +60,7 @@
     .act-badge.no{background:#1a1440;color:#a78bfa;border-color:#3d2a80}
 
     /* Buttons */
-    .btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border2);border-radius:8px;padding:7px 13px;background:#131f40;color:var(--text);cursor:pointer;font-size:13px;font-weight:600;transition:filter .15s;line-height:1}
+    .btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border2);border-radius:8px;padding:7px 13px;background:#131f40;color:var(--text);cursor:default;font-size:13px;font-weight:600;transition:filter .15s;line-height:1}
     .btn:hover{filter:brightness(1.15)}
     .btn.primary{background:var(--accent);border-color:var(--accent2);color:#fff}
     .btn.danger{background:#2a0d18;border-color:#5c1430;color:#fca5b4}
@@ -79,7 +79,7 @@
     .toggle-row{display:flex;align-items:center;gap:10px;padding:9px 0}
     .toggle{position:relative;width:40px;height:22px;flex-shrink:0}
     .toggle input{opacity:0;width:0;height:0;position:absolute}
-    .slider{position:absolute;inset:0;background:#1e2d56;border-radius:999px;cursor:pointer;transition:.2s}
+    .slider{position:absolute;inset:0;background:#1e2d56;border-radius:999px;cursor:default;transition:.2s}
     .slider::before{content:'';position:absolute;width:16px;height:16px;background:#5a72b0;border-radius:50%;left:3px;top:3px;transition:.2s}
     .toggle input:checked+.slider{background:var(--ok)}
     .toggle input:checked+.slider::before{transform:translateX(18px);background:#fff}
@@ -125,7 +125,7 @@
       <input type="file" id="fileInput" accept=".csv" style="display:none">
       <div class="drop-icon">&#128228;</div>
       <div class="drop-title">Drag &amp; drop a CSV file here</div>
-      <div class="drop-sub">or <span style="color:var(--accent);cursor:pointer" onclick="document.getElementById('fileInput').click()">browse to select</span> &mdash; .csv files only</div>
+      <div class="drop-sub">or <span style="color:var(--accent);cursor:default" onclick="document.getElementById('fileInput').click()">browse to select</span> &mdash; .csv files only</div>
       <div id="uploadProgress">
         <div class="pbar-wrap"><div class="pbar" id="pbar"></div></div>
         <div class="pbar-label" id="pbarLabel"></div>

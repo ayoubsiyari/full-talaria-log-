@@ -230,7 +230,7 @@
   border: 1px solid rgba(125, 206, 154, 0.35);
   background: var(--bt-green-muted);
   color: var(--bt-green);
-  cursor: pointer;
+  cursor:default;
   transition: background 0.15s, border-color 0.15s;
 }
 
@@ -788,7 +788,7 @@
   border-radius: 4px;
   background: transparent;
   color: var(--bt-text-dim);
-  cursor: pointer;
+  cursor:default;
   transition: color 0.15s, background 0.15s;
 }
 
@@ -835,7 +835,7 @@
   border: 1px solid var(--bt-border);
   background: var(--bt-bg-elevated);
   color: var(--bt-text-secondary);
-  cursor: pointer;
+  cursor:default;
   transition: border-color 0.15s, color 0.15s, opacity 0.15s;
 }
 

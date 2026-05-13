@@ -663,7 +663,7 @@ class AlertSystem {
                     background: rgba(0,0,0,0.3);
                     color: #fff;
                     border-radius: 3px;
-                    cursor: pointer;
+                    cursor:default;
                     display: flex;
                     align-items: center;
                     justify-content: center;

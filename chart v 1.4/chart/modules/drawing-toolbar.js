@@ -712,7 +712,7 @@ class DrawingToolbar {
                 .template-item-delete {
                     opacity: 0;
                     padding: 2px;
-                    cursor: pointer;
+                    cursor:default;
                     color: #787b86;
                     transition: opacity 0.15s, color 0.15s;
                 }

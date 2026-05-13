@@ -1364,9 +1364,9 @@ export default function BacktestAnalyticsPage() {
               <thead>
                 <tr>
                   <th>Ticker</th>
-                  <th onClick={() => onSortPair("trades")} style={{ cursor: "pointer" }}>Trades</th>
+                  <th onClick={() => onSortPair("trades")} style={{ cursor:"default" }}>Trades</th>
                   <th>Win%</th>
-                  <th onClick={() => onSortPair("netPnl")} style={{ cursor: "pointer" }}>Net $</th>
+                  <th onClick={() => onSortPair("netPnl")} style={{ cursor:"default" }}>Net $</th>
                   <th>Net R</th>
                   <th>MAE</th>
                   <th>MFE</th>
@@ -1506,8 +1506,8 @@ export default function BacktestAnalyticsPage() {
               </select>
             </label>
             <div style={{ display: "inline-flex", borderRadius: 4, border: "1px solid rgba(255,255,255,0.12)", overflow: "hidden" }}>
-              <button type="button" onClick={() => setHeatmapMetric("USD")} style={{ padding: "4px 10px", fontSize: "0.7rem", border: "none", cursor: "pointer", background: heatmapMetric === "USD" ? "#2563eb" : "#111418", color: "#e8eaed" }}>$</button>
-              <button type="button" onClick={() => setHeatmapMetric("R")} style={{ padding: "4px 10px", fontSize: "0.7rem", border: "none", cursor: "pointer", background: heatmapMetric === "R" ? "#2563eb" : "#111418", color: "#e8eaed", borderLeft: "1px solid rgba(255,255,255,0.12)" }}>R</button>
+              <button type="button" onClick={() => setHeatmapMetric("USD")} style={{ padding: "4px 10px", fontSize: "0.7rem", border: "none", cursor:"default", background: heatmapMetric === "USD" ? "#2563eb" : "#111418", color: "#e8eaed" }}>$</button>
+              <button type="button" onClick={() => setHeatmapMetric("R")} style={{ padding: "4px 10px", fontSize: "0.7rem", border: "none", cursor:"default", background: heatmapMetric === "R" ? "#2563eb" : "#111418", color: "#e8eaed", borderLeft: "1px solid rgba(255,255,255,0.12)" }}>R</button>
             </div>
           </div>
           <div style={{ overflowX: "auto" }}>

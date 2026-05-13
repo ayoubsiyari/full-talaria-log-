@@ -41,7 +41,7 @@
             'padding:1px 2px 1px 0;margin:0;border-radius:2px;line-height:1.2;' +
             'border:none;background:transparent;' +
             'transform:translateZ(0);-webkit-transform:translateZ(0);' +
-            'cursor:pointer;vertical-align:middle;' +
+            'cursor:default;vertical-align:middle;' +
             'font-family:-apple-system,BlinkMacSystemFont,Trebuchet MS,Roboto,Ubuntu,sans-serif;';
         return {
             chipCss: w.TALARIA_INDICATOR_CHIP_CSS || fallbackChip,
@@ -56,7 +56,7 @@
     }
 
     function getTalariaActionBtnStyle() {
-        return 'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:2px;cursor:pointer;transition:background .15s,color .15s;flex-shrink:0;';
+        return 'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:2px;cursor:default;transition:background .15s,color .15s;flex-shrink:0;';
     }
 
     /** Framed color tile — matches V9 sidebar buttons; prefers indicator-ui factory when loaded. */
@@ -4037,7 +4037,7 @@
         const self = this;
         
         // Match exact styling of other indicators
-        volumeLine.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 2px 6px; margin-right: 8px; border-radius: 3px; transition: background 0.2s;';
+        volumeLine.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; cursor:default; padding: 2px 6px; margin-right: 8px; border-radius: 3px; transition: background 0.2s;';
         
         // Update color box
         const colorBox = volumeLine.querySelector('.volume-color-box');
@@ -4069,7 +4069,7 @@
         const visibilityBtn = volumeLine.querySelector('.volume-visibility-btn');
         if (visibilityBtn) {
             visibilityBtn.style.opacity = indicator.visible !== false ? '1' : '0.5';
-            visibilityBtn.style.cursor = 'pointer';
+            visibilityBtn.style.cursor = 'default';
             
             // Clone to remove old listeners
             const newVisBtn = visibilityBtn.cloneNode(true);
@@ -4105,7 +4105,7 @@
         // Settings button
         const settingsBtn = volumeLine.querySelector('.volume-settings-btn');
         if (settingsBtn) {
-            settingsBtn.style.cursor = 'pointer';
+            settingsBtn.style.cursor = 'default';
             
             // Clone to remove old listeners
             const newSettingsBtn = settingsBtn.cloneNode(true);
@@ -4127,7 +4127,7 @@
         // Remove button
         const removeBtn = volumeLine.querySelector('.volume-remove-btn');
         if (removeBtn) {
-            removeBtn.style.cursor = 'pointer';
+            removeBtn.style.cursor = 'default';
             
             // Clone to remove old listeners
             const newRemoveBtn = removeBtn.cloneNode(true);
@@ -6100,7 +6100,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         
         const closeBtn = document.createElement('button');
         closeBtn.textContent = '×';
-        closeBtn.style.cssText = 'width:26px;height:26px;border:none;background:transparent;color:var(--sp-text-muted,#8d93a1);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .12s, background .12s;';
+        closeBtn.style.cssText = 'width:26px;height:26px;border:none;background:transparent;color:var(--sp-text-muted,#8d93a1);font-size:13px;cursor:default;display:flex;align-items:center;justify-content:center;transition:color .12s, background .12s;';
         closeBtn.onclick = function() {
             modal.remove();
         };
@@ -6128,7 +6128,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 input = document.createElement('input');
                 input.type = 'checkbox';
                 input.checked = !!value;
-                input.style.cssText = 'width:16px;height:16px;cursor:pointer;';
+                input.style.cssText = 'width:16px;height:16px;cursor:default;';
             } else {
                 input = document.createElement('input');
                 input.type = type;
@@ -6175,7 +6175,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         
         const cancelBtn = document.createElement('button');
         cancelBtn.textContent = 'Cancel';
-        cancelBtn.style.cssText = 'padding:8px 14px;min-width:110px;background:var(--sp-ui-surface-bg,#1e2740);border:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));border-radius:6px;color:var(--sp-text,#d1d4dc);cursor:pointer;font-size:13px;font-weight:600;transition:all .12s;';
+        cancelBtn.style.cssText = 'padding:8px 14px;min-width:110px;background:var(--sp-ui-surface-bg,#1e2740);border:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));border-radius:6px;color:var(--sp-text,#d1d4dc);cursor:default;font-size:13px;font-weight:600;transition:all .12s;';
         cancelBtn.onmouseenter = function() { 
             cancelBtn.style.background = 'rgba(255,255,255,0.07)'; 
             cancelBtn.style.borderColor = 'rgba(140,160,255,0.45)';
@@ -6190,7 +6190,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         
         const applyBtn = document.createElement('button');
         applyBtn.textContent = 'Apply Changes';
-        applyBtn.style.cssText = 'padding:8px 16px;min-width:130px;background:linear-gradient(135deg,var(--sp-accent,#2962ff),#6a8aff);border:1px solid rgba(74,106,255,0.5);border-radius:6px;color:#fff;cursor:pointer;font-size:13px;font-weight:700;transition:background .12s,border-color .12s;';
+        applyBtn.style.cssText = 'padding:8px 16px;min-width:130px;background:linear-gradient(135deg,var(--sp-accent,#2962ff),#6a8aff);border:1px solid rgba(74,106,255,0.5);border-radius:6px;color:#fff;cursor:default;font-size:13px;font-weight:700;transition:background .12s,border-color .12s;';
         applyBtn.onmouseenter = function() { applyBtn.style.background = 'rgba(var(--sp-accent-rgb, 41,98,255), 0.8)'; };
         applyBtn.onmouseleave = function() { applyBtn.style.background = 'var(--sp-accent, #2962ff)'; };
         

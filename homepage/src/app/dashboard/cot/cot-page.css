@@ -72,7 +72,7 @@
   font-size: 11px;
   font-weight: 600;
   color: #60a5fa;
-  cursor: pointer;
+  cursor:default;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -119,7 +119,7 @@
   font-size: 11px;
   font-weight: 600;
   color: #b8b4c0;
-  cursor: pointer;
+  cursor:default;
   transition: all 0.12s;
   display: flex;
   align-items: center;
@@ -165,7 +165,7 @@
 .cot-sent-card {
   background: #111318;
   padding: 16px 18px;
-  cursor: pointer;
+  cursor:default;
   transition: background 0.12s;
   border: none;
   width: 100%;
@@ -654,7 +654,7 @@
   font-variant-numeric: tabular-nums;
   font-size: 9px;
   color: #a8a5b0;
-  cursor: pointer;
+  cursor:default;
   transition: all 0.1s;
 }
 .cot-wk-btn:hover {

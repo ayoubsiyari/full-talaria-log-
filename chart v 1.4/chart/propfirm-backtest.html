@@ -397,9 +397,9 @@
                 </div>
                 <div id="presetBreakevenSettings" style="display: none;">
                     <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-                        <button type="button" class="preset-mode-btn" data-mode="rr" style="flex: 1; padding: 8px; font-size: 12px; background: #7c3aed; border: none; color: #fff; border-radius: 4px; cursor: pointer;">R:R</button>
-                        <button type="button" class="preset-mode-btn" data-mode="amount" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Dollar $</button>
-                        <button type="button" class="preset-mode-btn" data-mode="percent" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Percent %</button>
+                        <button type="button" class="preset-mode-btn" data-mode="rr" style="flex: 1; padding: 8px; font-size: 12px; background: #7c3aed; border: none; color: #fff; border-radius: 4px; cursor:default;">R:R</button>
+                        <button type="button" class="preset-mode-btn" data-mode="amount" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor:default;">Dollar $</button>
+                        <button type="button" class="preset-mode-btn" data-mode="percent" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor:default;">Percent %</button>
                     </div>
                     <div id="presetBreakevenRRInput" style="display: flex; align-items: center; gap: 8px;">
                         <input type="number" id="presetBreakevenRR" value="1" min="0.1" step="0.1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
@@ -428,10 +428,10 @@
                 <div id="presetTrailingSettings" style="display: none;">
                     <label style="display: block; font-size: 11px; color: #9ca3af; margin-bottom: 6px;">Activate At</label>
                     <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-                        <button type="button" class="preset-trail-btn" data-mode="trail-rr" style="flex: 1; padding: 8px; font-size: 12px; background: #7c3aed; border: none; color: #fff; border-radius: 4px; cursor: pointer;">R:R</button>
-                        <button type="button" class="preset-trail-btn" data-mode="trail-pips" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Pips</button>
-                        <button type="button" class="preset-trail-btn" data-mode="trail-dollar" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Dollar $</button>
-                        <button type="button" class="preset-trail-btn" data-mode="trail-percent" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor: pointer;">Percent %</button>
+                        <button type="button" class="preset-trail-btn" data-mode="trail-rr" style="flex: 1; padding: 8px; font-size: 12px; background: #7c3aed; border: none; color: #fff; border-radius: 4px; cursor:default;">R:R</button>
+                        <button type="button" class="preset-trail-btn" data-mode="trail-pips" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor:default;">Pips</button>
+                        <button type="button" class="preset-trail-btn" data-mode="trail-dollar" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor:default;">Dollar $</button>
+                        <button type="button" class="preset-trail-btn" data-mode="trail-percent" style="flex: 1; padding: 8px; font-size: 12px; background: transparent; border: 1px solid #2a2e39; color: #787b86; border-radius: 4px; cursor:default;">Percent %</button>
                     </div>
                     <div id="presetTrailingRRInput" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
                         <input type="number" id="presetTrailingRR" value="1.5" min="0.1" step="0.1" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; font-size: 12px; color: #fff;">
@@ -787,7 +787,7 @@
                 return (
                     '<span style="display: inline-flex; align-items: center; gap: 6px; background: rgba(234,88,12,0.1); border: 1px solid rgba(234,88,12,0.25); padding: 4px 10px; border-radius: 8px; font-size: 11px; color: #fb923c;">' +
                     label +
-                    '<button type="button" onclick="removeSelectedFile(\'' + String(file.id).replace(/'/g, "\\'") + '\')" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">&times;</button>' +
+                    '<button type="button" onclick="removeSelectedFile(\'' + String(file.id).replace(/'/g, "\\'") + '\')" style="background: none; border: none; color: #94a3b8; cursor:default; padding: 0; font-size: 14px; line-height: 1;">&times;</button>' +
                     '</span>'
                 );
             }).join('');

@@ -739,7 +739,7 @@ const TALARIA_INDICATOR_CHIP_CSS =
     'padding:1px 2px 1px 0;margin:0;border-radius:2px;line-height:1.2;' +
     'border:none;background:' + TALARIA_IND_CHIP_BG + ';' +
     'transform:translateZ(0);-webkit-transform:translateZ(0);' +
-    'cursor:pointer;vertical-align:middle;' +
+    'cursor:default;vertical-align:middle;' +
     'font-family:-apple-system,BlinkMacSystemFont,Trebuchet MS,Roboto,Ubuntu,sans-serif;';
 const TALARIA_INDICATOR_CHIP_BG = TALARIA_IND_CHIP_BG;
 const TALARIA_INDICATOR_CHIP_BG_HOVER = 'rgba(255, 255, 255, 0.06)';
@@ -817,7 +817,7 @@ function setTalariaIndChipNameEl(el, visible) {
     el.className = 'talaria-ind-chip-name' + (visible ? '' : ' talaria-ind-chip-name--hidden');
 }
 const TALARIA_IND_ACTION_BTN =
-    'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:2px;cursor:pointer;transition:background .12s,color .12s,box-shadow .12s;flex-shrink:0;background:transparent;';
+    'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:2px;cursor:default;transition:background .12s,color .12s,box-shadow .12s;flex-shrink:0;background:transparent;';
 
 if (typeof window !== 'undefined') {
     window.TALARIA_INDICATOR_CHIP_CSS = TALARIA_INDICATOR_CHIP_CSS;
@@ -875,7 +875,7 @@ function ensureIndicatorColorStyles(panel) {
             height: 28px;
             border-radius: 6px;
             border: 1px solid var(--sp-input-border, rgba(255,255,255,0.14));
-            cursor: pointer;
+            cursor:default;
             transition: transform 0.15s, box-shadow 0.15s, border-color 0.2s;
         }
         #indicatorSettingsPanel .indicator-color-preview:hover {
@@ -913,7 +913,7 @@ function ensureIndicatorColorStyles(panel) {
             width: 22px;
             height: 22px;
             border-radius: 3px;
-            cursor: pointer;
+            cursor:default;
             border: 2px solid transparent;
             transition: all 0.15s;
         }
@@ -947,7 +947,7 @@ function ensureIndicatorColorStyles(panel) {
             display: flex;
             align-items: center;
             justify-content: center;
-            cursor: pointer;
+            cursor:default;
             color: #8a8e99;
             font-size: 18px;
             transition: all 0.15s;
@@ -979,7 +979,7 @@ function ensureIndicatorColorStyles(panel) {
             border-radius: 3px;
             background: linear-gradient(to right, rgba(255,255,255,0), rgba(255,255,255,1));
             outline: none;
-            cursor: pointer;
+            cursor:default;
         }
         .indicator-color-palette .indicator-color-opacity-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
@@ -989,7 +989,7 @@ function ensureIndicatorColorStyles(panel) {
             border-radius: 50%;
             background: #ffffff;
             border: 2px solid #3a3e49;
-            cursor: pointer;
+            cursor:default;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
         .indicator-color-palette .indicator-color-opacity-slider::-moz-range-thumb {
@@ -998,7 +998,7 @@ function ensureIndicatorColorStyles(panel) {
             border-radius: 50%;
             background: #ffffff;
             border: 2px solid #3a3e49;
-            cursor: pointer;
+            cursor:default;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
         .indicator-color-palette .indicator-color-opacity-value {
@@ -1427,7 +1427,7 @@ function createIndicatorSelectionMenu(chartInstance) {
         <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
     </svg>`;
     closeBtn.style.cssText = `
-        background: none; border: none; cursor: pointer;
+        background: none; border: none; cursor:default;
         padding: 6px; display: flex; align-items: center;
         color: var(--sp-text-muted, #787b86);
         border-radius: 5px; transition: all 0.15s;
@@ -1514,7 +1514,7 @@ function createIndicatorSelectionMenu(chartInstance) {
         item.dataset.category = key;
         item.style.cssText = `
             display: flex; align-items: center; gap: 8px;
-            padding: 8px 12px 8px 9px; cursor: pointer;
+            padding: 8px 12px 8px 9px; cursor:default;
             font-size: 13px; font-weight: 500;
             color: var(--sp-text, #d1d4dc);
             transition: background 0.12s, color 0.12s, border-color 0.12s;
@@ -1612,7 +1612,7 @@ function createIndicatorSelectionMenu(chartInstance) {
         const item = document.createElement('div');
         item.style.cssText = `
             display: flex; align-items: center;
-            padding: 10px 16px; cursor: pointer;
+            padding: 10px 16px; cursor:default;
             transition: background 0.1s;
             font-size: 13px; font-weight: 400;
             color: var(--sp-text, #d1d4dc);
@@ -1627,7 +1627,7 @@ function createIndicatorSelectionMenu(chartInstance) {
         star.style.cssText = `
             color: var(--sp-text-muted, #5d606b);
             margin-right: 12px; font-size: 12px;
-            cursor: pointer; transition: color 0.15s; flex-shrink: 0;
+            cursor:default; transition: color 0.15s; flex-shrink: 0;
             opacity: 0.85;
         `;
         star.onclick = (e) => {
@@ -1832,7 +1832,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.innerHTML = '&#10005;';
-    closeBtn.style.cssText = 'width:26px;height:26px;border:none;background:transparent;color:var(--sp-text-muted,#8d93a1);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .12s, background .12s;';
+    closeBtn.style.cssText = 'width:26px;height:26px;border:none;background:transparent;color:var(--sp-text-muted,#8d93a1);font-size:13px;cursor:default;display:flex;align-items:center;justify-content:center;transition:color .12s, background .12s;';
     closeBtn.onmouseenter = () => { closeBtn.style.color = 'var(--sp-text,#d1d4dc)'; closeBtn.style.background = 'rgba(255,255,255,0.06)'; };
     closeBtn.onmouseleave = () => { closeBtn.style.color = 'var(--sp-text-muted,#8d93a1)'; closeBtn.style.background = 'transparent'; };
     titleBar.appendChild(closeBtn);
@@ -1946,7 +1946,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             input.type = 'checkbox';
             input.className = 'tv-native-checkbox';
             input.checked = currentValue !== false;
-            input.style.cssText = 'cursor:pointer;width:16px;height:16px;accent-color:var(--sp-accent,#2962ff);';
+            input.style.cssText = 'cursor:default;width:16px;height:16px;accent-color:var(--sp-accent,#2962ff);';
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
@@ -1958,7 +1958,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             input.style.padding = '0 8px';
             input.style.height = '26px';
             input.style.borderRadius = '0';
-            input.style.cursor = 'pointer';
+            input.style.cursor = 'default';
             input.style.background = 'var(--sp-ui-chrome-bg, #131722)';
             input.style.color = 'var(--sp-text, #d1d4dc)';
             input.style.border = '1px solid var(--sp-input-border, rgba(255,255,255,0.14))';
@@ -2000,7 +2000,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             input.className = 'settings-input';
             input.value = currentValue || param.default;
             input.style.cssText = 'width:160px;height:26px;padding:0 8px;background:var(--sp-ui-chrome-bg, #131722);color:var(--sp-text, #d1d4dc);border:1px solid var(--sp-input-border, rgba(255,255,255,0.14));outline:none;box-sizing:border-box;';
-            input.style.cursor = 'pointer';
+            input.style.cursor = 'default';
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
@@ -2059,7 +2059,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'settings-btn settings-btn-save';
-    saveBtn.style.cssText = 'flex:0 0 auto;min-width:130px;width:auto;height:28px;padding:0 14px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;border:1px solid rgba(74,106,255,0.5);background:linear-gradient(135deg,var(--sp-accent,#2962ff),#6a8aff);color:#fff;font-size:13px;font-weight:700;cursor:pointer;transition:background .12s,border-color .12s,box-shadow .12s;';
+    saveBtn.style.cssText = 'flex:0 0 auto;min-width:130px;width:auto;height:28px;padding:0 14px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;border:1px solid rgba(74,106,255,0.5);background:linear-gradient(135deg,var(--sp-accent,#2962ff),#6a8aff);color:#fff;font-size:13px;font-weight:700;cursor:default;transition:background .12s,border-color .12s,box-shadow .12s;';
     saveBtn.onmouseenter = () => { saveBtn.style.background = 'linear-gradient(135deg,#6a8aff,var(--sp-accent,#2962ff))'; saveBtn.style.boxShadow = '0 0 10px rgba(74,106,255,0.35)'; };
     saveBtn.onmouseleave = () => { saveBtn.style.background = 'linear-gradient(135deg,var(--sp-accent,#2962ff),#6a8aff)'; saveBtn.style.boxShadow = 'none'; };
     saveBtn.textContent = existingIndicator ? 'Apply Changes' : 'Add Indicator';
@@ -2182,7 +2182,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'settings-btn settings-btn-close';
-    cancelBtn.style.cssText = 'flex:0 0 auto;min-width:110px;width:auto;height:28px;padding:0 14px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;border:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));background:var(--sp-ui-surface-bg, #1e2740);color:var(--sp-text,#d1d4dc);font-size:13px;font-weight:600;cursor:pointer;transition:background .12s,border-color .12s,color .12s;';
+    cancelBtn.style.cssText = 'flex:0 0 auto;min-width:110px;width:auto;height:28px;padding:0 14px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;border:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));background:var(--sp-ui-surface-bg, #1e2740);color:var(--sp-text,#d1d4dc);font-size:13px;font-weight:600;cursor:default;transition:background .12s,border-color .12s,color .12s;';
     cancelBtn.onmouseenter = () => { cancelBtn.style.background = 'var(--sp-hover-bg, rgba(255,255,255,0.07))'; cancelBtn.style.borderColor = 'rgba(140,160,255,0.45)'; cancelBtn.style.color = 'var(--sp-text,#fff)'; };
     cancelBtn.onmouseleave = () => { cancelBtn.style.background = 'var(--sp-ui-surface-bg, #1e2740)'; cancelBtn.style.borderColor = 'var(--sp-ui-border, rgba(42,46,57,0.55))'; cancelBtn.style.color = 'var(--sp-text,#d1d4dc)'; };
     cancelBtn.textContent = 'Cancel';

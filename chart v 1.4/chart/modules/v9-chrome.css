@@ -233,7 +233,7 @@ body {
     padding: 6px 10px !important;
     font-size: 10.5px !important;
     color: var(--v9-tx) !important;
-    cursor: pointer;
+    cursor:default;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -322,7 +322,7 @@ html, body, #chart-container, .container, .chart-wrapper, #panels-container {
     appearance: none;
     -webkit-appearance: none;
     background: transparent;
-    cursor: pointer;
+    cursor:default;
 }
 .replay-toolbar input[type="range"]::-webkit-slider-runnable-track,
 #replayToolbar input[type="range"]::-webkit-slider-runnable-track {
@@ -339,7 +339,7 @@ html, body, #chart-container, .container, .chart-wrapper, #panels-container {
     border-radius: 50%;
     box-shadow: 0 0 6px var(--v9-acG);
     margin-top: -4px;
-    cursor: pointer;
+    cursor:default;
 }
 
 /* ---------- POSITIONS / TRADE HISTORY DOCK ---------- */
@@ -362,7 +362,7 @@ html, body, #chart-container, .container, .chart-wrapper, #panels-container {
     border: none !important;
     position: relative;
     transition: color var(--v9-fast);
-    cursor: pointer;
+    cursor:default;
 }
 .positions-panel .tab.active, .positions-tabs .tab.active, .trade-tabs .tab-btn.active,
 [data-positions-tab].active, [data-positions-tab][aria-selected="true"] {

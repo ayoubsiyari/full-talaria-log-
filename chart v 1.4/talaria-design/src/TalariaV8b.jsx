@@ -4775,7 +4775,7 @@ const TalariaV8b = () => {
                   <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,
                                  width:"70%",aspectRatio:"1",boxSizing:"border-box",margin:"0 auto 16px",
                                  background:"rgba(140,160,255,0.05)",border:"1px dashed rgba(140,160,255,0.25)",
-                                 cursor:"pointer"}}>
+                                 cursor:"default"}}>
                     {txtStyle.imageDataUrl
                       ? <img src={txtStyle.imageDataUrl} style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>
                       : <><I n="image" s={28} cl={c.ts}/><span style={{fontSize:12,color:c.ts}}>Upload Image</span></>}
@@ -9917,7 +9917,7 @@ const TalariaV8b = () => {
                       <div onMouseEnter={()=>setHov(`id-${i}`)} onMouseLeave={()=>setHov(null)}
                         style={{overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>
                         <span onClick={e=>{e.stopPropagation();openCard();}}
-                          style={{position:"relative",display:"inline-flex",fontSize:10,fontWeight:700,cursor:"pointer",letterSpacing:"0.02em",userSelect:"none",
+                          style={{position:"relative",display:"inline-flex",fontSize:10,fontWeight:700,cursor:"default",letterSpacing:"0.02em",userSelect:"none",
                             color:isActive?(hov===`id-${i}`?"rgba(0,212,161,1)":undefined):hov===`id-${i}`?c.acL:c.ts,
                             animation:isActive&&hov!==`id-${i}`?"tlrIdPulse 2s ease-in-out infinite":undefined,
                             transition:isActive?"none":"color 0.15s",

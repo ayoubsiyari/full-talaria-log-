@@ -10807,7 +10807,7 @@ class Chart {
         if (this.dateTimePickerToggle) {
             this.dateTimePickerToggle.disabled = false;
             this.dateTimePickerToggle.style.opacity = '';
-            this.dateTimePickerToggle.style.cursor = 'pointer';
+            this.dateTimePickerToggle.style.cursor = 'default';
         }
         
         // Find min and max dates in the data
@@ -16175,8 +16175,8 @@ class Chart {
         }
         if (hit && hit.event) {
             this.showEconomicCalendarTooltip(hit.event, domEvent.clientX, domEvent.clientY);
-            this.canvas.style.cursor = 'pointer';
-            if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'pointer';
+            this.canvas.style.cursor = 'default';
+            if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'default';
         } else {
             this.hideEconomicCalendarTooltip();
         }

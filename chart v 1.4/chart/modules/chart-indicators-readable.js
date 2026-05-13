@@ -291,7 +291,7 @@ var ind=this.indicators.active[i],el=document.createElement('div');
 el.style.cssText='display:inline-flex;
 align-items:center;
 gap:6px;
-cursor:pointer;
+cursor:default;
 padding:2px 6px;
 margin-right:8px;
 ';

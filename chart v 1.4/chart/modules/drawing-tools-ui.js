@@ -1037,7 +1037,7 @@ class DrawingSettingsPanel {
 
     font-size: 13px;
 
-    cursor: pointer;
+    cursor:default;
 
     user-select: none;
 
@@ -2431,7 +2431,7 @@ class DrawingSettingsPanel {
 
     justify-content: center;
 
-    cursor: pointer;
+    cursor:default;
 
     padding: 0;
 
@@ -2791,7 +2791,7 @@ class DrawingSettingsPanel {
 
     pointer-events: all;
 
-    cursor: pointer;
+    cursor:default;
 
     margin-top: -2px;
 
@@ -2813,7 +2813,7 @@ class DrawingSettingsPanel {
 
     pointer-events: all;
 
-    cursor: pointer;
+    cursor:default;
 
 }
 
@@ -7831,7 +7831,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         opacity.value = (drawing.style.backgroundOpacity != null ? drawing.style.backgroundOpacity : 0.12);
 
-        opacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor: pointer; outline: none; max-width: 160px;';
+        opacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor:default; outline: none; max-width: 160px;';
 
         opacity.oninput = () => {
 
@@ -8078,7 +8078,7 @@ body.light-mode .template-save-dialog .dialog-title {
             row.appendChild(controlsWrapper);
 
             const deleteBtn = document.createElement('button');
-            deleteBtn.style.cssText = 'width:20px;height:20px;padding:0;background:transparent;border:none;color:#787b86;cursor:pointer;font-size:14px;line-height:1;border-radius:4px;';
+            deleteBtn.style.cssText = 'width:20px;height:20px;padding:0;background:transparent;border:none;color:#787b86;cursor:default;font-size:14px;line-height:1;border-radius:4px;';
             deleteBtn.innerHTML = '×';
             deleteBtn.onmouseenter = () => { deleteBtn.style.background = '#f2364520'; deleteBtn.style.color = '#f23645'; };
             deleteBtn.onmouseleave = () => { deleteBtn.style.background = 'transparent'; deleteBtn.style.color = '#787b86'; };
@@ -8113,7 +8113,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 flex: 1; padding: 8px 12px; background: #787b8620; border: 1px solid #787b8640;
 
-                border-radius: 4px; color: #787b86; font-size: 12px; cursor: pointer;
+                border-radius: 4px; color: #787b86; font-size: 12px; cursor:default;
 
             `;
 
@@ -8157,7 +8157,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 padding: 8px 12px; background: transparent; border: 1px solid #363a45;
 
-                border-radius: 4px; color: #787b86; font-size: 12px; cursor: pointer;
+                border-radius: 4px; color: #787b86; font-size: 12px; cursor:default;
 
             `;
 
@@ -8562,7 +8562,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         opacity.value = (drawing.style.backgroundOpacity != null ? drawing.style.backgroundOpacity : 0.12);
 
-        opacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor: pointer; outline: none; max-width: 160px;';
+        opacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor:default; outline: none; max-width: 160px;';
 
         opacity.oninput = () => {
 
@@ -8807,7 +8807,7 @@ body.light-mode .template-save-dialog .dialog-title {
             row.appendChild(controlsWrapper);
 
             const deleteBtn = document.createElement('button');
-            deleteBtn.style.cssText = 'width:20px;height:20px;padding:0;background:transparent;border:none;color:#787b86;cursor:pointer;font-size:14px;line-height:1;border-radius:4px;';
+            deleteBtn.style.cssText = 'width:20px;height:20px;padding:0;background:transparent;border:none;color:#787b86;cursor:default;font-size:14px;line-height:1;border-radius:4px;';
             deleteBtn.innerHTML = '×';
             deleteBtn.onmouseenter = () => { deleteBtn.style.background = '#f2364520'; deleteBtn.style.color = '#f23645'; };
             deleteBtn.onmouseleave = () => { deleteBtn.style.background = 'transparent'; deleteBtn.style.color = '#787b86'; };
@@ -8842,7 +8842,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             flex: 1; padding: 8px 12px; background: #787b8620; border: 1px solid #787b8640;
 
-            border-radius: 4px; color: #787b86; font-size: 12px; cursor: pointer;
+            border-radius: 4px; color: #787b86; font-size: 12px; cursor:default;
 
         `;
 
@@ -8888,7 +8888,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             padding: 8px 12px; background: transparent; border: 1px solid #363a45;
 
-            border-radius: 4px; color: #787b86; font-size: 12px; cursor: pointer;
+            border-radius: 4px; color: #787b86; font-size: 12px; cursor:default;
 
         `;
 
@@ -8998,7 +8998,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         ddWrapper.innerHTML = `
 
-            <button type="button" class="tv-fontsize-dropdown-btn tv-ending-dropdown-btn" style="width: auto; max-width: 100%; height: 26px; padding: 0 22px 0 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: flex-start; position: relative; box-sizing: border-box; white-space: nowrap;">
+            <button type="button" class="tv-fontsize-dropdown-btn tv-ending-dropdown-btn" style="width: auto; max-width: 100%; height: 26px; padding: 0 22px 0 8px; border-radius: 4px; cursor:default; font-size: 11px; display: flex; align-items: center; justify-content: flex-start; position: relative; box-sizing: border-box; white-space: nowrap;">
 
                 <span>${currentLabel}</span>
 
@@ -9094,7 +9094,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const zonesLabel = document.createElement('label');
 
-            zonesLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: #787b86;';
+            zonesLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor:default; font-size: 11px; color: #787b86;';
 
             const zonesCheck = document.createElement('input');
 
@@ -9102,7 +9102,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             zonesCheck.checked = drawing.style.showZones !== false;
 
-            zonesCheck.style.cssText = 'cursor: pointer; accent-color: #787b86;';
+            zonesCheck.style.cssText = 'cursor:default; accent-color: #787b86;';
 
             zonesCheck.onchange = () => {
 
@@ -9134,7 +9134,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             opacity.value = (drawing.style.backgroundOpacity != null ? drawing.style.backgroundOpacity : 0.2);
 
-            opacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor: pointer; outline: none; max-width: 160px;';
+            opacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor:default; outline: none; max-width: 160px;';
 
             opacity.oninput = () => {
 
@@ -10057,7 +10057,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             bgSlider.value = String(drawing.style.backgroundOpacity);
 
-            bgSlider.style.cssText = 'width: 100%; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor: pointer; outline: none;';
+            bgSlider.style.cssText = 'width: 100%; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor:default; outline: none;';
 
             bgRow.controls.appendChild(bgSlider);
 
@@ -10307,7 +10307,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const zonesLabel = document.createElement('label');
 
-            zonesLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: #787b86;';
+            zonesLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor:default; font-size: 11px; color: #787b86;';
 
             const zonesCheck = document.createElement('input');
 
@@ -10315,7 +10315,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             zonesCheck.checked = drawing.style.showZones !== false;
 
-            zonesCheck.style.cssText = 'cursor: pointer; accent-color: #787b86;';
+            zonesCheck.style.cssText = 'cursor:default; accent-color: #787b86;';
 
             zonesCheck.onchange = () => {
 
@@ -10345,7 +10345,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             opacity.value = (drawing.style.backgroundOpacity != null ? drawing.style.backgroundOpacity : 0.12);
 
-            opacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor: pointer; outline: none; max-width: 160px;';
+            opacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor:default; outline: none; max-width: 160px;';
 
             opacity.oninput = () => {
 
@@ -10377,7 +10377,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const zonesLabel = document.createElement('label');
 
-            zonesLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: #787b86;';
+            zonesLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor:default; font-size: 11px; color: #787b86;';
 
             const zonesCheck = document.createElement('input');
 
@@ -10385,7 +10385,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             zonesCheck.checked = drawing.style.showZones !== false;
 
-            zonesCheck.style.cssText = 'cursor: pointer; accent-color: #787b86;';
+            zonesCheck.style.cssText = 'cursor:default; accent-color: #787b86;';
 
             zonesCheck.onchange = () => {
 
@@ -10415,7 +10415,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             opacity.value = (drawing.style.backgroundOpacity != null ? drawing.style.backgroundOpacity : 0.12);
 
-            opacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor: pointer; outline: none; max-width: 160px;';
+            opacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor:default; outline: none; max-width: 160px;';
 
             opacity.oninput = () => {
 
@@ -10447,7 +10447,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const zonesLabel = document.createElement('label');
 
-            zonesLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: #787b86;';
+            zonesLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor:default; font-size: 11px; color: #787b86;';
 
             const zonesCheck = document.createElement('input');
 
@@ -10455,7 +10455,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             zonesCheck.checked = drawing.style.showZones !== false;
 
-            zonesCheck.style.cssText = 'cursor: pointer; accent-color: #787b86;';
+            zonesCheck.style.cssText = 'cursor:default; accent-color: #787b86;';
 
             zonesCheck.onchange = () => {
 
@@ -10485,7 +10485,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             opacity.value = (drawing.style.backgroundOpacity != null ? drawing.style.backgroundOpacity : 0.12);
 
-            opacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor: pointer; outline: none; max-width: 160px;';
+            opacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor:default; outline: none; max-width: 160px;';
 
             opacity.oninput = () => {
 
@@ -10517,7 +10517,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const bgLabel = document.createElement('label');
 
-            bgLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: #787b86;';
+            bgLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor:default; font-size: 11px; color: #787b86;';
 
             const bgCheck = document.createElement('input');
 
@@ -10525,7 +10525,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             bgCheck.checked = drawing.style.backgroundEnabled !== false;
 
-            bgCheck.style.cssText = 'cursor: pointer; accent-color: #787b86;';
+            bgCheck.style.cssText = 'cursor:default; accent-color: #787b86;';
 
             bgCheck.onchange = () => {
 
@@ -10555,7 +10555,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             bgOpacity.value = (drawing.style.backgroundOpacity != null ? drawing.style.backgroundOpacity : 0.12);
 
-            bgOpacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor: pointer; outline: none; max-width: 140px;';
+            bgOpacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor:default; outline: none; max-width: 140px;';
 
             bgOpacity.oninput = () => {
 
@@ -10571,7 +10571,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const gridLabel = document.createElement('label');
 
-            gridLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: #787b86;';
+            gridLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor:default; font-size: 11px; color: #787b86;';
 
             const gridCheck = document.createElement('input');
 
@@ -10579,7 +10579,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             gridCheck.checked = drawing.style.gridEnabled !== false;
 
-            gridCheck.style.cssText = 'cursor: pointer; accent-color: #787b86;';
+            gridCheck.style.cssText = 'cursor:default; accent-color: #787b86;';
 
             gridCheck.onchange = () => {
 
@@ -10599,7 +10599,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const reverseLabel = document.createElement('label');
 
-            reverseLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: #787b86;';
+            reverseLabel.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor:default; font-size: 11px; color: #787b86;';
 
             const reverseCheck = document.createElement('input');
 
@@ -10607,7 +10607,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             reverseCheck.checked = drawing.style.reverse || false;
 
-            reverseCheck.style.cssText = 'cursor: pointer; accent-color: #787b86;';
+            reverseCheck.style.cssText = 'cursor:default; accent-color: #787b86;';
 
             reverseCheck.onchange = () => {
 
@@ -10927,7 +10927,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     width: 20px; height: 20px; padding: 0; background: transparent; border: none;
 
-                    color: #787b86; cursor: pointer; font-size: 14px; line-height: 1; border-radius: 4px;
+                    color: #787b86; cursor:default; font-size: 14px; line-height: 1; border-radius: 4px;
 
                 `;
 
@@ -10993,7 +10993,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 flex: 1; padding: 8px 12px; background: #787b8620; border: 1px solid #787b8640;
 
-                border-radius: 4px; color: #787b86; font-size: 12px; cursor: pointer;
+                border-radius: 4px; color: #787b86; font-size: 12px; cursor:default;
 
             `;
 
@@ -11043,7 +11043,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             padding: 8px 12px; background: transparent; border: 1px solid #363a45;
 
-            border-radius: 4px; color: #787b86; font-size: 12px; cursor: pointer;
+            border-radius: 4px; color: #787b86; font-size: 12px; cursor:default;
 
         `;
 
@@ -11402,7 +11402,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         opacity.value = (drawing.style.backgroundOpacity != null ? drawing.style.backgroundOpacity : 0.12);
 
-        opacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor: pointer; outline: none; max-width: 160px;';
+        opacity.style.cssText = 'flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor:default; outline: none; max-width: 160px;';
 
         opacity.oninput = () => {
 
@@ -11651,7 +11651,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 row.appendChild(controlsWrapper);
 
                 const deleteBtn = document.createElement('button');
-                deleteBtn.style.cssText = 'width:20px;height:20px;padding:0;background:transparent;border:none;color:#787b86;cursor:pointer;font-size:14px;line-height:1;border-radius:4px;';
+                deleteBtn.style.cssText = 'width:20px;height:20px;padding:0;background:transparent;border:none;color:#787b86;cursor:default;font-size:14px;line-height:1;border-radius:4px;';
                 deleteBtn.innerHTML = '×';
                 deleteBtn.onmouseenter = () => { deleteBtn.style.background = '#f2364520'; deleteBtn.style.color = '#f23645'; };
                 deleteBtn.onmouseleave = () => { deleteBtn.style.background = 'transparent'; deleteBtn.style.color = '#787b86'; };
@@ -11688,7 +11688,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 flex: 1; padding: 8px 12px; background: #787b8620; border: 1px solid #787b8640;
 
-                border-radius: 4px; color: #787b86; font-size: 12px; cursor: pointer;
+                border-radius: 4px; color: #787b86; font-size: 12px; cursor:default;
 
             `;
 
@@ -11732,7 +11732,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 padding: 8px 12px; background: transparent; border: 1px solid #363a45;
 
-                border-radius: 4px; color: #787b86; font-size: 12px; cursor: pointer;
+                border-radius: 4px; color: #787b86; font-size: 12px; cursor:default;
 
             `;
 
@@ -12015,7 +12015,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 width: 30px; height: 30px; background: ${level.color}; 
 
-                border-radius: 4px; border: 2px solid rgba(50, 50, 60, 0.9); cursor: pointer;
+                border-radius: 4px; border: 2px solid rgba(50, 50, 60, 0.9); cursor:default;
 
                 transition: border-color 0.15s ease, transform 0.15s ease; box-sizing: border-box;
 
@@ -13272,7 +13272,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             overflow: hidden;
 
-            cursor: pointer;
+            cursor:default;
 
         `;
 
@@ -13536,7 +13536,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                                 padding: 8px;
 
-                                cursor: pointer;
+                                cursor:default;
 
                                 color: var(--sp-text,#d1d4dc);
 
@@ -13692,7 +13692,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 padding: 8px;
 
-                cursor: pointer;
+                cursor:default;
 
                 color: var(--sp-text,#d1d4dc);
 
@@ -16085,7 +16085,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         bgSlider.value = String(drawing.style.backgroundOpacity);
 
-        bgSlider.style.cssText = 'width: 100%; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor: pointer; outline: none;';
+        bgSlider.style.cssText = 'width: 100%; height: 6px; -webkit-appearance: none; appearance: none; background: #363a45; border-radius: 3px; cursor:default; outline: none;';
 
         bgRow.controls.appendChild(bgSlider);
 
@@ -24179,7 +24179,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         dropdown.innerHTML = infoOptions.map(option => `
 
-            <label class="tv-info-option" style="display: flex; align-items: center; gap: 6px; padding: 6px 10px; cursor: pointer; border-radius: 0;">
+            <label class="tv-info-option" style="display: flex; align-items: center; gap: 6px; padding: 6px 10px; cursor:default; border-radius: 0;">
 
                 <div class="tv-checkbox tv-info-checkbox ${infoSettings[option.prop] ? 'checked' : ''}" data-info-prop="${option.prop}">
 
@@ -24443,7 +24443,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 opacity: 0.5;
 
-                cursor: pointer;
+                cursor:default;
 
                 color: #787b86;
 
@@ -26949,7 +26949,7 @@ applyTemplate(drawing, templateId, modal) {
 
                 overflow: hidden;
 
-                cursor: pointer;
+                cursor:default;
 
             `;
 
@@ -27157,7 +27157,7 @@ applyTemplate(drawing, templateId, modal) {
 
                     padding: 8px;
 
-                    cursor: pointer;
+                    cursor:default;
 
                     color: var(--sp-text,#d1d4dc);
 
@@ -27365,7 +27365,7 @@ applyTemplate(drawing, templateId, modal) {
 
                 overflow: hidden;
 
-                cursor: pointer;
+                cursor:default;
 
             `;
 
@@ -27429,7 +27429,7 @@ applyTemplate(drawing, templateId, modal) {
 
                     padding: 8px;
 
-                    cursor: pointer;
+                    cursor:default;
 
                     color: var(--sp-text,#d1d4dc);
 
@@ -29847,8 +29847,8 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
         <button type="button" class="position-mode-tab rr-mirror-position-tab" data-mode="lot-size">#</button>
       </div>
       <div id="rrMirror_balanceSourceToggle" style="display:none;gap:0;margin-left:auto;align-self:center;">
-        <button type="button" class="balance-source-tab rr-mirror-balance-tab" data-balance="current" style="font-size:9px;padding:2px 8px;border-radius:4px 0 0 4px;background:#334155;color:#e2e8f0;border:1px solid #475569;cursor:pointer;white-space:nowrap;">Current</button>
-        <button type="button" class="balance-source-tab rr-mirror-balance-tab" data-balance="initial" style="font-size:9px;padding:2px 8px;border-radius:0 4px 4px 0;background:transparent;color:#94a3b8;border:1px solid #475569;border-left:none;cursor:pointer;white-space:nowrap;">Initial</button>
+        <button type="button" class="balance-source-tab rr-mirror-balance-tab" data-balance="current" style="font-size:9px;padding:2px 8px;border-radius:4px 0 0 4px;background:#334155;color:#e2e8f0;border:1px solid #475569;cursor:default;white-space:nowrap;">Current</button>
+        <button type="button" class="balance-source-tab rr-mirror-balance-tab" data-balance="initial" style="font-size:9px;padding:2px 8px;border-radius:0 4px 4px 0;background:transparent;color:#94a3b8;border:1px solid #475569;border-left:none;cursor:default;white-space:nowrap;">Initial</button>
       </div>
       <div id="rrMirror_riskUSDInput" class="order-input-wrapper order-risk-compact__input" style="display:flex;gap:4px;align-items:center;flex:1;min-width:0;">
         <span class="order-input-prefix">$</span>

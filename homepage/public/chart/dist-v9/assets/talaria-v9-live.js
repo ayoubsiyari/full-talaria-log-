@@ -137,7 +137,7 @@ Error generating stack: `+g.message+`
         .tl-drag,.tl-drag *{cursor:move!important}
         /* Legend collapse: control below indicator list (TradingView-like); expanded = ^ collapse, collapsed = v expand */
         .ohlc-legend-footer{display:flex;align-items:center;justify-content:flex-start;margin-top:3px;padding:0;pointer-events:auto}
-        .ohlc-legend-chevron{appearance:none;-webkit-appearance:none;border:none;margin:0;padding:2px 4px;background:transparent;color:#787b86;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;line-height:0;flex-shrink:0;pointer-events:auto;opacity:0.88;transition:color .12s,background .12s,opacity .12s}
+        .ohlc-legend-chevron{appearance:none;-webkit-appearance:none;border:none;margin:0;padding:2px 4px;background:transparent;color:#787b86;cursor:default;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;line-height:0;flex-shrink:0;pointer-events:auto;opacity:0.88;transition:color .12s,background .12s,opacity .12s}
         .ohlc-legend-chevron:hover{background:rgba(255,255,255,0.06);color:#b2b5be;opacity:1}
         .ohlc-legend-chevron svg{width:13px;height:13px;transition:transform .15s ease;flex-shrink:0}
         .ohlc-info:not(.collapsed) .ohlc-legend-chevron svg{transform:rotate(180deg)}

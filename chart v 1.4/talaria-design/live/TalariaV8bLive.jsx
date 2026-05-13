@@ -9596,7 +9596,7 @@ const TalariaV8bLive = () => {
         .tl-drag,.tl-drag *{cursor:move!important}
         /* Legend collapse: control below indicator list (TradingView-like); expanded = ^ collapse, collapsed = v expand */
         .ohlc-legend-footer{display:flex;align-items:center;justify-content:flex-start;margin-top:3px;padding:0;pointer-events:auto}
-        .ohlc-legend-chevron{appearance:none;-webkit-appearance:none;border:none;margin:0;padding:2px 4px;background:transparent;color:#787b86;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;line-height:0;flex-shrink:0;pointer-events:auto;opacity:0.88;transition:color .12s,background .12s,opacity .12s}
+        .ohlc-legend-chevron{appearance:none;-webkit-appearance:none;border:none;margin:0;padding:2px 4px;background:transparent;color:#787b86;cursor:default;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;line-height:0;flex-shrink:0;pointer-events:auto;opacity:0.88;transition:color .12s,background .12s,opacity .12s}
         .ohlc-legend-chevron:hover{background:rgba(255,255,255,0.06);color:#b2b5be;opacity:1}
         .ohlc-legend-chevron svg{width:13px;height:13px;transition:transform .15s ease;flex-shrink:0}
         .ohlc-info:not(.collapsed) .ohlc-legend-chevron svg{transform:rotate(180deg)}
@@ -12547,7 +12547,7 @@ const TalariaV8bLive = () => {
                   <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,
                                  width:"70%",aspectRatio:"1",boxSizing:"border-box",margin:"0 auto 16px",
                                  background:"rgba(140,160,255,0.05)",border:"1px dashed rgba(140,160,255,0.25)",
-                                 cursor:"pointer"}}>
+                                 cursor:"default"}}>
                     {txtStyle.imageDataUrl
                       ? <img src={txtStyle.imageDataUrl} style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>
                       : <><I n="image" s={28} cl={c.ts}/><span style={{fontSize:12,color:c.ts}}>Upload Image</span></>}
@@ -15572,7 +15572,7 @@ const TalariaV8bLive = () => {
                 <div key={ind.id}
                   onClick={(e)=>{if(e.target.closest('[data-indaction]'))return;onIndicatorRowClick();}}
                   onMouseEnter={()=>setSwHov(`ind-${ind.id}`)} onMouseLeave={()=>setSwHov(null)}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"pointer",position:"relative",
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"default",position:"relative",
                     background:isAct?"rgba(38,67,247,0.07)":(isSel||indRowHov)?"rgba(255,255,255,0.022)":"transparent",
                     transition:"background 0.1s"}}>
                   {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -18357,7 +18357,7 @@ const TalariaV8bLive = () => {
                       <div onMouseEnter={()=>setHov(`id-${i}`)} onMouseLeave={()=>setHov(null)}
                         style={{overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>
                         <span onClick={e=>{e.stopPropagation();openCard();}}
-                          style={{position:"relative",display:"inline-flex",fontSize:10,fontWeight:700,cursor:"pointer",letterSpacing:"0.02em",userSelect:"none",
+                          style={{position:"relative",display:"inline-flex",fontSize:10,fontWeight:700,cursor:"default",letterSpacing:"0.02em",userSelect:"none",
                             color:isActive?(hov===`id-${i}`?"rgba(0,212,161,1)":undefined):hov===`id-${i}`?c.acL:c.ts,
                             animation:isActive&&hov!==`id-${i}`?"tlrIdPulse 2s ease-in-out infinite":undefined,
                             transition:isActive?"none":"color 0.15s",
@@ -19043,7 +19043,7 @@ const TalariaV8bLive = () => {
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
                         onMouseDown={(e)=>e.stopPropagation()}
                         style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:"pointer",flexShrink:0,opacity:isJumpH?1:anyHov?0.55:0,
+                          cursor:"default",flexShrink:0,opacity:isJumpH?1:anyHov?0.55:0,
                           pointerEvents:"auto",transition:"opacity 0.04s"}}>
                         <I n="locate" s={15} cl={isJumpH?c.acL:c.ts}/>
                       </div>
@@ -19069,7 +19069,7 @@ const TalariaV8bLive = () => {
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
                         onMouseDown={(e)=>e.stopPropagation()}
                         style={{width:22,height:22,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:"pointer",flexShrink:0,opacity:isVisH?1:!isVis?1:anyHov?0.55:0,
+                          cursor:"default",flexShrink:0,opacity:isVisH?1:!isVis?1:anyHov?0.55:0,
                           pointerEvents:"auto",transition:"opacity 0.04s"}}>
                         <I n="eye" s={14} cl={isVisH?c.acL:isVis?c.ts:"#F5A020"}/>
                         {!isVis && (
@@ -19096,7 +19096,7 @@ const TalariaV8bLive = () => {
                         onMouseDown={(e)=>{e.stopPropagation();setSwHov(`lyrD-${item.id}_dn`);}}
                         onMouseUp={()=>setSwHov(`lyrD-${item.id}`)}
                         style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:"pointer",flexShrink:0,opacity:isDelH||isDelDn?1:anyHov?0.55:0,
+                          cursor:"default",flexShrink:0,opacity:isDelH||isDelDn?1:anyHov?0.55:0,
                           pointerEvents:"auto",transform:isDelDn?"scale(0.86)":"scale(1)",
                           transition:"opacity 0.04s,transform 0.08s"}}>
                         <I n="trash" s={14} cl={isDelH||isDelDn?c.rd:c.ts}/>

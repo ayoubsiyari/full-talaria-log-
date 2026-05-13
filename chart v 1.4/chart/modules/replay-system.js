@@ -709,7 +709,7 @@ class ReplaySystem {
             background: transparent;
             border: none;
             color: #787b86;
-            cursor: pointer;
+            cursor:default;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1139,7 +1139,7 @@ class ReplaySystem {
                 color: white;
                 padding: 6px 12px;
                 border-radius: 4px;
-                cursor: pointer;
+                cursor:default;
                 font-size: 12px;
             ">Cancel (ESC)</button>
         `;
@@ -1850,7 +1850,7 @@ class ReplaySystem {
                 color: #f3f6ff;
                 padding: 7px 14px;
                 border-radius: 8px;
-                cursor: pointer;
+                cursor:default;
                 font-size: 13px;
                 font-weight: 600;
                 letter-spacing: 0.01em;
@@ -4709,7 +4709,7 @@ class ReplaySystem {
                 border: 'none',
                 borderRadius: '0',
                 color: '#fff',
-                cursor: 'pointer',
+                cursor:'default',
                 boxShadow: '0 2px 12px rgba(0, 0, 0, 0.35)',
                 pointerEvents: 'auto',
                 opacity: '0.5',

@@ -1069,7 +1069,7 @@ class KeyboardShortcutsManager {
                         border: none;
                         color: #fff;
                         font-size: 12px;
-                        cursor: pointer;
+                        cursor:default;
                         padding: 8px 16px;
                         border-radius: 6px;
                         font-weight: 500;
@@ -1080,7 +1080,7 @@ class KeyboardShortcutsManager {
                         border: 1px solid rgba(255, 255, 255, 0.1);
                         color: #787b86;
                         font-size: 20px;
-                        cursor: pointer;
+                        cursor:default;
                         padding: 4px 10px;
                         border-radius: 6px;
                         transition: all 0.2s;
@@ -1161,7 +1161,7 @@ class KeyboardShortcutsManager {
                         border: 1px solid rgba(239, 68, 68, 0.3);
                         color: #ef4444;
                         font-size: 12px;
-                        cursor: pointer;
+                        cursor:default;
                         padding: 8px 12px;
                         border-radius: 6px;
                         transition: all 0.2s;
@@ -1171,7 +1171,7 @@ class KeyboardShortcutsManager {
                         border: 1px solid rgba(255, 255, 255, 0.1);
                         color: #787b86;
                         font-size: 20px;
-                        cursor: pointer;
+                        cursor:default;
                         padding: 4px 10px;
                         border-radius: 6px;
                     ">×</button>
@@ -1270,7 +1270,7 @@ class KeyboardShortcutsManager {
                                 border: 1px solid #2a2e39;
                                 border-radius: 6px;
                                 margin-bottom: 8px;
-                                cursor: pointer;
+                                cursor:default;
                                 transition: all 0.15s;
                             ">
                                 <span style="color: #d1d4dc; font-size: 13px;">${s.action}</span>
@@ -1290,7 +1290,7 @@ class KeyboardShortcutsManager {
                                         background: none;
                                         border: none;
                                         color: #787b86;
-                                        cursor: pointer;
+                                        cursor:default;
                                         padding: 4px;
                                         font-size: 14px;
                                     " title="Reset to default">↺</button>` : ''}

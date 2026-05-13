@@ -208,7 +208,7 @@ class SimpleEmojiPicker {
                 height: 36px;
                 border: none;
                 background: transparent;
-                cursor: pointer;
+                cursor:default;
                 border-radius: 6px;
                 transition: all 0.15s ease;
                 display: flex;
@@ -290,7 +290,7 @@ class SimpleEmojiPicker {
                 height: 40px;
                 border: none;
                 background: transparent;
-                cursor: pointer;
+                cursor:default;
                 border-radius: 6px;
                 transition: all 0.12s ease;
                 display: flex;

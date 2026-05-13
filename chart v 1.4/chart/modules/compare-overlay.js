@@ -1112,7 +1112,7 @@ class CompareOverlay {
                     background: transparent;
                     border: none;
                     color: ${theme.iconMuted};
-                    cursor: pointer;
+                    cursor:default;
                     padding: 2px;
                     display: flex;
                     align-items: center;
@@ -1122,7 +1122,7 @@ class CompareOverlay {
                 `;
                 
                 legend.innerHTML = `
-                    <span class="pane-color-indicator" style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: ${pane.color}; cursor: pointer;" title="Change color"></span>
+                    <span class="pane-color-indicator" style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: ${pane.color}; cursor:default;" title="Change color"></span>
                     <span class="pane-symbol" style="font-weight: 600; color: ${pane.color};">${pane.symbol}</span>
                     <button class="pane-visibility-btn" data-id="${pane.id}" title="Hide" style="${iconBtnStyle}">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -2343,7 +2343,7 @@ class CompareOverlay {
                 btn.textContent = item.label;
                 btn.style.cssText = `
                     padding: 8px 16px;
-                    cursor: pointer;
+                    cursor:default;
                     color: #d1d4dc;
                 `;
                 btn.addEventListener('mouseenter', () => btn.style.background = '#2a2e39');
@@ -3385,7 +3385,7 @@ class CompareOverlay {
                 background: none;
                 border: none;
                 color: #787b86;
-                cursor: pointer;
+                cursor:default;
                 padding: 4px;
                 display: flex;
                 align-items: center;
@@ -3416,7 +3416,7 @@ class CompareOverlay {
                     gap: 6px;
                     padding: 2px 0;
                     opacity: ${isHidden ? '0.5' : '1'};
-                    cursor: pointer;
+                    cursor:default;
                 ">
                     ${pairFlags || `<span style="
                         width: 10px;

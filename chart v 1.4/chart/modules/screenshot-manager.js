@@ -560,7 +560,7 @@ class ScreenshotManager {
             border: 1px solid #2e3c55;
             background: #121d31;
             color: #a9b9d4;
-            cursor: pointer;
+            cursor:default;
         `;
         header.appendChild(closeBtn);
 
@@ -586,15 +586,15 @@ class ScreenshotManager {
 
         const downloadBtn = mkBtn(
             'Download',
-            'padding:10px 14px; border-radius:10px; border:1px solid #2d7cff; background:#1f6feb; color:#ffffff; font-weight:600; cursor:pointer;'
+            'padding:10px 14px; border-radius:10px; border:1px solid #2d7cff; background:#1f6feb; color:#ffffff; font-weight:600; cursor:default;'
         );
         const copyBtn = mkBtn(
             'Copy',
-            'padding:10px 14px; border-radius:10px; border:1px solid #2e3c55; background:#152136; color:#dbe8ff; font-weight:600; cursor:pointer;'
+            'padding:10px 14px; border-radius:10px; border:1px solid #2e3c55; background:#152136; color:#dbe8ff; font-weight:600; cursor:default;'
         );
         const linkBtn = mkBtn(
             'Copy link',
-            'padding:10px 14px; border-radius:10px; border:1px solid #2e3c55; background:#152136; color:#dbe8ff; font-weight:600; cursor:pointer;'
+            'padding:10px 14px; border-radius:10px; border:1px solid #2e3c55; background:#152136; color:#dbe8ff; font-weight:600; cursor:default;'
         );
 
         actions.appendChild(downloadBtn);
@@ -1042,7 +1042,7 @@ class ScreenshotManager {
                 <!-- Quality (for JPG) -->
                 <div id="qualitySection" style="background: ${sectionBg}; border-radius: 8px; padding: 16px; display: none;">
                     <div style="color: ${textMuted}; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Image Quality</div>
-                    <input type="range" id="imageQuality" min="0.5" max="1.0" step="0.1" value="0.9" style="width: 100%; cursor: pointer;">
+                    <input type="range" id="imageQuality" min="0.5" max="1.0" step="0.1" value="0.9" style="width: 100%; cursor:default;">
                     <div style="display: flex; justify-content: space-between; margin-top: 6px;">
                         <span style="color: ${textSecondary}; font-size: 11px;">Lower</span>
                         <span id="qualityValue" style="color: #a78bfa; font-size: 11px; font-weight: 600;">90%</span>
@@ -1061,7 +1061,7 @@ class ScreenshotManager {
                     border-radius: 8px;
                     font-size: 13px;
                     font-weight: 600;
-                    cursor: pointer;
+                    cursor:default;
                     transition: all 0.2s;
                 " onmouseover="this.style.background='rgba(59,130,246,0.25)';" 
                    onmouseout="this.style.background='rgba(59,130,246,0.15)';">
@@ -1075,7 +1075,7 @@ class ScreenshotManager {
                     border-radius: 8px;
                     font-size: 13px;
                     font-weight: 700;
-                    cursor: pointer;
+                    cursor:default;
                     box-shadow: 0 4px 12px rgba(124,58,237,0.3);
                     transition: all 0.2s;
                 " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(124,58,237,0.4)';" 

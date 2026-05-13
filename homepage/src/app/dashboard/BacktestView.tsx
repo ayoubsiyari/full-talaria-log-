@@ -742,7 +742,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                   display: "flex",
                   alignItems: "flex-end",
                   padding: "0 12px",
-                  cursor: "pointer",
+                  cursor:"default",
                   color: tabCol,
                   background: tabBg,
                   flexShrink: 0,
@@ -783,7 +783,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                         onMouseEnter={() => setHov("cardSortBtn")}
                         onMouseLeave={() => setHov(null)}
                         style={{
-                          height: 28, padding: "0 8px", display: "flex", alignItems: "center", gap: 5, position: "relative", cursor: "pointer",
+                          height: 28, padding: "0 8px", display: "flex", alignItems: "center", gap: 5, position: "relative", cursor:"default",
                           background: cardSortOpen ? "rgba(74,106,255,0.08)" : isBH ? "rgba(255,255,255,0.05)" : "transparent",
                           color: cardSortOpen ? c.acL : isBH ? c.tx : c.ts,
                           fontSize: 9, fontWeight: 700, transition: "background 0.12s,color 0.12s", whiteSpace: "nowrap",
@@ -809,7 +809,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                                   setCardSortOpen(false);
                                 }}
                                 style={{
-                                  display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 12px", cursor: "pointer", position: "relative",
+                                  display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 12px", cursor:"default", position: "relative",
                                   background: isAct ? c.acD : isIH ? "rgba(255,255,255,0.03)" : "transparent",
                                   transition: "background 0.1s",
                                 }}>
@@ -840,7 +840,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                   <div key={mode} onClick={() => { setLayoutMode(mode); setCardSortOpen(false); }}
                     onMouseEnter={() => setHov(`lm_${mode}`)}
                     onMouseLeave={() => setHov(null)}
-                    style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", cursor: "pointer", background: isA ? "rgba(74,106,255,0.08)" : isLm ? "rgba(255,255,255,0.05)" : "transparent", color: isA ? c.acL : isLm ? c.tx : c.ts, transition: "background 0.12s,color 0.12s" }}>
+                    style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", cursor:"default", background: isA ? "rgba(74,106,255,0.08)" : isLm ? "rgba(255,255,255,0.05)" : "transparent", color: isA ? c.acL : isLm ? c.tx : c.ts, transition: "background 0.12s,color 0.12s" }}>
                     {icon}
                     {isA && <div style={{ position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "70%", height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acL}`, pointerEvents: "none" }} />}
                     {!isA && isLm && <div style={{ position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "50%", height: 1, background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent)", pointerEvents: "none" }} />}
@@ -855,7 +855,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                 onKeyDown={e => { if (e.key === "Escape") setSearchQ(""); }}
                 placeholder="Search…"
                 style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: c.tx, fontSize: 10, fontWeight: 600, fontFamily: F, padding: 0 }} />
-              {searchQ && <div onClick={() => setSearchQ("")} style={{ cursor: "pointer", fontSize: 14, color: c.tm, lineHeight: 1 }}>×</div>}
+              {searchQ && <div onClick={() => setSearchQ("")} style={{ cursor:"default", fontSize: 14, color: c.tm, lineHeight: 1 }}>×</div>}
             </div>
           </div>
           </div>
@@ -911,7 +911,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               <svg width={56} height={56} viewBox="0 0 24 24" fill="none" style={{ marginBottom: 18, color: c.tm, opacity: 0.5 }}><rect x="3" y="3" width="18" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.2" /><line x1="7" y1="8" x2="17" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><line x1="7" y1="12" x2="13" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
               <div style={{ fontSize: 16, fontWeight: 700, color: c.ts, marginBottom: 8 }}>No saved sessions yet</div>
               <div style={{ fontSize: 13, color: c.tm, marginBottom: 24 }}>Create your first backtesting session to get started</div>
-              <div onClick={goNew} style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 38, padding: "0 22px", background: "linear-gradient(135deg,#1e38e8,#4A6AFF)", cursor: "pointer", fontSize: 12, fontWeight: 800, color: "rgba(255,255,255,0.96)", letterSpacing: "0.08em", boxShadow: "0 4px 18px rgba(38,67,247,0.4)", clipPath: "polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%)" }}>
+              <div onClick={goNew} style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 38, padding: "0 22px", background: "linear-gradient(135deg,#1e38e8,#4A6AFF)", cursor:"default", fontSize: 12, fontWeight: 800, color: "rgba(255,255,255,0.96)", letterSpacing: "0.08em", boxShadow: "0 4px 18px rgba(38,67,247,0.4)", clipPath: "polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%)" }}>
                 + Create New Session
               </div>
             </div>
@@ -978,7 +978,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                         onMouseLeave={() => setHov(null)}
                         style={{
                           width: 26, height: 26, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                          background: "linear-gradient(135deg,#1e38e8,#4A6AFF)", cursor: "pointer", transition: "filter 0.12s",
+                          background: "linear-gradient(135deg,#1e38e8,#4A6AFF)", cursor:"default", transition: "filter 0.12s",
                           filter: hov === `crs_${sess.id}` ? "brightness(1.2)" : "brightness(1)",
                           boxShadow: "0 2px 8px rgba(38,67,247,0.35)",
                         }}>
@@ -992,7 +992,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                           width: 26, height: 26, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
                           background: hov === `cdb_${sess.id}` ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.07)",
                           border: `1px solid ${hov === `cdb_${sess.id}` ? c.brH : c.br}`,
-                          cursor: "pointer", transition: "background 0.12s, border-color 0.12s", marginLeft: 5,
+                          cursor:"default", transition: "background 0.12s, border-color 0.12s", marginLeft: 5,
                         }}>
                         <svg width={11} height={11} viewBox="0 0 20 20" fill="none">
                           <rect x="1" y="1" width="8" height="8" fill={hov === `cdb_${sess.id}` ? c.tx : c.ts} />
@@ -1018,7 +1018,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                         }}
                         style={{
                           width: 28, height: 28, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                          cursor: "pointer", color: actMenu?.id === sess.id ? c.acL : c.ts,
+                          cursor:"default", color: actMenu?.id === sess.id ? c.acL : c.ts,
                           background: actMenu?.id === sess.id ? "rgba(255,255,255,0.08)" : "transparent", transition: "all 0.12s",
                         }}>
                         <svg width={16} height={16} viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="2.2" fill="currentColor" /><circle cx="12" cy="12" r="2.2" fill="currentColor" /><circle cx="19" cy="12" r="2.2" fill="currentColor" /></svg>
@@ -1229,13 +1229,13 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                         <div onClick={e => { e.stopPropagation(); openSession(sess); }}
                           onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.filter = "brightness(1.2)"}
                           onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.filter = "brightness(1)"}
-                          style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#1e38e8,#4A6AFF)", cursor: "pointer", boxShadow: "0 2px 8px rgba(38,67,247,0.35)", flexShrink: 0 }}>
+                          style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#1e38e8,#4A6AFF)", cursor:"default", boxShadow: "0 2px 8px rgba(38,67,247,0.35)", flexShrink: 0 }}>
                           <svg width={10} height={10} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="rgba(255,255,255,0.95)" /></svg>
                         </div>
                         <div onClick={e => { e.stopPropagation(); openAnalytics(sess); }}
                           onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.12)"; (e.currentTarget as HTMLDivElement).style.borderColor = c.brH; }}
                           onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.07)"; (e.currentTarget as HTMLDivElement).style.borderColor = c.br; }}
-                          style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.07)", border: `1px solid ${c.br}`, cursor: "pointer", flexShrink: 0 }}>
+                          style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.07)", border: `1px solid ${c.br}`, cursor:"default", flexShrink: 0 }}>
                           <svg width={12} height={12} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill={c.ts} /><rect x="11" y="1" width="8" height="8" fill={c.ts} /><rect x="1" y="11" width="8" height="8" fill={c.ts} /><rect x="11" y="11" width="8" height="8" fill={c.ts} /></svg>
                         </div>
                       </div>
@@ -1413,7 +1413,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                             setActMenu(actMenu?.id === sess.id ? null : { id: sess.id, x: (r.left + r.right) / 2, y: r.bottom });
                           }}
                           style={{
-                            width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                            width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor:"default",
                             color: actMenu?.id === sess.id ? c.acL : c.ts,
                             background: actMenu?.id === sess.id ? "rgba(255,255,255,0.08)" : "transparent",
                             transition: "all 0.12s",
@@ -1520,7 +1520,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                       alignItems: "center",
                       gap: 10,
                       padding: "8px 12px",
-                      cursor: "pointer",
+                      cursor:"default",
                       color: col,
                       fontSize: 11,
                       fontWeight: 700,

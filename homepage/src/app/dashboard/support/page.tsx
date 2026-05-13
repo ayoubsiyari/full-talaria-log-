@@ -422,7 +422,7 @@ export default function SupportPage() {
                   border: "none",
                   borderBottom: "1px solid rgba(255,255,255,0.04)",
                   background: t.id === selectedId ? "rgba(200,240,96,0.06)" : "transparent",
-                  cursor: "pointer",
+                  cursor:"default",
                   color: "#e8e4dc",
                 }}
               >

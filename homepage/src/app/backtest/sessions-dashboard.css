@@ -98,7 +98,7 @@
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
-  cursor: pointer;
+  cursor:default;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -149,7 +149,7 @@
   font-size: 11px;
   font-weight: 600;
   color: #9b97a0;
-  cursor: pointer;
+  cursor:default;
   letter-spacing: 0.04em;
   transition: border-color 0.12s, color 0.12s;
 }
@@ -263,7 +263,7 @@
   font-size: 12px;
   font-weight: 500;
   color: #4a4850;
-  cursor: pointer;
+  cursor:default;
   transition: all 0.15s;
 }
 
@@ -377,7 +377,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  cursor: pointer;
+  cursor:default;
   color: #60a5fa;
   transition: background 0.12s, transform 0.12s;
 }
@@ -496,7 +496,7 @@
   font-size: 10px;
   font-weight: 600;
   color: #6b6870;
-  cursor: pointer;
+  cursor:default;
   letter-spacing: 0.04em;
   display: inline-flex;
   align-items: center;
@@ -623,7 +623,7 @@
   background: rgba(255, 255, 255, 0.02);
   padding: 28px 24px;
   text-align: center;
-  cursor: pointer;
+  cursor:default;
   transition: border-color 0.15s, background 0.15s, transform 0.12s;
   font: inherit;
   color: inherit;
@@ -689,7 +689,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+  cursor:default;
   transition: background 0.12s, transform 0.12s;
 }
 
