@@ -10299,8 +10299,8 @@ const TalariaV8bLive = () => {
         .ohlc-stats{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important}
         .ohlc-item{display:inline-flex !important;align-items:center !important;gap:3px !important}
         .ohlc-label{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;opacity:1 !important}
-        .ohlc-value{font-size:9px !important;font-weight:80 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important}
-        .ohlc-change{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;margin-left:2px !important}
+        .ohlc-value{font-size:9px !important;font-weight:80 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;display:inline-block !important;min-width:10ch !important;text-align:right !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
+        .ohlc-change{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;margin-left:2px !important;display:inline-block !important;min-width:28ch !important;text-align:right !important;white-space:nowrap !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
         .ohlc-body{margin-top:1px !important}
         .ohlc-indicators{min-width:0;color:var(--ohlc-ind,rgba(255,255,255,0.72)) !important}
         .ohlc-indicators *{color:inherit}
