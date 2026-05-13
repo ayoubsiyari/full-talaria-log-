@@ -2930,6 +2930,7 @@ const TalariaV8bLive = () => {
   const [omRewardSummaryTxt, setOmRewardSummaryTxt] = useState("$0");
   const [omSlDistTxt, setOmSlDistTxt] = useState("—");
   const [omTpDistTxt, setOmTpDistTxt] = useState("—");
+  const [omPlaceButtonTxt, setOmPlaceButtonTxt] = useState("");
   /** Per-row strings scraped from hidden #orderPanel (order-manager) — matches chart/preview math. */
   const [omEntryRowStatLines, setOmEntryRowStatLines] = useState([]);
   const [omTpRowStatLines, setOmTpRowStatLines] = useState([]);
@@ -6859,6 +6860,8 @@ const TalariaV8bLive = () => {
       const rwd = document.getElementById("rewardAmount")?.textContent?.trim() || "$0";
       setOmRiskSummaryTxt((prev) => (prev === rsk ? prev : rsk));
       setOmRewardSummaryTxt((prev) => (prev === rwd ? prev : rwd));
+      const pbt = document.getElementById("placeOrderButton")?.textContent?.replace(/\s+/g, " ").trim() || "";
+      setOmPlaceButtonTxt((prev) => (prev === pbt ? prev : pbt));
 
       const sd = document.getElementById("slPipsDisplay")?.textContent?.trim() || "—";
       let td = document.getElementById("tpDistanceDisplay")?.textContent?.trim() || "—";
@@ -21756,23 +21759,30 @@ const TalariaV8bLive = () => {
 
           {/* 9 — R:R Bar */}
           {(() => {
-            const risk   = parseFloat(riskVal||"0");
-            const rr     = 2.0;
-            const reward = risk * rr;
+            const moneyNum = (txt) => {
+              const n = parseFloat(String(txt || "").replace(/[^0-9.-]/g, ""));
+              return Number.isFinite(n) ? Math.abs(n) : 0;
+            };
+            const risk = moneyNum(omRiskSummaryTxt);
+            const reward = moneyNum(omRewardSummaryTxt);
+            const rr = risk > 0 && reward > 0 ? reward / risk : 0;
+            const rrLabel = rr > 0 && Number.isFinite(rr) ? rr.toFixed(1) : "—";
+            const riskLabel = risk > 0 ? `-${omRiskSummaryTxt.replace(/^-/, "")}` : "$0.00";
+            const rewardLabel = reward > 0 ? `+${omRewardSummaryTxt.replace(/^\+/, "")}` : "$0.00";
             return (
               <div style={{ flexShrink:0, padding:"5px 8px 4px", borderTop:"1px solid rgba(140,160,255,0.12)" }}>
                 <div style={{ display:"flex", height:5, overflow:"hidden", gap:1 }}>
                   <div style={{ flex:1,   background:c.rd, opacity:0.55, boxShadow:`0 0 6px ${c.rd}` }}/>
-                  <div style={{ flex:Math.max(0.1,rr), background:c.gn, opacity:0.55, boxShadow:`0 0 6px ${c.gn}` }}/>
+                  <div style={{ flex:Math.max(0.1,rr || 0.1), background:c.gn, opacity:0.55, boxShadow:`0 0 6px ${c.gn}` }}/>
                 </div>
                 <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", paddingTop:4 }}>
-                  <span style={{ fontSize:9, fontWeight:700, color:c.rd, fontVariantNumeric:"tabular-nums" }}>-${risk.toFixed(2)}</span>
+                  <span style={{ fontSize:9, fontWeight:700, color:c.rd, fontVariantNumeric:"tabular-nums" }}>{riskLabel}</span>
                   <div style={{ display:"flex", alignItems:"baseline", gap:1 }}>
                     <span style={{ fontSize:11, fontWeight:800, color:c.rd, fontVariantNumeric:"tabular-nums" }}>1</span>
                     <span style={{ fontSize:10, fontWeight:600, color:c.ts }}>:</span>
-                    <span style={{ fontSize:11, fontWeight:800, color:c.gn, fontVariantNumeric:"tabular-nums" }}>{rr.toFixed(1)}</span>
+                    <span style={{ fontSize:11, fontWeight:800, color:c.gn, fontVariantNumeric:"tabular-nums" }}>{rrLabel}</span>
                   </div>
-                  <span style={{ fontSize:9, fontWeight:700, color:c.gn, fontVariantNumeric:"tabular-nums" }}>+${reward.toFixed(2)}</span>
+                  <span style={{ fontSize:9, fontWeight:700, color:c.gn, fontVariantNumeric:"tabular-nums" }}>{rewardLabel}</span>
                 </div>
               </div>
             );
@@ -21809,7 +21819,7 @@ const TalariaV8bLive = () => {
                            transition:"background 0.12s, border-color 0.12s, box-shadow 0.12s, transform 0.08s",
                            WebkitFontSmoothing:"antialiased" }}>
                   <span style={{ fontSize:12, fontWeight:800, color:"#fff", letterSpacing:"0.05em", fontFamily:F }}>
-                    {isBuy ? "BUY" : "SELL"} 0 Contracts · Set Position Size
+                    {(omPlaceButtonTxt || `${isBuy ? "Buy" : "Sell"} 0 ${currentSymbol.type==="futures" ? "Contracts" : "Lots"}`).replace(/\s+-\s+/g, " · ").toUpperCase()}
                   </span>
                 </div>
               </div>
