@@ -3004,6 +3004,8 @@ const TalariaV8bLive = () => {
   const [rollback, setRollback] = useState(false);
   /** Replay active + session forbids rewind — disables Rollback on the bar (synced in nav-integrity effect). */
   const [replayRollbackBlocked, setReplayRollbackBlocked] = useState(false);
+  /** Replay active — show OHLC rollback badge (padding-right reserves space so the icon stays fixed). */
+  const [replayOhlcBadgeVisible, setReplayOhlcBadgeVisible] = useState(false);
   const [rollbackLineX, setRollbackLineX] = useState(60);
   const [rbDragging, setRbDragging] = useState(false);
   const [rbPressed, setRbPressed] = useState(false);
@@ -4018,10 +4020,10 @@ const TalariaV8bLive = () => {
           : true;
       const rbBlocked = !!(rs && rs.isActive && typeof rs.isBackNavigationAllowed === "function" && !rs.isBackNavigationAllowed());
       setReplayRollbackBlocked((prev) => (prev === rbBlocked ? prev : rbBlocked));
+      setReplayOhlcBadgeVisible((prev) => (prev === replayOn ? prev : replayOn));
       const badge = document.getElementById("navIntegrityBadge");
       const tooltip = document.getElementById("navBadgeTooltip");
       if (!badge) return;
-      badge.style.display = replayOn ? "inline-flex" : "none";
       const navStateColor = allowBack ? "#22c55e" : "#ef4444";
       badge.style.color = navStateColor;
       const navSvg = badge.querySelector(".nav-badge-go-back");
@@ -10139,7 +10141,18 @@ const TalariaV8bLive = () => {
             <span className="ohlc-separator">{" · "}</span>
             <span id="chartTimeframe" />
           </div>
-          <div className="ohlc-stats" style={{ minHeight: 22, overflow: "visible", alignItems: "center", gap: 10, paddingLeft: 4 }}>
+          <div
+            className="ohlc-stats"
+            style={{
+              position: "relative",
+              minHeight: 22,
+              overflow: "visible",
+              alignItems: "center",
+              gap: 10,
+              paddingLeft: 4,
+              paddingRight: replayOhlcBadgeVisible ? 33 : undefined,
+            }}
+          >
             <div className="ohlc-item">
               <span className="ohlc-label">O</span>
               <span className="ohlc-value" id="open">—</span>
@@ -10156,18 +10169,24 @@ const TalariaV8bLive = () => {
               <span className="ohlc-label">C</span>
               <span className="ohlc-value" id="close">—</span>
             </div>
-            <span className="ohlc-trailing">
-              <span className="ohlc-change" id="chartChange">—</span>
-              {/* Tight to change % — rollback badge follows immediately (no wide reserved column) */}
-              <div
-                id="navIntegrityBadge"
-                className="nav-integrity-badge"
-                style={{ display: "none", flexShrink: 0, alignSelf: "center" }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.currentTarget.classList.toggle("show-tooltip");
-                }}
-              >
+            <span className="ohlc-change" id="chartChange">—</span>
+            <div
+              id="navIntegrityBadge"
+              className="nav-integrity-badge"
+              style={{
+                display: replayOhlcBadgeVisible ? "inline-flex" : "none",
+                position: "absolute",
+                right: 0,
+                top: "50%",
+                transform: "translateY(-50%)",
+                flexShrink: 0,
+                zIndex: 2,
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.currentTarget.classList.toggle("show-tooltip");
+              }}
+            >
                 <div className="nav-badge-icon" style={{ width: 30, height: 30, border: "none", background: "transparent", padding: 0 }}>
                   {/* Exact replay-bar rollback icon */}
                   <svg className="nav-badge-go-back" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ width: 22, height: 22, display: "block" }}>
@@ -10183,7 +10202,6 @@ const TalariaV8bLive = () => {
                   <strong>Navigation</strong>
                 </div>
               </div>
-            </span>
           </div>
         </div>
         <div className="ohlc-body">
@@ -10208,7 +10226,7 @@ const TalariaV8bLive = () => {
         </div>
       </div>
     ),
-    [ohlcTextColor, ohlcMutedTextColor, ohlcIndicatorTextColor]
+    [ohlcTextColor, ohlcMutedTextColor, ohlcIndicatorTextColor, replayOhlcBadgeVisible]
   );
 
   // Repaint indicator chips after OHLC host exists (race vs chart init).
@@ -10302,8 +10320,8 @@ const TalariaV8bLive = () => {
         .ohlc-item{display:inline-flex !important;align-items:center !important;gap:3px !important}
         .ohlc-label{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;opacity:1 !important}
         .ohlc-value{font-size:9px !important;font-weight:80 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
-        .ohlc-trailing{display:inline-flex !important;align-items:center !important;gap:6px !important;flex-shrink:0 !important;margin-left:2px !important}
-        .ohlc-change{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;margin-left:0 !important;white-space:nowrap !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
+        .ohlc-change{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;margin-left:2px !important;white-space:nowrap !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
+        .ohlc-stats > .nav-integrity-badge{position:absolute !important;right:0 !important;top:50% !important;transform:translateY(-50%) !important;margin-left:0 !important}
         .ohlc-body{margin-top:1px !important}
         .ohlc-indicators{min-width:0;color:var(--ohlc-ind,rgba(255,255,255,0.72)) !important}
         .ohlc-indicators *{color:inherit}
