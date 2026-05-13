@@ -9382,9 +9382,8 @@ const TalariaV8bLive = () => {
               alignItems: "center",
               minHeight: 22,
               overflow: "visible",
-              gap: 0,
+              gap: replayOhlcBadgeVisible ? 4 : 0,
               paddingLeft: 4,
-              paddingRight: replayOhlcBadgeVisible ? 33 : undefined,
               flex: "1 1 0%",
               minWidth: 0,
               boxSizing: "border-box",
@@ -9396,7 +9395,7 @@ const TalariaV8bLive = () => {
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                flex: "1 1 auto",
+                flex: "0 1 auto",
                 minWidth: 0,
                 flexWrap: "nowrap",
                 overflow: "hidden",
@@ -9426,11 +9425,9 @@ const TalariaV8bLive = () => {
               className="nav-integrity-badge"
               style={{
                 display: replayOhlcBadgeVisible ? "inline-flex" : "none",
-                position: "absolute",
-                right: 0,
-                top: "50%",
-                transform: "translateY(-50%)",
+                position: "relative",
                 flexShrink: 0,
+                alignSelf: "center",
                 zIndex: 2,
               }}
               onClick={(e) => {
@@ -9566,13 +9563,13 @@ const TalariaV8bLive = () => {
         .ohlc-symbol-block{flex:0 0 auto !important;font-size:13px !important;line-height:1.25 !important;color:var(--ohlc-fg,#fff) !important}
         .ohlc-symbol-block #chartSymbol{color:var(--ohlc-fg,#fff) !important}
         .ohlc-symbol-block #chartTimeframe{color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important}
-        .ohlc-stats{display:flex !important;flex-direction:row !important;align-items:center !important;gap:0 !important;line-height:1.2 !important;flex-wrap:nowrap !important;flex:1 1 0% !important;min-width:0 !important;position:relative !important;box-sizing:border-box !important}
-        .ohlc-stats-flow{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important;flex-wrap:nowrap !important;flex:1 1 auto !important;min-width:0 !important;overflow:hidden !important;box-sizing:border-box !important}
+        .ohlc-stats{display:flex !important;flex-direction:row !important;align-items:center !important;line-height:1.2 !important;flex-wrap:nowrap !important;flex:1 1 0% !important;min-width:0 !important;position:relative !important;box-sizing:border-box !important}
+        .ohlc-stats-flow{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important;flex-wrap:nowrap !important;flex:0 1 auto !important;min-width:0 !important;overflow:hidden !important;box-sizing:border-box !important}
         .ohlc-item{display:inline-flex !important;align-items:center !important;gap:3px !important}
         .ohlc-label{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;opacity:1 !important}
         .ohlc-value{font-size:9px !important;font-weight:80 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
         .ohlc-change{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;margin-left:2px !important;white-space:nowrap !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
-        .ohlc-stats > .nav-integrity-badge{position:absolute !important;right:0 !important;top:50% !important;transform:translateY(-50%) !important;margin-left:0 !important}
+        .ohlc-stats > .nav-integrity-badge{position:relative !important;flex-shrink:0 !important;align-self:center !important;margin-left:0 !important}
         .ohlc-body{margin-top:1px !important}
         .ohlc-indicators{min-width:0;color:var(--ohlc-ind,rgba(255,255,255,0.72)) !important}
         .ohlc-indicators *{color:inherit}

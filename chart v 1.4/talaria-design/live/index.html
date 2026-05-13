@@ -392,7 +392,7 @@
             align-items: center;
             flex-wrap: nowrap;
             gap: 6px;
-            flex: 1 1 auto;
+            flex: 0 1 auto;
             min-width: 0;
             overflow: hidden;
             box-sizing: border-box;
@@ -508,16 +508,15 @@
             z-index: 1;
         }
 
-        /* Back/forward (navigation integrity) badge — pinned to .ohlc-stats right edge (not after #chartChange flow). */
+        /* Navigation integrity badge — flex sibling after .ohlc-stats-flow (sits next to %, not chart-right). */
         #chart-container #chartWrapper .nav-integrity-badge,
         #panels-container .nav-integrity-badge {
-            position: absolute !important;
-            right: 0 !important;
-            top: 50% !important;
-            transform: translateY(-50%) !important;
+            position: relative !important;
             display: inline-flex !important;
             align-items: center;
             justify-content: center;
+            flex-shrink: 0;
+            align-self: center;
             margin-left: 0 !important;
             cursor: default;
             pointer-events: auto;
