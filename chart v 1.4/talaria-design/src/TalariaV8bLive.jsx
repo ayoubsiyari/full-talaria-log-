@@ -4030,8 +4030,6 @@ const TalariaV8bLive = () => {
       badge.classList.toggle("disabled", !allowBack);
       if (tooltip) {
         tooltip.style.removeProperty("color");
-        tooltip.classList.toggle("enabled-tip", allowBack);
-        tooltip.classList.toggle("disabled-tip", !allowBack);
         tooltip.innerHTML = allowBack
           ? "<strong>You can navigate</strong><span class=\"nav-tooltip-sub\">Rollback and step-back are allowed for this session.</span>"
           : "<strong>You cannot navigate</strong><span class=\"nav-tooltip-sub\">This session restricts rewinding — integrity is enforced.</span>";
