@@ -58,7 +58,7 @@
                    in some load orders), strip it again now. */
                 try { document.documentElement.classList.remove('bt-preload'); } catch (_) {}
             }, { once: true });
-            var V = '20260512T2330';
+            var V = '20260512T2345';
             function inject(src) {
                 var s = document.createElement('script');
                 s.src = src + '?v=' + V;
@@ -531,7 +531,7 @@
             left: 50%;
             transform: translateX(-50%);
             margin-top: 6px;
-            padding: 4px 10px;
+            padding: 3px 8px 3px 11px;
             background: #0f1119;
             border: 1px solid rgba(140, 160, 255, 0.12);
             border-radius: 0;
@@ -540,19 +540,27 @@
             font-weight: 600;
             font-family: "Exo 2", sans-serif;
             color: rgba(255, 255, 255, 0.92);
-            white-space: normal;
-            max-width: min(240px, 70vw);
+            white-space: nowrap;
             z-index: 10000;
-            box-shadow:
-                0 4px 14px rgba(0, 0, 0, 0.55),
-                inset 2px 0 0 0 rgba(74, 106, 255, 0.85),
-                inset -2px 0 0 0 rgba(74, 106, 255, 0.85);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
             transition: opacity 0.12s, visibility 0.12s;
         }
-        /* Same as global V9 hover tips (Objects Tree, etc.): no caret arrow */
+        /* Match global V9 showTip(): left accent strip (Layouts / Objects Tree) */
+        #chart-container #chartWrapper .nav-badge-tooltip::after,
+        #panels-container .nav-badge-tooltip::after {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(180deg, transparent, #4a6aff, transparent);
+            pointer-events: none;
+        }
+        /* No caret — same as fixed hover tips */
         #chart-container #chartWrapper .nav-badge-tooltip::before,
         #panels-container .nav-badge-tooltip::before {
             display: none;
@@ -566,19 +574,10 @@
         }
         #chart-container #chartWrapper .nav-badge-tooltip strong,
         #panels-container .nav-badge-tooltip strong {
-            display: block;
+            display: inline;
             color: rgba(255, 255, 255, 0.92);
             font-weight: 700;
             letter-spacing: 0.01em;
-        }
-        #chart-container #chartWrapper .nav-badge-tooltip .nav-tooltip-sub,
-        #panels-container .nav-badge-tooltip .nav-tooltip-sub {
-            display: block;
-            margin-top: 3px;
-            font-size: 9px;
-            font-weight: 500;
-            line-height: 1.3;
-            color: rgba(255, 255, 255, 0.7);
         }
 
         /* Hide legacy chart.js floating drawing toolbar — V9 renders its own
@@ -807,11 +806,11 @@
          ────────────────────────────────────────────────────────────── -->
 
     <!-- Tier A — preferences-sync MUST run before preferences-init (defines window.preferencesSync). -->
-    <script defer src="/chart/modules/preferences-sync.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/preferences-init.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/market-calculations.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/chart-env.defaults.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/chart-env.generated.js?v=20260512T2330"></script>
+    <script defer src="/chart/modules/preferences-sync.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/preferences-init.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/market-calculations.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/chart-env.defaults.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/chart-env.generated.js?v=20260512T2345"></script>
 
     <!-- Drawing tool base classes + individual tool registrations.
          Order matters within this block:
@@ -819,62 +818,62 @@
          - Each drawing-tools-*.js registers tools into the global registry.
          - drawing-tools-ui.js provides shared UI helpers used by tools.
          - drawing-tools-manager.js orchestrates everything (loaded later). -->
-    <script defer src="/chart/modules/drawing-tools-base.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/drawing-tools-lines.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/drawing-tools-shapes.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/drawing-tools-fibonacci.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/drawing-tools-text.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/drawing-tools-emoji.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/drawing-tools-image.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/emoji-picker.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/emoji-picker-simple.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/drawing-tools-advanced-volume.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/drawing-tools-advanced.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/drawing-tools-extended.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/drawing-tools-patterns.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/drawing-tools-fib-gann.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/drawing-tools-channels.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/drawing-tools-ui.js?v=20260512T2330"></script>
+    <script defer src="/chart/modules/drawing-tools-base.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/drawing-tools-lines.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/drawing-tools-shapes.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/drawing-tools-fibonacci.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/drawing-tools-text.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/drawing-tools-emoji.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/drawing-tools-image.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/emoji-picker.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/emoji-picker-simple.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/drawing-tools-advanced-volume.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/drawing-tools-advanced.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/drawing-tools-extended.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/drawing-tools-patterns.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/drawing-tools-fib-gann.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/drawing-tools-channels.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/drawing-tools-ui.js?v=20260512T2345"></script>
 
     <!-- Drawing-tool support (color picker, toolbar UI, undo/redo). -->
-    <script defer src="/chart/modules/color-picker.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/drawing-toolbar.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/undo-redo-manager.js?v=20260512T2330"></script>
+    <script defer src="/chart/modules/color-picker.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/drawing-toolbar.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/undo-redo-manager.js?v=20260512T2345"></script>
 
     <!-- Drawing-tools manager — orchestrator. Must load AFTER all individual
          drawing-tools-*.js so the registry is populated before init. -->
-    <script defer src="/chart/modules/drawing-tools-manager.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/favorites-manager.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/keyboard-shortcuts.js?v=20260512T2330"></script>
+    <script defer src="/chart/modules/drawing-tools-manager.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/favorites-manager.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/keyboard-shortcuts.js?v=20260512T2345"></script>
 
-    <script defer src="/chart/modules/timezone-manager.js?v=20260512T2330"></script>
+    <script defer src="/chart/modules/timezone-manager.js?v=20260512T2345"></script>
 
     <!-- Chart engine.
          chart.js exposes window.Chart synchronously and window.initializeChart
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=20260512T2330"></script>
+    <script defer src="/chart/chart.js?v=20260512T2345"></script>
     <!-- V9 React theme panel → chart.chartSettings (shared with legacy-index.html). Must load after chart.js. -->
-    <script defer src="/chart/modules/v9-theme-bridge.js?v=20260512T2330"></script>
+    <script defer src="/chart/modules/v9-theme-bridge.js?v=20260512T2345"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
-    <script defer src="/chart/modules/replay-system.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/replay-dashboard-sync.js?v=20260512T2330"></script>
+    <script defer src="/chart/modules/replay-system.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/replay-dashboard-sync.js?v=20260512T2345"></script>
 
     <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->
-    <script defer src="/chart/modules/order-event-bus.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/order-service.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/order-manager.js?v=20260512T2330"></script>
-    <script defer src="/chart/modules/screenshot-manager.js?v=20260512T2330"></script>
+    <script defer src="/chart/modules/order-event-bus.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/order-service.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/order-manager.js?v=20260512T2345"></script>
+    <script defer src="/chart/modules/screenshot-manager.js?v=20260512T2345"></script>
 
     <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
-    <script defer src="/chart/modules/chart-indicators-full.js?v=20260512T2330"></script>
+    <script defer src="/chart/modules/chart-indicators-full.js?v=20260512T2345"></script>
 
     <!-- Multi-panel manager removed — single-chart mode only. -->
     <!-- Economic calendar: Finnhub via /api + chart time-axis markers (__economicCalendarForChart). -->
-    <script defer src="/chart/modules/economic-news-sidebar.js?v=20260512T2330"></script>
-  <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js?v=20260512T2330"></script>
+    <script defer src="/chart/modules/economic-news-sidebar.js?v=20260512T2345"></script>
+  <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js?v=20260512T2345"></script>
 </head>
 <body>
     <div id="backtestingLoader" aria-live="polite" aria-busy="true">

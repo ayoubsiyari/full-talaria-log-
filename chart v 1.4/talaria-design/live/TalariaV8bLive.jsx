@@ -3994,8 +3994,8 @@ const TalariaV8bLive = () => {
       if (tooltip) {
         tooltip.style.removeProperty("color");
         tooltip.innerHTML = allowBack
-          ? "<strong>You can navigate</strong><span class=\"nav-tooltip-sub\">Rollback and step-back are allowed for this session.</span>"
-          : "<strong>You cannot navigate</strong><span class=\"nav-tooltip-sub\">This session restricts rewinding — integrity is enforced.</span>";
+          ? "<strong>You can navigate</strong>"
+          : "<strong>You cannot navigate</strong>";
       }
     };
     sync();
@@ -9372,8 +9372,7 @@ const TalariaV8bLive = () => {
                 </svg>
               </div>
               <div className="nav-badge-tooltip" id="navBadgeTooltip">
-                <strong>Replay navigation</strong>
-                <span className="nav-tooltip-sub">Checking session policy…</span>
+                <strong>Navigation</strong>
               </div>
             </div>
           </div>
