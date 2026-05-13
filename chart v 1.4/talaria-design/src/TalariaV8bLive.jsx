@@ -4029,14 +4029,12 @@ const TalariaV8bLive = () => {
       badge.classList.toggle("enabled", allowBack);
       badge.classList.toggle("disabled", !allowBack);
       if (tooltip) {
-        tooltip.style.setProperty("color", navStateColor, "important");
+        tooltip.style.removeProperty("color");
         tooltip.classList.toggle("enabled-tip", allowBack);
         tooltip.classList.toggle("disabled-tip", !allowBack);
         tooltip.innerHTML = allowBack
-          ? "<strong>You can navigate</strong>"
-          : "<strong>You can not navigate</strong>";
-        const ttStrong = tooltip.querySelector("strong");
-        if (ttStrong) ttStrong.style.setProperty("color", navStateColor, "important");
+          ? "<strong>You can navigate</strong><span class=\"nav-tooltip-sub\">Rollback and step-back are allowed for this session.</span>"
+          : "<strong>You cannot navigate</strong><span class=\"nav-tooltip-sub\">This session restricts rewinding — integrity is enforced.</span>";
       }
     };
     sync();
@@ -10183,9 +10181,8 @@ const TalariaV8bLive = () => {
                 </svg>
               </div>
               <div className="nav-badge-tooltip" id="navBadgeTooltip">
-                <strong>Back Navigation Disabled</strong>
-                <br />
-                Ensures integrity — no going back in time
+                <strong>Replay navigation</strong>
+                <span className="nav-tooltip-sub">Checking session policy…</span>
               </div>
             </div>
           </div>
@@ -10311,8 +10308,6 @@ const TalariaV8bLive = () => {
         .ohlc-indicators{min-width:0;color:var(--ohlc-ind,rgba(255,255,255,0.72)) !important}
         .ohlc-indicators *{color:inherit}
         .ohlc-indicators > div{max-width:100%}
-        .nav-badge-tooltip{background:transparent !important;border:none !important;box-shadow:none !important;padding:0 !important}
-        .nav-badge-tooltip::before{display:none !important}
         @media (hover:hover) and (pointer:fine){
           .talaria-ind-legend-row .talaria-ind-actions{opacity:0;transition:opacity .12s ease;pointer-events:none}
           .talaria-ind-legend-row:hover .talaria-ind-actions{opacity:1;pointer-events:auto}

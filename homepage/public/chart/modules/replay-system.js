@@ -1603,11 +1603,13 @@ class ReplaySystem {
         this.rawTimeframe = this.detectRawTimeframeFromData(this.fullRawData);
         this._fullRawDataMatchesTF = false;
         
-        // Set current index and initialize virtual timestamp
-        this.currentIndex = rawIndex;
+        // Set current index and initialize virtual timestamp (cannot roll before session floor)
+        const floorIdx = this.sessionStartIndex || 0;
+        this.currentIndex = Math.max(floorIdx, Math.min(rawIndex, this.chart.rawData.length - 1));
         this.replayStartTimestamp = this.fullRawData[0].t;
         this.replayEndTimestamp = this.fullRawData[this.fullRawData.length - 1].t;
-        this.replayTimestamp = this.fullRawData[rawIndex].t;
+        const startBar = this.fullRawData[this.currentIndex];
+        this.replayTimestamp = (startBar && Number.isFinite(startBar.t)) ? startBar.t : this.replayStartTimestamp;
         this.tickElapsedMs = 0;
         
         // === BUILD DETERMINISTIC TICK PATH CACHE ===
@@ -1947,7 +1949,7 @@ class ReplaySystem {
         const goBackMinIdx = this.sessionStartIndex || 0;
         this.currentIndex = Math.max(newRawIndex, goBackMinIdx);
 
-        const rawBar = this.fullRawData[newRawIndex];
+        const rawBar = this.fullRawData[this.currentIndex];
         if (rawBar && Number.isFinite(rawBar.t)) {
             this.replayTimestamp = rawBar.t;
         }
@@ -2324,7 +2326,9 @@ class ReplaySystem {
             return;
         }
         
-        // Ensure currentIndex is valid
+        // Ensure currentIndex is valid (never before backtest session floor — all paths must honor this)
+        const floorIdx = this.sessionStartIndex || 0;
+        if (this.currentIndex < floorIdx) this.currentIndex = floorIdx;
         if (this.currentIndex < 0) this.currentIndex = 0;
         if (this.currentIndex >= this.fullRawData.length) this.currentIndex = this.fullRawData.length - 1;
 
@@ -3340,7 +3344,9 @@ class ReplaySystem {
     updateChartDataFast() {
         if (!this.fullRawData || this.fullRawData.length === 0) return;
         
-        // Ensure currentIndex is valid
+        // Ensure currentIndex is valid (never before backtest session floor — all paths must honor this)
+        const floorIdx = this.sessionStartIndex || 0;
+        if (this.currentIndex < floorIdx) this.currentIndex = floorIdx;
         if (this.currentIndex < 0) this.currentIndex = 0;
         if (this.currentIndex >= this.fullRawData.length) this.currentIndex = this.fullRawData.length - 1;
 
