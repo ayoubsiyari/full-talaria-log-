@@ -2932,6 +2932,7 @@ const TalariaV8bLive = () => {
   const [omTpDistTxt, setOmTpDistTxt] = useState("—");
   const [omPlaceButtonTxt, setOmPlaceButtonTxt] = useState("");
   const [omOrderQtyTxt, setOmOrderQtyTxt] = useState("0");
+  const [omFuturesMinRiskTxt, setOmFuturesMinRiskTxt] = useState("");
   /** Per-row strings scraped from hidden #orderPanel (order-manager) — matches chart/preview math. */
   const [omEntryRowStatLines, setOmEntryRowStatLines] = useState([]);
   const [omTpRowStatLines, setOmTpRowStatLines] = useState([]);
@@ -6891,6 +6892,23 @@ const TalariaV8bLive = () => {
       const lotsStr = Number.isFinite(oqNum) ? oqNum.toFixed(2) : "";
       const qtyStr = Number.isFinite(oqNum) ? String(oqNum) : "0";
       setOmOrderQtyTxt((prev) => (prev === qtyStr ? prev : qtyStr));
+      let minRiskStr = "";
+      try {
+        const entryPx = parseFloat(document.getElementById("orderEntryPrice")?.value || "0");
+        const slPx = parseFloat(document.getElementById("slPrice")?.value || "0");
+        const slOn = !!document.getElementById("enableSL")?.checked;
+        if (om?.marketType === "futures" && slOn && entryPx > 0 && slPx > 0 && Math.abs(entryPx - slPx) > 0) {
+          let minRisk = NaN;
+          if (typeof om._engineRisk === "function") minRisk = om._engineRisk(entryPx, slPx, 1, entryPx);
+          if (!Number.isFinite(minRisk)) {
+            const pip = Number.isFinite(om.pipSize) && om.pipSize > 0 ? om.pipSize : 0.25;
+            const pv = Number.isFinite(om.pipValuePerLot) && om.pipValuePerLot > 0 ? om.pipValuePerLot : 12.5;
+            minRisk = (Math.abs(entryPx - slPx) / pip) * pv;
+          }
+          if (Number.isFinite(minRisk) && minRisk > 0) minRiskStr = `$${minRisk.toFixed(2)}`;
+        }
+      } catch (_) {}
+      setOmFuturesMinRiskTxt((prev) => (prev === minRiskStr ? prev : minRiskStr));
       setOmTpAvgLotsTxt((prev) => (prev === lotsStr ? prev : lotsStr));
       let wapStr = "";
       if (
@@ -20492,6 +20510,11 @@ const TalariaV8bLive = () => {
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "contracts" : "lots";
             const basisAmt = riskBasis==="balance" ? accountBalance : accountEquity;
+            const qtyNum = parseFloat(omOrderQtyTxt || "0");
+            const minRiskHint = currentSymbol.type==="futures" && omFuturesMinRiskTxt && (!Number.isFinite(qtyNum) || qtyNum < 1);
+            const qtyDisplay = Number.isFinite(qtyNum)
+              ? `${currentSymbol.type==="futures" ? Math.floor(Math.max(0, qtyNum)) : qtyNum.toFixed(2)} ${sizeUnit}`
+              : `0.00 ${sizeUnit}`;
             return (
             <div style={{ padding:"6px 8px", borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
               {/* Left: SIZE label */}
@@ -20564,7 +20587,7 @@ const TalariaV8bLive = () => {
                     }
                   </span>
                   <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>
-                    {sizeMode==="$" ? `0.00 ${sizeUnit}` : `$0.00`}
+                    {minRiskHint ? `Need ${omFuturesMinRiskTxt}` : sizeMode==="$" ? qtyDisplay : `$0.00`}
                   </span>
                 </div>
               </div>
@@ -20615,6 +20638,11 @@ const TalariaV8bLive = () => {
             };
             const sortedEntryRows = sortEntryRowsBySide(entryRows, buySell);
             const pricedEntryRows = entryRows.filter((r) => parseFloat(r.price) > 0);
+            const orderQtyNum = parseFloat(omOrderQtyTxt || "0");
+            const futuresMinRiskHint =
+              currentSymbol.type === "futures" &&
+              omFuturesMinRiskTxt &&
+              (!Number.isFinite(orderQtyNum) || orderQtyNum < 1);
             const omFmt = typeof window !== "undefined" ? window.chart?.orderManager : null;
             let entryAvgDisplay = "";
             if (entryRows.length > 1) {
@@ -20867,9 +20895,13 @@ const TalariaV8bLive = () => {
                             {omEntryRowStatLines[i]
                               ? omEntryRowStatLines[i]
                               : sizeMode==="$"
-                                ? <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
+                                ? futuresMinRiskHint
+                                  ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                                  : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Number.isFinite(orderQtyNum) ? orderQtyNum.toFixed(currentSymbol.type==="futures"?0:2) : "0.00"} {sizeUnit}</>
                                 : sizeMode==="%"
-                                  ? <><span style={{ color:c.ts }}>${(parseFloat(row.risk||"0")/100*(riskBasis==="balance"?accountBalance:accountEquity)).toFixed(0)}</span>{" · "}0.00 {sizeUnit}</>
+                                  ? futuresMinRiskHint
+                                    ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                                    : <><span style={{ color:c.ts }}>${(parseFloat(row.risk||"0")/100*(riskBasis==="balance"?accountBalance:accountEquity)).toFixed(0)}</span>{" · "}{Number.isFinite(orderQtyNum) ? orderQtyNum.toFixed(currentSymbol.type==="futures"?0:2) : "0.00"} {sizeUnit}</>
                                   : <>0.00 {sizeUnit}</>
                             }
                           </span>
@@ -21791,7 +21823,8 @@ const TalariaV8bLive = () => {
               <div style={{ margin:"5px 8px 0", padding:"5px 7px", flexShrink:0,
                 border:"1px solid rgba(255,190,80,0.28)", background:"rgba(255,190,80,0.08)",
                 color:"#FFD28A", fontSize:10, fontWeight:700, lineHeight:1.35 }}>
-                Futures require at least 1 whole contract. Increase risk or reduce stop distance.
+                Futures require at least 1 whole contract.
+                {omFuturesMinRiskTxt ? ` Need at least ${omFuturesMinRiskTxt} risk for this stop.` : " Increase risk or reduce stop distance."}
               </div>
             ) : null;
           })()}
