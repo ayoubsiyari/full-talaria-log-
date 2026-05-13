@@ -10213,8 +10213,9 @@ const TalariaV8bLive = () => {
               overflow: "visible",
               gap: replayOhlcBadgeVisible ? 2 : 0,
               paddingLeft: 4,
-              flex: "1 1 0%",
+              flex: "0 1 auto",
               minWidth: 0,
+              maxWidth: "100%",
               boxSizing: "border-box",
             }}
           >
@@ -10224,7 +10225,7 @@ const TalariaV8bLive = () => {
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                flex: "1 1 0%",
+                flex: "0 1 auto",
                 minWidth: 0,
                 flexWrap: "nowrap",
                 overflow: "hidden",
@@ -10249,7 +10250,7 @@ const TalariaV8bLive = () => {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
-                flex: "1 1 auto",
+                flex: "0 1 auto",
                 minWidth: 0,
                 overflow: "hidden",
                 boxSizing: "border-box",
@@ -10263,7 +10264,7 @@ const TalariaV8bLive = () => {
                 style={{
                   marginLeft: 0,
                   minWidth: 0,
-                  flex: "1 1 auto",
+                  flex: "0 1 auto",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
