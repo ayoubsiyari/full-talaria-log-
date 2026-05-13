@@ -2931,6 +2931,7 @@ const TalariaV8bLive = () => {
   const [omSlDistTxt, setOmSlDistTxt] = useState("—");
   const [omTpDistTxt, setOmTpDistTxt] = useState("—");
   const [omPlaceButtonTxt, setOmPlaceButtonTxt] = useState("");
+  const [omOrderQtyTxt, setOmOrderQtyTxt] = useState("0");
   /** Per-row strings scraped from hidden #orderPanel (order-manager) — matches chart/preview math. */
   const [omEntryRowStatLines, setOmEntryRowStatLines] = useState([]);
   const [omTpRowStatLines, setOmTpRowStatLines] = useState([]);
@@ -10475,9 +10476,9 @@ const TalariaV8bLive = () => {
         .ss-view-btn:hover{background:rgba(255,255,255,0.18)!important}
         .ss-del-btn:hover{background:rgba(255,80,80,0.25)!important}
         .tl-drag,.tl-drag *{cursor:move!important}
-        /* Legend collapse: control below indicator list (TradingView-like); expanded = ^ collapse, collapsed = v expand */
-        .ohlc-legend-footer{display:flex;align-items:center;justify-content:flex-start;margin-top:3px;padding:0;pointer-events:auto}
-        .ohlc-legend-chevron{appearance:none;-webkit-appearance:none;border:none;margin:0;padding:2px 4px;background:transparent;color:#787b86;cursor:default;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;line-height:0;flex-shrink:0;pointer-events:auto;opacity:0.88;transition:color .12s,background .12s,opacity .12s}
+        /* Legend collapse: narrow hit target + pass-through so chart pan works beside the chevron */
+        .ohlc-legend-footer{display:flex;align-items:center;justify-content:flex-start;margin-top:3px;padding:0;width:fit-content;max-width:100%;pointer-events:none!important}
+        .ohlc-legend-chevron{appearance:none;-webkit-appearance:none;border:none;margin:0;padding:2px 4px;background:transparent;color:#787b86;cursor:default;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;line-height:0;flex-shrink:0;pointer-events:auto!important;opacity:0.88;transition:color .12s,background .12s,opacity .12s}
         .ohlc-legend-chevron:hover{background:rgba(255,255,255,0.06);color:#b2b5be;opacity:1}
         .ohlc-legend-chevron svg{width:13px;height:13px;transition:transform .15s ease;flex-shrink:0}
         .ohlc-info:not(.collapsed) .ohlc-legend-chevron svg{transform:rotate(180deg)}
