@@ -10205,17 +10205,32 @@ const TalariaV8bLive = () => {
             className="ohlc-stats"
             style={{
               position: "relative",
+              display: "flex",
+              flexDirection: "row",
+              alignItems: "center",
               minHeight: 22,
               overflow: "visible",
-              alignItems: "center",
-              gap: 10,
+              gap: 0,
               paddingLeft: 4,
               paddingRight: replayOhlcBadgeVisible ? 33 : undefined,
-              /* Fill header row so width does not track OHLC text length — keeps #navIntegrityBadge (right:0) fixed. */
               flex: "1 1 0%",
               minWidth: 0,
+              boxSizing: "border-box",
             }}
           >
+            <div
+              className="ohlc-stats-flow"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                flex: "1 1 auto",
+                minWidth: 0,
+                flexWrap: "nowrap",
+                overflow: "hidden",
+                boxSizing: "border-box",
+              }}
+            >
             <div className="ohlc-item">
               <span className="ohlc-label">O</span>
               <span className="ohlc-value" id="open">—</span>
@@ -10233,6 +10248,7 @@ const TalariaV8bLive = () => {
               <span className="ohlc-value" id="close">—</span>
             </div>
             <span className="ohlc-change" id="chartChange">—</span>
+            </div>
             <div
               id="navIntegrityBadge"
               className="nav-integrity-badge"
@@ -10380,7 +10396,8 @@ const TalariaV8bLive = () => {
         .ohlc-symbol-block{flex:0 0 auto !important;font-size:13px !important;line-height:1.25 !important;color:var(--ohlc-fg,#fff) !important}
         .ohlc-symbol-block #chartSymbol{color:var(--ohlc-fg,#fff) !important}
         .ohlc-symbol-block #chartTimeframe{color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important}
-        .ohlc-stats{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important;flex-wrap:nowrap !important;flex:1 1 0% !important;min-width:0 !important}
+        .ohlc-stats{display:flex !important;flex-direction:row !important;align-items:center !important;gap:0 !important;line-height:1.2 !important;flex-wrap:nowrap !important;flex:1 1 0% !important;min-width:0 !important;position:relative !important;box-sizing:border-box !important}
+        .ohlc-stats-flow{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important;flex-wrap:nowrap !important;flex:1 1 auto !important;min-width:0 !important;overflow:hidden !important;box-sizing:border-box !important}
         .ohlc-item{display:inline-flex !important;align-items:center !important;gap:3px !important}
         .ohlc-label{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;opacity:1 !important}
         .ohlc-value{font-size:9px !important;font-weight:80 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}

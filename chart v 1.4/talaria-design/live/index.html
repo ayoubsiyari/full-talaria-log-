@@ -367,13 +367,35 @@
             align-items: center;
             flex-wrap: wrap;
             gap: 8px;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+        }
+        #chart-container #chartWrapper .ohlc-symbol-block,
+        #panels-container .ohlc-symbol-block {
+            flex: 0 0 auto;
         }
         #chart-container #chartWrapper .ohlc-stats,
         #panels-container .ohlc-stats {
+            position: relative;
             display: flex;
             align-items: center;
-            flex-wrap: wrap;
+            flex: 1 1 0%;
+            min-width: 0;
+            flex-wrap: nowrap;
             gap: 6px;
+            box-sizing: border-box;
+        }
+        #chart-container #chartWrapper .ohlc-stats-flow,
+        #panels-container .ohlc-stats-flow {
+            display: flex;
+            align-items: center;
+            flex-wrap: nowrap;
+            gap: 6px;
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            box-sizing: border-box;
         }
         #chart-container #chartWrapper .ohlc-item,
         #panels-container .ohlc-item {
@@ -486,16 +508,20 @@
             z-index: 1;
         }
 
-        /* Back/forward (navigation integrity) badge — last in .ohlc-stats after change % */
+        /* Back/forward (navigation integrity) badge — pinned to .ohlc-stats right edge (not after #chartChange flow). */
         #chart-container #chartWrapper .nav-integrity-badge,
         #panels-container .nav-integrity-badge {
-            position: relative;
-            display: inline-flex;
+            position: absolute !important;
+            right: 0 !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important;
+            display: inline-flex !important;
             align-items: center;
             justify-content: center;
-            margin-left: 0;
+            margin-left: 0 !important;
             cursor: default;
             pointer-events: auto;
+            z-index: 2;
         }
         #chart-container #chartWrapper .nav-badge-icon,
         #panels-container .nav-badge-icon {
