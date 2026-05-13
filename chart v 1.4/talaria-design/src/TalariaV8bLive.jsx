@@ -4698,10 +4698,25 @@ const TalariaV8bLive = () => {
   const [detachSize, setDetachSize] = useState({ w: 336, h: 560 });
   const [panelMode, setPanelMode] = useState("advanced");
   /** Short windows where React row counts intentionally lead OM (panel add/delete) so reverse poll must not fight the forward bridge. */
-  const omPanelBridgeRef = useRef({ entryAdd: 0, entryDel: 0, tpAdd: 0, tpDel: 0 });
+  const omPanelBridgeRef = useRef({ entryAdd: 0, entryDel: 0, tpAdd: 0, tpDel: 0, control: 0 });
   const rrPushLockRef = useRef(0);
   const OM_PANEL_BRIDGE_LEAD_MS = 750;
   const isOmBridgeLead = (ts) => !!(ts && Date.now() - ts < OM_PANEL_BRIDGE_LEAD_MS);
+  const markOrderControlBridge = () => { omPanelBridgeRef.current.control = Date.now(); };
+  const clickHiddenOrderSide = (side) => {
+    markOrderControlBridge();
+    document.getElementById(side === "sell" ? "sellTab" : "buyTab")?.click();
+  };
+  const clickHiddenOrderType = (type) => {
+    markOrderControlBridge();
+    document.querySelector(`#orderPanel .order-type-btn[data-type="${type}"]`)?.click();
+  };
+  const clickHiddenSizeMode = (mode) => {
+    markOrderControlBridge();
+    const modeMap = { $: "risk-usd", "%": "risk-percent", "#": "lot-size" };
+    const nativeMode = modeMap[mode];
+    if (nativeMode) document.querySelector(`#orderPanel .position-mode-tab[data-mode="${nativeMode}"]`)?.click();
+  };
   const isWide = panelDetached && detachSize.w >= 520;
   const opTemplates = ["Default","Scalp — Trend","Swing Trade","Breakout","Reversal"];
   const [rightPanel, setRightPanel] = useState(null);
@@ -6695,6 +6710,7 @@ const TalariaV8bLive = () => {
       const panel = document.getElementById("orderPanel");
       // Mirror from OM + hidden inputs whenever the rail is open (class "visible" can lag toggleOrderPanel).
       if (!panel) return;
+      if (isOmBridgeLead(omPanelBridgeRef.current.control)) return;
 
       const ep = document.getElementById("orderEntryPrice")?.value ?? "";
       const slp = document.getElementById("slPrice")?.value ?? "";
@@ -6808,33 +6824,35 @@ const TalariaV8bLive = () => {
         });
       }
 
-      const buyOn = document.getElementById("buyTab")?.classList.contains("active");
-      const side = buyOn ? "buy" : "sell";
-      setBuySell((prev) => (prev === side ? prev : side));
+      if (!isOmBridgeLead(omPanelBridgeRef.current.control)) {
+        const buyOn = document.getElementById("buyTab")?.classList.contains("active");
+        const side = buyOn ? "buy" : "sell";
+        setBuySell((prev) => (prev === side ? prev : side));
 
-      const activeOt = document.querySelector("#orderPanel .order-type-btn.active");
-      const ot = activeOt?.dataset?.type;
-      if (ot && ["market", "limit", "stop"].includes(ot)) {
-        setOrderType((prev) => (prev === ot ? prev : ot));
-      }
-
-      const pm = document.querySelector("#orderPanel .position-mode-tab.active")?.dataset?.mode;
-      const sz = pm === "risk-percent" ? "%" : pm === "lot-size" ? "#" : "$";
-      setSizeMode((prev) => (prev === sz ? prev : sz));
-
-      const rid =
-        pm === "risk-percent" ? "riskAmountPercent" : pm === "lot-size" ? "lotSizeAmount" : "riskAmountUSD";
-      let rv = document.getElementById(rid)?.value;
-      if (rv != null && rv !== "" && pm === "risk-percent" && riskBasis === "equity") {
-        const omm = window.chart?.orderManager;
-        const b = Number(omm?.balance);
-        const eq = Number(omm?.equity);
-        if (b > 0 && Number.isFinite(eq)) {
-          rv = String((parseFloat(rv) * b) / eq);
+        const activeOt = document.querySelector("#orderPanel .order-type-btn.active");
+        const ot = activeOt?.dataset?.type;
+        if (ot && ["market", "limit", "stop"].includes(ot)) {
+          setOrderType((prev) => (prev === ot ? prev : ot));
         }
-      }
-      if (rv != null && rv !== "") {
-        setRiskVal((prev) => (prev === rv ? prev : rv));
+
+        const pm = document.querySelector("#orderPanel .position-mode-tab.active")?.dataset?.mode;
+        const sz = pm === "risk-percent" ? "%" : pm === "lot-size" ? "#" : "$";
+        setSizeMode((prev) => (prev === sz ? prev : sz));
+
+        const rid =
+          pm === "risk-percent" ? "riskAmountPercent" : pm === "lot-size" ? "lotSizeAmount" : "riskAmountUSD";
+        let rv = document.getElementById(rid)?.value;
+        if (rv != null && rv !== "" && pm === "risk-percent" && riskBasis === "equity") {
+          const omm = window.chart?.orderManager;
+          const b = Number(omm?.balance);
+          const eq = Number(omm?.equity);
+          if (b > 0 && Number.isFinite(eq)) {
+            rv = String((parseFloat(rv) * b) / eq);
+          }
+        }
+        if (rv != null && rv !== "") {
+          setRiskVal((prev) => (prev === rv ? prev : rv));
+        }
       }
 
       const rsk = document.getElementById("riskAmount")?.textContent?.trim() || "$0";
@@ -20418,8 +20436,8 @@ const TalariaV8bLive = () => {
 
           {/* 3 — BUY / SELL */}
           <div style={{ display:"flex", flexShrink:0, position:"relative" }}>
-            {["BUY","SELL"].map((s,i) => { const a=buySell===s.toLowerCase(); const col=s==="BUY"?c.gn:c.rd; const isH=swHov===`bs-${s}`; return (
-              <button type="button" key={s} onClick={()=>setBuySell(s.toLowerCase())}
+            {["BUY","SELL"].map((s,i) => { const side=s.toLowerCase(); const a=buySell===side; const col=s==="BUY"?c.gn:c.rd; const isH=swHov===`bs-${s}`; return (
+              <button type="button" key={s} onClick={()=>{ setBuySell(side); clickHiddenOrderSide(side); }}
                 onMouseEnter={()=>setSwHov(`bs-${s}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{ flex:1, height:34, border:"none", borderRight:i===0?"1px solid rgba(140,160,255,0.08)":"none", position:"relative",
                          background:a?(s==="BUY"?c.gnD:c.rdD):isH?(s==="BUY"?"rgba(0,212,161,0.06)":"rgba(255,80,104,0.06)"):"transparent",
@@ -20439,8 +20457,8 @@ const TalariaV8bLive = () => {
 
           {/* 4 — Order type */}
           <div style={{ borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", position:"relative", flexShrink:0 }}>
-            {["Market","Limit","Stop"].map((t) => { const a=orderType===t.toLowerCase(); const isH=swHov===`ot-${t}`; return (
-              <button type="button" key={t} onClick={()=>setOrderType(t.toLowerCase())}
+            {["Market","Limit","Stop"].map((t) => { const type=t.toLowerCase(); const a=orderType===type; const isH=swHov===`ot-${t}`; return (
+              <button type="button" key={t} onClick={()=>{ setOrderType(type); clickHiddenOrderType(type); }}
                 onMouseEnter={()=>setSwHov(`ot-${t}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{ flex:1, height:26, background:isH&&!a?c.hv2:"transparent", border:"none", color:a?c.acL:isH?c.tx:c.ts, fontSize:10, fontWeight:a?700:600, fontFamily:F, cursor:"default", transition:"color 0.12s, background 0.12s", letterSpacing:"0.01em" }}>
                 {t}
@@ -20472,11 +20490,13 @@ const TalariaV8bLive = () => {
                       if((sizeMode==="#"||sizeMode==="$") && v.length>18) return;
                       if(/^-?\d*\.?\d*$/.test(v)) {
                         if(sizeMode==="%") { const n=parseFloat(v); if(!isNaN(n)&&n>100) return; }
+                        markOrderControlBridge();
                         setRiskVal(v);
                       }
                     }}
                     onBlur={e => {
                       const n=parseFloat(e.target.value);
+                      markOrderControlBridge();
                       if(!isNaN(n)) setRiskVal(String(Math.max(0, sizeMode==="%"?Math.min(100,n):sizeMode==="$"?Math.min(accountEquity,n):n)));
                       else setRiskVal("0");
                     }}
@@ -20488,11 +20508,11 @@ const TalariaV8bLive = () => {
                       const step = sizeMode==="%"?0.5:sizeMode==="#"?1:10;
                       const isH = swHov===`rv-${key}`;
                       return (
-                        <div key={key} onClick={()=>setRiskVal(v => {
+                        <div key={key} onClick={()=>{ markOrderControlBridge(); setRiskVal(v => {
                           const next = Math.max(0, parseFloat(v||"0")+dir*step);
                           const capped = sizeMode==="%"?Math.min(100,next):sizeMode==="$"?Math.min(accountEquity,next):next;
                           return String(capped);
-                        })}
+                        }); }}
                           onMouseEnter={()=>setSwHov(`rv-${key}`)} onMouseLeave={()=>setSwHov(null)}
                           style={{ width:12, height:11, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", color:isH?c.tx:c.ts, transition:"color 0.1s" }}>
                           <svg width={8} height={5} viewBox="0 0 8 5" fill="none">
@@ -20529,7 +20549,7 @@ const TalariaV8bLive = () => {
                       {[["balance","BAL"],["equity","EQ"]].map(([val,label]) => {
                         const a=riskBasis===val; const isH=swHov===`rb-${val}`;
                         return (
-                          <div key={val} onClick={()=>setRiskBasis(val)}
+                          <div key={val} onClick={()=>{ markOrderControlBridge(); setRiskBasis(val); }}
                             onMouseEnter={()=>setSwHov(`rb-${val}`)} onMouseLeave={()=>setSwHov(null)}
                             style={{ padding:"1px 6px", fontSize:8, fontWeight:800, cursor:"default",
                                      color:a?c.acL:isH?c.ts:c.tm, background:a?c.acD:"transparent",
@@ -20593,10 +20613,11 @@ const TalariaV8bLive = () => {
               }
               if (!entryAvgDisplay) entryAvgDisplay = "0.00";
             }
-            const updRow = (id, field, val) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
-            const stepRow = (id, field, dir, step=1) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
+            const updRow = (id, field, val) => { markOrderControlBridge(); setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r)); };
+            const stepRow = (id, field, dir, step=1) => { markOrderControlBridge(); setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r)); };
             const delRow = (id) => {
               omPanelBridgeRef.current.entryDel = Date.now();
+              markOrderControlBridge();
               const om = window.chart?.orderManager;
               if (om && typeof om.removeMultiEntryLevel === "function" && Array.isArray(om.multiEntryLevels)) {
                 const row = entryRows.find((r) => r.id === id);
@@ -20620,6 +20641,7 @@ const TalariaV8bLive = () => {
             };
             const addRow = () => {
               omPanelBridgeRef.current.entryAdd = Date.now();
+              markOrderControlBridge();
               const om = window.chart?.orderManager;
               setEntryRows((rows) => {
                 if (!om || typeof om.addMultiEntryLevel !== "function") {
@@ -20681,8 +20703,9 @@ const TalariaV8bLive = () => {
                 } catch (_) {}
               });
             };
-            const clearRows = () => { setEntryRows([{id:Date.now(), price:"0", risk:"0"}]); };
+            const clearRows = () => { markOrderControlBridge(); setEntryRows([{id:Date.now(), price:"0", risk:"0"}]); };
             const equalizeRisk = () => {
+              markOrderControlBridge();
               setEntryRows((rows) => {
                 const n = rows.length;
                 if (n === 0) return rows;
@@ -20857,8 +20880,8 @@ const TalariaV8bLive = () => {
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
             const slRow = slRows[0];
-            const updSl  = (val) => setSlRows([{...slRow, price:val}]);
-            const stepSl = (dir) => setSlRows([{...slRow, price:String(Math.max(0, parseFloat(slRow.price||"0")+dir))}]);
+            const updSl  = (val) => { markOrderControlBridge(); setSlRows([{...slRow, price:val}]); };
+            const stepSl = (dir) => { markOrderControlBridge(); setSlRows([{...slRow, price:String(Math.max(0, parseFloat(slRow.price||"0")+dir))}]); };
             const arw = (onClick, up, hk) => {
               const isH = swHov === hk;
               return (
@@ -20879,7 +20902,7 @@ const TalariaV8bLive = () => {
               const isH = swHov==="sl-chk";
               const col = slEnabled ? c.rd : isH ? c.rd : c.ts;
               return (
-                <div onClick={()=>setSlEnabled(v=>!v)}
+                <div onClick={()=>{ markOrderControlBridge(); setSlEnabled(v=>!v); }}
                   onMouseEnter={()=>setSwHov("sl-chk")} onMouseLeave={()=>setSwHov(null)}
                   style={{ width:12, height:12, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, cursor:"default" }}>
                   <svg width={10} height={10} style={{overflow:"visible"}}>
@@ -21204,10 +21227,11 @@ const TalariaV8bLive = () => {
               });
             };
             const sortedTpRows = sortTpRowsBySide(tpRows, buySell);
-            const updTp  = (id, field, val) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
-            const stepTp = (id, field, dir, step=1) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
+            const updTp  = (id, field, val) => { markOrderControlBridge(); setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r)); };
+            const stepTp = (id, field, dir, step=1) => { markOrderControlBridge(); setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r)); };
             const delTp = (id) => {
               omPanelBridgeRef.current.tpDel = Date.now();
+              markOrderControlBridge();
               const om = window.chart?.orderManager;
               if (om && typeof om.removeTPTarget === "function" && Array.isArray(om.tpTargets) && om.tpTargets.length) {
                 const row = tpRows.find((r) => r.id === id);
@@ -21265,6 +21289,7 @@ const TalariaV8bLive = () => {
             };
             const addTp = () => {
               omPanelBridgeRef.current.tpAdd = Date.now();
+              markOrderControlBridge();
               setTpRows((rows) => {
                 const initPx = defaultPriceForNewTp(rows);
                 const n = rows.length + 1;
@@ -21296,6 +21321,7 @@ const TalariaV8bLive = () => {
             };
             const clearTp = () => {
               omPanelBridgeRef.current.tpDel = Date.now();
+              markOrderControlBridge();
               const om = window.chart?.orderManager;
               if (om && typeof om.removeTPTarget === "function" && Array.isArray(om.tpTargets)) {
                 while (om.tpTargets.length > 0) {
@@ -21310,6 +21336,7 @@ const TalariaV8bLive = () => {
               setTpRows([{ id: Date.now(), price: "0", qty: "100", enabled: true }]);
             };
             const equalizeTp = () => {
+              markOrderControlBridge();
               setTpRows((rows) => {
                 const n = rows.length;
                 if (n === 0) return rows;
@@ -21807,7 +21834,7 @@ const TalariaV8bLive = () => {
               const isAct = sizeMode === m;
               const isH = swHov === `sz-drop-${m}`;
               return (
-                <div key={m} onClick={() => { setSizeMode(m); setOpSizeOpen(false); }}
+                <div key={m} onClick={() => { setSizeMode(m); clickHiddenSizeMode(m); setOpSizeOpen(false); }}
                   onMouseEnter={()=>setSwHov(`sz-drop-${m}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{ display:"flex", alignItems:"center", padding:"6px 12px", cursor:"default", position:"relative",
                            background: isAct ? c.acD : isH ? c.hv2 : "transparent", transition:"background 0.1s" }}>
