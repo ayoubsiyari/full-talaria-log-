@@ -10183,7 +10183,9 @@ const TalariaV8bLive = () => {
   const ohlcMutedTextColor = ohlcUseLightText ? "rgba(255,255,255,0.82)" : "rgba(15,23,42,0.82)";
   const ohlcIndicatorTextColor = ohlcUseLightText ? "rgba(255,255,255,0.72)" : "rgba(15,23,42,0.72)";
 
-  /* Same DOM shape as panel-manager.js (flag dot + single-line OHLC + change); chart.js owns ids #open … #chartChange */
+  /* Same DOM shape as panel-manager (flag dot + OHLC); chart.js owns #open … #close + #chartChange.
+     #chartChange sits in a fixed-width (20ch) right-aligned cell beside #navIntegrityBadge so replay
+     rollback icon does not shift when the % string grows. */
   const mainOhlcInfoEl = useMemo(
     () => (
       <div
@@ -10210,7 +10212,7 @@ const TalariaV8bLive = () => {
               alignItems: "center",
               minHeight: 22,
               overflow: "visible",
-              gap: replayOhlcBadgeVisible ? 4 : 0,
+              gap: 0,
               paddingLeft: 4,
               flex: "1 1 0%",
               minWidth: 0,
@@ -10246,23 +10248,49 @@ const TalariaV8bLive = () => {
               <span className="ohlc-label">C</span>
               <span className="ohlc-value" id="close">—</span>
             </div>
-            <span className="ohlc-change" id="chartChange">—</span>
-            </div>
             <div
-              id="navIntegrityBadge"
-              className="nav-integrity-badge"
+              className="ohlc-change-with-badge"
               style={{
-                display: replayOhlcBadgeVisible ? "inline-flex" : "none",
-                position: "relative",
+                display: "inline-flex",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
                 flexShrink: 0,
-                alignSelf: "center",
-                zIndex: 2,
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.currentTarget.classList.toggle("show-tooltip");
               }}
             >
+              <span
+                className="ohlc-change"
+                id="chartChange"
+                style={{
+                  display: "inline-block",
+                  width: "20ch",
+                  minWidth: "20ch",
+                  maxWidth: "20ch",
+                  textAlign: "right",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  verticalAlign: "middle",
+                  boxSizing: "border-box",
+                }}
+              >
+                —
+              </span>
+              <div
+                id="navIntegrityBadge"
+                className="nav-integrity-badge"
+                style={{
+                  display: replayOhlcBadgeVisible ? "inline-flex" : "none",
+                  position: "relative",
+                  flexShrink: 0,
+                  alignSelf: "center",
+                  zIndex: 2,
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.currentTarget.classList.toggle("show-tooltip");
+                }}
+              >
                 <div className="nav-badge-icon" style={{ width: 30, height: 30, border: "none", background: "transparent", padding: 0 }}>
                   {/* Exact replay-bar rollback icon */}
                   <svg className="nav-badge-go-back" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ width: 22, height: 22, display: "block" }}>
@@ -10278,6 +10306,8 @@ const TalariaV8bLive = () => {
                   <strong>Navigation</strong>
                 </div>
               </div>
+            </div>
+            </div>
           </div>
         </div>
         <div className="ohlc-body">
@@ -10394,12 +10424,13 @@ const TalariaV8bLive = () => {
         .ohlc-symbol-block #chartSymbol{color:var(--ohlc-fg,#fff) !important}
         .ohlc-symbol-block #chartTimeframe{color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important}
         .ohlc-stats{display:flex !important;flex-direction:row !important;align-items:center !important;line-height:1.2 !important;flex-wrap:nowrap !important;flex:1 1 0% !important;min-width:0 !important;position:relative !important;box-sizing:border-box !important}
+        .ohlc-change-with-badge{display:inline-flex !important;align-items:center !important;gap:4px !important;flex-shrink:0 !important;box-sizing:border-box !important}
         .ohlc-stats-flow{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important;flex-wrap:nowrap !important;flex:0 1 auto !important;min-width:0 !important;overflow:hidden !important;box-sizing:border-box !important}
         .ohlc-item{display:inline-flex !important;align-items:center !important;gap:3px !important}
         .ohlc-label{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;opacity:1 !important}
         .ohlc-value{font-size:9px !important;font-weight:80 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
         .ohlc-change{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;margin-left:2px !important;white-space:nowrap !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
-        .ohlc-stats > .nav-integrity-badge{position:relative !important;flex-shrink:0 !important;align-self:center !important;margin-left:0 !important}
+        .ohlc-change-with-badge .nav-integrity-badge{position:relative !important;flex-shrink:0 !important;align-self:center !important;margin-left:0 !important}
         .ohlc-body{margin-top:1px !important}
         .ohlc-indicators{min-width:0;color:var(--ohlc-ind,rgba(255,255,255,0.72)) !important}
         .ohlc-indicators *{color:inherit}

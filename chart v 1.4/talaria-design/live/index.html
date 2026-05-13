@@ -403,6 +403,27 @@
             align-items: center;
             gap: 2px;
         }
+        #chart-container #chartWrapper .ohlc-change-with-badge,
+        #panels-container .ohlc-change-with-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            flex-shrink: 0;
+            box-sizing: border-box;
+        }
+        #chart-container #chartWrapper .ohlc-change-with-badge .ohlc-change,
+        #panels-container .ohlc-change-with-badge .ohlc-change {
+            display: inline-block;
+            width: 20ch;
+            min-width: 20ch;
+            max-width: 20ch;
+            text-align: right;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: middle;
+            box-sizing: border-box;
+        }
 
         /* Legend collapse control below studies; expanded chevron ^ , collapsed v */
         #chart-container #chartWrapper .ohlc-legend-footer,
