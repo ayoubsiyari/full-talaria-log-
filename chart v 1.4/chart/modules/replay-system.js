@@ -5180,11 +5180,22 @@ class ReplaySystem {
             // === UPDATE LAST CANDLE WITH DETERMINISTIC PRICE ===
             // Preserve last displayed trade price across TF switches (paused or playing) so
             // the axis price matches the same virtual moment on Daily vs 1m, etc.
+            // Guard: only nudge OHLC when the correction fits the bar's natural range. Writing
+            // a distant `savedAnimatedPrice` into `c` while leaving `o` unchanged creates a
+            // fake mega-candle until the next play tick refreshes from raw data.
             if (Number.isFinite(savedAnimatedPrice) && this.chart.data && this.chart.data.length > 0) {
                 const lastCandle = this.chart.data[this.chart.data.length - 1];
-                lastCandle.c = savedAnimatedPrice;
-                if (savedAnimatedPrice > lastCandle.h) lastCandle.h = savedAnimatedPrice;
-                if (savedAnimatedPrice < lastCandle.l) lastCandle.l = savedAnimatedPrice;
+                const lo = lastCandle.o ?? lastCandle.c;
+                const lh = lastCandle.h ?? lastCandle.c;
+                const ll = lastCandle.l ?? lastCandle.c;
+                const origRange = Math.max(lh - ll, Math.abs((lastCandle.c ?? 0) - lo), 1e-10);
+                const newH = Math.max(lh, savedAnimatedPrice);
+                const newL = Math.min(ll, savedAnimatedPrice);
+                if ((newH - newL) <= origRange * 2) {
+                    lastCandle.c = savedAnimatedPrice;
+                    lastCandle.h = newH;
+                    lastCandle.l = newL;
+                }
             }
             
             this.chart.renderPending = true;

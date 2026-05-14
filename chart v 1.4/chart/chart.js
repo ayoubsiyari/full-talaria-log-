@@ -12019,6 +12019,8 @@ class Chart {
             && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
             && newTfMsForSwitch < prevTfMs;
         let coarsePeriodExclusiveEndTs = null;
+        /** When true, last 1m (etc.) bar already matches coarse period end — do not OHLC-patch it. */
+        let fineReplayReanchorApplied = false;
         if (switchingToFiner && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
             const floorIdx = replay.sessionStartIndex || 0;
             let oi = typeof replay.currentIndex === 'number' ? replay.currentIndex : 0;
@@ -12177,6 +12179,7 @@ class Chart {
             const fineIdx = replay._findLastRawIndexAtOrBefore(replay.fullRawData, upperInclusive);
             const smin = replay.sessionStartIndex || 0;
             if (fineIdx >= smin) {
+                fineReplayReanchorApplied = true;
                 replay.currentIndex = fineIdx;
                 const b = replay.fullRawData[fineIdx];
                 if (b && Number.isFinite(b.t)) {
@@ -12220,13 +12223,25 @@ class Chart {
                     this.jumpToLatest();
                 }
             } catch (e) { /* ignore */ }
-            if (Number.isFinite(savedDisplayPrice) && Array.isArray(this.data) && this.data.length > 0) {
+            // After coarse→fine re-anchor, the last bar is already the real exchange minute;
+            // forcing `savedDisplayPrice` onto o/h/l/c while leaving `o` intact drew a bogus
+            // mega-wick (daily close vs 1m open) until the first play tick rebuilt the bar.
+            if (!fineReplayReanchorApplied
+                && Number.isFinite(savedDisplayPrice) && Array.isArray(this.data) && this.data.length > 0) {
                 const lastCandle = this.data[this.data.length - 1];
-                lastCandle.c = savedDisplayPrice;
-                if (savedDisplayPrice > lastCandle.h) lastCandle.h = savedDisplayPrice;
-                if (savedDisplayPrice < lastCandle.l) lastCandle.l = savedDisplayPrice;
-                if (replay && replay.animatingCandle && Number.isFinite(replay.animatingCandle.close)) {
-                    replay.animatingCandle.close = savedDisplayPrice;
+                const lo = lastCandle.o ?? lastCandle.c;
+                const lh = lastCandle.h ?? lastCandle.c;
+                const ll = lastCandle.l ?? lastCandle.c;
+                const origRange = Math.max(lh - ll, Math.abs((lastCandle.c ?? 0) - lo), 1e-10);
+                const newH = Math.max(lh, savedDisplayPrice);
+                const newL = Math.min(ll, savedDisplayPrice);
+                if ((newH - newL) <= origRange * 2) {
+                    lastCandle.c = savedDisplayPrice;
+                    lastCandle.h = newH;
+                    lastCandle.l = newL;
+                    if (replay && replay.animatingCandle && Number.isFinite(replay.animatingCandle.close)) {
+                        replay.animatingCandle.close = savedDisplayPrice;
+                    }
                 }
             }
             this._endTimeframeSwitching();
