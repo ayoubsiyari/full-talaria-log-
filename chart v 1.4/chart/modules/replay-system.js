@@ -4547,7 +4547,23 @@ class ReplaySystem {
                 : (chart.candleWidth + (chart.candleGap || 2));
             if (Number.isFinite(candleSpacing) && candleSpacing > 0) {
                 const m = chart.margin || { l: 0, r: 70 };
-                const chartAreaW = Math.max(0, (chart.w || 0) - (m.l || 0) - (m.r || 0));
+                // Match getReplayAutoScrollState: chart.w is often 0 right after
+                // loadFileData / pair-switch in a multichart iframe — using it
+                // alone makes numVisible=1 and offsetX wrong → blank canvas until
+                // the user hits play or resizes.
+                let effectiveW = Number(chart.w) || 0;
+                if (effectiveW < 80) {
+                    try {
+                        const canvas = chart.canvas;
+                        const el = canvas && canvas.parentElement;
+                        const rw = el ? el.getBoundingClientRect().width : 0;
+                        if (Number.isFinite(rw) && rw >= 80) effectiveW = rw;
+                    } catch (_e) { /* ignore */ }
+                }
+                if (effectiveW < 80) {
+                    effectiveW = 320;
+                }
+                const chartAreaW = Math.max(0, effectiveW - (m.l || 0) - (m.r || 0));
                 const numVisible = Math.max(1, Math.floor(chartAreaW / candleSpacing));
                 const lastIdx = chart.data.length - 1;
                 const scrollPos = Math.max(0, lastIdx - Math.floor(numVisible * 0.7));

@@ -1863,6 +1863,14 @@ class Chart {
                     if (typeof replay.updateSlider === 'function') replay.updateSlider();
                     if (typeof replay.updateTimeDisplay === 'function') replay.updateTimeDisplay();
                 }
+                try {
+                    const isMce = typeof document !== 'undefined'
+                        && document.documentElement
+                        && document.documentElement.classList.contains('multichart-embed');
+                    if (isMce && typeof replay.scheduleReplayFollowOnceLayoutSettled === 'function') {
+                        replay.scheduleReplayFollowOnceLayoutSettled();
+                    }
+                } catch (_eMc) { /* ignore */ }
 
                 // Ensure Y-axis auto-scales for the new pair's price range
                 this.priceZoom = 1;

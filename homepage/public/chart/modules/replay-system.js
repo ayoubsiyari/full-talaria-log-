@@ -106,11 +106,18 @@ class ReplaySystem {
     }
 
     applyPersistedState(state) {
-        if (!state || typeof state !== 'object') return;
-        if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) return;
+        if (!state || typeof state !== 'object') return false;
+        if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) return false;
 
         try {
-            const idxFromState = typeof state.currentIndex === 'number' && Number.isFinite(state.currentIndex)
+            // Only trust the saved currentIndex if the timeframe matches the
+            // current chart. A 1H session saves index ~12000 but on reload the
+            // chart forces 1D (~500 bars) — blindly using the old index clamps
+            // to the last bar, making it look like "all data is gone."
+            const tfMatches = !state.timeframe || state.timeframe === this.chart.currentTimeframe;
+            const idxFromState = tfMatches
+                && typeof state.currentIndex === 'number'
+                && Number.isFinite(state.currentIndex)
                 ? Math.floor(state.currentIndex)
                 : null;
 
@@ -135,16 +142,15 @@ class ReplaySystem {
                 }
 
                 if (ts !== null) {
-                    idx = 0;
-                    for (let i = 0; i < this.fullRawData.length; i++) {
-                        const t = this.fullRawData[i]?.t;
-                        const tn = typeof t === 'number' ? t : (typeof t === 'string' ? Date.parse(t) : NaN);
-                        if (Number.isFinite(tn) && tn >= ts) {
-                            idx = i;
-                            break;
-                        }
-                        idx = i;
-                    }
+                    // Bars are sorted by period open `t`. A wall-clock `ts` that falls *inside*
+                    // a bar (e.g. 1m tick mid-session mapped onto 1D) must resolve to that bar's
+                    // index — "last bar with t <= ts". The old "first t >= ts" rule picked the
+                    // *next* period's bar (off-by-one on coarse TFs) and broke price continuity.
+                    const hit = typeof this._findLastRawIndexAtOrBefore === 'function'
+                        ? this._findLastRawIndexAtOrBefore(this.fullRawData, ts)
+                        : -1;
+                    const smin = this.sessionStartIndex || 0;
+                    idx = hit < 0 ? smin : Math.max(hit, smin);
                 }
             }
 
@@ -163,12 +169,17 @@ class ReplaySystem {
                 if (typeof window.updateSpeedDisplay === 'function') {
                     window.updateSpeedDisplay(this.speed);
                 }
-                // Align viewport with restored playhead (false left stale chart pan from session chartView).
-                this.updateChartData(true);
+                // Backtest TF refetch passes deferChartSync so chart.js can fine-re-anchor first,
+                // then run a single updateChartData (avoids SL/TP on session-start bar mid-refetch).
+                if (!state.deferChartSync) {
+                    this.updateChartData(true);
+                }
+                return true;
             }
         } catch (e) {
             console.warn('⚠️ Failed to apply persisted replay state', e);
         }
+        return false;
     }
 
     init() {
@@ -1979,7 +1990,6 @@ class ReplaySystem {
         this.tickElapsedMs = 0;
         const goBackMinIdx = this.sessionStartIndex || 0;
         this.currentIndex = Math.max(newRawIndex, goBackMinIdx);
-
         const rawBar = this.fullRawData[this.currentIndex];
         if (rawBar && Number.isFinite(rawBar.t)) {
             this.replayTimestamp = rawBar.t;
@@ -2095,7 +2105,9 @@ class ReplaySystem {
 
     /**
      * Enter replay mode
-     * @param {Object} options - Optional configuration {startAtBeginning: boolean}
+     * @param {Object} [options] - Optional configuration
+     * @param {boolean} [options.startAtBeginning] - Backtest-style session floor (URL/mode)
+     * @param {boolean} [options.suppressInitialUpdateChartData] - Skip first `updateChartData()` so host can restore playhead (TF refetch); avoids SL/TP on session-start bar.
      */
     enterReplayMode(options = {}) {
         // === PROTECT: Don't reinitialize if already active or during timeframe change ===
@@ -2207,39 +2219,48 @@ class ReplaySystem {
 
         this._attachReplayFollowViewportListeners();
         
-        // Filter data and render
-        this.updateChartData();
-
-        requestAnimationFrame(() => this.updateAutoScrollIndicator());
+        if (!options.suppressInitialUpdateChartData) {
+            // Filter data and render
+            this.updateChartData();
+            requestAnimationFrame(() => this.updateAutoScrollIndicator());
+        }
 
         // Refresh-safety: on a hard refresh, enterReplayMode can fire before the
-        // canvas has its real dimensions (chart.w === 0). In that case the offsetX
-        // computed by updateChartData() uses the 320px fallback inside
-        // getReplayAutoScrollState(), placing candles far off-screen — the user
-        // then has to double-click the time axis (jumpToLatest) to see them.
-        // Re-run resize + alignment once the browser has laid out the chart so the
-        // playhead lands near the right edge automatically, TradingView-style.
+        // canvas has its real dimensions (chart.w === 0), AND the async session
+        // state restore (loadTradingSessionStateIfNeeded) can overwrite offsetX,
+        // candleWidth, priceOffset, priceZoom, autoScale with stale saved values
+        // AFTER this function returns. Both leave candles off-screen until the
+        // user double-clicks the time axis (jumpToLatest).
+        // Run multiple alignment passes over ~2.5s to catch all late overwrites.
+        let realignAttempts = 0;
         const realignAfterLayout = () => {
             if (!this.isActive) return;
+            if (this.userHasPanned) return;
             try {
-                if (typeof this.chart.resize === 'function') this.chart.resize();
+                if (typeof this.chart.resize === 'function') {
+                    this.chart._lastResizeDpr = 0;
+                    this.chart.resize();
+                }
             } catch (e) { /* ignore */ }
-            if (this.autoScrollEnabled && !this.userHasPanned) {
+            if (this.autoScrollEnabled) {
+                this.chart.autoScale = true;
+                this.chart.priceOffset = 0;
+                this.chart.priceZoom = 1;
                 const st = this.getReplayAutoScrollState(this.chart);
                 if (st && Number.isFinite(st.offsetX)) {
                     this.chart.offsetX = st.offsetX;
                     if (typeof this.chart.constrainOffset === 'function') {
                         this.chart.constrainOffset();
                     }
-                    this.chart.scheduleRender();
                 }
+                this.chart.renderPending = true;
+                if (typeof this.chart.render === 'function') this.chart.render();
+            }
+            if (++realignAttempts < 8) {
+                setTimeout(realignAfterLayout, realignAttempts <= 3 ? 200 : 500);
             }
         };
-        requestAnimationFrame(() => {
-            realignAfterLayout();
-            // Second pass after typewriter loader fades + React tree finishes mounting.
-            setTimeout(realignAfterLayout, 150);
-        });
+        requestAnimationFrame(realignAfterLayout);
     }
 
     /**
@@ -3984,7 +4005,9 @@ class ReplaySystem {
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
                 let appliedSlice = false;
 
-                // Prefer main replay slice when file matches — see syncPanelCharts.
+                // Same instrument/file as main MUST use the main replay slice (currentIndex), not a
+                // timestamp cut on _panelFullRawData — API / TF resampling can shift bar .t so
+                // "last t <= replayTimestamp" still includes forward candles until play advances.
                 if (this._panelSharesMainReplayDataset(pc, mainChart)) {
                     if (mainSymbol && pc.currentSymbol !== mainSymbol) {
                         pc.currentSymbol = mainSymbol;
@@ -4524,7 +4547,23 @@ class ReplaySystem {
                 : (chart.candleWidth + (chart.candleGap || 2));
             if (Number.isFinite(candleSpacing) && candleSpacing > 0) {
                 const m = chart.margin || { l: 0, r: 70 };
-                const chartAreaW = Math.max(0, (chart.w || 0) - (m.l || 0) - (m.r || 0));
+                // Match getReplayAutoScrollState: chart.w is often 0 right after
+                // loadFileData / pair-switch in a multichart iframe — using it
+                // alone makes numVisible=1 and offsetX wrong → blank canvas until
+                // the user hits play or resizes.
+                let effectiveW = Number(chart.w) || 0;
+                if (effectiveW < 80) {
+                    try {
+                        const canvas = chart.canvas;
+                        const el = canvas && canvas.parentElement;
+                        const rw = el ? el.getBoundingClientRect().width : 0;
+                        if (Number.isFinite(rw) && rw >= 80) effectiveW = rw;
+                    } catch (_e) { /* ignore */ }
+                }
+                if (effectiveW < 80) {
+                    effectiveW = 320;
+                }
+                const chartAreaW = Math.max(0, effectiveW - (m.l || 0) - (m.r || 0));
                 const numVisible = Math.max(1, Math.floor(chartAreaW / candleSpacing));
                 const lastIdx = chart.data.length - 1;
                 const scrollPos = Math.max(0, lastIdx - Math.floor(numVisible * 0.7));
@@ -4656,7 +4695,7 @@ class ReplaySystem {
     ensureReplayFollowButton() {
         const followIconSvg =
             '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none">' +
-            '<rect x="1" y="1" width="22" height="22" rx="4" fill="#2962FF"/>' +
+            '<rect x="1" y="1" width="22" height="22" rx="0" fill="#2962FF"/>' +
             '<path d="M9.5 6.5 L17.5 12 L9.5 17.5 Z" fill="#fff"/>' +
             '</svg>';
         let btn = this.followBtn;
@@ -4674,7 +4713,7 @@ class ReplaySystem {
             // No id — avoids duplicate id="replayFollow" if V9 React mounts after injection.
             btn.dataset.talariaReplayFollow = 'injected';
             btn.className = 'replay-follow-float-btn';
-            btn.title = 'Follow replay — scroll with playback';
+            btn.title = '';
             btn.setAttribute('aria-label', 'Follow replay candle');
             btn.innerHTML = followIconSvg;
             Object.assign(btn.style, {
@@ -4692,7 +4731,7 @@ class ReplaySystem {
                 outline: 'none',
                 background: 'transparent',
                 border: 'none',
-                borderRadius: '6px',
+                borderRadius: '0',
                 color: '#fff',
                 cursor:'default',
                 boxShadow: '0 2px 12px rgba(0, 0, 0, 0.35)',
@@ -5015,6 +5054,21 @@ class ReplaySystem {
     }
 
     /**
+     * Order fills / SL-TP use one OrderManager; panel charts may defer to window.chart.
+     * Matches chart.js `_getOrderManagerForSessionPersistence` fallback.
+     * @param {object|null} [chartInstance]
+     * @returns {object|null}
+     */
+    _resolveOrderManagerForReplayGuards(chartInstance) {
+        const ch = chartInstance || this.chart;
+        if (ch && ch.orderManager) return ch.orderManager;
+        if (typeof window !== 'undefined' && window.chart && window.chart.orderManager) {
+            return window.chart.orderManager;
+        }
+        return null;
+    }
+
+    /**
      * Handle timeframe change during replay
      * Uses VIRTUAL TIME to maintain consistent price across all timeframes
      * @param {Object} [initiatorChart] - Chart instance that called setTimeframe (defaults to main {@link #chart})
@@ -5050,6 +5104,10 @@ class ReplaySystem {
                 if (typeof initiator.render === 'function') {
                     initiator.render();
                 }
+                const omFollow = this._resolveOrderManagerForReplayGuards(initiator);
+                if (omFollow && typeof omFollow._refreshAllGuardsToCurrentCandle === 'function') {
+                    try { omFollow._refreshAllGuardsToCurrentCandle(); } catch (_gu) { /* ignore */ }
+                }
             } catch (e) {
                 console.warn('replay onTimeframeChange (follower panel):', e);
             } finally {
@@ -5077,17 +5135,6 @@ class ReplaySystem {
                 ? this.replayTimestamp
                 : (this.fullRawData[this.currentIndex]?.t ?? null));
         
-        // Get current animated price from tick path cache (deterministic!)
-        let savedAnimatedPrice = null;
-        const nextCandle = this.fullRawData[this.currentIndex + 1];
-        if (nextCandle && this.tickPathCache[nextCandle.t] && savedTickProgress > 0) {
-            const tickPath = this.tickPathCache[nextCandle.t];
-            const pathIndex = Math.min(savedTickProgress - 1, tickPath.length - 1);
-            savedAnimatedPrice = tickPath[pathIndex];
-        } else if (this.animatingCandle) {
-            savedAnimatedPrice = this.animatingCandle.close;
-        }
-        
         
         // === STOP ANIMATION CLEANLY ===
         if (this.tickInterval) {
@@ -5100,6 +5147,21 @@ class ReplaySystem {
         // Save view position
         const savedPriceOffset = this.chart.priceOffset;
         const savedPriceZoom = this.chart.priceZoom;
+
+        // Pre-arm SL/TP / pending guards before updateChartData → updatePositions(), same as seekTo().
+        // Without this, the new TF's resampled last candle can include full-bucket H/L and spuriously hit TP/SL.
+        const omPre = this._resolveOrderManagerForReplayGuards(this.chart);
+        let guardTs = savedReplayTimestamp;
+        if (!Number.isFinite(Number(guardTs))) {
+            const rb = this.fullRawData && this.fullRawData[savedCurrentIndex];
+            const tRaw = rb != null ? Number(rb.t) : NaN;
+            guardTs = Number.isFinite(tRaw) ? tRaw : null;
+        }
+        if (omPre && typeof omPre._refreshAllGuardsToTimestamp === 'function' && Number.isFinite(Number(guardTs))) {
+            try { omPre._refreshAllGuardsToTimestamp(Number(guardTs), -1); } catch (_e) { /* ignore */ }
+        } else if (omPre && typeof omPre._refreshAllGuardsToCurrentCandle === 'function') {
+            try { omPre._refreshAllGuardsToCurrentCandle(); } catch (_e2) { /* ignore */ }
+        }
         
         // Update chart data with current position (client-side resample)
         this.updateChartData(false);
@@ -5162,23 +5224,25 @@ class ReplaySystem {
                 this.chart.constrainOffset();
             }
             
-            // === UPDATE LAST CANDLE WITH DETERMINISTIC PRICE ===
-            // Only preserve intra-candle animated price while actively playing.
-            if (wasPlaying && Number.isFinite(savedAnimatedPrice) && this.chart.data && this.chart.data.length > 0) {
-                const lastCandle = this.chart.data[this.chart.data.length - 1];
-                lastCandle.c = savedAnimatedPrice;
-                if (savedAnimatedPrice > lastCandle.h) lastCandle.h = savedAnimatedPrice;
-                if (savedAnimatedPrice < lastCandle.l) lastCandle.l = savedAnimatedPrice;
-            }
-            
             this.chart.renderPending = true;
             this.chart.render();
             
             this.updateSlider();
             this.updateTimeDisplay();
+
+            const omPost = this._resolveOrderManagerForReplayGuards(this.chart);
+            if (omPost && typeof omPost._refreshAllGuardsToCurrentCandle === 'function') {
+                try { omPost._refreshAllGuardsToCurrentCandle(); } catch (_e3) { /* ignore */ }
+            }
             
             // === UNLOCK STATE ===
             this._timeframeChanging = false;
+
+            // updatePositions was skipped while _timeframeChanging (order-manager deferral);
+            // when paused, nothing else runs until the next tick — refresh PnL / lines once here.
+            if (!wasPlaying && omPost && typeof omPost.updatePositions === 'function') {
+                try { omPost.updatePositions(); } catch (_e5) { /* ignore */ }
+            }
             
             
             // === RECREATE ANIMATING CANDLE STATE ===
@@ -5370,6 +5434,9 @@ class ReplaySystem {
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
                 let appliedSlice = false;
 
+                // Same instrument/file as main: always use main's currentIndex slice. If we prefer
+                // hasOwnData first, a refetched _panelFullRawData can have bar timestamps that still
+                // pass "t <= replayTimestamp" for candles after the playhead — leaking forward data.
                 if (this._panelSharesMainReplayDataset(pc, mainChart)) {
                     if (mainSymbol && pc.currentSymbol !== mainSymbol) {
                         pc.currentSymbol = mainSymbol;
