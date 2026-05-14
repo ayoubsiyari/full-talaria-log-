@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260515T1400";
+const BRIDGE_VERSION = "20260515T1500";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -550,10 +550,10 @@ function readUrlChartMode() {
 }
 
 /**
- * When true, iframe tiles must follow the host chart's dataset and timeframe
- * so backtest / prop-firm replay shows one series and one virtual playhead.
- * Ignores the layout "Symbol" / "Interval" toggles — those stay for live /
- * non-session layouts where independent panels are desired.
+ * When true, iframe tiles must follow the host chart's **dataset** (file /
+ * session) so backtest / prop-firm replay shows one series and one virtual
+ * playhead. Timeframe is **not** forced here — use the layout "Interval" toggle
+ * for that. Symbol / Interval / other sync toggles stay for live layouts.
  */
 function isMultichartBacktestFileLock() {
     try {
@@ -1396,7 +1396,7 @@ export default function MultichartGrid({
     // (not props) so that a timeframe change on Panel A does NOT push
     // to every iframe — that would override Panel B's independent tf
     // even when sync.interval is off.  Timeframe sync is handled by the
-    // dedicated "Interval sync" effect below which checks layoutSync.
+    // dedicated "Interval sync" effect above which checks layoutSync.
     useEffect(() => {
         if (!managerReady) return;
         const hostNt = readHostChartFileAndTf();
@@ -1407,15 +1407,16 @@ export default function MultichartGrid({
         if (!fid) return;
         const mgr = managerRef.current;
         if (!mgr || !mgr.charts) return;
+        const pushTf = !!(layoutSync && layoutSync.interval);
         for (const c of mgr.charts.values()) {
             if (!c || c.host || !c.ready) continue;
             try {
                 mgr.sendCommandNoReply(c.id, "loadFile", { fileId: fid });
-                if (tf) mgr.sendCommandNoReply(c.id, "setTimeframe", { tf });
+                if (pushTf && tf) mgr.sendCommandNoReply(c.id, "setTimeframe", { tf });
             } catch (_) {}
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [managerReady, readyPanels]);
+    }, [managerReady, readyPanels, layoutSync && layoutSync.interval]);
 
     // ─── Host-tile positioning ──────────────────────────────────────────
     //
@@ -1520,21 +1521,18 @@ export default function MultichartGrid({
 
     // ─── Interval (timeframe) sync ──────────────────────────────────────
     //
-    // Fan out the host chart's timeframe to every iframe when:
-    //   • layout "Interval" sync is on, OR
-    //   • backtest / replay file lock (same as chart data lock), OR
-    //   • every ready iframe already shows the host's fileId (same-dataset
-    //     multichart — matches order mirror + replay step sync UX).
+    // Fan out the host chart's timeframe to every iframe **only** when the
+    // layout "Interval" toggle is on. Same-dataset / backtest replay still
+    // share one virtual playhead (replayTick) and one file lock (loadFile),
+    // but independent per-panel timeframes are a supported UX when Interval
+    // is off — do not override them when the user changes TF on tile A.
     //
     // Listen on chart.js's `timeframeChanged` on the parent window (tile A).
     useEffect(() => {
         if (typeof window === "undefined") return;
         const onTfChanged = (ev) => {
             const mgr = managerRef.current;
-            const charts = mgr && mgr.charts;
-            if (!((layoutSync && layoutSync.interval)
-                || isMultichartBacktestFileLock()
-                || allReadyIframesShareHostFileForMirror(charts, window.chart))) {
+            if (!(layoutSync && layoutSync.interval)) {
                 return;
             }
             if (!mgr || typeof mgr.sendCommand !== "function") return;
@@ -2226,12 +2224,11 @@ export default function MultichartGrid({
     //       the topbar OHLC + indicator chips when the focused panel
     //       reports new tf / fileId / candle counts).
     //
-    //   (b) Bidirectional Interval / Symbol fan-out (TradingView UX).
+    //   (b) Bidirectional Interval fan-out (TradingView UX).
     //       When sync.interval is on, a tf change on ANY iframe panel
-    //       propagates to the host and every other iframe. When
-    //       `sameDatasetLock` (backtest file lock OR all iframes already
-    //       share the host fileId), the same tf fan-out runs even if
-    //       "Interval" sync is off — matches unified multichart orders.
+    //       propagates to the host and every other iframe.
+    //       When Interval is off, do not push timeframe — panels keep their own TF
+    //       even in backtest / same-file layouts (replay wall-clock sync is separate).
     //       The host's own tf changes are handled by `timeframeChanged`
     //       (effect above); iframe tf/fileId arrive via sync-bridge
     //       `chart-state` postMessage.
@@ -2255,10 +2252,6 @@ export default function MultichartGrid({
         const sync = layoutSyncRef.current || {};
         const fileLock = isMultichartBacktestFileLock();
         const hostCh = window.chart;
-        const sameDatasetLock = fileLock || allReadyIframesShareHostFileForMirror(
-            mgr.charts,
-            hostCh
-        );
         const hostFid = hostCh && hostCh.currentFileId != null && String(hostCh.currentFileId).trim() !== ""
             ? String(hostCh.currentFileId)
             : "";
@@ -2272,7 +2265,7 @@ export default function MultichartGrid({
             return;
         }
 
-        if (state && state.timeframe && (sync.interval || sameDatasetLock)) {
+        if (state && state.timeframe && sync.interval) {
             const tf = String(state.timeframe);
             if (lastBroadcastTfRef.current[id] !== tf) {
                 lastBroadcastTfRef.current[id] = tf;
