@@ -5917,6 +5917,20 @@ const TalariaV8bLive = () => {
 
   const allSymbols = SYMBOLS_DATA.flatMap(c => c.items);
   const currentSymbol = resolveSessionChartSymbol(symbol, allSymbols);
+
+  // Futures: cannot have more TP rows than whole contracts (e.g. 1 contract → single TP only).
+  useEffect(() => {
+    if (currentSymbol.type !== "futures") return;
+    const q = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
+    const maxLegs = q < 1 ? 1 : q;
+    setTpRows((rows) => {
+      if (rows.length <= maxLegs) return rows;
+      markOrderControlBridge();
+      omPanelBridgeRef.current.tpDel = Date.now();
+      return rows.slice(0, maxLegs);
+    });
+  }, [omOrderQtyTxt, currentSymbol.type]);
+
   const sessionAssetHintForSymbol = useMemo(() => {
     const want = normalizeSymForBadge(symbol);
     const hit = sessionPairs.find(p => normalizeSymForBadge(p.ticker) === want);
@@ -21350,6 +21364,12 @@ const TalariaV8bLive = () => {
               omPanelBridgeRef.current.tpAdd = Date.now();
               markOrderControlBridge();
               setTpRows((rows) => {
+                if (currentSymbol.type === "futures") {
+                  const q = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
+                  const maxLegs = q < 1 ? 1 : q;
+                  const active = rows.filter((r) => r.enabled !== false);
+                  if (active.length >= maxLegs) return rows;
+                }
                 const initPx = defaultPriceForNewTp(rows);
                 const n = rows.length + 1;
                 const next = [

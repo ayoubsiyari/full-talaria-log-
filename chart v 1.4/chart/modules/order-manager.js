@@ -13826,6 +13826,9 @@ class OrderManager {
             else if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0 && this._multiEntryAnyLevelBelowMinLot()) {
                 canPlace = false;
                 reason = `Entry too close to SL or invalid`;
+            } else if (this._futuresMultiTpAllocationErrors(entryPrice, quantity).length > 0) {
+                canPlace = false;
+                reason = 'Multi-TP: whole contracts only';
             }
             
             // Update button state
@@ -14598,6 +14601,16 @@ class OrderManager {
      */
     calculateTPTargetsFromNumber(numTargets) {
         this.tpTargets = [];
+
+        let nTargets = Math.max(1, parseInt(numTargets, 10) || 1);
+        nTargets = Math.min(nTargets, 10);
+        if (this.marketType === 'futures') {
+            const qty = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || 0));
+            const cap = !Number.isFinite(qty) || qty < 1 ? 1 : Math.min(qty, 10);
+            nTargets = Math.min(nTargets, cap);
+        }
+        const numEl = document.getElementById('numTPTargets');
+        if (numEl) numEl.value = String(nTargets);
         
         // Get entry and original TP price (multi-entry: anchor from weighted Avg Entry)
         const entryPrice = this._getReferenceEntryForOrderMath();
@@ -14610,20 +14623,20 @@ class OrderManager {
             // Calculate distribution based on mode
             let distributionValue;
             if (this.tpDistributionMode === 'percent') {
-                distributionValue = 100 / numTargets;
+                distributionValue = 100 / nTargets;
             } else if (this.tpDistributionMode === 'amount') {
                 // Calculate total reward and divide by number of targets
                 const priceDiff = this.orderSide === 'BUY' ? (originalTP - entryPrice) : (entryPrice - originalTP);
                 const pipsMove = priceDiff / this.pipSize;
                 const totalReward = pipsMove * quantity * this.pipValuePerLot;
-                distributionValue = totalReward / numTargets;
+                distributionValue = totalReward / nTargets;
             } else if (this.tpDistributionMode === 'lots') {
-                distributionValue = quantity / numTargets;
+                distributionValue = quantity / nTargets;
             }
             
-            for (let i = 1; i <= numTargets; i++) {
+            for (let i = 1; i <= nTargets; i++) {
                 // Distribute evenly from entry to original TP
-                const ratio = i / numTargets;
+                const ratio = i / nTargets;
                 let price;
                 if (this.orderSide === 'BUY') {
                     price = entryPrice + (distance * ratio);
@@ -14651,14 +14664,14 @@ class OrderManager {
             // Fallback if no prices set - create empty targets
             let distributionValue;
             if (this.tpDistributionMode === 'percent') {
-                distributionValue = 100 / numTargets;
+                distributionValue = 100 / nTargets;
             } else if (this.tpDistributionMode === 'amount') {
                 distributionValue = 0;
             } else if (this.tpDistributionMode === 'lots') {
-                distributionValue = quantity / numTargets;
+                distributionValue = quantity / nTargets;
             }
             
-            for (let i = 1; i <= numTargets; i++) {
+            for (let i = 1; i <= nTargets; i++) {
                 this.tpTargets.push({ 
                     id: i, 
                     price: 0, 
@@ -14678,9 +14691,14 @@ class OrderManager {
         // Increment number of targets and recalculate
         const numInput = document.getElementById('numTPTargets');
         if (numInput) {
-            const currentNum = parseInt(numInput.value || 2);
-            if (currentNum < 10) {
-                numInput.value = currentNum + 1;
+            const currentNum = parseInt(numInput.value || 2, 10);
+            const qty = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || 0));
+            const futuresCap = this.marketType === 'futures'
+                ? (!Number.isFinite(qty) || qty < 1 ? 1 : Math.min(qty, 10))
+                : 10;
+            const hardCap = this.marketType === 'futures' ? futuresCap : 10;
+            if (currentNum < hardCap) {
+                numInput.value = String(currentNum + 1);
                 this.calculateTPTargetsFromNumber(currentNum + 1);
             }
         }
@@ -14999,6 +15017,65 @@ class OrderManager {
         this.syncMultiEntryToSplitEntries();
         this.calculatePositionFromRisk();
     }
+
+    /**
+     * Futures + multiple priced TPs: at most one TP level per whole contract, and each
+     * priced leg must allocate an integer contract count (≥1) that sums to position size.
+     * @param {number} entryPrice
+     * @param {number} quantity
+     * @returns {string[]}
+     */
+    _futuresMultiTpAllocationErrors(entryPrice, quantity) {
+        const errs = [];
+        if (this.marketType !== 'futures' || !this.tpTargets?.length) return errs;
+        if (!entryPrice || entryPrice <= 0) return errs;
+        const priced = this.tpTargets.filter((t) => t && t.price > 0);
+        if (priced.length <= 1) return errs;
+
+        const qtyWhole = Math.floor(quantity);
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+            errs.push('⚠️ Futures: set a valid position size before splitting across multiple TPs');
+            return errs;
+        }
+        if (qtyWhole < 1) {
+            errs.push('⚠️ Futures: position must be at least 1 contract to use multiple TPs');
+            return errs;
+        }
+        if (priced.length > qtyWhole) {
+            errs.push(`⚠️ Futures: at most ${qtyWhole} TP level(s) for ${qtyWhole} contract(s) (you have ${priced.length} priced levels)`);
+        }
+
+        const side = (this.orderSide || 'BUY').toUpperCase();
+        const eff = this._computeEffectiveTPPercentages(entryPrice, quantity, side);
+        let sumLots = 0;
+        let invalid = false;
+        for (let i = 0; i < this.tpTargets.length; i++) {
+            const t = this.tpTargets[i];
+            if (!(t.price > 0) || !(t.percentage > 0)) continue;
+            const pct = eff[i] || 0;
+            if (pct <= 0) {
+                invalid = true;
+                break;
+            }
+            const share = quantity * (pct / 100);
+            if (!Number.isFinite(share) || share <= 0) {
+                invalid = true;
+                break;
+            }
+            const rounded = Math.round(share);
+            if (Math.abs(share - rounded) > 1e-4 || rounded < 1) {
+                invalid = true;
+                break;
+            }
+            sumLots += rounded;
+        }
+        if (invalid) {
+            errs.push('⚠️ Futures: each TP must close a whole number of contracts (≥1). Adjust %, $, or lots per level.');
+        } else if (Math.abs(sumLots - qtyWhole) > 1e-4) {
+            errs.push(`⚠️ Futures: TP splits must allocate exactly ${qtyWhole} contract(s) (effective allocation sums to ${sumLots})`);
+        }
+        return errs;
+    }
     
     /**
      * Validate multiple TP targets
@@ -15021,6 +15098,9 @@ class OrderManager {
             errors.push('⚠️ At least one TP target must have a price set');
             return errors;
         }
+
+        const totalQtyRaw = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+        errors.push(...this._futuresMultiTpAllocationErrors(entryPrice, totalQtyRaw));
         
         // Do not mutate percentages here — panel / RR +/- set explicit splits; overwriting with equal
         // shares broke user-adjusted multi-TP % on place order.
@@ -15040,6 +15120,15 @@ class OrderManager {
             const totalQuantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
             if (Math.abs(totalValue - totalQuantity) > 0.01) {
                 errors.push(`⚠️ TP lots must sum to position size (${totalQuantity.toFixed(2)} lots, currently ${totalValue.toFixed(2)} lots)`);
+            }
+            if (this.marketType === 'futures') {
+                for (const t of pricedTargets) {
+                    const v = t.percentage || 0;
+                    if (Math.abs(v - Math.round(v)) > 1e-9 || Math.round(v) < 1) {
+                        errors.push('⚠️ Futures: each TP must use a whole number of contracts (≥1) in lots mode');
+                        break;
+                    }
+                }
             }
         }
         
