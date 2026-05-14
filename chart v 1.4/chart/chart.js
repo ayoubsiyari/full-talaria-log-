@@ -1884,6 +1884,45 @@ class Chart {
                 }
             }
 
+            // Multichart iframe: loadFileData can finish on a new pair before this tile's
+            // replaySystem was ever activated (replayEnter races chartDataLoaded, or the
+            // tile stayed on a placeholder symbol). Parent is already in replay — bootstrap
+            // this chart from the parent's playhead so placeAdvancedOrder's replay guard
+            // passes and orders work on the independently loaded instrument.
+            if (!replayActiveBefore) {
+                try {
+                    const isMce = typeof document !== 'undefined'
+                        && document.documentElement
+                        && document.documentElement.classList.contains('multichart-embed');
+                    let parentReplayTs = NaN;
+                    if (isMce && replay && !replay.isActive
+                        && window.parent && window.parent !== window) {
+                        try {
+                            const pch = window.parent.chart;
+                            const pr = pch && pch.replaySystem;
+                            if (pr && pr.isActive && Number.isFinite(Number(pr.replayTimestamp))) {
+                                parentReplayTs = Number(pr.replayTimestamp);
+                            }
+                        } catch (_p) { /* ignore */ }
+                    }
+                    if (isMce && replay && !replay.isActive
+                        && Number.isFinite(parentReplayTs)
+                        && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                        if (typeof replay.enterReplayMode === 'function') {
+                            replay.enterReplayMode({ suppressInitialUpdateChartData: true });
+                        }
+                        if (replay.isActive && typeof replay.goToReplayTimestamp === 'function') {
+                            replay.goToReplayTimestamp(parentReplayTs, { centerOnCandle: true });
+                        }
+                        try {
+                            if (typeof replay.scheduleReplayFollowOnceLayoutSettled === 'function') {
+                                replay.scheduleReplayFollowOnceLayoutSettled();
+                            }
+                        } catch (_f) { /* ignore */ }
+                    }
+                } catch (_mcBoot) { /* ignore */ }
+            }
+
             if (this.orderManager) {
                 if (typeof this.orderManager.syncPipFromActiveSymbol === 'function') {
                     this.orderManager.syncPipFromActiveSymbol();
