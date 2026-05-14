@@ -3043,6 +3043,10 @@ const TalariaV8bLive = () => {
   /** Multi-TP footer: total size (#orderQuantity) + WAP — matches chart "Avg TP … lots" + weighted price. */
   const [omTpAvgLotsTxt, setOmTpAvgLotsTxt] = useState("");
   const [omTpWapPriceTxt, setOmTpWapPriceTxt] = useState("");
+  /** Row 2 header: spread / commission from session instrument (create-session); margin from #marginLevelBadge. */
+  const [omHeaderSpreadTxt, setOmHeaderSpreadTxt] = useState("—");
+  const [omHeaderCommTxt, setOmHeaderCommTxt] = useState("—");
+  const [omMarginLevelTxt, setOmMarginLevelTxt] = useState("—");
   /** Strategies Lab PRE/POST playbook revision — bumps when session strategy_variables change. */
   const [preTradeDefRevision, setPreTradeDefRevision] = useState(0);
   const preTradeStrategySigRef = useRef("");
@@ -7211,6 +7215,60 @@ const TalariaV8bLive = () => {
       setOmRewardSummaryTxt((prev) => (prev === rwd ? prev : rwd));
       const pbt = document.getElementById("placeOrderButton")?.textContent?.replace(/\s+/g, " ").trim() || "";
       setOmPlaceButtonTxt((prev) => (prev === pbt ? prev : pbt));
+
+      let spreadHdr = "—";
+      let commHdr = "—";
+      try {
+        om?._updateOrderPanelInstrumentCosts?.();
+      } catch (_) {}
+      const instCostsEl = document.getElementById("orderPanelInstrumentCosts");
+      const instRaw = instCostsEl?.style?.display !== "none" ? instCostsEl?.textContent?.replace(/\s+/g, " ").trim() : "";
+      if (instRaw) {
+        const sm = instRaw.match(/Spread:\s*([\d.]+)\s+(pips|pts)/i);
+        const cm = instRaw.match(/Comm:\s*(\$[\d.]+)/i);
+        if (sm) spreadHdr = `${sm[1]} ${(sm[2] || "pips").toLowerCase()}`;
+        if (cm) commHdr = cm[1];
+      } else if (om && typeof om._getActiveInstrumentSettings === "function") {
+        const inst = om._getActiveInstrumentSettings();
+        const mt = om.marketType;
+        if (mt === "futures") {
+          const spreadTicks = Number.parseFloat(
+            inst.spread_pips ??
+              inst.spreadPips ??
+              inst.spread_ticks ??
+              inst.spreadTicks ??
+              inst.spread ??
+              0
+          );
+          const commSide = Number.parseFloat(
+            inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? inst.commission_per_lot ?? 0
+          );
+          if (Number.isFinite(spreadTicks))
+            spreadHdr = `${Number.isInteger(spreadTicks) ? String(spreadTicks) : spreadTicks.toFixed(2)} ticks`;
+          if (Number.isFinite(commSide) && commSide > 0) commHdr = `$${(commSide * 2).toFixed(2)}`;
+        } else if (mt === "forex") {
+          const spread = Number.parseFloat(inst.spread_pips ?? inst.spreadPips ?? 0);
+          const comm = Number.parseFloat(inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? 0);
+          const cfg = typeof om.getMarketConfig === "function" ? om.getMarketConfig() : {};
+          const pipUnit = cfg?.showTicks ? "pts" : "pips";
+          if (Number.isFinite(spread))
+            spreadHdr = `${Math.abs(spread) >= 100 ? spread.toFixed(1) : spread.toFixed(2)} ${pipUnit}`;
+          if (Number.isFinite(comm)) commHdr = `$${comm.toFixed(2)}`;
+        } else {
+          const spread = Number.parseFloat(inst.spread_pips ?? inst.spreadPips ?? inst.spread ?? 0);
+          const comm = Number.parseFloat(inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? 0);
+          if (Number.isFinite(spread)) spreadHdr = String(spread);
+          if (Number.isFinite(comm)) commHdr = `$${comm.toFixed(2)}`;
+        }
+      }
+      setOmHeaderSpreadTxt((prev) => (prev === spreadHdr ? prev : spreadHdr));
+      setOmHeaderCommTxt((prev) => (prev === commHdr ? prev : commHdr));
+
+      try {
+        om?.updateMarginLevelBadge?.();
+      } catch (_) {}
+      const mrg = document.getElementById("marginLevelBadge")?.textContent?.replace(/\s+/g, " ").trim() || "—";
+      setOmMarginLevelTxt((prev) => (prev === mrg ? prev : mrg));
 
       const sd = document.getElementById("slPipsDisplay")?.textContent?.trim() || "—";
       let td = document.getElementById("tpDistanceDisplay")?.textContent?.trim() || "—";
@@ -14455,12 +14513,12 @@ const TalariaV8bLive = () => {
           });
           const inpBase = {
             height: 26,
-            fontSize: 11,
+            fontSize: 12,
             fontFamily: F,
             color: c.tx,
             boxSizing: "border-box",
             background: "rgba(140,160,255,0.05)",
-            border: "1px solid rgba(140,160,255,0.22)",
+            border: "1px solid rgba(140,160,255,0.2)",
             borderRadius: 4,
             outline: "none",
           };
@@ -14507,14 +14565,17 @@ const TalariaV8bLive = () => {
                   openIndCP(e, pid, colStr);
                 }}
                 style={{
-                  width: 22,
-                  height: 22,
+                  width: 26,
+                  height: 26,
                   borderRadius: 4,
                   background: colStr,
                   flexShrink: 0,
                   cursor: "default",
-                  border: `1px solid ${isAct || isH ? "rgba(255,255,255,0.45)" : c.hvLn}`,
-                  boxShadow: isAct ? `0 0 8px ${colStr}` : "inset 0 1px 3px rgba(0,0,0,0.45)",
+                  border: `1px solid ${isAct || isH ? "rgba(255,255,255,0.5)" : c.hvLn}`,
+                  outline: isAct ? "2px solid rgba(140,160,255,0.55)" : "none",
+                  outlineOffset: 1,
+                  boxShadow: isAct || isH ? `0 0 8px ${colStr}` : "inset 0 1px 3px rgba(0,0,0,0.5)",
+                  transition: "border-color 0.12s, box-shadow 0.12s",
                 }}
               />
             );
@@ -14528,7 +14589,7 @@ const TalariaV8bLive = () => {
                 value={raw != null ? String(raw) : ""}
                 onClick={(e) => e.stopPropagation()}
                 onChange={(e) => setv(pid, e.target.value)}
-                style={{ ...inpBase, width: w || 88, minWidth: 0, padding: "0 6px", cursor: "default" }}
+                style={{ ...inpBase, width: w != null ? w : "100%", minWidth: 0, padding: "0 8px", cursor: "default" }}
               >
                 {p.options.map((opt) => (
                   <option key={String(opt.value)} value={opt.value}>{opt.label}</option>
@@ -14536,12 +14597,15 @@ const TalariaV8bLive = () => {
               </select>
             );
           };
-          const ictRow = (key, children) => (
+          const chkCell = (children) => (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 26, minHeight: 26 }}>{children}</div>
+          );
+          const ictFlexRow = (key, children) => (
             <div key={key} style={{
               display: "flex",
               alignItems: "center",
-              gap: 6,
-              padding: "7px 0",
+              gap: 8,
+              padding: "8px 0",
               borderBottom: `1px solid ${c.br}`,
               flexWrap: "wrap",
             }}>{children}</div>
@@ -14554,11 +14618,11 @@ const TalariaV8bLive = () => {
               onChange={(e) => setv(pid, e.target.value)}
               style={{
                 ...inpBase,
-                width: w || 86,
+                width: w != null ? w : "100%",
                 minWidth: 0,
                 textAlign: "center",
                 fontWeight: 700,
-                fontSize: 10,
+                fontSize: 11,
                 letterSpacing: "0.04em",
                 textTransform: "uppercase",
               }}
@@ -14570,45 +14634,82 @@ const TalariaV8bLive = () => {
               value={val(pid) || def0(pid)?.default || ""}
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => setv(pid, e.target.value)}
-              style={{ ...inpBase, width: 86, padding: "0 4px", fontVariantNumeric: "tabular-nums" }}
+              style={{ ...inpBase, width: "100%", minWidth: 0, maxWidth: 118, padding: "0 6px", fontVariantNumeric: "tabular-nums" }}
             />
           );
-          const sessRow = (rk, showId, txtId, tStart, tEnd, fillId, tip) => ictRow(rk, <>
-            {TlChk(!!val(showId), `ict-${showId}`, null, () => flip(showId))}
-            {pill(txtId, 88)}
-            {timeInp(tStart)}
-            <span style={{ color: c.tm, fontSize: 11, flexShrink: 0 }}>–</span>
-            {timeInp(tEnd)}
-            <Swatch pid={fillId} />
-            <Info t={tip} />
-          </>);
-          const vLineRow = (rk, showId, txtId, colId, lsId, lwId, tip) => ictRow(rk, <>
-            {TlChk(!!val(showId), `ict-v-${showId}`, null, () => flip(showId))}
-            {pill(txtId, 84)}
-            <Swatch pid={colId} />
-            <Sel pid={lsId} w={80} />
-            <Sel pid={lwId} w={62} />
-            <Info t={tip} />
-          </>);
-          const boxRow = (rk, showId, txtId, boxCol, showTxtId, txtColId, sdId, tip) => ictRow(rk, <>
-            {TlChk(!!val(showId), `ict-bx-${showId}`, null, () => flip(showId))}
-            {pill(txtId, 68)}
-            <Swatch pid={boxCol} />
-            {TlChk(!!val(showTxtId), `ict-${showTxtId}`, "Text", () => flip(showTxtId))}
-            <Swatch pid={txtColId} />
-            {TlChk(!!val(sdId), `ict-${sdId}`, "SD", () => flip(sdId))}
-            <Info t={tip} />
-          </>);
-          const sd3Row = (rk, chkId, txtId, colId, d1, d2, tip) => ictRow(rk, <>
-            {TlChk(!!val(chkId), `ict-sd-${chkId}`, null, () => flip(chkId))}
-            {pill(txtId, 76)}
-            <Swatch pid={colId} />
-            <Sel pid={d1} w={118} />
-            <Sel pid={d2} w={100} />
-            <Info t={tip} />
-          </>);
+          const sessRow = (rk, showId, txtId, tStart, tEnd, fillId, tip) => (
+            <div key={rk} style={{
+              display: "grid",
+              gridTemplateColumns: "26px minmax(72px,1fr) minmax(88px,1fr) 12px minmax(88px,1fr) 28px 20px",
+              alignItems: "center",
+              columnGap: 8,
+              padding: "8px 0",
+              borderBottom: `1px solid ${c.br}`,
+            }}>
+              {chkCell(TlChk(!!val(showId), `ict-${showId}`, null, () => flip(showId)))}
+              {pill(txtId, null)}
+              {timeInp(tStart)}
+              <span style={{ color: c.tm, fontSize: 12, textAlign: "center" }}>–</span>
+              {timeInp(tEnd)}
+              <div style={{ display: "flex", justifyContent: "center" }}><Swatch pid={fillId} /></div>
+              <Info t={tip} />
+            </div>
+          );
+          const vLineRow = (rk, showId, txtId, colId, lsId, lwId, tip) => (
+            <div key={rk} style={{
+              display: "grid",
+              gridTemplateColumns: "26px minmax(64px,1fr) 28px minmax(80px,1fr) minmax(64px,1fr) 20px",
+              alignItems: "center",
+              columnGap: 8,
+              padding: "8px 0",
+              borderBottom: `1px solid ${c.br}`,
+            }}>
+              {chkCell(TlChk(!!val(showId), `ict-v-${showId}`, null, () => flip(showId)))}
+              {pill(txtId, null)}
+              <div style={{ display: "flex", justifyContent: "center" }}><Swatch pid={colId} /></div>
+              <Sel pid={lsId} w={null} />
+              <Sel pid={lwId} w={null} />
+              <Info t={tip} />
+            </div>
+          );
+          const boxRow = (rk, showId, txtId, boxCol, showTxtId, txtColId, sdId, tip) => (
+            <div key={rk} style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 0",
+              borderBottom: `1px solid ${c.br}`,
+              flexWrap: "wrap",
+            }}>
+              {chkCell(TlChk(!!val(showId), `ict-bx-${showId}`, null, () => flip(showId)))}
+              <div style={{ width: 84, flexShrink: 0 }}>{pill(txtId, 82)}</div>
+              <div style={{ display: "flex", justifyContent: "center", flexShrink: 0 }}><Swatch pid={boxCol} /></div>
+              {TlChk(!!val(showTxtId), `ict-${showTxtId}`, "Text", () => flip(showTxtId))}
+              <div style={{ display: "flex", justifyContent: "center", flexShrink: 0 }}><Swatch pid={txtColId} /></div>
+              {TlChk(!!val(sdId), `ict-${sdId}`, "SD", () => flip(sdId))}
+              <div style={{ flex: 1, minWidth: 8 }} />
+              <Info t={tip} />
+            </div>
+          );
+          const sd3Row = (rk, chkId, txtId, colId, d1, d2, tip) => (
+            <div key={rk} style={{
+              display: "grid",
+              gridTemplateColumns: "26px minmax(56px,1fr) 28px minmax(100px,1fr) minmax(92px,1fr) 20px",
+              alignItems: "center",
+              columnGap: 8,
+              padding: "8px 0",
+              borderBottom: `1px solid ${c.br}`,
+            }}>
+              {chkCell(TlChk(!!val(chkId), `ict-sd-${chkId}`, null, () => flip(chkId)))}
+              {pill(txtId, null)}
+              <div style={{ display: "flex", justifyContent: "center" }}><Swatch pid={colId} /></div>
+              <Sel pid={d1} w={null} />
+              <Sel pid={d2} w={null} />
+              <Info t={tip} />
+            </div>
+          );
           return (
-            <div style={{ width: "100%", maxWidth: 500, boxSizing: "border-box" }}>
+            <div style={{ width: "100%", boxSizing: "border-box" }}>
               {ictSec("GLOBAL SETTINGS", true)}
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: "10px 12px", alignItems: "center", padding: "4px 0 10px", borderBottom: `1px solid ${c.br}` }}>
                 <span style={{ fontSize: 12, color: c.ts }}>Timezone selection</span>
@@ -14626,8 +14727,9 @@ const TalariaV8bLive = () => {
                 ["SL4W", "Show last 4 week sessions"],
                 ["ShowSFill", "Show session highlighting"],
               ].map(([id, lbl]) => (
-                <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${c.br}` }}>
-                  {TlChk(!!val(id), `ict-${id}`, lbl, () => flip(id))}
+                <div key={id} style={{ display: "grid", gridTemplateColumns: "26px 1fr", alignItems: "center", columnGap: 10, padding: "8px 0", borderBottom: `1px solid ${c.br}` }}>
+                  {chkCell(TlChk(!!val(id), `ict-${id}`, null, () => flip(id)))}
+                  <span style={{ fontSize: 12, color: c.ts }}>{lbl}</span>
                 </div>
               ))}
               {ictSec("HISTORICAL LINES", false)}
@@ -14636,8 +14738,9 @@ const TalariaV8bLive = () => {
                 ["MOLHist", "Midnight historical vertical lines"],
                 ["ShowPrev", "Misc. historical price lines"],
               ].map(([id, lbl]) => (
-                <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${c.br}` }}>
-                  {TlChk(!!val(id), `ict-${id}`, lbl, () => flip(id))}
+                <div key={id} style={{ display: "grid", gridTemplateColumns: "26px 1fr", alignItems: "center", columnGap: 10, padding: "8px 0", borderBottom: `1px solid ${c.br}` }}>
+                  {chkCell(TlChk(!!val(id), `ict-${id}`, null, () => flip(id)))}
+                  <span style={{ fontSize: 12, color: c.ts }}>{lbl}</span>
                 </div>
               ))}
               {ictSec("SESSIONS", false)}
@@ -14669,46 +14772,46 @@ const TalariaV8bLive = () => {
               {sd3Row("sd2", "ShowDev", "txt8", "SDCountCol", "DevInput", "DevDirection", def0("ShowDev")?.label || "")}
               {sd3Row("sd3", "Auto_Select", "txtSD", "Tab1txtCol", "TabOptionShow", "TabOption1", def0("Auto_Select")?.label || "")}
               {ictSec("DAY OF WEEK & LABELS", false)}
-              {ictRow("dow-lab", <>
-                {TlChk(!!val("ShowLabel"), "ict-ShowLabel", null, () => flip("ShowLabel"))}
-                {pill("txt21", 72)}
+              {ictFlexRow("dow-lab", <>
+                {chkCell(TlChk(!!val("ShowLabel"), "ict-ShowLabel", null, () => flip("ShowLabel")))}
+                <div style={{ width: 76, flexShrink: 0 }}>{pill("txt21", 74)}</div>
                 <Swatch pid="LabelColor" />
-                <Sel pid="LabelSizeInput" w={88} />
-                <Sel pid="Terminusinp" w={148} />
+                <Sel pid="LabelSizeInput" w={null} />
+                <Sel pid="Terminusinp" w={null} />
                 <Info t={def0("ShowLabel")?.label || ""} />
               </>)}
-              {ictRow("dow-lab2", <>
-                {TlChk(!!val("ShowLabelText"), "ict-ShowLabelText", null, () => flip("ShowLabelText"))}
-                {pill("txt22", 72)}
+              {ictFlexRow("dow-lab2", <>
+                {chkCell(TlChk(!!val("ShowLabelText"), "ict-ShowLabelText", null, () => flip("ShowLabelText")))}
+                <div style={{ width: 76, flexShrink: 0 }}>{pill("txt22", 74)}</div>
                 <Swatch pid="LabelTextColor" />
-                <Sel pid="LabelTextOptioninput" w={72} />
-                <Sel pid="ShowPricesBool" w={112} />
+                <Sel pid="LabelTextOptioninput" w={null} />
+                <Sel pid="ShowPricesBool" w={null} />
                 <Info t={def0("ShowLabelText")?.label || ""} />
               </>)}
-              {ictRow("dow-mk", <>
-                {TlChk(!!val("showDOW"), "ict-showDOW", null, () => flip("showDOW"))}
-                {pill("txt24", 72)}
+              {ictFlexRow("dow-mk", <>
+                {chkCell(TlChk(!!val("showDOW"), "ict-showDOW", null, () => flip("showDOW")))}
+                <div style={{ width: 76, flexShrink: 0 }}>{pill("txt24", 74)}</div>
                 <Swatch pid="i_DOWCol" />
                 <input type="number" className="tlr-nospinner" min={0} max={23} value={val("DOWTime") == null ? "" : val("DOWTime")}
                   onClick={(e) => e.stopPropagation()}
                   onChange={(e) => setv("DOWTime", e.target.value)}
-                  style={{ ...inpBase, width: 44, textAlign: "center", fontVariantNumeric: "tabular-nums" }} />
-                <Sel pid="DOWLoc_inpt" w={88} />
+                  style={{ ...inpBase, width: 44, flexShrink: 0, textAlign: "center", fontVariantNumeric: "tabular-nums" }} />
+                <Sel pid="DOWLoc_inpt" w={null} />
                 <Info t={def0("showDOW")?.label || ""} />
               </>)}
               {ictSec("BIAS & NOTES PRECONFIG", false)}
-              {ictRow("bias-pre", <>
-                {TlChk(!!val("BIAS_M_Bool"), "ict-BIAS_M_Bool", null, () => flip("BIAS_M_Bool"))}
-                {pill("txt100", 56)}
+              {ictFlexRow("bias-pre", <>
+                {chkCell(TlChk(!!val("BIAS_M_Bool"), "ict-BIAS_M_Bool", null, () => flip("BIAS_M_Bool")))}
+                <div style={{ width: 64, flexShrink: 0 }}>{pill("txt100", 62)}</div>
                 <Swatch pid="Tab2txtCol" />
-                <Sel pid="TabOption2" w={112} />
+                <Sel pid="TabOption2" w={null} />
                 <Info t={def0("BIAS_M_Bool")?.label || ""} />
               </>)}
-              {ictRow("notes-pre", <>
-                {TlChk(!!val("NOTES_M_Bool"), "ict-NOTES_M_Bool", null, () => flip("NOTES_M_Bool"))}
-                {pill("txt101", 56)}
+              {ictFlexRow("notes-pre", <>
+                {chkCell(TlChk(!!val("NOTES_M_Bool"), "ict-NOTES_M_Bool", null, () => flip("NOTES_M_Bool")))}
+                <div style={{ width: 64, flexShrink: 0 }}>{pill("txt101", 62)}</div>
                 <Swatch pid="Tab3txtCol" />
-                <Sel pid="TabOption3" w={112} />
+                <Sel pid="TabOption3" w={null} />
                 <Info t={def0("NOTES_M_Bool")?.label || ""} />
               </>)}
               {ictSec("BIAS & NOTES", false)}
@@ -14717,10 +14820,10 @@ const TalariaV8bLive = () => {
                 const t = n === 1 ? "txt52" : n === 2 ? "txt53" : n === 3 ? "txt54" : "txt55";
                 const o = `BIASOption${n}`;
                 return (
-                  <div key={`bias-${n}`} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 0", borderBottom: `1px solid ${c.br}`, flexWrap: "wrap" }}>
-                    {TlChk(!!val(b), `ict-${b}`, null, () => flip(b))}
-                    {pill(t, 88)}
-                    <Sel pid={o} w={120} />
+                  <div key={`bias-${n}`} style={{ display: "grid", gridTemplateColumns: "26px minmax(72px,1fr) minmax(120px,1fr) 20px", alignItems: "center", columnGap: 8, padding: "8px 0", borderBottom: `1px solid ${c.br}` }}>
+                    {chkCell(TlChk(!!val(b), `ict-${b}`, null, () => flip(b)))}
+                    {pill(t, null)}
+                    <Sel pid={o} w={null} />
                     <Info t={def0(b)?.label || ""} />
                   </div>
                 );
@@ -14928,7 +15031,9 @@ const TalariaV8bLive = () => {
                   )}
                 </>
               );
-            })() : inTab.length === 0 ? (
+            })() : isIctEverything && indSettTab === "input" ? (
+              <div style={{ width: "100%", boxSizing: "border-box" }}>{renderIctEverythingSettings()}</div>
+            ) : inTab.length === 0 ? (
               <div style={{ fontSize: 12, color: c.tm, fontStyle: "italic", padding: "8px 4px" }}>
                 {`No ${emptyLabel} options for this indicator.`}
               </div>
@@ -21501,9 +21606,15 @@ const TalariaV8bLive = () => {
               {({forex:"Forex",futures:"Futures",commodity:"Commodities",stock:"Stocks",crypto:"Crypto"})[currentSymbol.type]||currentSymbol.type}
             </span>
             <div style={{ flex:1 }}/>
-            <span style={{ fontSize:9, color:c.tm }}>Spread <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>0.00</span></span>
-            <span style={{ fontSize:9, color:c.tm }}>Comm <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>$0.00</span></span>
-            <span style={{ fontSize:9, color:c.tm }}>Margin <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>—</span></span>
+            <span style={{ fontSize:9, color:c.tm }} title="Typical spread for this symbol (session instrument)">
+              Spread <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>{omHeaderSpreadTxt}</span>
+            </span>
+            <span style={{ fontSize:9, color:c.tm }} title="Commission basis from session instrument">
+              Comm <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>{omHeaderCommTxt}</span>
+            </span>
+            <span style={{ fontSize:9, color:c.tm }} title="Projected margin level % after this order (equity ÷ used margin)">
+              Margin <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>{omMarginLevelTxt}</span>
+            </span>
           </div>
 
           {/* 3 — BUY / SELL */}
