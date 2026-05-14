@@ -11980,6 +11980,23 @@ class Chart {
             ? replay.getPlaybackMode()
             : null;
 
+        // Keep the same last trade / axis price after refetching a new TF resolution.
+        // Without this, Daily vs 1m show different numbers at the same replayTimestamp
+        // because each bar set uses its own bar close instead of the prior displayed price.
+        let savedDisplayPrice = null;
+        if (wasActive) {
+            if (typeof replay.getCurrentAnimatedPrice === 'function') {
+                savedDisplayPrice = replay.getCurrentAnimatedPrice();
+            }
+            if (!Number.isFinite(savedDisplayPrice) && replay.animatingCandle && Number.isFinite(replay.animatingCandle.close)) {
+                savedDisplayPrice = replay.animatingCandle.close;
+            }
+            if (!Number.isFinite(savedDisplayPrice) && Array.isArray(this.data) && this.data.length > 0) {
+                const lc = this.data[this.data.length - 1];
+                if (lc && Number.isFinite(lc.c)) savedDisplayPrice = lc.c;
+            }
+        }
+
         const loadId = ++this._timeframeLoadSeq;
 
         try {
@@ -12151,6 +12168,15 @@ class Chart {
                     this.jumpToLatest();
                 }
             } catch (e) { /* ignore */ }
+            if (Number.isFinite(savedDisplayPrice) && Array.isArray(this.data) && this.data.length > 0) {
+                const lastCandle = this.data[this.data.length - 1];
+                lastCandle.c = savedDisplayPrice;
+                if (savedDisplayPrice > lastCandle.h) lastCandle.h = savedDisplayPrice;
+                if (savedDisplayPrice < lastCandle.l) lastCandle.l = savedDisplayPrice;
+                if (replay && replay.animatingCandle && Number.isFinite(replay.animatingCandle.close)) {
+                    replay.animatingCandle.close = savedDisplayPrice;
+                }
+            }
             this._endTimeframeSwitching();
         };
         // Run after enterReplayMode's own 150ms realignAfterLayout completes.

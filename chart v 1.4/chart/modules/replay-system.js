@@ -5178,8 +5178,9 @@ class ReplaySystem {
             }
             
             // === UPDATE LAST CANDLE WITH DETERMINISTIC PRICE ===
-            // Only preserve intra-candle animated price while actively playing.
-            if (wasPlaying && Number.isFinite(savedAnimatedPrice) && this.chart.data && this.chart.data.length > 0) {
+            // Preserve last displayed trade price across TF switches (paused or playing) so
+            // the axis price matches the same virtual moment on Daily vs 1m, etc.
+            if (Number.isFinite(savedAnimatedPrice) && this.chart.data && this.chart.data.length > 0) {
                 const lastCandle = this.chart.data[this.chart.data.length - 1];
                 lastCandle.c = savedAnimatedPrice;
                 if (savedAnimatedPrice > lastCandle.h) lastCandle.h = savedAnimatedPrice;
