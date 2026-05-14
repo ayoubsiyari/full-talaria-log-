@@ -31367,6 +31367,86 @@ class OrderManager {
         return closest;
     }
 
+    /** Vertical pixel bounds of the main plot (inside chart margins). */
+    _chartPlotYBounds(ch) {
+        const m = ch?.margin || { t: 0, b: 30, l: 0, r: 60 };
+        const h = ch?.h || 500;
+        const top = Number(m.t) || 0;
+        const bottom = h - (Number(m.b) || 0);
+        return { top, bottom: Math.max(top + 1, bottom) };
+    }
+
+    /** Clamp a pixel Y into the plot area; null if not finite. */
+    _clampYToPlot(ch, y) {
+        if (!Number.isFinite(y)) return null;
+        const { top, bottom } = this._chartPlotYBounds(ch);
+        return Math.max(top, Math.min(bottom, y));
+    }
+
+    /**
+     * True when `price` lies on the candle's high–low segment (with small tolerance for tick sizes).
+     * Used so entry/exit arrows stay tied to the fill price after timeframe changes (e.g. D → 1m).
+     */
+    _priceInsideCandleOHLC(candle, price) {
+        if (!candle) return false;
+        const lo = Math.min(Number(candle.l), Number(candle.h));
+        const hi = Math.max(Number(candle.l), Number(candle.h));
+        const p = Number(price);
+        if (!Number.isFinite(lo) || !Number.isFinite(hi) || !Number.isFinite(p)) return false;
+        const span = Math.max(hi - lo, Math.abs(p) * 1e-9, 1e-12);
+        const tol = span * 0.05 + 1e-9;
+        return p >= lo - tol && p <= hi + tol;
+    }
+
+    /**
+     * Entry marker: TV-style arrow at wick when fill is inside the bar; otherwise anchor to fill price
+     * so markers do not float away from the order after switching timeframes.
+     * @returns {{ arrowCY: number, color: string, yTick: number } | null}
+     */
+    _entryMarkerArrowLayout(ch, candle, isBuy, entryPrice, sz, gap) {
+        const ys = ch?.scales?.yScale;
+        if (!ys) return null;
+        const yTick = this._clampYToPlot(ch, ys(entryPrice));
+        if (yTick == null) return null;
+        const inside = this._priceInsideCandleOHLC(candle, entryPrice);
+        if (inside && candle) {
+            const wickY = isBuy ? ys(candle.l) : ys(candle.h);
+            if (!Number.isFinite(wickY)) {
+                const arrowCY = isBuy ? yTick + sz + gap : yTick - sz - gap;
+                return { arrowCY, color: isBuy ? '#22c55e' : '#ef4444', yTick };
+            }
+            const arrowCY = isBuy ? wickY + sz + gap : wickY - sz - gap;
+            const color = arrowCY < wickY ? '#ef4444' : '#22c55e';
+            return { arrowCY, color, yTick };
+        }
+        const arrowCY = isBuy ? yTick + sz + gap : yTick - sz - gap;
+        return { arrowCY, color: isBuy ? '#22c55e' : '#ef4444', yTick };
+    }
+
+    /**
+     * Exit / partial marker: same OHLC rule as entry markers.
+     * @returns {{ arrowCY: number, color: string, yTick: number } | null}
+     */
+    _exitMarkerArrowLayout(ch, candle, isBuyExit, closePrice, sz, gap) {
+        const ys = ch?.scales?.yScale;
+        if (!ys) return null;
+        const yTick = this._clampYToPlot(ch, ys(closePrice));
+        if (yTick == null) return null;
+        const inside = this._priceInsideCandleOHLC(candle, closePrice);
+        if (inside && candle) {
+            const wickY = isBuyExit ? ys(candle.h) : ys(candle.l);
+            if (!Number.isFinite(wickY)) {
+                const arrowCY = isBuyExit ? yTick - sz - gap : yTick + sz + gap;
+                return { arrowCY, color: isBuyExit ? '#ef4444' : '#22c55e', yTick };
+            }
+            const arrowCY = isBuyExit ? wickY - sz - gap : wickY + sz + gap;
+            const color = arrowCY < wickY ? '#ef4444' : '#22c55e';
+            return { arrowCY, color, yTick };
+        }
+        const arrowCY = isBuyExit ? yTick - sz - gap : yTick + sz + gap;
+        return { arrowCY, color: isBuyExit ? '#ef4444' : '#22c55e', yTick };
+    }
+
     /**
      * Candle column for exit/partial markers: during tick replay the forming bar uses animatingCandle.t
      * (next raw bar) while chart.data is updated in the *last* slot — map to that slot so the tick
@@ -31586,26 +31666,24 @@ class OrderManager {
             (m) => m.orderId === order.id && (m.chart || this.chart) === chart
         );
         if (alreadyDrawnHere) return;
-        const { yScale } = chart.scales;
-        if (!yScale) return;
+        if (!chart.scales?.yScale) return;
 
         const dataIndex = this._findCandleIndexForTime(chart.data, order.openTime);
         if (dataIndex === -1) return;
 
         const candleSpacing = chart.getCandleSpacing();
-        const m = chart.margin;
         const x = chart.dataIndexToPixel(dataIndex);
-        const y = yScale(order.openPrice);
         const candle = chart.data[dataIndex];
         const isBuy = order.type === 'BUY';
         const sz = 12;
         const gap = 4;
         const tickW = Math.max(candleSpacing * 0.6, 8);
 
-        // Arrow at the wick: BUY below candle low, SELL above candle high
-        const wickY = isBuy ? yScale(candle.l) : yScale(candle.h);
-        const arrowCY = isBuy ? wickY + sz + gap : wickY - sz - gap;
-        const color = arrowCY < wickY ? '#ef4444' : '#22c55e';
+        const layout = this._entryMarkerArrowLayout(chart, candle, isBuy, order.openPrice, sz, gap);
+        if (!layout || !Number.isFinite(layout.arrowCY)) return;
+        const y = layout.yTick;
+        const arrowCY = layout.arrowCY;
+        const color = layout.color;
 
         const markerGroup = chart.svg.append('g')
             .attr('class', `entry-marker entry-marker-${order.id}`)
@@ -31736,8 +31814,7 @@ class OrderManager {
         if (!chart || !chart.svg || !chart.scales) return;
         if (order && !this._positionTickerMatchesChartSymbol(order, chart)) return;
 
-        const { yScale } = chart.scales;
-        if (!yScale) return;
+        if (!chart.scales?.yScale) return;
 
         const dataIndex = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
         if (dataIndex === -1) return;
@@ -31771,17 +31848,17 @@ class OrderManager {
 
         const candleSpacing = chart.getCandleSpacing();
         const x = chart.dataIndexToPixel(dataIndex);
-        const y = yScale(closeData.closePrice);
         const candle = chart.data[dataIndex];
         const sz = 12;
         const gap = 4;
         const tickW = Math.max(candleSpacing * 0.6, 8);
 
-        // Exit: BUY exit arrow above candle high, SELL exit arrow below candle low
         const isBuyExit = order.type === 'BUY';
-        const wickY = isBuyExit ? yScale(candle.h) : yScale(candle.l);
-        const arrowCY = isBuyExit ? wickY - sz - gap : wickY + sz + gap;
-        const color = arrowCY < wickY ? '#ef4444' : '#22c55e';
+        const exitLayout = this._exitMarkerArrowLayout(chart, candle, isBuyExit, closeData.closePrice, sz, gap);
+        if (!exitLayout || !Number.isFinite(exitLayout.arrowCY)) return;
+        const y = exitLayout.yTick;
+        const arrowCY = exitLayout.arrowCY;
+        const color = exitLayout.color;
 
         const markerGroup = chart.svg.append('g')
             .attr('class', `exit-marker exit-marker-${order.id}`)
@@ -31890,17 +31967,20 @@ class OrderManager {
     _drawTradeConnector(order, closeData, targetChart = null) {
         const chart = targetChart || this.chart;
         if (!chart || !chart.svg || !chart.scales) return;
-        const { yScale } = chart.scales;
-        if (!yScale) return;
+        if (!chart.scales?.yScale) return;
+        const ys = chart.scales.yScale;
 
         const entryIdx = this._findCandleIndexForTime(chart.data, order.openTime);
         const exitIdx = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
         if (entryIdx === -1 || exitIdx === -1) return;
 
         const x1 = chart.dataIndexToPixel(entryIdx);
-        const y1 = yScale(order.openPrice);
+        const y1Raw = ys(order.openPrice);
         const x2 = chart.dataIndexToPixel(exitIdx);
-        const y2 = yScale(closeData.closePrice);
+        const y2Raw = ys(closeData.closePrice);
+        const y1 = this._clampYToPlot(chart, y1Raw) ?? (Number.isFinite(y1Raw) ? y1Raw : NaN);
+        const y2 = this._clampYToPlot(chart, y2Raw) ?? (Number.isFinite(y2Raw) ? y2Raw : NaN);
+        if (!Number.isFinite(y1) || !Number.isFinite(y2)) return;
 
         const line = chart.svg.append('line')
             .attr('class', `trade-connector trade-connector-${order.id}`)
@@ -31948,8 +32028,7 @@ class OrderManager {
         }
         if (order && !this._positionTickerMatchesChartSymbol(order, chart)) return;
 
-        const { yScale } = chart.scales;
-        if (!yScale) return;
+        if (!chart.scales?.yScale) return;
 
         const dataIndex = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
         if (dataIndex === -1) return;
@@ -31984,7 +32063,6 @@ class OrderManager {
 
         const candleSpacing = chart.getCandleSpacing();
         const x = chart.dataIndexToPixel(dataIndex);
-        const y = yScale(closeData.closePrice);
         const candle = chart.data[dataIndex];
         const sz = 12;
         const gap = 4;
@@ -31992,9 +32070,11 @@ class OrderManager {
         const closeQuantity = order.quantity * (closeData.percentage || 1);
 
         const isBuyExit = order.type === 'BUY';
-        const wickY = isBuyExit ? yScale(candle.h) : yScale(candle.l);
-        const arrowCY = isBuyExit ? wickY - sz - gap : wickY + sz + gap;
-        const color = arrowCY < wickY ? '#ef4444' : '#22c55e';
+        const exitLayout = this._exitMarkerArrowLayout(chart, candle, isBuyExit, closeData.closePrice, sz, gap);
+        if (!exitLayout || !Number.isFinite(exitLayout.arrowCY)) return;
+        const y = exitLayout.yTick;
+        const arrowCY = exitLayout.arrowCY;
+        const color = exitLayout.color;
 
         const markerGroup = chart.svg.append('g')
             .attr('class', `partial-close-marker partial-close-marker-${order.id}-${closeData.targetId}`)
@@ -32115,14 +32195,15 @@ class OrderManager {
 
             const candleSpacing = c.getCandleSpacing();
             const x = c.dataIndexToPixel(dataIndex);
-            const y = c.scales.yScale(price);
             const candle = c.data[dataIndex];
             const isBuy = type === 'BUY';
             const sz = 12;
             const gap = 4;
             const tickW = Math.max(candleSpacing * 0.6, 8);
-            const wickY = isBuy ? c.scales.yScale(candle.l) : c.scales.yScale(candle.h);
-            const arrowCY = isBuy ? wickY + sz + gap : wickY - sz - gap;
+            const layout = this._entryMarkerArrowLayout(c, candle, isBuy, price, sz, gap);
+            if (!layout || !Number.isFinite(layout.arrowCY)) return;
+            const y = layout.yTick;
+            const arrowCY = layout.arrowCY;
 
             const tick = marker.select('[data-role="entry-tick"]');
             if (!tick.empty()) {
@@ -32152,19 +32233,19 @@ class OrderManager {
             this.exitMarkers.forEach(({ marker, time, price, isBuyExit, chart: mch }) => {
                 const ch = mch || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
-                const mainY = ch.scales.yScale;
                 const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
                 if (dataIndex === -1) return;
 
                 const candle = ch.data[dataIndex];
                 const candleSpacing = ch.getCandleSpacing();
                 const x = ch.dataIndexToPixel(dataIndex);
-                const y = mainY(price);
                 const sz = 12;
                 const gap = 4;
                 const tickW = Math.max(candleSpacing * 0.6, 8);
-                const wickY = isBuyExit ? mainY(candle.h) : mainY(candle.l);
-                const arrowCY = isBuyExit ? wickY - sz - gap : wickY + sz + gap;
+                const exitLayout = this._exitMarkerArrowLayout(ch, candle, isBuyExit, price, sz, gap);
+                if (!exitLayout || !Number.isFinite(exitLayout.arrowCY)) return;
+                const y = exitLayout.yTick;
+                const arrowCY = exitLayout.arrowCY;
 
                 const tick = marker.select('[data-role="exit-tick"]');
                 if (!tick.empty()) {
@@ -32195,19 +32276,19 @@ class OrderManager {
             this.partialCloseMarkers.forEach(({ marker, time, price, isBuyExit, chart: mch }) => {
                 const ch = mch || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
-                const partialY = ch.scales.yScale;
                 const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
                 if (dataIndex === -1) return;
 
                 const candle = ch.data[dataIndex];
                 const candleSpacing = ch.getCandleSpacing();
                 const x = ch.dataIndexToPixel(dataIndex);
-                const y = partialY(price);
                 const sz = 12;
                 const gap = 4;
                 const tickW = Math.max(candleSpacing * 0.6, 8);
-                const wickY = isBuyExit ? partialY(candle.h) : partialY(candle.l);
-                const arrowCY = isBuyExit ? wickY - sz - gap : wickY + sz + gap;
+                const exitLayout = this._exitMarkerArrowLayout(ch, candle, isBuyExit, price, sz, gap);
+                if (!exitLayout || !Number.isFinite(exitLayout.arrowCY)) return;
+                const y = exitLayout.yTick;
+                const arrowCY = exitLayout.arrowCY;
 
                 const tick = marker.select('[data-role="exit-tick"]');
                 if (!tick.empty()) {
@@ -32242,11 +32323,16 @@ class OrderManager {
                 const eIdx = this._findCandleIndexForTime(ch.data, tc.entryTime);
                 const xIdx = this._chartIndexForCloseMarkerOnChart(ch, tc.exitTime);
                 if (eIdx === -1 || xIdx === -1) return;
+                const y1Raw = mainY(tc.entryPrice);
+                const y2Raw = mainY(tc.exitPrice);
+                const y1 = this._clampYToPlot(ch, y1Raw);
+                const y2 = this._clampYToPlot(ch, y2Raw);
+                if (y1 == null || y2 == null) return;
                 tc.line
                     .attr('x1', ch.dataIndexToPixel(eIdx))
-                    .attr('y1', mainY(tc.entryPrice))
+                    .attr('y1', y1)
                     .attr('x2', ch.dataIndexToPixel(xIdx))
-                    .attr('y2', mainY(tc.exitPrice));
+                    .attr('y2', y2);
             });
         }
     }
@@ -34382,7 +34468,12 @@ class OrderManager {
                     price = orderData.openPrice;
                 }
 
-                const y = ch.scales.yScale(price);
+                const yRaw = ch.scales.yScale(price);
+                const y = this._clampYToPlot(ch, yRaw);
+                if (y == null || !Number.isFinite(y)) {
+                    console.log(`   ⚠️ Order #${orderId}: invalid Y for price=${price}`);
+                    return;
+                }
 
                 console.log(`   ✅ ${isPending ? 'Pending' : 'Active'} Order #${orderId}: price=${price.toFixed(5)}, y=${y.toFixed(2)}, width=${ch.w}`);
 

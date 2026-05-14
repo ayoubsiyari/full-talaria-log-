@@ -3067,6 +3067,8 @@ const TalariaV8bLive = () => {
   const [notesOpen, setNotesOpen] = useState(false);
   const [tradeNotes, setTradeNotes] = useState({});
   const tradeNotesRef = useRef({});
+  /** Latest `c` theme for listeners registered before `const c` exists (avoids TDZ on `c`). */
+  const tradeRowThemeRef = useRef({ gn: "#00D4A1", rd: "#FF5068", tm: "rgba(255,255,255,0.50)" });
   const [tradeScreenshots, setTradeScreenshots] = useState({});
   const [screenshots, setScreenshots] = useState([]);
   const [ssOpen, setSsOpen] = useState(true);
@@ -3081,6 +3083,57 @@ const TalariaV8bLive = () => {
     const onClearDraft = () => setScreenshots([]);
     window.addEventListener("talaria:order-rail-clear-draft", onClearDraft);
     return () => window.removeEventListener("talaria:order-rail-clear-draft", onClearDraft);
+  }, []);
+
+  /** OrderManager legacy journal modal → V9 trade card when `showTradeJournalModal` dispatches on the live shell. */
+  useEffect(() => {
+    const onOpenV9Card = (ev) => {
+      const oid = ev?.detail?.orderId;
+      if (oid == null) return;
+      const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+      let attempts = 0;
+      const maxAttempts = 25;
+      const tryOpen = () => {
+        attempts += 1;
+        const rows = buildLiveTradeRowsFromOrderManager(om, tradeRowThemeRef.current);
+        const r = rows.find((x) => Number(x.omId) === Number(oid));
+        if (r) {
+          const tid = r.omId;
+          let j = null;
+          if (om && tid != null) {
+            j = Array.isArray(om.tradeJournal)
+              ? om.tradeJournal.find((t) => Number(t.tradeId ?? t.id) === Number(tid))
+              : null;
+          }
+          const order =
+            om?.pendingOrders?.find((o) => o.id === tid) ||
+            om?.openPositions?.find((o) => o.id === tid) ||
+            om?.closedPositions?.find((o) => o.id === tid);
+          const noteFallback = j?.v9TradeNotes || order?.journalEntry?.v9TradeNotes || "";
+          const notesMap = tradeNotesRef.current;
+          setTradeCard(r);
+          setTradeCardPreTags([...r.preTags]);
+          setTradeCardPostTags([...r.postTags]);
+          setTradeCardNotes(notesMap[r.id] || noteFallback || "");
+          if (j && (j.entryScreenshot || j.exitScreenshot)) {
+            setTradeScreenshots((prev) => {
+              const ex = prev[r.id] || {};
+              const pre = clampScreenshotSlot([...(ex.pre || [])]);
+              const post = clampScreenshotSlot([...(ex.post || [])]);
+              if (j.entryScreenshot && !pre.includes(j.entryScreenshot)) pre.push(j.entryScreenshot);
+              if (j.exitScreenshot && !post.includes(j.exitScreenshot)) post.push(j.exitScreenshot);
+              return { ...prev, [r.id]: { ...ex, pre: clampScreenshotSlot(pre), post: clampScreenshotSlot(post) } };
+            });
+          }
+          setOmTradeRev((n) => n + 1);
+          return;
+        }
+        if (attempts < maxAttempts) requestAnimationFrame(tryOpen);
+      };
+      requestAnimationFrame(tryOpen);
+    };
+    window.addEventListener("talaria:open-v9-trade-card", onOpenV9Card);
+    return () => window.removeEventListener("talaria:open-v9-trade-card", onOpenV9Card);
   }, []);
 
   const replaceInputRef = useRef(null);
@@ -6106,57 +6159,7 @@ const TalariaV8bLive = () => {
     inputScheme: "light",
   };
   const F = "'Exo 2',sans-serif";
-
-  /** OrderManager legacy journal modal → V9 trade card when `showTradeJournalModal` dispatches on the live shell. */
-  useEffect(() => {
-    const onOpenV9Card = (ev) => {
-      const oid = ev?.detail?.orderId;
-      if (oid == null) return;
-      const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
-      let attempts = 0;
-      const maxAttempts = 25;
-      const tryOpen = () => {
-        attempts += 1;
-        const rows = buildLiveTradeRowsFromOrderManager(om, c);
-        const r = rows.find((x) => Number(x.omId) === Number(oid));
-        if (r) {
-          const tid = r.omId;
-          let j = null;
-          if (om && tid != null) {
-            j = Array.isArray(om.tradeJournal)
-              ? om.tradeJournal.find((t) => Number(t.tradeId ?? t.id) === Number(tid))
-              : null;
-          }
-          const order =
-            om?.pendingOrders?.find((o) => o.id === tid) ||
-            om?.openPositions?.find((o) => o.id === tid) ||
-            om?.closedPositions?.find((o) => o.id === tid);
-          const noteFallback = j?.v9TradeNotes || order?.journalEntry?.v9TradeNotes || "";
-          const notesMap = tradeNotesRef.current;
-          setTradeCard(r);
-          setTradeCardPreTags([...r.preTags]);
-          setTradeCardPostTags([...r.postTags]);
-          setTradeCardNotes(notesMap[r.id] || noteFallback || "");
-          if (j && (j.entryScreenshot || j.exitScreenshot)) {
-            setTradeScreenshots((prev) => {
-              const ex = prev[r.id] || {};
-              const pre = clampScreenshotSlot([...(ex.pre || [])]);
-              const post = clampScreenshotSlot([...(ex.post || [])]);
-              if (j.entryScreenshot && !pre.includes(j.entryScreenshot)) pre.push(j.entryScreenshot);
-              if (j.exitScreenshot && !post.includes(j.exitScreenshot)) post.push(j.exitScreenshot);
-              return { ...prev, [r.id]: { ...ex, pre: clampScreenshotSlot(pre), post: clampScreenshotSlot(post) } };
-            });
-          }
-          setOmTradeRev((n) => n + 1);
-          return;
-        }
-        if (attempts < maxAttempts) requestAnimationFrame(tryOpen);
-      };
-      requestAnimationFrame(tryOpen);
-    };
-    window.addEventListener("talaria:open-v9-trade-card", onOpenV9Card);
-    return () => window.removeEventListener("talaria:open-v9-trade-card", onOpenV9Card);
-  }, [c]);
+  tradeRowThemeRef.current = c;
 
   const allSymbols = SYMBOLS_DATA.flatMap(c => c.items);
   const currentSymbol = resolveSessionChartSymbol(symbol, allSymbols);
