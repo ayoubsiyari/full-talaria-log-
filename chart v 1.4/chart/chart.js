@@ -11997,6 +11997,45 @@ class Chart {
             }
         }
 
+        const session = this.backtestingSession || {};
+        const sessionEndMs = (() => {
+            const r = session.endDate || session.end_date;
+            if (!r) return null;
+            const t = this._sessionEndToInclusiveUtcMs(r);
+            return Number.isFinite(t) ? Math.floor(t) : null;
+        })();
+
+        // Daily (and other coarse) replay uses each bar's open time as replayTimestamp.
+        // applyPersistedState maps that to the *first* finer bar with t >= open — i.e. the
+        // first minute of the session day — while the user is looking at that bar's *close*.
+        // When switching to a finer TF, position at the last fine bar strictly before the
+        // next coarse bar (exclusive end), so the slice shows full intraday history through
+        // the same daily close the user had on the coarse chart.
+        const previousTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        const prevTfMs = this.parseTimeframe(previousTf);
+        const newTfMsForSwitch = this.parseTimeframe(timeframe);
+        const switchingToFiner = wasActive
+            && Number.isFinite(prevTfMs) && prevTfMs > 0
+            && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
+            && newTfMsForSwitch < prevTfMs;
+        let coarsePeriodExclusiveEndTs = null;
+        if (switchingToFiner && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            const floorIdx = replay.sessionStartIndex || 0;
+            let oi = typeof replay.currentIndex === 'number' ? replay.currentIndex : 0;
+            oi = Math.min(Math.max(oi, floorIdx), replay.fullRawData.length - 1);
+            const nextCoarse = replay.fullRawData[oi + 1];
+            if (nextCoarse && Number.isFinite(nextCoarse.t)) {
+                coarsePeriodExclusiveEndTs = nextCoarse.t;
+            } else if (sessionEndMs != null && Number.isFinite(sessionEndMs)) {
+                coarsePeriodExclusiveEndTs = sessionEndMs + 1;
+            } else {
+                const openT = replay.fullRawData[oi]?.t;
+                if (Number.isFinite(openT) && Number.isFinite(prevTfMs)) {
+                    coarsePeriodExclusiveEndTs = openT + prevTfMs;
+                }
+            }
+        }
+
         const loadId = ++this._timeframeLoadSeq;
 
         try {
@@ -12013,13 +12052,6 @@ class Chart {
         // 2023, that timestamp won't exist in the loaded window → chart jumps to 2026.
         // Instead, set endTs = replayTimestamp + forward buffer so the replay position
         // is guaranteed to be within the fetched range.
-        const session = this.backtestingSession || {};
-        const sessionEndMs = (() => {
-            const r = session.endDate || session.end_date;
-            if (!r) return null;
-            const t = this._sessionEndToInclusiveUtcMs(r);
-            return Number.isFinite(t) ? Math.floor(t) : null;
-        })();
 
         const tfMs = this.parseTimeframe(timeframe);
         const forwardBufferBars = 20000;
@@ -12135,6 +12167,26 @@ class Chart {
                 });
             } catch (e) {
                 console.warn('[backtest] applyPersistedState after refetch failed', e);
+            }
+        }
+
+        if (switchingToFiner && Number.isFinite(coarsePeriodExclusiveEndTs)
+            && typeof replay._findLastRawIndexAtOrBefore === 'function'
+            && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            const upperInclusive = coarsePeriodExclusiveEndTs - 1;
+            const fineIdx = replay._findLastRawIndexAtOrBefore(replay.fullRawData, upperInclusive);
+            const smin = replay.sessionStartIndex || 0;
+            if (fineIdx >= smin) {
+                replay.currentIndex = fineIdx;
+                const b = replay.fullRawData[fineIdx];
+                if (b && Number.isFinite(b.t)) {
+                    replay.replayTimestamp = b.t;
+                }
+                try {
+                    replay.updateChartData(true);
+                } catch (e) {
+                    console.warn('[backtest] fine-TF replay position after refetch failed', e);
+                }
             }
         }
 
