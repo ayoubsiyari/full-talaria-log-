@@ -5993,10 +5993,13 @@ const TalariaV8bLive = () => {
   /** Matches order-manager: hide Entry/TP “add level” + when DISABLE_ORDER_ENTRY_PLUS_UI is not false. */
   const chartEntryPlusSplitUiOff =
     typeof window !== "undefined" && window.__CHART_ENV?.DISABLE_ORDER_ENTRY_PLUS_UI !== false;
-  /** Show split (+) when env allows and (advanced panel, or size > 1 so basic mode can still ladder entry/TP). */
+  /** Show split (+) only when size allows multiple legs (futures: whole contracts > 1; else qty > 1). */
+  const v9OrderQtyForSplitUi = Math.max(0, parseFloat(omOrderQtyTxt || "0"));
   const v9EntryTpPlusVisible =
     !chartEntryPlusSplitUiOff &&
-    (panelMode === "advanced" || Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0"))) > 1);
+    (currentSymbol.type === "futures"
+      ? Math.floor(v9OrderQtyForSplitUi) > 1
+      : v9OrderQtyForSplitUi > 1);
 
   // Futures: cannot have more TP rows than whole contracts (e.g. 1 contract → single TP only).
   useEffect(() => {
