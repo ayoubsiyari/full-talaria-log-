@@ -3400,7 +3400,7 @@
             case 'icteverything':
                 indicator.overlay = true;
                 indicator.isIctEverything = true;
-                indicator.name = 'ICT Everything @coldbrewrosh';
+                indicator.name = 'ICT Everything';
                 indicator.params = indicator.params || {};
                 var ieDefAdd = (typeof window !== 'undefined' && window.INDICATOR_DEFINITIONS && window.INDICATOR_DEFINITIONS.icteverything)
                     ? window.INDICATOR_DEFINITIONS.icteverything
@@ -4230,7 +4230,7 @@
                 });
                 break;
             case 'icteverything':
-                indicator.name = 'ICT Everything @coldbrewrosh';
+                indicator.name = 'ICT Everything';
                 this.indicators.data[indicator.id] = calculateIctEverything(this.data, indicator);
                 break;
             case 'custom':

@@ -189,7 +189,7 @@ function __ictEverythingParamList() {
         { id: 'BIASbool4', label: 'Row 4', type: 'checkbox', default: true },
         { id: 'txt55', label: 'Row 4 name', type: 'text', default: 'NASDAQ ' },
         { id: 'BIASOption4', label: 'Row 4 bias', type: 'select', options: biasOpt, default: 'Bearish' },
-        { id: 'notes', label: 'Notes', type: 'textarea', default: '@coldbrewrosh' }
+        { id: 'notes', label: 'Notes', type: 'textarea', default: '' }
     ];
 }
 
@@ -813,7 +813,7 @@ const INDICATOR_DEFINITIONS = {
         ]
     },
     icteverything: {
-        name: 'ICT Everything @coldbrewrosh',
+        name: 'ICT Everything',
         type: 'overlay',
         params: __ictEverythingParamList()
     },

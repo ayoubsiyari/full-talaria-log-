@@ -5679,7 +5679,7 @@ const TalariaV8bLive = () => {
     { id:"SESS", type:"sessions", name:"Session Boxes", abbr:"SESS", cat:"sessions", desc:"Highlights major trading sessions" },
     { id:"SESSPLUS", type:"sessionsplus", name:"Sessions+", abbr:"SESS+", cat:"sessions", desc:"Extended sessions module with labels" },
     { id:"KILLZONES", type:"killzones", name:"ICT Kill Zones", abbr:"ICT KZ", cat:"sessions", desc:"ICT session windows and opens" },
-    { id:"ICTEVERYTHING", type:"icteverything", name:"ICT Everything @coldbrewrosh", abbr:"ICT+", cat:"sessions", desc:"Sessions, CBDR/Asia/FLOUT, verticals & opens (Pine-aligned settings)" },
+    { id:"ICTEVERYTHING", type:"icteverything", name:"ICT Everything", abbr:"ICT+", cat:"sessions", desc:"Sessions, CBDR/Asia/FLOUT, verticals & opens (Pine-aligned settings)" },
     { id:"OR", type:"openingrange", name:"Opening Range", abbr:"OR", cat:"sessions", desc:"Session opening range high/low levels" },
 
     // Others
@@ -6379,6 +6379,12 @@ const TalariaV8bLive = () => {
     const chromeMouseHandler = (e) => {
       const el = eventTargetEl(e);
       if (!el) return;
+      // Native <select> lists can deliver mousedown outside the portal subtree; never treat that as
+      // "chart chrome" while a V9 indicator settings select is active (closes list on mouseup).
+      try {
+        const ae = document.activeElement;
+        if (ae && ae.tagName === "SELECT" && typeof ae.closest === "function" && ae.closest("[data-v9-ind-sett=\"1\"]")) return;
+      } catch (_) {}
       // IMPORTANT: return BEFORE tlBar / chart dismiss setState. Presses inside [data-sdrop] must not
       // clear tlBar on first press ("needs many taps").
       if (!isOutsideUiChrome(el)) return;
@@ -14559,7 +14565,6 @@ const TalariaV8bLive = () => {
           if (p.type === "select" && Array.isArray(p.options)) {
             return row(
               <select className="tlr-ind-select" value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
                 onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
                 style={{ width: 130, height: 26, fontSize: 12, fontFamily: F, color: c.tx, boxSizing: "border-box",
                   backgroundColor: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`, padding: "0 8px", outline: "none", borderRadius: 4, cursor: "default",
@@ -14687,7 +14692,6 @@ const TalariaV8bLive = () => {
                 className="tlr-ind-select"
                 value={raw != null ? String(raw) : ""}
                 onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
                 onChange={(e) => setv(pid, e.target.value)}
                 style={{
                   ...inpBase,
