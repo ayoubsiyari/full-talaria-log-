@@ -307,7 +307,16 @@
         // Data is loaded. Enter replay if needed, then seek.
         if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
             try {
-                rs.enterReplayMode({ startAtBeginning: true });
+                // Avoid painting the session-start slice for one frame before
+                // goToReplayTimestamp — multichart parents often send loadFile
+                // (same file, no-op) + replayEnter in one turn; an immediate
+                // updateChartData here made the Y-axis fit the whole wrong window
+                // until the next play tick.
+                var enterOpts = { startAtBeginning: true };
+                if (Number.isFinite(ts)) {
+                    enterOpts.suppressInitialUpdateChartData = true;
+                }
+                rs.enterReplayMode(enterOpts);
             } catch (e) {
                 warn('replayEnter: enterReplayMode threw', e && e.message);
             }
@@ -495,18 +504,30 @@
                     var fidStr = String(fileId);
                     if (String(ch.currentFileId || '') === fidStr) {
                         // File already loaded (common when a new tile opens on the same
-                        // session instrument). Still snap replay viewport — otherwise the
-                        // tile stays on fitToView until the user hits Follow.
-                        scheduleMultichartPanelReplayFollow(ch);
+                        // session instrument). Do NOT call scheduleMultichartPanelReplayFollow
+                        // synchronously: the parent's replayEnter often arrives in the next
+                        // macrotask (MultichartGrid setTimeout(0)). Running follow here first
+                        // triggers jumpToLatest/fitToView before goToReplayTimestamp — wrong
+                        // date range + Y-axis until the user hits play.
+                        try { drainPendingReplay(); } catch (_idr) {}
+                        setTimeout(function () {
+                            try { scheduleMultichartPanelReplayFollow(ch); } catch (_sf) {}
+                        }, 0);
                         return;
                     }
                     var p = ch.loadFileData(fidStr);
                     if (p && typeof p.then === 'function') {
                         return p.then(function () {
-                            scheduleMultichartPanelReplayFollow(ch);
+                            try { drainPendingReplay(); } catch (_d) {}
+                            setTimeout(function () {
+                                try { scheduleMultichartPanelReplayFollow(ch); } catch (_s) {}
+                            }, 0);
                         });
                     }
-                    scheduleMultichartPanelReplayFollow(ch);
+                    try { drainPendingReplay(); } catch (_d2) {}
+                    setTimeout(function () {
+                        try { scheduleMultichartPanelReplayFollow(ch); } catch (_s2) {}
+                    }, 0);
                     return;
                 }
 
