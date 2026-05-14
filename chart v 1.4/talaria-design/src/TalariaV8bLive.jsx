@@ -14517,10 +14517,11 @@ const TalariaV8bLive = () => {
           const disp = cur ? cur.label : (strVal || "—");
           const wst = widthStyle || { width: "100%", minWidth: 0 };
           return (
-            <div data-v9-ind-select-root="1" style={{ position: "relative", ...wst }}>
+            <div data-v9-ind-select-root="1" style={{ position: "relative", ...wst, touchAction: "manipulation" }}>
               <button
                 type="button"
                 className="tlr-ind-select"
+                onWheel={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (open) {
@@ -14562,16 +14563,26 @@ const TalariaV8bLive = () => {
               {open && v9IndSelectMenu && (
                 <div
                   data-v9-ind-select-root="1"
+                  data-v9-ind-select-panel="1"
                   className="tlr-scroll"
+                  tabIndex={-1}
                   onClick={(e) => e.stopPropagation()}
+                  onWheel={(e) => {
+                    e.stopPropagation();
+                  }}
                   style={{
                     position: "fixed",
                     top: v9IndSelectMenu.top,
                     left: v9IndSelectMenu.left,
                     minWidth: v9IndSelectMenu.width,
                     zIndex: 12050,
-                    maxHeight: 260,
+                    maxHeight: typeof window !== "undefined"
+                      ? Math.max(120, window.innerHeight - v9IndSelectMenu.top - 12)
+                      : 260,
                     overflowY: "auto",
+                    overscrollBehavior: "contain",
+                    WebkitOverflowScrolling: "touch",
+                    touchAction: "pan-y",
                     background: c.sf,
                     border: `1px solid ${c.brH}`,
                     boxShadow: "0 12px 40px rgba(0,0,0,0.75)",
@@ -15064,9 +15075,9 @@ const TalariaV8bLive = () => {
         const emptyLabel = indSettTab === "style" ? "style" : indSettTab === "input" ? "input" : "visibility";
         return (
         <div data-sdrop="1" data-v9-ind-sett="1" onClick={(e) => e.stopPropagation()}
-          style={{ position: "fixed", left: indSettPos.x, top: indSettPos.y, zIndex: 11000, width: panelW, fontFamily: F,
+          style={{ position: "fixed", left: indSettPos.x, top: indSettPos.y, zIndex: 11000, width: panelW, maxHeight: "calc(100vh - 24px)", fontFamily: F,
             background: c.sf, border: `1px solid ${c.brH}`, boxShadow: "0 24px 64px rgba(0,0,0,0.85)",
-            display: "flex", flexDirection: "column",
+            display: "flex", flexDirection: "column", minHeight: 0,
             colorScheme: darkMode ? "dark" : "light",
             animation: closing.has("indsett") ? "tlrPopOut 0.155s ease both" : "tlrPopIn 0.15s ease" }}>
           <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`, flexShrink: 0 }} />
@@ -15126,7 +15137,19 @@ const TalariaV8bLive = () => {
               Sandboxed JavaScript only (not Pine). Use the template: <code style={{ color: c.ts }}>compute(bars, params)</code> returning plots.
             </div>
           )}
-          <div style={{ padding: "14px 18px 12px", overflowY: "auto", maxHeight: "min(70vh, calc(100vh - 200px))", flex: 1 }}>
+          <div
+            className="tlr-scroll"
+            style={{
+              padding: "14px 18px 12px",
+              overflowY: "auto",
+              overscrollBehavior: "contain",
+              flex: 1,
+              minHeight: 0,
+              maxHeight: "min(70vh, calc(100vh - 200px))",
+              WebkitOverflowScrolling: "touch",
+              touchAction: "pan-y",
+            }}
+          >
             {indSettTab === "visibility" ? (() => {
               const hardMax = { visMinutes: 60, visHours: 24, visDays: 366, visWeeks: 260, visMonths: 120 };
               const gc = "24px 72px 44px 1fr 44px";

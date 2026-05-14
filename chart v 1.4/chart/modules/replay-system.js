@@ -5092,17 +5092,6 @@ class ReplaySystem {
                 ? this.replayTimestamp
                 : (this.fullRawData[this.currentIndex]?.t ?? null));
         
-        // Get current animated price from tick path cache (deterministic!)
-        let savedAnimatedPrice = null;
-        const nextCandle = this.fullRawData[this.currentIndex + 1];
-        if (nextCandle && this.tickPathCache[nextCandle.t] && savedTickProgress > 0) {
-            const tickPath = this.tickPathCache[nextCandle.t];
-            const pathIndex = Math.min(savedTickProgress - 1, tickPath.length - 1);
-            savedAnimatedPrice = tickPath[pathIndex];
-        } else if (this.animatingCandle) {
-            savedAnimatedPrice = this.animatingCandle.close;
-        }
-        
         
         // === STOP ANIMATION CLEANLY ===
         if (this.tickInterval) {
@@ -5175,27 +5164,6 @@ class ReplaySystem {
             
             if (typeof this.chart.constrainOffset === 'function') {
                 this.chart.constrainOffset();
-            }
-            
-            // === UPDATE LAST CANDLE WITH DETERMINISTIC PRICE ===
-            // Preserve last displayed trade price across TF switches (paused or playing) so
-            // the axis price matches the same virtual moment on Daily vs 1m, etc.
-            // Guard: only nudge OHLC when the correction fits the bar's natural range. Writing
-            // a distant `savedAnimatedPrice` into `c` while leaving `o` unchanged creates a
-            // fake mega-candle until the next play tick refreshes from raw data.
-            if (Number.isFinite(savedAnimatedPrice) && this.chart.data && this.chart.data.length > 0) {
-                const lastCandle = this.chart.data[this.chart.data.length - 1];
-                const lo = lastCandle.o ?? lastCandle.c;
-                const lh = lastCandle.h ?? lastCandle.c;
-                const ll = lastCandle.l ?? lastCandle.c;
-                const origRange = Math.max(lh - ll, Math.abs((lastCandle.c ?? 0) - lo), 1e-10);
-                const newH = Math.max(lh, savedAnimatedPrice);
-                const newL = Math.min(ll, savedAnimatedPrice);
-                if ((newH - newL) <= origRange * 2) {
-                    lastCandle.c = savedAnimatedPrice;
-                    lastCandle.h = newH;
-                    lastCandle.l = newL;
-                }
             }
             
             this.chart.renderPending = true;

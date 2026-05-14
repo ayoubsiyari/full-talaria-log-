@@ -11991,22 +11991,9 @@ class Chart {
             ? replay.getPlaybackMode()
             : null;
 
-        // Keep the same last trade / axis price after refetching a new TF resolution.
-        // Without this, Daily vs 1m show different numbers at the same replayTimestamp
-        // because each bar set uses its own bar close instead of the prior displayed price.
-        let savedDisplayPrice = null;
-        if (wasActive) {
-            if (typeof replay.getCurrentAnimatedPrice === 'function') {
-                savedDisplayPrice = replay.getCurrentAnimatedPrice();
-            }
-            if (!Number.isFinite(savedDisplayPrice) && replay.animatingCandle && Number.isFinite(replay.animatingCandle.close)) {
-                savedDisplayPrice = replay.animatingCandle.close;
-            }
-            if (!Number.isFinite(savedDisplayPrice) && Array.isArray(this.data) && this.data.length > 0) {
-                const lc = this.data[this.data.length - 1];
-                if (lc && Number.isFinite(lc.c)) savedDisplayPrice = lc.c;
-            }
-        }
+        // Do NOT rewrite chart.data[last] OHLC after a TF switch to "match" a saved tick price.
+        // getCurrentCandle() reads that bar for SL/TP; inflating h/l toward a display price causes
+        // false fills when the user only changed timeframe (replay still paused).
 
         const session = this.backtestingSession || {};
         const sessionEndMs = (() => {
@@ -12016,10 +12003,8 @@ class Chart {
             return Number.isFinite(t) ? Math.floor(t) : null;
         })();
 
-        // Coarse→fine: replayTimestamp is bar open; we re-anchor to the last fine bar before
-        // the next coarse period so the slice matches the daily close the user saw.
-        // Fine→coarse: applyPersistedState + savedDisplayPrice must use the same wall-clock
-        // cut and tick price so the axis matches 1m tick animation on 1D, etc.
+        // Fine→coarse: applyPersistedState uses the same wall-clock cut so the playhead bar
+        // matches 1m tick time on 1D, etc. (no synthetic OHLC writes — see note above).
         const previousTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
         const prevTfMs = this.parseTimeframe(previousTf);
         const newTfMsForSwitch = this.parseTimeframe(timeframe);
@@ -12027,13 +12012,7 @@ class Chart {
             && Number.isFinite(prevTfMs) && prevTfMs > 0
             && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
             && newTfMsForSwitch < prevTfMs;
-        const switchingToCoarser = wasActive
-            && Number.isFinite(prevTfMs) && prevTfMs > 0
-            && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
-            && newTfMsForSwitch > prevTfMs;
         let coarsePeriodExclusiveEndTs = null;
-        /** When true, last 1m (etc.) bar already matches coarse period end — do not OHLC-patch it. */
-        let fineReplayReanchorApplied = false;
         if (switchingToFiner && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
             const floorIdx = replay.sessionStartIndex || 0;
             let oi = typeof replay.currentIndex === 'number' ? replay.currentIndex : 0;
@@ -12192,7 +12171,6 @@ class Chart {
             const fineIdx = replay._findLastRawIndexAtOrBefore(replay.fullRawData, upperInclusive);
             const smin = replay.sessionStartIndex || 0;
             if (fineIdx >= smin) {
-                fineReplayReanchorApplied = true;
                 replay.currentIndex = fineIdx;
                 const b = replay.fullRawData[fineIdx];
                 if (b && Number.isFinite(b.t)) {
@@ -12236,28 +12214,6 @@ class Chart {
                     this.jumpToLatest();
                 }
             } catch (e) { /* ignore */ }
-            // After coarse→fine re-anchor, the last bar is already the real exchange minute;
-            // forcing `savedDisplayPrice` onto o/h/l/c while leaving `o` intact drew a bogus
-            // mega-wick (daily close vs 1m open) until the first play tick rebuilt the bar.
-            if (!fineReplayReanchorApplied
-                && Number.isFinite(savedDisplayPrice) && Array.isArray(this.data) && this.data.length > 0) {
-                const lastCandle = this.data[this.data.length - 1];
-                const lo = lastCandle.o ?? lastCandle.c;
-                const lh = lastCandle.h ?? lastCandle.c;
-                const ll = lastCandle.l ?? lastCandle.c;
-                const origRange = Math.max(lh - ll, Math.abs((lastCandle.c ?? 0) - lo), 1e-10);
-                const newH = Math.max(lh, savedDisplayPrice);
-                const newL = Math.min(ll, savedDisplayPrice);
-                const rangeOk = switchingToCoarser || (newH - newL) <= origRange * 2;
-                if (rangeOk) {
-                    lastCandle.c = savedDisplayPrice;
-                    lastCandle.h = newH;
-                    lastCandle.l = newL;
-                    if (replay && replay.animatingCandle && Number.isFinite(replay.animatingCandle.close)) {
-                        replay.animatingCandle.close = savedDisplayPrice;
-                    }
-                }
-            }
             this._endTimeframeSwitching();
         };
         // Run after enterReplayMode's own 150ms realignAfterLayout completes.
