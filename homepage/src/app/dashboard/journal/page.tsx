@@ -55,33 +55,152 @@ type BrokerDef = {
   fields: { key: string; label: string; placeholder: string; secret?: boolean }[];
   extraConfig?: { key: string; label: string; placeholder: string }[];
   hasAutoSync: boolean; csvOnly?: boolean;
+  guide: string[];
+  docsUrl?: string;
+  csvGuide?: string[];
 };
 const BROKERS: BrokerDef[] = [
-  { id: "binance", name: "Binance", color: "#f0b90b", icon: "◈", markets: "Crypto",
-    fields: [ { key: "api_key", label: "API Key", placeholder: "Your Binance API key" }, { key: "api_secret", label: "API Secret", placeholder: "Your Binance API secret", secret: true } ],
-    hasAutoSync: true },
-  { id: "bybit", name: "Bybit", color: "#f7931a", icon: "⬡", markets: "Crypto",
-    fields: [ { key: "api_key", label: "API Key", placeholder: "Your Bybit API key" }, { key: "api_secret", label: "API Secret", placeholder: "Your Bybit API secret", secret: true } ],
-    hasAutoSync: true },
-  { id: "okx", name: "OKX", color: "#ffffff", icon: "⬤", markets: "Crypto",
-    fields: [ { key: "api_key", label: "API Key", placeholder: "" }, { key: "api_secret", label: "API Secret", placeholder: "", secret: true }, { key: "api_passphrase", label: "Passphrase", placeholder: "", secret: true } ],
-    hasAutoSync: false },
-  { id: "oanda", name: "OANDA", color: "#00a651", icon: "₣", markets: "Forex",
+  {
+    id: "binance", name: "Binance", color: "#f0b90b", icon: "◈", markets: "Crypto",
+    fields: [
+      { key: "api_key", label: "API Key", placeholder: "Your Binance API key" },
+      { key: "api_secret", label: "API Secret", placeholder: "Your Binance API secret", secret: true },
+    ],
+    hasAutoSync: true,
+    docsUrl: "https://www.binance.com/en/support/faq/360002502072",
+    guide: [
+      "Log in to Binance and go to Profile → API Management.",
+      "Click Create API and choose System generated.",
+      "Give the key a name (e.g. Talaria) and complete 2FA verification.",
+      "Under Restrictions, enable Read Info only — disable trading & withdrawals.",
+      "Optionally restrict access to Talaria's IP for extra security.",
+      "Copy the API Key and Secret below (the secret is only shown once).",
+    ],
+  },
+  {
+    id: "bybit", name: "Bybit", color: "#f7931a", icon: "⬡", markets: "Crypto",
+    fields: [
+      { key: "api_key", label: "API Key", placeholder: "Your Bybit API key" },
+      { key: "api_secret", label: "API Secret", placeholder: "Your Bybit API secret", secret: true },
+    ],
+    hasAutoSync: true,
+    docsUrl: "https://www.bybit.com/en/help-center/article/How-to-create-your-API-key",
+    guide: [
+      "Log in to Bybit and open Account & Security → API Management.",
+      "Click Create New Key and choose System-generated API Keys.",
+      "Set key type to Read-Only and give it a name (e.g. Talaria).",
+      "Under API Key Permissions, check Read only for Account info and Positions.",
+      "Complete SMS / Google Authenticator verification.",
+      "Copy the API Key and API Secret into the fields.",
+    ],
+  },
+  {
+    id: "okx", name: "OKX", color: "#ffffff", icon: "⬤", markets: "Crypto",
+    fields: [
+      { key: "api_key", label: "API Key", placeholder: "" },
+      { key: "api_secret", label: "API Secret", placeholder: "", secret: true },
+      { key: "api_passphrase", label: "Passphrase", placeholder: "", secret: true },
+    ],
+    hasAutoSync: false,
+    docsUrl: "https://www.okx.com/docs-v5/en/#overview-account-rest-api",
+    guide: [
+      "Log in to OKX, go to Profile → API.",
+      "Click Create API V5 key.",
+      "Choose Read only as the permission level.",
+      "Set a passphrase — you will need it every time you connect.",
+      "Enable Trade history and Account under permissions.",
+      "Copy the API Key, Secret, and Passphrase into the fields.",
+    ],
+  },
+  {
+    id: "oanda", name: "OANDA", color: "#00a651", icon: "₣", markets: "Forex",
     fields: [ { key: "api_key", label: "API Token", placeholder: "OANDA Bearer token" } ],
     extraConfig: [ { key: "account_id", label: "Account ID", placeholder: "001-001-1234567-001" } ],
-    hasAutoSync: true },
-  { id: "alpaca", name: "Alpaca", color: "#ffcd00", icon: "🦙", markets: "US Stocks",
-    fields: [ { key: "api_key", label: "API Key", placeholder: "PKXXX..." }, { key: "api_secret", label: "API Secret", placeholder: "", secret: true } ],
-    hasAutoSync: false },
-  { id: "mt4", name: "MT4 / MT5", color: "#4a90d9", icon: "⚙", markets: "Forex / CFD",
-    fields: [], hasAutoSync: false, csvOnly: true },
-  { id: "tradingview", name: "TradingView", color: "#2962ff", icon: "◭", markets: "Any",
-    fields: [], hasAutoSync: false, csvOnly: true },
-  { id: "ibkr", name: "Interactive Brokers", color: "#c0392b", icon: "▣", markets: "All markets",
-    fields: [ { key: "api_key", label: "Client ID / Key", placeholder: "" }, { key: "api_secret", label: "Secret", placeholder: "", secret: true } ],
-    hasAutoSync: false },
-  { id: "ctrader", name: "cTrader", color: "#1a73e8", icon: "◐", markets: "Forex / CFD",
-    fields: [], hasAutoSync: false, csvOnly: true },
+    hasAutoSync: true,
+    docsUrl: "https://developer.oanda.com/rest-live-v20/introduction/",
+    guide: [
+      "Log in to your OANDA account at fxtrade.oanda.com.",
+      "Go to My Services → Manage API Access (or Settings → API).",
+      "Click Generate under Personal Access Token.",
+      "Copy the generated token into the API Token field.",
+      "Find your Account ID in Account Summary (format: 001-001-xxxxxxx-001).",
+      "Both live (api-fxtrade.oanda.com) and practice accounts are supported.",
+    ],
+  },
+  {
+    id: "alpaca", name: "Alpaca", color: "#ffcd00", icon: "🦙", markets: "US Stocks",
+    fields: [
+      { key: "api_key", label: "API Key", placeholder: "PKXXX..." },
+      { key: "api_secret", label: "API Secret", placeholder: "", secret: true },
+    ],
+    hasAutoSync: false,
+    docsUrl: "https://docs.alpaca.markets/reference/authentication-2",
+    guide: [
+      "Log in to Alpaca and open the Paper or Live Trading dashboard.",
+      "Click Your Name → API Keys in the top-right corner.",
+      "Click Regenerate Key or create a new key pair.",
+      "Copy the Key ID (starts with PK…) and Secret Key.",
+      "Use Paper keys for testing, Live keys for real trades.",
+      "After connecting, import your fills via CSV for full history.",
+    ],
+  },
+  {
+    id: "mt4", name: "MT4 / MT5", color: "#4a90d9", icon: "⚙", markets: "Forex / CFD",
+    fields: [], hasAutoSync: false, csvOnly: true,
+    guide: [],
+    docsUrl: "https://www.metatrader4.com/en/trading-platform/help/trading/history",
+    csvGuide: [
+      "In MetaTrader 4/5, open the Account History tab in the Terminal window.",
+      "Right-click anywhere in the history list and choose All History.",
+      "Right-click again and select Save as Report (or Save as Detailed Report).",
+      "This exports an HTML file — open it in Excel and save as .xlsx or .csv.",
+      "Alternatively use the MQL export script for a cleaner CSV format.",
+      "Upload the CSV below using the Upload File option.",
+    ],
+  },
+  {
+    id: "tradingview", name: "TradingView", color: "#2962ff", icon: "◭", markets: "Any",
+    fields: [], hasAutoSync: false, csvOnly: true,
+    guide: [],
+    docsUrl: "https://www.tradingview.com/support/solutions/43000561222",
+    csvGuide: [
+      "On TradingView, open a chart and go to the Trade panel at the bottom.",
+      "Click History tab to see all past trades.",
+      "Click the Export icon (↓ arrow) on the top-right of the History panel.",
+      "Save the file as CSV — it includes symbol, side, quantity, price & P&L.",
+      "Upload the CSV below using the Upload File option.",
+    ],
+  },
+  {
+    id: "ibkr", name: "Interactive Brokers", color: "#c0392b", icon: "▣", markets: "All markets",
+    fields: [
+      { key: "api_key", label: "Client ID / Key", placeholder: "" },
+      { key: "api_secret", label: "Secret", placeholder: "", secret: true },
+    ],
+    hasAutoSync: false,
+    docsUrl: "https://www.interactivebrokers.com/en/trading/ib-api.php",
+    guide: [
+      "Log in to Client Portal at interactivebrokers.com.",
+      "Go to Settings → API Settings.",
+      "Generate a Web API key (OAuth2 Client Credentials or IB Key).",
+      "Enable read-only access; do NOT enable trading permissions.",
+      "Copy the Client ID and Secret into the fields.",
+      "Import your full trade history via Activity Statements (CSV) for best results.",
+    ],
+  },
+  {
+    id: "ctrader", name: "cTrader", color: "#1a73e8", icon: "◐", markets: "Forex / CFD",
+    fields: [], hasAutoSync: false, csvOnly: true,
+    guide: [],
+    docsUrl: "https://help.ctrader.com/ctrader-desktop/export-history/",
+    csvGuide: [
+      "Open cTrader desktop and log into your trading account.",
+      "Click History in the bottom panel to view closed positions.",
+      "Set the date range to cover all trades you want to import.",
+      "Right-click anywhere in the history list and choose Export to CSV.",
+      "Upload the exported CSV file using the Upload File option below.",
+    ],
+  },
 ];
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
@@ -151,6 +270,19 @@ function ConnectedCard({ conn, onSync, onDelete, syncing }: { conn: Connection; 
 
 type ModalState = { broker: BrokerDef; fields: Record<string, string>; label: string; busy: boolean; error: string | null };
 
+function GuideSteps({ steps, color }: { steps: string[]; color: string }) {
+  return (
+    <ol style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+      {steps.map((s, i) => (
+        <li key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <span style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 6, background: `${color}22`, border: `1px solid ${color}44`, color, fontSize: "0.65rem", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>{i + 1}</span>
+          <span style={{ fontSize: "0.78rem", color: "#d1d5db", lineHeight: 1.55 }}>{s}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function ConnectModal({ state, onChange, onSubmit, onClose }: {
   state: ModalState;
   onChange: (key: string, val: string) => void;
@@ -159,58 +291,87 @@ function ConnectModal({ state, onChange, onSubmit, onClose }: {
 }) {
   const { broker, fields, label, busy, error } = state;
   const allFields = [...broker.fields, ...(broker.extraConfig ?? [])];
+  const guideSteps = broker.csvOnly ? (broker.csvGuide ?? []) : broker.guide;
+  const isCsvOnly  = broker.csvOnly;
+
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
-      <div style={{ width: "100%", maxWidth: 460, borderRadius: 20, border: "1px solid rgba(255,255,255,0.12)", background: "#0e1117", padding: 28 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 22 }}>
-          <div style={{ width: 42, height: 42, borderRadius: 12, background: `${broker.color}22`, border: `1px solid ${broker.color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.3rem", color: broker.color }}>{broker.icon}</div>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: "1rem", color: "#e8eaed" }}>Connect {broker.name}</div>
-            <div style={{ fontSize: "0.72rem", color: "#9ca3af" }}>{broker.markets} · {broker.hasAutoSync ? "Auto-sync supported" : "Manual / CSV import"}</div>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16, overflowY: "auto" }}>
+      <div style={{ width: "100%", maxWidth: isCsvOnly ? 560 : 820, borderRadius: 20, border: "1px solid rgba(255,255,255,0.1)", background: "#0d1117", overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.6)" }}>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "20px 24px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: `${broker.color}1a`, border: `1px solid ${broker.color}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.35rem", color: broker.color, flexShrink: 0 }}>{broker.icon}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: "1rem", color: "#f3f4f6" }}>Connect {broker.name}</div>
+            <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: 2 }}>
+              {broker.markets}
+              {broker.hasAutoSync && <span style={{ marginLeft: 8, color: "#22c55e" }}>● Auto-sync</span>}
+              {isCsvOnly && <span style={{ marginLeft: 8, color: "#9ca3af" }}>CSV import</span>}
+            </div>
           </div>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", color: "#6b7280", fontSize: "1.2rem", cursor: "pointer", padding: 4 }}>✕</button>
+          {broker.docsUrl && (
+            <a href={broker.docsUrl} target="_blank" rel="noopener noreferrer"
+              style={{ fontSize: "0.7rem", color: "#6b7280", padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)", textDecoration: "none", whiteSpace: "nowrap" }}>
+              Official docs ↗
+            </a>
+          )}
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", fontSize: "1.2rem", cursor: "pointer", padding: "4px 6px", marginLeft: 4 }}>✕</button>
         </div>
 
-        {broker.csvOnly ? (
-          <div style={{ padding: 16, borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", marginBottom: 16 }}>
-            <div style={{ fontSize: "0.82rem", color: "#9ca3af", lineHeight: 1.6 }}>
-              {broker.name} does not have a public API for trade history. To import your trades:
-              <ol style={{ marginTop: 8, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
-                <li>Export your trade history as CSV from {broker.name}</li>
-                <li>Return to the Analytics tab</li>
-                <li>Click <strong style={{ color: "#00ff88" }}>⬆ Import CSV</strong> in the toolbar</li>
-              </ol>
-            </div>
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div>
-              <label style={{ display: "block", fontSize: "0.72rem", color: "#9ca3af", marginBottom: 5 }}>Account label (optional)</label>
-              <input value={label} onChange={e => onChange("__label__", e.target.value)} placeholder={`My ${broker.name} account`}
-                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)", background: "#111418", color: "#e8eaed", fontSize: "0.82rem", boxSizing: "border-box" }} />
-            </div>
-            {allFields.map(f => (
-              <div key={f.key}>
-                <label style={{ display: "block", fontSize: "0.72rem", color: "#9ca3af", marginBottom: 5 }}>{f.label}</label>
-                <input
-                  type={(f as typeof broker.fields[0]).secret ? "password" : "text"}
-                  value={fields[f.key] ?? ""}
-                  onChange={e => onChange(f.key, e.target.value)}
-                  placeholder={f.placeholder}
-                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)", background: "#111418", color: "#e8eaed", fontSize: "0.82rem", boxSizing: "border-box", fontFamily: (f as typeof broker.fields[0]).secret ? "monospace" : "inherit" }}
-                />
-              </div>
-            ))}
-            <div style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid rgba(251,191,36,0.2)", background: "rgba(251,191,36,0.05)", fontSize: "0.72rem", color: "#fbbf24", lineHeight: 1.5 }}>
-              ⚠ Create an API key with <strong>read-only</strong> permissions only. Never grant withdrawal access.
-            </div>
-            {error && <div style={{ padding: "9px 12px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", fontSize: "0.78rem" }}>{error}</div>}
-          </div>
-        )}
+        {/* Body */}
+        <div style={{ display: "grid", gridTemplateColumns: isCsvOnly ? "1fr" : "1fr 1fr", gap: 0 }}>
 
-        <div style={{ display: "flex", gap: 10, marginTop: 22, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={{ padding: "9px 18px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "#9ca3af", fontSize: "0.82rem", cursor: "pointer" }}>Cancel</button>
-          {!broker.csvOnly && (
+          {/* Left: Guide */}
+          <div style={{ padding: 24, borderRight: isCsvOnly ? "none" : "1px solid rgba(255,255,255,0.07)" }}>
+            <div style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#6b7280", marginBottom: 14 }}>
+              {isCsvOnly ? "How to export your trades" : "How to get your API keys"}
+            </div>
+            {guideSteps.length > 0 ? (
+              <GuideSteps steps={guideSteps} color={broker.color} />
+            ) : (
+              <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>See the official documentation for setup instructions.</div>
+            )}
+            {isCsvOnly && (
+              <div style={{ marginTop: 20, padding: "12px 14px", borderRadius: 10, border: "1px solid rgba(0,255,136,0.2)", background: "rgba(0,255,136,0.05)" }}>
+                <div style={{ fontSize: "0.72rem", color: "#00ff88", fontWeight: 600, marginBottom: 4 }}>After exporting:</div>
+                <div style={{ fontSize: "0.72rem", color: "#9ca3af", lineHeight: 1.5 }}>Go to the <strong style={{ color: "#e8eaed" }}>Analytics</strong> tab and click <strong style={{ color: "#00ff88" }}>⬆ CSV</strong> in the top toolbar to upload your file.</div>
+              </div>
+            )}
+          </div>
+
+          {/* Right: Form (API brokers only) */}
+          {!isCsvOnly && (
+            <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#6b7280", marginBottom: 2 }}>Connection details</div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: "#9ca3af", marginBottom: 5 }}>Account label (optional)</label>
+                <input value={label} onChange={e => onChange("__label__", e.target.value)} placeholder={`My ${broker.name} account`}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "#111418", color: "#e8eaed", fontSize: "0.82rem", boxSizing: "border-box" }} />
+              </div>
+              {allFields.map(f => (
+                <div key={f.key}>
+                  <label style={{ display: "block", fontSize: "0.72rem", color: "#9ca3af", marginBottom: 5 }}>{f.label}</label>
+                  <input
+                    type={(f as typeof broker.fields[0]).secret ? "password" : "text"}
+                    value={fields[f.key] ?? ""}
+                    onChange={e => onChange(f.key, e.target.value)}
+                    placeholder={f.placeholder}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "#111418", color: "#e8eaed", fontSize: "0.82rem", boxSizing: "border-box", fontFamily: (f as typeof broker.fields[0]).secret ? "var(--font-space-mono),monospace" : "inherit" }}
+                  />
+                </div>
+              ))}
+              <div style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid rgba(251,191,36,0.18)", background: "rgba(251,191,36,0.04)", fontSize: "0.7rem", color: "#fbbf24", lineHeight: 1.5, marginTop: 2 }}>
+                ⚠ Use <strong>read-only</strong> permissions. Never grant withdrawal or trade access.
+              </div>
+              {error && <div style={{ padding: "9px 12px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", fontSize: "0.78rem" }}>{error}</div>}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: "flex", gap: 10, padding: "16px 24px", borderTop: "1px solid rgba(255,255,255,0.07)", justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ padding: "9px 18px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#9ca3af", fontSize: "0.82rem", cursor: "pointer" }}>Close</button>
+          {!isCsvOnly && (
             <button onClick={onSubmit} disabled={busy} style={{ padding: "9px 20px", borderRadius: 10, border: "1px solid rgba(0,255,136,0.35)", background: "rgba(0,255,136,0.1)", color: busy ? "#6b7280" : "#00ff88", fontWeight: 600, fontSize: "0.82rem", cursor: busy ? "default" : "pointer" }}>
               {busy ? "Connecting…" : `Connect ${broker.name} →`}
             </button>
