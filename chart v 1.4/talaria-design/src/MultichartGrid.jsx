@@ -549,6 +549,28 @@ function readUrlChartMode() {
     }
 }
 
+/**
+ * When true, iframe tiles must follow the host chart's dataset and timeframe
+ * so backtest / prop-firm replay shows one series and one virtual playhead.
+ * Ignores the layout "Symbol" / "Interval" toggles — those stay for live /
+ * non-session layouts where independent panels are desired.
+ */
+function isMultichartBacktestFileLock() {
+    try {
+        if (typeof window === "undefined") return false;
+        const ch = window.chart;
+        if (!ch) return false;
+        if (ch.backtestingSession) return true;
+        const rs = ch.replaySystem;
+        if (rs && rs.isActive) return true;
+        const u = new URLSearchParams(window.location.search || "");
+        const m = (u.get("mode") || "").toLowerCase();
+        return m === "backtest" || m === "propfirm";
+    } catch (_) {
+        return false;
+    }
+}
+
 // ─── iframe URL ─────────────────────────────────────────────────────────────
 function buildIframeSrc({ panelId, fileId, tf, sessionId, mode }) {
     const params = new URLSearchParams();
@@ -1484,7 +1506,7 @@ export default function MultichartGrid({
     useEffect(() => {
         if (typeof window === "undefined") return;
         const onTfChanged = (ev) => {
-            if (!layoutSync || !layoutSync.interval) return;
+            if (!((layoutSync && layoutSync.interval) || isMultichartBacktestFileLock())) return;
             const mgr = managerRef.current;
             if (!mgr || typeof mgr.sendCommand !== "function") return;
             const tf = (ev && ev.detail && ev.detail.timeframe)
@@ -1511,7 +1533,7 @@ export default function MultichartGrid({
         if (typeof window === "undefined") return;
         let lastBroadcastFileId = null;
         const onDataLoaded = (ev) => {
-            if (!layoutSync || !layoutSync.symbol) return;
+            if (!((layoutSync && layoutSync.symbol) || isMultichartBacktestFileLock())) return;
             const mgr = managerRef.current;
             if (!mgr || typeof mgr.sendCommand !== "function") return;
             const fileId = (window.chart && window.chart.currentFileId) || null;
@@ -2168,6 +2190,21 @@ export default function MultichartGrid({
         if (!sourceChart || sourceChart.host) return; // skip host echoes
 
         const sync = layoutSyncRef.current || {};
+        const fileLock = isMultichartBacktestFileLock();
+        const hostCh = window.chart;
+        const hostFid = hostCh && hostCh.currentFileId != null && String(hostCh.currentFileId).trim() !== ""
+            ? String(hostCh.currentFileId)
+            : "";
+        // Backtest / replay: host file is authoritative — never let an iframe
+        // stay on a different dataset (replay ticks are wall-clock; wrong file
+        // = wrong candles even at the "same" timestamp).
+        if (fileLock && hostFid && state && state.fileId != null
+            && String(state.fileId) !== hostFid) {
+            try { mgr.sendCommand(id, "loadFile", { fileId: hostFid }); } catch (_) {}
+            lastBroadcastFileRef.current[id] = hostFid;
+            return;
+        }
+
         if (state && state.timeframe && sync.interval) {
             const tf = String(state.timeframe);
             if (lastBroadcastTfRef.current[id] !== tf) {
@@ -2188,7 +2225,7 @@ export default function MultichartGrid({
                 }
             }
         }
-        if (state && state.fileId && sync.symbol) {
+        if (state && state.fileId && (sync.symbol || fileLock)) {
             const fid = String(state.fileId);
             if (lastBroadcastFileRef.current[id] !== fid) {
                 lastBroadcastFileRef.current[id] = fid;
