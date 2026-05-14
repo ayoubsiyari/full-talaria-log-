@@ -550,31 +550,9 @@ function readUrlChartMode() {
 }
 
 /**
- * When true, iframe tiles must follow the host chart's **dataset** (file /
- * session) so backtest / prop-firm replay shows one series and one virtual
- * playhead. Timeframe is **not** forced here — use the layout "Interval" toggle
- * for that. Symbol / Interval / other sync toggles stay for live layouts.
- */
-function isMultichartBacktestFileLock() {
-    try {
-        if (typeof window === "undefined") return false;
-        const ch = window.chart;
-        if (!ch) return false;
-        if (ch.backtestingSession) return true;
-        const rs = ch.replaySystem;
-        if (rs && rs.isActive) return true;
-        const u = new URLSearchParams(window.location.search || "");
-        const m = (u.get("mode") || "").toLowerCase();
-        return m === "backtest" || m === "propfirm";
-    } catch (_) {
-        return false;
-    }
-}
-
-/**
  * True when every bridge-ready iframe's chart-state fileId matches the host's
- * currentFileId. Used to mirror timeframe + orders across all tiles without
- * requiring the layout "Interval" toggle (same idea as locked backtest file).
+ * currentFileId (or is still blank). Used so order mirror can fan to every tile
+ * when all charts already share one dataset, without requiring Symbol sync on.
  */
 function allReadyIframesShareHostFileForMirror(managerCharts, hostChart) {
     try {
@@ -1398,11 +1376,11 @@ export default function MultichartGrid({
     // even when sync.interval is off.  Timeframe sync is handled by the
     // dedicated "Interval sync" effect above which checks layoutSync.
     //
-    // File / pair: mirror the Interval rule — only force the host dataset
-    // onto every iframe when Symbol sync is ON or when backtest/replay
-    // file-lock applies. Otherwise a tile that already reports its own
-    // fileId (user picked a different pair on Panel B) must NOT be reset
-    // to the host every time another panel becomes bridge-ready.
+    // File / pair: only force the host dataset onto every iframe when
+    // layout "Symbol" sync is ON. When it is off (including full backtest
+    // replay), a tile that already reports its own fileId (user picked a
+    // different pair on Panel B) must NOT be reset to the host when other
+    // tiles become ready or when Panel A changes pair.
     useEffect(() => {
         if (!managerReady) return;
         const hostNt = readHostChartFileAndTf();
@@ -1414,9 +1392,11 @@ export default function MultichartGrid({
         const mgr = managerRef.current;
         if (!mgr || !mgr.charts) return;
         const pushTf = !!(layoutSync && layoutSync.interval);
-        const fileLock = isMultichartBacktestFileLock();
         const symFollow = !!(layoutSync && layoutSync.symbol);
-        const forceHostFileOnEveryTile = fileLock || symFollow;
+        // Only stamp the host file onto every iframe when Symbol sync is on.
+        // Backtest/replay file-lock must NOT override this — users turn all
+        // layout toggles off to keep independent instruments per tile.
+        const forceHostFileOnEveryTile = symFollow;
         const hostFidStr = String((hostNt.fileId || fid || "")).trim();
         for (const c of mgr.charts.values()) {
             if (!c || c.host || !c.ready) continue;
@@ -1580,7 +1560,7 @@ export default function MultichartGrid({
         if (typeof window === "undefined") return;
         let lastBroadcastFileId = null;
         const onDataLoaded = (ev) => {
-            if (!((layoutSync && layoutSync.symbol) || isMultichartBacktestFileLock())) return;
+            if (!(layoutSync && layoutSync.symbol)) return;
             const mgr = managerRef.current;
             if (!mgr || typeof mgr.sendCommand !== "function") return;
             const fileId = (window.chart && window.chart.currentFileId) || null;
@@ -2270,15 +2250,13 @@ export default function MultichartGrid({
         if (!sourceChart || sourceChart.host) return; // skip host echoes
 
         const sync = layoutSyncRef.current || {};
-        const fileLock = isMultichartBacktestFileLock();
         const hostCh = window.chart;
         const hostFid = hostCh && hostCh.currentFileId != null && String(hostCh.currentFileId).trim() !== ""
             ? String(hostCh.currentFileId)
             : "";
-        // Backtest / replay: host file is authoritative — never let an iframe
-        // stay on a different dataset (replay ticks are wall-clock; wrong file
-        // = wrong candles even at the "same" timestamp).
-        if (fileLock && hostFid && state && state.fileId != null
+        // When Symbol sync is on, pull a lagging iframe back to the host file.
+        // When Symbol sync is off, tiles may use different pairs during replay.
+        if (sync.symbol && hostFid && state && state.fileId != null
             && String(state.fileId) !== hostFid) {
             try { mgr.sendCommand(id, "loadFile", { fileId: hostFid }); } catch (_) {}
             lastBroadcastFileRef.current[id] = hostFid;
@@ -2305,7 +2283,7 @@ export default function MultichartGrid({
                 }
             }
         }
-        if (state && state.fileId && (sync.symbol || fileLock)) {
+        if (state && state.fileId && sync.symbol) {
             const fid = String(state.fileId);
             if (lastBroadcastFileRef.current[id] !== fid) {
                 lastBroadcastFileRef.current[id] = fid;
@@ -2746,10 +2724,9 @@ export default function MultichartGrid({
     //      to peer iframes. Matching rules:
     //        • Default: same normalized ticker OR same sourceFileId as
     //          the peer's chart-state (handles placeholder "—" symbol).
-    //        • When `isMultichartBacktestFileLock()` OR every ready iframe
-    //          already shows the host's currentFileId, fan to EVERY tile
-    //          (same replay file lock UX as candle sync — orders appear
-    //          on all panels at once).
+    //        • When every ready iframe already shows the host's currentFileId
+    //          (or blank), fan to EVERY tile so orders appear on all charts
+    //          at once. Otherwise match on ticker / sourceFileId per tile.
     //        • Host orders missing sourceFileId get currentFileId filled
     //          in for matching / payload mirroring.
     //      `order:pending-updated` (entry / SL / TP drag) is merged on
@@ -2932,7 +2909,7 @@ export default function MultichartGrid({
                 : order;
 
             let peers;
-            if (isMultichartBacktestFileLock() || allReadyIframesShareHostFileForMirror(mgr && mgr.charts, window.chart)) {
+            if (allReadyIframesShareHostFileForMirror(mgr && mgr.charts, window.chart)) {
                 peers = findAllSameDatasetMirrorPeers(sourceId);
                 if (!peers.length) return;
             } else {
