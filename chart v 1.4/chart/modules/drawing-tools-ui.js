@@ -25506,9 +25506,11 @@ applyTemplate(drawing, templateId, modal) {
 
     showNotification(message) {
 
-        const accent = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
+        const accent = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#3b82f6';
 
         const el = document.createElement('div');
+
+        el.className = 'chart-toast-tooltip';
 
         el.style.cssText = [
 
@@ -25522,25 +25524,31 @@ applyTemplate(drawing, templateId, modal) {
 
             'align-items:center',
 
-            'gap:10px',
+            'gap:8px',
 
-            'padding:11px 18px',
+            'padding:7px 11px',
 
-            'border-radius:10px',
+            'border-radius:4px',
 
-            'font-size:13px',
+            'font-size:11px',
+
+            'line-height:14px',
 
             'font-weight:600',
 
+            'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif',
+
             'color:#fff',
 
-            'background:' + accent,
+            'background:rgba(42,46,57,0.95)',
 
-            'box-shadow:0 8px 28px rgba(0,0,0,0.45),0 0 0 1px rgba(255,255,255,0.10)',
+            'border:1px solid #363a45',
 
-            'backdrop-filter:blur(8px)',
+            'border-left:3px solid ' + accent,
 
-            '-webkit-backdrop-filter:blur(8px)',
+            'box-shadow:0 4px 12px rgba(0,0,0,0.35)',
+
+            'box-sizing:border-box',
 
             'z-index:2147483647',
 
@@ -25554,11 +25562,9 @@ applyTemplate(drawing, templateId, modal) {
 
             'max-width:340px',
 
-            'white-space:nowrap',
+            'white-space:normal',
 
-            'overflow:hidden',
-
-            'text-overflow:ellipsis'
+            'word-break:break-word'
 
         ].join(';');
 

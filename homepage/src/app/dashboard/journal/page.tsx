@@ -1,6 +1,5 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Syne, Space_Mono } from "next/font/google";
 import { BacktestOsDashboardLayout } from "../../backtest/BacktestOsDashboardLayout";
 import type { BacktestOsChartPack } from "../../backtest/BacktestOsDashboardLayout";
 import { PnlCalendarHeatmap } from "../../backtest/PnlCalendarHeatmap";
@@ -11,9 +10,6 @@ import {
 } from "../../backtest/backtestOsCompute";
 import "../../backtest/sessions-dashboard.css";
 import "../../backtest/backtest-os-dashboard.css";
-
-const syne      = Syne({ subsets: ["latin"], weight: ["400","500","600","700","800"], variable: "--font-syne" });
-const spaceMono = Space_Mono({ subsets: ["latin"], weight: ["400","700"], variable: "--font-space-mono" });
 
 // ── API helpers ────────────────────────────────────────────────────────────────
 function jApiUrl(path: string) {
@@ -225,9 +221,29 @@ function buildHist(pnls: number[], bkt = 25) {
 function pFromT(ta: number) { return ta > 3.29 ? "<0.001" : ta > 2.58 ? "<0.01" : ta > 1.96 ? "<0.05" : ta > 1.65 ? "<0.10" : "≥0.10"; }
 function holdH(o: number, c: number): number|null { if (o <= 0 || c <= 0 || c < o) return null; return (c - o) / 3600000; }
 
+// ── Shared style tokens (sessions-dashboard.css palette) ───────────────────────
+const S = {
+  bg: "#0a0c0f",
+  card: "#111318",
+  elevated: "#0d0f13",
+  border: "rgba(255,255,255,0.06)",
+  borderHover: "rgba(255,255,255,0.12)",
+  text: "#e8e4dc",
+  textSec: "#9b97a0",
+  textDim: "#4a4850",
+  textMuted: "#6b6870",
+  blue: "#2563eb",
+  blueLight: "#60a5fa",
+  bluePale: "#93c5fd",
+  red: "#ff6060",
+  amber: "#fbbf24",
+  greenPos: "#93c5fd",
+  pill: "#1a1d24",
+};
+
 // ── Connect view sub-components ────────────────────────────────────────────────
 function StatusDot({ status }: { status: string }) {
-  const c = status === "active" ? "#22c55e" : status === "error" ? "#ef4444" : "#f59e0b";
+  const c = status === "active" ? "#2563eb" : status === "error" ? "#ff6060" : "#60a5fa";
   return <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: c, flexShrink: 0, marginTop: 2 }} />;
 }
 
@@ -241,28 +257,32 @@ function ConnectedCard({ conn, onSync, onDelete, syncing }: { conn: Connection; 
     return `${Math.floor(diff / 86400000)}d ago`;
   })() : "never";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 12, border: `1px solid ${conn.status === "error" ? "rgba(239,68,68,0.3)" : "rgba(255,255,255,0.08)"}`, background: "rgba(255,255,255,0.03)" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 12, border: `1px solid ${conn.status === "error" ? "rgba(255,96,96,0.3)" : S.border}`, background: S.card }}>
       <div style={{ width: 36, height: 36, borderRadius: 10, background: `${def?.color ?? "#666"}22`, border: `1px solid ${def?.color ?? "#666"}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.1rem", color: def?.color ?? "#fff", flexShrink: 0 }}>{def?.icon ?? "⬤"}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <StatusDot status={conn.status} />
-          <span style={{ fontWeight: 600, fontSize: "0.85rem", color: "#e8eaed" }}>{conn.label}</span>
-          <span style={{ fontSize: "0.7rem", color: "#6b7280", background: "rgba(255,255,255,0.06)", padding: "1px 6px", borderRadius: 4 }}>{def?.markets ?? conn.broker}</span>
+          <span style={{ fontWeight: 600, fontSize: "0.85rem", color: S.text }}>{conn.label}</span>
+          <span style={{ fontSize: "0.7rem", color: S.textMuted, background: "rgba(255,255,255,0.06)", padding: "1px 6px", borderRadius: 4 }}>{def?.markets ?? conn.broker}</span>
         </div>
         {conn.status === "error" && conn.last_error && (
-          <div style={{ fontSize: "0.68rem", color: "#ef4444", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>⚠ {conn.last_error}</div>
+          <div style={{ fontSize: "0.68rem", color: S.red, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{conn.last_error}</div>
         )}
-        <div style={{ fontSize: "0.68rem", color: "#6b7280", marginTop: 2 }}>
+        <div style={{ fontSize: "0.68rem", color: S.textMuted, marginTop: 2 }}>
           {conn.last_trade_count} trades · synced {ago}
         </div>
       </div>
       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
         {def?.hasAutoSync && (
-          <button onClick={onSync} disabled={syncing} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(0,196,255,0.3)", background: "rgba(0,196,255,0.08)", color: syncing ? "#6b7280" : "#00c4ff", fontSize: "0.72rem", cursor: syncing ? "default" : "pointer", fontWeight: 500 }}>
+          <button onClick={onSync} disabled={syncing}
+            className="sd-act-btn sd-challenge"
+            style={{ padding: "5px 10px", fontSize: "0.72rem", opacity: syncing ? 0.5 : 1, cursor: syncing ? "default" : "pointer" }}>
             {syncing ? "Syncing…" : "↻ Sync"}
           </button>
         )}
-        <button onClick={onDelete} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.25)", background: "rgba(239,68,68,0.06)", color: "#ef4444", fontSize: "0.72rem", cursor: "pointer" }}>✕</button>
+        <button onClick={onDelete}
+          className="sd-act-btn sd-danger"
+          style={{ padding: "5px 10px", fontSize: "0.72rem" }}>✕</button>
       </div>
     </div>
   );
@@ -295,46 +315,47 @@ function ConnectModal({ state, onChange, onSubmit, onClose }: {
   const isCsvOnly  = broker.csvOnly;
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16, overflowY: "auto" }}>
-      <div style={{ width: "100%", maxWidth: isCsvOnly ? 560 : 820, borderRadius: 20, border: "1px solid rgba(255,255,255,0.1)", background: "#0d1117", overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.6)" }}>
+    <div className="sd-modal-backdrop" style={{ overflowY: "auto" }}>
+      <div className="sd-modal-panel" style={{ maxWidth: isCsvOnly ? 560 : 820, padding: 0, overflow: "hidden" }}>
 
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "20px 24px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: `${broker.color}1a`, border: `1px solid ${broker.color}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.35rem", color: broker.color, flexShrink: 0 }}>{broker.icon}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "20px 24px", borderBottom: `1px solid ${S.border}` }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: `${broker.color}1a`, border: `1px solid ${broker.color}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.35rem", color: broker.color }}>{broker.icon}</div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: "1rem", color: "#f3f4f6" }}>Connect {broker.name}</div>
-            <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: 2 }}>
+            <div style={{ fontWeight: 700, fontSize: "1rem", color: S.text }}>Connect {broker.name}</div>
+            <div style={{ fontSize: "0.72rem", color: S.textMuted, marginTop: 2 }}>
               {broker.markets}
-              {broker.hasAutoSync && <span style={{ marginLeft: 8, color: "#22c55e" }}>● Auto-sync</span>}
-              {isCsvOnly && <span style={{ marginLeft: 8, color: "#9ca3af" }}>CSV import</span>}
+              {broker.hasAutoSync && <span style={{ marginLeft: 8, color: S.blueLight }}>● Auto-sync</span>}
+              {isCsvOnly && <span style={{ marginLeft: 8, color: S.textMuted }}>CSV import</span>}
             </div>
           </div>
           {broker.docsUrl && (
             <a href={broker.docsUrl} target="_blank" rel="noopener noreferrer"
-              style={{ fontSize: "0.7rem", color: "#6b7280", padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)", textDecoration: "none", whiteSpace: "nowrap" }}>
+              className="sd-link-admin"
+              style={{ fontSize: "0.7rem", whiteSpace: "nowrap" }}>
               Official docs ↗
             </a>
           )}
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#6b7280", fontSize: "1.2rem", cursor: "pointer", padding: "4px 6px", marginLeft: 4 }}>✕</button>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: S.textMuted, fontSize: "1.2rem", cursor: "pointer", padding: "4px 6px", marginLeft: 4 }}>✕</button>
         </div>
 
         {/* Body */}
         <div style={{ display: "grid", gridTemplateColumns: isCsvOnly ? "1fr" : "1fr 1fr", gap: 0 }}>
 
           {/* Left: Guide */}
-          <div style={{ padding: 24, borderRight: isCsvOnly ? "none" : "1px solid rgba(255,255,255,0.07)" }}>
-            <div style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#6b7280", marginBottom: 14 }}>
+          <div style={{ padding: 24, borderRight: isCsvOnly ? "none" : `1px solid ${S.border}` }}>
+            <div style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: S.textMuted, marginBottom: 14 }}>
               {isCsvOnly ? "How to export your trades" : "How to get your API keys"}
             </div>
             {guideSteps.length > 0 ? (
               <GuideSteps steps={guideSteps} color={broker.color} />
             ) : (
-              <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>See the official documentation for setup instructions.</div>
+              <div style={{ fontSize: "0.78rem", color: S.textMuted }}>See the official documentation for setup instructions.</div>
             )}
             {isCsvOnly && (
-              <div style={{ marginTop: 20, padding: "12px 14px", borderRadius: 10, border: "1px solid rgba(0,255,136,0.2)", background: "rgba(0,255,136,0.05)" }}>
-                <div style={{ fontSize: "0.72rem", color: "#00ff88", fontWeight: 600, marginBottom: 4 }}>After exporting:</div>
-                <div style={{ fontSize: "0.72rem", color: "#9ca3af", lineHeight: 1.5 }}>Go to the <strong style={{ color: "#e8eaed" }}>Analytics</strong> tab and click <strong style={{ color: "#00ff88" }}>⬆ CSV</strong> in the top toolbar to upload your file.</div>
+              <div style={{ marginTop: 20, padding: "12px 14px", borderRadius: 10, border: `1px solid ${S.border}`, background: S.elevated }}>
+                <div style={{ fontSize: "0.72rem", color: S.bluePale, fontWeight: 600, marginBottom: 4 }}>After exporting:</div>
+                <div style={{ fontSize: "0.72rem", color: S.textSec, lineHeight: 1.5 }}>Go to the <strong style={{ color: S.text }}>Analytics</strong> tab and click <strong style={{ color: S.bluePale }}>⬆ CSV</strong> in the top toolbar to upload your file.</div>
               </div>
             )}
           </div>
@@ -342,37 +363,37 @@ function ConnectModal({ state, onChange, onSubmit, onClose }: {
           {/* Right: Form (API brokers only) */}
           {!isCsvOnly && (
             <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#6b7280", marginBottom: 2 }}>Connection details</div>
+              <div style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: S.textMuted, marginBottom: 2 }}>Connection details</div>
               <div>
-                <label style={{ display: "block", fontSize: "0.72rem", color: "#9ca3af", marginBottom: 5 }}>Account label (optional)</label>
+                <label style={{ display: "block", fontSize: "0.72rem", color: S.textSec, marginBottom: 5 }}>Account label (optional)</label>
                 <input value={label} onChange={e => onChange("__label__", e.target.value)} placeholder={`My ${broker.name} account`}
-                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "#111418", color: "#e8eaed", fontSize: "0.82rem", boxSizing: "border-box" }} />
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: `1px solid ${S.border}`, background: S.elevated, color: S.text, fontSize: "0.82rem", boxSizing: "border-box" }} />
               </div>
               {allFields.map(f => (
                 <div key={f.key}>
-                  <label style={{ display: "block", fontSize: "0.72rem", color: "#9ca3af", marginBottom: 5 }}>{f.label}</label>
+                  <label style={{ display: "block", fontSize: "0.72rem", color: S.textSec, marginBottom: 5 }}>{f.label}</label>
                   <input
                     type={(f as typeof broker.fields[0]).secret ? "password" : "text"}
                     value={fields[f.key] ?? ""}
                     onChange={e => onChange(f.key, e.target.value)}
                     placeholder={f.placeholder}
-                    style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "#111418", color: "#e8eaed", fontSize: "0.82rem", boxSizing: "border-box", fontFamily: (f as typeof broker.fields[0]).secret ? "var(--font-space-mono),monospace" : "inherit" }}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: `1px solid ${S.border}`, background: S.elevated, color: S.text, fontSize: "0.82rem", boxSizing: "border-box", fontFamily: (f as typeof broker.fields[0]).secret ? "monospace" : "inherit" }}
                   />
                 </div>
               ))}
-              <div style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid rgba(251,191,36,0.18)", background: "rgba(251,191,36,0.04)", fontSize: "0.7rem", color: "#fbbf24", lineHeight: 1.5, marginTop: 2 }}>
+              <div style={{ padding: "10px 12px", borderRadius: 8, border: `1px solid rgba(251,191,36,0.18)`, background: "rgba(251,191,36,0.04)", fontSize: "0.7rem", color: S.amber, lineHeight: 1.5, marginTop: 2 }}>
                 ⚠ Use <strong>read-only</strong> permissions. Never grant withdrawal or trade access.
               </div>
-              {error && <div style={{ padding: "9px 12px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", fontSize: "0.78rem" }}>{error}</div>}
+              {error && <div style={{ padding: "9px 12px", borderRadius: 8, background: "rgba(255,96,96,0.08)", border: "1px solid rgba(255,96,96,0.2)", color: S.red, fontSize: "0.78rem" }}>{error}</div>}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div style={{ display: "flex", gap: 10, padding: "16px 24px", borderTop: "1px solid rgba(255,255,255,0.07)", justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={{ padding: "9px 18px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "#9ca3af", fontSize: "0.82rem", cursor: "pointer" }}>Close</button>
+        <div style={{ display: "flex", gap: 10, padding: "16px 24px", borderTop: `1px solid ${S.border}`, justifyContent: "flex-end" }}>
+          <button onClick={onClose} className="sd-btn-ghost" style={{ padding: "9px 18px", fontSize: "0.82rem" }}>Close</button>
           {!isCsvOnly && (
-            <button onClick={onSubmit} disabled={busy} style={{ padding: "9px 20px", borderRadius: 10, border: "1px solid rgba(0,255,136,0.35)", background: "rgba(0,255,136,0.1)", color: busy ? "#6b7280" : "#00ff88", fontWeight: 600, fontSize: "0.82rem", cursor: busy ? "default" : "pointer" }}>
+            <button onClick={onSubmit} disabled={busy} className="sd-btn-primary" style={{ padding: "9px 20px", fontSize: "0.82rem", opacity: busy ? 0.6 : 1 }}>
               {busy ? "Connecting…" : `Connect ${broker.name} →`}
             </button>
           )}
@@ -399,38 +420,38 @@ function ConnectView({
   tradeCount: number;
 }) {
   return (
-    <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px 60px" }}>
+    <div className="sd-main" style={{ maxWidth: 960 }}>
       {/* Header */}
       <div style={{ marginBottom: 36 }}>
-        <h1 style={{ fontSize: "1.6rem", fontWeight: 800, color: "#fff", margin: 0, letterSpacing: "-0.02em" }}>Trading Journal</h1>
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", marginTop: 6 }}>Connect your broker or import a file to start building your journal analytics.</p>
+        <h1 style={{ fontSize: "1.6rem", fontWeight: 800, color: S.text, margin: 0, letterSpacing: "-0.02em" }}>Trading Journal</h1>
+        <p style={{ color: S.textMuted, fontSize: "0.88rem", marginTop: 6 }}>Connect your broker or import a file to start building your journal analytics.</p>
       </div>
 
       {/* Import options */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 40 }}>
         {/* API connect card */}
-        <div style={{ padding: 24, borderRadius: 16, border: "1px solid rgba(0,196,255,0.2)", background: "linear-gradient(135deg,rgba(0,196,255,0.06),transparent)", cursor: "default" }}>
-          <div style={{ fontSize: "1.8rem", marginBottom: 12 }}>🔗</div>
-          <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "#00c4ff", margin: "0 0 6px" }}>Connect Broker API</h3>
-          <p style={{ fontSize: "0.78rem", color: "#6b7280", margin: "0 0 16px", lineHeight: 1.5 }}>Enter your API keys and we&apos;ll sync your trades automatically — no CSV exports needed.</p>
-          <div style={{ fontSize: "0.72rem", color: "#9ca3af" }}>Binance · Bybit · OANDA · Alpaca · IBKR</div>
-        </div>
+        <button onClick={() => {}} className="sd-modal-choice" style={{ textAlign: "left", display: "block", width: "100%" }}>
+          <div style={{ fontSize: "1.3rem", marginBottom: 10, color: S.blueLight }}>🔗</div>
+          <div style={{ fontWeight: 600, fontSize: "0.95rem", color: S.text, marginBottom: 4 }}>Connect Broker API</div>
+          <p style={{ fontSize: "0.78rem", color: S.textMuted, margin: "0 0 12px", lineHeight: 1.5 }}>Enter your API keys and we&apos;ll sync your trades automatically — no CSV exports needed.</p>
+          <div style={{ fontSize: "0.72rem", color: S.textDim }}>Binance · Bybit · OANDA · Alpaca · IBKR</div>
+        </button>
         {/* CSV import card */}
-        <label style={{ padding: 24, borderRadius: 16, border: "1px solid rgba(0,255,136,0.2)", background: "linear-gradient(135deg,rgba(0,255,136,0.06),transparent)", cursor: "pointer", display: "block" }}>
+        <label className="sd-modal-choice sd-modal-choice-alt" style={{ textAlign: "left", display: "block", width: "100%", cursor: "pointer" }}>
           <input ref={csvRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) onCsvChange(f); e.target.value = ""; }} />
-          <div style={{ fontSize: "1.8rem", marginBottom: 12 }}>📁</div>
-          <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "#00ff88", margin: "0 0 6px" }}>{csvBusy ? "Importing…" : "Upload File"}</h3>
-          <p style={{ fontSize: "0.78rem", color: "#6b7280", margin: "0 0 16px", lineHeight: 1.5 }}>Upload a CSV or Excel file exported from your broker or prop firm.</p>
-          <div style={{ fontSize: "0.72rem", color: "#9ca3af" }}>.csv · .xlsx · .xls</div>
-          {csvMsg && <div style={{ marginTop: 10, fontSize: "0.72rem", color: csvMsg.startsWith("✓") ? "#22c55e" : "#ef4444" }}>{csvMsg}</div>}
+          <div style={{ fontSize: "1.3rem", marginBottom: 10, color: "#9ba4ff" }}>📁</div>
+          <div style={{ fontWeight: 600, fontSize: "0.95rem", color: S.text, marginBottom: 4 }}>{csvBusy ? "Importing…" : "Upload File"}</div>
+          <p style={{ fontSize: "0.78rem", color: S.textMuted, margin: "0 0 12px", lineHeight: 1.5 }}>Upload a CSV or Excel file exported from your broker or prop firm.</p>
+          <div style={{ fontSize: "0.72rem", color: S.textDim }}>.csv · .xlsx · .xls</div>
+          {csvMsg && <div style={{ marginTop: 10, fontSize: "0.72rem", color: csvMsg.startsWith("✓") ? S.blueLight : S.red }}>{csvMsg}</div>}
         </label>
       </div>
 
       {/* Connected accounts */}
       <div style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: "0.78rem", fontWeight: 700, color: "#9ca3af", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 14 }}>Connected accounts {connections.length > 0 && `(${connections.length})`}</h2>
+        <h2 style={{ fontSize: "0.78rem", fontWeight: 700, color: S.textMuted, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 14 }}>Connected accounts {connections.length > 0 && `(${connections.length})`}</h2>
         {connections.length === 0 ? (
-          <div style={{ padding: "20px 16px", borderRadius: 12, border: "1px dashed rgba(255,255,255,0.08)", textAlign: "center", color: "#4b5563", fontSize: "0.82rem" }}>
+          <div style={{ padding: "20px 16px", borderRadius: 12, border: `1px dashed ${S.border}`, textAlign: "center", color: S.textDim, fontSize: "0.82rem", background: S.card }}>
             No connected brokers yet. Select one below to get started.
           </div>
         ) : (
@@ -444,16 +465,16 @@ function ConnectView({
 
       {/* Broker grid */}
       <div>
-        <h2 style={{ fontSize: "0.78rem", fontWeight: 700, color: "#9ca3af", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 14 }}>Add a broker or platform</h2>
+        <h2 style={{ fontSize: "0.78rem", fontWeight: 700, color: S.textMuted, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 14 }}>Add a broker or platform</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(168px,1fr))", gap: 10 }}>
           {BROKERS.map(b => (
-            <button key={b.id} onClick={() => onNewConn(b)}
-              style={{ padding: "14px 12px", borderRadius: 12, border: `1px solid ${b.color}22`, background: `${b.color}09`, cursor: "pointer", textAlign: "left", transition: "border-color 0.15s" }}>
+            <button key={b.id} onClick={() => onNewConn(b)} className="sd-modal-choice"
+              style={{ textAlign: "left", display: "block", width: "100%", padding: "14px 12px" }}>
               <div style={{ fontSize: "1.3rem", marginBottom: 6, color: b.color }}>{b.icon}</div>
-              <div style={{ fontWeight: 600, fontSize: "0.82rem", color: "#e8eaed", marginBottom: 2 }}>{b.name}</div>
-              <div style={{ fontSize: "0.68rem", color: "#6b7280" }}>{b.markets}</div>
-              {b.hasAutoSync && <div style={{ fontSize: "0.62rem", color: "#22c55e", marginTop: 4 }}>● Auto-sync</div>}
-              {b.csvOnly && <div style={{ fontSize: "0.62rem", color: "#9ca3af", marginTop: 4 }}>CSV import</div>}
+              <div style={{ fontWeight: 600, fontSize: "0.82rem", color: S.text, marginBottom: 2 }}>{b.name}</div>
+              <div style={{ fontSize: "0.68rem", color: S.textMuted }}>{b.markets}</div>
+              {b.hasAutoSync && <div style={{ fontSize: "0.62rem", color: S.blueLight, marginTop: 4 }}>● Auto-sync</div>}
+              {b.csvOnly && <div style={{ fontSize: "0.62rem", color: S.textMuted, marginTop: 4 }}>CSV import</div>}
             </button>
           ))}
         </div>
@@ -461,10 +482,10 @@ function ConnectView({
 
       {/* Jump to analytics if trades exist */}
       {tradeCount > 0 && (
-        <div style={{ marginTop: 40, padding: "16px 20px", borderRadius: 14, border: "1px solid rgba(0,255,136,0.2)", background: "rgba(0,255,136,0.05)", display: "flex", alignItems: "center", gap: 16 }}>
+        <div style={{ marginTop: 40, padding: "16px 20px", borderRadius: 14, border: `1px solid ${S.border}`, background: S.elevated, display: "flex", alignItems: "center", gap: 16 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "#00ff88" }}>{tradeCount} trades ready to analyse</div>
-            <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: 2 }}>Click Analytics tab to view your dashboard.</div>
+            <div style={{ fontSize: "0.85rem", fontWeight: 600, color: S.bluePale }}>{tradeCount} trades ready to analyse</div>
+            <div style={{ fontSize: "0.72rem", color: S.textMuted, marginTop: 2 }}>Click Analytics tab to view your dashboard.</div>
           </div>
         </div>
       )}
@@ -629,7 +650,7 @@ export default function JournalPage() {
     const mu = mean(pnls), sig = sampleStd(pnls);
     const dwn = pnls.filter(p => p < 0), dsd = dwn.length > 1 ? sampleStd(dwn) : 0;
     const sharpe = sig > 0 ? mu / sig : null, sortino = dsd > 0 ? mu / dsd : null;
-    const hh = byClose.map(t => holdH(t.openTs, t.closeTs)).filter((h): h is number => h != null);
+    const hh = byClose.map(t => holdH(t.openTs, t.closeTs)).filter((h): h is number => h != null && Number.isFinite(h));
     const avg_hours = hh.length ? mean(hh) : null;
     const avg_win_hours  = (() => { const xs = byClose.filter(t => t.pnl > 0).map(t => holdH(t.openTs, t.closeTs)).filter((h): h is number => h != null); return xs.length ? mean(xs) : null; })();
     const avg_loss_hours = (() => { const xs = byClose.filter(t => t.pnl < 0).map(t => holdH(t.openTs, t.closeTs)).filter((h): h is number => h != null); return xs.length ? mean(xs) : null; })();
@@ -706,13 +727,13 @@ export default function JournalPage() {
     for (const r of moRows) { const v = n(r.y); if (v > bV) { bV = v; bestMo  = `${r.x} (${fm(v)})`; } if (v < wV) { wV = v; worstMo = `${r.x} (${fm(v)})`; } }
     const hld = sAna?.holding_duration;
     return {
-      returnCards: [card("Net P&L",fm(stats.net),`${stats.total} trades`,"#00ff88",stats.net>=0?"pos":"neg"),card("Total return",totalRet,"net/start balance","#00ff88",stats.net>=0?"pos":"neg"),card("Gross profit",fm(stats.gw),"winners only","#00ff88","pos"),card("Gross loss",fm(-stats.gl),"losers only","#00ff88","neg"),card("Monthly avg %",moAvgPct,"mean monthly/balance","#00ff88"),card("Long P&L",fm(ft.filter(t=>t.direction==="LONG").reduce((s,t)=>s+t.pnl,0)),"long side","#00ff88"),card("Short P&L",fm(ft.filter(t=>t.direction==="SHORT").reduce((s,t)=>s+t.pnl,0)),"short side","#00ff88"),card("Alpha",EM,"no benchmark loaded","#00ff88")],
-      riskCards: [card("Volatility (σ)",pN?fm(sig):EM,"per-trade PnL std","#ff4d4d"),card("Downside dev",dsd>0?fm(dsd):EM,"losing trades only","#ff4d4d"),card("VaR 95%",var95!=null?(var95/(sbN||1)*100).toFixed(2)+"%":EM,"empirical tail","#ff4d4d","neg"),card("CVaR 95%",cvar95!=null?(cvar95/(sbN||1)*100).toFixed(2)+"%":EM,"expected shortfall","#ff4d4d","neg"),card("Skewness",sk!=null?sk.toFixed(2):EM,"trade PnL","#ff4d4d",sk!=null&&sk>0?"pos":undefined),card("Kurtosis",kt!=null?kt.toFixed(2):EM,"excess","#ff4d4d"),card("Tail risk",pN?((pnls.filter(p=>p<-3*sig).length/pN)*100).toFixed(1)+"%":EM,"P(PnL<−3σ)","#ff4d4d"),card("Commission",fm(-commTotal),"total comm+slippage","#ff4d4d","neg")],
+      returnCards: [card("Net P&L",fm(stats.net),`${stats.total} trades`,S.bluePale,stats.net>=0?"pos":"neg"),card("Total return",totalRet,"net/start balance",S.bluePale,stats.net>=0?"pos":"neg"),card("Gross profit",fm(stats.gw),"winners only",S.bluePale,"pos"),card("Gross loss",fm(-stats.gl),"losers only",S.bluePale,"neg"),card("Monthly avg %",moAvgPct,"mean monthly/balance",S.bluePale),card("Long P&L",fm(ft.filter(t=>t.direction==="LONG").reduce((s,t)=>s+t.pnl,0)),"long side",S.bluePale),card("Short P&L",fm(ft.filter(t=>t.direction==="SHORT").reduce((s,t)=>s+t.pnl,0)),"short side",S.bluePale),card("Alpha",EM,"no benchmark loaded",S.bluePale)],
+      riskCards: [card("Volatility (σ)",pN?fm(sig):EM,"per-trade PnL std",S.red),card("Downside dev",dsd>0?fm(dsd):EM,"losing trades only",S.red),card("VaR 95%",var95!=null?(var95/(sbN||1)*100).toFixed(2)+"%":EM,"empirical tail",S.red,"neg"),card("CVaR 95%",cvar95!=null?(cvar95/(sbN||1)*100).toFixed(2)+"%":EM,"expected shortfall",S.red,"neg"),card("Skewness",sk!=null?sk.toFixed(2):EM,"trade PnL",S.red,sk!=null&&sk>0?"pos":undefined),card("Kurtosis",kt!=null?kt.toFixed(2):EM,"excess",S.red),card("Tail risk",pN?((pnls.filter(p=>p<-3*sig).length/pN)*100).toFixed(1)+"%":EM,"P(PnL<−3σ)",S.red),card("Commission",fm(-commTotal),"total comm+slippage",S.red,"neg")],
       drawCards: [card("Max drawdown",mddp!=null?(n(mddp)*100).toFixed(2)+"%":EM,"of peak balance","#a855f7","neg"),card("Avg drawdown",pain!=null?pain.toFixed(2)+"%":EM,"mean |underwater|","#a855f7"),card("Calmar ratio",calA,"return/max DD%","#a855f7",calA!==EM?"pos":undefined),card("Recovery factor",rec!=null&&Number.isFinite(n(rec))?n(rec).toFixed(2)+"×":EM,"net/max DD $","#a855f7"),card("Ulcer index",ulcer!=null?ulcer.toFixed(2):EM,"RMS DD%","#a855f7"),card("Pain index",pain!=null?pain.toFixed(2)+"%":EM,"mean DD depth","#a855f7")],
-      ratioCards: [card("Sharpe ratio",sharpeN!=null&&Number.isFinite(sharpeN)?sharpeN.toFixed(2):EM,"mean/σ trades","#00c4ff"),card("Sortino ratio",sortinoN!=null&&Number.isFinite(sortinoN)?sortinoN.toFixed(2):EM,"downside σ","#00c4ff"),card("Calmar ratio",calA,"return/max DD%","#00c4ff",calA!==EM?"pos":undefined),card("Omega ratio",omega0,"gains/|losses| τ=0","#00c4ff",omega0!==EM&&Number(omega0)>=1?"pos":omega0!==EM?"neg":undefined),card("Martin ratio",martin,"return%/ulcer","#00c4ff",martin!==EM?"pos":undefined),card("Pain ratio",painR,"return%/pain idx","#00c4ff",painR!==EM?"pos":undefined),card("t-Statistic",tStat!=null&&Number.isFinite(tStat)?tStat.toFixed(2):EM,"mean/stderr","#00c4ff")],
-      tradeCards: [card("Win rate",fp(stats.winRate),`of ${stats.total} trades`,"#ff6b35","pos"),card("Profit factor",stats.pf.toFixed(2),"gross win/gross loss","#ff6b35",stats.pf>=1?"pos":"neg"),card("Payoff ratio",stats.avgLoss>0?(stats.avgWin/stats.avgLoss).toFixed(2):EM,"avg win/avg loss","#ff6b35"),card("Expectancy",fm(stats.exp),"per trade","#ff6b35",stats.exp>=0?"pos":"neg"),card("Total trades",String(stats.total),"round-trips","#ff6b35"),card("Avg duration",fd(hld?.avg_hours),"open→close","#ff6b35"),card("Max consec wins",String(strk.maxWins),"streak","#ff6b35","pos"),card("Max consec losses",String(strk.maxLosses),"streak","#ff6b35","neg"),card("Largest win",fm(Number.isFinite(stats.best?.pnl)?stats.best.pnl:0),stats.best?.ticker??"","#ff6b35","pos"),card("Largest loss",fm(Number.isFinite(stats.worst?.pnl)?stats.worst.pnl:0),stats.worst?.ticker??"","#ff6b35","neg"),card("Avg winner",fm(stats.avgWin),"per win","#ff6b35","pos"),card("Avg loser",fm(stats.avgLoss),"per loss (abs)","#ff6b35","neg"),card("Win hold",fd(hld?.avg_win_hours),"winners","#ff6b35"),card("Loss hold",fd(hld?.avg_loss_hours),"losers","#ff6b35")],
-      statCards: [card("t-Statistic",tStat!=null?tStat.toFixed(2):EM,"mean PnL/stderr","#fbbf24"),card("p-Value",tStat!=null&&Number.isFinite(tStat)?pFromT(Math.abs(tStat)):EM,"rough |t| thresholds","#fbbf24"),card("Jarque-Bera",jb!=null?jb.toFixed(1):EM,"JB approx","#fbbf24"),card("Skewness",sk!=null?sk.toFixed(2):EM,"trade PnL distribution","#fbbf24"),card("Kurtosis",kt!=null?kt.toFixed(2):EM,"fat tails","#fbbf24"),card("Monte Carlo 5th",mc5!=null?fm(mc5):EM,"bootstrap cum PnL end","#fbbf24")],
-      timeCards: [card("Best month",bestMo,"by $ PnL","#9ca3af","pos"),card("Worst month",worstMo,"by $ PnL","#9ca3af","neg"),card("Avg hold",fd(hld?.avg_hours),"open→close","#9ca3af"),card("Win hold",fd(hld?.avg_win_hours),"winners","#9ca3af"),card("Loss hold",fd(hld?.avg_loss_hours),"losers","#9ca3af"),card("In drawdown",ddPts.length?((ddPts.filter(x=>x>0.01).length/ddPts.length)*100).toFixed(1)+"%":EM,"DD pts>0.01%","#9ca3af")],
+      ratioCards: [card("Sharpe ratio",sharpeN!=null&&Number.isFinite(sharpeN)?sharpeN.toFixed(2):EM,"mean/σ trades",S.blueLight),card("Sortino ratio",sortinoN!=null&&Number.isFinite(sortinoN)?sortinoN.toFixed(2):EM,"downside σ",S.blueLight),card("Calmar ratio",calA,"return/max DD%",S.blueLight,calA!==EM?"pos":undefined),card("Omega ratio",omega0,"gains/|losses| τ=0",S.blueLight,omega0!==EM&&Number(omega0)>=1?"pos":omega0!==EM?"neg":undefined),card("Martin ratio",martin,"return%/ulcer",S.blueLight,martin!==EM?"pos":undefined),card("Pain ratio",painR,"return%/pain idx",S.blueLight,painR!==EM?"pos":undefined),card("t-Statistic",tStat!=null&&Number.isFinite(tStat)?tStat.toFixed(2):EM,"mean/stderr",S.blueLight)],
+      tradeCards: [card("Win rate",fp(stats.winRate),`of ${stats.total} trades`,S.bluePale,"pos"),card("Profit factor",stats.pf.toFixed(2),"gross win/gross loss",S.bluePale,stats.pf>=1?"pos":"neg"),card("Payoff ratio",stats.avgLoss>0?(stats.avgWin/stats.avgLoss).toFixed(2):EM,"avg win/avg loss",S.bluePale),card("Expectancy",fm(stats.exp),"per trade",S.bluePale,stats.exp>=0?"pos":"neg"),card("Total trades",String(stats.total),"round-trips",S.bluePale),card("Avg duration",fd(hld?.avg_hours),"open→close",S.bluePale),card("Max consec wins",String(strk.maxWins),"streak",S.bluePale,"pos"),card("Max consec losses",String(strk.maxLosses),"streak",S.bluePale,"neg"),card("Largest win",fm(Number.isFinite(stats.best?.pnl)?stats.best.pnl:0),stats.best?.ticker??"",S.bluePale,"pos"),card("Largest loss",fm(Number.isFinite(stats.worst?.pnl)?stats.worst.pnl:0),stats.worst?.ticker??"",S.bluePale,"neg"),card("Avg winner",fm(stats.avgWin),"per win",S.bluePale,"pos"),card("Avg loser",fm(stats.avgLoss),"per loss (abs)",S.bluePale,"neg"),card("Win hold",fd(hld?.avg_win_hours),"winners",S.bluePale),card("Loss hold",fd(hld?.avg_loss_hours),"losers",S.bluePale)],
+      statCards: [card("t-Statistic",tStat!=null?tStat.toFixed(2):EM,"mean PnL/stderr",S.amber),card("p-Value",tStat!=null&&Number.isFinite(tStat)?pFromT(Math.abs(tStat)):EM,"rough |t| thresholds",S.amber),card("Jarque-Bera",jb!=null?jb.toFixed(1):EM,"JB approx",S.amber),card("Skewness",sk!=null?sk.toFixed(2):EM,"trade PnL distribution",S.amber),card("Kurtosis",kt!=null?kt.toFixed(2):EM,"fat tails",S.amber),card("Monte Carlo 5th",mc5!=null?fm(mc5):EM,"bootstrap cum PnL end",S.amber)],
+      timeCards: [card("Best month",bestMo,"by $ PnL",S.textSec,"pos"),card("Worst month",worstMo,"by $ PnL",S.textSec,"neg"),card("Avg hold",fd(hld?.avg_hours),"open→close",S.textSec),card("Win hold",fd(hld?.avg_win_hours),"winners",S.textSec),card("Loss hold",fd(hld?.avg_loss_hours),"losers",S.textSec),card("In drawdown",ddPts.length?((ddPts.filter(x=>x>0.01).length/ddPts.length)*100).toFixed(1)+"%":EM,"DD pts>0.01%",S.textSec)],
     };
   }, [sAna, stats, pnls, ft, byClose]);
 
@@ -746,60 +767,71 @@ export default function JournalPage() {
 
   // ── No token ────────────────────────────────────────────────────────────────
   if (noToken) return (
-    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"80vh",background:"#07080E",color:"#fff"}}>
-      <div style={{textAlign:"center",padding:32,borderRadius:16,border:"1px solid rgba(255,255,255,0.1)",maxWidth:420}}>
-        <div style={{fontSize:48,marginBottom:16}}>🔑</div>
-        <h2 style={{fontSize:"1.25rem",fontWeight:700,marginBottom:8}}>Journal login required</h2>
-        <p style={{color:"rgba(255,255,255,0.5)",fontSize:"0.85rem",marginBottom:24}}>No journal token in localStorage. Please log in at <code style={{color:"#00c4ff"}}>/journal</code> first.</p>
-        <a href="/journal" style={{display:"inline-flex",alignItems:"center",gap:8,padding:"10px 20px",borderRadius:12,background:"rgba(0,196,255,0.1)",border:"1px solid rgba(0,196,255,0.3)",color:"#00c4ff",fontSize:"0.875rem",fontWeight:500,textDecoration:"none"}}>Go to /journal →</a>
+    <div className="sd-root" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "80vh" }}>
+      <div className="sd-modal-panel" style={{ textAlign: "center", maxWidth: 420 }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🔑</div>
+        <h2 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: 8, color: S.text }}>Journal login required</h2>
+        <p style={{ color: S.textMuted, fontSize: "0.85rem", marginBottom: 24 }}>No journal token in localStorage. Please log in at <code style={{ color: S.blueLight }}>/journal</code> first.</p>
+        <a href="/journal" className="sd-btn-primary" style={{ textDecoration: "none", display: "inline-flex" }}>Go to /journal →</a>
       </div>
     </div>
   );
 
   // ── Layout ──────────────────────────────────────────────────────────────────
   return (
-    <div className={`${syne.variable} ${spaceMono.variable} bt-os-dashboard`} style={{fontFamily:"var(--font-syne),Syne,sans-serif",minHeight:"100vh"}}>
+    <div className="sd-root bt-os-dashboard" style={{ fontFamily: "var(--font-zain),system-ui,sans-serif", minHeight: "100vh" }}>
       {/* Tab bar */}
-      <div style={{position:"sticky",top:0,zIndex:50,background:"#07080E",borderBottom:"1px solid rgba(255,255,255,0.06)",display:"flex",alignItems:"center",gap:0,padding:"0 20px"}}>
+      <div className="sd-subnav">
         {(["connect","analytics"] as const).map(v => (
-          <button key={v} onClick={()=>setView(v)} style={{padding:"13px 18px",background:"none",border:"none",cursor:"pointer",fontSize:"0.78rem",fontWeight:600,letterSpacing:"0.04em",textTransform:"uppercase",color:view===v?"#e8eaed":"#6b7280",borderBottom:view===v?"2px solid #00ff88":"2px solid transparent",transition:"color 0.15s"}}>
+          <button
+            key={v}
+            onClick={()=>setView(v)}
+            className={view===v?"sd-subnav-link sd-subnav-link--active":"sd-subnav-link"}
+            style={{ background: "none", border: "none", cursor: "pointer" }}
+          >
             {v === "connect" ? "⬆ Import & Connect" : "📊 Analytics"}
-            {v === "analytics" && trades.length > 0 && <span style={{marginLeft:6,padding:"1px 6px",borderRadius:4,background:"rgba(0,255,136,0.12)",color:"#00ff88",fontSize:"0.65rem"}}>{trades.length}</span>}
+            {v === "analytics" && trades.length > 0 && (
+              <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 4, background: "rgba(96,165,250,0.12)", color: S.blueLight, fontSize: "0.65rem" }}>{trades.length}</span>
+            )}
           </button>
         ))}
         {view === "analytics" && (
-          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
-            <select value={pairFilter} onChange={e=>setPair(e.target.value)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(255,255,255,0.12)",background:"#111418",color:"#e8eaed",fontSize:"0.72rem"}}>
+          <div className="sd-filters" style={{ marginLeft: "auto", marginBottom: 0 }}>
+            <select value={pairFilter} onChange={e=>setPair(e.target.value)} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${S.border}`, background: S.elevated, color: S.text, fontSize: "0.72rem" }}>
               <option value="ALL">All instruments</option>
               {pairOpts.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
-            <select value={setupFilter} onChange={e=>setSetup(e.target.value)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(255,255,255,0.12)",background:"#111418",color:"#e8eaed",fontSize:"0.72rem"}}>
+            <select value={setupFilter} onChange={e=>setSetup(e.target.value)} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${S.border}`, background: S.elevated, color: S.text, fontSize: "0.72rem" }}>
               <option value="ALL">All strategies</option>
               {setupOpts.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
-            <select value={outcomeFilter} onChange={e=>setOutcome(e.target.value)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid rgba(255,255,255,0.12)",background:"#111418",color:"#e8eaed",fontSize:"0.72rem"}}>
+            <select value={outcomeFilter} onChange={e=>setOutcome(e.target.value)} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${S.border}`, background: S.elevated, color: S.text, fontSize: "0.72rem" }}>
               <option value="ALL">All outcomes</option>
               <option value="WINNERS">Winners</option>
               <option value="LOSERS">Losers</option>
               <option value="BREAKEVEN">Breakeven</option>
             </select>
-            <label style={{fontSize:"0.72rem",color:"#9ca3af",display:"flex",alignItems:"center",gap:4}}>
+            <label style={{ fontSize: "0.72rem", color: S.textSec, display: "flex", alignItems: "center", gap: 4 }}>
               $<input type="number" min={1} step={1000} value={sbInput} onChange={e=>setSbInput(e.target.value)}
-                style={{width:80,padding:"3px 6px",borderRadius:4,border:"1px solid rgba(255,255,255,0.15)",background:"#111418",color:"#e8eaed",fontSize:"0.72rem"}} />
+                style={{ width: 80, padding: "3px 6px", borderRadius: 4, border: `1px solid ${S.borderHover}`, background: S.elevated, color: S.text, fontSize: "0.72rem" }} />
             </label>
-            <label style={{cursor:"pointer",fontSize:"0.72rem",color:csvBusy?"#6b7280":"#00ff88",padding:"4px 10px",borderRadius:6,border:"1px solid rgba(0,255,136,0.25)",background:"rgba(0,255,136,0.06)"}}>
-              <input ref={csvRef} type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)void runCsvImport(f);e.target.value="";}} />
+            <label className="sd-btn-primary" style={{ cursor: "pointer", fontSize: "0.72rem", padding: "5px 12px" }}>
+              <input ref={csvRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }} onChange={e=>{const f=e.target.files?.[0];if(f)void runCsvImport(f);e.target.value="";}} />
               {csvBusy?"…":"⬆ CSV"}
             </label>
-            {csvMsg && <span style={{fontSize:"0.68rem",color:csvMsg.startsWith("✓")?"#22c55e":"#ef4444",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{csvMsg}</span>}
+            {csvMsg && <span style={{ fontSize: "0.68rem", color: csvMsg.startsWith("✓")?S.blueLight:S.red, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{csvMsg}</span>}
           </div>
         )}
       </div>
 
-      {error && <div className="bt-os-api-error">API error: {error}</div>}
+      {error && (
+        <div style={{ padding: "10px 32px", background: "rgba(255,96,96,0.06)", borderBottom: `1px solid rgba(255,96,96,0.15)`, color: S.red, fontSize: "0.82rem" }}>
+          API error: {error}
+        </div>
+      )}
 
       {loading ? (
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:400,color:"#6b7280"}}>Loading…</div>
+        <div className="sd-main" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 400, color: S.textMuted }}>Loading…</div>
       ) : view === "connect" ? (
         <ConnectView
           connections={connections}
@@ -814,10 +846,10 @@ export default function JournalPage() {
           tradeCount={trades.length}
         />
       ) : !ft.length ? (
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:400,color:"#6b7280",gap:16}}>
-          <div style={{fontSize:48}}>📋</div>
-          <div style={{fontSize:"0.95rem"}}>{trades.length?"No trades match the current filter.":"No trades found."}</div>
-          <button onClick={()=>setView("connect")} style={{padding:"10px 20px",borderRadius:10,border:"1px solid rgba(0,255,136,0.3)",background:"rgba(0,255,136,0.08)",color:"#00ff88",fontSize:"0.85rem",cursor:"pointer"}}>⬆ Import & Connect →</button>
+        <div className="sd-main" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 400, color: S.textMuted, gap: 16 }}>
+          <div style={{ fontSize: 48 }}>📋</div>
+          <div style={{ fontSize: "0.95rem" }}>{trades.length?"No trades match the current filter.":"No trades found."}</div>
+          <button onClick={()=>setView("connect")} className="sd-btn-primary" style={{ fontSize: "0.85rem" }}>⬆ Import & Connect →</button>
         </div>
       ) : (
         <BacktestOsDashboardLayout
@@ -839,7 +871,7 @@ export default function JournalPage() {
               <div className="bt-os-chart-card" style={{marginBottom:12}}>
                 <div className="bt-os-chart-title">Per-instrument breakdown</div>
                 <div className="bt-os-table-wrap"><table><thead><tr>{sortHdr("ticker","Instrument")}{sortHdr("trades","Trades")}{sortHdr("winRate","Win%")}{sortHdr("pnl","Net P&L")}{sortHdr("avgRr","Avg R:R")}{sortHdr("comm","Commissions")}</tr></thead><tbody>
-                  {sortedPair.map(r => <tr key={r.ticker}><td>{r.ticker}</td><td>{r.trades}</td><td>{fp(r.winRate)}</td><td className={r.pnl>=0?"bt-os-td-pos":"bt-os-td-neg"}>{fm(r.pnl)}</td><td>{r.avgRr.toFixed(2)}</td><td style={{color:"#ef4444"}}>{fm(-r.comm)}</td></tr>)}
+                  {sortedPair.map(r => <tr key={r.ticker}><td>{r.ticker}</td><td>{r.trades}</td><td>{fp(r.winRate)}</td><td className={r.pnl>=0?"bt-os-td-pos":"bt-os-td-neg"}>{fm(r.pnl)}</td><td>{r.avgRr.toFixed(2)}</td><td style={{color:S.red}}>{fm(-r.comm)}</td></tr>)}
                 </tbody></table></div>
               </div>
               <div className="bt-os-chart-card" style={{marginBottom:12}}>
@@ -851,7 +883,7 @@ export default function JournalPage() {
               <div className="bt-os-chart-card">
                 <div className="bt-os-chart-title">Recent trades (last {recent.length})</div>
                 <div className="bt-os-table-wrap"><table><thead><tr><th>Instrument</th><th>Direction</th><th>Strategy</th><th>P&amp;L</th><th>R:R</th><th>Closed</th></tr></thead><tbody>
-                  {recent.map(t => <tr key={t.id}><td>{t.ticker}</td><td style={{color:t.direction==="LONG"?"#22c55e":"#ef4444"}}>{t.direction}</td><td style={{color:"#9ca3af"}}>{t.setup}</td><td className={t.pnl>=0?"bt-os-td-pos":"bt-os-td-neg"}>{fm(t.pnl)}</td><td>{t.rr.toFixed(2)}</td><td style={{color:"#6b7280"}}>{t.closeTs>0?new Date(t.closeTs).toISOString().slice(0,10):"—"}</td></tr>)}
+                  {recent.map(t => <tr key={t.id}><td>{t.ticker}</td><td style={{color:t.direction==="LONG"?"#2563eb":"#ff6060"}}>{t.direction}</td><td style={{color:S.textSec}}>{t.setup}</td><td className={t.pnl>=0?"bt-os-td-pos":"bt-os-td-neg"}>{fm(t.pnl)}</td><td>{t.rr.toFixed(2)}</td><td style={{color:S.textMuted}}>{t.closeTs>0?new Date(t.closeTs).toISOString().slice(0,10):"—"}</td></tr>)}
                 </tbody></table></div>
               </div>
             </>

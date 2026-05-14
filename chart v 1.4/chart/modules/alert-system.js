@@ -466,7 +466,7 @@ class AlertSystem {
      */
     showAlertNotification(alert, currentPrice) {
         const notification = document.createElement('div');
-        notification.className = 'alert-notification';
+        notification.className = 'alert-notification chart-toast-tooltip';
         notification.innerHTML = `
             <div class="alert-notification-header">
                 <span class="alert-notification-icon">🔔</span>

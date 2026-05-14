@@ -1612,26 +1612,40 @@ class ScreenshotManager {
         // Remove existing screenshot notification if any
         const existing = document.querySelector('.screenshot-notification');
         if (existing) existing.remove();
+
+        const safeType = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
+        const accent = {
+            success: '#22c55e',
+            error: '#ef4444',
+            warning: '#f59e0b',
+            info: '#3b82f6'
+        }[safeType];
         
         const notification = document.createElement('div');
-        notification.className = 'screenshot-notification';
+        notification.className = 'screenshot-notification chart-toast-tooltip';
         notification.style.cssText = `
             position: fixed;
             top: 16px;
             right: 16px;
             transform: translateX(20px);
-            background: rgba(55, 65, 81, 0.95);
-            color: #e5e7eb;
-            padding: 12px 20px;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: 500;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+            background: rgba(42, 46, 57, 0.95);
+            color: #ffffff;
+            padding: 7px 11px;
+            border-radius: 4px;
+            font-size: 11px;
+            line-height: 14px;
+            font-weight: 600;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
             z-index: 100001;
             opacity: 0;
             transition: opacity 0.3s ease, transform 0.3s ease;
-            white-space: nowrap;
-            border: 1px solid rgba(255,255,255,0.1);
+            white-space: normal;
+            word-break: break-word;
+            max-width: 340px;
+            border: 1px solid #363a45;
+            border-left: 3px solid ${accent};
+            box-sizing: border-box;
         `;
         notification.textContent = message;
         document.body.appendChild(notification);

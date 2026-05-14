@@ -2157,33 +2157,36 @@ class DrawingToolbar {
     }
 
     showNotification(message) {
-        const accent = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
+        const accent = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#3b82f6';
         const el = document.createElement('div');
+        el.className = 'chart-toast-tooltip';
         el.style.cssText = [
             'position:fixed',
             'top:18px',
             'right:22px',
             'display:flex',
             'align-items:center',
-            'gap:10px',
-            'padding:11px 18px',
-            'border-radius:10px',
-            'font-size:13px',
+            'gap:8px',
+            'padding:7px 11px',
+            'border-radius:4px',
+            'font-size:11px',
+            'line-height:14px',
             'font-weight:600',
+            'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif',
             'color:#fff',
-            'background:' + accent,
-            'box-shadow:0 8px 28px rgba(0,0,0,0.45),0 0 0 1px rgba(255,255,255,0.10)',
-            'backdrop-filter:blur(8px)',
-            '-webkit-backdrop-filter:blur(8px)',
+            'background:rgba(42,46,57,0.95)',
+            'border:1px solid #363a45',
+            'border-left:3px solid ' + accent,
+            'box-shadow:0 4px 12px rgba(0,0,0,0.35)',
+            'box-sizing:border-box',
             'z-index:2147483647',
             'opacity:0',
             'transform:translateY(-8px) scale(0.97)',
             'transition:opacity 0.22s ease,transform 0.22s ease',
             'pointer-events:none',
             'max-width:340px',
-            'white-space:nowrap',
-            'overflow:hidden',
-            'text-overflow:ellipsis'
+            'white-space:normal',
+            'word-break:break-word'
         ].join(';');
         el.textContent = message;
         document.body.appendChild(el);

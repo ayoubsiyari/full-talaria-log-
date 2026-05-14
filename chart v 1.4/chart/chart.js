@@ -3920,29 +3920,31 @@ class Chart {
     
     showNotification(message) {
         const el = document.createElement('div');
-        el.className = 'chart-notification';
+        el.className = 'chart-notification chart-toast-tooltip';
         el.style.cssText = [
             'position:fixed',
             'bottom:80px',
             'left:50%',
             'transform:translateX(-50%) translateY(6px)',
-            'padding:6px 14px',
-            'border-radius:20px',
+            'padding:6px 10px',
+            'border-radius:4px',
             'font-size:11px',
-            'font-weight:500',
-            'color:rgba(255,255,255,0.82)',
-            'background:rgba(20,20,35,0.82)',
-            'border:1px solid rgba(255,255,255,0.10)',
-            'backdrop-filter:blur(10px)',
-            '-webkit-backdrop-filter:blur(10px)',
+            'line-height:14px',
+            'font-weight:600',
+            'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif',
+            'color:#ffffff',
+            'background:rgba(42,46,57,0.95)',
+            'border:1px solid #363a45',
+            'box-shadow:0 4px 12px rgba(0,0,0,0.35)',
             'z-index:2147483647',
             'opacity:0',
             'transition:opacity 0.18s ease,transform 0.18s ease',
             'pointer-events:none',
-            'max-width:280px',
-            'white-space:nowrap',
-            'overflow:hidden',
-            'text-overflow:ellipsis'
+            'max-width:320px',
+            'white-space:normal',
+            'word-break:break-word',
+            'text-align:center',
+            'box-sizing:border-box'
         ].join(';');
         el.textContent = message;
         document.body.appendChild(el);

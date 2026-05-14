@@ -31449,9 +31449,71 @@ class OrderManager {
         return ft;
     }
 
-    /** Entry marker / connector start: same replay column rules as _chartIndexForCloseMarkerOnChart. */
-    _chartIndexForEntryMarkerOnChart(ch, openTime) {
-        return this._chartIndexForCloseMarkerOnChart(ch, openTime);
+    /**
+     * After time→index mapping, prefer a candle whose [l,h] actually contains the fill price.
+     * Tick replay uses raw `getCurrentCandle().c` while `openTime` may sit on a resampled bucket
+     * whose OHLC does not include that close — otherwise the entry tick floats in "empty" space.
+     */
+    _refineEntryMarkerIndexForOpen(ch, idx0, openTime, openPrice) {
+        const data = ch?.data;
+        if (!Array.isArray(data) || data.length === 0 || idx0 < 0 || idx0 >= data.length) return idx0;
+        const p = Number(openPrice);
+        if (!Number.isFinite(p)) return idx0;
+        const ot = Number(openTime);
+        const bar0 = data[idx0];
+        if (bar0) {
+            const lo = Number(bar0.l);
+            const hi = Number(bar0.h);
+            if (Number.isFinite(lo) && Number.isFinite(hi)) {
+                const mn = Math.min(lo, hi);
+                const mx = Math.max(lo, hi);
+                if (p >= mn && p <= mx) return idx0;
+            }
+        }
+        const n = data.length;
+        const WIN = 400;
+        let best = -1;
+        let bestKey = Infinity;
+        const keyFor = (i) => {
+            const b = data[i];
+            if (!b) return Infinity;
+            const bt = Number(b.t);
+            const timeDist = Number.isFinite(ot) && Number.isFinite(bt) ? Math.abs(bt - ot) : 0;
+            const idxDist = Math.abs(i - idx0);
+            return timeDist + idxDist * 1e-9;
+        };
+        const scanRange = (from, to) => {
+            for (let i = from; i <= to; i++) {
+                const b = data[i];
+                if (!b) continue;
+                const lo = Number(b.l);
+                const hi = Number(b.h);
+                if (!Number.isFinite(lo) || !Number.isFinite(hi)) continue;
+                const mn = Math.min(lo, hi);
+                const mx = Math.max(lo, hi);
+                if (p < mn || p > mx) continue;
+                const k = keyFor(i);
+                if (k < bestKey) {
+                    bestKey = k;
+                    best = i;
+                }
+            }
+        };
+        scanRange(Math.max(0, idx0 - WIN), Math.min(n - 1, idx0 + WIN));
+        if (best < 0) scanRange(0, n - 1);
+        return best >= 0 ? best : idx0;
+    }
+
+    /**
+     * Entry marker / connector start: same replay column rules as _chartIndexForCloseMarkerOnChart,
+     * then optional price coherence so X aligns with a bar that contains openPrice.
+     */
+    _chartIndexForEntryMarkerOnChart(ch, openTime, openPrice) {
+        const idx = this._chartIndexForCloseMarkerOnChart(ch, openTime);
+        if (idx === -1 || openPrice == null) return idx;
+        const px = Number(openPrice);
+        if (!Number.isFinite(px)) return idx;
+        return this._refineEntryMarkerIndexForOpen(ch, idx, openTime, px);
     }
 
     _chartIndexForCloseMarker(closeTime) {
@@ -31644,7 +31706,7 @@ class OrderManager {
         const { yScale } = chart.scales;
         if (!yScale) return;
 
-        const dataIndex = this._chartIndexForEntryMarkerOnChart(chart, order.openTime);
+        const dataIndex = this._chartIndexForEntryMarkerOnChart(chart, order.openTime, order.openPrice);
         if (dataIndex === -1) return;
 
         const candleSpacing = chart.getCandleSpacing();
@@ -31948,7 +32010,7 @@ class OrderManager {
         const { yScale } = chart.scales;
         if (!yScale) return;
 
-        const entryIdx = this._chartIndexForEntryMarkerOnChart(chart, order.openTime);
+        const entryIdx = this._chartIndexForEntryMarkerOnChart(chart, order.openTime, order.openPrice);
         const exitIdx = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
         if (entryIdx === -1 || exitIdx === -1) return;
 
@@ -32165,7 +32227,7 @@ class OrderManager {
             if (c !== ch) return;
             if (!c?.scales?.yScale) return;
 
-            const dataIndex = this._chartIndexForEntryMarkerOnChart(c, time);
+            const dataIndex = this._chartIndexForEntryMarkerOnChart(c, time, price);
             if (dataIndex === -1) return;
 
             const candleSpacing = c.getCandleSpacing();
@@ -32294,7 +32356,7 @@ class OrderManager {
                 const ch = tc.chart || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
                 const mainY = ch.scales.yScale;
-                const eIdx = this._chartIndexForEntryMarkerOnChart(ch, tc.entryTime);
+                const eIdx = this._chartIndexForEntryMarkerOnChart(ch, tc.entryTime, tc.entryPrice);
                 const xIdx = this._chartIndexForCloseMarkerOnChart(ch, tc.exitTime);
                 if (eIdx === -1 || xIdx === -1) return;
                 tc.line
@@ -36935,22 +36997,36 @@ class OrderManager {
         const container = document.getElementById('orderNotifications');
         if (!container) return;
         
+        const safeType = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
+        const accent = {
+            success: '#22c55e',
+            error: '#ef4444',
+            warning: '#f59e0b',
+            info: '#3b82f6'
+        }[safeType];
+
         const notification = document.createElement('div');
+        notification.className = 'chart-toast-tooltip';
+        /* Match .chart-tooltip surface: compact panel + colored left rail for severity */
         notification.style.cssText = `
-            background: ${type === 'success' ? 'rgba(34, 197, 94, 0.95)' : 
-                         type === 'error' ? 'rgba(239, 68, 68, 0.95)' : 
-                         type === 'warning' ? 'rgba(245, 158, 11, 0.95)' : 
-                         'rgba(59, 130, 246, 0.95)'};
-            color: white;
-            padding: 16px 20px;
-            border-radius: 8px;
-            font-size: 14px;
+            background: rgba(42, 46, 57, 0.95);
+            color: #ffffff;
+            border: 1px solid #363a45;
+            border-left: 3px solid ${accent};
+            border-radius: 4px;
+            padding: 7px 11px;
+            font-size: 11px;
+            line-height: 14px;
             font-weight: 600;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+            box-sizing: border-box;
             animation: slideIn 0.3s ease-out;
             pointer-events: auto;
-            min-width: 280px;
-            max-width: 400px;
+            min-width: 200px;
+            max-width: 380px;
+            white-space: normal;
+            word-break: break-word;
         `;
         notification.textContent = message;
         if (opts && typeof opts.onClick === 'function') {

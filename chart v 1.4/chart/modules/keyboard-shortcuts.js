@@ -990,21 +990,27 @@ class KeyboardShortcutsManager {
         if (!notification) {
             notification = document.createElement('div');
             notification.id = 'shortcutNotification';
+            notification.className = 'chart-toast-tooltip';
             notification.style.cssText = `
                 position: fixed;
                 bottom: 100px;
                 left: 50%;
                 transform: translateX(-50%);
-                background: rgba(26, 29, 40, 0.95);
-                border: 1px solid #2a2e39;
-                border-radius: 8px;
-                padding: 12px 20px;
+                background: rgba(42, 46, 57, 0.95);
+                border: 1px solid #363a45;
+                border-radius: 4px;
+                padding: 7px 11px;
                 color: #fff;
-                font-size: 14px;
+                font-size: 11px;
+                line-height: 14px;
+                font-weight: 600;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 z-index: 100000;
-                backdrop-filter: blur(10px);
-                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
                 transition: opacity 0.3s ease;
+                max-width: 320px;
+                text-align: center;
+                box-sizing: border-box;
             `;
             document.body.appendChild(notification);
         }
