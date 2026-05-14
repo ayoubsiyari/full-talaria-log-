@@ -3066,6 +3066,7 @@ const TalariaV8bLive = () => {
   const [notesText, setNotesText] = useState("");
   const [notesOpen, setNotesOpen] = useState(false);
   const [tradeNotes, setTradeNotes] = useState({});
+  const tradeNotesRef = useRef({});
   const [tradeScreenshots, setTradeScreenshots] = useState({});
   const [screenshots, setScreenshots] = useState([]);
   const [ssOpen, setSsOpen] = useState(true);
@@ -3073,10 +3074,65 @@ const TalariaV8bLive = () => {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
+    tradeNotesRef.current = tradeNotes;
+  }, [tradeNotes]);
+
+  useEffect(() => {
     const onClearDraft = () => setScreenshots([]);
     window.addEventListener("talaria:order-rail-clear-draft", onClearDraft);
     return () => window.removeEventListener("talaria:order-rail-clear-draft", onClearDraft);
   }, []);
+
+  /** OrderManager legacy journal modal → V9 trade card when `showTradeJournalModal` dispatches on the live shell. */
+  useEffect(() => {
+    const onOpenV9Card = (ev) => {
+      const oid = ev?.detail?.orderId;
+      if (oid == null) return;
+      const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+      let attempts = 0;
+      const maxAttempts = 25;
+      const tryOpen = () => {
+        attempts += 1;
+        const rows = buildLiveTradeRowsFromOrderManager(om, c);
+        const r = rows.find((x) => Number(x.omId) === Number(oid));
+        if (r) {
+          const tid = r.omId;
+          let j = null;
+          if (om && tid != null) {
+            j = Array.isArray(om.tradeJournal)
+              ? om.tradeJournal.find((t) => Number(t.tradeId ?? t.id) === Number(tid))
+              : null;
+          }
+          const order =
+            om?.pendingOrders?.find((o) => o.id === tid) ||
+            om?.openPositions?.find((o) => o.id === tid) ||
+            om?.closedPositions?.find((o) => o.id === tid);
+          const noteFallback = j?.v9TradeNotes || order?.journalEntry?.v9TradeNotes || "";
+          const notesMap = tradeNotesRef.current;
+          setTradeCard(r);
+          setTradeCardPreTags([...r.preTags]);
+          setTradeCardPostTags([...r.postTags]);
+          setTradeCardNotes(notesMap[r.id] || noteFallback || "");
+          if (j && (j.entryScreenshot || j.exitScreenshot)) {
+            setTradeScreenshots((prev) => {
+              const ex = prev[r.id] || {};
+              const pre = clampScreenshotSlot([...(ex.pre || [])]);
+              const post = clampScreenshotSlot([...(ex.post || [])]);
+              if (j.entryScreenshot && !pre.includes(j.entryScreenshot)) pre.push(j.entryScreenshot);
+              if (j.exitScreenshot && !post.includes(j.exitScreenshot)) post.push(j.exitScreenshot);
+              return { ...prev, [r.id]: { ...ex, pre: clampScreenshotSlot(pre), post: clampScreenshotSlot(post) } };
+            });
+          }
+          setOmTradeRev((n) => n + 1);
+          return;
+        }
+        if (attempts < maxAttempts) requestAnimationFrame(tryOpen);
+      };
+      requestAnimationFrame(tryOpen);
+    };
+    window.addEventListener("talaria:open-v9-trade-card", onOpenV9Card);
+    return () => window.removeEventListener("talaria:open-v9-trade-card", onOpenV9Card);
+  }, [c]);
   const replaceInputRef = useRef(null);
   const tipTimerRef = useRef(null);
   const [tipData, setTipData] = useState(null);
@@ -14424,26 +14480,30 @@ const TalariaV8bLive = () => {
           const row = (right) => (
             <div key={p.id} style={{
               display: "grid",
-              gridTemplateColumns: "1fr auto auto 1fr",
+              gridTemplateColumns: "minmax(100px, 38%) 1fr",
               alignItems: "center",
-              columnGap: 14,
-              padding: "9px 0",
+              columnGap: 12,
+              padding: "9px 12px",
               borderBottom: `1px solid ${c.br}`,
               width: "100%",
               boxSizing: "border-box",
             }}>
-              <div style={{ minWidth: 0 }} />
               <span style={{
                 fontSize: 12,
                 color: c.ts,
-                textAlign: "right",
-                justifySelf: "end",
-                maxWidth: 220,
+                textAlign: "left",
+                justifySelf: "start",
                 minWidth: 0,
                 lineHeight: 1.35,
+                paddingRight: 4,
               }}>{p.label}</span>
-              <div style={{ display: "flex", alignItems: "center", justifySelf: "start", flexShrink: 0 }}>{right}</div>
-              <div style={{ minWidth: 0 }} />
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minWidth: 0,
+                width: "100%",
+              }}>{right}</div>
             </div>
           );
           if (p.type === "heading") {

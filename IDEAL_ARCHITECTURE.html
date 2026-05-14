@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Talaria — Ideal Clean Architecture</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#080b12;color:#e2e8f0;height:100vh;overflow:hidden}
+
+/* TOP BAR */
+#topbar{position:fixed;top:0;left:0;right:0;height:50px;background:#0c1018;border-bottom:1px solid #1e293b;display:flex;align-items:center;gap:14px;padding:0 20px;z-index:200}
+#topbar h1{font-size:0.9rem;font-weight:800;letter-spacing:-0.3px;color:#f8fafc}
+#topbar h1 span{background:linear-gradient(90deg,#38bdf8,#818cf8,#34d399);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.tbadge{font-size:0.62rem;padding:2px 8px;border-radius:10px;font-weight:700}
+.tbadge.target{background:#052e16;color:#4ade80;border:1px solid #16a34a44}
+.tbadge.current{background:#3b1414;color:#f87171;border:1px solid #dc262644}
+.sep{width:1px;height:22px;background:#1e293b}
+.zbtn{background:#131b29;border:1px solid #1e293b;color:#64748b;padding:3px 10px;border-radius:5px;cursor:pointer;font-size:0.72rem}
+.zbtn:hover{color:#38bdf8;border-color:#38bdf833}
+#zlbl{font-size:0.7rem;color:#475569;min-width:38px;text-align:center}
+#panel-btn{margin-left:auto;background:#131b29;border:1px solid #1e293b;color:#818cf8;padding:4px 14px;border-radius:5px;cursor:pointer;font-size:0.72rem;font-weight:600}
+#panel-btn:hover{border-color:#818cf844;background:#1e1b4b44}
+
+/* LAYOUT */
+#layout{position:fixed;top:50px;left:0;right:0;bottom:0;display:flex}
+#canvas-wrap{flex:1;overflow:auto;background:#080b12;cursor:grab}
+#canvas-wrap:active{cursor:grabbing}
+#canvas{position:relative;width:2600px;height:1700px;transform-origin:0 0}
+
+/* ZONES */
+.zone{position:absolute;border-radius:18px;border:1px solid}
+.zone-lbl{position:absolute;font-size:0.58rem;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;padding:3px 10px;border-radius:5px;top:-13px;left:14px}
+
+/* NODES */
+.nd{position:absolute;transform:translate(-50%,-50%);border-radius:10px;border:1px solid;padding:7px 12px;text-align:center;cursor:default;transition:all 0.15s;z-index:3}
+.nd:hover{z-index:50;transform:translate(-50%,-50%) scale(1.03)}
+.nd .lbl{font-size:0.73rem;font-weight:700;white-space:nowrap}
+.nd .path{font-size:0.58rem;font-family:monospace;opacity:0.55;display:block;margin-top:2px;white-space:nowrap}
+.nd .sub{font-size:0.58rem;opacity:0.5;display:block;margin-top:1px}
+
+/* colour themes */
+.pub  {background:#040d1c;border-color:#1d4ed866;color:#93c5fd}
+.pub:hover{border-color:#3b82f6;box-shadow:0 0 16px #3b82f618}
+.auth {background:#0d0522;border-color:#6d28d966;color:#c4b5fd}
+.auth:hover{border-color:#7c3aed;box-shadow:0 0 16px #7c3aed18}
+.app  {background:#031f11;border-color:#15803d66;color:#6ee7b7}
+.app:hover{border-color:#10b981;box-shadow:0 0 16px #10b98118}
+.tool {background:#1a0e00;border-color:#d9770666;color:#fcd34d}
+.tool:hover{border-color:#d97706;box-shadow:0 0 16px #d9770618}
+.api  {background:#0c0f1a;border-color:#33415566;color:#94a3b8}
+.guard{background:#120616;border-color:#9333ea66;color:#d8b4fe}
+.entry{background:#050a14;border-color:#1e293b;color:#64748b}
+.an   {background:#01160d;border-color:#05966966;color:#34d399}
+
+/* section header nodes */
+.section-hdr{background:transparent;border:none;text-align:left;cursor:default;transform:translate(0,-50%)}
+.section-hdr:hover{transform:translate(0,-50%);box-shadow:none}
+.section-hdr .lbl{font-size:0.62rem;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;opacity:0.5}
+
+/* grouped analytics mini nodes */
+.mini{min-width:0;padding:4px 8px;border-radius:6px}
+.mini .lbl{font-size:0.62rem}
+.mini .path{font-size:0.52rem}
+
+/* DELETE badge */
+.del-badge{position:absolute;top:-8px;right:-8px;background:#ef4444;color:#fff;border-radius:4px;font-size:0.52rem;font-weight:800;padding:1px 5px;z-index:10;letter-spacing:0.5px}
+.move-badge{position:absolute;top:-8px;right:-8px;background:#f97316;color:#fff;border-radius:4px;font-size:0.52rem;font-weight:800;padding:1px 5px;z-index:10;letter-spacing:0.5px}
+.new-badge{position:absolute;top:-8px;right:-8px;background:#0ea5e9;color:#fff;border-radius:4px;font-size:0.52rem;font-weight:800;padding:1px 5px;z-index:10;letter-spacing:0.5px}
+
+/* SVG */
+svg#arrs{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+
+/* TOOLTIP */
+#tt{position:fixed;background:#0c1018;border:1px solid #1e293b;border-radius:8px;padding:8px 12px;font-size:0.68rem;color:#e2e8f0;pointer-events:none;z-index:400;max-width:280px;display:none;line-height:1.6;box-shadow:0 12px 40px rgba(0,0,0,0.6)}
+
+/* ══ RIGHT PANEL ══ */
+#panel{width:420px;flex-shrink:0;background:#0c1018;border-left:1px solid #1e293b;display:flex;flex-direction:column;transition:width 0.25s ease;overflow:hidden}
+#panel.closed{width:0;border:none}
+#ph{padding:12px 16px;border-bottom:1px solid #1e293b;flex-shrink:0}
+#ph h2{font-size:0.8rem;font-weight:800;color:#f8fafc}
+#ph p{font-size:0.63rem;color:#475569;margin-top:3px}
+#ptabs{display:flex;gap:0;border-bottom:1px solid #1e293b;flex-shrink:0}
+.ptab{flex:1;padding:8px 0;text-align:center;font-size:0.65rem;font-weight:700;cursor:pointer;color:#475569;border-bottom:2px solid transparent;transition:all 0.15s}
+.ptab.active{color:#38bdf8;border-bottom-color:#38bdf8}
+#pcontent{flex:1;overflow-y:auto;padding:12px}
+#pcontent::-webkit-scrollbar{width:3px}
+#pcontent::-webkit-scrollbar-thumb{background:#1e293b;border-radius:2px}
+
+/* Action list */
+.act-section{margin-bottom:16px}
+.act-section h3{font-size:0.62rem;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;padding:4px 8px;border-radius:5px;margin-bottom:8px}
+.act-section.del h3{background:#3b141422;color:#f87171;border:1px solid #ef444422}
+.act-section.mov h3{background:#3b1f0022;color:#fb923c;border:1px solid #f9731622}
+.act-section.fix h3{background:#14233b22;color:#60a5fa;border:1px solid #3b82f622}
+.act-section.add h3{background:#01160d22;color:#34d399;border:1px solid #05966922}
+.act-item{display:flex;gap:8px;padding:5px 6px;border-radius:5px;margin-bottom:4px;font-size:0.67rem;cursor:pointer;transition:background 0.12s;align-items:flex-start}
+.act-item:hover{background:#131b29}
+.act-item code{font-family:monospace;font-size:0.63rem;background:#0a0f1a;padding:1px 5px;border-radius:3px;white-space:nowrap}
+.act-icon{font-size:0.75rem;flex-shrink:0;margin-top:1px}
+
+/* Route table */
+.rtable{width:100%;border-collapse:collapse;font-size:0.63rem}
+.rtable th{background:#0a0f1a;color:#475569;padding:4px 8px;text-align:left;font-weight:700;font-size:0.58rem;text-transform:uppercase;letter-spacing:0.8px;border-bottom:1px solid #1e293b}
+.rtable td{padding:5px 8px;border-bottom:1px solid #1e293b10;vertical-align:top;color:#94a3b8}
+.rtable td:first-child{font-family:monospace;color:#7dd3fc;font-size:0.6rem}
+.rtable tr:hover td{background:#0a0f1a55}
+.rtable .badge{font-size:0.55rem;padding:1px 5px;border-radius:3px;font-weight:700;white-space:nowrap}
+.rtable .badge.pub{background:#040d1c;color:#93c5fd;border:1px solid #1d4ed833}
+.rtable .badge.app{background:#031f11;color:#6ee7b7;border:1px solid #15803d33}
+.rtable .badge.api{background:#0c0f1a;color:#94a3b8;border:1px solid #33415533}
+.rtable .badge.del{background:#3b1414;color:#f87171;border:1px solid #ef444433}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <h1>🦅 Talaria — <span>Ideal Clean Architecture</span></h1>
+  <span class="tbadge target">TARGET STATE</span>
+  <div class="sep"></div>
+  <button class="zbtn" onclick="zm(-0.1)">−</button>
+  <span id="zlbl">65%</span>
+  <button class="zbtn" onclick="zm(+0.1)">+</button>
+  <button class="zbtn" onclick="rzm()">Fit</button>
+  <div class="sep"></div>
+  <span style="font-size:0.65rem;color:#475569">Hover nodes for details · Click for actions</span>
+  <button id="panel-btn" onclick="togglePanel()">Migration Plan ›</button>
+</div>
+
+<div id="tt"></div>
+
+<div id="layout">
+
+<!-- CANVAS -->
+<div id="canvas-wrap">
+<div id="canvas">
+
+<!-- ── NGINX ENTRY ── -->
+<div style="position:absolute;left:1200px;top:50px;width:220px;height:1px;border-top:1px dashed #1e293b"></div>
+<div class="nd entry" id="n-nginx" style="left:1200px;top:52px" data-tip="Nginx reverse proxy on :3000 — single entry point for all traffic.">
+  <div class="lbl">🔀 Nginx :3000</div>
+  <span class="path">Single Entry Point</span>
+</div>
+
+<!-- ══════════════════════════════════
+     ZONE A — PUBLIC MARKETING
+     ══════════════════════════════════ -->
+<div class="zone" style="left:30px;top:100px;width:580px;height:820px;background:#040d1c18;border-color:#1d4ed828">
+  <div class="zone-lbl" style="background:#040d1c;color:#60a5fa">🌐 PUBLIC — Next.js Homepage · No auth required</div>
+</div>
+
+<div class="nd pub" id="n-landing" style="left:200px;top:195px" data-tip="Landing page — hero, feature overview, pricing teaser, CTAs to Login and App. The ONLY marketing page in the system.">
+  <div class="lbl">🏠 Landing Page</div>
+  <span class="path">/</span>
+  <span class="sub">Hero · Features · Pricing CTA</span>
+</div>
+<div class="nd pub" id="n-features-hp" style="left:440px;top:195px" data-tip="Full features page on the homepage. ONE location for this content — the journal Features.jsx should redirect here.">
+  <div class="lbl">⚡ Features</div>
+  <span class="path">/features</span>
+</div>
+<div class="nd pub" id="n-contact-hp" style="left:100px;top:350px" data-tip="Contact form. ONE location — journal Contact.jsx redirects here.">
+  <div class="lbl">📬 Contact</div>
+  <span class="path">/contact</span>
+</div>
+<div class="nd pub" id="n-ninjatrader-hp" style="left:310px;top:350px" data-tip="NinjaTrader integration info page.">
+  <div class="lbl">🥷 NinjaTrader</div>
+  <span class="path">/ninjatrader</span>
+</div>
+<div class="nd pub" id="n-bootcamp" style="left:520px;top:350px" data-tip="Bootcamp — educational content. Stays as its own Next.js page. Requires login.">
+  <div class="lbl">🎓 Bootcamp</div>
+  <span class="path">/bootcamp</span>
+</div>
+<!-- Legal block -->
+<div class="nd pub" id="n-priv" style="left:100px;top:500px" data-tip="Privacy Policy — CANONICAL location. All /journal/privacy-policy references redirect here.">
+  <div class="lbl">📄 Privacy</div><span class="path">/privacy</span>
+</div>
+<div class="nd pub" id="n-terms" style="left:230px;top:500px" data-tip="Terms of Service — CANONICAL. Journal duplicate deleted.">
+  <div class="lbl">📄 Terms</div><span class="path">/terms</span>
+</div>
+<div class="nd pub" id="n-refunds" style="left:360px;top:500px" data-tip="Refund Policy — CANONICAL. Journal duplicate deleted.">
+  <div class="lbl">📄 Refunds</div><span class="path">/refunds</span>
+</div>
+<div class="nd pub" id="n-disclaimer" style="left:490px;top:500px" data-tip="Disclaimer — CANONICAL. Journal duplicate deleted.">
+  <div class="lbl">📄 Disclaimer</div><span class="path">/disclaimer</span>
+</div>
+
+<!-- Dashboard Tools (sub-section of homepage) -->
+<div class="zone" style="left:40px;top:590px;width:560px;height:310px;background:#1a0e0012;border-color:#d9770628">
+  <div class="zone-lbl" style="background:#1a0e00;color:#fbbf24">🛠 Dashboard Tools — Next.js · Auth required</div>
+</div>
+<div class="nd tool" id="n-dash-shell" style="left:200px;top:680px" data-tip="Dashboard shell — simplified. Auth check only. Default tab → redirects to /journal/dashboard. NO more iframes for the journal. COT + Support + Admin are the only unique pages here.">
+  <div class="lbl">🖥 Dashboard</div>
+  <span class="path">/dashboard</span>
+  <span class="sub">→ redirect to /journal/dashboard</span>
+</div>
+<div class="nd tool" id="n-cot" style="left:100px;top:820px" data-tip="COT Analysis — unique tool, stays on homepage app. Not duplicated in journal.">
+  <div class="lbl">📉 COT Analysis</div><span class="path">/dashboard/cot</span>
+</div>
+<div class="nd tool" id="n-support" style="left:300px;top:820px" data-tip="Support & Tickets — WebSocket live notifications. Stays on homepage app.">
+  <div class="lbl">💬 Support</div><span class="path">/dashboard/support</span>
+</div>
+<div class="nd tool" id="n-admin-hp" style="left:490px;top:820px" data-tip="Admin panel — homepage-level admin. Only visible to admin role.">
+  <div class="lbl">🛠 Admin</div><span class="path">/dashboard/admin</span>
+</div>
+
+<!-- ══════════════════════════════════
+     ZONE B — AUTH
+     ══════════════════════════════════ -->
+<div class="zone" style="left:660px;top:100px;width:310px;height:440px;background:#0d052218;border-color:#6d28d928">
+  <div class="zone-lbl" style="background:#0d0522;color:#a78bfa">🔑 AUTH — Next.js · /login</div>
+</div>
+<div class="nd auth" id="n-login" style="left:820px;top:200px" data-tip="Unified login + register. ?mode=signin|signup. Reads ?next= param for redirect after auth. POST-AUTH: admin → /dashboard, has_journal_access → /journal/dashboard, new user → /journal/onboarding.">
+  <div class="lbl">🔑 Login / Register</div>
+  <span class="path">/login</span>
+  <span class="sub">?mode=signin|signup · ?next=X</span>
+</div>
+<div class="nd auth" id="n-verify" style="left:720px;top:360px" data-tip="Email verification — linked from the verification email. After success → /login.">
+  <div class="lbl">✉️ Verify Email</div>
+  <span class="path">/journal/verify-email</span>
+</div>
+<div class="nd auth" id="n-resend" style="left:920px;top:360px" data-tip="Resend verification email. For users who didn't receive the email.">
+  <div class="lbl">🔄 Resend Verify</div>
+  <span class="path">/journal/resend-verification</span>
+</div>
+<!-- Post-auth logic note -->
+<div style="position:absolute;left:675px;top:458px;width:290px;background:#0a0d14;border:1px solid #1e293b;border-radius:8px;padding:8px 10px;font-size:0.6rem;color:#475569;line-height:1.6;z-index:5">
+  <b style="color:#94a3b8;display:block;margin-bottom:3px">Post-auth redirect logic</b>
+  Admin → <code style="color:#fbbf24">/dashboard</code><br>
+  has_journal_access → <code style="color:#6ee7b7">/journal/dashboard</code><br>
+  New user → <code style="color:#a78bfa">/journal/onboarding</code><br>
+  No subscription → <code style="color:#f87171">/journal/pricing</code>
+</div>
+
+<!-- ══════════════════════════════════
+     ZONE C — APP (Journal SPA)
+     ══════════════════════════════════ -->
+<div class="zone" style="left:1020px;top:100px;width:1100px;height:1540px;background:#031f1112;border-color:#15803d28">
+  <div class="zone-lbl" style="background:#031f11;color:#4ade80">📱 APP — Journal Frontend · React Router · /journal/*</div>
+</div>
+
+<!-- App public (no auth) -->
+<div class="zone" style="left:1035px;top:130px;width:320px;height:440px;background:#011f0a08;border-color:#15803d22">
+  <div class="zone-lbl" style="background:#011f0a;color:#4ade8088;font-size:0.52rem">Journal Public Routes</div>
+</div>
+<div class="nd app" id="n-j-pricing" style="left:1140px;top:220px" data-tip="Subscription pricing — Stripe checkout. Accessible without auth (so guest users can see pricing). Stripe success → /journal/subscription/success.">
+  <div class="lbl">💳 Pricing</div>
+  <span class="path">/journal/pricing</span>
+</div>
+<div class="nd app" id="n-j-sub-success" style="left:1310px;top:220px" data-tip="Post-Stripe success page. Shows confirmation then redirects to /journal/dashboard.">
+  <div class="lbl">✅ Sub Success</div>
+  <span class="path">/journal/subscription/success</span>
+</div>
+<div class="nd app" id="n-j-onboarding" style="left:1140px;top:360px" data-tip="New user onboarding — shown after first registration. Sets up first profile, preferences.">
+  <div class="lbl">🚀 Onboarding</div>
+  <span class="path">/journal/onboarding</span>
+</div>
+<div class="nd app" id="n-j-select-profile" style="left:1310px;top:360px" data-tip="Profile selection — shown when authenticated but no active profile selected.">
+  <div class="lbl">👤 Select Profile</div>
+  <span class="path">/journal/select-profile</span>
+</div>
+<div class="nd app" id="n-j-paywall" style="left:1225px;top:495px" data-tip="Paywall — shown by ProtectedLayout when subscription is inactive. Links to /journal/pricing.">
+  <div class="lbl">🔒 Paywall</div>
+  <span class="path">/journal/subscription-status</span>
+</div>
+
+<!-- Auth gate -->
+<div class="nd guard" id="n-gate" style="left:1580px;top:200px" data-tip="ProtectedLayout — 3 checks in order: (1) No token → /login?next=X, (2) No active profile → /journal/select-profile, (3) No subscription → /journal/pricing. If all pass → renders children.">
+  <div class="lbl">🔐 ProtectedLayout</div>
+  <span class="path">Auth Gate</span>
+  <span class="sub">token · profile · subscription</span>
+</div>
+
+<!-- Protected App Pages -->
+<div class="nd app" id="n-j-dash" style="left:1140px;top:650px" data-tip="Dashboard — overview of KPIs, recent trades, equity snapshot. Landing page after login. Sidebar nav available.">
+  <div class="lbl">📊 Dashboard</div>
+  <span class="path">/journal/dashboard</span>
+</div>
+<div class="nd app" id="n-j-journal" style="left:1310px;top:650px" data-tip="Trade Journal — add/edit trades with rich text notes (Tiptap). Core feature.">
+  <div class="lbl">📝 Trade Journal</div>
+  <span class="path">/journal/journal</span>
+</div>
+<div class="nd app" id="n-j-trades" style="left:1480px;top:650px" data-tip="Trade List — searchable, filterable list of all trades. Links to analytics.">
+  <div class="lbl">💹 Trades</div>
+  <span class="path">/journal/trades</span>
+</div>
+<div class="nd app" id="n-j-ai" style="left:1140px;top:800px" data-tip="AI Dashboard — AI-powered pattern recognition and insights from your trade data.">
+  <div class="lbl">🤖 AI</div>
+  <span class="path">/journal/ai</span>
+</div>
+<div class="nd app" id="n-j-import" style="left:1280px;top:800px" data-tip="Import Trades — CSV upload + NinjaTrader FTP live import. PapaParse client-side.">
+  <div class="lbl">📥 Import</div>
+  <span class="path">/journal/import</span>
+</div>
+<div class="nd app" id="n-j-notes" style="left:1420px;top:800px" data-tip="Notes — general trading observations and journal notes.">
+  <div class="lbl">📋 Notes</div>
+  <span class="path">/journal/notes</span>
+</div>
+<div class="nd app" id="n-j-learn" style="left:1555px;top:800px" data-tip="Learn — educational resources inside the app.">
+  <div class="lbl">📚 Learn</div>
+  <span class="path">/journal/learn</span>
+</div>
+<div class="nd app" id="n-j-backtest" style="left:1140px;top:950px" data-tip="Backtest — embeds the FastAPI chart service (formerly in /dashboard/). Consolidated: the old /backtest/ Next.js page and the dashboard backtest tab both redirect here.">
+  <div class="lbl">📈 Backtest</div>
+  <span class="path">/journal/backtest</span>
+  <div class="new-badge">MOVE HERE</div>
+</div>
+<div class="nd app" id="n-j-strategies" style="left:1310px;top:950px" data-tip="Strategies — embeds or integrates the Strategies Lab (previously /strategies-lab/ + the 3-hop redirect). Consolidated here.">
+  <div class="lbl">⚗️ Strategies</div>
+  <span class="path">/journal/strategies</span>
+  <div class="new-badge">CONSOLIDATE</div>
+</div>
+<div class="nd app" id="n-j-settings" style="left:1470px;top:950px" data-tip="Settings — profile, account, subscription management, custom variables, API keys.">
+  <div class="lbl">⚙️ Settings</div>
+  <span class="path">/journal/settings</span>
+</div>
+<div class="nd app" id="n-j-manage" style="left:1555px;top:950px" data-tip="Manage Profiles — create/switch/delete trading profiles (journal, backtest, journal_live).">
+  <div class="lbl">👤 Profiles</div>
+  <span class="path">/journal/manage-profiles</span>
+</div>
+<div class="nd app" id="n-j-admin" style="left:1360px;top:1060px" data-tip="Admin — feature flag manager. Admin role only. Visible in sidebar only for admins.">
+  <div class="lbl">🚩 Admin</div>
+  <span class="path">/journal/admin/feature-flags</span>
+</div>
+<div class="nd app" id="n-j-404" style="left:1190px;top:1060px" data-tip="404 Not Found — proper error page. Any unknown /journal/* URL lands here instead of silently redirecting.">
+  <div class="lbl">🚫 404</div>
+  <span class="path">/journal/* catch-all</span>
+  <div class="new-badge">ADD</div>
+</div>
+
+<!-- Analytics cluster -->
+<div class="zone" style="left:1610px;top:560px;width:490px;height:820px;background:#01160d18;border-color:#05966928">
+  <div class="zone-lbl" style="background:#01160d;color:#34d39988;font-size:0.52rem">Analytics Sub-Pages · /journal/analytics/...</div>
+</div>
+<div class="nd an" id="n-j-analytics" style="left:1850px;top:640px" data-tip="Analytics Hub — top-level analytics page with tab navigation. All 14 sub-pages accessible from sidebar dropdown.">
+  <div class="lbl">📊 Analytics Hub</div>
+  <span class="path">/journal/analytics</span>
+</div>
+<!-- analytics mini grid -->
+<div class="nd an mini" id="na1" style="left:1660px;top:750px" data-tip="/journal/analytics/equity — Equity curve chart"><div class="lbl">📈 Equity</div></div>
+<div class="nd an mini" id="na2" style="left:1790px;top:750px" data-tip="/journal/analytics/calendar — Daily P&L calendar"><div class="lbl">📅 Calendar</div></div>
+<div class="nd an mini" id="na3" style="left:1920px;top:750px" data-tip="/journal/analytics/performance-analysis"><div class="lbl">🎯 Performance</div></div>
+<div class="nd an mini" id="na4" style="left:2050px;top:750px" data-tip="/journal/analytics/streaks"><div class="lbl">⚡ Streaks</div></div>
+<div class="nd an mini" id="na5" style="left:1660px;top:860px" data-tip="/journal/analytics/trade-duration"><div class="lbl">⏱ Duration</div></div>
+<div class="nd an mini" id="na6" style="left:1790px;top:860px" data-tip="/journal/analytics/exitanalysis"><div class="lbl">🎯 Exit Quality</div></div>
+<div class="nd an mini" id="na7" style="left:1920px;top:860px" data-tip="/journal/analytics/pnl-distribution"><div class="lbl">💰 P&L Dist.</div></div>
+<div class="nd an mini" id="na8" style="left:2050px;top:860px" data-tip="/journal/analytics/daily-limit-optimization"><div class="lbl">🛑 Daily Limit</div></div>
+<div class="nd an mini" id="na9" style="left:1660px;top:970px" data-tip="/journal/analytics/symbols"><div class="lbl">🔤 Symbols</div></div>
+<div class="nd an mini" id="na10" style="left:1790px;top:970px" data-tip="/journal/analytics/variables — 127KB, largest file"><div class="lbl">🔬 Variables</div></div>
+<div class="nd an mini" id="na11" style="left:1920px;top:970px" data-tip="/journal/analytics/top-combinations"><div class="lbl">🔀 Combos</div></div>
+<div class="nd an mini" id="na12" style="left:2050px;top:970px" data-tip="/journal/analytics/all-metrics — 200+ metrics"><div class="lbl">📋 All Metrics</div></div>
+<div class="nd an mini" id="na13" style="left:1700px;top:1080px" data-tip="/journal/analytics/recent-trades"><div class="lbl">🕐 Recent Trades</div></div>
+<div class="nd an mini" id="na14" style="left:1870px;top:1080px" data-tip="/journal/analytics/exitanalysis-amelioration — improved exit scoring"><div class="lbl">🎯 Exit v2</div></div>
+
+<!-- ══════════════════════════════════
+     ZONE D — API LAYER
+     ══════════════════════════════════ -->
+<div class="zone" style="left:30px;top:960px;width:580px;height:200px;background:#0c0f1a18;border-color:#33415528">
+  <div class="zone-lbl" style="background:#0c0f1a;color:#64748b">⚙️ API LAYER — Backend Services</div>
+</div>
+<div class="nd api" id="n-flask" style="left:180px;top:1060px" data-tip="Flask backend — 10 blueprints: auth, journal, profile, admin, strategy, feed, template, feature_flags, subscriptions, chart. JWT auth. Stripe webhooks.">
+  <div class="lbl">🐍 Flask API</div>
+  <span class="path">/api/* → :5000</span>
+  <span class="sub">auth·journal·profile·subscriptions</span>
+</div>
+<div class="nd api" id="n-fastapi" style="left:440px;top:1060px" data-tip="FastAPI chart service — trading chart, backtest engine. Embedded in /journal/backtest.">
+  <div class="lbl">⚡ Chart FastAPI</div>
+  <span class="path">/chart/* → :8000</span>
+  <span class="sub">sessions · propfirm · worker</span>
+</div>
+
+<!-- ══════════════════════════════════
+     ZONE E — FILES TO DELETE
+     ══════════════════════════════════ -->
+<div class="zone" style="left:30px;top:1200px;width:1070px;height:370px;background:#3b141408;border-color:#ef444422">
+  <div class="zone-lbl" style="background:#3b1414;color:#f87171">🗑 FILES TO DELETE — Dead weight from incremental AI generation</div>
+</div>
+<div style="position:absolute;left:50px;top:1240px;display:flex;flex-wrap:wrap;gap:8px;width:1040px">
+  <!-- delete nodes -->
+  <div class="nd pub iss-dup" style="transform:none;border-color:#ef444466;background:#3b141422;color:#fca5a5;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">🏠 Home.jsx</div><span class="path">pages/Home.jsx 28KB</span><div class="del-badge">DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#ef444466;background:#3b141422;color:#fca5a5;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">⚡ Features.jsx</div><span class="path">pages/Features.jsx</span><div class="del-badge">DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#ef444466;background:#3b141422;color:#fca5a5;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">📬 Contact.jsx</div><span class="path">pages/Contact.jsx</span><div class="del-badge">DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#ef444466;background:#3b141422;color:#fca5a5;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">📄 PrivacyPolicy.jsx</div><span class="path">duplicate legal</span><div class="del-badge">DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#ef444466;background:#3b141422;color:#fca5a5;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">📄 TermsOfService.jsx</div><span class="path">duplicate legal</span><div class="del-badge">DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#ef444466;background:#3b141422;color:#fca5a5;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">📄 RefundPolicy.jsx</div><span class="path">duplicate legal</span><div class="del-badge">DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#ef444466;background:#3b141422;color:#fca5a5;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">📄 Disclaimer.jsx</div><span class="path">duplicate legal</span><div class="del-badge">DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#ef444466;background:#3b141422;color:#fca5a5;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">⚗️ StrategiesLab.jsx</div><span class="path">pages/StrategiesLab.jsx</span><div class="del-badge">DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#ef444466;background:#3b141422;color:#fca5a5;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">⚗️ StrategyBuilder.jsx</div><span class="path">redirect dead code</span><div class="del-badge">DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#ef444466;background:#3b141422;color:#fca5a5;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">🧪 FilterTest.jsx</div><span class="path">dev file</span><div class="del-badge">DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#ef444466;background:#3b141422;color:#fca5a5;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">🧪 CombinationFilterTest.jsx</div><span class="path">dev file</span><div class="del-badge">DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#ef444466;background:#3b141422;color:#fca5a5;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">🔧 VariableSelectorExample.jsx</div><span class="path">dev example</span><div class="del-badge">DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#ef444466;background:#3b141422;color:#fca5a5;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">👤 ProfileSelectorPage.jsx</div><span class="path">duplicate of ProfileSelectionPage</span><div class="del-badge">DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#ef444466;background:#3b141422;color:#fca5a5;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">⚖️ Legal.jsx</div><span class="path">merge into /terms or delete</span><div class="del-badge">DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#f9731666;background:#3b1f0022;color:#fed7aa;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">⚙️ Settings.jsx root</div><span class="path">consolidate into Settings/index.jsx</span><div class="move-badge">CONSOLIDATE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#f9731666;background:#3b1f0022;color:#fed7aa;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">📊 TradeDurationSimple.jsx</div><span class="path">orphaned analytics page</span><div class="move-badge">ADD TO SIDEBAR or DELETE</div>
+  </div>
+  <div class="nd pub" style="transform:none;border-color:#f9731666;background:#3b1f0022;color:#fed7aa;min-width:0;padding:5px 10px;border-radius:7px;position:relative">
+    <div class="lbl" style="font-size:0.65rem">🖥 dashboardV8.jsx 1.5MB</div><span class="path">Next.js dashboard shell — simplify</span><div class="move-badge">REFACTOR</div>
+  </div>
+</div>
+
+<svg id="arrs"></svg>
+</div>
+</div>
+
+<!-- RIGHT PANEL -->
+<div id="panel" class="closed">
+  <div id="ph">
+    <h2>🗺 Migration Plan</h2>
+    <p>Step-by-step guide to reach the clean target architecture</p>
+  </div>
+  <div id="ptabs">
+    <div class="ptab active" onclick="showTab('actions')">Actions</div>
+    <div class="ptab" onclick="showTab('routes')">Route Map</div>
+    <div class="ptab" onclick="showTab('rules')">Design Rules</div>
+  </div>
+  <div id="pcontent">
+    <!-- injected by JS -->
+  </div>
+</div>
+
+</div><!-- end layout -->
+
+<script>
+// ══════════════════════════════════════
+// PANEL TABS
+// ══════════════════════════════════════
+const ACTIONS_HTML = `
+<div class="act-section del">
+  <h3>🗑 STEP 1 — Delete 14 dead files</h3>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>journal-frontend/src/pages/Home.jsx</code> — 28KB duplicate landing</div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>pages/Features.jsx</code> — duplicate of homepage /features</div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>pages/Contact.jsx</code> — duplicate</div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>pages/PrivacyPolicy.jsx</code></div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>pages/TermsOfService.jsx</code></div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>pages/RefundPolicy.jsx</code></div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>pages/Disclaimer.jsx</code></div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>pages/StrategiesLab.jsx</code></div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>pages/StrategyBuilder.jsx</code></div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>pages/VariableSelectorExample.jsx</code></div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>components/FilterTest.jsx</code></div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>components/CombinationFilterTest.jsx</code></div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>pages/ProfileSelectorPage.jsx</code> (keep ProfileSelectionPage.jsx)</div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>pages/Legal.jsx</code> (content merged into /terms on homepage)</div></div>
+</div>
+
+<div class="act-section del">
+  <h3>🗑 STEP 2 — Remove 13 dead routes from App.jsx</h3>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Remove <code>path="/"</code> (Home.jsx) → redirect to /</div></div>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Remove <code>path="/features"</code></div></div>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Remove <code>path="/contact"</code></div></div>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Remove <code>path="/privacy-policy"</code></div></div>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Remove <code>path="/terms"</code></div></div>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Remove <code>path="/refund-policy"</code></div></div>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Remove <code>path="/disclaimer"</code></div></div>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Remove <code>path="/legal"</code></div></div>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Remove <code>path="/strategy-builder"</code> + StrategiesLabRedirect function</div></div>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Remove <code>path="/test-combinations"</code> (dev only)</div></div>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Remove <code>path="/test-filter"</code> (dev only)</div></div>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Remove <code>path="/analytics/trade-duration-simple"</code> or add sidebar link</div></div>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Remove iframe EXTERNAL_VIEWS from dashboard shell (journal, strategies)</div></div>
+</div>
+
+<div class="act-section fix">
+  <h3>🔧 STEP 3 — Fix 4 bugs</h3>
+  <div class="act-item"><span class="act-icon">🐛</span><div><code>Home.jsx:193</code> — trailing space in <code>to="/login "</code> → fix to <code>/login</code></div></div>
+  <div class="act-item"><span class="act-icon">🐛</span><div>Footer links <code>/integrations</code>, <code>/docs</code>, <code>/support</code> → replace with real URLs</div></div>
+  <div class="act-item"><span class="act-icon">🐛</span><div><code>ProtectedRoute.jsx:48</code> — Change <code>&lt;Navigate to="/login"&gt;</code> to <code>window.location.replace('/login/?next=...')</code></div></div>
+  <div class="act-item"><span class="act-icon">🐛</span><div>Replace catch-all <code>→ /dashboard</code> with a proper <code>&lt;NotFound /&gt;</code> 404 page</div></div>
+</div>
+
+<div class="act-section mov">
+  <h3>🔀 STEP 4 — Consolidate 3 features</h3>
+  <div class="act-item"><span class="act-icon">🔀</span><div>Move Backtest into journal app as <code>/journal/backtest</code>. Redirect <code>/backtest/</code> Next.js page and dashboard backtest tab here.</div></div>
+  <div class="act-item"><span class="act-icon">🔀</span><div>Move Strategies Lab into journal app as <code>/journal/strategies</code>. Remove the 3-hop redirect chain.</div></div>
+  <div class="act-item"><span class="act-icon">🔀</span><div>Simplify <code>/dashboard/</code> shell: Auth check only → redirect to <code>/journal/dashboard</code>. No more iframes for journal.</div></div>
+</div>
+
+<div class="act-section add">
+  <h3>✅ STEP 5 — Add 3 missing pieces</h3>
+  <div class="act-item"><span class="act-icon">✨</span><div>Add <code>&lt;NotFound /&gt;</code> 404 page component for <code>/journal/* catch-all</code></div></div>
+  <div class="act-item"><span class="act-icon">✨</span><div>Uncomment feature flags enforcement in <code>ProtectedRoute.jsx:52-66</code></div></div>
+  <div class="act-item"><span class="act-icon">✨</span><div>Unify auth: dashboard shell <code>fetchMe()</code> should also read localStorage JWT token</div></div>
+</div>
+`;
+
+const ROUTES_HTML = `
+<p style="font-size:0.62rem;color:#475569;margin-bottom:10px">Complete route inventory after cleanup</p>
+<table class="rtable">
+<tr><th>Path</th><th>App</th><th>Type</th></tr>
+<tr><td>/</td><td>Next.js</td><td><span class="badge pub">Public</span></td></tr>
+<tr><td>/features</td><td>Next.js</td><td><span class="badge pub">Public</span></td></tr>
+<tr><td>/contact</td><td>Next.js</td><td><span class="badge pub">Public</span></td></tr>
+<tr><td>/login</td><td>Next.js</td><td><span class="badge pub">Auth</span></td></tr>
+<tr><td>/privacy</td><td>Next.js</td><td><span class="badge pub">Legal</span></td></tr>
+<tr><td>/terms</td><td>Next.js</td><td><span class="badge pub">Legal</span></td></tr>
+<tr><td>/refunds</td><td>Next.js</td><td><span class="badge pub">Legal</span></td></tr>
+<tr><td>/disclaimer</td><td>Next.js</td><td><span class="badge pub">Legal</span></td></tr>
+<tr><td>/ninjatrader</td><td>Next.js</td><td><span class="badge pub">Public</span></td></tr>
+<tr><td>/bootcamp</td><td>Next.js</td><td><span class="badge pub">Auth</span></td></tr>
+<tr><td>/dashboard</td><td>Next.js</td><td><span class="badge app">Auth+</span></td></tr>
+<tr><td>/dashboard/cot</td><td>Next.js</td><td><span class="badge app">Auth+</span></td></tr>
+<tr><td>/dashboard/support</td><td>Next.js</td><td><span class="badge app">Auth+</span></td></tr>
+<tr><td>/dashboard/admin</td><td>Next.js</td><td><span class="badge app">Admin</span></td></tr>
+<tr><td>/journal/pricing</td><td>React</td><td><span class="badge pub">Public</span></td></tr>
+<tr><td>/journal/subscription/success</td><td>React</td><td><span class="badge pub">Public</span></td></tr>
+<tr><td>/journal/verify-email</td><td>React</td><td><span class="badge pub">Public</span></td></tr>
+<tr><td>/journal/resend-verification</td><td>React</td><td><span class="badge pub">Public</span></td></tr>
+<tr><td>/journal/onboarding</td><td>React</td><td><span class="badge pub">Post-auth</span></td></tr>
+<tr><td>/journal/select-profile</td><td>React</td><td><span class="badge pub">Post-auth</span></td></tr>
+<tr><td>/journal/subscription-status</td><td>React</td><td><span class="badge pub">Paywall</span></td></tr>
+<tr><td>/journal/dashboard</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/journal</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/trades</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics/equity</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics/calendar</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics/performance-analysis</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics/streaks</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics/trade-duration</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics/exitanalysis</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics/exitanalysis-amelioration</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics/pnl-distribution</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics/daily-limit-optimization</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics/symbols</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics/variables</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics/top-combinations</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics/all-metrics</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/analytics/recent-trades</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/ai</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/import</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/notes</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/learn</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/backtest</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/strategies</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/settings</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/manage-profiles</td><td>React</td><td><span class="badge app">Protected</span></td></tr>
+<tr><td>/journal/admin/feature-flags</td><td>React</td><td><span class="badge app">Admin</span></td></tr>
+<tr><td>/journal/*</td><td>React</td><td><span class="badge del">404 Page</span></td></tr>
+<tr><td>/api/*</td><td>Flask</td><td><span class="badge api">API</span></td></tr>
+<tr><td>/chart/*</td><td>FastAPI</td><td><span class="badge api">API</span></td></tr>
+</table>
+<p style="font-size:0.6rem;color:#475569;margin-top:8px">Total: <b style="color:#f8fafc">52 routes</b> (was ~70+). Removed 18+ dead/duplicate routes.</p>
+`;
+
+const RULES_HTML = `
+<div class="act-section add" style="margin-bottom:12px">
+  <h3>📐 Design Rules (like Tradezella)</h3>
+</div>
+<div style="font-size:0.68rem;color:#94a3b8;line-height:1.8">
+  <p style="color:#e2e8f0;font-weight:700;margin-bottom:6px">Rule 1 — One App, One Purpose</p>
+  <p style="margin-bottom:10px">Next.js = Marketing + Auth only. React = App only. Never duplicate pages between them.</p>
+
+  <p style="color:#e2e8f0;font-weight:700;margin-bottom:6px">Rule 2 — Legal pages live in ONE place</p>
+  <p style="margin-bottom:10px">All /privacy, /terms, /refunds, /disclaimer are on the homepage. The journal app NEVER has legal pages — it links out to them.</p>
+
+  <p style="color:#e2e8f0;font-weight:700;margin-bottom:6px">Rule 3 — One auth system</p>
+  <p style="margin-bottom:10px">JWT from localStorage. Both dashboard shell and journal frontend read the same token. No cookie auth on one side and JWT on the other.</p>
+
+  <p style="color:#e2e8f0;font-weight:700;margin-bottom:6px">Rule 4 — No iframes for internal apps</p>
+  <p style="margin-bottom:10px">Backtest and Strategies are <em>inside</em> the journal SPA as proper routes. Iframes are only for truly external services (if needed).</p>
+
+  <p style="color:#e2e8f0;font-weight:700;margin-bottom:6px">Rule 5 — Feature flags always on</p>
+  <p style="margin-bottom:10px">Never comment out access guards. The FeatureFlagManager must have real effect.</p>
+
+  <p style="color:#e2e8f0;font-weight:700;margin-bottom:6px">Rule 6 — No dev routes in production</p>
+  <p style="margin-bottom:10px">Anything with "test" or "example" in the name is guarded by <code>NODE_ENV === 'development'</code> or deleted.</p>
+
+  <p style="color:#e2e8f0;font-weight:700;margin-bottom:6px">Rule 7 — Every page reachable from nav</p>
+  <p style="margin-bottom:10px">If a route exists, there must be a sidebar link, breadcrumb, or navigation element that leads to it. No orphaned routes.</p>
+
+  <p style="color:#e2e8f0;font-weight:700;margin-bottom:6px">Rule 8 — Proper 404</p>
+  <p style="margin-bottom:10px">Unknown URLs show a 404 page, never silently redirect to dashboard.</p>
+</div>
+`;
+
+function showTab(tab) {
+  document.querySelectorAll('.ptab').forEach((t,i) => {
+    const tabs = ['actions','routes','rules'];
+    t.classList.toggle('active', tabs[i] === tab);
+  });
+  const c = document.getElementById('pcontent');
+  if(tab==='actions') c.innerHTML = ACTIONS_HTML;
+  else if(tab==='routes') c.innerHTML = ROUTES_HTML;
+  else c.innerHTML = RULES_HTML;
+}
+showTab('actions');
+
+// ══════════════════════════════════════
+// PANEL TOGGLE
+// ══════════════════════════════════════
+let panelOpen = false;
+function togglePanel() {
+  panelOpen = !panelOpen;
+  document.getElementById('panel').classList.toggle('closed', !panelOpen);
+  document.getElementById('panel-btn').textContent = panelOpen ? '‹ Hide Plan' : 'Migration Plan ›';
+  setTimeout(drawArrows, 300);
+}
+
+// ══════════════════════════════════════
+// ZOOM / PAN
+// ══════════════════════════════════════
+let scale = 0.62;
+const canvas = document.getElementById('canvas');
+const wrap   = document.getElementById('canvas-wrap');
+canvas.style.transform = `scale(${scale})`;
+
+function zm(d){ scale=Math.min(2,Math.max(0.25,scale+d));canvas.style.transform=`scale(${scale})`;document.getElementById('zlbl').textContent=Math.round(scale*100)+'%'; }
+function rzm(){ scale=0.62;canvas.style.transform=`scale(${scale})`;document.getElementById('zlbl').textContent='62%'; }
+
+let dr=false,sx,sy,slx,sly;
+wrap.addEventListener('mousedown',e=>{if(e.target.closest('.nd'))return;dr=true;sx=e.clientX;sy=e.clientY;slx=wrap.scrollLeft;sly=wrap.scrollTop;});
+document.addEventListener('mousemove',e=>{if(!dr)return;wrap.scrollLeft=slx-(e.clientX-sx);wrap.scrollTop=sly-(e.clientY-sy);});
+document.addEventListener('mouseup',()=>dr=false);
+wrap.scrollLeft=0; wrap.scrollTop=0;
+
+// ══════════════════════════════════════
+// TOOLTIPS
+// ══════════════════════════════════════
+const tt = document.getElementById('tt');
+document.querySelectorAll('.nd').forEach(n=>{
+  n.addEventListener('mouseenter',()=>{ const t=n.getAttribute('data-tip');if(!t)return;tt.innerHTML=t;tt.style.display='block'; });
+  n.addEventListener('mousemove',e=>{ tt.style.left=(e.clientX+14)+'px';tt.style.top=(e.clientY+14)+'px'; });
+  n.addEventListener('mouseleave',()=>tt.style.display='none');
+  n.addEventListener('click',()=>{ if(!panelOpen)togglePanel(); });
+});
+
+// ══════════════════════════════════════
+// ARROWS
+// ══════════════════════════════════════
+const EDGES = [
+  // Entry
+  {f:'n-nginx',t:'n-landing',c:'#3b82f6',lb:'/',w:1.5},
+  {f:'n-nginx',t:'n-login',c:'#7c3aed',lb:'/login'},
+  {f:'n-nginx',t:'n-j-pricing',c:'#10b981',lb:'/journal'},
+  {f:'n-nginx',t:'n-dash-shell',c:'#3b82f677',lb:'/dashboard'},
+  {f:'n-nginx',t:'n-flask',c:'#64748b',lb:'/api',dash:'5,4'},
+  {f:'n-nginx',t:'n-fastapi',c:'#64748b',lb:'/chart',dash:'5,4'},
+
+  // Public nav
+  {f:'n-landing',t:'n-login',c:'#3b82f677',lb:'CTA'},
+  {f:'n-landing',t:'n-features-hp',c:'#3b82f644'},
+  {f:'n-landing',t:'n-contact-hp',c:'#3b82f644'},
+  {f:'n-landing',t:'n-bootcamp',c:'#3b82f644'},
+
+  // Auth flows
+  {f:'n-login',t:'n-dash-shell',c:'#a78bfa',lb:'admin',w:1.5},
+  {f:'n-login',t:'n-j-dash',c:'#10b981',lb:'has access',w:1.5},
+  {f:'n-login',t:'n-j-onboarding',c:'#a78bfa77',lb:'new user'},
+  {f:'n-login',t:'n-j-pricing',c:'#f8717177',lb:'no sub'},
+  {f:'n-verify',t:'n-login',c:'#7c3aed55',lb:'verified'},
+
+  // Dashboard shell
+  {f:'n-dash-shell',t:'n-j-dash',c:'#10b98177',lb:'→ journal',dash:'4,4'},
+  {f:'n-dash-shell',t:'n-cot',c:'#d9770677'},
+  {f:'n-dash-shell',t:'n-support',c:'#d9770677'},
+  {f:'n-dash-shell',t:'n-admin-hp',c:'#d9770677'},
+
+  // Journal public → gate
+  {f:'n-j-onboarding',t:'n-j-select-profile',c:'#a78bfa55'},
+  {f:'n-j-select-profile',t:'n-gate',c:'#9333ea',lb:'profile set'},
+  {f:'n-j-pricing',t:'n-j-sub-success',c:'#10b98155',lb:'Stripe OK'},
+  {f:'n-j-sub-success',t:'n-j-dash',c:'#10b98155',lb:'→ dashboard'},
+  {f:'n-j-paywall',t:'n-j-pricing',c:'#f8717155',lb:'upgrade'},
+
+  // Gate → app
+  {f:'n-gate',t:'n-login',c:'#ef444488',lb:'no token',dash:'3,3'},
+  {f:'n-gate',t:'n-j-select-profile',c:'#fbbf2488',lb:'no profile'},
+  {f:'n-gate',t:'n-j-paywall',c:'#f8717188',lb:'no sub'},
+  {f:'n-gate',t:'n-j-dash',c:'#4ade80',lb:'access ✓',w:2},
+
+  // App pages
+  {f:'n-j-dash',t:'n-j-analytics',c:'#10b98144'},
+  {f:'n-j-trades',t:'n-j-analytics',c:'#10b98144'},
+  {f:'n-j-backtest',t:'n-fastapi',c:'#d9770655',lb:'iframe chart',dash:'4,3'},
+
+  // Analytics hub → sub
+  {f:'n-j-analytics',t:'na1',c:'#05966944'},{f:'n-j-analytics',t:'na2',c:'#05966944'},
+  {f:'n-j-analytics',t:'na3',c:'#05966944'},{f:'n-j-analytics',t:'na4',c:'#05966944'},
+  {f:'n-j-analytics',t:'na5',c:'#05966944'},{f:'n-j-analytics',t:'na6',c:'#05966944'},
+  {f:'n-j-analytics',t:'na7',c:'#05966944'},{f:'n-j-analytics',t:'na8',c:'#05966944'},
+  {f:'n-j-analytics',t:'na9',c:'#05966944'},{f:'n-j-analytics',t:'na10',c:'#05966944'},
+  {f:'n-j-analytics',t:'na11',c:'#05966944'},{f:'n-j-analytics',t:'na12',c:'#05966944'},
+  {f:'n-j-analytics',t:'na13',c:'#05966944'},{f:'n-j-analytics',t:'na14',c:'#05966944'},
+
+  // API
+  {f:'n-flask',t:'n-j-dash',c:'#33415544',dash:'5,4'},
+  {f:'n-fastapi',t:'n-j-backtest',c:'#d9770644',dash:'5,4'},
+];
+
+function drawArrows(){
+  const svg=document.getElementById('arrs');
+  svg.innerHTML='';
+  const defs=document.createElementNS('http://www.w3.org/2000/svg','defs');
+  const cols=new Set(EDGES.map(e=>e.c));
+  cols.forEach(c=>{
+    const m=document.createElementNS('http://www.w3.org/2000/svg','marker');
+    const id='m'+c.replace(/[^a-z0-9]/gi,'');
+    m.setAttribute('id',id);m.setAttribute('markerWidth','7');m.setAttribute('markerHeight','5');
+    m.setAttribute('refX','6');m.setAttribute('refY','2.5');m.setAttribute('orient','auto');
+    const p=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    p.setAttribute('points','0 0, 7 2.5, 0 5');p.setAttribute('fill',c);m.appendChild(p);defs.appendChild(m);
+  });
+  svg.appendChild(defs);
+  EDGES.forEach(e=>{
+    const fEl=document.getElementById(e.f),tEl=document.getElementById(e.t);
+    if(!fEl||!tEl)return;
+    const fL=parseFloat(fEl.style.left),fT=parseFloat(fEl.style.top);
+    const tL=parseFloat(tEl.style.left),tT=parseFloat(tEl.style.top);
+    const fw=fEl.offsetWidth||120,fh=fEl.offsetHeight||48;
+    const tw=tEl.offsetWidth||120,th=tEl.offsetHeight||48;
+    let x1=fL,y1=fT,x2=tL,y2=tT;
+    const dx=x2-x1,dy=y2-y1;
+    if(Math.abs(dx)>=Math.abs(dy)){x1+=dx>0?fw/2:-fw/2;x2+=dx>0?-tw/2:tw/2;}
+    else{y1+=dy>0?fh/2:-fh/2;y2+=dy>0?-th/2:th/2;}
+    const cx1=x1+(x2-x1)*0.45,cy1=y1,cx2=x1+(x2-x1)*0.55,cy2=y2;
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',`M${x1} ${y1} C${cx1} ${cy1},${cx2} ${cy2},${x2} ${y2}`);
+    path.setAttribute('fill','none');path.setAttribute('stroke',e.c);
+    path.setAttribute('stroke-width',e.w||1.1);
+    if(e.dash)path.setAttribute('stroke-dasharray',e.dash);
+    path.setAttribute('marker-end',`url(#m${e.c.replace(/[^a-z0-9]/gi,'')})`);
+    path.setAttribute('opacity','0.8');
+    svg.appendChild(path);
+    if(e.lb){
+      const mx=(x1+x2)/2,my=(y1+y2)/2-6;
+      const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x',mx);t.setAttribute('y',my);t.setAttribute('text-anchor','middle');
+      t.setAttribute('font-size','8');t.setAttribute('fill',e.c);
+      t.setAttribute('font-family','Segoe UI,sans-serif');t.setAttribute('font-weight','700');
+      t.setAttribute('paint-order','stroke');t.setAttribute('stroke','#080b12');t.setAttribute('stroke-width','3');
+      t.textContent=e.lb;svg.appendChild(t);
+    }
+  });
+}
+window.addEventListener('load',()=>setTimeout(drawArrows,100));
+window.addEventListener('resize',drawArrows);
+</script>
+</body>
+</html>

@@ -6511,7 +6511,21 @@ class OrderManager {
         // Remove existing modal if any
         const existingModal = document.getElementById('tradeJournalModal');
         if (existingModal) existingModal.remove();
-        
+
+        // V9 live React shell (TalariaV8bLive): open the in-app trade card instead of the legacy DOM modal.
+        if (typeof window !== 'undefined' && typeof document !== 'undefined' && order && order.id != null) {
+            try {
+                if (document.querySelector('[data-v9-chrome="1"]')) {
+                    window.dispatchEvent(new CustomEvent('talaria:open-v9-trade-card', {
+                        detail: { orderId: order.id, isClosing: !!isClosing, closeData }
+                    }));
+                    return;
+                }
+            } catch (_) {
+                /* fall through to legacy modal */
+            }
+        }
+
         const modal = document.createElement('div');
         modal.id = 'tradeJournalModal';
         modal.style.cssText = `
