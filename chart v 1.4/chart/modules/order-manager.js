@@ -11416,9 +11416,9 @@ class OrderManager {
     }
 
     /**
-     * When true (default via {@link window.__CHART_ENV.DISABLE_ORDER_ENTRY_PLUS_UI}), hide all
+     * When {@link window.__CHART_ENV.DISABLE_ORDER_ENTRY_PLUS_UI} is not strictly `false`, hide all
      * “+” / split-entry affordances: chart Entry+ badges, preview green + / purple split handles,
-     * TP ladder +, native panel add row, V9 rail. Set `__CHART_ENV.DISABLE_ORDER_ENTRY_PLUS_UI = false` to restore.
+     * TP ladder +, native panel add row, V9 rail. Defaults to enabled in chart-env.defaults; set to `true` to disable.
      */
     _isOrderEntryPlusUiDisabled() {
         try {

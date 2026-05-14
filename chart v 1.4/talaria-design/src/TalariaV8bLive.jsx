@@ -5992,6 +5992,10 @@ const TalariaV8bLive = () => {
   /** Matches order-manager: hide Entry/TP “add level” + when DISABLE_ORDER_ENTRY_PLUS_UI is not false. */
   const chartEntryPlusSplitUiOff =
     typeof window !== "undefined" && window.__CHART_ENV?.DISABLE_ORDER_ENTRY_PLUS_UI !== false;
+  /** Show split (+) when env allows and (advanced panel, or size > 1 so basic mode can still ladder entry/TP). */
+  const v9EntryTpPlusVisible =
+    !chartEntryPlusSplitUiOff &&
+    (panelMode === "advanced" || Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0"))) > 1);
 
   // Futures: cannot have more TP rows than whole contracts (e.g. 1 contract → single TP only).
   useEffect(() => {
@@ -14212,7 +14216,7 @@ const TalariaV8bLive = () => {
         const inTab = def.params.filter((p) => tabFn(p) === indSettTab);
         const emptyLabel = indSettTab === "style" ? "style" : indSettTab === "input" ? "input" : "visibility";
         return (
-        <div data-sdrop="1" onClick={(e) => e.stopPropagation()}
+        <div data-sdrop="1" data-v9-ind-sett="1" onClick={(e) => e.stopPropagation()}
           style={{ position: "fixed", left: indSettPos.x, top: indSettPos.y, zIndex: 11000, width: panelW, fontFamily: F,
             background: c.sf, border: `1px solid ${c.brH}`, boxShadow: "0 24px 64px rgba(0,0,0,0.85)",
             display: "flex", flexDirection: "column",
@@ -21224,7 +21228,7 @@ const TalariaV8bLive = () => {
                         </svg>
                       </div>
                     </>)}
-                    {panelMode==="advanced" && !chartEntryPlusSplitUiOff && (
+                    {v9EntryTpPlusVisible && (
                     <div onClick={addRow}
                       onMouseEnter={()=>setSwHov("ep-add")} onMouseLeave={()=>setSwHov(null)}
                       title="Add entry level"
@@ -21285,7 +21289,9 @@ const TalariaV8bLive = () => {
                                   ? futuresMinRiskHint
                                     ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
                                     : <><span style={{ color:c.ts }}>${(parseFloat(row.risk||"0")/100*(riskBasis==="balance"?accountBalance:accountEquity)).toFixed(0)}</span>{" · "}{Number.isFinite(orderQtyNum) ? orderQtyNum.toFixed(currentSymbol.type==="futures"?0:2) : "0.00"} {sizeUnit}</>
-                                  : <>0.00 {sizeUnit}</>
+                                  : futuresMinRiskHint
+                                    ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                                    : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Number.isFinite(orderQtyNum) ? orderQtyNum.toFixed(currentSymbol.type==="futures"?0:2) : "0.00"} {sizeUnit}</>
                             }
                           </span>
                           <div style={{ flex:1 }}/>
@@ -21868,7 +21874,7 @@ const TalariaV8bLive = () => {
                         </svg>
                       </div>
                     </>)}
-                    {panelMode==="advanced" && !chartEntryPlusSplitUiOff && (
+                    {v9EntryTpPlusVisible && (
                     <div onClick={addTp}
                       onMouseEnter={()=>setSwHov("tp-add")} onMouseLeave={()=>setSwHov(null)}
                       title="Add target level"

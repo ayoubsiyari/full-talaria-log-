@@ -5299,9 +5299,9 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
     
     if (y >= top && y <= bottom) {
         // Clicked in indicator panel - open settings for first indicator
-        if (indicators.length > 0 && typeof createIndicatorSettingsPanel === 'function') {
+        if (indicators.length > 0 && typeof window.createIndicatorSettingsPanel === 'function') {
             const indicator = indicators[0];
-            createIndicatorSettingsPanel(this, indicator.type, indicator);
+            window.createIndicatorSettingsPanel(this, indicator.type, indicator);
             return true;
         }
     }
@@ -5874,7 +5874,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (!div) return;
         
         // Don't update if modal is open (prevents destroying DOM while editing)
-        if (document.getElementById('indicator-settings-modal')) return;
+        if (document.getElementById('indicator-settings-modal') || document.querySelector('[data-v9-ind-sett="1"]')) return;
         
         div.innerHTML = '';
         
@@ -6063,212 +6063,38 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     
     Chart.prototype.showIndicatorSettings = function(id) {
         try {
-            
-            // First, let's test with a simple alert to make sure the function is called
             const indicator = this.indicators.active.find(function(ind) {
                 return ind.id === id;
             });
-            
+
             if (!indicator) {
-                alert('Error: Indicator not found');
+                console.warn('[chart] showIndicatorSettings: indicator not found', id);
                 return;
             }
 
-            // Prefer the shared template-aware settings panel from indicator-ui.js
-            // so colors always stay in sync with active template/theme changes.
+            // Single UI path: indicator-ui.js (must load after this file — see dist-v9/index.html).
             if (typeof window.createIndicatorSettingsPanel === 'function') {
                 window.createIndicatorSettingsPanel(this, indicator.type, indicator);
                 return;
             }
 
-        
-        // Check if modal already exists
-        const existingModal = document.getElementById('indicator-settings-modal');
-        if (existingModal) {
-            existingModal.remove();
-        }
-        
-        // Create a VERY simple modal for testing
-        const modal = document.createElement('div');
-        modal.id = 'indicator-settings-modal';
-        modal.style.position = 'fixed';
-        modal.style.top = '0';
-        modal.style.left = '0';
-        modal.style.width = '100%';
-        modal.style.height = '100%';
-        modal.style.backgroundColor = 'rgba(0, 0, 0, 0.55)';
-        modal.style.zIndex = '2147483647'; // Maximum z-index
-        modal.style.display = 'flex';
-        modal.style.alignItems = 'center';
-        modal.style.justifyContent = 'center';
-        
-        const dialog = document.createElement('div');
-        dialog.style.background = 'var(--sp-ui-chrome-bg, #131722)';
-        dialog.style.color = 'var(--sp-text, #d1d4dc)';
-        dialog.style.borderRadius = '0';
-        dialog.style.minWidth = '400px';
-        dialog.style.maxWidth = '560px';
-        dialog.style.width = 'min(92vw, 520px)';
-        dialog.style.maxHeight = '82vh';
-        dialog.style.display = 'flex';
-        dialog.style.flexDirection = 'column';
-        dialog.style.overflow = 'hidden';
-        dialog.style.boxShadow = '0 24px 64px rgba(0,0,0,0.85), 0 0 24px rgba(38,67,247,0.2)';
-        dialog.style.border = '1px solid var(--sp-ui-border, rgba(42,46,57,0.55))';
-        const topAccent = document.createElement('div');
-        topAccent.style.cssText = 'height:2px;flex-shrink:0;background:linear-gradient(90deg,var(--sp-accent,#2962ff),#6a8aff,var(--sp-accent,#2962ff));';
-        dialog.appendChild(topAccent);
-        
-        // Title with close button
-        const header = document.createElement('div');
-        header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));flex-shrink:0;';
-        
-        const title = document.createElement('h3');
-        title.textContent = indicator.name + ' Settings';
-        title.style.margin = '0';
-        title.style.color = 'var(--sp-text, #d1d4dc)';
-        title.style.fontSize = '14px';
-        title.style.fontWeight = '700';
-        
-        const closeBtn = document.createElement('button');
-        closeBtn.textContent = '×';
-        closeBtn.style.cssText = 'width:26px;height:26px;border:none;background:transparent;color:var(--sp-text-muted,#8d93a1);font-size:13px;cursor:default;display:flex;align-items:center;justify-content:center;transition:color .12s, background .12s;';
-        closeBtn.onclick = function() {
-            modal.remove();
-        };
-        closeBtn.onmouseenter = function() { closeBtn.style.color = 'var(--sp-text,#d1d4dc)'; closeBtn.style.background = 'rgba(255,255,255,0.06)'; };
-        closeBtn.onmouseleave = function() { closeBtn.style.color = 'var(--sp-text-muted,#8d93a1)'; closeBtn.style.background = 'transparent'; };
-        
-        header.appendChild(title);
-        header.appendChild(closeBtn);
-        dialog.appendChild(header);
-        
-        const form = document.createElement('div');
-        form.style.cssText = 'display:flex;flex-direction:column;gap:8px;overflow-y:auto;max-height:calc(82vh - 156px);padding:12px 14px 0 14px;';
-        
-        // Helper function to create input groups
-        function createInputGroup(label, value, type) {
-            const container = document.createElement('div');
-            container.style.cssText = 'display:flex;flex-direction:column;gap:5px;';
-            
-            const labelEl = document.createElement('label');
-            labelEl.textContent = label;
-            labelEl.style.cssText = 'color:var(--sp-text,#d1d4dc);font-size:12px;font-weight:600;';
-            
-            let input;
-            if (type === 'checkbox') {
-                input = document.createElement('input');
-                input.type = 'checkbox';
-                input.checked = !!value;
-                input.style.cssText = 'width:16px;height:16px;cursor:default;';
-            } else {
-                input = document.createElement('input');
-                input.type = type;
-                input.value = value;
-                input.style.cssText = 'background:var(--sp-ui-surface-bg,#1e2740);border:1px solid var(--sp-ui-border,rgba(42,46,57,0.55));border-radius:6px;padding:8px 10px;color:var(--sp-text,#d1d4dc);font-size:13px;';
+            // If indicator-ui is still loading, V9 React may still open when definitions + hook exist.
+            if (typeof window.__v9OpenIndicatorSettings === 'function' && window.INDICATOR_DEFINITIONS) {
+                try {
+                    if (window.__v9OpenIndicatorSettings(this, indicator.type, indicator) === true) {
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('[chart] __v9OpenIndicatorSettings', e);
+                }
             }
-            
-            if (type === 'number') {
-                input.min = '1';
-                input.step = label.includes('Std') ? '0.1' : '1';
-            }
-            
-            container.appendChild(labelEl);
-            container.appendChild(input);
-            
-            return { container: container, input: input };
-        }
-        
-        // Add inputs dynamically from all params + style keys so no indicator setting is omitted.
-        const fields = [];
-        const toLabel = (key) => String(key || '').replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()).trim();
-        const addFields = (sourceName, obj) => {
-            if (!obj || typeof obj !== 'object') return;
-            Object.keys(obj).forEach((key) => {
-                const value = obj[key];
-                const keyL = String(key).toLowerCase();
-                let inputType = 'text';
-                if (typeof value === 'boolean') inputType = 'checkbox';
-                else if (typeof value === 'number') inputType = 'number';
-                else if (keyL.includes('color') || keyL.includes('fill')) inputType = 'color';
-                const group = createInputGroup(toLabel(key), value, inputType);
-                form.appendChild(group.container);
-                fields.push({ sourceName: sourceName, key: key, type: inputType, input: group.input });
-            });
-        };
-        addFields('params', indicator.params || {});
-        addFields('style', indicator.style || {});
-        
-        dialog.appendChild(form);
-        
-        // Buttons
-        const buttons = document.createElement('div');
-        buttons.style.cssText = 'display:flex;gap:8px;margin-top:12px;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));flex-shrink:0;';
-        
-        const cancelBtn = document.createElement('button');
-        cancelBtn.textContent = 'Cancel';
-        cancelBtn.style.cssText = 'padding:8px 14px;min-width:110px;background:var(--sp-ui-surface-bg,#1e2740);border:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));border-radius:6px;color:var(--sp-text,#d1d4dc);cursor:default;font-size:13px;font-weight:600;transition:all .12s;';
-        cancelBtn.onmouseenter = function() { 
-            cancelBtn.style.background = 'rgba(255,255,255,0.07)'; 
-            cancelBtn.style.borderColor = 'rgba(140,160,255,0.45)';
-        };
-        cancelBtn.onmouseleave = function() { 
-            cancelBtn.style.background = 'var(--sp-ui-surface-bg,#1e2740)'; 
-            cancelBtn.style.borderColor = 'var(--sp-ui-border, rgba(42,46,57,0.55))';
-        };
-        cancelBtn.onclick = function() {
-            modal.remove();
-        };
-        
-        const applyBtn = document.createElement('button');
-        applyBtn.textContent = 'Apply Changes';
-        applyBtn.style.cssText = 'padding:8px 16px;min-width:130px;background:linear-gradient(135deg,var(--sp-accent,#2962ff),#6a8aff);border:1px solid rgba(74,106,255,0.5);border-radius:6px;color:#fff;cursor:default;font-size:13px;font-weight:700;transition:background .12s,border-color .12s;';
-        applyBtn.onmouseenter = function() { applyBtn.style.background = 'rgba(var(--sp-accent-rgb, 41,98,255), 0.8)'; };
-        applyBtn.onmouseleave = function() { applyBtn.style.background = 'var(--sp-accent, #2962ff)'; };
-        
-        const self = this;
-        applyBtn.onclick = function() {
-            const newParams = {};
-            fields.forEach((f) => {
-                let value;
-                if (f.type === 'checkbox') value = !!f.input.checked;
-                else if (f.type === 'number') {
-                    const n = parseFloat(f.input.value);
-                    value = Number.isFinite(n) ? n : 0;
-                } else value = f.input.value;
-                newParams[f.key] = value;
-            });
-            self.updateIndicator(id, newParams);
-            modal.remove();
-        };
-        
-        buttons.appendChild(cancelBtn);
-        buttons.appendChild(applyBtn);
-        dialog.appendChild(buttons);
-        
-        modal.appendChild(dialog);
-        document.body.appendChild(modal);
 
-
-        
-        // Verify modal is visible
-        const modalRect = modal.getBoundingClientRect();
-        const dialogRect = dialog.getBoundingClientRect();
-
-
-
-        
-        // Force focus to the modal
-        modal.focus();
-        
-        // Close on background click
-        modal.onclick = function(e) {
-            if (e.target === modal) {
-                modal.remove();
-            }
-        };
+            console.error(
+                '[chart] Indicator settings unavailable: load /chart/modules/indicator-ui.js after chart-indicators-full.js ' +
+                '(defines window.createIndicatorSettingsPanel and INDICATOR_DEFINITIONS).'
+            );
         } catch (error) {
-            alert('Error opening indicator settings: ' + error.message);
+            console.warn('[chart] showIndicatorSettings failed:', error);
         }
     };
     
