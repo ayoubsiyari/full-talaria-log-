@@ -21591,6 +21591,9 @@ class OrderManager {
             alert('No price data available');
             return;
         }
+
+        const ctxChart = this._getOrderContextChart() || this.chart;
+        const marketFillTimeMs = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
         const currentPrice = currentCandle.c;
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
@@ -22013,7 +22016,7 @@ class OrderManager {
                         instrument_settings: activeInstrumentSettings,
                         type: this.orderSide,
                         openPrice: fillPx,
-                        openTime: currentCandle.t,
+                        openTime: marketFillTimeMs,
                         quantity: qtyRounded,
                         originalQuantity: qtyRounded,
                         riskAmount: riskUsdForLevel,
@@ -22027,9 +22030,9 @@ class OrderManager {
                         lowestPrice: fillPx,
                         mfe: fillPx,
                         mae: fillPx,
-                        mfeTime: currentCandle.t,
-                        maeTime: currentCandle.t,
-                        mfeMaeTrackingEndTime: currentCandle.t + (this.mfeMaeTrackingHours * 60 * 60 * 1000),
+                        mfeTime: marketFillTimeMs,
+                        maeTime: marketFillTimeMs,
+                        mfeMaeTrackingEndTime: marketFillTimeMs + (this.mfeMaeTrackingHours * 60 * 60 * 1000),
                         postExitTrackingMode: this.postExitTrackingMode,
                         postExitTrackingCandles: this.postExitTrackingCandles,
                         postExitProcessedCandles: 0,
@@ -22425,7 +22428,7 @@ class OrderManager {
             instrument_settings: activeInstrumentSettings,
             type: this.orderSide,
             openPrice: entryPrice,
-            openTime: currentCandle.t,
+            openTime: marketFillTimeMs,
             quantity: quantity,
             originalQuantity: quantity, // Store original quantity for journal (before partial closes)
             riskAmount: actualRisk, // Store the ACTUAL calculated risk
@@ -22440,9 +22443,9 @@ class OrderManager {
             lowestPrice: entryPrice,
             mfe: entryPrice, // Max Favorable Excursion (price level)
             mae: entryPrice, // Max Adverse Excursion (price level)
-            mfeTime: currentCandle.t, // Timestamp when MFE occurred
-            maeTime: currentCandle.t, // Timestamp when MAE occurred
-            mfeMaeTrackingEndTime: currentCandle.t + (this.mfeMaeTrackingHours * 60 * 60 * 1000), // End time for MFE/MAE tracking
+            mfeTime: marketFillTimeMs, // Timestamp when MFE occurred
+            maeTime: marketFillTimeMs, // Timestamp when MAE occurred
+            mfeMaeTrackingEndTime: marketFillTimeMs + (this.mfeMaeTrackingHours * 60 * 60 * 1000), // End time for MFE/MAE tracking
             postExitTrackingMode: this.postExitTrackingMode,
             postExitTrackingCandles: this.postExitTrackingCandles,
             postExitProcessedCandles: 0,
@@ -22760,6 +22763,9 @@ class OrderManager {
             alert('No price data available');
             return;
         }
+
+        const ctxChartTool = this._getOrderContextChart() || this.chart;
+        const marketFillTimeMsTool = this._marketFillOpenTimeMs(ctxChartTool, currentCandle);
         
         console.log(`🎨 Placing order from ${toolData.toolType} drawing tool`);
         
@@ -22880,7 +22886,7 @@ class OrderManager {
                 instrument_settings: activeInstrumentSettings,
                 type: this.orderSide,
                 openPrice: entryPrice,
-                openTime: currentCandle.t,
+                openTime: marketFillTimeMsTool,
                 quantity: quantity,
                 riskAmount: riskAmount,
                 originalRiskAmount: riskAmount, // Store original for R-multiple
@@ -22894,9 +22900,9 @@ class OrderManager {
                 lowestPrice: entryPrice,
                 mfe: entryPrice,
                 mae: entryPrice,
-                mfeTime: currentCandle.t,
-                maeTime: currentCandle.t,
-                mfeMaeTrackingEndTime: currentCandle.t + (this.mfeMaeTrackingHours * 60 * 60 * 1000),
+                mfeTime: marketFillTimeMsTool,
+                maeTime: marketFillTimeMsTool,
+                mfeMaeTrackingEndTime: marketFillTimeMsTool + (this.mfeMaeTrackingHours * 60 * 60 * 1000),
                 postExitTrackingMode: this.postExitTrackingMode,
                 postExitTrackingCandles: this.postExitTrackingCandles,
                 postExitProcessedCandles: 0,
@@ -23010,7 +23016,8 @@ class OrderManager {
         
         console.log(`📊 BUY Order inputs: Entry=${entryPrice.toFixed(5)}, TP=${tpValue} ${tpType}, SL=${slValue} ${slType}`);
         
-        const timestamp = currentCandle.t;
+        const ctxChart = this._getOrderContextChart() || this.chart;
+        const timestamp = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
         // Calculate TP/SL prices
         let tpPrice = 0;
@@ -23101,7 +23108,8 @@ class OrderManager {
         const tpType = document.getElementById('tpType')?.value || 'price';
         const slType = document.getElementById('slType')?.value || 'price';
         
-        const timestamp = currentCandle.t;
+        const ctxChart = this._getOrderContextChart() || this.chart;
+        const timestamp = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
         // Calculate TP/SL prices
         let tpPrice = 0;
@@ -23188,7 +23196,8 @@ class OrderManager {
         }
         
         const price = currentCandle.c;
-        const timestamp = currentCandle.t;
+        const ctxChart = this._getOrderContextChart() || this.chart;
+        const timestamp = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
         // Calculate default SL/TP (50 pips below/above for BUY)
         const pipSize = price * 0.001; // 0.1%
@@ -23249,7 +23258,8 @@ class OrderManager {
         }
         
         const price = currentCandle.c;
-        const timestamp = currentCandle.t;
+        const ctxChart = this._getOrderContextChart() || this.chart;
+        const timestamp = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
         // Calculate default SL/TP (50 pips above/below for SELL)
         const pipSize = price * 0.001; // 0.1%
@@ -23363,7 +23373,8 @@ class OrderManager {
         }
         
         const price = currentCandle.c; // Close price
-        const timestamp = currentCandle.t;
+        const ctxChart = this._getOrderContextChart() || this.chart;
+        const timestamp = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
         // Calculate default SL/TP (50 pips below/above for BUY)
         const pipSize = price * 0.001; // 0.1%
@@ -23416,7 +23427,8 @@ class OrderManager {
         }
         
         const price = currentCandle.c;
-        const timestamp = currentCandle.t;
+        const ctxChart = this._getOrderContextChart() || this.chart;
+        const timestamp = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
         // Calculate default SL/TP (50 pips above/below for SELL)
         const pipSize = price * 0.001; // 0.1%
@@ -31378,9 +31390,9 @@ class OrderManager {
     }
 
     /**
-     * Candle column for exit/partial markers: during tick replay the forming bar uses animatingCandle.t
-     * (next raw bar) while chart.data is updated in the *last* slot — map to that slot so the tick
-     * lines up with the candle being played, not the next empty column.
+     * Replay-aware candle index for an event time (exit / partial / **entry** markers & connectors).
+     * During tick replay the forming bar uses animatingCandle.t while chart.data is updated in the
+     * *last* slot — map to that slot so the marker lines up with the candle being played.
      */
     _chartIndexForCloseMarkerOnChart(ch, closeTime) {
         const data = ch?.data;
@@ -31407,6 +31419,39 @@ class OrderManager {
         }
 
         return this._findCandleIndexForTime(data, closeTime);
+    }
+
+    /**
+     * Market fill at the **close** of `fillCandle`: store `openTime` on the **next** bar's `t`
+     * (that bar's open — e.g. daily 1/2 close → first 1m of 1/3) when `chart.data[i+1]` exists.
+     * If the next bar is not loaded yet, keep `fillCandle.t` (no extrapolation — avoids phantom times).
+     */
+    _marketFillOpenTimeMs(chart, fillCandle) {
+        const ch = chart || this.chart;
+        const data = ch?.data;
+        const ft = fillCandle && Number(fillCandle.t);
+        if (!Number.isFinite(ft)) return ft;
+        if (!Array.isArray(data) || data.length < 2) return ft;
+
+        let idx = -1;
+        for (let i = 0; i < data.length; i++) {
+            const d = data[i];
+            if (d && Number(d.t) === ft) {
+                idx = i;
+                break;
+            }
+        }
+
+        if (idx >= 0 && idx + 1 < data.length) {
+            const nt = Number(data[idx + 1].t);
+            if (Number.isFinite(nt) && nt > ft) return nt;
+        }
+        return ft;
+    }
+
+    /** Entry marker / connector start: same replay column rules as _chartIndexForCloseMarkerOnChart. */
+    _chartIndexForEntryMarkerOnChart(ch, openTime) {
+        return this._chartIndexForCloseMarkerOnChart(ch, openTime);
     }
 
     _chartIndexForCloseMarker(closeTime) {
@@ -31599,7 +31644,7 @@ class OrderManager {
         const { yScale } = chart.scales;
         if (!yScale) return;
 
-        const dataIndex = this._findCandleIndexForTime(chart.data, order.openTime);
+        const dataIndex = this._chartIndexForEntryMarkerOnChart(chart, order.openTime);
         if (dataIndex === -1) return;
 
         const candleSpacing = chart.getCandleSpacing();
@@ -31903,7 +31948,7 @@ class OrderManager {
         const { yScale } = chart.scales;
         if (!yScale) return;
 
-        const entryIdx = this._findCandleIndexForTime(chart.data, order.openTime);
+        const entryIdx = this._chartIndexForEntryMarkerOnChart(chart, order.openTime);
         const exitIdx = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
         if (entryIdx === -1 || exitIdx === -1) return;
 
@@ -32120,7 +32165,7 @@ class OrderManager {
             if (c !== ch) return;
             if (!c?.scales?.yScale) return;
 
-            const dataIndex = this._findCandleIndexForTime(c.data, time);
+            const dataIndex = this._chartIndexForEntryMarkerOnChart(c, time);
             if (dataIndex === -1) return;
 
             const candleSpacing = c.getCandleSpacing();
@@ -32249,7 +32294,7 @@ class OrderManager {
                 const ch = tc.chart || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
                 const mainY = ch.scales.yScale;
-                const eIdx = this._findCandleIndexForTime(ch.data, tc.entryTime);
+                const eIdx = this._chartIndexForEntryMarkerOnChart(ch, tc.entryTime);
                 const xIdx = this._chartIndexForCloseMarkerOnChart(ch, tc.exitTime);
                 if (eIdx === -1 || xIdx === -1) return;
                 tc.line
