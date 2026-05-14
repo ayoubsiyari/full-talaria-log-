@@ -1,5 +1,2 @@
-import { redirect } from "next/navigation";
-
-export default function JournalPage() {
-  redirect("/journal/dashboard");
-}
+// Journal dashboard — rendered by the embedded journal iframe in the dashboard layout.
+export default function JournalPage() { return null; }

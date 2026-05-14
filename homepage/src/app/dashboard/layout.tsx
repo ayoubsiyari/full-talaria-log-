@@ -295,6 +295,7 @@ export default function DashboardLayout({
   const [navHoverId, setNavHoverId] = React.useState<string | null>(null);
   const [profileNavHov, setProfileNavHov] = React.useState(false);
   const profileWrapRef = React.useRef<HTMLDivElement>(null);
+  const journalIframeRef = React.useRef<HTMLIFrameElement>(null);
   const pathname = usePathname() || "";
   const router = useRouter();
   const openBacktestNewSessionRef = React.useRef<(() => void) | null>(null);
@@ -312,11 +313,38 @@ export default function DashboardLayout({
   }, []);
 
   React.useEffect(() => {
-    if (pathname.startsWith("/dashboard/cot")) setActiveView("cot");
+    if (pathname.startsWith("/dashboard/journal")) setActiveView("journal");
+    else if (pathname.startsWith("/dashboard/cot")) setActiveView("cot");
     else if (pathname.startsWith("/dashboard/support")) setActiveView("support");
     else if (pathname.startsWith("/dashboard/admin")) setActiveView("admin");
     else if (pathname.startsWith("/dashboard")) setActiveView("dashboard");
   }, [pathname]);
+
+  // When the parent URL has a journal sub-path, tell the iframe to navigate there
+  React.useEffect(() => {
+    if (!pathname.startsWith("/dashboard/journal")) return;
+    const sub = pathname.replace("/dashboard/journal", "") || "/dashboard";
+    const iframe = journalIframeRef.current;
+    if (iframe?.contentWindow) {
+      iframe.contentWindow.postMessage({ type: "parent:navigate", path: sub }, window.location.origin);
+    }
+  }, [pathname]);
+
+  // Listen for journal:navigate messages and mirror the URL in the address bar
+  React.useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "journal:navigate") {
+        const journalPath = event.data.path as string; // e.g. "/journal/trades"
+        const next = "/dashboard/journal" + journalPath.replace("/journal", "");
+        if (window.location.pathname !== next) {
+          window.history.replaceState(null, "", next);
+        }
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
 
   React.useEffect(() => {
     if (!profilePanelOpen) return;
@@ -597,21 +625,31 @@ export default function DashboardLayout({
           ) : null}
 
           {/* External views loaded as full-page iframes */}
-          {Object.entries(EXTERNAL_VIEWS).map(([id, url]) => (
-            <iframe
-              key={id}
-              title={id}
-              src={loadedViews[id] ? url : undefined}
-              style={{
-                position: "absolute", inset: 0,
-                width: "100%", height: "100%",
-                border: "none",
-                opacity: activeView === id ? 1 : 0,
-                pointerEvents: activeView === id ? "auto" : "none",
-                transition: "opacity 0.15s",
-              }}
-            />
-          ))}
+          {Object.entries(EXTERNAL_VIEWS).map(([id, url]) => {
+            const isJournal = id === "journal";
+            // For the journal iframe, encode the desired sub-path in window.name
+            // so ParentNavSync in the SPA can navigate there on mount/refresh.
+            const journalSubPath = isJournal && pathname.startsWith("/dashboard/journal")
+              ? (pathname.replace("/dashboard/journal", "") || "/dashboard")
+              : undefined;
+            return (
+              <iframe
+                key={id}
+                ref={isJournal ? journalIframeRef : undefined}
+                name={isJournal ? (journalSubPath ?? "") : undefined}
+                title={id}
+                src={loadedViews[id] ? url : undefined}
+                style={{
+                  position: "absolute", inset: 0,
+                  width: "100%", height: "100%",
+                  border: "none",
+                  opacity: activeView === id ? 1 : 0,
+                  pointerEvents: activeView === id ? "auto" : "none",
+                  transition: "opacity 0.15s",
+                }}
+              />
+            );
+          })}
         </main>
       </div>
     </div>

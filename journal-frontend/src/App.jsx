@@ -79,6 +79,43 @@ function GuestHomeRedirect() {
   return null;
 }
 
+/** Broadcasts every React Router navigation to the parent window so the dashboard
+ *  can keep its URL bar in sync (e.g. /journal/trades → /dashboard/journal/trades). */
+function RouteSync() {
+  const location = useLocation();
+  useEffect(() => {
+    if (window.parent !== window) {
+      window.parent.postMessage(
+        { type: 'journal:navigate', path: window.location.pathname },
+        window.location.origin
+      );
+    }
+  }, [location]);
+  return null;
+}
+
+/** Listens for navigation commands from the parent dashboard and navigates
+ *  the journal SPA accordingly (used when the user refreshes on a sub-URL). */
+function ParentNavSync() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    // window.name is set by the parent iframe element to encode the desired sub-path
+    const target = window.name;
+    if (target && target !== '/' && target !== window.location.pathname.replace('/journal', '')) {
+      navigate(target, { replace: true });
+    }
+    const handler = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'parent:navigate') {
+        navigate(event.data.path, { replace: true });
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [navigate]);
+  return null;
+}
+
 /**
  * Layout that wraps all "protected" pages (i.e. those that should show the Sidebar).
  */
@@ -570,6 +607,8 @@ export default function App() {
               <ProfileProvider>
                 <FilterProvider>
                   <BalanceProvider>
+                    <RouteSync />
+                    <ParentNavSync />
                     <AppRoutes />
                   </BalanceProvider>
                 </FilterProvider>

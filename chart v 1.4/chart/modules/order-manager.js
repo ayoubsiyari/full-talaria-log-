@@ -31378,9 +31378,10 @@ class OrderManager {
     }
 
     /**
-     * Candle column for exit/partial markers: during tick replay the forming bar uses animatingCandle.t
-     * (next raw bar) while chart.data is updated in the *last* slot — map to that slot so the tick
-     * lines up with the candle being played, not the next empty column.
+     * Replay-aware candle column for an event timestamp (exit, partial exit, **entry**, connectors).
+     * During tick replay the forming bar uses animatingCandle.t (next raw bar) while chart.data is
+     * updated in the *last* slot — map to that slot so the marker lines up with the candle being played,
+     * not a future/empty column. Entry markers used _findCandleIndexForTime only and could sit in empty space.
      */
     _chartIndexForCloseMarkerOnChart(ch, closeTime) {
         const data = ch?.data;
@@ -31390,7 +31391,7 @@ class OrderManager {
 
         // Must use this chart's replay driver (same as _getCurrentCandleForChart). OrderManager's
         // this.replaySystem can disagree with ch.replaySystem → anim.t match fails, then
-        // _findCandleIndexForTime maps TP exits to the wrong column (marker in empty space).
+        // _findCandleIndexForTime maps event times to the wrong column (exit/entry marker in empty space).
         const rs = (ch && ch.replaySystem) || this._playbackReplaySystem();
 
         if (rs?.isActive) {
@@ -31407,6 +31408,11 @@ class OrderManager {
         }
 
         return this._findCandleIndexForTime(data, closeTime);
+    }
+
+    /** Entry tick / connector start X: same column rules as {@link _chartIndexForCloseMarkerOnChart}. */
+    _chartIndexForEntryMarkerOnChart(ch, openTime) {
+        return this._chartIndexForCloseMarkerOnChart(ch, openTime);
     }
 
     _chartIndexForCloseMarker(closeTime) {
@@ -31599,7 +31605,7 @@ class OrderManager {
         const { yScale } = chart.scales;
         if (!yScale) return;
 
-        const dataIndex = this._findCandleIndexForTime(chart.data, order.openTime);
+        const dataIndex = this._chartIndexForEntryMarkerOnChart(chart, order.openTime);
         if (dataIndex === -1) return;
 
         const candleSpacing = chart.getCandleSpacing();
@@ -31903,7 +31909,7 @@ class OrderManager {
         const { yScale } = chart.scales;
         if (!yScale) return;
 
-        const entryIdx = this._findCandleIndexForTime(chart.data, order.openTime);
+        const entryIdx = this._chartIndexForEntryMarkerOnChart(chart, order.openTime);
         const exitIdx = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
         if (entryIdx === -1 || exitIdx === -1) return;
 
@@ -32120,7 +32126,7 @@ class OrderManager {
             if (c !== ch) return;
             if (!c?.scales?.yScale) return;
 
-            const dataIndex = this._findCandleIndexForTime(c.data, time);
+            const dataIndex = this._chartIndexForEntryMarkerOnChart(c, time);
             if (dataIndex === -1) return;
 
             const candleSpacing = c.getCandleSpacing();
@@ -32249,7 +32255,7 @@ class OrderManager {
                 const ch = tc.chart || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
                 const mainY = ch.scales.yScale;
-                const eIdx = this._findCandleIndexForTime(ch.data, tc.entryTime);
+                const eIdx = this._chartIndexForEntryMarkerOnChart(ch, tc.entryTime);
                 const xIdx = this._chartIndexForCloseMarkerOnChart(ch, tc.exitTime);
                 if (eIdx === -1 || xIdx === -1) return;
                 tc.line

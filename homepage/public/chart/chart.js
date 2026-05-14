@@ -1525,7 +1525,7 @@ class Chart {
 
     /**
      * Apply parsed OHLCV rows: resample, indicators, view fit, drawings, chartDataLoaded.
-     * @param {object} options skipIndicators, skipFitToView
+     * @param {object} options skipIndicators, skipFitToView, skipChartDataLoadedEvent (defer listeners until replay playhead is restored)
      */
     _commitLoadedBars(newData, startIndex, options = {}) {
         if (!newData || newData.length === 0) return;
@@ -1582,16 +1582,18 @@ class Chart {
             this._lastLoadedFileId = this.currentFileId;
         }
 
-        window.dispatchEvent(new CustomEvent('chartDataLoaded', {
-            detail: {
-                chart: this,
-                data: this.data,
-                rawData: this.rawData,
-                symbol: this.currentSymbol,
-                timeframe: this.currentTimeframe
-            }
-        }));
-        this._emitTimeframeChanged();
+        if (!options.skipChartDataLoadedEvent) {
+            window.dispatchEvent(new CustomEvent('chartDataLoaded', {
+                detail: {
+                    chart: this,
+                    data: this.data,
+                    rawData: this.rawData,
+                    symbol: this.currentSymbol,
+                    timeframe: this.currentTimeframe
+                }
+            }));
+            this._emitTimeframeChanged();
+        }
     }
 
     _smartResponseHasPayload(result) {
@@ -11972,13 +11974,63 @@ class Chart {
 
         const wasActive = !!replay.isActive;
         const wasPlaying = !!replay.isPlaying;
-        const savedReplayTimestamp = Number.isFinite(replay.replayTimestamp)
+        let savedReplayTimestamp = Number.isFinite(replay.replayTimestamp)
             ? replay.replayTimestamp
             : null;
+        // Align persisted wall time with intra-candle tick animation (same idea as
+        // onTimeframeChange): replayTimestamp can lag the visible tick bar while ticks run.
+        const acTs = replay.animatingCandle;
+        if (acTs && Number.isFinite(acTs.t)) {
+            const tp = Number(replay.tickProgress) || 0;
+            if (tp > 0) {
+                savedReplayTimestamp = acTs.t;
+            } else if (!replay.isPlaying && Number.isFinite(acTs.close)) {
+                savedReplayTimestamp = acTs.t;
+            }
+        }
         const savedSpeed = replay.speed;
         const savedPlaybackMode = typeof replay.getPlaybackMode === 'function'
             ? replay.getPlaybackMode()
             : null;
+
+        // Do NOT rewrite chart.data[last] OHLC after a TF switch to "match" a saved tick price.
+        // getCurrentCandle() reads that bar for SL/TP; inflating h/l toward a display price causes
+        // false fills when the user only changed timeframe (replay still paused).
+
+        const session = this.backtestingSession || {};
+        const sessionEndMs = (() => {
+            const r = session.endDate || session.end_date;
+            if (!r) return null;
+            const t = this._sessionEndToInclusiveUtcMs(r);
+            return Number.isFinite(t) ? Math.floor(t) : null;
+        })();
+
+        // Fine→coarse: applyPersistedState uses the same wall-clock cut so the playhead bar
+        // matches 1m tick time on 1D, etc. (no synthetic OHLC writes — see note above).
+        const previousTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        const prevTfMs = this.parseTimeframe(previousTf);
+        const newTfMsForSwitch = this.parseTimeframe(timeframe);
+        const switchingToFiner = wasActive
+            && Number.isFinite(prevTfMs) && prevTfMs > 0
+            && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
+            && newTfMsForSwitch < prevTfMs;
+        let coarsePeriodExclusiveEndTs = null;
+        if (switchingToFiner && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            const floorIdx = replay.sessionStartIndex || 0;
+            let oi = typeof replay.currentIndex === 'number' ? replay.currentIndex : 0;
+            oi = Math.min(Math.max(oi, floorIdx), replay.fullRawData.length - 1);
+            const nextCoarse = replay.fullRawData[oi + 1];
+            if (nextCoarse && Number.isFinite(nextCoarse.t)) {
+                coarsePeriodExclusiveEndTs = nextCoarse.t;
+            } else if (sessionEndMs != null && Number.isFinite(sessionEndMs)) {
+                coarsePeriodExclusiveEndTs = sessionEndMs + 1;
+            } else {
+                const openT = replay.fullRawData[oi]?.t;
+                if (Number.isFinite(openT) && Number.isFinite(prevTfMs)) {
+                    coarsePeriodExclusiveEndTs = openT + prevTfMs;
+                }
+            }
+        }
 
         const loadId = ++this._timeframeLoadSeq;
 
@@ -11996,13 +12048,6 @@ class Chart {
         // 2023, that timestamp won't exist in the loaded window → chart jumps to 2026.
         // Instead, set endTs = replayTimestamp + forward buffer so the replay position
         // is guaranteed to be within the fetched range.
-        const session = this.backtestingSession || {};
-        const sessionEndMs = (() => {
-            const r = session.endDate || session.end_date;
-            if (!r) return null;
-            const t = this._sessionEndToInclusiveUtcMs(r);
-            return Number.isFinite(t) ? Math.floor(t) : null;
-        })();
 
         const tfMs = this.parseTimeframe(timeframe);
         const forwardBufferBars = 20000;
@@ -12073,7 +12118,11 @@ class Chart {
         this._panLoading = false;
         this._chartViewRestored = false;
         this._commitTimeframeChange(timeframe);
-        this._ingestSmartWindowResult(result, { skipIndicators: true, skipFitToView: true });
+        this._ingestSmartWindowResult(result, {
+            skipIndicators: true,
+            skipFitToView: true,
+            skipChartDataLoadedEvent: true,
+        });
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
             this.compareOverlay.refreshForTimeframe(timeframe);
         }
@@ -12102,7 +12151,7 @@ class Chart {
         this._chartViewRestored = false;
 
         try {
-            replay.enterReplayMode();
+            replay.enterReplayMode({ suppressInitialUpdateChartData: true });
         } catch (e) {
             console.error('[backtest] enterReplayMode after refetch failed', e);
             this._endTimeframeSwitching();
@@ -12114,11 +12163,41 @@ class Chart {
                 replay.applyPersistedState({
                     replayTimestamp: savedReplayTimestamp,
                     speed: savedSpeed,
-                    playbackMode: savedPlaybackMode || undefined
+                    playbackMode: savedPlaybackMode || undefined,
+                    deferChartSync: true,
                 });
             } catch (e) {
                 console.warn('[backtest] applyPersistedState after refetch failed', e);
             }
+        }
+
+        if (switchingToFiner && Number.isFinite(coarsePeriodExclusiveEndTs)
+            && typeof replay._findLastRawIndexAtOrBefore === 'function'
+            && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            const upperInclusive = coarsePeriodExclusiveEndTs - 1;
+            const fineIdx = replay._findLastRawIndexAtOrBefore(replay.fullRawData, upperInclusive);
+            const smin = replay.sessionStartIndex || 0;
+            if (fineIdx >= smin) {
+                replay.currentIndex = fineIdx;
+                const b = replay.fullRawData[fineIdx];
+                if (b && Number.isFinite(b.t)) {
+                    replay.replayTimestamp = b.t;
+                }
+            }
+        }
+
+        if (typeof replay.updateChartData === 'function') {
+            try {
+                replay.updateChartData(true);
+            } catch (e) {
+                console.warn('[backtest] replay updateChartData after refetch failed', e);
+            }
+        }
+
+        if (typeof this._fireChartDataLoaded === 'function') {
+            try {
+                this._fireChartDataLoaded();
+            } catch (e) { /* ignore */ }
         }
 
         if (wasPlaying && typeof replay.play === 'function') {
