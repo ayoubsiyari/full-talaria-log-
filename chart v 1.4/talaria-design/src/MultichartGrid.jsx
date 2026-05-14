@@ -1397,6 +1397,12 @@ export default function MultichartGrid({
     // to every iframe — that would override Panel B's independent tf
     // even when sync.interval is off.  Timeframe sync is handled by the
     // dedicated "Interval sync" effect above which checks layoutSync.
+    //
+    // File / pair: mirror the Interval rule — only force the host dataset
+    // onto every iframe when Symbol sync is ON or when backtest/replay
+    // file-lock applies. Otherwise a tile that already reports its own
+    // fileId (user picked a different pair on Panel B) must NOT be reset
+    // to the host every time another panel becomes bridge-ready.
     useEffect(() => {
         if (!managerReady) return;
         const hostNt = readHostChartFileAndTf();
@@ -1408,15 +1414,29 @@ export default function MultichartGrid({
         const mgr = managerRef.current;
         if (!mgr || !mgr.charts) return;
         const pushTf = !!(layoutSync && layoutSync.interval);
+        const fileLock = isMultichartBacktestFileLock();
+        const symFollow = !!(layoutSync && layoutSync.symbol);
+        const forceHostFileOnEveryTile = fileLock || symFollow;
+        const hostFidStr = String((hostNt.fileId || fid || "")).trim();
         for (const c of mgr.charts.values()) {
             if (!c || c.host || !c.ready) continue;
             try {
-                mgr.sendCommandNoReply(c.id, "loadFile", { fileId: fid });
+                if (forceHostFileOnEveryTile) {
+                    mgr.sendCommandNoReply(c.id, "loadFile", { fileId: fid });
+                } else {
+                    const reported = c.state && c.state.fileId != null
+                        ? String(c.state.fileId).trim()
+                        : "";
+                    if (reported && reported !== hostFidStr) {
+                        continue;
+                    }
+                    mgr.sendCommandNoReply(c.id, "loadFile", { fileId: fid });
+                }
                 if (pushTf && tf) mgr.sendCommandNoReply(c.id, "setTimeframe", { tf });
             } catch (_) {}
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [managerReady, readyPanels, layoutSync && layoutSync.interval]);
+    }, [managerReady, readyPanels, layoutSync && layoutSync.interval, layoutSync && layoutSync.symbol]);
 
     // ─── Host-tile positioning ──────────────────────────────────────────
     //
