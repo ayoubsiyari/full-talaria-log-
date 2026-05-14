@@ -12254,6 +12254,17 @@ class Chart {
                 }
             } catch (e) { /* ignore */ }
             this._endTimeframeSwitching();
+            // updatePositions is skipped while _timeframeSwitching; when replay stays paused after
+            // refetch, replay.play() does not run — refresh orders/PnL once after the freeze lifts.
+            if (!wasPlaying) {
+                try {
+                    const omFin = this.orderManager
+                        || (typeof window !== 'undefined' && window.chart && window.chart.orderManager);
+                    if (omFin && typeof omFin.updatePositions === 'function') {
+                        omFin.updatePositions();
+                    }
+                } catch (_eOm) { /* ignore */ }
+            }
         };
         // Run after enterReplayMode's own 150ms realignAfterLayout completes.
         // Two-pass: an immediate rAF render keeps the snapshot bitmap accurate

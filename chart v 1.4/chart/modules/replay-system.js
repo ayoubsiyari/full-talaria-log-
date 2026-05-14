@@ -5221,6 +5221,12 @@ class ReplaySystem {
             
             // === UNLOCK STATE ===
             this._timeframeChanging = false;
+
+            // updatePositions was skipped while _timeframeChanging (order-manager deferral);
+            // when paused, nothing else runs until the next tick — refresh PnL / lines once here.
+            if (!wasPlaying && omPost && typeof omPost.updatePositions === 'function') {
+                try { omPost.updatePositions(); } catch (_e5) { /* ignore */ }
+            }
             
             
             // === RECREATE ANIMATING CANDLE STATE ===

@@ -23834,6 +23834,33 @@ class OrderManager {
     }
 
     /**
+     * Skip SL/TP and pending fills while timeframe data is mid-flight: chart.js sets
+     * `_timeframeSwitching` during fetch/resample freeze; replay-system sets `_timeframeChanging`
+     * inside `onTimeframeChange`. `updateChartData` can still call `updatePositions()` while
+     * render is frozen — without this, aggregated OHLC triggers false TP/SL. Multichart iframes
+     * also defer while tile A (parent `window.chart`) is switching so they do not evaluate
+     * against local bars that have not caught up to the host ingest yet.
+     * @returns {boolean}
+     */
+    _shouldDeferOrderExecutionForTimeframeTransition() {
+        const ctx = this._getOrderContextChart() || this.chart;
+        if (ctx && ctx._timeframeSwitching) return true;
+        const rs = this._playbackReplaySystem();
+        if (rs && rs._timeframeChanging) return true;
+        if (typeof document !== 'undefined' && document.documentElement
+            && document.documentElement.classList.contains('multichart-embed')
+            && typeof window !== 'undefined' && window.parent && window.parent !== window) {
+            try {
+                const pch = window.parent.chart;
+                if (pch && pch._timeframeSwitching) return true;
+            } catch (_e) {
+                /* ignore */
+            }
+        }
+        return false;
+    }
+
+    /**
      * Current candle for a specific chart surface — use the chart under the cursor when dragging SL/TP on a panel.
      */
     _getCurrentCandleForChart(chart) {
@@ -24494,6 +24521,9 @@ class OrderManager {
      * Update positions with current prices
      */
     updatePositions() {
+        if (this._shouldDeferOrderExecutionForTimeframeTransition()) {
+            return;
+        }
         const parentGuardCandle = this._getMultichartParentGuardCandle();
         const currentCandle = parentGuardCandle || this.getCurrentCandle();
         if (!currentCandle) return;
