@@ -6820,7 +6820,8 @@ const TalariaV8bLive = () => {
     if (!panel) return;
 
     const tid = window.setTimeout(() => {
-      try {
+      void (async () => {
+        try {
         const wantBuy = buySell === "buy";
         const buyActive = document.getElementById("buyTab")?.classList.contains("active");
         if (wantBuy !== !!buyActive) {
@@ -6855,6 +6856,30 @@ const TalariaV8bLive = () => {
 
         const om = window.chart?.orderManager;
         const skipPosSync = !!om?.isDraggingPreviewLine;
+
+        const fillLiveEntryFromFocusedMultichartTile = async () => {
+          const g = typeof window !== "undefined" ? window.__multichartGrid : null;
+          if (!g || typeof g.runCommand !== "function" || typeof g.getFocusedPanelId !== "function") {
+            om?.updateOrderPanelPrice?.();
+            return;
+          }
+          const fid = g.getFocusedPanelId();
+          const hid = g.hostPanelId != null ? g.hostPanelId : "A";
+          if (fid == null || String(fid) === String(hid)) {
+            om?.updateOrderPanelPrice?.();
+            return;
+          }
+          try {
+            const d = await g.runCommand("getOrderPanelPriceSnapshot", null, { panelId: fid });
+            if (d && Number.isFinite(Number(d.close)) && d.formatted != null && String(d.formatted) !== "") {
+              setIn("orderEntryPrice", d.formatted);
+            } else {
+              om?.updateOrderPanelPrice?.();
+            }
+          } catch (_e) {
+            om?.updateOrderPanelPrice?.();
+          }
+        };
 
         if (sizeMode === "$") setIn("riskAmountUSD", riskVal);
         else if (sizeMode === "%") {
@@ -6941,7 +6966,7 @@ const TalariaV8bLive = () => {
           if (entryPx > 0) {
             setIn("orderEntryPrice", String(entryPx));
           } else {
-            om?.updateOrderPanelPrice?.();
+            await fillLiveEntryFromFocusedMultichartTile();
           }
         } else if (!skipPosSync && !omHasMultiEntry) {
           // Preview lines require #orderEntryPrice > 0 (order-manager.js updatePreviewLines). The V8b
@@ -6950,7 +6975,7 @@ const TalariaV8bLive = () => {
           if (entryPx > 0) {
             setIn("orderEntryPrice", String(entryPx));
           } else {
-            om?.updateOrderPanelPrice?.();
+            await fillLiveEntryFromFocusedMultichartTile();
           }
         }
 
@@ -7130,10 +7155,11 @@ const TalariaV8bLive = () => {
           });
         }
       } catch (_) {}
+      })();
     }, 80);
 
     return () => clearTimeout(tid);
-  }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, riskBasis, slEnabled, slRows, entryRows, tpRows, currentSymbol.type]);
+  }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, riskBasis, slEnabled, slRows, entryRows, tpRows, currentSymbol.type, symbol]);
 
   // Mirror hidden #orderPanel → V8b React state. Chart drags / OM logic update the native inputs only;
   // without this, the rail still shows 0 / Market while preview lines show Limit + real prices.

@@ -607,6 +607,20 @@
                     });
                     return { indicators: items };
                 }
+                case 'getOrderPanelPriceSnapshot': {
+                    var omSnap = ch.orderManager;
+                    if (!omSnap || typeof omSnap.getCurrentCandle !== 'function') {
+                        throw new Error('orderManager.getCurrentCandle is not a function');
+                    }
+                    var cnd = omSnap.getCurrentCandle();
+                    if (!cnd) return { close: null, formatted: null };
+                    var closePx = Number.parseFloat(cnd.c != null ? cnd.c : cnd.close);
+                    if (!Number.isFinite(closePx)) return { close: null, formatted: null };
+                    var fmt = typeof omSnap.formatPrice === 'function'
+                        ? omSnap.formatPrice(closePx)
+                        : String(closePx);
+                    return { close: closePx, formatted: fmt };
+                }
 
                 // ─── V9 chart UI settings (theme, TZ, precision, …) ────
                 //
@@ -1143,6 +1157,7 @@
                 'addIndicator',
                 'removeIndicator',
                 'getIndicators',
+                'getOrderPanelPriceSnapshot',
                 'applyV9UiSettings',
                 'replayEnter',
                 'replayTick',

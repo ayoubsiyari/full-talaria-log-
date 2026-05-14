@@ -15394,9 +15394,29 @@ class OrderManager {
     }
     
     /**
+     * When MultichartGrid focus is an iframe tile (B/C/…), the parent's hidden
+     * #orderPanel + V9 rail must reflect THAT tile's replay price — not
+     * window.chart (panel A). Skip host-only live price writes in that case.
+     * @returns {boolean}
+     */
+    _shouldSkipParentOrderRailLivePriceForFocusedIframeTile() {
+        if (typeof window === 'undefined') return false;
+        try {
+            const g = window.__multichartGrid;
+            if (!g || typeof g.getFocusedPanelId !== 'function') return false;
+            const fid = g.getFocusedPanelId();
+            const hid = g.hostPanelId != null ? g.hostPanelId : 'A';
+            return fid != null && String(fid) !== String(hid);
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    /**
      * Update entry price in panel
      */
     updateOrderPanelPrice() {
+        if (this._shouldSkipParentOrderRailLivePriceForFocusedIframeTile()) return;
         const currentCandle = this.getCurrentCandle();
         if (!currentCandle) return;
         
@@ -15422,6 +15442,7 @@ class OrderManager {
      */
     _syncPreviewToReplayPrice() {
         if (!this.replaySystem || !this.replaySystem.isActive) return;
+        if (this._shouldSkipParentOrderRailLivePriceForFocusedIframeTile()) return;
 
         const orderPanelEl = document.getElementById('orderPanel');
         if (!orderPanelEl || !orderPanelEl.classList.contains('visible')) return;

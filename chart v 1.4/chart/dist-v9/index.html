@@ -58,7 +58,7 @@
                    in some load orders), strip it again now. */
                 try { document.documentElement.classList.remove('bt-preload'); } catch (_) {}
             }, { once: true });
-            var V = '20260515T1800';
+            var V = '20260515T1910';
             function inject(src) {
                 var s = document.createElement('script');
                 s.src = src + '?v=' + V;
@@ -929,7 +929,7 @@
     <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->
     <script defer src="/chart/modules/order-event-bus.js?v=bmp62sixb"></script>
     <script defer src="/chart/modules/order-service.js?v=bmp62sixb"></script>
-    <script defer src="/chart/modules/order-manager.js?v=bmp62sixb"></script>
+    <script defer src="/chart/modules/order-manager.js?v=bmp63railfix"></script>
     <script defer src="/chart/modules/screenshot-manager.js?v=bmp62sixb"></script>
 
     <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
@@ -940,7 +940,7 @@
     <!-- Multi-panel manager removed — single-chart mode only. -->
     <!-- Economic calendar: Finnhub via /api + chart time-axis markers (__economicCalendarForChart). -->
     <script defer src="/chart/modules/economic-news-sidebar.js?v=bmp62sixb"></script>
-  <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js?v=bmp62sixb"></script>
+  <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js?v=bmp63railfix"></script>
 </head>
 <body>
     <div id="backtestingLoader" aria-live="polite" aria-busy="true">

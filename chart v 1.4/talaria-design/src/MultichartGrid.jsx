@@ -2416,6 +2416,22 @@ export default function MultichartGrid({
                             indicators: list.map((i) => ({ id: i.id, type: i.type || i.name || null })),
                         });
                     }
+                    case "getOrderPanelPriceSnapshot": {
+                        const omSnap = ch.orderManager;
+                        if (!omSnap || typeof omSnap.getCurrentCandle !== "function") {
+                            return Promise.reject(new Error("orderManager.getCurrentCandle is not a function"));
+                        }
+                        const cnd = omSnap.getCurrentCandle();
+                        if (!cnd) return Promise.resolve({ close: null, formatted: null });
+                        const closePx = Number.parseFloat(cnd.c != null ? cnd.c : cnd.close);
+                        if (!Number.isFinite(closePx)) {
+                            return Promise.resolve({ close: null, formatted: null });
+                        }
+                        const fmt = typeof omSnap.formatPrice === "function"
+                            ? omSnap.formatPrice(closePx)
+                            : String(closePx);
+                        return Promise.resolve({ close: closePx, formatted: fmt });
+                    }
 
                     // ─── orders (host-side) ─────────────────────────
                     //
