@@ -13836,7 +13836,8 @@ class OrderManager {
                 placeBtn.disabled = true;
                 placeBtn.style.opacity = '0.5';
                 placeBtn.style.cursor = 'not-allowed';
-                placeBtn.textContent = `${action} ${this._formatQty(0)} ${positionLabel} - ${reason}`;
+                const qShow = Number.isFinite(quantity) && quantity > 0 ? quantity : 0;
+                placeBtn.textContent = `${action} ${this._formatQty(qShow)} ${positionLabel} - ${reason}`;
             } else {
                 placeBtn.disabled = false;
                 placeBtn.style.opacity = '1';

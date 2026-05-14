@@ -5929,7 +5929,7 @@ const TalariaV8bLive = () => {
       omPanelBridgeRef.current.tpDel = Date.now();
       return rows.slice(0, maxLegs);
     });
-  }, [omOrderQtyTxt, currentSymbol.type]);
+  }, [omOrderQtyTxt, currentSymbol.type, tpRows.length]);
 
   const sessionAssetHintForSymbol = useMemo(() => {
     const want = normalizeSymForBadge(symbol);
@@ -6612,7 +6612,46 @@ const TalariaV8bLive = () => {
         }
 
         // Multi-TP: mirror React rows into om.tpTargets + list DOM (avoid toggling checkbox every tick — it re-inits).
-        const tpActive = tpRows.filter((r) => r.enabled !== false);
+        // Futures: never more TP rows than whole contracts (#orderQuantity). Refresh size first when splitting
+        // so qty is not stale; trim React + OM in the same tick (omOrderQtyTxt alone does not rerun when only +TP changes).
+        let tpRowsForOm = tpRows;
+        if (!skipPosSync && om && currentSymbol.type === "futures") {
+          const activePre = tpRows.filter((r) => r.enabled !== false);
+          if (activePre.length > 1) {
+            try {
+              om.calculatePositionFromRisk?.();
+            } catch (_) {}
+          }
+          const oqDom = Math.floor(
+            Math.max(0, parseFloat(document.getElementById("orderQuantity")?.value || "0"))
+          );
+          const maxTp = oqDom < 1 ? 1 : oqDom;
+          if (tpRows.length > maxTp) {
+            tpRowsForOm = tpRows.slice(0, maxTp);
+            markOrderControlBridge();
+            omPanelBridgeRef.current.tpDel = Date.now();
+            setTpRows(tpRowsForOm);
+            while (Array.isArray(om.tpTargets) && om.tpTargets.length > maxTp) {
+              const last = om.tpTargets[om.tpTargets.length - 1];
+              try {
+                om.removeTPTarget(last != null && last.id != null ? last.id : om.tpTargets.length - 1);
+              } catch (_) {
+                break;
+              }
+            }
+          }
+        }
+        const tpActive = tpRowsForOm.filter((r) => r.enabled !== false);
+        if (!skipPosSync && currentSymbol.type === "futures" && om && tpActive.length <= 1) {
+          while (Array.isArray(om.tpTargets) && om.tpTargets.length > 1) {
+            const last = om.tpTargets[om.tpTargets.length - 1];
+            try {
+              om.removeTPTarget(last != null && last.id != null ? last.id : om.tpTargets.length - 1);
+            } catch (_) {
+              break;
+            }
+          }
+        }
         if (!skipPosSync && tpActive.length > 1 && om) {
           const mtpEl = document.getElementById("multipleTPToggle");
           if (mtpEl && !mtpEl.checked) {
@@ -6658,7 +6697,7 @@ const TalariaV8bLive = () => {
           if (numEl && String(numEl.value || "") !== String(nextTgts.length)) {
             numEl.value = String(nextTgts.length);
           }
-        } else if (!skipPosSync && om && omHasMultiTp && tpRows.length === 1) {
+        } else if (!skipPosSync && om && omHasMultiTp && tpRowsForOm.length === 1) {
           // React has one TP row but OM still lists multiple (bridge missed remove). Drop extras so preview math matches.
           while (Array.isArray(om.tpTargets) && om.tpTargets.length > 1) {
             const last = om.tpTargets[om.tpTargets.length - 1];
@@ -6685,7 +6724,7 @@ const TalariaV8bLive = () => {
           }
         }
 
-        const tp0 = tpRows[0];
+        const tp0 = tpRowsForOm[0] ?? tpRows[0];
         setChk("enableSL", slEnabled);
         setChk("enableTP", !!tp0?.enabled);
 
@@ -6717,7 +6756,7 @@ const TalariaV8bLive = () => {
     }, 80);
 
     return () => clearTimeout(tid);
-  }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, riskBasis, slEnabled, slRows, entryRows, tpRows]);
+  }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, riskBasis, slEnabled, slRows, entryRows, tpRows, currentSymbol.type]);
 
   // Mirror hidden #orderPanel → V8b React state. Chart drags / OM logic update the native inputs only;
   // without this, the rail still shows 0 / Market while preview lines show Limit + real prices.

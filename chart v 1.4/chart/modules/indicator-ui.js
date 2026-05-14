@@ -1763,6 +1763,17 @@ function createIndicatorSelectionMenu(chartInstance) {
     return menu;
 }
 
+/** Same tab buckets as drawing tool settings: Style / Input / Visibility */
+function indicatorSettingsTabForParam(param) {
+    const id = String(param.id || '').toLowerCase();
+    const label = String(param.label || '').toLowerCase();
+    if (param.type === 'checkbox') return 'visibility';
+    if (param.type === 'color') return 'style';
+    if (/color|fill|linewidth|linethickness|thickness|transparency|opacity/.test(id)) return 'style';
+    if (param.type === 'text' && (id.includes('fill') || label.includes('fill') || label.includes('rgba'))) return 'style';
+    return 'input';
+}
+
 function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndicator = null) {
     console.log('🔧 createIndicatorSettingsPanel called with:', indicatorType, existingIndicator);
     const def = INDICATOR_DEFINITIONS[indicatorType];
@@ -1806,8 +1817,8 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         border-radius: 0;
         box-shadow: 0 24px 64px rgba(0,0,0,0.85), 0 0 24px rgba(38,67,247,0.2);
         z-index: 10000;
-        min-width: ${isCustomPanel ? '480px' : '360px'};
-        max-width: ${isCustomPanel ? '640px' : '460px'};
+        min-width: ${isCustomPanel ? '480px' : '400px'};
+        max-width: ${isCustomPanel ? '640px' : '480px'};
         width: ${isCustomPanel ? 'min(92vw, 600px)' : 'auto'};
         max-height: 82vh;
         display: flex;
@@ -1851,18 +1862,6 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         panel.appendChild(hint);
     }
 
-    const form = document.createElement('div');
-    form.style.display = 'flex';
-    form.style.flexDirection = 'column';
-    form.style.gap = '8px';
-    form.style.overflowY = 'auto';
-    form.style.maxHeight = 'calc(82vh - 156px)';
-    form.style.padding = '12px 14px 0 14px';
-    form.style.marginTop = '0';
-    // Add scrollbar styling
-    form.style.scrollbarWidth = 'thin';
-    form.style.scrollbarColor = 'var(--sp-ui-border, rgba(42,46,57,0.55)) transparent';
-
     const initialParams = existingIndicator ? existingIndicator.params : {};
     const initialStyle = existingIndicator ? existingIndicator.style : {};
     const allParams = { ...initialParams, ...initialStyle };
@@ -1887,7 +1886,94 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         });
     };
 
-    def.params.forEach(param => {
+    const tabShell = document.createElement('div');
+    tabShell.style.cssText = 'display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;';
+
+    const tabStripWrap = document.createElement('div');
+    tabStripWrap.style.cssText = 'position:relative;flex-shrink:0;border-bottom:1px solid var(--sp-ui-border, rgba(42,46,57,0.55));';
+
+    const tabStrip = document.createElement('div');
+    tabStrip.style.cssText = 'display:flex;flex-direction:row;align-items:stretch;';
+
+    const TAB_ORDER = [['style', 'Style'], ['input', 'Input'], ['visibility', 'Visibility']];
+    const tabPanes = {};
+    const tabButtons = [];
+    let activeTab = 'style';
+    const tabCounts = { style: 0, input: 0, visibility: 0 };
+    def.params.forEach(p => { tabCounts[indicatorSettingsTabForParam(p)]++; });
+    if (tabCounts.style) activeTab = 'style';
+    else if (tabCounts.input) activeTab = 'input';
+    else activeTab = 'visibility';
+
+    const underline = document.createElement('div');
+    underline.style.cssText = 'position:absolute;bottom:0;height:2px;width:33.333%;left:0;transition:left 0.25s cubic-bezier(0.4,0,0.2,1);background:linear-gradient(90deg,transparent,var(--sp-accent,#2962ff),transparent);box-shadow:0 0 8px rgba(74,106,255,0.35);pointer-events:none;';
+
+    function setTabUnderline() {
+        const idx = Math.max(0, TAB_ORDER.findIndex(([tid]) => tid === activeTab));
+        const n = TAB_ORDER.length;
+        underline.style.width = (100 / n) + '%';
+        underline.style.left = (idx * (100 / n)) + '%';
+    }
+
+    function updateIndSettingsTabs() {
+        TAB_ORDER.forEach(([tid], i) => {
+            const isAct = tid === activeTab;
+            const b = tabButtons[i];
+            b.style.color = isAct ? 'var(--sp-accent,#2962ff)' : 'var(--sp-text-muted,#8d93a1)';
+            b.style.fontWeight = isAct ? '700' : '500';
+            b.style.background = isAct ? 'rgba(74,106,255,0.06)' : 'transparent';
+            tabPanes[tid].style.display = tid === activeTab ? 'flex' : 'none';
+        });
+        setTabUnderline();
+    }
+
+    TAB_ORDER.forEach(([tid, tlabel], i) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = tlabel;
+        btn.style.cssText = 'flex:1;padding:10px 6px;border:none;font:inherit;cursor:default;font-size:12px;background:transparent;transition:color .15s, background .12s;color:var(--sp-text-muted,#8d93a1);';
+        btn.onmouseenter = () => {
+            if (activeTab !== tid) btn.style.background = 'rgba(255,255,255,0.05)';
+        };
+        btn.onmouseleave = () => {
+            if (activeTab !== tid) btn.style.background = 'transparent';
+        };
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            activeTab = tid;
+            updateIndSettingsTabs();
+            closeAllPalettes();
+        };
+        tabStrip.appendChild(btn);
+        tabButtons.push(btn);
+    });
+    tabStripWrap.appendChild(tabStrip);
+    tabStripWrap.appendChild(underline);
+    tabShell.appendChild(tabStripWrap);
+
+    const panesWrap = document.createElement('div');
+    panesWrap.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;';
+
+    TAB_ORDER.forEach(([tid]) => {
+        const pane = document.createElement('div');
+        pane.dataset.indSettTab = tid;
+        pane.style.cssText = 'display:none;flex-direction:column;gap:8px;overflow-y:auto;padding:12px 14px 4px 14px;flex:1;min-height:0;scrollbar-width:thin;scrollbar-color:var(--sp-ui-border, rgba(42,46,57,0.55)) transparent';
+        tabPanes[tid] = pane;
+        panesWrap.appendChild(pane);
+    });
+    tabShell.appendChild(panesWrap);
+    panel.appendChild(tabShell);
+
+    function appendEmptyTabMessage(tid, sectionTitle) {
+        const pane = tabPanes[tid];
+        if (pane.children.length > 0) return;
+        const em = document.createElement('div');
+        em.textContent = 'No ' + sectionTitle + ' options for this indicator.';
+        em.style.cssText = 'font-size:12px;color:var(--sp-text-muted,#787b86);padding:12px 4px;font-style:italic;';
+        pane.appendChild(em);
+    }
+
+    function appendIndicatorParamRow(param, mountEl) {
         const wrapper = document.createElement('div');
         wrapper.className = 'settings-input-row';
         wrapper.style.cssText = `
@@ -2006,8 +2092,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             wrapper.appendChild(input);
         } else if (param.type === 'text') {
             let type = indicatorType || 'unknown';
-            
-            // Fallback: determine type from name if not set
+
             if (type === 'unknown') {
                 if (indicatorType.startsWith('SMA')) type = 'sma';
                 else if (indicatorType.startsWith('EMA')) type = 'ema';
@@ -2027,7 +2112,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
         }
-        if (input && ['number','text','time','select','textarea'].includes(param.type)) {
+        if (input && ['number', 'text', 'time', 'select', 'textarea'].includes(param.type)) {
             input.onfocus = () => {
                 input.style.borderColor = 'var(--sp-accent, #2962ff)';
                 wrapper.style.borderColor = 'rgba(var(--sp-accent-rgb, 41,98,255), 0.55)';
@@ -2037,10 +2122,16 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
                 wrapper.style.borderColor = 'var(--sp-ui-border, rgba(42,46,57,0.55))';
             };
         }
-        form.appendChild(wrapper);
-    });
+        mountEl.appendChild(wrapper);
+    }
 
-    panel.appendChild(form);
+    def.params.forEach(param => {
+        appendIndicatorParamRow(param, tabPanes[indicatorSettingsTabForParam(param)]);
+    });
+    appendEmptyTabMessage('style', 'style');
+    appendEmptyTabMessage('input', 'input');
+    appendEmptyTabMessage('visibility', 'visibility');
+    updateIndSettingsTabs();
 
     const handleOutsideClick = (event) => {
         const clickedInsideColorControl = colorControls.some(control =>
@@ -2077,7 +2168,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         const newStyle = {};
         
         def.params.forEach(param => {
-            const input = form.querySelector(`[data-param-id="${param.id}"]`);
+            const input = panel.querySelector(`[data-param-id="${param.id}"]`);
             if (!input) {
                 console.warn('Input not found for param:', param.id);
                 return;
