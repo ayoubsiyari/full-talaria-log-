@@ -4681,6 +4681,10 @@ const TalariaV8bLive = () => {
     visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
     visMonths: { checked: true, min: 1, max: 120 },
   });
+  const [indSettOpen, setIndSettOpen] = useState(false);
+  const [indSettPos, setIndSettPos] = useState({ x: 120, y: 80 });
+  const [indSettTab, setIndSettTab] = useState("style");
+  const [indSettDraft, setIndSettDraft] = useState({});
   const [screenshotFlash, setScreenshotFlash] = useState(false);
   const [orderPanelOpen, setOrderPanelOpen] = useState(false);
   const [opSymOpen, setOpSymOpen] = useState(false);
@@ -4702,6 +4706,8 @@ const TalariaV8bLive = () => {
   const [panelMode, setPanelMode] = useState("advanced");
   /** Short windows where React row counts intentionally lead OM (panel add/delete) so reverse poll must not fight the forward bridge. */
   const omPanelBridgeRef = useRef({ entryAdd: 0, entryDel: 0, tpAdd: 0, tpDel: 0, control: 0 });
+  const closeOthersForIndSettRef = useRef(() => {});
+  const indSettCtxRef = useRef({ chart: null, indicatorType: "", indicator: null });
   const rrPushLockRef = useRef(0);
   const OM_PANEL_BRIDGE_LEAD_MS = 750;
   const isOmBridgeLead = (ts) => !!(ts && Date.now() - ts < OM_PANEL_BRIDGE_LEAD_MS);
@@ -5855,6 +5861,72 @@ const TalariaV8bLive = () => {
     setAvStyleDrop(null);
     setTimeout(() => { setAvSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("avsett"); return n; }); }, 155);
   };
+  const closeIndSett = () => {
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
+    setClosing(s => new Set([...s, "indsett"]));
+    setTimeout(() => { setIndSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("indsett"); return n; }); }, 155);
+  };
+  closeOthersForIndSettRef.current = () => {
+    try {
+      if (tlSettOpen) closeTlSett();
+      if (txtSettOpen) closeTxtSett();
+      if (vwapSettOpen) closeVwapSett();
+      if (vpSettOpen) closeVpSett();
+      if (avSettOpen) closeAvSett();
+    } catch (_) {}
+  };
+  useEffect(() => {
+    const openInd = (chartInstance, indicatorType, existingIndicator) => {
+      if (!existingIndicator || !chartInstance || !indicatorType) return false;
+      const defs = typeof window !== "undefined" ? window.INDICATOR_DEFINITIONS : null;
+      const def = defs && defs[indicatorType];
+      if (!def) return false;
+      const tabFn = typeof window.indicatorSettingsTabForParam === "function"
+        ? window.indicatorSettingsTabForParam
+        : (p) => (p.type === "checkbox" ? "visibility" : p.type === "color" ? "style" : "input");
+      try {
+        closeOthersForIndSettRef.current();
+      } catch (_) {}
+      const initialParams = existingIndicator.params || {};
+      const initialStyle = existingIndicator.style || {};
+      const allParams = { ...initialParams, ...initialStyle };
+      if (indicatorType === "custom" && existingIndicator.params) {
+        if (allParams.placement === undefined || allParams.placement === "") {
+          allParams.placement = existingIndicator.params.separatePanel ? "panel" : "overlay";
+        }
+        const cp = existingIndicator.params.customParams;
+        if ((allParams.period === undefined || allParams.period === "") && cp && cp.period != null) {
+          allParams.period = cp.period;
+        }
+      }
+      const draft = {};
+      def.params.forEach((p) => {
+        draft[p.id] = allParams[p.id] !== undefined ? allParams[p.id] : p.default;
+      });
+      const counts = { style: 0, input: 0, visibility: 0 };
+      def.params.forEach((p) => {
+        counts[tabFn(p)]++;
+      });
+      let first = "visibility";
+      if (counts.style) first = "style";
+      else if (counts.input) first = "input";
+      indSettCtxRef.current = { chart: chartInstance, indicatorType, indicator: existingIndicator };
+      setIndSettDraft(draft);
+      setIndSettTab(first);
+      const zForPos = (typeof window !== "undefined" && Number(window.__v9Zoom)) || 1;
+      const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+      setIndSettPos({ x: Math.max(8, vw / zForPos / 2 - (indicatorType === "custom" ? 270 : 210)), y: 72 });
+      setIndSettOpen(true);
+      return true;
+    };
+    if (typeof window !== "undefined") window.__v9OpenIndicatorSettings = openInd;
+    return () => {
+      if (typeof window !== "undefined" && window.__v9OpenIndicatorSettings === openInd) {
+        delete window.__v9OpenIndicatorSettings;
+      }
+    };
+  }, []);
   const closeDropdown = () => {
     if (!dropdown) return;
     cpBarAnchorRef.current = null;
@@ -6542,6 +6614,16 @@ const TalariaV8bLive = () => {
           const br = document.querySelector(`input[name="balanceType"][value="${wantBal}"]`);
           if (br && !br.checked) br.click();
         } else setIn("lotSizeAmount", riskVal);
+
+        // Recompute size immediately after risk-mode + inputs sync (otherwise #orderQuantity / readouts
+        // can lag one tick when switching $ ↔ % ↔ #).
+        if (om && !skipPosSync) {
+          try {
+            om.calculatePositionFromRisk?.();
+            om.calculateAdvancedRiskReward?.();
+          } catch (_) {}
+        }
+
         // Multi-entry / multi-TP: chart preview uses orderManager.multiEntryLevels + tpTargets (see order-manager.js).
         const omHasMultiEntry = !!(om?.isMultiEntryMode && (om.multiEntryLevels?.length ?? 0) > 1);
         const mtpOn = !!document.getElementById("multipleTPToggle")?.checked;
@@ -7450,6 +7532,10 @@ const TalariaV8bLive = () => {
     else if(targetKey === "rr_lossColor")   setRrStyle(s=>({...s, lossColor:   colorVal}));
     else if(targetKey === "rr_entryColor")  setRrStyle(s=>({...s, entryColor:  colorVal}));
     else if(targetKey === "rr_labelColor")  setRrStyle(s=>({...s, labelColor:  colorVal}));
+    else if(typeof targetKey === "string" && targetKey.startsWith("ind-")) {
+      const pid = targetKey.slice(4);
+      setIndSettDraft(d => ({ ...d, [pid]: colorVal }));
+    }
     else updateSetting(targetKey, colorVal);
   };
   cpApplyRef.current = cpApply;
@@ -8757,10 +8843,11 @@ const TalariaV8bLive = () => {
 
         if (dropdown) closeDropdown();
         if (group === 'text') {
+          closeIndSett();
           setTxtSettPos({ x: px, y: py });
           setTxtSettOpen(true);
         } else if (drawing.type === 'anchored-vwap') {
-          closeTlSett(); closeTxtSett(); closeVpSett(); closeAvSett();
+          closeTlSett(); closeTxtSett(); closeVpSett(); closeAvSett(); closeIndSett();
           suppressVwapBridge.current = true;
           const ds = drawing.style || {};
           const DASH_R2 = {'':'solid','5,5':'dashed','2,4':'dotted','7,4,2,4':'dashdot','2,2':'dotted'};
@@ -8771,7 +8858,7 @@ const TalariaV8bLive = () => {
           setVwapSettOpen(true);
           setVwapSettTab("style");
         } else if (drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile') {
-          closeTlSett(); closeTxtSett(); closeVwapSett(); closeAvSett();
+          closeTlSett(); closeTxtSett(); closeVwapSett(); closeAvSett(); closeIndSett();
           suppressVpBridge.current = true;
           const ds = drawing.style || {};
           const PLC_R2 = {left:"Left",right:"Right"};
@@ -8782,7 +8869,7 @@ const TalariaV8bLive = () => {
           setVpSettOpen(true);
           setVpSettTab("style");
         } else if (drawing.type === 'anchored-volume-profile') {
-          closeTlSett(); closeTxtSett(); closeVwapSett(); closeVpSett();
+          closeTlSett(); closeTxtSett(); closeVwapSett(); closeVpSett(); closeIndSett();
           suppressAvBridge.current = true;
           const ds = drawing.style || {};
           const PLC_R3 = {left:"Left",right:"Right"};
@@ -8793,6 +8880,7 @@ const TalariaV8bLive = () => {
           setAvSettOpen(true);
           setAvSettTab("style");
         } else {
+          closeIndSett();
           setTlSettPos({ x: px, y: py });
           setTlSettOpen(true);
           if (drawing.type === "gann-box" || drawing.type === "gann-square-fixed" || drawing.type === "gann-fan") {
@@ -10173,7 +10261,7 @@ const TalariaV8bLive = () => {
                 try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll(); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
               }
               if (tlSettOpen) closeTlSett(); if (txtSettOpen) closeTxtSett();
-              if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett();
+              if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett(); if (indSettOpen) closeIndSett();
               v9UserExplicitToolRef.current = true;
               setTool(t.id);
             }
@@ -10186,7 +10274,7 @@ const TalariaV8bLive = () => {
               try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll(); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
             }
             if (tlSettOpen) closeTlSett(); if (txtSettOpen) closeTxtSett();
-            if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett();
+            if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett(); if (indSettOpen) closeIndSett();
             v9UserExplicitToolRef.current = true;
             setTool(t.id); setDropdown(null);
           }
@@ -13320,7 +13408,7 @@ const TalariaV8bLive = () => {
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TxBtn>
           <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
-          <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{if(dropdown)closeDropdown();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
+          <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{if(dropdown)closeDropdown();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
             {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
           </TxBtn>
           {/* three dots — more options */}
@@ -13967,6 +14055,238 @@ const TalariaV8bLive = () => {
             style={{borderTop:`1px solid ${c.brH}`,display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"10px 14px 14px",gap:8}}>
             <B hk="txt-cancel" fireOnPointerDown onClick={closeTxtSett}>Cancel</B>
             <B primary hk="txt-ok" fireOnPointerDown onClick={closeTxtSett}>OK</B>
+          </div>
+        </div>
+        );
+      })(), document.body)}
+
+      {/* ── Indicator settings (V9 React — same shell as text / TL settings; chart calls window.__v9OpenIndicatorSettings) ── */}
+      {(indSettOpen || closing.has("indsett")) && typeof document !== "undefined" && createPortal((()=>{
+        const ctx = indSettCtxRef.current;
+        const def = typeof window !== "undefined" && window.INDICATOR_DEFINITIONS && ctx.indicatorType
+          ? window.INDICATOR_DEFINITIONS[ctx.indicatorType] : null;
+        if (!def || !ctx.indicator) return null;
+        const tabFn = typeof window.indicatorSettingsTabForParam === "function"
+          ? window.indicatorSettingsTabForParam
+          : (p) => (p.type === "checkbox" ? "visibility" : p.type === "color" ? "style" : "input");
+        const isCustom = ctx.indicatorType === "custom";
+        const panelW = isCustom ? 520 : 400;
+        const title = (ctx.indicator && ctx.indicator.name) || def.name || "Indicator";
+        const tabOrder = [["style","Style"],["input","Input"],["visibility","Visibility"]];
+        const tabsShown = tabOrder.filter(([tid]) => def.params.some((p) => tabFn(p) === tid));
+        const tabIdx = Math.max(0, tabsShown.findIndex(([id]) => id === indSettTab));
+        const openIndCP = (e, paramId, val) => {
+          const p0 = parseColor(val || "#ffffff");
+          const hsv = rgbToHsv(p0.r, p0.g, p0.b);
+          setCpH(hsv.h); setCpS(hsv.s); setCpV(hsv.v); setCpA(p0.a);
+          setCpHex(toHex2(p0.r) + toHex2(p0.g) + toHex2(p0.b));
+          setCpPos(posFromRect(e.currentTarget.getBoundingClientRect(), cpW));
+          cpBarAnchorRef.current = null;
+          setColorPicker("ind-" + paramId);
+        };
+        const dismissIndicatorMenus = () => {
+          try {
+            const indicatorMenu = document.getElementById("indicatorSelectionMenu");
+            if (indicatorMenu) {
+              indicatorMenu.classList.remove("visible");
+              indicatorMenu.style.visibility = "hidden";
+              indicatorMenu.style.opacity = "0";
+            }
+            const menuBackdrop = document.getElementById("indicatorMenuBackdrop");
+            if (menuBackdrop) {
+              menuBackdrop.style.visibility = "hidden";
+              menuBackdrop.style.opacity = "0";
+            }
+          } catch (_) {}
+        };
+        const applyInd = () => {
+          const c2 = indSettCtxRef.current;
+          if (!c2.chart || !c2.indicator) { closeIndSett(); return; }
+          const mergeFn = typeof window.__v9MergeIndicatorDraftForUpdate === "function"
+            ? window.__v9MergeIndicatorDraftForUpdate
+            : null;
+          const merged = mergeFn ? mergeFn(c2.indicatorType, c2.indicator, indSettDraft) : null;
+          if (!merged) { closeIndSett(); return; }
+          const chart = c2.chart;
+          if (c2.indicatorType === "custom") {
+            const TC = typeof window !== "undefined" ? window.TalariaCustomIndicators : null;
+            if (TC && typeof TC.validateCustomScriptSource === "function") {
+              const check = TC.validateCustomScriptSource(merged.script);
+              if (!check.ok) { window.alert(check.error || "Invalid script"); return; }
+            }
+            if (typeof chart.updateIndicator === "function") {
+              const p = { ...merged };
+              p.customParams = { period: p.period };
+              delete p.period;
+              p.separatePanel = p.placement === "panel";
+              p.overlay = p.placement !== "panel";
+              delete p.placement;
+              chart.updateIndicator(c2.indicator.id, p);
+            }
+          } else if (typeof chart.updateIndicator === "function") {
+            chart.updateIndicator(c2.indicator.id, merged);
+          }
+          dismissIndicatorMenus();
+          closeIndSett();
+        };
+        const renderParam = (p) => {
+          const raw = indSettDraft[p.id] !== undefined ? indSettDraft[p.id] : p.default;
+          const row = (right) => (
+            <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "8px 0", borderBottom: `1px solid ${c.br}` }}>
+              <span style={{ fontSize: 12, color: c.ts }}>{p.label}</span>
+              {right}
+            </div>
+          );
+          if (p.type === "number") {
+            return row(
+              <input type="number" className="tlr-nospinner" value={raw == null ? "" : raw}
+                min={p.min} max={p.max} step={p.step}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                style={{ width: 120, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
+                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 8px", outline: "none", boxSizing: "border-box", fontVariantNumeric: "tabular-nums" }} />
+            );
+          }
+          if (p.type === "color") {
+            const ck = "ind-" + p.id;
+            const isAct = colorPicker === ck;
+            const isH = hov === ck;
+            const colStr = String(raw || "#2962ff");
+            return row(
+              <div onMouseEnter={() => setHov(ck)} onMouseLeave={() => setHov(null)}
+                onClick={(e) => { e.stopPropagation(); openIndCP(e, p.id, colStr); }}
+                style={{ width: 26, height: 26, background: colStr, flexShrink: 0, cursor: "default",
+                  border: `1px solid ${isAct || isH ? "rgba(255,255,255,0.5)" : c.hvLn}`,
+                  outline: isAct ? "2px solid rgba(140,160,255,0.55)" : "none", outlineOffset: 1,
+                  boxShadow: isAct || isH ? `0 0 8px ${colStr}` : "inset 0 1px 3px rgba(0,0,0,0.5)",
+                  transition: "border-color 0.12s, box-shadow 0.12s" }} />
+            );
+          }
+          if (p.type === "checkbox") {
+            return row(
+              <input type="checkbox" checked={!!raw} onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.checked }))}
+                onClick={(e) => e.stopPropagation()}
+                style={{ width: 16, height: 16, accentColor: c.ac, cursor: "default" }} />
+            );
+          }
+          if (p.type === "select" && Array.isArray(p.options)) {
+            return row(
+              <select value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                style={{ minWidth: 140, height: 26, fontSize: 12, fontFamily: F, color: c.tx,
+                  background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`, padding: "0 8px", outline: "none" }}>
+                {p.options.map((opt) => (
+                  <option key={String(opt.value)} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            );
+          }
+          if (p.type === "textarea") {
+            return (
+              <div key={p.id} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, color: c.ts, marginBottom: 6 }}>{p.label}</div>
+                <textarea value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                  rows={isCustom ? 14 : 8}
+                  style={{ width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: isCustom ? 200 : 100,
+                    fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 11, lineHeight: 1.35, padding: 10,
+                    background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`, color: c.tx, outline: "none" }} />
+              </div>
+            );
+          }
+          if (p.type === "time") {
+            return row(
+              <input type="time" value={raw || p.default || ""} onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                style={{ width: 140, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
+                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 8px", outline: "none", boxSizing: "border-box" }} />
+            );
+          }
+          return row(
+            <input type="text" value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+              style={{ width: "55%", minWidth: 120, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
+                color: c.tx, fontSize: 12, fontFamily: F, padding: "0 8px", outline: "none", boxSizing: "border-box" }} />
+          );
+        };
+        const inTab = def.params.filter((p) => tabFn(p) === indSettTab);
+        const emptyLabel = indSettTab === "style" ? "style" : indSettTab === "input" ? "input" : "visibility";
+        return (
+        <div data-sdrop="1" onClick={(e) => e.stopPropagation()}
+          style={{ position: "fixed", left: indSettPos.x, top: indSettPos.y, zIndex: 11000, width: panelW, fontFamily: F,
+            background: c.sf, border: `1px solid ${c.brH}`, boxShadow: "0 24px 64px rgba(0,0,0,0.85)",
+            display: "flex", flexDirection: "column",
+            animation: closing.has("indsett") ? "tlrPopOut 0.155s ease both" : "tlrPopIn 0.15s ease" }}>
+          <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`, flexShrink: 0 }} />
+          <div onPointerDown={(e) => {
+            e.preventDefault();
+            const sx = e.clientX; const sy = e.clientY; const px = indSettPos.x; const py = indSettPos.y;
+            const cpWasOpen = typeof colorPicker === "string" && colorPicker.startsWith("ind-");
+            const cpStart = { top: cpPos.top, left: cpPos.left };
+            const onMove = (ev) => {
+              const dx = (ev.clientX - sx) / Z; const dy = (ev.clientY - sy) / Z;
+              const nx = Math.max(0, Math.min(window.innerWidth - panelW - 8, px + dx));
+              const ny = Math.max(0, Math.min(window.innerHeight - 44 - 8, py + dy));
+              const adx = nx - px; const ady = ny - py;
+              setIndSettPos({ x: nx, y: ny });
+              if (cpWasOpen) setCpPos({ top: cpStart.top + ady, left: cpStart.left + adx });
+            };
+            const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
+            window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp);
+          }} style={{ display: "flex", alignItems: "center", padding: "9px 14px", cursor: "move", userSelect: "none", flexShrink: 0 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: c.tx, flex: 1 }}>{title} Settings</span>
+            <div {...modalPointerActivate(closeIndSett)} onMouseEnter={() => setHov("indx")} onMouseLeave={() => setHov(null)}
+              style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "default",
+                background: hov === "indx" ? "rgba(255,80,80,0.07)" : "transparent", transition: "background 0.12s" }}>
+              <I n="x" s={18} cl={hov === "indx" ? c.rd : c.ts} />
+            </div>
+          </div>
+          <div style={{ height: 1, background: c.br, flexShrink: 0 }} />
+          <div style={{ position: "relative", display: "flex", flexShrink: 0 }}>
+            {tabsShown.map(([id, lbl]) => {
+              const isAct = indSettTab === id;
+              return (
+                <button type="button" key={id}
+                  onPointerDown={(e) => { e.stopPropagation(); setIndSettTab(id); }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseEnter={() => setHov(`indTab-${id}`)} onMouseLeave={() => setHov(null)}
+                  style={{ flex: 1, padding: "10px 4px", border: "none", fontFamily: F, cursor: "default",
+                    color: isAct ? c.acL : hov === `indTab-${id}` ? c.tx : c.ts, fontSize: 12, fontWeight: isAct ? 700 : 500,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: isAct ? (hov === `indTab-${id}` ? "rgba(74,106,255,0.12)" : "rgba(74,106,255,0.05)")
+                      : hov === `indTab-${id}` ? "rgba(255,255,255,0.06)" : "transparent",
+                    transition: "color 0.15s, background 0.12s" }}>
+                  {lbl}
+                </button>
+              );
+            })}
+            <div style={{ position: "absolute", bottom: 0, height: 2,
+              width: `${100 / Math.max(1, tabsShown.length)}%`,
+              left: `${tabIdx * (100 / Math.max(1, tabsShown.length))}%`,
+              transition: "left 0.25s cubic-bezier(0.4,0,0.2,1)",
+              background: `linear-gradient(90deg,transparent,${c.acL},transparent)`,
+              boxShadow: `0 0 8px ${c.acG}` }} />
+          </div>
+          {isCustom && (
+            <div style={{ fontSize: 11, lineHeight: 1.45, color: c.tm, margin: "10px 14px 0", padding: "8px 10px",
+              background: "rgba(255,193,7,0.07)", border: "1px solid rgba(255,193,7,0.28)" }}>
+              Sandboxed JavaScript only (not Pine). Use the template: <code style={{ color: c.ts }}>compute(bars, params)</code> returning plots.
+            </div>
+          )}
+          <div style={{ padding: "14px 18px 12px", overflowY: "auto", maxHeight: "min(70vh, calc(100vh - 200px))", flex: 1 }}>
+            {inTab.length === 0 ? (
+              <div style={{ fontSize: 12, color: c.tm, fontStyle: "italic", padding: "8px 4px" }}>
+                {`No ${emptyLabel} options for this indicator.`}
+              </div>
+            ) : (
+              inTab.map((p) => renderParam(p))
+            )}
+          </div>
+          <div onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
+            style={{ borderTop: `1px solid ${c.brH}`, display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "10px 14px 14px", gap: 8 }}>
+            <B hk="ind-cancel" fireOnPointerDown onClick={closeIndSett}>Cancel</B>
+            <B primary hk="ind-apply" fireOnPointerDown onClick={applyInd}>Apply Changes</B>
           </div>
         </div>
         );
@@ -15753,6 +16073,7 @@ const TalariaV8bLive = () => {
               if (vwapSettOpen) closeVwapSett();
               if (vpSettOpen) closeVpSett();
               if (avSettOpen) closeAvSett();
+              if (indSettOpen) closeIndSett();
               const r = e.currentTarget.getBoundingClientRect();
               const vpW = window.innerWidth / Z;
               const xFallback = Math.max(8, Math.min(r.left / Z, vpW - 498));
@@ -15934,6 +16255,7 @@ const TalariaV8bLive = () => {
                     if (vwapSettOpen) closeVwapSett();
                     if (vpSettOpen) closeVpSett();
                     if (avSettOpen) closeAvSett();
+                    if (indSettOpen) closeIndSett();
                     setTool(activeKey); setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [activeKey]: item })); closeDropdown();
                     if (item.icon === "emoji") {
                       const r = e.currentTarget.getBoundingClientRect();
@@ -16117,7 +16439,7 @@ const TalariaV8bLive = () => {
             <VSep/>
             {/* btn: settings */}
             <VBtn id="vb-sett" isAct={vwapSettOpen||closing.has("vwapsett")}
-              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setVwapBarDrop(null);setColorPicker(null);if(vwapSettOpen||closing.has("vwapsett")){closeVwapSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-428));const y=r.bottom/Z+8;setVwapSettPos({x,y});setVwapSettOpen(true);setVwapSettTab("style");}}}>
+              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setVwapBarDrop(null);setColorPicker(null);if(vwapSettOpen||closing.has("vwapsett")){closeVwapSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-428));const y=r.bottom/Z+8;setVwapSettPos({x,y});setVwapSettOpen(true);setVwapSettTab("style");}}}>
               {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
             </VBtn>
             {/* btn: more */}
@@ -16210,7 +16532,7 @@ const TalariaV8bLive = () => {
             <VPSep/>
             {/* btn: settings */}
             <VPBtn id="vpb-sett" isAct={vpSettOpen||closing.has("vpsett")}
-              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setVpBarDrop(null);setColorPicker(null);if(vpSettOpen||closing.has("vpsett")){closeVpSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW2=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW2-428));const y=r.bottom/Z+8;setVpSettPos({x,y});setVpSettOpen(true);setVpSettTab("style");}}}>
+              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setVpBarDrop(null);setColorPicker(null);if(vpSettOpen||closing.has("vpsett")){closeVpSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const vpW2=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW2-428));const y=r.bottom/Z+8;setVpSettPos({x,y});setVpSettOpen(true);setVpSettTab("style");}}}>
               {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
             </VPBtn>
             {/* btn: more */}
@@ -16303,7 +16625,7 @@ const TalariaV8bLive = () => {
             <AVSep/>
             {/* btn: settings */}
             <AVBtn id="avb-sett" isAct={avSettOpen||closing.has("avsett")}
-              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setAvBarDrop(null);setColorPicker(null);if(avSettOpen||closing.has("avsett")){closeAvSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();const r=e.currentTarget.getBoundingClientRect();const avW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,avW-428));const y=r.bottom/Z+8;setAvSettPos({x,y});setAvSettOpen(true);setAvSettTab("style");}}}>
+              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setAvBarDrop(null);setColorPicker(null);if(avSettOpen||closing.has("avsett")){closeAvSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const avW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,avW-428));const y=r.bottom/Z+8;setAvSettPos({x,y});setAvSettOpen(true);setAvSettTab("style");}}}>
               {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
             </AVBtn>
             {/* btn: more */}
@@ -20571,6 +20893,10 @@ const TalariaV8bLive = () => {
             const qtyDisplay = Number.isFinite(qtyNum)
               ? `${currentSymbol.type==="futures" ? Math.floor(Math.max(0, qtyNum)) : qtyNum.toFixed(2)} ${sizeUnit}`
               : `0.00 ${sizeUnit}`;
+            const calcUsdRead =
+              typeof document !== "undefined"
+                ? document.getElementById("calculatedValue")?.textContent?.replace(/\s+/g, " ").trim() || ""
+                : "";
             return (
             <div style={{ padding:"6px 8px", borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
               {/* Left: SIZE label */}
@@ -20637,13 +20963,14 @@ const TalariaV8bLive = () => {
                   <span style={{ fontSize:9, color:c.ts, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>
                     {sizeMode==="$"
                       ? `${(parseFloat(riskVal||"0")/basisAmt*100).toFixed(2)}%`
-                      : sizeMode==="%"
-                        ? `0.00 ${sizeUnit}`
-                        : `0.00%`
-                    }
+                      : qtyDisplay}
                   </span>
                   <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>
-                    {minRiskHint ? `Need ${omFuturesMinRiskTxt}` : sizeMode==="$" ? qtyDisplay : `$0.00`}
+                    {minRiskHint
+                      ? `Need ${omFuturesMinRiskTxt}`
+                      : sizeMode==="$" || sizeMode==="%"
+                        ? qtyDisplay
+                        : (calcUsdRead && calcUsdRead !== "—" ? calcUsdRead : qtyDisplay)}
                   </span>
                 </div>
               </div>
@@ -21342,6 +21669,12 @@ const TalariaV8bLive = () => {
               });
             };
             const sortedTpRows = sortTpRowsBySide(tpRows, buySell);
+            const basisAmtTp = riskBasis === "balance" ? accountBalance : accountEquity;
+            const orderQtyNumTp = parseFloat(omOrderQtyTxt || "0");
+            const futuresMinRiskHintTp =
+              currentSymbol.type === "futures" &&
+              omFuturesMinRiskTxt &&
+              (!Number.isFinite(orderQtyNumTp) || orderQtyNumTp < 1);
             const updTp  = (id, field, val) => { markOrderControlBridge(); setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r)); };
             const stepTp = (id, field, dir, step=1) => { markOrderControlBridge(); setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r)); };
             const delTp = (id) => {
@@ -21612,10 +21945,17 @@ const TalariaV8bLive = () => {
                           <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", flexShrink:0 }}>
                             {omTpRowStatLines[i]
                               ? omTpRowStatLines[i]
-                              : sizeMode==="#"
-                                ? <>0.00 {sizeUnit}</>
-                                : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
-                            }
+                              : sizeMode==="$"
+                                ? futuresMinRiskHintTp
+                                  ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                                  : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Number.isFinite(orderQtyNumTp) ? orderQtyNumTp.toFixed(currentSymbol.type==="futures" ? 0 : 2) : "0.00"} {sizeUnit}</>
+                                : sizeMode==="%"
+                                  ? futuresMinRiskHintTp
+                                    ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                                    : <><span style={{ color:c.ts }}>${(parseFloat(row.qty || "0") / 100 * basisAmtTp).toFixed(0)}</span>{" · "}{Number.isFinite(orderQtyNumTp) ? orderQtyNumTp.toFixed(currentSymbol.type==="futures" ? 0 : 2) : "0.00"} {sizeUnit}</>
+                                  : futuresMinRiskHintTp
+                                    ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                                    : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Number.isFinite(orderQtyNumTp) ? orderQtyNumTp.toFixed(currentSymbol.type==="futures" ? 0 : 2) : "0.00"} {sizeUnit}</>}
                           </span>
                           <div style={{ flex:1 }}/>
                           {tpRows.length > 1 ? (
@@ -22443,11 +22783,11 @@ const TalariaV8bLive = () => {
           onSVChange={(ns,nv)=>{ setCpS(ns); setCpV(nv); cpApply(cpH,ns,nv,cpA); }}
           onHChange={(nh)=>{ setCpH(nh); cpApply(nh,cpS,cpV,cpA); }}
           onAChange={(na)=>{ setCpA(na); cpApply(cpH,cpS,cpV,na); }}
-          onHexChange={(hex)=>{ setCpHex(hex); if(hex.length===6){const p=parseColor('#'+hex);const hsv=rgbToHsv(p.r,p.g,p.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);const cv=cpBuildColor(p.r,p.g,p.b,cpA);if(colorPicker==="gotoNewColor")setGotoNewColor(cv);else if(colorPicker==="tlLineColor")setTlStyle(s=>({...s,lineColor:cv}));else if(colorPicker==="tlBgColor")setTlStyle(s=>({...s,bgColor:cv}));else if(colorPicker==="tlTextColor")setTlStyle(s=>({...s,textColor:cv}));else updateSetting(colorPicker,cv);}}}
+          onHexChange={(hex)=>{ setCpHex(hex); if(hex.length===6){const p=parseColor('#'+hex);const hsv=rgbToHsv(p.r,p.g,p.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);const cv=cpBuildColor(p.r,p.g,p.b,cpA);if(colorPicker==="gotoNewColor")setGotoNewColor(cv);else if(colorPicker==="tlLineColor")setTlStyle(s=>({...s,lineColor:cv}));else if(colorPicker==="tlBgColor")setTlStyle(s=>({...s,bgColor:cv}));else if(colorPicker==="tlTextColor")setTlStyle(s=>({...s,textColor:cv}));else if(typeof colorPicker==="string"&&colorPicker.startsWith("ind-"))setIndSettDraft(s=>({...s,[colorPicker.slice(4)]:cv}));else updateSetting(colorPicker,cv);}}}
           onClose={closeCP}
           onDragStart={(type,rect)=>{ setCpDragging(type); setCpDragRect(rect); }}
           dragging={cpDragging}
-          hideAlpha={colorPicker==="tlTextColor"||colorPicker==="tlLineColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"}
+          hideAlpha={colorPicker==="tlTextColor"||colorPicker==="tlLineColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"||colorPicker?.startsWith("ind-")}
           animation={closing.has("cp")?"tlrPopOut 0.15s ease both":"tlrPopIn 0.15s ease"}
         />
       , document.body)}

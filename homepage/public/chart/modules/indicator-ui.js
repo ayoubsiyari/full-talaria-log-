@@ -1774,7 +1774,51 @@ function indicatorSettingsTabForParam(param) {
     return 'input';
 }
 
+/**
+ * Build merged payload for Chart.prototype.updateIndicator from a flat draft object (React V9 panel).
+ * Mirrors createIndicatorSettingsPanel saveBtn classification.
+ */
+function mergeIndicatorDraftForUpdate(indicatorType, existingIndicator, draft) {
+    const def = INDICATOR_DEFINITIONS[indicatorType];
+    if (!def || !existingIndicator || !draft) return null;
+    const initialParams = existingIndicator.params || {};
+    const initialStyle = existingIndicator.style || {};
+    const baseExisting = Object.assign({}, initialParams, initialStyle);
+    const newParams = {};
+    const newStyle = {};
+    def.params.forEach(function(param) {
+        var raw = draft[param.id];
+        if (raw === undefined) {
+            raw = baseExisting[param.id] !== undefined ? baseExisting[param.id] : param.default;
+        }
+        var value = raw;
+        if (param.type === 'checkbox') {
+            value = !!raw;
+        } else if (param.type === 'number') {
+            value = parseFloat(raw);
+            if (isNaN(value)) value = param.default;
+        }
+        var pid = String(param.id).toLowerCase();
+        if (pid.indexOf('color') >= 0 || pid.indexOf('width') >= 0 || pid.indexOf('fill') >= 0) {
+            newStyle[param.id] = value;
+        } else {
+            newParams[param.id] = value;
+        }
+    });
+    return Object.assign({}, baseExisting, newParams, newStyle);
+}
+
 function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndicator = null) {
+    if (existingIndicator && typeof window.__v9OpenIndicatorSettings === 'function') {
+        try {
+            if (window.__v9OpenIndicatorSettings(chartInstance, indicatorType, existingIndicator) === true) {
+                return;
+            }
+        } catch (err) {
+            console.warn('[indicator-ui] __v9OpenIndicatorSettings', err);
+        }
+    }
+
     console.log('🔧 createIndicatorSettingsPanel called with:', indicatorType, existingIndicator);
     const def = INDICATOR_DEFINITIONS[indicatorType];
     if (!def) {
@@ -2516,6 +2560,8 @@ function setupIndicatorUI(chartInstance) {
 }
 
 window.INDICATOR_DEFINITIONS = INDICATOR_DEFINITIONS;
+window.indicatorSettingsTabForParam = indicatorSettingsTabForParam;
+window.__v9MergeIndicatorDraftForUpdate = mergeIndicatorDraftForUpdate;
 window.setupIndicatorUI = setupIndicatorUI;
 
 // Auto-initialize: retry until a chart instance is available (handles async chart init)
