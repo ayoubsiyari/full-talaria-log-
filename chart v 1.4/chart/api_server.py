@@ -5580,6 +5580,46 @@ def _dataset_overview_entry(
     }
 
 
+def _dataset_file_health_for_session(
+    db,
+    file_id: int,
+    agg_by_tf: dict[str, CSVAggregate],
+    latest_job: BinaryBuildJob | None,
+) -> tuple[str, int]:
+    """
+    Same health bucketing as admin dataset overview (`_dataset_overview_entry`).
+    Returns (health, ready_timeframe_count).
+    """
+    ready_tf = 0
+    for tf in DATASET_TIMEFRAMES:
+        agg = agg_by_tf.get(tf)
+        fname = agg.agg_filename if agg and agg.agg_filename else f"bin_{file_id}_{tf}.bin"
+        bp = BIN_DIR / fname
+        st = str(agg.status or "") if agg else ""
+        if not agg and bp.exists():
+            st = "ready"
+        elif not agg:
+            st = "missing"
+        if st == "ready":
+            ready_tf += 1
+
+    ok, _issues = _dataset_binary_integrity(db, file_id)
+    job_status = str(latest_job.status or "").lower() if latest_job else ""
+    if job_status in {"queued", "processing"}:
+        health = "building"
+    elif latest_job and job_status == "failed":
+        health = "failed"
+    elif not ok:
+        health = "integrity_issues"
+    elif ready_tf >= len(DATASET_TIMEFRAMES):
+        health = "healthy"
+    elif ready_tf > 0:
+        health = "partial"
+    else:
+        health = "empty"
+    return health, ready_tf
+
+
 def _archive_source_csv_if_ready(file_id: int, source_path: Path):
     """Move CSV from hot uploads to archive once binaries/tiles are fully ready."""
     source_path = Path(source_path)
@@ -12671,14 +12711,76 @@ async def upload_csv(request: Request, csvFile: UploadFile = File(...)):
     )
 
 @app.get("/api/files")
-async def get_files():
-    """Get list of all uploaded CSV files"""
+async def get_files(
+    session_ready: bool = Query(
+        False,
+        description=(
+            "When true, only datasets that match admin overview usable state: "
+            "health is 'healthy' or 'partial' (≥1 ready TF, integrity OK, not building/failed). "
+            "Each row includes `health` and `ready_timeframes`."
+        ),
+    ),
+):
+    """
+    Get list of all uploaded CSV files (same registry as `/api/admin/datasets`).
+
+    Default: fast list for generic pickers (multichart, legacy HTML).
+
+    `?session_ready=1`: session / backtest symbol pickers — same eligibility as admin
+    datasets marked chart-usable (healthy or partial only).
+    """
     db = next(get_db())
     try:
         files = db.query(CSVFile).order_by(CSVFile.upload_date.desc()).all()
+        if not session_ready:
+            out_files = []
+            for f in files:
+                ticker, asset_class = _dataset_file_symbol_fields(f.original_name or "")
+                out_files.append(
+                    {
+                        "id": f.id,
+                        "original_name": f.original_name,
+                        "upload_date": f.upload_date.isoformat(),
+                        "row_count": f.row_count,
+                        "description": f.description,
+                        "ticker": ticker,
+                        "asset_class": asset_class,
+                    }
+                )
+            return {"files": out_files}
+
+        if not files:
+            return {"files": []}
+
+        file_ids = [int(f.id) for f in files]
+        all_aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id.in_(file_ids)).all()
+        aggs_by_file: dict[int, dict[str, CSVAggregate]] = {}
+        for agg in all_aggs:
+            aggs_by_file.setdefault(int(agg.file_id), {})[str(agg.timeframe)] = agg
+
+        jobs = (
+            db.query(BinaryBuildJob)
+            .order_by(BinaryBuildJob.created_at.desc(), BinaryBuildJob.id.desc())
+            .all()
+        )
+        latest_job_by_file: dict[int, BinaryBuildJob] = {}
+        for job in jobs:
+            fid = int(job.file_id)
+            if fid not in latest_job_by_file:
+                latest_job_by_file[fid] = job
+
         out_files = []
         for f in files:
+            fid = int(f.id)
             ticker, asset_class = _dataset_file_symbol_fields(f.original_name or "")
+            health, ready_tf = _dataset_file_health_for_session(
+                db,
+                fid,
+                aggs_by_file.get(fid, {}),
+                latest_job_by_file.get(fid),
+            )
+            if health not in ("healthy", "partial"):
+                continue
             out_files.append(
                 {
                     "id": f.id,
@@ -12688,6 +12790,8 @@ async def get_files():
                     "description": f.description,
                     "ticker": ticker,
                     "asset_class": asset_class,
+                    "health": health,
+                    "ready_timeframes": ready_tf,
                 }
             )
         return {"files": out_files}

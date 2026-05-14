@@ -198,6 +198,9 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
     to: string;
     size: string;
     asset: "Forex" | "Futures" | "Crypto" | "Stocks";
+    /** Present when loaded via `/api/files?session_ready=1` (admin-aligned health). */
+    health?: string;
+    ready_timeframes?: number;
   };
 
   type StrategyOption = {
@@ -259,7 +262,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
       return t;
     };
 
-    void fetch("/api/files", { credentials: "include" })
+    void fetch("/api/files?session_ready=1", { credentials: "include" })
       .then(res => {
         if (!res.ok) throw new Error(String(res.status));
         return res.json() as Promise<{
@@ -270,6 +273,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
             description?: string | null;
             ticker?: string | null;
             asset_class?: string | null;
+            health?: string;
+            ready_timeframes?: number;
           }[];
         }>;
       })
@@ -291,12 +296,19 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
             to: "",
             size: approxSize,
             asset,
+            health: f.health,
+            ready_timeframes: f.ready_timeframes,
           };
         });
         setAvailFiles(next);
+        if (next.length === 0) {
+          setFilesError(
+            "No chart-ready datasets on the server yet. Build binaries in Admin → Datasets until health is healthy or partial, then refresh."
+          );
+        }
       })
       .catch(err => {
-        console.error("Failed to load /api/files", err);
+        console.error("Failed to load /api/files?session_ready=1", err);
         setFilesError("Failed to load datasets. Start the backtest server first.");
       })
       .finally(() => {
