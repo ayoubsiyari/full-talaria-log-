@@ -142,15 +142,15 @@ class ReplaySystem {
                 }
 
                 if (ts !== null) {
-                    idx = this.sessionStartIndex || 0;
-                    for (let i = 0; i < this.fullRawData.length; i++) {
-                        const t = this.fullRawData[i]?.t;
-                        const tn = typeof t === 'number' ? t : (typeof t === 'string' ? Date.parse(t) : NaN);
-                        if (Number.isFinite(tn) && tn >= ts) {
-                            idx = i;
-                            break;
-                        }
-                    }
+                    // Bars are sorted by period open `t`. A wall-clock `ts` that falls *inside*
+                    // a bar (e.g. 1m tick mid-session mapped onto 1D) must resolve to that bar's
+                    // index — "last bar with t <= ts". The old "first t >= ts" rule picked the
+                    // *next* period's bar (off-by-one on coarse TFs) and broke price continuity.
+                    const hit = typeof this._findLastRawIndexAtOrBefore === 'function'
+                        ? this._findLastRawIndexAtOrBefore(this.fullRawData, ts)
+                        : -1;
+                    const smin = this.sessionStartIndex || 0;
+                    idx = hit < 0 ? smin : Math.max(hit, smin);
                 }
             }
 

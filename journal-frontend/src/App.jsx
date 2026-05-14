@@ -41,7 +41,6 @@ import RecentTrades from './pages/analytics/RecentTrades';
 import VariablesAnalysis from './pages/analytics/VariablesAnalysis';
 import TopCombinationsView from './pages/analytics/TopCombinationsView';
 import AIDashboard from './pages/AIDashboard';
-import StrategyBuilder from './pages/StrategyBuilder';
 import Pricing from './pages/Pricing';
 import VerifyEmail from './pages/VerifyEmail';
 import ResendVerification from './pages/ResendVerification';
@@ -150,15 +149,6 @@ function LayoutWithSidebar() {
               }>
                 <SubscriptionGuard feature="AI Dashboard">
                   <AIDashboard />
-                </SubscriptionGuard>
-              </ProtectedRoute>
-            } />
-            <Route path="/strategy-builder" element={
-              <ProtectedRoute feature="STRATEGY_BUILDER" fallbackComponent={
-                <FeatureDisabled featureName="Strategy Builder" />
-              }>
-                <SubscriptionGuard feature="Strategy Builder">
-                  <StrategyBuilder />
                 </SubscriptionGuard>
               </ProtectedRoute>
             } />

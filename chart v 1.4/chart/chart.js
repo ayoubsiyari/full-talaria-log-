@@ -11972,9 +11972,20 @@ class Chart {
 
         const wasActive = !!replay.isActive;
         const wasPlaying = !!replay.isPlaying;
-        const savedReplayTimestamp = Number.isFinite(replay.replayTimestamp)
+        let savedReplayTimestamp = Number.isFinite(replay.replayTimestamp)
             ? replay.replayTimestamp
             : null;
+        // Align persisted wall time with intra-candle tick animation (same idea as
+        // onTimeframeChange): replayTimestamp can lag the visible tick bar while ticks run.
+        const acTs = replay.animatingCandle;
+        if (acTs && Number.isFinite(acTs.t)) {
+            const tp = Number(replay.tickProgress) || 0;
+            if (tp > 0) {
+                savedReplayTimestamp = acTs.t;
+            } else if (!replay.isPlaying && Number.isFinite(acTs.close)) {
+                savedReplayTimestamp = acTs.t;
+            }
+        }
         const savedSpeed = replay.speed;
         const savedPlaybackMode = typeof replay.getPlaybackMode === 'function'
             ? replay.getPlaybackMode()
@@ -12005,12 +12016,10 @@ class Chart {
             return Number.isFinite(t) ? Math.floor(t) : null;
         })();
 
-        // Daily (and other coarse) replay uses each bar's open time as replayTimestamp.
-        // applyPersistedState maps that to the *first* finer bar with t >= open — i.e. the
-        // first minute of the session day — while the user is looking at that bar's *close*.
-        // When switching to a finer TF, position at the last fine bar strictly before the
-        // next coarse bar (exclusive end), so the slice shows full intraday history through
-        // the same daily close the user had on the coarse chart.
+        // Coarse→fine: replayTimestamp is bar open; we re-anchor to the last fine bar before
+        // the next coarse period so the slice matches the daily close the user saw.
+        // Fine→coarse: applyPersistedState + savedDisplayPrice must use the same wall-clock
+        // cut and tick price so the axis matches 1m tick animation on 1D, etc.
         const previousTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
         const prevTfMs = this.parseTimeframe(previousTf);
         const newTfMsForSwitch = this.parseTimeframe(timeframe);
@@ -12018,6 +12027,10 @@ class Chart {
             && Number.isFinite(prevTfMs) && prevTfMs > 0
             && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
             && newTfMsForSwitch < prevTfMs;
+        const switchingToCoarser = wasActive
+            && Number.isFinite(prevTfMs) && prevTfMs > 0
+            && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
+            && newTfMsForSwitch > prevTfMs;
         let coarsePeriodExclusiveEndTs = null;
         /** When true, last 1m (etc.) bar already matches coarse period end — do not OHLC-patch it. */
         let fineReplayReanchorApplied = false;
@@ -12235,7 +12248,8 @@ class Chart {
                 const origRange = Math.max(lh - ll, Math.abs((lastCandle.c ?? 0) - lo), 1e-10);
                 const newH = Math.max(lh, savedDisplayPrice);
                 const newL = Math.min(ll, savedDisplayPrice);
-                if ((newH - newL) <= origRange * 2) {
+                const rangeOk = switchingToCoarser || (newH - newL) <= origRange * 2;
+                if (rangeOk) {
                     lastCandle.c = savedDisplayPrice;
                     lastCandle.h = newH;
                     lastCandle.l = newL;
