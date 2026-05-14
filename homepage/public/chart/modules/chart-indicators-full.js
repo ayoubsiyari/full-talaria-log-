@@ -3272,6 +3272,10 @@
             return;
         }
         
+        if (newParams.visible !== undefined) {
+            indicator.visible = newParams.visible !== false;
+        }
+        
         // Update parameters
         if (newParams.period !== undefined) indicator.params.period = newParams.period;
         if (newParams.stdDev !== undefined) indicator.params.stdDev = newParams.stdDev;

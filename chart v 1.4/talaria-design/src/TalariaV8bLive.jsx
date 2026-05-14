@@ -5904,6 +5904,7 @@ const TalariaV8bLive = () => {
       def.params.forEach((p) => {
         draft[p.id] = allParams[p.id] !== undefined ? allParams[p.id] : p.default;
       });
+      draft.visible = existingIndicator.visible !== false;
       const counts = { style: 0, input: 0, visibility: 0 };
       def.params.forEach((p) => {
         counts[tabFn(p)]++;
@@ -14077,7 +14078,7 @@ const TalariaV8bLive = () => {
         const panelW = isCustom ? 520 : 400;
         const title = (ctx.indicator && ctx.indicator.name) || def.name || "Indicator";
         const tabOrder = [["style","Style"],["input","Input"],["visibility","Visibility"]];
-        const tabsShown = tabOrder.filter(([tid]) => def.params.some((p) => tabFn(p) === tid));
+        const tabsShown = tabOrder;
         const tabIdx = Math.max(0, tabsShown.findIndex(([id]) => id === indSettTab));
         const openIndCP = (e, paramId, val) => {
           const p0 = parseColor(val || "#ffffff");
@@ -14111,6 +14112,7 @@ const TalariaV8bLive = () => {
             : null;
           const merged = mergeFn ? mergeFn(c2.indicatorType, c2.indicator, indSettDraft) : null;
           if (!merged) { closeIndSett(); return; }
+          merged.visible = indSettDraft.visible !== false;
           const chart = c2.chart;
           if (c2.indicatorType === "custom") {
             const TC = typeof window !== "undefined" ? window.TalariaCustomIndicators : null;
@@ -14279,7 +14281,27 @@ const TalariaV8bLive = () => {
             </div>
           )}
           <div style={{ padding: "14px 18px 12px", overflowY: "auto", maxHeight: "min(70vh, calc(100vh - 200px))", flex: 1 }}>
-            {inTab.length === 0 ? (
+            {indSettTab === "visibility" ? (
+              <>
+                <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", marginBottom: 10 }}>DISPLAY</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "8px 0", borderBottom: `1px solid ${c.br}` }}>
+                  <span style={{ fontSize: 12, color: c.ts }}>Visible on chart</span>
+                  <input type="checkbox" checked={indSettDraft.visible !== false}
+                    onChange={(e) => setIndSettDraft((d) => ({ ...d, visible: e.target.checked }))}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ width: 16, height: 16, accentColor: c.ac, cursor: "default" }} />
+                </div>
+                <div style={{ fontSize: 11, color: c.tm, marginTop: 10, lineHeight: 1.45 }}>
+                  Same as the eye control in the OHLC legend: off hides the line but keeps the indicator in your list.
+                </div>
+                {inTab.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", margin: "18px 0 10px" }}>OPTIONS</div>
+                    {inTab.map((p) => renderParam(p))}
+                  </>
+                )}
+              </>
+            ) : inTab.length === 0 ? (
               <div style={{ fontSize: 12, color: c.tm, fontStyle: "italic", padding: "8px 4px" }}>
                 {`No ${emptyLabel} options for this indicator.`}
               </div>
