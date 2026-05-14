@@ -14160,7 +14160,8 @@ class Chart {
      * Used by the axis, crosshair, order drag-snap, and SL/TP input step. Falls back
      * to `10^-precision` when the registry only carries precision.
      *
-     * Examples: NQ/ES → 0.25, GC → 0.10, CL → 0.01, EURUSD → 0.00001, USDJPY → 0.001.
+     * Examples: NQ/ES → 0.25, GC → 0.10, CL → 0.01, EURUSD → 0.00001 (5dp pipette, not 1 pip),
+     * USDJPY → 0.001 when precision is 3.
      */
     getTickSize() {
         if (this.currentSymbol && typeof window !== 'undefined' && window.marketCalcEngine) {
@@ -14169,6 +14170,18 @@ class Chart {
                 const specs = calc && calc.specs;
                 if (specs) {
                     if (Number.isFinite(specs.tickSize) && specs.tickSize > 0) return specs.tickSize;
+                    // Forex: `pipSize` is the P&L pip (e.g. 0.0001 on EUR/USD) but the chart shows
+                    // `precision` decimals (often 5). Crosshair / axis must use the finer step — same
+                    // as reusing `precision` below, without a second API (see crosshair snap).
+                    if (specs.type === 'forex') {
+                        const pip = Number.isFinite(specs.pipSize) && specs.pipSize > 0 ? specs.pipSize : null;
+                        const sub = (Number.isFinite(specs.precision) && specs.precision >= 0)
+                            ? Math.pow(10, -specs.precision)
+                            : null;
+                        if (pip && sub) return Math.min(pip, sub);
+                        if (pip) return pip;
+                        if (sub) return sub;
+                    }
                     if (Number.isFinite(specs.pipSize)  && specs.pipSize  > 0) return specs.pipSize;
                     if (Number.isFinite(specs.precision) && specs.precision >= 0) {
                         return Math.pow(10, -specs.precision);
