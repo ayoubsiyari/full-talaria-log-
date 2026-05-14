@@ -585,7 +585,7 @@
         #panels-container .nav-integrity-badge.disabled .nav-badge-icon {
             color: #4ade80;
         }
-        /* Replay nav hint — same chrome + placement as path brush hint (#path-drawing-tooltip in drawing-tools-manager.js): fixed, bottom-center over chart */
+        /* Replay nav hint — same chrome as path brush hint + Objects Tree panel (V9 sliding panel). */
         #chart-container #chartWrapper .nav-badge-tooltip,
         #panels-container .nav-badge-tooltip {
             position: fixed;
@@ -594,22 +594,21 @@
             top: auto;
             transform: translateX(-50%);
             margin: 0;
-            padding: 9px 18px;
-            background: var(--sp-bg, #131722);
-            color: var(--sp-text, #f3f6ff);
-            border: 1px solid rgba(var(--sp-accent-rgb), 0.75);
-            border-radius: 10px;
+            padding: 10px 18px 9px 14px;
+            overflow: hidden;
+            background: var(--sp-bg, #0a0c14);
+            color: var(--sp-text, rgba(255, 255, 255, 0.92));
+            border: 1px solid rgba(140, 160, 255, 0.22);
+            border-left: 3px solid rgba(74, 106, 255, 0.95);
+            border-radius: 6px;
             font-size: 13px;
             line-height: 1.25;
-            font-weight: 600;
-            letter-spacing: 0.01em;
+            font-weight: 700;
+            letter-spacing: 0.02em;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             white-space: nowrap;
             z-index: 10001;
-            box-shadow:
-                0 4px 12px rgba(0, 0, 0, 0.3),
-                0 0 8px rgba(var(--sp-accent-rgb), 0.5),
-                0 0 20px rgba(var(--sp-accent-rgb), 0.25);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
@@ -621,7 +620,15 @@
         }
         #chart-container #chartWrapper .nav-badge-tooltip::before,
         #panels-container .nav-badge-tooltip::before {
-            display: none;
+            display: block;
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            height: 2px;
+            background: linear-gradient(90deg, rgba(38, 67, 247, 1), rgba(74, 106, 255, 1), rgba(38, 67, 247, 1));
+            pointer-events: none;
         }
         #chart-container #chartWrapper .nav-integrity-badge:hover .nav-badge-tooltip,
         #chart-container #chartWrapper .nav-integrity-badge.show-tooltip .nav-badge-tooltip,

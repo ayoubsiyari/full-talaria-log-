@@ -7634,40 +7634,73 @@ class DrawingToolsManager {
     showPathTooltip() {
         // Remove existing tooltip if any
         this.hidePathTooltip();
-        
-        // Read theme accent color from CSS variables
-        const root = document.documentElement;
-        const accentRgb = getComputedStyle(root).getPropertyValue('--sp-accent-rgb').trim() || '41, 98, 255';
-        const textColor = getComputedStyle(root).getPropertyValue('--sp-text').trim() || '#f3f6ff';
 
-        // Create tooltip element
-        const tooltip = document.createElement('div');
-        tooltip.id = 'path-drawing-tooltip';
-        tooltip.style.cssText = `
-            position: fixed;
-            bottom: 50px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--sp-bg, #131722);
-            color: ${textColor};
-            padding: 9px 18px;
-            border-radius: 10px;
-            font-size: 13px;
-            font-weight: 600;
-            letter-spacing: 0.01em;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            box-shadow:
-                0 4px 12px rgba(0, 0, 0, 0.3),
-                0 0 8px rgba(${accentRgb}, 0.5),
-                0 0 20px rgba(${accentRgb}, 0.25);
-            z-index: 10000;
-            pointer-events: none;
-            border: 1px solid rgba(${accentRgb}, 0.75);
-        `;
-        tooltip.textContent = 'Right click to end';
-        
-        document.body.appendChild(tooltip);
-        this.pathTooltip = tooltip;
+        const root = document.documentElement;
+        const accentRgb = getComputedStyle(root).getPropertyValue('--sp-accent-rgb').trim() || '38, 67, 247';
+        const acL = getComputedStyle(root).getPropertyValue('--sp-accent-light-rgb').trim() || '74, 106, 255';
+        const panelBg = getComputedStyle(root).getPropertyValue('--sp-surface').trim()
+            || getComputedStyle(root).getPropertyValue('--sp-bg').trim()
+            || '#0a0c14';
+        const textColor = getComputedStyle(root).getPropertyValue('--sp-text').trim() || 'rgba(255,255,255,0.92)';
+
+        // Match V9 right sliding panel header (Objects Tree / News): subtle border,
+        // 2px top accent strip, vertical accent on the left — no outer blue glow.
+        const outer = document.createElement('div');
+        outer.id = 'path-drawing-tooltip';
+        outer.style.cssText = [
+            'position:fixed',
+            'bottom:50px',
+            'left:50%',
+            'transform:translateX(-50%)',
+            'display:flex',
+            'flex-direction:row',
+            'align-items:stretch',
+            'overflow:hidden',
+            'border-radius:6px',
+            'border:1px solid rgba(140,160,255,0.22)',
+            'box-shadow:0 4px 16px rgba(0,0,0,0.45)',
+            'z-index:10000',
+            'pointer-events:none',
+            'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif',
+        ].join(';');
+
+        const leftStripe = document.createElement('div');
+        leftStripe.style.cssText = [
+            'width:3px',
+            'flex-shrink:0',
+            `background:linear-gradient(180deg,rgba(${accentRgb},0.95),rgba(${acL},1),rgba(${accentRgb},0.85))`,
+        ].join(';');
+
+        const inner = document.createElement('div');
+        inner.style.cssText = 'display:flex;flex-direction:column;flex:1;min-width:0;background:' + panelBg;
+
+        const topBar = document.createElement('div');
+        topBar.style.cssText = [
+            'height:2px',
+            'width:100%',
+            'flex-shrink:0',
+            `background:linear-gradient(90deg,rgba(${accentRgb},1),rgba(${acL},1),rgba(${accentRgb},1))`,
+        ].join(';');
+
+        const body = document.createElement('div');
+        body.textContent = 'Right click to end';
+        body.style.cssText = [
+            'padding:8px 16px 9px 14px',
+            'font-size:13px',
+            'font-weight:700',
+            'letter-spacing:0.02em',
+            'color:' + textColor,
+            'line-height:1.25',
+            'white-space:nowrap',
+        ].join(';');
+
+        inner.appendChild(topBar);
+        inner.appendChild(body);
+        outer.appendChild(leftStripe);
+        outer.appendChild(inner);
+
+        document.body.appendChild(outer);
+        this.pathTooltip = outer;
     }
 
     /**
