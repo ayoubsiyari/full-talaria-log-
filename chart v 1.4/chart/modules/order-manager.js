@@ -22017,6 +22017,7 @@ class OrderManager {
                         type: this.orderSide,
                         openPrice: fillPx,
                         openTime: marketFillTimeMs,
+                        entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
                         quantity: qtyRounded,
                         originalQuantity: qtyRounded,
                         riskAmount: riskUsdForLevel,
@@ -22429,6 +22430,7 @@ class OrderManager {
             type: this.orderSide,
             openPrice: entryPrice,
             openTime: marketFillTimeMs,
+            entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
             quantity: quantity,
             originalQuantity: quantity, // Store original quantity for journal (before partial closes)
             riskAmount: actualRisk, // Store the ACTUAL calculated risk
@@ -22887,6 +22889,7 @@ class OrderManager {
                 type: this.orderSide,
                 openPrice: entryPrice,
                 openTime: marketFillTimeMsTool,
+                entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
                 quantity: quantity,
                 riskAmount: riskAmount,
                 originalRiskAmount: riskAmount, // Store original for R-multiple
@@ -23050,6 +23053,7 @@ class OrderManager {
             type: 'BUY',
             openPrice: entryPrice,
             openTime: timestamp,
+            entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
             quantity: quantity,
             status: 'OPEN',
             stopLoss: slPrice > 0 ? slPrice : null,
@@ -23140,6 +23144,7 @@ class OrderManager {
             type: 'SELL',
             openPrice: entryPrice,
             openTime: timestamp,
+            entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
             quantity: quantity,
             status: 'OPEN',
             stopLoss: slPrice > 0 ? slPrice : null,
@@ -23213,6 +23218,7 @@ class OrderManager {
             type: 'BUY',
             openPrice: price,
             openTime: timestamp,
+            entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
             quantity: 1,
             status: 'OPEN',
             stopLoss: defaultSL,
@@ -23275,6 +23281,7 @@ class OrderManager {
             type: 'SELL',
             openPrice: price,
             openTime: timestamp,
+            entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
             quantity: 1,
             status: 'OPEN',
             stopLoss: defaultSL,
@@ -23386,6 +23393,7 @@ class OrderManager {
             type: 'BUY',
             openPrice: price,
             openTime: timestamp,
+            entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
             quantity: 1, // Default quantity
             status: 'OPEN',
             stopLoss: defaultSL,
@@ -23440,6 +23448,7 @@ class OrderManager {
             type: 'SELL',
             openPrice: price,
             openTime: timestamp,
+            entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
             quantity: 1,
             status: 'OPEN',
             stopLoss: defaultSL,
@@ -24222,6 +24231,7 @@ class OrderManager {
             type: pendingOrder.direction,
             openPrice: executionPrice, // Use actual execution price (accounts for gaps)
             openTime: currentCandle.t,
+            entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
             quantity: pendingOrder.quantity,
             riskAmount: pendingOrder.riskAmount,
             originalRiskAmount: pendingOrder.originalRiskAmount || pendingOrder.riskAmount, // Preserve original
@@ -31422,6 +31432,17 @@ class OrderManager {
     }
 
     /**
+     * Replay bar open time at the moment of fill — used only for entry marker / connector X.
+     * `openTime` may be shifted to the next bar open for journal semantics; without this, switching
+     * timeframe after a daily fill (replay paused) plus price-refinement could anchor the tick on
+     * an earlier intraday candle that merely touched the same price.
+     */
+    _entryMarkerAnchorTimeMsFromFillCandle(fillCandle) {
+        const t = fillCandle && Number(fillCandle.t);
+        return Number.isFinite(t) ? t : undefined;
+    }
+
+    /**
      * Market fill at the **close** of `fillCandle`: store `openTime` on the **next** bar's `t`
      * (that bar's open — e.g. daily 1/2 close → first 1m of 1/3) when `chart.data[i+1]` exists.
      * If the next bar is not loaded yet, keep `fillCandle.t` (no extrapolation — avoids phantom times).
@@ -31499,21 +31520,27 @@ class OrderManager {
                 }
             }
         };
-        scanRange(Math.max(0, idx0 - WIN), Math.min(n - 1, idx0 + WIN));
-        if (best < 0) scanRange(0, n - 1);
+        // Never move the tick *backward* in time vs the time-mapped bar — that mis-anchors
+        // MTF switches (e.g. daily fill then 5m) onto unrelated earlier candles.
+        scanRange(idx0, Math.min(n - 1, idx0 + WIN));
+        if (best < 0) scanRange(idx0, n - 1);
         return best >= 0 ? best : idx0;
     }
 
     /**
-     * Entry marker / connector start: same replay column rules as _chartIndexForCloseMarkerOnChart,
-     * then optional price coherence so X aligns with a bar that contains openPrice.
+     * Entry marker / connector start: replay column rules on `entryMarkerTimeMs` when set,
+     * else `openTime`; then optional forward-only price coherence.
+     * @param {object} entryRef `{ openTime, openPrice, entryMarkerTimeMs? }`
      */
-    _chartIndexForEntryMarkerOnChart(ch, openTime, openPrice) {
-        const idx = this._chartIndexForCloseMarkerOnChart(ch, openTime);
-        if (idx === -1 || openPrice == null) return idx;
-        const px = Number(openPrice);
+    _chartIndexForEntryMarkerOnChart(ch, entryRef) {
+        if (!entryRef) return -1;
+        const anchor = Number(entryRef.entryMarkerTimeMs);
+        const tForIndex = Number.isFinite(anchor) ? anchor : entryRef.openTime;
+        const idx = this._chartIndexForCloseMarkerOnChart(ch, tForIndex);
+        if (idx === -1 || entryRef.openPrice == null) return idx;
+        const px = Number(entryRef.openPrice);
         if (!Number.isFinite(px)) return idx;
-        return this._refineEntryMarkerIndexForOpen(ch, idx, openTime, px);
+        return this._refineEntryMarkerIndexForOpen(ch, idx, tForIndex, px);
     }
 
     _chartIndexForCloseMarker(closeTime) {
@@ -31706,7 +31733,7 @@ class OrderManager {
         const { yScale } = chart.scales;
         if (!yScale) return;
 
-        const dataIndex = this._chartIndexForEntryMarkerOnChart(chart, order.openTime, order.openPrice);
+        const dataIndex = this._chartIndexForEntryMarkerOnChart(chart, order);
         if (dataIndex === -1) return;
 
         const candleSpacing = chart.getCandleSpacing();
@@ -32010,7 +32037,7 @@ class OrderManager {
         const { yScale } = chart.scales;
         if (!yScale) return;
 
-        const entryIdx = this._chartIndexForEntryMarkerOnChart(chart, order.openTime, order.openPrice);
+        const entryIdx = this._chartIndexForEntryMarkerOnChart(chart, order);
         const exitIdx = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
         if (entryIdx === -1 || exitIdx === -1) return;
 
@@ -32035,6 +32062,7 @@ class OrderManager {
             line,
             chart,
             entryTime: order.openTime,
+            entryMarkerTimeMs: order.entryMarkerTimeMs,
             entryPrice: order.openPrice,
             exitTime: closeData.closeTime,
             exitPrice: closeData.closePrice
@@ -32227,7 +32255,11 @@ class OrderManager {
             if (c !== ch) return;
             if (!c?.scales?.yScale) return;
 
-            const dataIndex = this._chartIndexForEntryMarkerOnChart(c, time, price);
+            const order = markerData.order;
+            const entryRef = order
+                ? { openTime: order.openTime, openPrice: order.openPrice, entryMarkerTimeMs: order.entryMarkerTimeMs }
+                : { openTime: time, openPrice: price };
+            const dataIndex = this._chartIndexForEntryMarkerOnChart(c, entryRef);
             if (dataIndex === -1) return;
 
             const candleSpacing = c.getCandleSpacing();
@@ -32356,7 +32388,12 @@ class OrderManager {
                 const ch = tc.chart || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
                 const mainY = ch.scales.yScale;
-                const eIdx = this._chartIndexForEntryMarkerOnChart(ch, tc.entryTime, tc.entryPrice);
+                const entryRef = {
+                    openTime: tc.entryTime,
+                    openPrice: tc.entryPrice,
+                    entryMarkerTimeMs: tc.entryMarkerTimeMs
+                };
+                const eIdx = this._chartIndexForEntryMarkerOnChart(ch, entryRef);
                 const xIdx = this._chartIndexForCloseMarkerOnChart(ch, tc.exitTime);
                 if (eIdx === -1 || xIdx === -1) return;
                 tc.line
