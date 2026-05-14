@@ -5038,6 +5038,21 @@ class ReplaySystem {
     }
 
     /**
+     * Order fills / SL-TP use one OrderManager; panel charts may defer to window.chart.
+     * Matches chart.js `_getOrderManagerForSessionPersistence` fallback.
+     * @param {object|null} [chartInstance]
+     * @returns {object|null}
+     */
+    _resolveOrderManagerForReplayGuards(chartInstance) {
+        const ch = chartInstance || this.chart;
+        if (ch && ch.orderManager) return ch.orderManager;
+        if (typeof window !== 'undefined' && window.chart && window.chart.orderManager) {
+            return window.chart.orderManager;
+        }
+        return null;
+    }
+
+    /**
      * Handle timeframe change during replay
      * Uses VIRTUAL TIME to maintain consistent price across all timeframes
      * @param {Object} [initiatorChart] - Chart instance that called setTimeframe (defaults to main {@link #chart})
@@ -5072,6 +5087,10 @@ class ReplaySystem {
                 initiator.renderPending = true;
                 if (typeof initiator.render === 'function') {
                     initiator.render();
+                }
+                const omFollow = this._resolveOrderManagerForReplayGuards(initiator);
+                if (omFollow && typeof omFollow._refreshAllGuardsToCurrentCandle === 'function') {
+                    try { omFollow._refreshAllGuardsToCurrentCandle(); } catch (_gu) { /* ignore */ }
                 }
             } catch (e) {
                 console.warn('replay onTimeframeChange (follower panel):', e);
@@ -5112,6 +5131,21 @@ class ReplaySystem {
         // Save view position
         const savedPriceOffset = this.chart.priceOffset;
         const savedPriceZoom = this.chart.priceZoom;
+
+        // Pre-arm SL/TP / pending guards before updateChartData → updatePositions(), same as seekTo().
+        // Without this, the new TF's resampled last candle can include full-bucket H/L and spuriously hit TP/SL.
+        const omPre = this._resolveOrderManagerForReplayGuards(this.chart);
+        let guardTs = savedReplayTimestamp;
+        if (!Number.isFinite(Number(guardTs))) {
+            const rb = this.fullRawData && this.fullRawData[savedCurrentIndex];
+            const tRaw = rb != null ? Number(rb.t) : NaN;
+            guardTs = Number.isFinite(tRaw) ? tRaw : null;
+        }
+        if (omPre && typeof omPre._refreshAllGuardsToTimestamp === 'function' && Number.isFinite(Number(guardTs))) {
+            try { omPre._refreshAllGuardsToTimestamp(Number(guardTs), -1); } catch (_e) { /* ignore */ }
+        } else if (omPre && typeof omPre._refreshAllGuardsToCurrentCandle === 'function') {
+            try { omPre._refreshAllGuardsToCurrentCandle(); } catch (_e2) { /* ignore */ }
+        }
         
         // Update chart data with current position (client-side resample)
         this.updateChartData(false);
@@ -5179,6 +5213,11 @@ class ReplaySystem {
             
             this.updateSlider();
             this.updateTimeDisplay();
+
+            const omPost = this._resolveOrderManagerForReplayGuards(this.chart);
+            if (omPost && typeof omPost._refreshAllGuardsToCurrentCandle === 'function') {
+                try { omPost._refreshAllGuardsToCurrentCandle(); } catch (_e3) { /* ignore */ }
+            }
             
             // === UNLOCK STATE ===
             this._timeframeChanging = false;
