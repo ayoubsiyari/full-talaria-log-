@@ -300,6 +300,46 @@ function formatV9HudClock(ms, use12h) {
   return `${String(h12).padStart(2, "0")}:${pad(mm)} ${ampm}`;
 }
 
+/** Futures + lot-size TP rows: integer contracts per leg summing to orderQtyFloor → OM percentages. */
+function v9TpNormalizeFuturesContractShares(rawQtyStrings, orderQtyFloor) {
+  const n = rawQtyStrings.length;
+  if (!n || orderQtyFloor < 1) return rawQtyStrings.map(() => 0);
+  const ri = rawQtyStrings.map((q) => Math.max(0, Math.round(parseFloat(q) || 0)));
+  let sum = ri.reduce((a, b) => a + b, 0);
+  if (sum === 0) {
+    const per = Math.floor(orderQtyFloor / n);
+    const extra = orderQtyFloor - per * n;
+    return ri.map((_, i) => per + (i < extra ? 1 : 0));
+  }
+  if (sum === orderQtyFloor) return ri;
+  const scaled = ri.map((c) => (sum > 0 ? (c * orderQtyFloor) / sum : 0));
+  const floors = scaled.map((x) => Math.floor(x));
+  let used = floors.reduce((a, b) => a + b, 0);
+  let rem = orderQtyFloor - used;
+  const order = scaled
+    .map((x, i) => ({ i, frac: x - floors[i] }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i);
+  const out = [...floors];
+  for (let k = 0; k < rem && k < order.length; k++) out[order[k].i]++;
+  return out;
+}
+
+/** OM TP percentages + total contracts → integer shares (largest remainder). */
+function v9TpFuturesContractsFromPercentages(percentages, orderQtyFloor) {
+  const n = percentages.length;
+  if (!n || orderQtyFloor < 1) return percentages.map(() => 0);
+  const raw = percentages.map((pct) => ((parseFloat(pct) || 0) / 100) * orderQtyFloor);
+  const floors = raw.map((x) => Math.floor(x));
+  let used = floors.reduce((a, b) => a + b, 0);
+  let rem = orderQtyFloor - used;
+  const order = raw
+    .map((x, i) => ({ i, frac: x - floors[i] }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i);
+  const out = [...floors];
+  for (let k = 0; k < rem && k < order.length; k++) out[order[k].i]++;
+  return out;
+}
+
 function formatV9AccountNum(n) {
   const x = Number(n);
   if (!Number.isFinite(x)) return "—";
@@ -6822,10 +6862,24 @@ const TalariaV8bLive = () => {
             if (tpSingleView) tpSingleView.classList.add("is-hidden");
             mtpEl.dispatchEvent(new Event("change", { bubbles: true }));
           }
+          const oqTpFloor = Math.floor(
+            Math.max(0, parseFloat(document.getElementById("orderQuantity")?.value || "0"))
+          );
+          const useFuturesContractTp =
+            sizeMode === "#" && currentSymbol.type === "futures" && oqTpFloor > 0;
+          const contractShares = useFuturesContractTp
+            ? v9TpNormalizeFuturesContractShares(
+                tpActive.map((r) => r.qty),
+                oqTpFloor
+              )
+            : null;
           const nextTgts = tpActive.map((r, idx) => ({
             id: typeof r.id === "number" && Number.isFinite(r.id) ? r.id : idx + 1,
             price: parseFloat(r.price) || 0,
-            percentage: parseFloat(r.qty) || 0,
+            percentage:
+              useFuturesContractTp && contractShares
+                ? (contractShares[idx] / oqTpFloor) * 100
+                : parseFloat(r.qty) || 0,
           }));
           const wantBuyTp = document.getElementById("buyTab")?.classList.contains("active");
           nextTgts.sort((a, b) =>
@@ -6836,7 +6890,11 @@ const TalariaV8bLive = () => {
             for (let i = 0; i < nextTgts.length; i++) {
               const a = om.tpTargets[i];
               const w = nextTgts[i];
-              if (!a || a.price !== w.price || a.percentage !== w.percentage) {
+              if (
+                !a ||
+                a.price !== w.price ||
+                Math.abs((a.percentage || 0) - (w.percentage || 0)) > 1e-4
+              ) {
                 tgDirty = true;
                 break;
               }
@@ -6845,6 +6903,22 @@ const TalariaV8bLive = () => {
           if (tgDirty) {
             om.tpTargets = nextTgts.map((t) => ({ ...t }));
             om.renderTPTargets?.();
+          }
+          if (useFuturesContractTp && contractShares) {
+            let uiDirty = false;
+            for (let i = 0; i < tpActive.length; i++) {
+              if (Math.round(parseFloat(tpActive[i].qty) || 0) !== contractShares[i]) uiDirty = true;
+            }
+            if (uiDirty) {
+              setTpRows((rows) =>
+                rows.map((row) => {
+                  if (row.enabled === false) return row;
+                  const ix = tpActive.findIndex((a) => a.id === row.id);
+                  if (ix < 0) return row;
+                  return { ...row, qty: String(contractShares[ix]) };
+                })
+              );
+            }
           }
           const numEl = document.getElementById("numTPTargets");
           // Update display only — dispatching input/change runs calculateTPTargetsFromNumber() and
@@ -6993,10 +7067,22 @@ const TalariaV8bLive = () => {
       }
 
       if (!rrLocked && omMultiTp && om.tpTargets.length >= 1) {
-        const nextTp = om.tpTargets.map((t) => ({
+        const pm = document.querySelector("#orderPanel .position-mode-tab.active")?.dataset?.mode;
+        const lotSizeMode = pm === "lot-size";
+        const wantFuturesContracts =
+          lotSizeMode && om.marketType === "futures";
+        const oqFloorMirror = Math.floor(
+          Math.max(0, parseFloat(document.getElementById("orderQuantity")?.value || "0"))
+        );
+        const pctsAll = om.tpTargets.map((t) => t.percentage);
+        const sharesAll =
+          wantFuturesContracts && oqFloorMirror > 0 && om.tpTargets.length > 0
+            ? v9TpFuturesContractsFromPercentages(pctsAll, oqFloorMirror)
+            : null;
+        const nextTp = om.tpTargets.map((t, ti) => ({
           id: t.id,
           price: String(t.price ?? "0"),
-          qty: String(t.percentage ?? "0"),
+          qty: sharesAll ? String(sharesAll[ti] ?? 0) : String(t.percentage ?? "0"),
           enabled: true,
         }));
         const tpSame = (a, b) =>
@@ -14204,9 +14290,16 @@ const TalariaV8bLive = () => {
         const renderParam = (p) => {
           const raw = indSettDraft[p.id] !== undefined ? indSettDraft[p.id] : p.default;
           const row = (right) => (
-            <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "8px 0", borderBottom: `1px solid ${c.br}` }}>
-              <span style={{ fontSize: 12, color: c.ts }}>{p.label}</span>
-              {right}
+            <div key={p.id} style={{
+              display: "grid",
+              gridTemplateColumns: "1fr auto",
+              alignItems: "center",
+              columnGap: 14,
+              padding: "8px 0",
+              borderBottom: `1px solid ${c.br}`,
+            }}>
+              <span style={{ fontSize: 12, color: c.ts, textAlign: "right", justifySelf: "end", minWidth: 0 }}>{p.label}</span>
+              <div style={{ display: "flex", alignItems: "center", justifySelf: "start", flexShrink: 0 }}>{right}</div>
             </div>
           );
           if (p.type === "number") {
@@ -14215,8 +14308,8 @@ const TalariaV8bLive = () => {
                 min={p.min} max={p.max} step={p.step}
                 onClick={(e) => e.stopPropagation()}
                 onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
-                style={{ width: 120, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
-                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 8px", outline: "none", boxSizing: "border-box", fontVariantNumeric: "tabular-nums" }} />
+                style={{ width: 56, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
+                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box", fontVariantNumeric: "tabular-nums", textAlign: "center" }} />
             );
           }
           if (p.type === "color") {
@@ -14245,7 +14338,7 @@ const TalariaV8bLive = () => {
             return row(
               <select value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
                 onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
-                style={{ minWidth: 140, height: 26, fontSize: 12, fontFamily: F, color: c.tx,
+                style={{ width: 130, height: 26, fontSize: 12, fontFamily: F, color: c.tx, boxSizing: "border-box",
                   background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`, padding: "0 8px", outline: "none" }}>
                 {p.options.map((opt) => (
                   <option key={String(opt.value)} value={opt.value}>{opt.label}</option>
@@ -14270,14 +14363,14 @@ const TalariaV8bLive = () => {
             return row(
               <input type="time" value={raw || p.default || ""} onClick={(e) => e.stopPropagation()}
                 onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
-                style={{ width: 140, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
-                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 8px", outline: "none", boxSizing: "border-box" }} />
+                style={{ width: 118, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
+                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box" }} />
             );
           }
           return row(
             <input type="text" value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
               onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
-              style={{ width: "55%", minWidth: 120, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
+              style={{ width: 160, maxWidth: "100%", height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
                 color: c.tx, fontSize: 12, fontFamily: F, padding: "0 8px", outline: "none", boxSizing: "border-box" }} />
           );
         };
@@ -14466,7 +14559,9 @@ const TalariaV8bLive = () => {
                   {inTab.length > 0 && (
                     <>
                       <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", margin: "18px 0 10px" }}>OPTIONS</div>
-                      {inTab.map((p) => renderParam(p))}
+                      <div style={{ width: "100%", maxWidth: 340, margin: "0 auto", boxSizing: "border-box" }}>
+                        {inTab.map((p) => renderParam(p))}
+                      </div>
                     </>
                   )}
                 </>
@@ -14476,7 +14571,9 @@ const TalariaV8bLive = () => {
                 {`No ${emptyLabel} options for this indicator.`}
               </div>
             ) : (
-              inTab.map((p) => renderParam(p))
+              <div style={{ width: "100%", maxWidth: 340, margin: "0 auto", boxSizing: "border-box" }}>
+                {inTab.map((p) => renderParam(p))}
+              </div>
             )}
           </div>
           <div onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
@@ -21874,7 +21971,22 @@ const TalariaV8bLive = () => {
               omFuturesMinRiskTxt &&
               (!Number.isFinite(orderQtyNumTp) || orderQtyNumTp < 1);
             const updTp  = (id, field, val) => { markOrderControlBridge(); setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r)); };
-            const stepTp = (id, field, dir, step=1) => { markOrderControlBridge(); setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r)); };
+            const stepTp = (id, field, dir, step = 1) => {
+              markOrderControlBridge();
+              setTpRows((rows) =>
+                rows.map((r) => {
+                  if (r.id !== id) return r;
+                  if (field === "qty" && sizeMode === "#" && currentSymbol.type === "futures") {
+                    const base = Math.round(parseFloat(r[field] || "0") || 0);
+                    return { ...r, [field]: String(Math.max(0, base + dir)) };
+                  }
+                  return {
+                    ...r,
+                    [field]: String(Math.max(0, parseFloat(r[field] || "0") + dir * step)),
+                  };
+                })
+              );
+            };
             const delTp = (id) => {
               omPanelBridgeRef.current.tpDel = Date.now();
               markOrderControlBridge();
@@ -21949,6 +22061,15 @@ const TalariaV8bLive = () => {
                   ...rows,
                   { id: Date.now(), price: initPx || "0", qty: "0", enabled: true },
                 ];
+                if (sizeMode === "#" && currentSymbol.type === "futures") {
+                  const q = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
+                  const oq = q >= 1 ? q : 1;
+                  const shares = v9TpNormalizeFuturesContractShares(
+                    next.map((r) => r.qty),
+                    oq
+                  );
+                  return next.map((r, i) => ({ ...r, qty: String(shares[i] ?? 0) }));
+                }
                 const prevSum = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
                 if (sizeMode === "%") {
                   const base = Math.floor(100 / n);
@@ -21985,7 +22106,22 @@ const TalariaV8bLive = () => {
                   }
                 }
               }
-              setTpRows([{ id: Date.now(), price: "0", qty: "100", enabled: true }]);
+              setTpRows([
+                {
+                  id: Date.now(),
+                  price: "0",
+                  qty:
+                    currentSymbol.type === "futures" && sizeMode === "#"
+                      ? String(
+                          Math.max(
+                            1,
+                            Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")))
+                          )
+                        )
+                      : "100",
+                  enabled: true,
+                },
+              ]);
             };
             const equalizeTp = () => {
               markOrderControlBridge();
@@ -22003,6 +22139,15 @@ const TalariaV8bLive = () => {
                   const share = Math.max(1, Math.round(t / n));
                   const lastAmt = Math.max(0, t - share * (n - 1));
                   return rows.map((r, i) => ({ ...r, qty: String(i < n - 1 ? share : lastAmt) }));
+                }
+                if (sizeMode === "#" && currentSymbol.type === "futures") {
+                  const q = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
+                  const oq = q >= 1 ? q : 1;
+                  const shares = v9TpNormalizeFuturesContractShares(
+                    rows.map((r) => r.qty),
+                    oq
+                  );
+                  return rows.map((r, i) => ({ ...r, qty: String(shares[i] ?? 0) }));
                 }
                 const total = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
                 const t = total > 0 ? total : Math.max(0.01, parseFloat(riskVal) || 1);
@@ -22130,8 +22275,22 @@ const TalariaV8bLive = () => {
                             {sizeMode==="$" && <span style={{ fontSize:10, fontWeight:600, color:c.ts, lineHeight:1, flexShrink:0 }}>$</span>}
                             {sizeMode==="%" && <span style={{ fontSize:9, fontWeight:700, color:c.ts, lineHeight:1, flexShrink:0 }}>%</span>}
                             <input type="text" value={row.qty}
-                              onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updTp(row.id,"qty",e.target.value); }}
-                              onBlur={e => { const n=parseFloat(e.target.value); updTp(row.id,"qty",isNaN(n)?"0":String(n)); }}
+                              onChange={e => {
+                                const v = e.target.value;
+                                if (sizeMode === "#" && currentSymbol.type === "futures") {
+                                  if (/^\d*$/.test(v)) updTp(row.id,"qty",v);
+                                  return;
+                                }
+                                if(/^\d*\.?\d*$/.test(v)) updTp(row.id,"qty",v);
+                              }}
+                              onBlur={e => {
+                                const n = parseFloat(e.target.value);
+                                if (sizeMode === "#" && currentSymbol.type === "futures") {
+                                  updTp(row.id,"qty", String(Math.max(0, Math.round(isNaN(n) ? 0 : n))));
+                                  return;
+                                }
+                                updTp(row.id,"qty", isNaN(n)?"0":String(n));
+                              }}
                               style={{ width:32, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                             {sizeMode==="#" && <span style={{ fontSize:9, color:c.ts, flexShrink:0, lineHeight:1, whiteSpace:"nowrap" }}>{sizeUnit}</span>}
                             <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
@@ -22153,7 +22312,7 @@ const TalariaV8bLive = () => {
                                     : <><span style={{ color:c.ts }}>${(parseFloat(row.qty || "0") / 100 * basisAmtTp).toFixed(0)}</span>{" · "}{Number.isFinite(orderQtyNumTp) ? orderQtyNumTp.toFixed(currentSymbol.type==="futures" ? 0 : 2) : "0.00"} {sizeUnit}</>
                                   : futuresMinRiskHintTp
                                     ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
-                                    : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Number.isFinite(orderQtyNumTp) ? orderQtyNumTp.toFixed(currentSymbol.type==="futures" ? 0 : 2) : "0.00"} {sizeUnit}</>}
+                                    : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Math.max(0, Math.round(parseFloat(row.qty) || 0))} {sizeUnit}</>}
                           </span>
                           <div style={{ flex:1 }}/>
                           {tpRows.length > 1 ? (
