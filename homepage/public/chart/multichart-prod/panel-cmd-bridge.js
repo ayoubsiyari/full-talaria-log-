@@ -799,6 +799,20 @@
                     }
                     return;
                 }
+                // Candle-by-candle step size (V9 "INTERVAL" in replay bar).
+                // Host sets this via setStepTimeframe; without a mirror, iframes
+                // read empty #replayTimeframe / wrong DOM and advance one raw bar
+                // per tick while the host steps by 1m/5m — different speed + axis.
+                case 'replaySetStepTf': {
+                    var rsTf = ch.replaySystem;
+                    if (!rsTf || typeof rsTf.setStepTimeframe !== 'function') return;
+                    try {
+                        rsTf.setStepTimeframe(args.tf === undefined ? null : args.tf);
+                    } catch (e) {
+                        warn('replaySetStepTf threw', e && e.message);
+                    }
+                    return;
+                }
 
                 // ─── orders ────────────────────────────────────────────
                 //
@@ -1096,6 +1110,7 @@
                 'replayPause',
                 'replaySetSpeed',
                 'replaySetMode',
+                'replaySetStepTf',
                 'placeOrder',
                 'addOrder',
                 'syncPendingOrder',

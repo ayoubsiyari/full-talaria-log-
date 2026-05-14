@@ -1643,6 +1643,13 @@ export default function MultichartGrid({
                     : (rs.playbackMode || "tick");
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.ready) continue;
+                    try {
+                        const stf = rs.stepTimeframeOverride;
+                        mgr.sendCommand(c.id, "replaySetStepTf", {
+                            tf: stf == null ? null : stf,
+                        });
+                    }
+                    catch (_) {}
                     try { mgr.sendCommand(c.id, "replayEnter", { timestamp: ts }); }
                     catch (_) {}
                     try { mgr.sendCommand(c.id, "replaySetSpeed", { speed: parentSpeed }); }
@@ -1797,6 +1804,7 @@ export default function MultichartGrid({
         let patchOriginalPause = null;
         let patchOriginalSetSpeed = null;
         let patchOriginalSetMode = null;
+        let patchOriginalSetStepTf = null;
         const tryPatch = (deadline) => {
             const ch = window.chart;
             if (ch && ch.replaySystem
@@ -1853,6 +1861,10 @@ export default function MultichartGrid({
                             const mode = (typeof this.getPlaybackMode === "function")
                                 ? this.getPlaybackMode()
                                 : (this.playbackMode || "tick");
+                            const stf = this.stepTimeframeOverride;
+                            broadcastToIframes("replaySetStepTf", {
+                                tf: stf == null ? null : stf,
+                            });
                             broadcastToIframes("replayPlay", { speed, mode });
                         } catch (_) {}
                         return result;
@@ -1909,10 +1921,29 @@ export default function MultichartGrid({
                     patchedRs.setPlaybackMode = function (mode, opts) {
                         const result = patchOriginalSetMode(mode, opts);
                         try {
+                            const stf = this.stepTimeframeOverride;
+                            broadcastToIframes("replaySetStepTf", {
+                                tf: stf == null ? null : stf,
+                            });
                             const m = (typeof this.getPlaybackMode === "function")
                                 ? this.getPlaybackMode()
                                 : (this.playbackMode || "tick");
                             broadcastToIframes("replaySetMode", { mode: m });
+                        } catch (_) {}
+                        return result;
+                    };
+                }
+
+                // ── setStepTimeframe (replay INTERVAL / candle step) ──
+                if (typeof patchedRs.setStepTimeframe === "function") {
+                    patchOriginalSetStepTf = patchedRs.setStepTimeframe.bind(patchedRs);
+                    patchedRs.setStepTimeframe = function (timeframe) {
+                        const result = patchOriginalSetStepTf(timeframe);
+                        try {
+                            const stf = this.stepTimeframeOverride;
+                            broadcastToIframes("replaySetStepTf", {
+                                tf: stf == null ? null : stf,
+                            });
                         } catch (_) {}
                         return result;
                     };
@@ -1940,6 +1971,7 @@ export default function MultichartGrid({
                     if (patchOriginalPause)    patchedRs.pause           = patchOriginalPause;
                     if (patchOriginalSetSpeed) patchedRs.setSpeed        = patchOriginalSetSpeed;
                     if (patchOriginalSetMode)  patchedRs.setPlaybackMode = patchOriginalSetMode;
+                    if (patchOriginalSetStepTf) patchedRs.setStepTimeframe = patchOriginalSetStepTf;
                     delete patchedRs.__multichartExitPatched;
                 } catch (_) {}
             }
@@ -2663,9 +2695,17 @@ export default function MultichartGrid({
     //
     //   2. SUBSCRIBE to the host's orderService eventBus so any order
     //      that's `:opened` or `:pending` on the host gets fanned out
-    //      to all peer iframes whose currentSymbol matches; and
+    //      to peer iframes. Matching rules:
+    //        • Default: same normalized ticker OR same sourceFileId as
+    //          the peer's chart-state (handles placeholder "—" symbol).
+    //        • When `isMultichartBacktestFileLock()` OR every ready iframe
+    //          already shows the host's currentFileId, fan to EVERY tile
+    //          (same replay file lock UX as candle sync — orders appear
+    //          on all panels at once).
+    //        • Host orders missing sourceFileId get currentFileId filled
+    //          in for matching / payload mirroring.
     //      `order:pending-updated` (entry / SL / TP drag) is merged on
-    //      every same-pair panel in lockstep via `syncPendingOrder`.
+    //      every peer in lockstep via `syncPendingOrder`.
     //
     //   3. LISTEN for `iframe-order` postMessage envelopes (sent by
     //      panel-cmd-bridge.installOrderForwarders inside each iframe)
@@ -2715,6 +2755,41 @@ export default function MultichartGrid({
                 tpEnabled:   chk("enableTP"),
                 tpPrice:     num("tpPrice"),
             };
+        }
+
+        // Find every ready multichart tile except `excludeId` — used when
+        // all panels are guaranteed the same dataset (backtest lock or
+        // identical fileId) so orders/drags appear on every chart at once.
+        function findAllSameDatasetMirrorPeers(excludeId) {
+            const out = [];
+            const mgr = managerRef.current;
+            if (!mgr || !mgr.charts) return out;
+            if (excludeId !== HOST_PANEL_ID) {
+                out.push({ id: HOST_PANEL_ID, isHost: true });
+            }
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host || !c.ready) continue;
+                if (c.id === excludeId) continue;
+                out.push({ id: c.id, isHost: false });
+            }
+            return out;
+        }
+
+        /** True when every bridge-ready iframe reports the same fileId as the host. */
+        function allReadyIframesShareHostFile() {
+            const ch = window.chart;
+            const hostFid = ch && ch.currentFileId != null ? String(ch.currentFileId) : "";
+            if (!hostFid) return false;
+            const mgr = managerRef.current;
+            if (!mgr || !mgr.charts) return false;
+            let n = 0;
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host || !c.ready) continue;
+                n += 1;
+                const fid = c.state && c.state.fileId != null ? String(c.state.fileId) : "";
+                if (fid !== hostFid) return false;
+            }
+            return n > 0;
         }
 
         // Find all panels (host + iframes) that should receive a mirrored
@@ -2812,16 +2887,33 @@ export default function MultichartGrid({
             const symNorm = normalizeOrderTickerForMirror(
                 order.symbol || order.ticker || order.pair || order.instrument || ""
             );
-            const orderFid = order.sourceFileId != null && String(order.sourceFileId) !== ""
+            let orderFid = order.sourceFileId != null && String(order.sourceFileId) !== ""
                 ? String(order.sourceFileId) : "";
-            if (!symNorm && !orderFid) return;
-            const peers = findPanelsForSymbol(symNorm, sourceId, order);
+            if (!orderFid && sourceId === HOST_PANEL_ID) {
+                const ch = window.chart;
+                if (ch && ch.currentFileId != null && String(ch.currentFileId) !== "") {
+                    orderFid = String(ch.currentFileId);
+                }
+            }
+            const orderAug = orderFid && (order.sourceFileId == null || String(order.sourceFileId) === "")
+                ? Object.assign({}, order, { sourceFileId: orderFid })
+                : order;
+
+            let peers;
+            if (isMultichartBacktestFileLock() || allReadyIframesShareHostFile()) {
+                peers = findAllSameDatasetMirrorPeers(sourceId);
+                if (!peers.length) return;
+            } else {
+                if (!symNorm && !orderFid) return;
+                peers = findPanelsForSymbol(symNorm, sourceId, orderAug);
+            }
+
             const grid = window.__multichartGrid;
             if (kind === "pending-updated") {
                 if (!grid || typeof grid.runCommand !== "function") return;
                 for (const p of peers) {
                     try {
-                        grid.runCommand("syncPendingOrder", { order }, { panelId: p.id })
+                        grid.runCommand("syncPendingOrder", { order: orderAug }, { panelId: p.id })
                             .catch((e) => {
                                 console.warn("[MultichartGrid] syncPendingOrder",
                                     p.id, "failed:", e && e.message || e);
@@ -2834,7 +2926,7 @@ export default function MultichartGrid({
             }
             if (kind !== "opened" && kind !== "pending") return;
             for (const p of peers) {
-                mirrorTo(p.id, p.isHost, kind, order);
+                mirrorTo(p.id, p.isHost, kind, orderAug);
             }
         }
 
