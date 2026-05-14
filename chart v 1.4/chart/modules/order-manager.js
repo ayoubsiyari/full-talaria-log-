@@ -11416,11 +11416,25 @@ class OrderManager {
     }
 
     /**
+     * When true (default via {@link window.__CHART_ENV.DISABLE_ORDER_ENTRY_PLUS_UI}), hide all
+     * “+” / split-entry affordances: chart Entry+ badges, preview green + / purple split handles,
+     * TP ladder +, native panel add row, V9 rail. Set `__CHART_ENV.DISABLE_ORDER_ENTRY_PLUS_UI = false` to restore.
+     */
+    _isOrderEntryPlusUiDisabled() {
+        try {
+            return window.__CHART_ENV?.DISABLE_ORDER_ENTRY_PLUS_UI !== false;
+        } catch (_e) {
+            return true;
+        }
+    }
+
+    /**
      * Green + on preview: enable only the mode that matches where the button was placed
      * (entry row → multi-entry only; TP row / TP badge → multi-TP only). Never both at once.
      * @param {'entry'|'tp'} kind
      */
     _appendPreviewMultiModesActivatorButton(lineData, startX, height, kind) {
+        if (this._isOrderEntryPlusUiDisabled()) return;
         const self = this;
         const btnR = 9;
         const g = lineData.labelGroup.append('g')
@@ -11704,7 +11718,7 @@ class OrderManager {
             offsetX += closeSize + gap;
 
             // + add another TP (same behavior as pending multi-TP split)
-            if (document.getElementById('multipleTPToggle')?.checked) {
+            if (document.getElementById('multipleTPToggle')?.checked && !this._isOrderEntryPlusUiDisabled()) {
                 const splitBtnR = 9;
                 const self = this;
                 const splitG = lineData.labelGroup.append('g')
@@ -11761,7 +11775,8 @@ class OrderManager {
             !isSlLine &&
             !isBeLine &&
             this.isMultiEntryMode &&
-            !v9ReactOrderRail;
+            !v9ReactOrderRail &&
+            !this._isOrderEntryPlusUiDisabled();
         if (showMultiEntryHandle) {
             this.drawSplitHandle(lineData, lineData.labelGroup);
         }
@@ -13598,11 +13613,21 @@ class OrderManager {
         // Add TP Target buttons
         const addTPButton = document.getElementById('addTPTarget');
         if (addTPButton) {
-            addTPButton.onclick = () => { this.addTPTarget(); };
+            if (this._isOrderEntryPlusUiDisabled()) {
+                addTPButton.style.display = 'none';
+                addTPButton.onclick = null;
+            } else {
+                addTPButton.onclick = () => { this.addTPTarget(); };
+            }
         }
         const tpMultiAddBtn = document.getElementById('tpMultiAddBtn');
         if (tpMultiAddBtn) {
-            tpMultiAddBtn.onclick = () => { this.addTPTarget(); };
+            if (this._isOrderEntryPlusUiDisabled()) {
+                tpMultiAddBtn.style.display = 'none';
+                tpMultiAddBtn.onclick = null;
+            } else {
+                tpMultiAddBtn.onclick = () => { this.addTPTarget(); };
+            }
         }
         
         // Breakeven inputs - update BE line when values change
@@ -18041,7 +18066,12 @@ class OrderManager {
             toggleBtn.addEventListener('click', () => this.toggleEntryMode());
         }
         if (addBtn) {
-            addBtn.addEventListener('click', () => this.addMultiEntryLevel());
+            if (this._isOrderEntryPlusUiDisabled()) {
+                addBtn.style.display = 'none';
+                addBtn.style.pointerEvents = 'none';
+            } else {
+                addBtn.addEventListener('click', () => this.addMultiEntryLevel());
+            }
         }
         if (equalBtn) {
             equalBtn.addEventListener('click', () => this.equalizeMultiEntryAmounts());
@@ -19292,7 +19322,8 @@ class OrderManager {
      */
     drawSplitHandle(lineData, parentGroup) {
         if (!lineData || !parentGroup) return null;
-        
+        if (this._isOrderEntryPlusUiDisabled()) return null;
+
         const self = this;
         const ch = lineData._previewChart || self.previewLines?._previewChart || self._getPreviewChart() || self.chart;
         const handleSize = 18;
@@ -27363,6 +27394,12 @@ class OrderManager {
     _createPlusBadge(chart, orderId, prefix, color, label, onDrop) {
         const bH = 16, bR = 3;
         const self = this;
+        if (this._isOrderEntryPlusUiDisabled()) {
+            return chart.svg.append('g')
+                .attr('class', `${prefix}-plus-badge-disabled ${prefix}-${orderId}`)
+                .style('display', 'none')
+                .style('pointer-events', 'none');
+        }
         const g = chart.svg.append('g')
             .attr('class', `${prefix}-${label.toLowerCase().replace('+', '-plus')}-badge ${prefix}-${orderId}`)
             .attr('pointer-events', 'all')

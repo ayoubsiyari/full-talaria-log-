@@ -5917,6 +5917,9 @@ const TalariaV8bLive = () => {
 
   const allSymbols = SYMBOLS_DATA.flatMap(c => c.items);
   const currentSymbol = resolveSessionChartSymbol(symbol, allSymbols);
+  /** Matches order-manager: hide Entry/TP “add level” + when DISABLE_ORDER_ENTRY_PLUS_UI is not false. */
+  const chartEntryPlusSplitUiOff =
+    typeof window !== "undefined" && window.__CHART_ENV?.DISABLE_ORDER_ENTRY_PLUS_UI !== false;
 
   // Futures: cannot have more TP rows than whole contracts (e.g. 1 contract → single TP only).
   useEffect(() => {
@@ -20894,7 +20897,7 @@ const TalariaV8bLive = () => {
                         </svg>
                       </div>
                     </>)}
-                    {panelMode==="advanced" && (
+                    {panelMode==="advanced" && !chartEntryPlusSplitUiOff && (
                     <div onClick={addRow}
                       onMouseEnter={()=>setSwHov("ep-add")} onMouseLeave={()=>setSwHov(null)}
                       title="Add entry level"
@@ -21532,7 +21535,7 @@ const TalariaV8bLive = () => {
                         </svg>
                       </div>
                     </>)}
-                    {panelMode==="advanced" && (
+                    {panelMode==="advanced" && !chartEntryPlusSplitUiOff && (
                     <div onClick={addTp}
                       onMouseEnter={()=>setSwHov("tp-add")} onMouseLeave={()=>setSwHov(null)}
                       title="Add target level"
