@@ -23804,6 +23804,36 @@ class OrderManager {
     }
 
     /**
+     * In MultichartGrid, tile B/C/… loads dist-v9 inside an iframe (`?multichart=1` → `html.multichart-embed`).
+     * SL/TP and pending fills use `updatePositions()` → this chart's OHLC. Resampled `data[last]` or raw
+     * playhead can differ from tile A (parent `window.chart`) by a wick or one step, so one panel shows a
+     * stop-out while another still shows the trade open. When the parent chart is the same instrument,
+     * use its replay bar as the single source of truth for guard evaluation in this iframe.
+     * @returns {object|null}
+     */
+    _getMultichartParentGuardCandle() {
+        if (typeof document === 'undefined' || typeof window === 'undefined') return null;
+        const root = document.documentElement;
+        if (!root || !root.classList.contains('multichart-embed')) return null;
+        if (!window.parent || window.parent === window) return null;
+        let pChart;
+        try {
+            pChart = window.parent.chart;
+        } catch (_e) {
+            return null;
+        }
+        if (!pChart || !this.chart) return null;
+        if (!this._sameChartInstrument(this.chart, pChart)) return null;
+        const pOm = pChart.orderManager;
+        if (!pOm || typeof pOm.getCurrentCandle !== 'function') return null;
+        try {
+            return pOm.getCurrentCandle.call(pOm) || null;
+        } catch (_e2) {
+            return null;
+        }
+    }
+
+    /**
      * Current candle for a specific chart surface — use the chart under the cursor when dragging SL/TP on a panel.
      */
     _getCurrentCandleForChart(chart) {
@@ -24464,7 +24494,8 @@ class OrderManager {
      * Update positions with current prices
      */
     updatePositions() {
-        const currentCandle = this.getCurrentCandle();
+        const parentGuardCandle = this._getMultichartParentGuardCandle();
+        const currentCandle = parentGuardCandle || this.getCurrentCandle();
         if (!currentCandle) return;
         if (this.orderService && this.orderService.multiInstrumentSession) {
             this.orderService.multiInstrumentSession.current_time = currentCandle.t;
