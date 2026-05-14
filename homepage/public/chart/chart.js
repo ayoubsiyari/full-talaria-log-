@@ -13453,7 +13453,7 @@ class Chart {
             
             // Use same tick calculation as y-axis to ensure alignment
             const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
-            const yTicks = this.yScale.ticks(numYTicks);
+            const yTicks = this._getYPriceTicks(numYTicks);
             
             yTicks.forEach(price => {
                 const y = this.yScale(price);
@@ -13563,7 +13563,7 @@ class Chart {
         // Y-axis (price) labels with improved formatting
         this.ctx.textAlign = 'center';
         const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
-        const yTicks = this.yScale.ticks(numYTicks);
+        const yTicks = this._getYPriceTicks(numYTicks);
         const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
         const decimals = this.getPriceDecimals(priceRange);
         
@@ -14085,7 +14085,7 @@ class Chart {
         const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
         const decimals = this.getPriceDecimals(Math.abs(priceRange));
         const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
-        const yTicks = this.yScale.ticks(numYTicks);
+        const yTicks = this._getYPriceTicks(numYTicks);
         const fs = this.chartSettings.scaleTextSize || 12;
 
         let maxW = 0;
@@ -14160,7 +14160,8 @@ class Chart {
      * Used by the axis, crosshair, order drag-snap, and SL/TP input step. Falls back
      * to `10^-precision` when the registry only carries precision.
      *
-     * Examples: NQ/ES → 0.25, GC → 0.10, CL → 0.01, EURUSD → 0.00001, USDJPY → 0.001.
+     * Examples: NQ/ES → 0.25, GC → 0.10, CL → 0.01, EURUSD → 0.00001 (5dp pipette, not 1 pip),
+     * USDJPY → 0.001 when precision is 3.
      */
     getTickSize() {
         if (this.currentSymbol && typeof window !== 'undefined' && window.marketCalcEngine) {
@@ -14169,6 +14170,18 @@ class Chart {
                 const specs = calc && calc.specs;
                 if (specs) {
                     if (Number.isFinite(specs.tickSize) && specs.tickSize > 0) return specs.tickSize;
+                    // Forex: `pipSize` is the P&L pip (e.g. 0.0001 on EUR/USD) but the chart shows
+                    // `precision` decimals (often 5). Crosshair / axis must use the finer step — same
+                    // as reusing `precision` below, without a second API (see crosshair snap).
+                    if (specs.type === 'forex') {
+                        const pip = Number.isFinite(specs.pipSize) && specs.pipSize > 0 ? specs.pipSize : null;
+                        const sub = (Number.isFinite(specs.precision) && specs.precision >= 0)
+                            ? Math.pow(10, -specs.precision)
+                            : null;
+                        if (pip && sub) return Math.min(pip, sub);
+                        if (pip) return pip;
+                        if (sub) return sub;
+                    }
                     if (Number.isFinite(specs.pipSize)  && specs.pipSize  > 0) return specs.pipSize;
                     if (Number.isFinite(specs.precision) && specs.precision >= 0) {
                         return Math.pow(10, -specs.precision);
@@ -14189,6 +14202,89 @@ class Chart {
         const tick = this.getTickSize();
         if (!Number.isFinite(tick) || tick <= 0) return p;
         return Math.round(p / tick) * tick;
+    }
+
+    /**
+     * Build Y-axis price levels from `lo`→`hi` spaced by `step` (already a multiple of min tick).
+     * Caps iteration so pathological domains cannot hang the render loop.
+     */
+    _buildAlignedPriceTicks(lo, hi, step) {
+        const ticks = [];
+        if (!Number.isFinite(lo) || !Number.isFinite(hi) || !Number.isFinite(step) || step <= 0) {
+            return ticks;
+        }
+        const span = hi - lo;
+        if (!(span > 0)) return ticks;
+        const eps = Math.max(step * 1e-9, span * 1e-12);
+        let t = Math.floor((lo + eps) / step) * step;
+        const maxGuard = 320;
+        for (let g = 0; g < maxGuard; g++) {
+            if (t > hi + eps) break;
+            if (t >= lo - eps) ticks.push(t);
+            t += step;
+        }
+        return ticks;
+    }
+
+    /**
+     * Y-axis / horizontal grid price ticks aligned to the instrument pip/tick size.
+     * D3's `linear.ticks()` picks "nice" decimals (e.g. …30, …40 on FX) that are not
+     * multiples of the real pip — this matches futures-style tick alignment for forex too.
+     */
+    _getYPriceTicks(numYTicks) {
+        if (!this.yScale) return [];
+        const d0 = this.yScale.domain()[0];
+        const d1 = this.yScale.domain()[1];
+        const lo = Math.min(d0, d1);
+        const hi = Math.max(d0, d1);
+        const span = hi - lo;
+        const want = Math.max(6, Math.min(18, Number(numYTicks) > 0 ? Math.floor(numYTicks) : 10));
+        const maxTicks = want + 5;
+        const minTicks = Math.max(4, want - 5);
+
+        if (!(span > 0) || !Number.isFinite(span)) {
+            return this.yScale.ticks(numYTicks);
+        }
+
+        const tickSize = (typeof this.getTickSize === 'function') ? Number(this.getTickSize()) : 0;
+        if (!Number.isFinite(tickSize) || tickSize <= 0 || tickSize > span * 0.999) {
+            return this.yScale.ticks(numYTicks);
+        }
+
+        const multCandidates = [];
+        for (let exp = -12; exp <= 18; exp++) {
+            const b = Math.pow(10, exp);
+            multCandidates.push(1 * b, 2 * b, 5 * b);
+        }
+        multCandidates.sort((a, b) => a - b);
+
+        let chosenIdx = -1;
+        for (let i = 0; i < multCandidates.length; i++) {
+            const step = multCandidates[i] * tickSize;
+            const n = this._buildAlignedPriceTicks(lo, hi, step).length;
+            if (n <= maxTicks) {
+                chosenIdx = i;
+                break;
+            }
+        }
+        if (chosenIdx < 0) {
+            return this.yScale.ticks(numYTicks);
+        }
+
+        while (chosenIdx > 0) {
+            const stepFiner = multCandidates[chosenIdx - 1] * tickSize;
+            const ticksFiner = this._buildAlignedPriceTicks(lo, hi, stepFiner);
+            if (ticksFiner.length > maxTicks) break;
+            chosenIdx--;
+            if (ticksFiner.length >= minTicks) break;
+        }
+
+        const step = multCandidates[chosenIdx] * tickSize;
+        const ticks = this._buildAlignedPriceTicks(lo, hi, step);
+        if (ticks.length < 2) {
+            return this.yScale.ticks(numYTicks);
+        }
+        return ticks;
     }
 
     /**
