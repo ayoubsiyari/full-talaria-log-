@@ -571,6 +571,31 @@ function isMultichartBacktestFileLock() {
     }
 }
 
+/**
+ * True when every bridge-ready iframe's chart-state fileId matches the host's
+ * currentFileId. Used to mirror timeframe + orders across all tiles without
+ * requiring the layout "Interval" toggle (same idea as locked backtest file).
+ */
+function allReadyIframesShareHostFileForMirror(managerCharts, hostChart) {
+    try {
+        const ch = hostChart || (typeof window !== "undefined" ? window.chart : null);
+        const hostFid = ch && ch.currentFileId != null ? String(ch.currentFileId) : "";
+        if (!hostFid || !managerCharts || typeof managerCharts.values !== "function") {
+            return false;
+        }
+        let n = 0;
+        for (const c of managerCharts.values()) {
+            if (!c || c.host || !c.ready) continue;
+            n += 1;
+            const fid = c.state && c.state.fileId != null ? String(c.state.fileId) : "";
+            if (fid !== hostFid) return false;
+        }
+        return n > 0;
+    } catch (_) {
+        return false;
+    }
+}
+
 // ─── iframe URL ─────────────────────────────────────────────────────────────
 function buildIframeSrc({ panelId, fileId, tf, sessionId, mode }) {
     const params = new URLSearchParams();
@@ -1493,21 +1518,23 @@ export default function MultichartGrid({
 
     // ─── Interval (timeframe) sync ──────────────────────────────────────
     //
-    // The manager's syncMode does NOT cover Interval — chart.js's
-    // setTimeframe is an action, not a sync envelope. We implement
-    // Interval sync at the React layer instead: whenever the host's
-    // current timeframe changes AND layoutSync.interval is on, fan it
-    // out to every iframe panel via panel-cmd-bridge.setTimeframe.
+    // Fan out the host chart's timeframe to every iframe when:
+    //   • layout "Interval" sync is on, OR
+    //   • backtest / replay file lock (same as chart data lock), OR
+    //   • every ready iframe already shows the host's fileId (same-dataset
+    //     multichart — matches order mirror + replay step sync UX).
     //
-    // Listen on chart.js's `timeframeChanged` event (chart.js:11587 →
-    // _emitTimeframeChanged). The event fires on the parent window only
-    // (each iframe fires on its own contentWindow), so this listener
-    // naturally only sees host tile A's timeframe changes.
+    // Listen on chart.js's `timeframeChanged` on the parent window (tile A).
     useEffect(() => {
         if (typeof window === "undefined") return;
         const onTfChanged = (ev) => {
-            if (!((layoutSync && layoutSync.interval) || isMultichartBacktestFileLock())) return;
             const mgr = managerRef.current;
+            const charts = mgr && mgr.charts;
+            if (!((layoutSync && layoutSync.interval)
+                || isMultichartBacktestFileLock()
+                || allReadyIframesShareHostFileForMirror(charts, window.chart))) {
+                return;
+            }
             if (!mgr || typeof mgr.sendCommand !== "function") return;
             const tf = (ev && ev.detail && ev.detail.timeframe)
                 || (window.chart && window.chart.currentTimeframe)
@@ -2198,12 +2225,14 @@ export default function MultichartGrid({
     //       reports new tf / fileId / candle counts).
     //
     //   (b) Bidirectional Interval / Symbol fan-out (TradingView UX).
-    //       When sync.interval is on, a tf change on ANY panel (host
-    //       or iframe) should propagate to every other panel. Same
-    //       for sync.symbol with file changes. The host listens to
-    //       its own `timeframeChanged` / `chartDataLoaded` events
-    //       (effects above), and each iframe reports tf / fileId via
-    //       sync-bridge `chart-state` postMessage which lands here.
+    //       When sync.interval is on, a tf change on ANY iframe panel
+    //       propagates to the host and every other iframe. When
+    //       `sameDatasetLock` (backtest file lock OR all iframes already
+    //       share the host fileId), the same tf fan-out runs even if
+    //       "Interval" sync is off — matches unified multichart orders.
+    //       The host's own tf changes are handled by `timeframeChanged`
+    //       (effect above); iframe tf/fileId arrive via sync-bridge
+    //       `chart-state` postMessage.
     onStateAnyRef.current = (id, state) => {
         // (a) focus mirror
         if (id === focusedPanelIdRef.current) {
@@ -2224,6 +2253,10 @@ export default function MultichartGrid({
         const sync = layoutSyncRef.current || {};
         const fileLock = isMultichartBacktestFileLock();
         const hostCh = window.chart;
+        const sameDatasetLock = fileLock || allReadyIframesShareHostFileForMirror(
+            mgr.charts,
+            hostCh
+        );
         const hostFid = hostCh && hostCh.currentFileId != null && String(hostCh.currentFileId).trim() !== ""
             ? String(hostCh.currentFileId)
             : "";
@@ -2237,7 +2270,7 @@ export default function MultichartGrid({
             return;
         }
 
-        if (state && state.timeframe && sync.interval) {
+        if (state && state.timeframe && (sync.interval || sameDatasetLock)) {
             const tf = String(state.timeframe);
             if (lastBroadcastTfRef.current[id] !== tf) {
                 lastBroadcastTfRef.current[id] = tf;
@@ -2775,23 +2808,6 @@ export default function MultichartGrid({
             return out;
         }
 
-        /** True when every bridge-ready iframe reports the same fileId as the host. */
-        function allReadyIframesShareHostFile() {
-            const ch = window.chart;
-            const hostFid = ch && ch.currentFileId != null ? String(ch.currentFileId) : "";
-            if (!hostFid) return false;
-            const mgr = managerRef.current;
-            if (!mgr || !mgr.charts) return false;
-            let n = 0;
-            for (const c of mgr.charts.values()) {
-                if (!c || c.host || !c.ready) continue;
-                n += 1;
-                const fid = c.state && c.state.fileId != null ? String(c.state.fileId) : "";
-                if (fid !== hostFid) return false;
-            }
-            return n > 0;
-        }
-
         // Find all panels (host + iframes) that should receive a mirrored
         // order: same normalized ticker OR same dataset (fileId) when the
         // peer's cached symbol is still a placeholder or unknown.
@@ -2900,7 +2916,7 @@ export default function MultichartGrid({
                 : order;
 
             let peers;
-            if (isMultichartBacktestFileLock() || allReadyIframesShareHostFile()) {
+            if (isMultichartBacktestFileLock() || allReadyIframesShareHostFileForMirror(mgr.charts, window.chart)) {
                 peers = findAllSameDatasetMirrorPeers(sourceId);
                 if (!peers.length) return;
             } else {
