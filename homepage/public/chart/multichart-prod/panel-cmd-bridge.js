@@ -974,6 +974,26 @@
                         om2.scheduleRefreshPendingOrderGraphicsForChart(ord, ch);
                     } else if (kind === 'pending' && typeof om2.refreshPendingOrderGraphicsForChart === 'function') {
                         om2.refreshPendingOrderGraphicsForChart(ord, ch);
+                    } else if (kind === 'opened') {
+                        // Mirrored open positions only hit orderService.registerOpenOrder above.
+                        // updateOrderLines() moves existing DOM — it does not create SL/TP/entry layers.
+                        try {
+                            var symOk = true;
+                            if (typeof om2._positionTickerMatchesChartSymbol === 'function') {
+                                symOk = !!om2._positionTickerMatchesChartSymbol(ord, ch);
+                            }
+                            if (symOk) {
+                                if (typeof om2.drawOrderLine === 'function') om2.drawOrderLine(ord, ch);
+                                if (typeof om2.drawSLTPLines === 'function') om2.drawSLTPLines(ord, ch);
+                                if (typeof om2.drawEntryMarker === 'function') om2.drawEntryMarker(ord, ch);
+                            }
+                        } catch (eOpen) {
+                            warn('addOrder: opened line draw threw', eOpen && eOpen.message);
+                        }
+                        try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
+                        try {
+                            if (om2.updateOrderLines) om2.updateOrderLines(ch);
+                        } catch (_) {}
                     } else {
                         try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
                         try {
