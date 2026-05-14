@@ -901,18 +901,6 @@
         return result;
     }
 
-    /** Pine TZI → fixed offset hours (no DST; matches killzones-style offset usage). */
-    function _ictTzOffsetHoursFromTZI(tzi) {
-        const map = {
-            'UTC -10': -10, 'UTC -7': -7, 'UTC -6': -6, 'UTC -5': -5, 'UTC -4': -4, 'UTC -3': -3,
-            'UTC +0': 0, 'UTC +1': 1, 'UTC +2': 2, 'UTC +3': 3, 'UTC +3:30': 3.5, 'UTC +4': 4, 'UTC +5': 5,
-            'UTC +5:30': 5.5, 'UTC +6': 6, 'UTC +7': 7, 'UTC +8': 8, 'UTC +9': 9, 'UTC +9:30': 9.5,
-            'UTC +10': 10, 'UTC +10:30': 10.5, 'UTC +11': 11, 'UTC +13': 13, 'UTC +13:45': 13.75
-        };
-        const v = map[tzi];
-        return v != null ? v : -5;
-    }
-
     /** Local timezone offset in hours at instant `utcMs` (use per bar for DST correctness). */
     function _ictLocalOffsetHoursAt(utcMs) {
         return -new Date(utcMs).getTimezoneOffset() / 60;
@@ -1015,12 +1003,8 @@
         if (!data || data.length === 0) return empty;
 
         const P = Object.assign({}, indicator.params || {}, indicator.style || {});
-        const tziSel = P.TZI != null && P.TZI !== '' ? P.TZI : '__SYSTEM_LOCAL__';
-        const useSysLocal = tziSel === '__SYSTEM_LOCAL__';
-        const offHFixed = useSysLocal ? null : _ictTzOffsetHoursFromTZI(tziSel);
         function wallAt(utcMs) {
-            var oh = useSysLocal ? _ictLocalOffsetHoursAt(utcMs) : offHFixed;
-            return _ictWallFromUtc(utcMs, oh);
+            return _ictWallFromUtc(utcMs, _ictLocalOffsetHoursAt(utcMs));
         }
         const barMin = _ictMedianBarMinutes(data);
         const maxIv = P.inputMaxInterval != null ? +P.inputMaxInterval : 31;
@@ -1325,7 +1309,7 @@
             showNYMidnight: false,
             _params: P,
             _barMin: barMin,
-            _offH: useSysLocal ? _ictLocalOffsetHoursAt(lastMs) : offHFixed
+            _offH: _ictLocalOffsetHoursAt(lastMs)
         };
     }
 

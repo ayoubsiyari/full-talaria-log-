@@ -277,9 +277,12 @@ const EXTERNAL_VIEWS: Record<string, string> = {
 
 const INTERNAL_NAV: Record<string, string> = {
   dashboard: "/dashboard/",
-  journal: "/dashboard/journal/",
   cot: "/dashboard/cot/",
   support: "/dashboard/support/",
+};
+
+const DIRECT_NAV: Record<string, string> = {
+  journal: "/journal/dashboard",
 };
 
 export default function DashboardLayout({
@@ -312,8 +315,7 @@ export default function DashboardLayout({
   }, []);
 
   React.useEffect(() => {
-    if (pathname.startsWith("/dashboard/journal")) setActiveView("journal");
-    else if (pathname.startsWith("/dashboard/cot")) setActiveView("cot");
+    if (pathname.startsWith("/dashboard/cot")) setActiveView("cot");
     else if (pathname.startsWith("/dashboard/support")) setActiveView("support");
     else if (pathname.startsWith("/dashboard/admin")) setActiveView("admin");
     else if (pathname.startsWith("/dashboard")) setActiveView("dashboard");
@@ -332,7 +334,9 @@ export default function DashboardLayout({
 
   const handleNavClick = (id: string) => {
     setActiveView(id);
-    if (EXTERNAL_VIEWS[id]) {
+    if (DIRECT_NAV[id]) {
+      window.location.href = DIRECT_NAV[id];
+    } else if (EXTERNAL_VIEWS[id]) {
       setLoadedViews((prev) => ({ ...prev, [id]: true }));
     } else if (INTERNAL_NAV[id]) {
       router.push(INTERNAL_NAV[id]);

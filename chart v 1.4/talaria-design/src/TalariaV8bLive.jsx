@@ -14944,8 +14944,6 @@ const TalariaV8bLive = () => {
             <div style={{ width: "100%", boxSizing: "border-box" }}>
               {ictSec("GLOBAL SETTINGS", true)}
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: "10px 12px", alignItems: "center", padding: "4px 0 10px", borderBottom: `1px solid ${c.br}` }}>
-                <span style={{ fontSize: 12, color: c.ts }}>Timezone selection</span>
-                <Sel pid="TZI" w={132} />
                 <span style={{ fontSize: 12, color: c.ts }}>Hide indicator above (bar minutes)</span>
                 <input type="number" className="tlr-nospinner" min={1} max={1440} value={val("inputMaxInterval") == null ? "" : val("inputMaxInterval")}
                   onClick={(e) => e.stopPropagation()}

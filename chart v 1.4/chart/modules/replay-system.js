@@ -106,8 +106,8 @@ class ReplaySystem {
     }
 
     applyPersistedState(state) {
-        if (!state || typeof state !== 'object') return;
-        if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) return;
+        if (!state || typeof state !== 'object') return false;
+        if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) return false;
 
         try {
             // Only trust the saved currentIndex if the timeframe matches the
@@ -169,12 +169,17 @@ class ReplaySystem {
                 if (typeof window.updateSpeedDisplay === 'function') {
                     window.updateSpeedDisplay(this.speed);
                 }
-                // Align viewport with restored playhead (false left stale chart pan from session chartView).
-                this.updateChartData(true);
+                // Backtest TF refetch passes deferChartSync so chart.js can fine-re-anchor first,
+                // then run a single updateChartData (avoids SL/TP on session-start bar mid-refetch).
+                if (!state.deferChartSync) {
+                    this.updateChartData(true);
+                }
+                return true;
             }
         } catch (e) {
             console.warn('⚠️ Failed to apply persisted replay state', e);
         }
+        return false;
     }
 
     init() {
@@ -2100,7 +2105,9 @@ class ReplaySystem {
 
     /**
      * Enter replay mode
-     * @param {Object} options - Optional configuration {startAtBeginning: boolean}
+     * @param {Object} [options] - Optional configuration
+     * @param {boolean} [options.startAtBeginning] - Backtest-style session floor (URL/mode)
+     * @param {boolean} [options.suppressInitialUpdateChartData] - Skip first `updateChartData()` so host can restore playhead (TF refetch); avoids SL/TP on session-start bar.
      */
     enterReplayMode(options = {}) {
         // === PROTECT: Don't reinitialize if already active or during timeframe change ===
@@ -2212,10 +2219,11 @@ class ReplaySystem {
 
         this._attachReplayFollowViewportListeners();
         
-        // Filter data and render
-        this.updateChartData();
-
-        requestAnimationFrame(() => this.updateAutoScrollIndicator());
+        if (!options.suppressInitialUpdateChartData) {
+            // Filter data and render
+            this.updateChartData();
+            requestAnimationFrame(() => this.updateAutoScrollIndicator());
+        }
 
         // Refresh-safety: on a hard refresh, enterReplayMode can fire before the
         // canvas has its real dimensions (chart.w === 0), AND the async session

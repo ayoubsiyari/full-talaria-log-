@@ -1525,7 +1525,7 @@ class Chart {
 
     /**
      * Apply parsed OHLCV rows: resample, indicators, view fit, drawings, chartDataLoaded.
-     * @param {object} options skipIndicators, skipFitToView
+     * @param {object} options skipIndicators, skipFitToView, skipChartDataLoadedEvent (defer listeners until replay playhead is restored)
      */
     _commitLoadedBars(newData, startIndex, options = {}) {
         if (!newData || newData.length === 0) return;
@@ -1582,16 +1582,18 @@ class Chart {
             this._lastLoadedFileId = this.currentFileId;
         }
 
-        window.dispatchEvent(new CustomEvent('chartDataLoaded', {
-            detail: {
-                chart: this,
-                data: this.data,
-                rawData: this.rawData,
-                symbol: this.currentSymbol,
-                timeframe: this.currentTimeframe
-            }
-        }));
-        this._emitTimeframeChanged();
+        if (!options.skipChartDataLoadedEvent) {
+            window.dispatchEvent(new CustomEvent('chartDataLoaded', {
+                detail: {
+                    chart: this,
+                    data: this.data,
+                    rawData: this.rawData,
+                    symbol: this.currentSymbol,
+                    timeframe: this.currentTimeframe
+                }
+            }));
+            this._emitTimeframeChanged();
+        }
     }
 
     _smartResponseHasPayload(result) {
@@ -12116,7 +12118,11 @@ class Chart {
         this._panLoading = false;
         this._chartViewRestored = false;
         this._commitTimeframeChange(timeframe);
-        this._ingestSmartWindowResult(result, { skipIndicators: true, skipFitToView: true });
+        this._ingestSmartWindowResult(result, {
+            skipIndicators: true,
+            skipFitToView: true,
+            skipChartDataLoadedEvent: true,
+        });
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
             this.compareOverlay.refreshForTimeframe(timeframe);
         }
@@ -12145,7 +12151,7 @@ class Chart {
         this._chartViewRestored = false;
 
         try {
-            replay.enterReplayMode();
+            replay.enterReplayMode({ suppressInitialUpdateChartData: true });
         } catch (e) {
             console.error('[backtest] enterReplayMode after refetch failed', e);
             this._endTimeframeSwitching();
@@ -12157,7 +12163,8 @@ class Chart {
                 replay.applyPersistedState({
                     replayTimestamp: savedReplayTimestamp,
                     speed: savedSpeed,
-                    playbackMode: savedPlaybackMode || undefined
+                    playbackMode: savedPlaybackMode || undefined,
+                    deferChartSync: true,
                 });
             } catch (e) {
                 console.warn('[backtest] applyPersistedState after refetch failed', e);
@@ -12176,12 +12183,21 @@ class Chart {
                 if (b && Number.isFinite(b.t)) {
                     replay.replayTimestamp = b.t;
                 }
-                try {
-                    replay.updateChartData(true);
-                } catch (e) {
-                    console.warn('[backtest] fine-TF replay position after refetch failed', e);
-                }
             }
+        }
+
+        if (typeof replay.updateChartData === 'function') {
+            try {
+                replay.updateChartData(true);
+            } catch (e) {
+                console.warn('[backtest] replay updateChartData after refetch failed', e);
+            }
+        }
+
+        if (typeof this._fireChartDataLoaded === 'function') {
+            try {
+                this._fireChartDataLoaded();
+            } catch (e) { /* ignore */ }
         }
 
         if (wasPlaying && typeof replay.play === 'function') {
