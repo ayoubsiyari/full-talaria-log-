@@ -626,6 +626,28 @@ class ChartSettings(db.Model):
     __table_args__ = (db.UniqueConstraint('user_id', 'symbol', 'session_id', name='uq_user_symbol_session_settings'),)
 
 
+class BrokerConnection(db.Model):
+    """Stores broker API credentials for automated trade sync."""
+    __tablename__ = 'broker_connections'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    broker = db.Column(db.String(50), nullable=False)
+    label = db.Column(db.String(100), nullable=True)
+    auth_type = db.Column(db.String(20), default='api_key')
+    api_key_enc = db.Column(db.Text, nullable=True)
+    api_secret_enc = db.Column(db.Text, nullable=True)
+    api_passphrase_enc = db.Column(db.Text, nullable=True)
+    extra_config = db.Column(JSON, default={})
+    status = db.Column(db.String(20), default='active')
+    last_sync_at = db.Column(db.DateTime, nullable=True)
+    last_error = db.Column(db.Text, nullable=True)
+    last_trade_count = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('broker_connections', lazy=True))
+
+
 class UserPreferences(db.Model):
     """Stores all user preferences for cross-device sync."""
     __tablename__ = 'user_preferences'
