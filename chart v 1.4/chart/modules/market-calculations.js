@@ -325,6 +325,19 @@ class FuturesCalculator {
         return this.specs.tickValue / this.specs.tickSize;
     }
 
+    /**
+     * Approximate initial margin in account currency (linear index futures model).
+     * notional ≈ |mark| × contracts × (USD per full index point per contract) ÷ leverage
+     */
+    calcMargin(entry, contracts, leverage = 20) {
+        const lev = Number.parseFloat(leverage) || 20;
+        if (!(Math.abs(entry) > 0) || !(contracts > 0) || !(lev > 0)) return 0;
+        const pv = this.getPointValue();
+        if (!(pv > 0)) return 0;
+        const notional = Math.abs(entry) * contracts * pv;
+        return notional / lev;
+    }
+
     getSpecs() {
         return {
             type:          'futures',

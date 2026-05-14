@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Talaria — Routing Diagram + Fix Guide</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#07080e;color:#e2e8f0;overflow:hidden;height:100vh}
+
+/* ── TOP BAR ── */
+#top-bar{position:fixed;top:0;left:0;right:0;height:46px;background:#0d1017;border-bottom:1px solid #1e2d45;display:flex;align-items:center;gap:12px;padding:0 14px;z-index:200}
+#top-bar h1{font-size:0.88rem;font-weight:700;background:linear-gradient(90deg,#60a5fa,#a78bfa,#34d399);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;white-space:nowrap}
+.zbtn{background:#151e2e;border:1px solid #1e2d45;color:#94a3b8;padding:3px 9px;border-radius:5px;cursor:pointer;font-size:0.72rem}
+.zbtn:hover{background:#1e3a5f;color:#60a5fa}
+#zlbl{font-size:0.7rem;color:#475569;min-width:40px;text-align:center}
+.leg{display:flex;gap:12px;margin-left:auto;flex-wrap:wrap;align-items:center}
+.li{display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#64748b}
+.ld{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+#panel-toggle{background:#1a2235;border:1px solid #334155;color:#a78bfa;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:0.72rem;white-space:nowrap;flex-shrink:0}
+#panel-toggle:hover{background:#2d1f5e}
+#issue-count-badge{background:#ef4444;color:#fff;border-radius:10px;font-size:0.62rem;font-weight:700;padding:1px 6px;margin-left:4px}
+
+/* ── LAYOUT ── */
+#layout{position:fixed;top:46px;left:0;right:0;bottom:0;display:flex}
+#canvas-wrap{flex:1;overflow:auto;cursor:grab;position:relative;background:#07080e}
+#canvas-wrap:active{cursor:grabbing}
+#canvas{position:relative;width:3300px;height:2200px;transform-origin:0 0}
+
+/* ── ISSUES PANEL ── */
+#issues-panel{width:400px;flex-shrink:0;background:#0d1017;border-left:1px solid #1e2d45;display:flex;flex-direction:column;overflow:hidden;transition:width 0.25s ease}
+#issues-panel.collapsed{width:0;border:none}
+#issues-header{padding:10px 14px;border-bottom:1px solid #1e2d45;flex-shrink:0}
+#issues-header h2{font-size:0.78rem;font-weight:700;color:#e2e8f0}
+#issues-header p{font-size:0.65rem;color:#475569;margin-top:2px}
+#filter-row{display:flex;gap:6px;padding:8px 14px;border-bottom:1px solid #1e2d45;flex-shrink:0;flex-wrap:wrap}
+.flt{font-size:0.62rem;padding:2px 8px;border-radius:12px;cursor:pointer;border:1px solid transparent;transition:all 0.15s}
+.flt.all{background:#1a2235;color:#94a3b8;border-color:#334155}
+.flt.critical{background:#3b1414;color:#f87171;border-color:#dc262644}
+.flt.high{background:#3b2314;color:#fb923c;border-color:#c2410c44}
+.flt.medium{background:#3b2a0d;color:#fbbf24;border-color:#d9770644}
+.flt.low{background:#0d2818;color:#34d399;border-color:#05966944}
+.flt.active{opacity:1;box-shadow:0 0 0 1px currentColor}
+.flt:not(.active){opacity:0.6}
+#issues-list{flex:1;overflow-y:auto;padding:10px 10px 20px}
+#issues-list::-webkit-scrollbar{width:4px}
+#issues-list::-webkit-scrollbar-track{background:transparent}
+#issues-list::-webkit-scrollbar-thumb{background:#1e2d45;border-radius:2px}
+
+/* ── ISSUE CARD ── */
+.icard{background:#111827;border:1px solid #1e2d45;border-radius:8px;margin-bottom:8px;overflow:hidden;transition:border-color 0.2s}
+.icard:hover{border-color:#334155}
+.icard.highlighted{border-color:#60a5fa!important;box-shadow:0 0 12px #3b82f622}
+.icard-header{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;user-select:none}
+.icard-header:hover{background:#151e2e}
+.iid{font-size:0.6rem;font-weight:800;font-family:monospace;color:#475569;min-width:56px}
+.sev{font-size:0.6rem;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap}
+.sev.critical{background:#3b1414;color:#f87171}
+.sev.high{background:#3b2314;color:#fb923c}
+.sev.medium{background:#3b2a0d;color:#fbbf24}
+.sev.low{background:#0d2818;color:#34d399}
+.ititle{font-size:0.72rem;font-weight:600;color:#e2e8f0;flex:1}
+.ichev{font-size:0.7rem;color:#475569;transition:transform 0.15s}
+.icard.open .ichev{transform:rotate(90deg)}
+.icard-body{padding:0 10px;max-height:0;overflow:hidden;transition:max-height 0.25s ease, padding 0.15s}
+.icard.open .icard-body{max-height:600px;padding:0 10px 10px}
+.isec{font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#475569;margin:8px 0 4px}
+.itext{font-size:0.7rem;color:#94a3b8;line-height:1.5}
+.itext strong{color:#e2e8f0}
+.ifile{display:flex;align-items:flex-start;gap:5px;font-size:0.65rem;font-family:monospace;color:#60a5fa;background:#0a1628;border:1px solid #1e3a5f;border-radius:4px;padding:3px 7px;margin:2px 0;word-break:break-all}
+.ifix{font-size:0.7rem;color:#6ee7b7;line-height:1.5;background:#0d281833;border-left:2px solid #059669;padding:6px 8px;border-radius:0 4px 4px 0;margin-top:4px}
+.copy-btn{width:100%;margin-top:8px;background:#1e3a5f;border:1px solid #2563eb44;color:#60a5fa;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:0.68rem;font-weight:600;text-align:left;transition:all 0.15s;display:flex;align-items:center;gap:6px}
+.copy-btn:hover{background:#1d4ed822;border-color:#3b82f6}
+.copy-btn.copied{background:#0d281833;border-color:#05966944;color:#34d399}
+.prompt-box{font-size:0.65rem;font-family:monospace;background:#060a10;border:1px solid #1e2d45;border-radius:5px;padding:8px;color:#a5b4fc;line-height:1.55;white-space:pre-wrap;word-break:break-all;max-height:150px;overflow-y:auto;margin-top:6px;display:none}
+.icard.open .prompt-box.show{display:block}
+
+/* ── ZONES ── */
+.zone{position:absolute;border-radius:14px;border:1px solid}
+.zlabel{position:absolute;font-size:0.58rem;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;padding:3px 8px;border-radius:5px;top:-13px;left:12px}
+
+/* ── NODES ── */
+.node{position:absolute;border-radius:7px;border:1px solid;padding:5px 9px;font-size:0.68rem;font-weight:600;text-align:center;cursor:pointer;line-height:1.3;min-width:108px;transform:translate(-50%,-50%);transition:box-shadow 0.15s,border-color 0.15s;z-index:2}
+.node:hover{z-index:50}
+.node .p{font-size:0.58rem;font-weight:400;opacity:0.65;display:block;font-family:monospace;margin-top:1px}
+.node .n{white-space:nowrap}
+
+/* themes */
+.nhp  {background:#0d1f3c;border-color:#3b82f688;color:#93c5fd}
+.njf  {background:#1a0d3c;border-color:#7c3aed88;color:#c4b5fd}
+.nja  {background:#0d2818;border-color:#05966988;color:#6ee7b7}
+.nauth{background:#1f1a0d;border-color:#d9770688;color:#fcd34d}
+.nchart{background:#1f1800;border-color:#b4530a88;color:#fbbf24}
+.nentry{background:#0f1929;border-color:#2563eb88;color:#93c5fd}
+.ndev {background:#1a1a2e;border-color:#33335588;color:#818cf8;opacity:0.75}
+.nguard{background:#1f0d0d;border-color:#dc262688;color:#fca5a5}
+
+/* issue state overlays */
+.iss-dup    {border-color:#ef444488!important}
+.iss-broken {border-color:#ef4444bb!important;box-shadow:0 0 14px #ef444428}
+.iss-redir  {border-color:#f59e0bbb!important;box-shadow:0 0 10px #f59e0b20}
+.iss-iframe {border-color:#8b5cf6bb!important}
+.iss-dead   {border-color:#6b728088!important;opacity:0.6}
+
+/* highlighted (from issue click) */
+.node.lit{border-color:#60a5facc!important;box-shadow:0 0 18px #3b82f644!important;z-index:60}
+
+.ibadge{position:absolute;top:-7px;right:-7px;width:14px;height:14px;border-radius:50%;font-size:0.55rem;font-weight:800;display:flex;align-items:center;justify-content:center;z-index:10}
+.ib-r{background:#ef4444;color:#fff}
+.ib-y{background:#f59e0b;color:#fff}
+.ib-p{background:#8b5cf6;color:#fff}
+.ib-g{background:#6b7280;color:#fff}
+
+/* SVG */
+svg#arrows{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+
+/* Tooltip */
+#tt{position:fixed;background:#0d1017;border:1px solid #1e2d45;border-radius:7px;padding:7px 11px;font-size:0.68rem;color:#e2e8f0;pointer-events:none;z-index:300;max-width:260px;display:none;line-height:1.5;box-shadow:0 8px 32px rgba(0,0,0,0.5)}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="top-bar">
+  <h1>🦅 Talaria — Routing Map & Fix Guide</h1>
+  <button class="zbtn" onclick="zoom(-0.1)">−</button>
+  <span id="zlbl">65%</span>
+  <button class="zbtn" onclick="zoom(+0.1)">+</button>
+  <button class="zbtn" onclick="resetZoom()">Fit</button>
+  <div class="leg">
+    <span class="li"><span class="ld" style="background:#3b82f6"></span>Homepage</span>
+    <span class="li"><span class="ld" style="background:#7c3aed"></span>Journal</span>
+    <span class="li"><span class="ld" style="background:#059669"></span>Analytics</span>
+    <span class="li"><span class="ld" style="background:#d97706"></span>Auth/Guard</span>
+    <span class="li"><span class="ld" style="background:#ef4444"></span>Broken</span>
+    <span class="li"><span class="ld" style="background:#f59e0b"></span>Redirect chain</span>
+    <span class="li"><span class="ld" style="background:#8b5cf6"></span>iFrame</span>
+  </div>
+  <button id="panel-toggle" onclick="togglePanel()">Issues Panel <span id="issue-count-badge">14</span></button>
+</div>
+
+<div id="tt"></div>
+
+<!-- MAIN LAYOUT -->
+<div id="layout">
+
+<!-- ═══ DIAGRAM CANVAS ═══ -->
+<div id="canvas-wrap">
+<div id="canvas">
+
+<!-- ZONES -->
+<div class="zone" style="left:30px;top:170px;width:700px;height:1120px;background:#0d1f3c12;border-color:#3b82f628">
+  <div class="zlabel" style="background:#0d1f3c;color:#60a5fa">🏠 Homepage — Next.js 15 · /</div>
+</div>
+<div class="zone" style="left:780px;top:170px;width:700px;height:820px;background:#1a0d3c12;border-color:#7c3aed28">
+  <div class="zlabel" style="background:#1a0d3c;color:#a78bfa">📒 Journal Frontend — Public Routes · /journal</div>
+</div>
+<div class="zone" style="left:780px;top:1030px;width:700px;height:310px;background:#1f1a0d12;border-color:#d9770628">
+  <div class="zlabel" style="background:#1f1a0d;color:#fcd34d">🔐 Journal Auth Gate</div>
+</div>
+<div class="zone" style="left:1530px;top:170px;width:660px;height:780px;background:#1a0d3c12;border-color:#7c3aed28">
+  <div class="zlabel" style="background:#1a0d3c;color:#a78bfa">🔒 Journal Protected Pages</div>
+</div>
+<div class="zone" style="left:2250px;top:170px;width:1020px;height:1020px;background:#0d281812;border-color:#05966928">
+  <div class="zlabel" style="background:#0d2818;color:#34d399">📊 Analytics Sub-Pages · /journal/analytics/...</div>
+</div>
+<div class="zone" style="left:1530px;top:1010px;width:660px;height:340px;background:#1f180012;border-color:#b4530a28">
+  <div class="zlabel" style="background:#1f1800;color:#fbbf24">📈 Chart Service · FastAPI (iframe in Dashboard)</div>
+</div>
+
+<!-- ══ ENTRY ══ -->
+<div class="node nentry" id="n-browser" style="left:1380px;top:52px" data-tip="All traffic enters here. Nginx on :3000 routes to services." data-issues="">
+  <div class="n">🌍 Browser</div><span class="p">User Entry</span>
+</div>
+<div class="node nentry" id="n-nginx" style="left:1380px;top:138px" data-tip="Nginx reverse proxy. / → Homepage, /journal → Journal SPA, /api → Flask, /chart → FastAPI." data-issues="">
+  <div class="n">🔀 Nginx :3000</div><span class="p">Reverse Proxy</span>
+</div>
+
+<!-- ══ HOMEPAGE ══ -->
+<div class="node nhp" id="n-home" style="left:190px;top:310px" data-tip="Marketing landing. Links to Login, Sign Up, Bootcamp, Journal, Backtest, Strategies Lab. Profile flyout shows 'Go to Dashboard'." data-issues="I006,I007">
+  <div class="n">🏠 Landing</div><span class="p">/</span>
+</div>
+<div class="node nhp" id="n-register" style="left:190px;top:170px" data-tip="Register page — separate route /register/." data-issues="">
+  <div class="n">📝 Register</div><span class="p">/register/</span>
+</div>
+<div class="node nhp" id="n-login" style="left:420px;top:310px" data-tip="Login/Register UI. Reads ?mode=signin|signup and ?next= param. On success, getPostAuthRedirectUrl() → /dashboard/ (admin) or /journal/dashboard (journal access) or /journal/pricing (no access)." data-issues="">
+  <div class="n">🔑 Login / Register</div><span class="p">/login/</span>
+</div>
+<div class="node nhp iss-iframe" id="n-dashboard-shell" style="left:630px;top:310px" data-tip="Dashboard shell. Auth via /api/auth/me (cookie). Nav tabs: Dashboard, Journal (iframe), Backtest (component), Strategies (iframe), Resources (iframe), COT, Support. Logout → /login/." data-issues="I008,I009">
+  <div class="n">🖥 Dashboard Shell</div><span class="p">/dashboard/</span>
+  <div class="ibadge ib-p">▣</div>
+</div>
+<div class="node nhp" id="n-bootcamp" style="left:160px;top:480px" data-tip="Bootcamp — educational content. Requires login (?next=/bootcamp/ if guest). Also loaded as iframe in Dashboard shell 'Resources' tab." data-issues="">
+  <div class="n">🎓 Bootcamp</div><span class="p">/bootcamp/</span>
+</div>
+<div class="node nhp iss-iframe" id="n-strat-lab" style="left:380px;top:480px" data-tip="Strategy Lab — Next.js page. Standalone URL + loaded as iframe in Dashboard Shell 'Strategies' tab. Requires login." data-issues="I009">
+  <div class="n">⚗️ Strategies Lab</div><span class="p">/strategies-lab/</span>
+  <div class="ibadge ib-p">▣</div>
+</div>
+<div class="node nhp" id="n-backtest-tab" style="left:600px;top:480px" data-tip="BacktestView.tsx rendered inline in Dashboard shell when 'Backtest' tab is active. Calls Chart FastAPI service." data-issues="I014">
+  <div class="n">📊 Backtest View</div><span class="p">/dashboard/ (tab)</span>
+</div>
+<div class="node nhp" id="n-backtest-page" style="left:600px;top:600px" data-tip="Dedicated /backtest/ page. Requires login. Relationship to /dashboard/ backtest tab unclear — may be a duplicate entry point." data-issues="I014">
+  <div class="n">📊 Backtest Page</div><span class="p">/backtest/</span>
+  <div class="ibadge ib-y">?</div>
+</div>
+<div class="node nhp" id="n-cot" style="left:200px;top:660px" data-tip="COT Analysis sub-page within the dashboard." data-issues="">
+  <div class="n">📉 COT Analysis</div><span class="p">/dashboard/cot/</span>
+</div>
+<div class="node nhp" id="n-support" style="left:400px;top:660px" data-tip="Support tickets. Notification bell links to /dashboard/support/?thread=N. WebSocket /ws/support for live notifications." data-issues="">
+  <div class="n">💬 Support</div><span class="p">/dashboard/support/</span>
+</div>
+<div class="node nhp" id="n-admin-hp" style="left:620px;top:660px" data-tip="Admin panel — only shown when user.role === 'admin'." data-issues="">
+  <div class="n">🛠 Admin Panel</div><span class="p">/dashboard/admin/</span>
+</div>
+<div class="node nhp" id="n-ninjatrader" style="left:200px;top:800px" data-tip="NinjaTrader integration page." data-issues="">
+  <div class="n">🥷 NinjaTrader</div><span class="p">/ninjatrader/</span>
+</div>
+<!-- HP Legal -->
+<div class="node nhp iss-dup" id="n-hp-privacy" style="left:130px;top:960px" data-tip="⚠ DUPLICATE of /journal/privacy-policy" data-issues="I005">
+  <div class="n">📄 Privacy</div><span class="p">/privacy/</span>
+  <div class="ibadge ib-r">!</div>
+</div>
+<div class="node nhp iss-dup" id="n-hp-terms" style="left:270px;top:960px" data-tip="⚠ DUPLICATE of /journal/terms" data-issues="I005">
+  <div class="n">📄 Terms</div><span class="p">/terms/</span>
+  <div class="ibadge ib-r">!</div>
+</div>
+<div class="node nhp iss-dup" id="n-hp-refunds" style="left:410px;top:960px" data-tip="⚠ DUPLICATE of /journal/refund-policy" data-issues="I005">
+  <div class="n">📄 Refunds</div><span class="p">/refunds/</span>
+  <div class="ibadge ib-r">!</div>
+</div>
+<div class="node nhp iss-dup" id="n-hp-disclaimer" style="left:550px;top:960px" data-tip="⚠ DUPLICATE of /journal/disclaimer" data-issues="I005">
+  <div class="n">📄 Disclaimer</div><span class="p">/disclaimer/</span>
+  <div class="ibadge ib-r">!</div>
+</div>
+<div class="node nhp" id="n-hp-ninjatrader-page" style="left:680px;top:960px" data-tip="NinjaTrader dedicated page on homepage." data-issues="">
+  <div class="n">🥷 NinjaTrader HP</div><span class="p">/ninjatrader/</span>
+</div>
+
+<!-- ══ JOURNAL PUBLIC ══ -->
+<div class="node njf iss-dup" id="n-j-home" style="left:850px;top:310px" data-tip="⚠ DUPLICATE LANDING: Home.jsx (28KB) is a full marketing page — duplicates the homepage. Only useful for unauthenticated /journal/ visitors. Contains broken footer links to /integrations, /docs, /support." data-issues="I006,I002">
+  <div class="n">🏠 Journal Home</div><span class="p">/journal/</span>
+  <div class="ibadge ib-r">!</div>
+</div>
+<div class="node njf" id="n-j-verify" style="left:850px;top:450px" data-tip="Email verification. Reads token from URL params." data-issues="">
+  <div class="n">✉️ Verify Email</div><span class="p">/journal/verify-email</span>
+</div>
+<div class="node njf" id="n-j-resend" style="left:850px;top:570px" data-tip="Resend email verification link." data-issues="">
+  <div class="n">🔄 Resend Verify</div><span class="p">/journal/resend-verification</span>
+</div>
+<div class="node njf" id="n-j-onboarding" style="left:1060px;top:310px" data-tip="New user onboarding flow." data-issues="">
+  <div class="n">🚀 Onboarding</div><span class="p">/journal/onboarding</span>
+</div>
+<div class="node njf" id="n-j-pricing" style="left:1060px;top:450px" data-tip="Subscription pricing. Initiates Stripe checkout. No active subscription → shown after login." data-issues="">
+  <div class="n">💳 Pricing</div><span class="p">/journal/pricing</span>
+</div>
+<div class="node njf" id="n-j-sub-success" style="left:1060px;top:570px" data-tip="Post-Stripe success. Shows confirmation then redirects to /journal/dashboard." data-issues="">
+  <div class="n">✅ Sub Success</div><span class="p">/journal/subscription/success</span>
+</div>
+<div class="node njf" id="n-j-sub-status" style="left:1270px;top:310px" data-tip="Paywall page — shown by ProtectedLayout when !hasAccess. Links to /journal/pricing." data-issues="">
+  <div class="n">🔒 Sub Required</div><span class="p">/journal/subscription-status</span>
+</div>
+<div class="node njf iss-dup" id="n-j-features" style="left:1270px;top:450px" data-tip="⚠ DUPLICATE: Features page inside journal — duplicates homepage features section. Also has broken /login link from Home.jsx nav." data-issues="I007">
+  <div class="n">⚡ Features</div><span class="p">/journal/features</span>
+  <div class="ibadge ib-r">!</div>
+</div>
+<div class="node njf iss-dup" id="n-j-contact" style="left:1270px;top:570px" data-tip="⚠ DUPLICATE: Contact inside journal — duplicates homepage contact. /support link in Home.jsx footer leads here." data-issues="I007">
+  <div class="n">📬 Contact</div><span class="p">/journal/contact</span>
+  <div class="ibadge ib-r">!</div>
+</div>
+<!-- Journal legal row -->
+<div class="node njf iss-dup" id="n-j-privacy" style="left:850px;top:720px" data-tip="⚠ DUPLICATE of /privacy/" data-issues="I005">
+  <div class="n">📄 Privacy Policy</div><span class="p">/journal/privacy-policy</span>
+  <div class="ibadge ib-r">!</div>
+</div>
+<div class="node njf iss-dup" id="n-j-terms" style="left:990px;top:720px" data-tip="⚠ DUPLICATE of /terms/" data-issues="I005">
+  <div class="n">📄 Terms</div><span class="p">/journal/terms</span>
+  <div class="ibadge ib-r">!</div>
+</div>
+<div class="node njf iss-dup" id="n-j-refund" style="left:1130px;top:720px" data-tip="⚠ DUPLICATE of /refunds/" data-issues="I005">
+  <div class="n">📄 Refund Policy</div><span class="p">/journal/refund-policy</span>
+  <div class="ibadge ib-r">!</div>
+</div>
+<div class="node njf iss-dup" id="n-j-disclaimer" style="left:1270px;top:720px" data-tip="⚠ DUPLICATE of /disclaimer/" data-issues="I005">
+  <div class="n">📄 Disclaimer</div><span class="p">/journal/disclaimer</span>
+  <div class="ibadge ib-r">!</div>
+</div>
+<div class="node njf" id="n-j-cookie" style="left:990px;top:860px" data-tip="Cookie Policy — unique to journal (no homepage duplicate)." data-issues="">
+  <div class="n">🍪 Cookie Policy</div><span class="p">/journal/cookie-policy</span>
+</div>
+<div class="node njf" id="n-j-legal" style="left:1150px;top:860px" data-tip="General Legal aggregated page." data-issues="">
+  <div class="n">⚖️ Legal</div><span class="p">/journal/legal</span>
+</div>
+<!-- BROKEN LINKS from Home.jsx footer -->
+<div class="node njf iss-broken" id="n-j-broken-integrations" style="left:850px;top:860px" data-tip="🔴 BROKEN: /journal/integrations — linked from Home.jsx footer but has NO route. Catch-all → /journal/dashboard." data-issues="I002">
+  <div class="n">❌ /integrations</div><span class="p">/journal/integrations</span>
+  <div class="ibadge ib-r">✗</div>
+</div>
+<div class="node njf iss-broken" id="n-j-broken-docs" style="left:1000px;top:960px" data-tip="🔴 BROKEN: /journal/docs — linked from Home.jsx footer but has NO route." data-issues="I002">
+  <div class="n">❌ /docs</div><span class="p">/journal/docs</span>
+  <div class="ibadge ib-r">✗</div>
+</div>
+<div class="node njf iss-broken" id="n-j-broken-support" style="left:1160px;top:960px" data-tip="🔴 BROKEN: /journal/support — linked from Home.jsx footer but has NO route. /dashboard/support/ is on the homepage app, not journal." data-issues="I002">
+  <div class="n">❌ /support</div><span class="p">/journal/support</span>
+  <div class="ibadge ib-r">✗</div>
+</div>
+<div class="node njf iss-broken" id="n-j-broken-login-space" style="left:1320px;top:860px" data-tip='🔴 BUG: Home.jsx line 193 has &lt;Link to="/login "&gt; — note the TRAILING SPACE. Resolves to /journal/login%20 — a 404.' data-issues="I001">
+  <div class="n">❌ "/login " (space!)</div><span class="p">Home.jsx:193 BUG</span>
+  <div class="ibadge ib-r">✗</div>
+</div>
+
+<!-- ══ AUTH GATE ══ -->
+<div class="node nauth" id="n-j-protected-layout" style="left:1060px;top:1100px" data-tip="ProtectedLayout — 3 sequential checks: (1) !token → window.location.replace('/login/?next=...') (2) !activeProfile → /journal/select-profile (3) !hasAccess (subscription) → /journal/subscription-status." data-issues="I004">
+  <div class="n">🔐 ProtectedLayout</div><span class="p">Auth + Profile + Sub</span>
+</div>
+<div class="node nauth" id="n-j-select-profile" style="left:860px;top:1230px" data-tip="Profile selection. Shown when authenticated but no active trading profile. After selection → proceeds to LayoutWithSidebar." data-issues="">
+  <div class="n">👤 Select Profile</div><span class="p">/journal/select-profile</span>
+</div>
+<div class="node nguard" id="n-protected-route" style="left:1060px;top:1240px" data-tip="ProtectedRoute HOC — auth check only. Feature flag check COMMENTED OUT (Issue #010). If !token: Navigate to '/login' (within basename → /journal/login → ProtectedLayout catches it → second redirect to /login/)." data-issues="I004,I010">
+  <div class="n">🔒 ProtectedRoute</div><span class="p">HOC · flags disabled</span>
+</div>
+<div class="node nguard" id="n-sub-guard" style="left:1260px;top:1240px" data-tip="SubscriptionGuard HOC — verifies /api/subscriptions/my-subscription on every mount. Admin bypass via JWT payload. Shows paywall UI inline (no redirect)." data-issues="">
+  <div class="n">🛡 SubscriptionGuard</div><span class="p">HOC per route</span>
+</div>
+
+<!-- ══ JOURNAL PROTECTED ══ -->
+<div class="node njf iss-iframe" id="n-j-dashboard" style="left:1590px;top:310px" data-tip="Main dashboard. Also embedded as iframe in /dashboard/ shell 'Journal' tab. Runs auth, context, API calls TWICE when in iframe context." data-issues="I009,I008">
+  <div class="n">📊 Dashboard</div><span class="p">/journal/dashboard</span>
+  <div class="ibadge ib-p">▣</div>
+</div>
+<div class="node njf" id="n-j-journal" style="left:1770px;top:310px" data-tip="Trade journal log (120KB). Add/edit/delete trades. Rich text notes via Tiptap. Tags, variables, strategy tagging." data-issues="">
+  <div class="n">📝 Journal</div><span class="p">/journal/journal</span>
+</div>
+<div class="node njf" id="n-j-trades" style="left:1950px;top:310px" data-tip="Trades list with advanced filter. Links to analytics sub-pages." data-issues="">
+  <div class="n">💹 Trades</div><span class="p">/journal/trades</span>
+</div>
+<div class="node njf" id="n-j-ai" style="left:1590px;top:460px" data-tip="AI Dashboard — AI-powered analysis of your trading patterns." data-issues="">
+  <div class="n">🤖 AI Dashboard</div><span class="p">/journal/ai-dashboard</span>
+</div>
+<div class="node njf" id="n-j-import" style="left:1770px;top:460px" data-tip="Import trades from CSV, FTP (NinjaTrader live). PapaParse client-side CSV." data-issues="">
+  <div class="n">📥 Import Trades</div><span class="p">/journal/import-trades</span>
+</div>
+<div class="node njf" id="n-j-settings" style="left:1950px;top:460px" data-tip="Settings (166KB). Profile, account, subscription mgmt, custom variables, API config." data-issues="">
+  <div class="n">⚙️ Settings</div><span class="p">/journal/settings</span>
+</div>
+<div class="node njf" id="n-j-notes" style="left:1590px;top:610px" data-tip="Notes — trading journal notes and observations." data-issues="">
+  <div class="n">📋 Notes</div><span class="p">/journal/notes</span>
+</div>
+<div class="node njf" id="n-j-learn" style="left:1770px;top:610px" data-tip="Learning resources and educational content." data-issues="">
+  <div class="n">📚 Learn</div><span class="p">/journal/learn</span>
+</div>
+<div class="node njf" id="n-j-manage" style="left:1950px;top:610px" data-tip="Profile management — create/switch/delete profiles. Modes: journal, backtest, journal_live (FTP)." data-issues="">
+  <div class="n">👤 Manage Profiles</div><span class="p">/journal/manage-profiles</span>
+</div>
+<div class="node njf iss-redir" id="n-j-strategy-builder" style="left:1590px;top:760px" data-tip="↪ REDIRECT CHAIN: Renders StrategiesLabRedirect component → window.location.replace('/strategies-lab/'). Sidebar already uses &lt;a href&gt; directly. This route is dead code." data-issues="I003">
+  <div class="n">⚗️ Strategy Builder</div><span class="p">/journal/strategy-builder</span>
+  <div class="ibadge ib-y">↪</div>
+</div>
+<div class="node ndev" id="n-j-admin-flags" style="left:1800px;top:760px" data-tip="Admin only: Feature Flag Manager UI." data-issues="I010">
+  <div class="n">🚩 Feature Flags</div><span class="p">/journal/admin/feature-flags</span>
+</div>
+<div class="node ndev" id="n-j-catchall" style="left:1950px;top:760px" data-tip="⚠ Silent catch-all: Any unknown URL inside protected layout → /journal/dashboard. No 404 shown." data-issues="I013">
+  <div class="n">🔀 * catch-all</div><span class="p">→ /journal/dashboard</span>
+  <div class="ibadge ib-y">!</div>
+</div>
+<!-- Dev routes -->
+<div class="node ndev iss-dead" id="n-j-test-combos" style="left:1680px;top:880px" data-tip="Dev route in production router. No sidebar link." data-issues="I011">
+  <div class="n">🧪 Test Combos</div><span class="p">/journal/test-combinations</span>
+  <div class="ibadge ib-g">⚙</div>
+</div>
+<div class="node ndev iss-dead" id="n-j-test-filter" style="left:1870px;top:880px" data-tip="Dev route in production router. No sidebar link." data-issues="I011">
+  <div class="n">🧪 Test Filter</div><span class="p">/journal/test-filter</span>
+  <div class="ibadge ib-g">⚙</div>
+</div>
+
+<!-- ══ ANALYTICS ══ -->
+<div class="node nja" id="n-j-analytics" style="left:2700px;top:280px" data-tip="Analytics hub. Top-level route with tabs. Sidebar dropdown links to all sub-pages." data-issues="">
+  <div class="n">📊 Analytics Hub</div><span class="p">/journal/analytics</span>
+</div>
+<div class="node nja" id="n-an-equity" style="left:2320px;top:430px" data-tip="Equity curve — cumulative P&L over time (46KB)." data-issues=""><div class="n">📈 Equity Curve</div><span class="p">analytics/equity</span></div>
+<div class="node nja" id="n-an-calendar" style="left:2490px;top:430px" data-tip="Calendar heat-map of daily P&L." data-issues=""><div class="n">📅 Calendar</div><span class="p">analytics/calendar</span></div>
+<div class="node nja" id="n-an-perf" style="left:2660px;top:430px" data-tip="Performance analysis dashboard." data-issues=""><div class="n">🎯 Performance</div><span class="p">analytics/performance-analysis</span></div>
+<div class="node nja" id="n-an-streaks" style="left:2830px;top:430px" data-tip="Win/loss streak patterns (29KB)." data-issues=""><div class="n">⚡ Streak Analyzer</div><span class="p">analytics/streaks</span></div>
+<div class="node nja" id="n-an-duration" style="left:3000px;top:430px" data-tip="Trade duration stats (29KB)." data-issues=""><div class="n">⏱ Trade Duration</div><span class="p">analytics/trade-duration</span></div>
+<div class="node nja" id="n-an-exit" style="left:2320px;top:590px" data-tip="Exit quality scoring (18KB)." data-issues=""><div class="n">🎯 Exit Analysis</div><span class="p">analytics/exitanalysis</span></div>
+<div class="node nja" id="n-an-exit2" style="left:2510px;top:590px" data-tip="Improved exit scoring model (56KB)." data-issues=""><div class="n">🎯 Exit Amelioration</div><span class="p">analytics/exitanalysis-amelioration</span></div>
+<div class="node nja" id="n-an-pnl" style="left:2710px;top:590px" data-tip="P&L distribution histogram." data-issues=""><div class="n">💰 P&L Distribution</div><span class="p">analytics/pnl-distribution</span></div>
+<div class="node nja" id="n-an-daily" style="left:2930px;top:590px" data-tip="Daily limit optimization (57KB)." data-issues=""><div class="n">🛑 Daily Limit Opt.</div><span class="p">analytics/daily-limit-optimization</span></div>
+<div class="node nja" id="n-an-symbols" style="left:2320px;top:750px" data-tip="Per-symbol performance (60KB)." data-issues=""><div class="n">🔤 Symbol Analysis</div><span class="p">analytics/symbols</span></div>
+<div class="node nja" id="n-an-vars" style="left:2510px;top:750px" data-tip="Custom variable analysis (127KB — largest file)." data-issues=""><div class="n">🔬 Variables Analysis</div><span class="p">analytics/variables</span></div>
+<div class="node nja" id="n-an-combos" style="left:2720px;top:750px" data-tip="Best variable combinations." data-issues=""><div class="n">🔀 Top Combinations</div><span class="p">analytics/top-combinations</span></div>
+<div class="node nja" id="n-an-allmetrics" style="left:2940px;top:750px" data-tip="200+ metrics in one view (55KB)." data-issues=""><div class="n">📋 All Metrics</div><span class="p">analytics/all-metrics</span></div>
+<div class="node nja" id="n-an-recent" style="left:2420px;top:910px" data-tip="Recent trade entries." data-issues=""><div class="n">🕐 Recent Trades</div><span class="p">analytics/recent-trades</span></div>
+<div class="node ndev iss-dead" id="n-an-dur-simple" style="left:2660px;top:910px" data-tip="Simple duration page. In router but NOT in sidebar — orphaned route." data-issues="I012">
+  <div class="n">⏱ Duration Simple</div><span class="p">analytics/trade-duration-simple</span>
+  <div class="ibadge ib-g">⚙</div>
+</div>
+
+<!-- ══ CHART SERVICE ══ -->
+<div class="node nchart" id="n-chart-app" style="left:1680px;top:1110px" data-tip="Trading Chart FastAPI service. Loaded as iframe in Dashboard 'Backtest' tab. chart.js (1MB), sessions, analytics_core." data-issues="I009">
+  <div class="n">📈 Chart Service</div><span class="p">FastAPI :8000</span>
+  <div class="ibadge ib-p">▣</div>
+</div>
+<div class="node nchart" id="n-chart-backtest" style="left:1580px;top:1260px" data-tip="Backtest session UI — create/run on historical data." data-issues=""><div class="n">🔬 Backtest Sessions</div><span class="p">/sessions.html</span></div>
+<div class="node nchart" id="n-chart-propfirm" style="left:1790px;top:1260px" data-tip="PropFirm challenge simulator." data-issues=""><div class="n">🏦 PropFirm Backtest</div><span class="p">/propfirm-backtest.html</span></div>
+
+<!-- SVG -->
+<svg id="arrows"></svg>
+</div>
+</div>
+
+<!-- ═══ ISSUES PANEL ═══ -->
+<div id="issues-panel">
+  <div id="issues-header">
+    <h2>🔧 Routing Issues — Fix Guide</h2>
+    <p>Click any card to expand. Use "Copy Agent Prompt" to fix with AI.</p>
+  </div>
+  <div id="filter-row">
+    <button class="flt critical active" onclick="filterSev('critical')">🔴 Critical</button>
+    <button class="flt high active" onclick="filterSev('high')">🟠 High</button>
+    <button class="flt medium active" onclick="filterSev('medium')">🟡 Medium</button>
+    <button class="flt low active" onclick="filterSev('low')">🟢 Low</button>
+    <button class="flt all active" onclick="filterSev('all')" style="margin-left:auto">All</button>
+  </div>
+  <div id="issues-list">
+  <!-- CARDS INJECTED BY JS -->
+  </div>
+</div>
+
+</div><!-- end layout -->
+
+<script>
+// ══════════════════════════════════════════════
+// ISSUES DATA
+// ══════════════════════════════════════════════
+const ISSUES = [
+{
+  id:'I001', sev:'critical', title:'Trailing space bug in Login link',
+  nodes:['n-j-home','n-j-broken-login-space'],
+  problem:'In <strong>Home.jsx line 193</strong>, a Sign Up button has <code>&lt;Link to="/login "&gt;</code> — note the trailing space. React Router resolves this to <code>/journal/login%20</code> which has no route and silently falls through the catch-all to <code>/journal/dashboard</code>. Users clicking "Sign up" while on the journal home will be sent to the dashboard instead of the register page.',
+  files:['journal-frontend/src/pages/Home.jsx : line 193'],
+  fix:'Change <code>to="/login "</code> to <code>to="/login"</code> (remove trailing space). Also consider whether this should go to the homepage <code>/login/?mode=signup</code> instead.',
+  prompt:`In journal-frontend/src/pages/Home.jsx at line 193, fix the trailing space bug:
+
+FIND:
+  <Link to="/login " className="px-4 py-2 bg-cyan-400
+
+REPLACE WITH:
+  <Link to="/login" className="px-4 py-2 bg-cyan-400
+
+Also consider changing it to an absolute href for the homepage login:
+  <a href="/login/?mode=signup" className="px-4 py-2 bg-cyan-400`
+},
+{
+  id:'I002', sev:'critical', title:'3 Broken footer links in Home.jsx',
+  nodes:['n-j-home','n-j-broken-integrations','n-j-broken-docs','n-j-broken-support'],
+  problem:'The footer in <strong>Home.jsx</strong> (the journal landing page) has three <code>&lt;Link&gt;</code> components pointing to routes that do not exist in the React Router config. They silently hit the catch-all and redirect to <code>/journal/dashboard</code>.<br><br>• <code>&lt;Link to="/integrations"&gt;</code> — no route<br>• <code>&lt;Link to="/docs"&gt;</code> — no route<br>• <code>&lt;Link to="/support"&gt;</code> — support is at <code>/dashboard/support/</code> on the <em>homepage</em> app, not inside journal',
+  files:['journal-frontend/src/pages/Home.jsx : lines 557, 564, 565'],
+  fix:'Either: (a) add proper pages for these routes, or (b) replace with absolute <code>&lt;a href&gt;</code> links pointing to the right destinations, or (c) remove links that have no target yet.',
+  prompt:`In journal-frontend/src/pages/Home.jsx, fix three broken footer links:
+
+1. Line ~557: Change broken <Link to="/integrations"> to either remove it or point to a real URL:
+   <a href="#" className={...}>Integrations</a>  {/* TODO: add integrations page */}
+
+2. Line ~564: Change broken <Link to="/docs"> to a real URL or remove it:
+   <a href="#" className={...}>Documentation</a>  {/* TODO: add docs */}
+
+3. Line ~565: Change broken <Link to="/support"> to the correct absolute URL:
+   <a href="/dashboard/support/" className={...}>Support</a>`
+},
+{
+  id:'I003', sev:'high', title:'3-hop Strategy Builder redirect chain',
+  nodes:['n-j-strategy-builder','n-strat-lab'],
+  problem:'The route <code>/journal/strategy-builder</code> renders the <code>StrategiesLabRedirect</code> component (App.jsx lines 90-99 and 183-191). This component just calls <code>window.location.replace(\'/strategies-lab/\')</code>. The Sidebar already links directly to <code>/strategies-lab/</code> via <code>&lt;a href&gt;</code>, making this route dead code that wastes a navigation hop.',
+  files:[
+    'journal-frontend/src/App.jsx : lines 90-99 (StrategiesLabRedirect function)',
+    'journal-frontend/src/App.jsx : lines 183-191 (route definition)'
+  ],
+  fix:'Remove the <code>StrategiesLabRedirect</code> function and the entire <code>/strategy-builder</code> route from App.jsx. The sidebar already handles this correctly.',
+  prompt:`In journal-frontend/src/App.jsx, remove the dead StrategiesLabRedirect code:
+
+1. Delete lines 90-99 (the StrategiesLabRedirect function):
+/** Strategies Lab is served from the main site at /strategies-lab/ ... */
+function StrategiesLabRedirect() {
+  useEffect(() => {
+    window.location.replace('/strategies-lab/');
+  }, []);
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center text-cyan-200">
+      Opening Strategies Lab…
+    </div>
+  );
+}
+
+2. Delete lines 183-191 (the route):
+<Route path="/strategy-builder" element={
+  <ProtectedRoute feature="STRATEGY_BUILDER" fallbackComponent={
+    <FeatureDisabled featureName="Strategy Builder" />
+  }>
+    <SubscriptionGuard feature="Strategy Builder">
+      <StrategiesLabRedirect />
+    </SubscriptionGuard>
+  </ProtectedRoute>
+} />
+
+3. Remove the import of StrategiesLabRedirect from App.jsx if it was separate.`
+},
+{
+  id:'I004', sev:'high', title:'Double login redirect for unauthenticated journal users',
+  nodes:['n-protected-route','n-j-protected-layout'],
+  problem:'When a user visits a protected journal page without a token:<br>1. <code>ProtectedRoute</code> (line 48) returns <code>&lt;Navigate to="/login" replace /&gt;</code><br>2. Within basename <code>/journal</code>, this navigates to <code>/journal/login</code><br>3. <code>AppRoutes</code> (line 575) catches <code>/login</code> and calls <code>window.location.replace(\'/login/?next=...\')</code><br>4. Full page redirect to homepage login<br><br>Also: <code>ProtectedLayout</code> (line 519) directly calls <code>window.location.replace(\'/login/?next=...\')</code> for the same case — so there are TWO parallel paths doing the same thing.',
+  files:[
+    'journal-frontend/src/components/ProtectedRoute.jsx : line 48',
+    'journal-frontend/src/App.jsx : lines 510-522 (ProtectedLayout)',
+    'journal-frontend/src/App.jsx : lines 575-581 (AppRoutes /login handler)'
+  ],
+  fix:'Consolidate to one path. Since <code>ProtectedLayout</code> already handles the redirect correctly, simplify <code>ProtectedRoute</code> to not do its own redirect (or use <code>window.location.replace</code> directly instead of <code>Navigate</code>).',
+  prompt:`In journal-frontend/src/components/ProtectedRoute.jsx, change line 48 to use an absolute redirect instead of React Router Navigate:
+
+FIND:
+  if (requireAuth && !token) {
+    return <Navigate to="/login" replace />;
+  }
+
+REPLACE WITH:
+  if (requireAuth && !token) {
+    if (typeof window !== 'undefined') {
+      window.location.replace('/login/?next=' + encodeURIComponent(window.location.pathname + window.location.search));
+    }
+    return null;
+  }
+
+This bypasses the basename /journal and goes directly to the homepage login without the extra hop through /journal/login.`
+},
+{
+  id:'I005', sev:'medium', title:'6 duplicate legal/policy pages',
+  nodes:['n-hp-privacy','n-hp-terms','n-hp-refunds','n-hp-disclaimer','n-j-privacy','n-j-terms','n-j-refund','n-j-disclaimer'],
+  problem:'The same legal content is served from two separate pages — one in the Homepage (Next.js) and one in the Journal Frontend (React). This means two sets of pages to maintain, potential content drift, and confusing URLs for users who might find one version via search.<br><br>Duplicate pairs:<br>• <code>/privacy/</code> ↔ <code>/journal/privacy-policy</code><br>• <code>/terms/</code> ↔ <code>/journal/terms</code><br>• <code>/refunds/</code> ↔ <code>/journal/refund-policy</code><br>• <code>/disclaimer/</code> ↔ <code>/journal/disclaimer</code>',
+  files:[
+    'journal-frontend/src/pages/PrivacyPolicy.jsx',
+    'journal-frontend/src/pages/TermsOfService.jsx',
+    'journal-frontend/src/pages/RefundPolicy.jsx',
+    'journal-frontend/src/pages/Disclaimer.jsx',
+    'journal-frontend/src/App.jsx : lines 595-600 (route definitions)'
+  ],
+  fix:'Replace each journal legal page component with a redirect to the homepage canonical version. The homepage pages at <code>/privacy/</code>, <code>/terms/</code> etc. should be the single source of truth.',
+  prompt:`In journal-frontend/src/pages/PrivacyPolicy.jsx, replace the entire file content with a redirect:
+
+import { useEffect } from 'react';
+export default function PrivacyPolicy() {
+  useEffect(() => { window.location.replace('/privacy/'); }, []);
+  return null;
+}
+
+Apply the same pattern to:
+- TermsOfService.jsx → redirect to /terms/
+- RefundPolicy.jsx → redirect to /refunds/  
+- Disclaimer.jsx → redirect to /disclaimer/
+
+This keeps the homepage as the single source of truth for legal pages.`
+},
+{
+  id:'I006', sev:'medium', title:'Duplicate landing page (Home.jsx inside /journal)',
+  nodes:['n-j-home','n-home'],
+  problem:'<code>journal-frontend/src/pages/Home.jsx</code> (28KB) is a full marketing/landing page served at <code>/journal/</code>. The main homepage at <code>/</code> (page.tsx, 40KB) is also a marketing landing page. Unauthenticated users visiting <code>/journal/</code> see a Journal-branded landing page instead of the main homepage.<br><br>This creates brand/content inconsistency, extra maintenance burden, and confusion about which is the canonical landing page.',
+  files:[
+    'journal-frontend/src/pages/Home.jsx (entire file — 28KB)',
+    'journal-frontend/src/App.jsx : line 602 (route: path="/")'
+  ],
+  fix:'For unauthenticated visitors, redirect <code>/journal/</code> to <code>/</code> (the homepage). The journal Home.jsx can be simplified to just handle the redirect logic that it already does for authenticated users.',
+  prompt:`In journal-frontend/src/App.jsx, replace the Home page route inside AppRoutes public path handler:
+
+FIND (line ~602):
+  <Route path="/" element={<Home />} />
+
+REPLACE WITH:
+  <Route path="/" element={<JournalHomeRedirect />} />
+
+And add this component before AppRoutes:
+function JournalHomeRedirect() {
+  const { token } = useAuth();
+  const { activeProfile } = useProfile();
+  useEffect(() => {
+    if (!token) {
+      window.location.replace('/');
+    }
+  }, [token]);
+  if (token && activeProfile) return <Navigate to="/dashboard" replace />;
+  if (token && !activeProfile) return <Navigate to="/select-profile" replace />;
+  return null;
+}
+
+This redirects guest users to the homepage and keeps authenticated routing intact. You can then delete Home.jsx or keep it as a redirect stub.`
+},
+{
+  id:'I007', sev:'medium', title:'Duplicate Features and Contact pages',
+  nodes:['n-j-features','n-j-contact'],
+  problem:'<code>/journal/features</code> and <code>/journal/contact</code> are full pages inside the Journal SPA that duplicate content from the homepage. The journal <code>Home.jsx</code> navbar links to both. These pages serve no unique purpose inside the journal app.',
+  files:[
+    'journal-frontend/src/pages/Features.jsx',
+    'journal-frontend/src/pages/Contact.jsx',
+    'journal-frontend/src/App.jsx : lines 590-592, 594-596'
+  ],
+  fix:'Replace with redirects to the homepage equivalents or remove the routes entirely.',
+  prompt:`In journal-frontend/src/pages/Features.jsx, replace the entire content:
+import { useEffect } from 'react';
+export default function Features() {
+  useEffect(() => { window.location.replace('/#features'); }, []);
+  return null;
+}
+
+In journal-frontend/src/pages/Contact.jsx, replace the entire content:
+import { useEffect } from 'react';
+export default function Contact() {
+  useEffect(() => { window.location.replace('/#contact'); }, []);
+  return null;
+}`
+},
+{
+  id:'I008', sev:'high', title:'Mixed auth systems (cookie vs JWT)',
+  nodes:['n-dashboard-shell','n-j-dashboard'],
+  problem:'Two different authentication mechanisms are used across the platform:<br><br>• <strong>Dashboard shell</strong> (<code>/dashboard/</code>): cookie-based auth via <code>fetch(\'/api/auth/me\', { credentials: "include" })</code><br>• <strong>Journal frontend</strong> (<code>/journal/</code>): JWT stored in localStorage, sent as <code>Authorization: Bearer &lt;token&gt;</code><br><br>A user can be "logged in" to one context but not the other. This is why the Journal is embedded as an iframe — it manages its own auth independently.',
+  files:[
+    'homepage/src/app/dashboard/layout.tsx : line 17-23 (fetchMe using cookie)',
+    'journal-frontend/src/config.js (API_BASE_URL)',
+    'journal-frontend/src/context/AuthContext.jsx (JWT localStorage)'
+  ],
+  fix:'Unify auth to one mechanism. The recommended path is to make the homepage dashboard also use JWT from localStorage, matching the journal frontend. Or implement a shared session cookie that both apps recognize.',
+  prompt:`To unify auth between Dashboard shell and Journal frontend:
+
+Option A (short-term): In homepage/src/app/dashboard/layout.tsx, modify fetchMe() to also check localStorage JWT:
+
+async function fetchMe(): Promise<User> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const headers: HeadersInit = token 
+    ? { Authorization: \`Bearer \${token}\` }
+    : {};
+  const res = await fetch('/api/auth/me', { credentials: 'include', headers, cache: 'no-store' });
+  if (!res.ok) throw new Error('not_authenticated');
+  const data = await res.json() as { user: User };
+  return data.user;
+}
+
+Option B (proper): Implement a unified session via HTTP-only cookie set by Flask on login, read by both apps.`
+},
+{
+  id:'I009', sev:'medium', title:'Dual-context app initialization (iFrame issue)',
+  nodes:['n-dashboard-shell','n-j-dashboard','n-strat-lab','n-chart-app'],
+  problem:'The Dashboard shell loads Journal dashboard, Strategies Lab, and the Chart service as iframes. This means:<br>• React/context providers initialize twice<br>• Auth checks run twice (double API calls to <code>/api/auth/me</code> and <code>/api/subscriptions/my-subscription</code>)<br>• localStorage race conditions possible<br>• Feature flags fetched twice<br>• No communication channel between shell and iframe contexts',
+  files:[
+    'homepage/src/app/dashboard/layout.tsx : lines 273-277 (EXTERNAL_VIEWS)',
+    'homepage/src/app/dashboard/layout.tsx : lines 599-613 (iframe rendering)'
+  ],
+  fix:'Consider whether the iframe embedding is necessary or if the dashboard shell should be refactored to use the journal as a sub-route instead of an iframe. At minimum, add <code>postMessage</code> communication for auth token sharing.',
+  prompt:`In homepage/src/app/dashboard/layout.tsx, add auth token forwarding to iframes to prevent double login checks:
+
+After the iframes are rendered (around line 599), add an effect to forward the JWT token:
+
+React.useEffect(() => {
+  const token = localStorage.getItem('token');
+  if (!token) return;
+  const iframes = document.querySelectorAll('iframe[title="journal"], iframe[title="strategies"]');
+  iframes.forEach(iframe => {
+    // Post token to iframe once loaded
+    iframe.addEventListener('load', () => {
+      (iframe as HTMLIFrameElement).contentWindow?.postMessage(
+        { type: 'AUTH_TOKEN', token }, 
+        window.location.origin
+      );
+    });
+  });
+}, []);
+
+Then in journal-frontend/src/context/AuthContext.jsx, listen for the token message:
+useEffect(() => {
+  const handler = (e: MessageEvent) => {
+    if (e.origin === window.location.origin && e.data?.type === 'AUTH_TOKEN') {
+      localStorage.setItem('token', e.data.token);
+    }
+  };
+  window.addEventListener('message', handler);
+  return () => window.removeEventListener('message', handler);
+}, []);`
+},
+{
+  id:'I010', sev:'medium', title:'Feature flags check disabled in ProtectedRoute',
+  nodes:['n-protected-route','n-j-admin-flags'],
+  problem:'In <code>ProtectedRoute.jsx</code> lines 52-66, the entire feature flag enforcement block is commented out with the comment "TEMPORARILY DISABLED". This means ALL authenticated+subscribed users can access ALL features, regardless of their group\'s feature flag configuration. The <code>FeatureFlagManager</code> admin UI has no effect.',
+  files:[
+    'journal-frontend/src/components/ProtectedRoute.jsx : lines 52-66 (commented out check)',
+    'journal-frontend/src/context/FeatureFlagsContext.jsx (flag loading logic)'
+  ],
+  fix:'Uncomment the feature flag enforcement block. Ensure <code>FeatureFlagsContext</code> properly loads flags from <code>/api/feature-flags</code> before the check runs.',
+  prompt:`In journal-frontend/src/components/ProtectedRoute.jsx, uncomment the feature flag check block (lines 52-66):
+
+FIND (commented block):
+  // if (feature && !isAdmin && !isFeatureEnabled(feature)) {
+  //   console.log(\`🚫 Feature "\${feature}" is disabled for non-admin user\`);
+  //   if (fallbackComponent) {
+  //     return fallbackComponent;
+  //   }
+  //   return <Navigate to={fallbackPath} replace state={{ 
+  //     featureLocked: true, 
+  //     featureName: getFeatureDisplayName(feature) 
+  //   }} />;
+  // }
+
+REPLACE WITH (uncommented):
+  if (feature && !isAdmin && !isFeatureEnabled(feature)) {
+    console.log(\`🚫 Feature "\${feature}" is disabled for non-admin user\`);
+    if (fallbackComponent) {
+      return fallbackComponent;
+    }
+    return <Navigate to={fallbackPath} replace state={{ 
+      featureLocked: true, 
+      featureName: getFeatureDisplayName(feature) 
+    }} />;
+  }
+
+Also uncomment the loading check at lines 37-44 to wait for flags before rendering.`
+},
+{
+  id:'I011', sev:'low', title:'Dev-only test routes in production router',
+  nodes:['n-j-test-combos','n-j-test-filter'],
+  problem:'Two test routes are defined in the production React Router config and are accessible to any authenticated user:<br>• <code>/journal/test-combinations</code> → <code>CombinationFilterTest</code><br>• <code>/journal/test-filter</code> → <code>FilterTest</code><br><br>These are behind <code>ProtectedRoute</code> with feature flags <code>TEST_COMBINATIONS</code> and <code>TEST_FILTER</code>, but since flags are disabled (Issue #010), they are currently accessible to all users.',
+  files:[
+    'journal-frontend/src/App.jsx : lines 362-375 (test routes)',
+    'journal-frontend/src/components/FilterTest.jsx',
+    'journal-frontend/src/components/CombinationFilterTest.jsx'
+  ],
+  fix:'Wrap test routes in a <code>process.env.NODE_ENV === \'development\'</code> check, or remove them from the production router entirely.',
+  prompt:`In journal-frontend/src/App.jsx, wrap the test routes in a dev-only condition:
+
+FIND (lines ~362-375):
+{/* Test/Development Features */}
+<Route path="/test-combinations" element={...} />
+<Route path="/test-filter" element={...} />
+
+REPLACE WITH:
+{/* Test/Development Features — dev only */}
+{process.env.NODE_ENV === 'development' && (
+  <>
+    <Route path="/test-combinations" element={<CombinationFilterTest />} />
+    <Route path="/test-filter" element={<FilterTest />} />
+  </>
+)}`
+},
+{
+  id:'I012', sev:'low', title:'Orphaned route: trade-duration-simple',
+  nodes:['n-an-dur-simple'],
+  problem:'The route <code>/journal/analytics/trade-duration-simple</code> exists in App.jsx (lines 342-350) and has a full page component <code>TradeDurationSimple.jsx</code> but is <strong>not linked from the sidebar</strong> or any other navigation. Users cannot discover or navigate to it through the UI — it\'s only reachable by typing the URL directly.',
+  files:[
+    'journal-frontend/src/App.jsx : lines 342-350',
+    'journal-frontend/src/pages/analytics/TradeDurationSimple.jsx',
+    'journal-frontend/src/components/Sidebar.jsx (missing link)'
+  ],
+  fix:'Either: (a) add a sidebar link for it, (b) redirect it to the main <code>/analytics/trade-duration</code> route, or (c) remove it if it was superseded by the main Trade Duration page.',
+  prompt:`Choose one of these fixes for journal-frontend/src/App.jsx:
+
+Option A — Add to sidebar (in Sidebar.jsx analytics dropdown, after the Trade Duration NavLink):
+<NavLink to="/analytics/trade-duration-simple" className={...}>
+  <Clock className="h-3 w-3 mr-2" />
+  Trade Duration (Simple)
+</NavLink>
+
+Option B — Redirect to main trade-duration page (in App.jsx):
+FIND:
+<Route path="/analytics/trade-duration-simple" element={...TradeDurationSimple...} />
+REPLACE WITH:
+<Route path="/analytics/trade-duration-simple" element={<Navigate to="/analytics/trade-duration" replace />} />
+
+Option C — Remove the route and delete TradeDurationSimple.jsx if no longer needed.`
+},
+{
+  id:'I013', sev:'low', title:'Silent catch-all swallows unknown URLs',
+  nodes:['n-j-catchall'],
+  problem:'The last route inside the protected <code>LayoutWithSidebar</code> is:<br><code>&lt;Route path="*" element={&lt;Navigate to="/dashboard" replace /&gt;} /&gt;</code><br><br>Any unknown URL silently redirects to <code>/journal/dashboard</code> with no error message. This makes debugging broken links (like Issues #002) much harder since the user just ends up at dashboard.',
+  files:[
+    'journal-frontend/src/App.jsx : line 387'
+  ],
+  fix:'Replace the silent redirect with a proper 404 page component that shows the attempted URL and links back to dashboard.',
+  prompt:`In journal-frontend/src/App.jsx line 387, replace the silent catch-all:
+
+FIND:
+<Route path="*" element={<Navigate to="/dashboard" replace />} />
+
+REPLACE WITH:
+<Route path="*" element={<NotFound />} />
+
+And add a simple NotFound component at the top of App.jsx:
+function NotFound() {
+  const location = useLocation();
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
+      <div className="text-5xl">404</div>
+      <h2 className="text-xl font-semibold text-white">Page not found</h2>
+      <p className="text-cyan-200/50 text-sm font-mono">{location.pathname}</p>
+      <a href="/journal/dashboard" className="text-cyan-400 underline text-sm">← Go to Dashboard</a>
+    </div>
+  );
+}`
+},
+{
+  id:'I014', sev:'low', title:'Ambiguous Backtest entry points',
+  nodes:['n-backtest-page','n-backtest-tab'],
+  problem:'The backtest feature has two entry points that may confuse users:<br>1. <code>/backtest/</code> — a dedicated Next.js page<br>2. <code>/dashboard/</code> → Backtest tab — renders <code>BacktestView.tsx</code> inline<br><br>It is unclear whether <code>/backtest/</code> renders the same component or is a separate view. Users who bookmark <code>/backtest/</code> vs click through the dashboard will have different experiences.',
+  files:[
+    'homepage/src/app/backtest/ (Next.js page)',
+    'homepage/src/app/dashboard/BacktestView.tsx',
+    'homepage/src/app/page.tsx : line 600 (/backtest/ link)'
+  ],
+  fix:'Determine the canonical URL. If <code>/backtest/</code> and <code>/dashboard/</code>+Backtest tab are the same feature, redirect <code>/backtest/</code> to <code>/dashboard/?tab=backtest</code>. If they are different, document the distinction clearly.',
+  prompt:`In homepage/src/app/backtest/page.tsx, check if the backtest page is just a wrapper:
+
+If it renders BacktestView independently, consider adding a canonical redirect to the dashboard:
+
+// homepage/src/app/backtest/page.tsx
+"use client";
+import { useEffect } from "react";
+export default function BacktestPage() {
+  useEffect(() => {
+    // Redirect to dashboard backtest tab (preferred canonical URL)
+    window.location.replace("/dashboard/");
+  }, []);
+  return null;
+}
+
+Or if the page has unique functionality, update the homepage landing page link 
+(page.tsx line 600) to use a consistent URL with the dashboard.`
+}
+];
+
+// ══════════════════════════════════════════════
+// RENDER ISSUE CARDS
+// ══════════════════════════════════════════════
+const list = document.getElementById('issues-list');
+ISSUES.forEach(iss => {
+  const card = document.createElement('div');
+  card.className = `icard`;
+  card.dataset.sev = iss.sev;
+  card.dataset.id = iss.id;
+
+  const filesHtml = iss.files.map(f => `<div class="ifile">📁 ${f}</div>`).join('');
+
+  card.innerHTML = `
+    <div class="icard-header" onclick="toggleCard('${iss.id}')">
+      <span class="iid">${iss.id}</span>
+      <span class="sev ${iss.sev}">${{critical:'🔴 Critical',high:'🟠 High',medium:'🟡 Medium',low:'🟢 Low'}[iss.sev]}</span>
+      <span class="ititle">${iss.title}</span>
+      <span class="ichev">›</span>
+    </div>
+    <div class="icard-body">
+      <div class="isec">Problem</div>
+      <div class="itext">${iss.problem}</div>
+      ${filesHtml.length ? `<div class="isec">Files</div>${filesHtml}` : ''}
+      <div class="isec">Fix</div>
+      <div class="ifix">${iss.fix}</div>
+      <button class="copy-btn" id="copy-${iss.id}" onclick="copyPrompt('${iss.id}')">
+        📋 Copy Agent Prompt
+      </button>
+      <pre class="prompt-box" id="prompt-${iss.id}">${iss.prompt}</pre>
+    </div>`;
+  list.appendChild(card);
+});
+
+// Annotate nodes with issue IDs
+ISSUES.forEach(iss => {
+  iss.nodes.forEach(nid => {
+    const el = document.getElementById(nid);
+    if (!el) return;
+    const existing = el.dataset.issues || '';
+    el.dataset.issues = existing ? existing + ',' + iss.id : iss.id;
+  });
+});
+
+// ══════════════════════════════════════════════
+// CARD INTERACTIONS
+// ══════════════════════════════════════════════
+function toggleCard(id) {
+  const card = document.querySelector(`.icard[data-id="${id}"]`);
+  const wasOpen = card.classList.contains('open');
+  document.querySelectorAll('.icard.open').forEach(c => c.classList.remove('open'));
+  if (!wasOpen) {
+    card.classList.add('open');
+    // Highlight related nodes
+    clearHighlights();
+    const iss = ISSUES.find(i => i.id === id);
+    if (iss) iss.nodes.forEach(nid => document.getElementById(nid)?.classList.add('lit'));
+  } else {
+    clearHighlights();
+  }
+}
+
+function clearHighlights() {
+  document.querySelectorAll('.node.lit').forEach(n => n.classList.remove('lit'));
+}
+
+function copyPrompt(id) {
+  const iss = ISSUES.find(i => i.id === id);
+  if (!iss) return;
+  navigator.clipboard.writeText(iss.prompt).then(() => {
+    const btn = document.getElementById('copy-' + id);
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✅ Copied to clipboard!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 2000);
+  });
+  // Also show the prompt box
+  const pre = document.getElementById('prompt-' + id);
+  pre.classList.toggle('show');
+}
+
+// Severity filter
+let activeSevs = new Set(['critical','high','medium','low']);
+function filterSev(sev) {
+  if (sev === 'all') {
+    if (activeSevs.size === 4) { activeSevs.clear(); }
+    else { activeSevs = new Set(['critical','high','medium','low']); }
+  } else {
+    if (activeSevs.has(sev)) activeSevs.delete(sev);
+    else activeSevs.add(sev);
+  }
+  document.querySelectorAll('.flt').forEach(b => {
+    const s = b.className.replace('flt ','').replace(' active','').trim();
+    if (s === 'all') b.classList.toggle('active', activeSevs.size === 4);
+    else b.classList.toggle('active', activeSevs.has(s));
+  });
+  document.querySelectorAll('.icard').forEach(c => {
+    c.style.display = activeSevs.has(c.dataset.sev) ? '' : 'none';
+  });
+}
+
+// ══════════════════════════════════════════════
+// PANEL TOGGLE
+// ══════════════════════════════════════════════
+let panelOpen = true;
+function togglePanel() {
+  panelOpen = !panelOpen;
+  document.getElementById('issues-panel').classList.toggle('collapsed', !panelOpen);
+  document.getElementById('panel-toggle').textContent = panelOpen
+    ? 'Hide Issues' : `Issues Panel`;
+  if (!panelOpen) {
+    const badge = document.createElement('span');
+    badge.id = 'issue-count-badge';
+    badge.textContent = '14';
+    document.getElementById('panel-toggle').appendChild(badge);
+  }
+  setTimeout(drawArrows, 300);
+}
+
+// ══════════════════════════════════════════════
+// ZOOM / PAN
+// ══════════════════════════════════════════════
+let scale = 0.65;
+const canvas = document.getElementById('canvas');
+const wrap   = document.getElementById('canvas-wrap');
+
+function zoom(d) {
+  scale = Math.min(2, Math.max(0.25, scale + d));
+  canvas.style.transform = `scale(${scale})`;
+  document.getElementById('zlbl').textContent = Math.round(scale*100)+'%';
+}
+function resetZoom() {
+  scale = 0.65;
+  canvas.style.transform = `scale(${scale})`;
+  document.getElementById('zlbl').textContent = '65%';
+}
+canvas.style.transform = `scale(${scale})`;
+
+let dragging=false,sx,sy,slx,sly;
+wrap.addEventListener('mousedown',e=>{
+  if(e.target.closest('.node'))return;
+  dragging=true;sx=e.clientX;sy=e.clientY;slx=wrap.scrollLeft;sly=wrap.scrollTop;
+});
+document.addEventListener('mousemove',e=>{
+  if(!dragging)return;
+  wrap.scrollLeft=slx-(e.clientX-sx);
+  wrap.scrollTop=sly-(e.clientY-sy);
+});
+document.addEventListener('mouseup',()=>dragging=false);
+wrap.scrollLeft=200; wrap.scrollTop=0;
+
+// ══════════════════════════════════════════════
+// TOOLTIP
+// ══════════════════════════════════════════════
+const tt = document.getElementById('tt');
+document.querySelectorAll('.node').forEach(n=>{
+  n.addEventListener('mouseenter',()=>{
+    const text = n.getAttribute('data-tip'); if(!text)return;
+    tt.innerHTML = text
+      .replace(/🔴/g,'<span style="color:#f87171">🔴</span>')
+      .replace(/⚠/g,'<span style="color:#f87171">⚠</span>')
+      .replace(/↪/g,'<span style="color:#fbbf24">↪</span>');
+    tt.style.display='block';
+  });
+  n.addEventListener('mousemove',e=>{
+    tt.style.left=(e.clientX+14)+'px';tt.style.top=(e.clientY+14)+'px';
+  });
+  n.addEventListener('mouseleave',()=>tt.style.display='none');
+  // Click node → open relevant issue
+  n.addEventListener('click',()=>{
+    const ids = (n.dataset.issues||'').split(',').filter(Boolean);
+    if(ids.length===0)return;
+    const panel = document.getElementById('issues-panel');
+    if(panel.classList.contains('collapsed')) togglePanel();
+    // Find the first relevant card and open it
+    const card = document.querySelector(`.icard[data-id="${ids[0]}"]`);
+    if(card){ card.scrollIntoView({behavior:'smooth',block:'nearest'}); toggleCard(ids[0]); }
+  });
+});
+
+// ══════════════════════════════════════════════
+// ARROWS
+// ══════════════════════════════════════════════
+const EDGES = [
+  // Entry
+  {f:'n-browser',t:'n-nginx',c:'#47556988'},
+  {f:'n-nginx',t:'n-home',c:'#3b82f6',lb:'/',w:1.5},
+  {f:'n-nginx',t:'n-login',c:'#3b82f6',lb:'/login/'},
+  {f:'n-nginx',t:'n-j-home',c:'#7c3aed',lb:'/journal'},
+  {f:'n-nginx',t:'n-dashboard-shell',c:'#3b82f6',lb:'/dashboard/'},
+  {f:'n-nginx',t:'n-chart-app',c:'#d97706',lb:'/chart',dash:'5,4'},
+
+  // Homepage
+  {f:'n-home',t:'n-login',c:'#3b82f688',lb:'Login/SignUp'},
+  {f:'n-home',t:'n-register',c:'#3b82f688',lb:'Sign Up'},
+  {f:'n-home',t:'n-bootcamp',c:'#3b82f688',lb:'if authed'},
+  {f:'n-home',t:'n-strat-lab',c:'#3b82f688',lb:'if authed'},
+  {f:'n-home',t:'n-backtest-page',c:'#3b82f688',lb:'if authed'},
+  {f:'n-home',t:'n-dashboard-shell',c:'#60a5fa88',lb:'Go to Dashboard',dash:'4,4'},
+  {f:'n-login',t:'n-dashboard-shell',c:'#60a5fa',lb:'admin'},
+  {f:'n-login',t:'n-j-dashboard',c:'#a78bfa',lb:'journal access'},
+  {f:'n-login',t:'n-j-pricing',c:'#f87171',lb:'no access'},
+  {f:'n-register',t:'n-login',c:'#3b82f688'},
+  // Dashboard shell
+  {f:'n-dashboard-shell',t:'n-j-dashboard',c:'#8b5cf6',lb:'iframe',dash:'3,3',w:1.5},
+  {f:'n-dashboard-shell',t:'n-strat-lab',c:'#8b5cf6',lb:'iframe',dash:'3,3',w:1.5},
+  {f:'n-dashboard-shell',t:'n-bootcamp',c:'#8b5cf688',lb:'iframe',dash:'3,3'},
+  {f:'n-dashboard-shell',t:'n-backtest-tab',c:'#d97706',lb:'Backtest tab'},
+  {f:'n-dashboard-shell',t:'n-cot',c:'#3b82f688'},
+  {f:'n-dashboard-shell',t:'n-support',c:'#3b82f688'},
+  {f:'n-dashboard-shell',t:'n-admin-hp',c:'#f8717188',lb:'admin only'},
+  {f:'n-dashboard-shell',t:'n-login',c:'#f8717166',lb:'not-authed',dash:'4,4'},
+  {f:'n-backtest-tab',t:'n-chart-app',c:'#d9770688'},
+  {f:'n-backtest-page',t:'n-backtest-tab',c:'#d9770688',lb:'same view?',dash:'4,4'},
+
+  // Journal public
+  {f:'n-j-home',t:'n-j-dashboard',c:'#a78bfa88',lb:'logged in + profile'},
+  {f:'n-j-home',t:'n-j-select-profile',c:'#fcd34d88',lb:'no profile'},
+  {f:'n-j-home',t:'n-login',c:'#f8717188',lb:'not logged in'},
+  {f:'n-j-home',t:'n-j-features',c:'#7c3aed44',lb:'nav'},
+  {f:'n-j-home',t:'n-j-pricing',c:'#7c3aed44',lb:'nav'},
+  {f:'n-j-home',t:'n-j-contact',c:'#7c3aed44',lb:'nav'},
+  {f:'n-j-home',t:'n-j-broken-integrations',c:'#ef444488',lb:'broken',dash:'4,3'},
+  {f:'n-j-home',t:'n-j-broken-docs',c:'#ef444488',lb:'broken',dash:'4,3'},
+  {f:'n-j-home',t:'n-j-broken-support',c:'#ef444488',lb:'broken',dash:'4,3'},
+  {f:'n-j-home',t:'n-j-broken-login-space',c:'#ef4444',lb:'BUG /login '},
+  {f:'n-j-pricing',t:'n-j-sub-success',c:'#a78bfa88',lb:'post-Stripe'},
+  {f:'n-j-sub-success',t:'n-j-dashboard',c:'#a78bfa88',lb:'redirect'},
+  {f:'n-j-sub-status',t:'n-j-pricing',c:'#f8717188',lb:'upgrade CTA'},
+
+  // Auth gate
+  {f:'n-j-protected-layout',t:'n-login',c:'#f87171',lb:'no token',dash:'3,3',w:1.5},
+  {f:'n-j-protected-layout',t:'n-j-select-profile',c:'#fcd34d',lb:'no profile'},
+  {f:'n-j-protected-layout',t:'n-j-sub-status',c:'#f87171',lb:'no sub'},
+  {f:'n-j-protected-layout',t:'n-protected-route',c:'#fcd34d',lb:'OK → render'},
+  {f:'n-protected-route',t:'n-sub-guard',c:'#fcd34d'},
+  {f:'n-sub-guard',t:'n-j-dashboard',c:'#34d399',lb:'access granted'},
+
+  // Protected → analytics
+  {f:'n-j-dashboard',t:'n-j-analytics',c:'#a78bfa55'},
+  {f:'n-j-trades',t:'n-j-analytics',c:'#a78bfa55'},
+  {f:'n-j-strategy-builder',t:'n-strat-lab',c:'#f59e0b',lb:'↪ 3 hops',w:2},
+
+  // Analytics hub → sub-pages
+  {f:'n-j-analytics',t:'n-an-equity',c:'#05966966'},
+  {f:'n-j-analytics',t:'n-an-calendar',c:'#05966966'},
+  {f:'n-j-analytics',t:'n-an-perf',c:'#05966966'},
+  {f:'n-j-analytics',t:'n-an-streaks',c:'#05966966'},
+  {f:'n-j-analytics',t:'n-an-duration',c:'#05966966'},
+  {f:'n-j-analytics',t:'n-an-exit',c:'#05966966'},
+  {f:'n-j-analytics',t:'n-an-exit2',c:'#05966966'},
+  {f:'n-j-analytics',t:'n-an-pnl',c:'#05966966'},
+  {f:'n-j-analytics',t:'n-an-daily',c:'#05966966'},
+  {f:'n-j-analytics',t:'n-an-symbols',c:'#05966966'},
+  {f:'n-j-analytics',t:'n-an-vars',c:'#05966966'},
+  {f:'n-j-analytics',t:'n-an-combos',c:'#05966966'},
+  {f:'n-j-analytics',t:'n-an-allmetrics',c:'#05966966'},
+  {f:'n-j-analytics',t:'n-an-recent',c:'#05966966'},
+
+  // Chart
+  {f:'n-chart-app',t:'n-chart-backtest',c:'#d9770666'},
+  {f:'n-chart-app',t:'n-chart-propfirm',c:'#d9770666'},
+
+  // Logout
+  {f:'n-j-dashboard',t:'n-home',c:'#f8717144',lb:'logout',dash:'5,4'},
+];
+
+function drawArrows(){
+  const svg=document.getElementById('arrows');
+  svg.innerHTML='';
+  const defs=document.createElementNS('http://www.w3.org/2000/svg','defs');
+  const colors=new Set(EDGES.map(e=>e.c));
+  colors.forEach(c=>{
+    const m=document.createElementNS('http://www.w3.org/2000/svg','marker');
+    const id='a'+c.replace(/[^a-z0-9]/gi,'');
+    m.setAttribute('id',id);m.setAttribute('markerWidth','7');m.setAttribute('markerHeight','5');
+    m.setAttribute('refX','6');m.setAttribute('refY','2.5');m.setAttribute('orient','auto');
+    const p=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    p.setAttribute('points','0 0, 7 2.5, 0 5');p.setAttribute('fill',c);m.appendChild(p);defs.appendChild(m);
+  });
+  svg.appendChild(defs);
+
+  EDGES.forEach(e=>{
+    const fEl=document.getElementById(e.f);
+    const tEl=document.getElementById(e.t);
+    if(!fEl||!tEl)return;
+    const fL=parseFloat(fEl.style.left),fT=parseFloat(fEl.style.top);
+    const tL=parseFloat(tEl.style.left),tT=parseFloat(tEl.style.top);
+    const fw=fEl.offsetWidth||120,fh=fEl.offsetHeight||50;
+    const tw=tEl.offsetWidth||120,th=tEl.offsetHeight||50;
+    let x1=fL,y1=fT,x2=tL,y2=tT;
+    const dx=x2-x1,dy=y2-y1;
+    if(Math.abs(dx)>Math.abs(dy)){
+      x1+=dx>0?fw/2:-fw/2; x2+=dx>0?-tw/2:tw/2;
+    } else {
+      y1+=dy>0?fh/2:-fh/2; y2+=dy>0?-th/2:th/2;
+    }
+    const cx1=x1+(x2-x1)*0.45,cy1=y1;
+    const cx2=x1+(x2-x1)*0.55,cy2=y2;
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',`M${x1} ${y1} C${cx1} ${cy1},${cx2} ${cy2},${x2} ${y2}`);
+    path.setAttribute('fill','none');path.setAttribute('stroke',e.c);
+    path.setAttribute('stroke-width',e.w||1.2);
+    if(e.dash)path.setAttribute('stroke-dasharray',e.dash);
+    const mid='a'+e.c.replace(/[^a-z0-9]/gi,'');
+    path.setAttribute('marker-end',`url(#${mid})`);
+    path.setAttribute('opacity','0.75');
+    svg.appendChild(path);
+    if(e.lb){
+      const mx=(x1+x2)/2,my=(y1+y2)/2-6;
+      const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x',mx);t.setAttribute('y',my);t.setAttribute('text-anchor','middle');
+      t.setAttribute('font-size','8');t.setAttribute('fill',e.c);
+      t.setAttribute('font-family','Segoe UI,sans-serif');t.setAttribute('font-weight','700');
+      t.setAttribute('paint-order','stroke');t.setAttribute('stroke','#07080e');t.setAttribute('stroke-width','3');
+      t.textContent=e.lb;svg.appendChild(t);
+    }
+  });
+}
+
+window.addEventListener('load',()=>setTimeout(drawArrows,150));
+window.addEventListener('resize',drawArrows);
+</script>
+</body>
+</html>

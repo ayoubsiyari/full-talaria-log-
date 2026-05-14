@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Talaria — Routing Diagram v2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#07080e;color:#e2e8f0;overflow:hidden}
+#top-bar{position:fixed;top:0;left:0;right:0;height:48px;background:#0f1119;border-bottom:1px solid #1e2d45;display:flex;align-items:center;gap:16px;padding:0 16px;z-index:100}
+#top-bar h1{font-size:0.9rem;font-weight:700;background:linear-gradient(90deg,#60a5fa,#a78bfa,#34d399);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;white-space:nowrap}
+.zoom-btn{background:#1a2235;border:1px solid #1e2d45;color:#94a3b8;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.75rem;transition:all 0.15s}
+.zoom-btn:hover{background:#1e3a5f;color:#60a5fa}
+#zoom-label{font-size:0.72rem;color:#64748b;min-width:44px;text-align:center}
+.legend{display:flex;gap:12px;margin-left:auto;flex-wrap:wrap}
+.leg{display:flex;align-items:center;gap:5px;font-size:0.68rem;color:#64748b}
+.leg-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.iss-key{display:flex;gap:10px;margin-left:16px;padding-left:16px;border-left:1px solid #1e2d45}
+.iss{font-size:0.68rem;padding:2px 7px;border-radius:4px;cursor:pointer}
+.iss.dup{background:#3b1414;color:#f87171;border:1px solid #dc262644}
+.iss.redirect{background:#3b2a0d;color:#fbbf24;border:1px solid #d9770644}
+.iss.iframe{background:#2d1f5e;color:#a78bfa;border:1px solid #7c3aed44}
+
+#canvas-wrap{position:fixed;top:48px;left:0;right:0;bottom:60px;overflow:auto;background:#07080e;cursor:grab}
+#canvas-wrap:active{cursor:grabbing}
+#canvas{position:relative;width:3200px;height:2300px;transform-origin:0 0}
+
+/* ── Zone backgrounds ── */
+.zone{position:absolute;border-radius:16px;border:1px solid}
+.zone-label{position:absolute;font-size:0.62rem;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;padding:4px 10px;border-radius:6px;top:-14px;left:12px}
+
+/* ── Nodes ── */
+.node{position:absolute;border-radius:8px;border:1px solid;padding:6px 10px;font-size:0.7rem;font-weight:600;text-align:center;cursor:default;transition:box-shadow 0.15s;line-height:1.3;min-width:110px;transform:translate(-50%,-50%)}
+.node:hover{z-index:50}
+.node .path{font-size:0.6rem;font-weight:400;opacity:0.7;display:block;font-family:monospace;margin-top:1px}
+.node .lbl{white-space:nowrap}
+
+/* node themes */
+.n-entry  {background:#0f1929;border-color:#2563eb88;color:#93c5fd}
+.n-hp     {background:#0d1f3c;border-color:#3b82f688;color:#93c5fd}
+.n-hp:hover{box-shadow:0 0 16px #3b82f644}
+.n-jf     {background:#1a0d3c;border-color:#7c3aed88;color:#c4b5fd}
+.n-jf:hover{box-shadow:0 0 16px #7c3aed44}
+.n-ja     {background:#0d2818;border-color:#05966988;color:#6ee7b7}
+.n-ja:hover{box-shadow:0 0 16px #05966944}
+.n-auth   {background:#1f1a0d;border-color:#d9770688;color:#fcd34d}
+.n-chart  {background:#1f1800;border-color:#b4530a88;color:#fbbf24}
+.n-guard  {background:#1f0d0d;border-color:#dc262688;color:#fca5a5}
+.n-dev    {background:#1a1a2e;border-color:#33335588;color:#818cf8;opacity:0.7}
+
+/* issue highlights */
+.dup-issue{border-color:#ef444488!important;box-shadow:0 0 12px #ef444422}
+.redirect-issue{border-color:#f59e0b88!important;box-shadow:0 0 12px #f59e0b22}
+.iframe-issue{border-color:#a78bfa88!important;box-shadow:0 0 12px #a78bfa22}
+
+.issue-badge{position:absolute;top:-8px;right:-8px;width:16px;height:16px;border-radius:50%;font-size:0.6rem;font-weight:800;display:flex;align-items:center;justify-content:center;z-index:10}
+.ib-dup{background:#ef4444;color:#fff}
+.ib-redir{background:#f59e0b;color:#fff}
+.ib-iframe{background:#8b5cf6;color:#fff}
+
+/* arrows drawn by SVG overlay */
+svg#arrows{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+
+/* section dividers */
+.sec-line{position:absolute;border-top:1px dashed #1e2d4560}
+.sec-label-h{position:absolute;font-size:0.58rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#334155}
+
+/* tooltip */
+#tooltip{position:fixed;background:#0f1119;border:1px solid #1e2d45;border-radius:8px;padding:8px 12px;font-size:0.72rem;color:#e2e8f0;pointer-events:none;z-index:200;max-width:260px;display:none;line-height:1.5}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="top-bar">
+  <h1>🦅 Talaria — Page-to-Page Routing Diagram</h1>
+  <button class="zoom-btn" onclick="zoom(-0.1)">−</button>
+  <span id="zoom-label">100%</span>
+  <button class="zoom-btn" onclick="zoom(+0.1)">+</button>
+  <button class="zoom-btn" onclick="resetZoom()">Reset</button>
+  <div class="legend">
+    <span class="leg"><span class="leg-dot" style="background:#3b82f6"></span>Homepage (Next.js)</span>
+    <span class="leg"><span class="leg-dot" style="background:#7c3aed"></span>Journal Frontend (React)</span>
+    <span class="leg"><span class="leg-dot" style="background:#059669"></span>Journal Analytics</span>
+    <span class="leg"><span class="leg-dot" style="background:#d97706"></span>Auth / Guard</span>
+    <span class="leg"><span class="leg-dot" style="background:#6366f1"></span>Dev / Admin</span>
+  </div>
+  <div class="iss-key">
+    <span class="iss dup">⚠ Duplicate</span>
+    <span class="iss redirect">↪ Redirect Chain</span>
+    <span class="iss iframe">▣ iFrame Embed</span>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<!-- CANVAS -->
+<div id="canvas-wrap">
+<div id="canvas">
+
+<!-- ═══════════════════════════════════════
+     ZONE BACKGROUNDS
+═══════════════════════════════════════ -->
+<!-- Homepage zone -->
+<div class="zone" style="left:30px;top:180px;width:700px;height:1050px;background:#0d1f3c18;border-color:#3b82f630">
+  <div class="zone-label" style="background:#0d1f3c;color:#60a5fa">🏠 Homepage — Next.js 15 (/ root)</div>
+</div>
+<!-- Journal Public zone -->
+<div class="zone" style="left:780px;top:180px;width:680px;height:780px;background:#1a0d3c18;border-color:#7c3aed30">
+  <div class="zone-label" style="background:#1a0d3c;color:#a78bfa">📒 Journal Frontend — Public Routes (/journal)</div>
+</div>
+<!-- Journal Auth zone -->
+<div class="zone" style="left:780px;top:1000px;width:680px;height:280px;background:#1f1a0d18;border-color:#d9770630">
+  <div class="zone-label" style="background:#1f1a0d;color:#fcd34d">🔐 Journal Auth / Gate Logic</div>
+</div>
+<!-- Journal Protected zone -->
+<div class="zone" style="left:1510px;top:180px;width:640px;height:680px;background:#1a0d3c18;border-color:#7c3aed30">
+  <div class="zone-label" style="background:#1a0d3c;color:#a78bfa">🔒 Journal Protected Pages (sidebar)</div>
+</div>
+<!-- Analytics zone -->
+<div class="zone" style="left:2210px;top:180px;width:960px;height:900px;background:#0d281818;border-color:#05966930">
+  <div class="zone-label" style="background:#0d2818;color:#34d399">📊 Journal Analytics Sub-Pages</div>
+</div>
+<!-- Chart zone -->
+<div class="zone" style="left:1510px;top:920px;width:640px;height:340px;background:#1f180018;border-color:#b4530a30">
+  <div class="zone-label" style="background:#1f1800;color:#fbbf24">📈 Trading Chart (FastAPI — iframe in dashboard)</div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     ENTRY NODES
+═══════════════════════════════════════ -->
+<div class="node n-entry" id="n-browser" style="left:1380px;top:55px" data-tip="User's browser. All traffic enters through Nginx on port :3000.">
+  <div class="lbl">🌍 Browser</div>
+  <span class="path">User Entry</span>
+</div>
+<div class="node n-entry" id="n-nginx" style="left:1380px;top:145px" data-tip="Nginx reverse proxy. Routes / to Homepage, /journal to Journal Frontend, /api to Flask backend, /chart to FastAPI.">
+  <div class="lbl">🔀 Nginx</div>
+  <span class="path">:3000 → routes</span>
+</div>
+
+<!-- ═══════════════════════════════════════
+     HOMEPAGE (Next.js)
+═══════════════════════════════════════ -->
+<div class="node n-hp" id="n-home" style="left:190px;top:310px" data-tip="Marketing landing page. Links to Login, Sign Up, Bootcamp, Journal, Backtest, Strategies Lab. Also has profile flyout panel.">
+  <div class="lbl">🏠 Landing</div>
+  <span class="path">/</span>
+</div>
+<div class="node n-hp" id="n-login" style="left:420px;top:310px" data-tip="Login + Register page. Reads ?mode=signin|signup and ?next= param. On success, calls getPostAuthRedirectUrl() which routes to /dashboard/ or /journal/dashboard.">
+  <div class="lbl">🔑 Login / Register</div>
+  <span class="path">/login/</span>
+</div>
+<div class="node n-hp" id="n-dashboard-shell" style="left:620px;top:310px" data-tip="Dashboard shell layout. Renders Journal, Strategies-Lab and Bootcamp as IFRAMES. Internal nav to /dashboard/cot, /dashboard/support, /dashboard/admin. Auth check via /api/auth/me — fails → /login/.">
+  <div class="lbl iframe-issue">🖥 Dashboard Shell</div>
+  <span class="path">/dashboard/</span>
+  <div class="issue-badge ib-iframe">▣</div>
+</div>
+<div class="node n-hp" id="n-bootcamp" style="left:160px;top:480px" data-tip="Bootcamp educational content. Requires login (?next=/bootcamp/ if guest).">
+  <div class="lbl">🎓 Bootcamp</div>
+  <span class="path">/bootcamp/</span>
+</div>
+<div class="node n-hp" id="n-strategies-lab" style="left:380px;top:480px" data-tip="Strategy Lab — Next.js page. Also loaded as iframe in Dashboard Shell under 'Strategies' tab.">
+  <div class="lbl iframe-issue">⚗️ Strategies Lab</div>
+  <span class="path">/strategies-lab/</span>
+  <div class="issue-badge ib-iframe">▣</div>
+</div>
+<div class="node n-hp" id="n-backtest-tab" style="left:620px;top:480px" data-tip="BacktestView component rendered inline inside the Dashboard Shell when the 'Backtest' tab is active. Also accessible via /backtest/.">
+  <div class="lbl">📊 Backtest View</div>
+  <span class="path">/dashboard/ (tab)</span>
+</div>
+<div class="node n-hp" id="n-cot" style="left:230px;top:650px" data-tip="COT (Commitment of Traders) analysis. Sub-page within /dashboard/cot/.">
+  <div class="lbl">📉 COT Analysis</div>
+  <span class="path">/dashboard/cot/</span>
+</div>
+<div class="node n-hp" id="n-support" style="left:420px;top:650px" data-tip="Support ticket system. Notification bell links to /dashboard/support/?thread=N.">
+  <div class="lbl">💬 Support</div>
+  <span class="path">/dashboard/support/</span>
+</div>
+<div class="node n-hp" id="n-admin-hp" style="left:630px;top:650px" data-tip="Admin panel within dashboard. Only shown when user.role === 'admin'.">
+  <div class="lbl">🛠 Admin Panel</div>
+  <span class="path">/dashboard/admin/</span>
+</div>
+<div class="node n-hp dup-issue" id="n-hp-privacy" style="left:130px;top:840px" data-tip="⚠ DUPLICATE: Privacy Policy also exists at /journal/privacy-policy. Two separate pages with same content.">
+  <div class="lbl">📄 Privacy</div>
+  <span class="path">/privacy/</span>
+  <div class="issue-badge ib-dup">!</div>
+</div>
+<div class="node n-hp dup-issue" id="n-hp-terms" style="left:290px;top:840px" data-tip="⚠ DUPLICATE: Terms also exists at /journal/terms.">
+  <div class="lbl">📄 Terms</div>
+  <span class="path">/terms/</span>
+  <div class="issue-badge ib-dup">!</div>
+</div>
+<div class="node n-hp dup-issue" id="n-hp-refunds" style="left:450px;top:840px" data-tip="⚠ DUPLICATE: Refund Policy also at /journal/refund-policy.">
+  <div class="lbl">📄 Refunds</div>
+  <span class="path">/refunds/</span>
+  <div class="issue-badge ib-dup">!</div>
+</div>
+<div class="node n-hp dup-issue" id="n-hp-disclaimer" style="left:620px;top:840px" data-tip="⚠ DUPLICATE: Disclaimer also at /journal/disclaimer.">
+  <div class="lbl">📄 Disclaimer</div>
+  <span class="path">/disclaimer/</span>
+  <div class="issue-badge ib-dup">!</div>
+</div>
+<div class="node n-hp" id="n-ninjatrader" style="left:130px;top:1000px" data-tip="NinjaTrader integration info page.">
+  <div class="lbl">🥷 NinjaTrader</div>
+  <span class="path">/ninjatrader/</span>
+</div>
+<div class="node n-hp" id="n-backtest-page" style="left:330px;top:1000px" data-tip="Dedicated backtest route. Mirrors the Dashboard Backtest tab. Requires login (?next=/backtest/ if guest).">
+  <div class="lbl">📊 Backtest Page</div>
+  <span class="path">/backtest/</span>
+</div>
+<div class="node n-hp" id="n-register" style="left:190px;top:165px" data-tip="Register page (separate from /login/). May redirect to /login/?mode=signup.">
+  <div class="lbl">📝 Register</div>
+  <span class="path">/register/</span>
+</div>
+
+<!-- ═══════════════════════════════════════
+     JOURNAL PUBLIC PAGES
+═══════════════════════════════════════ -->
+<div class="node n-jf dup-issue" id="n-j-home" style="left:855px;top:310px" data-tip="⚠ DUPLICATE: Home.jsx in Journal is a landing page — duplicates the main homepage. If logged in with profile → redirects to /journal/dashboard. If logged in without profile → /journal/select-profile.">
+  <div class="lbl">🏠 Journal Home</div>
+  <span class="path">/journal/</span>
+  <div class="issue-badge ib-dup">!</div>
+</div>
+<div class="node n-jf" id="n-j-verify" style="left:855px;top:450px" data-tip="Email verification page. Reads token from URL params.">
+  <div class="lbl">✉️ Verify Email</div>
+  <span class="path">/journal/verify-email</span>
+</div>
+<div class="node n-jf" id="n-j-resend" style="left:855px;top:570px" data-tip="Resend email verification link page.">
+  <div class="lbl">🔄 Resend Verify</div>
+  <span class="path">/journal/resend-verification</span>
+</div>
+<div class="node n-jf" id="n-j-onboarding" style="left:1060px;top:310px" data-tip="New user onboarding flow. Sets up initial profile and preferences.">
+  <div class="lbl">🚀 Onboarding</div>
+  <span class="path">/journal/onboarding</span>
+</div>
+<div class="node n-jf" id="n-j-pricing" style="left:1060px;top:450px" data-tip="Pricing page showing subscription plans. Initiates Stripe checkout via /api/subscriptions/create-checkout.">
+  <div class="lbl">💳 Pricing</div>
+  <span class="path">/journal/pricing</span>
+</div>
+<div class="node n-jf" id="n-j-sub-success" style="left:1060px;top:570px" data-tip="Post-Stripe payment success page. Shows confirmation then redirects to /journal/dashboard.">
+  <div class="lbl">✅ Sub Success</div>
+  <span class="path">/journal/subscription/success</span>
+</div>
+<div class="node n-jf" id="n-j-sub-status" style="left:1270px;top:310px" data-tip="Shown when subscription check fails (ProtectedLayout redirects here). Links to /journal/pricing.">
+  <div class="lbl">🔒 Sub Required</div>
+  <span class="path">/journal/subscription-status</span>
+</div>
+<div class="node n-jf dup-issue" id="n-j-features" style="left:1270px;top:450px" data-tip="⚠ DUPLICATE: Features page listing app capabilities — duplicates homepage features section.">
+  <div class="lbl">⚡ Features</div>
+  <span class="path">/journal/features</span>
+  <div class="issue-badge ib-dup">!</div>
+</div>
+<div class="node n-jf dup-issue" id="n-j-contact" style="left:1270px;top:570px" data-tip="⚠ DUPLICATE: Contact form in journal — duplicates homepage contact section.">
+  <div class="lbl">📬 Contact</div>
+  <span class="path">/journal/contact</span>
+  <div class="issue-badge ib-dup">!</div>
+</div>
+<!-- Journal legal (row 4) -->
+<div class="node n-jf dup-issue" id="n-j-privacy" style="left:870px;top:710px" data-tip="⚠ DUPLICATE: Privacy Policy — same content as /privacy/ on homepage.">
+  <div class="lbl">📄 Privacy Policy</div>
+  <span class="path">/journal/privacy-policy</span>
+  <div class="issue-badge ib-dup">!</div>
+</div>
+<div class="node n-jf dup-issue" id="n-j-terms" style="left:1010px;top:710px" data-tip="⚠ DUPLICATE: Terms of Service — same as homepage /terms/.">
+  <div class="lbl">📄 Terms</div>
+  <span class="path">/journal/terms</span>
+  <div class="issue-badge ib-dup">!</div>
+</div>
+<div class="node n-jf dup-issue" id="n-j-refund" style="left:1150px;top:710px" data-tip="⚠ DUPLICATE: Refund Policy — same as /refunds/.">
+  <div class="lbl">📄 Refund Policy</div>
+  <span class="path">/journal/refund-policy</span>
+  <div class="issue-badge ib-dup">!</div>
+</div>
+<div class="node n-jf dup-issue" id="n-j-disclaimer" style="left:1290px;top:710px" data-tip="⚠ DUPLICATE: Disclaimer — same as /disclaimer/.">
+  <div class="lbl">📄 Disclaimer</div>
+  <span class="path">/journal/disclaimer</span>
+  <div class="issue-badge ib-dup">!</div>
+</div>
+<div class="node n-jf" id="n-j-cookie" style="left:1010px;top:830px" data-tip="Cookie Policy — UNIQUE: exists only in Journal frontend.">
+  <div class="lbl">🍪 Cookie Policy</div>
+  <span class="path">/journal/cookie-policy</span>
+</div>
+<div class="node n-jf" id="n-j-legal" style="left:1180px;top:830px" data-tip="General Legal page — aggregated legal information.">
+  <div class="lbl">⚖️ Legal</div>
+  <span class="path">/journal/legal</span>
+</div>
+
+<!-- ═══════════════════════════════════════
+     JOURNAL AUTH GATE
+═══════════════════════════════════════ -->
+<div class="node n-auth" id="n-j-protected-layout" style="left:1060px;top:1075px" data-tip="ProtectedLayout: runs 3 checks in order: (1) Auth → if no token, redirect to /login/?next=... (2) Active Profile → if none, redirect to /journal/select-profile (3) Subscription → if no access, redirect to /journal/subscription-status">
+  <div class="lbl">🔐 ProtectedLayout</div>
+  <span class="path">Auth + Profile + Sub check</span>
+</div>
+<div class="node n-auth" id="n-j-select-profile" style="left:870px;top:1190px" data-tip="Profile selection page. Shown when user is authenticated but has no active profile. After selecting/creating profile, proceeds to protected app.">
+  <div class="lbl">👤 Select Profile</div>
+  <span class="path">/journal/select-profile</span>
+</div>
+<div class="node n-guard" id="n-sub-guard" style="left:1270px;top:1190px" data-tip="SubscriptionGuard HOC — wraps all premium protected pages. Calls /api/subscriptions/my-subscription. Admin bypass via JWT payload.is_admin.">
+  <div class="lbl">🛡 SubscriptionGuard</div>
+  <span class="path">HOC on protected routes</span>
+</div>
+<div class="node n-guard" id="n-protected-route" style="left:1060px;top:1190px" data-tip="ProtectedRoute HOC — checks auth token + feature flags. Feature flag check currently DISABLED (commented out). Falls back to /journal (relative) if unauthenticated.">
+  <div class="lbl">🔒 ProtectedRoute</div>
+  <span class="path">HOC (feature flags disabled)</span>
+</div>
+
+<!-- ═══════════════════════════════════════
+     JOURNAL PROTECTED PAGES
+═══════════════════════════════════════ -->
+<div class="node n-jf" id="n-j-dashboard" style="left:1590px;top:310px" data-tip="Main dashboard — performance overview, AI summary widget, account stats. Also rendered as IFRAME inside /dashboard/ shell.">
+  <div class="lbl iframe-issue">📊 Dashboard</div>
+  <span class="path">/journal/dashboard</span>
+  <div class="issue-badge ib-iframe">▣</div>
+</div>
+<div class="node n-jf" id="n-j-journal" style="left:1770px;top:310px" data-tip="Trade journal log (120KB). Add/edit/delete trades. Rich text notes via Tiptap editor.">
+  <div class="lbl">📝 Journal</div>
+  <span class="path">/journal/journal</span>
+</div>
+<div class="node n-jf" id="n-j-trades" style="left:1950px;top:310px" data-tip="Trades list view with advanced filtering. Links to exit analysis.">
+  <div class="lbl">💹 Trades</div>
+  <span class="path">/journal/trades</span>
+</div>
+<div class="node n-jf" id="n-j-ai" style="left:1590px;top:460px" data-tip="AI Dashboard — AI-powered trade analysis and insights.">
+  <div class="lbl">🤖 AI Dashboard</div>
+  <span class="path">/journal/ai-dashboard</span>
+</div>
+<div class="node n-jf" id="n-j-import" style="left:1770px;top:460px" data-tip="Import trades from CSV, FTP (NinjaTrader), or manual entry. Uses PapaParse for CSV.">
+  <div class="lbl">📥 Import Trades</div>
+  <span class="path">/journal/import-trades</span>
+</div>
+<div class="node n-jf" id="n-j-settings" style="left:1950px;top:460px" data-tip="Settings (166KB file). Profile settings, account, subscription management, custom variables, API config.">
+  <div class="lbl">⚙️ Settings</div>
+  <span class="path">/journal/settings</span>
+</div>
+<div class="node n-jf" id="n-j-notes" style="left:1590px;top:610px" data-tip="Notes page. Trading notes and observations.">
+  <div class="lbl">📋 Notes</div>
+  <span class="path">/journal/notes</span>
+</div>
+<div class="node n-jf" id="n-j-learn" style="left:1770px;top:610px" data-tip="Learning resources and educational content.">
+  <div class="lbl">📚 Learn</div>
+  <span class="path">/journal/learn</span>
+</div>
+<div class="node n-jf" id="n-j-manage-profiles" style="left:1950px;top:610px" data-tip="Profile management — create, switch, delete profiles. Profile modes: journal, backtest, journal_live.">
+  <div class="lbl">👤 Manage Profiles</div>
+  <span class="path">/journal/manage-profiles</span>
+</div>
+<div class="node n-jf redirect-issue" id="n-j-strategy-builder" style="left:1590px;top:760px" data-tip="↪ REDIRECT CHAIN: /journal/strategy-builder → StrategiesLabRedirect component → window.location.replace('/strategies-lab/') → Homepage Next.js page. 3 hops! Should link directly to /strategies-lab/.">
+  <div class="lbl">⚗️ Strategy Builder</div>
+  <span class="path">/journal/strategy-builder</span>
+  <div class="issue-badge ib-redir">↪</div>
+</div>
+<div class="node n-dev" id="n-j-admin-flags" style="left:1950px;top:760px" data-tip="Admin-only: Feature Flag Manager UI. Manage per-group feature flags.">
+  <div class="lbl">🚩 Feature Flags</div>
+  <span class="path">/journal/admin/feature-flags</span>
+</div>
+<div class="node n-dev" id="n-j-test-combos" style="left:1700px;top:870px" data-tip="Dev only: Combination filter test component.">
+  <div class="lbl">🧪 Test Combos</div>
+  <span class="path">/journal/test-combinations</span>
+</div>
+<div class="node n-dev" id="n-j-test-filter" style="left:1880px;top:870px" data-tip="Dev only: Filter test component.">
+  <div class="lbl">🧪 Test Filter</div>
+  <span class="path">/journal/test-filter</span>
+</div>
+
+<!-- ═══════════════════════════════════════
+     JOURNAL ANALYTICS PAGES
+═══════════════════════════════════════ -->
+<div class="node n-ja" id="n-j-analytics" style="left:2650px;top:290px" data-tip="Analytics hub page. Top-level analytics with tabs. Links to all analytics sub-pages.">
+  <div class="lbl">📊 Analytics Hub</div>
+  <span class="path">/journal/analytics</span>
+</div>
+<!-- Row 1 of analytics sub-pages -->
+<div class="node n-ja" id="n-an-equity" style="left:2290px;top:450px" data-tip="Equity curve chart showing cumulative P&L over time.">
+  <div class="lbl">📈 Equity Curve</div>
+  <span class="path">analytics/equity</span>
+</div>
+<div class="node n-ja" id="n-an-calendar" style="left:2450px;top:450px" data-tip="Calendar heat-map view of daily P&L.">
+  <div class="lbl">📅 Calendar</div>
+  <span class="path">analytics/calendar</span>
+</div>
+<div class="node n-ja" id="n-an-perf" style="left:2610px;top:450px" data-tip="Performance Analysis — key trading metrics dashboard.">
+  <div class="lbl">🎯 Performance</div>
+  <span class="path">analytics/performance-analysis</span>
+</div>
+<div class="node n-ja" id="n-an-streaks" style="left:2770px;top:450px" data-tip="Streak Analyzer — win/loss streak patterns (29KB).">
+  <div class="lbl">⚡ Streak Analyzer</div>
+  <span class="path">analytics/streaks</span>
+</div>
+<div class="node n-ja" id="n-an-duration" style="left:2950px;top:450px" data-tip="Trade Duration Analysis — time-based trade stats (29KB).">
+  <div class="lbl">⏱ Trade Duration</div>
+  <span class="path">analytics/trade-duration</span>
+</div>
+<!-- Row 2 -->
+<div class="node n-ja" id="n-an-exit" style="left:2290px;top:610px" data-tip="Exit Analysis — quality scoring of trade exits (18KB).">
+  <div class="lbl">🎯 Exit Analysis</div>
+  <span class="path">analytics/exitanalysis</span>
+</div>
+<div class="node n-ja" id="n-an-exit2" style="left:2480px;top:610px" data-tip="Exit Analysis Amelioration — improved exit scoring model (56KB).">
+  <div class="lbl">🎯 Exit Amelioration</div>
+  <span class="path">analytics/exitanalysis-amelioration</span>
+</div>
+<div class="node n-ja" id="n-an-pnl" style="left:2680px;top:610px" data-tip="P&L Distribution — histogram of P&L outcomes.">
+  <div class="lbl">💰 P&L Distribution</div>
+  <span class="path">analytics/pnl-distribution</span>
+</div>
+<div class="node n-ja" id="n-an-daily" style="left:2900px;top:610px" data-tip="Daily Limit Optimization — optimal daily stop-loss and target analysis (57KB).">
+  <div class="lbl">🛑 Daily Limit Opt.</div>
+  <span class="path">analytics/daily-limit-optimization</span>
+</div>
+<!-- Row 3 -->
+<div class="node n-ja" id="n-an-symbols" style="left:2290px;top:770px" data-tip="Symbol Analysis — performance breakdown by trading symbol (60KB).">
+  <div class="lbl">🔤 Symbol Analysis</div>
+  <span class="path">analytics/symbols</span>
+</div>
+<div class="node n-ja" id="n-an-vars" style="left:2480px;top:770px" data-tip="Variables Analysis — performance by custom trade variables (127KB — largest file).">
+  <div class="lbl">🔬 Variables Analysis</div>
+  <span class="path">analytics/variables</span>
+</div>
+<div class="node n-ja" id="n-an-combos" style="left:2700px;top:770px" data-tip="Top Combinations — best-performing variable combinations.">
+  <div class="lbl">🔀 Top Combinations</div>
+  <span class="path">analytics/top-combinations</span>
+</div>
+<div class="node n-ja" id="n-an-allmetrics" style="left:2920px;top:770px" data-tip="All Metrics — 200+ trading metrics in a single view (55KB).">
+  <div class="lbl">📋 All Metrics</div>
+  <span class="path">analytics/all-metrics</span>
+</div>
+<!-- Row 4 -->
+<div class="node n-ja" id="n-an-recent" style="left:2380px;top:930px" data-tip="Recent Trades — latest trade entries with quick stats.">
+  <div class="lbl">🕐 Recent Trades</div>
+  <span class="path">analytics/recent-trades</span>
+</div>
+<div class="node n-dev" id="n-an-dur-simple" style="left:2600px;top:930px" data-tip="Dev/simple version of Trade Duration page. Not in sidebar navigation.">
+  <div class="lbl">⏱ Duration Simple</div>
+  <span class="path">analytics/trade-duration-simple</span>
+</div>
+
+<!-- ═══════════════════════════════════════
+     CHART SERVICE (embedded)
+═══════════════════════════════════════ -->
+<div class="node n-chart" id="n-chart-app" style="left:1680px;top:1020px" data-tip="Trading Chart FastAPI service — loaded as iframe in Dashboard Shell under 'Backtest' tab. Chart.js canvas engine (1MB JS), backtesting, multi-chart sessions.">
+  <div class="lbl">📈 Chart Service</div>
+  <span class="path">FastAPI :8000</span>
+</div>
+<div class="node n-chart" id="n-chart-backtest" style="left:1680px;top:1150px" data-tip="Backtest session UI — create/run backtests on historical data. Sessions stored in PostgreSQL.">
+  <div class="lbl">🔬 Backtest Sessions</div>
+  <span class="path">/sessions.html</span>
+</div>
+<div class="node n-chart" id="n-chart-propfirm" style="left:1880px;top:1150px" data-tip="PropFirm backtest simulator — simulates prop firm challenge rules.">
+  <div class="lbl">🏦 PropFirm Backtest</div>
+  <span class="path">/propfirm-backtest.html</span>
+</div>
+
+<!-- ═══════════════════════════════════════
+     SVG ARROWS
+═══════════════════════════════════════ -->
+<svg id="arrows"></svg>
+
+</div><!-- end canvas -->
+</div><!-- end canvas-wrap -->
+
+<script>
+// ─── ZOOM / PAN ───────────────────────────────────────
+let scale = 1;
+const canvas = document.getElementById('canvas');
+const wrap   = document.getElementById('canvas-wrap');
+
+function zoom(delta) {
+  scale = Math.min(2, Math.max(0.3, scale + delta));
+  canvas.style.transform = `scale(${scale})`;
+  document.getElementById('zoom-label').textContent = Math.round(scale * 100) + '%';
+}
+function resetZoom() {
+  scale = 0.65;
+  canvas.style.transform = `scale(${scale})`;
+  document.getElementById('zoom-label').textContent = Math.round(scale * 100) + '%';
+}
+resetZoom();
+wrap.scrollLeft = 300;
+wrap.scrollTop = 0;
+
+// Drag to pan
+let dragging = false, startX, startY, scrollX, scrollY;
+wrap.addEventListener('mousedown', e => {
+  if (e.target.closest('.node')) return;
+  dragging = true;
+  startX = e.clientX; startY = e.clientY;
+  scrollX = wrap.scrollLeft; scrollY = wrap.scrollTop;
+});
+document.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  wrap.scrollLeft = scrollX - (e.clientX - startX);
+  wrap.scrollTop  = scrollY - (e.clientY - startY);
+});
+document.addEventListener('mouseup', () => dragging = false);
+
+// ─── TOOLTIP ─────────────────────────────────────────
+const tip = document.getElementById('tooltip');
+document.querySelectorAll('.node').forEach(n => {
+  n.addEventListener('mouseenter', e => {
+    const text = n.getAttribute('data-tip');
+    if (!text) return;
+    tip.innerHTML = text.replace(/⚠/g, '<span style="color:#f87171">⚠</span>')
+                        .replace(/↪/g, '<span style="color:#fbbf24">↪</span>')
+                        .replace(/▣/g, '<span style="color:#a78bfa">▣</span>');
+    tip.style.display = 'block';
+  });
+  n.addEventListener('mousemove', e => {
+    tip.style.left = (e.clientX + 16) + 'px';
+    tip.style.top  = (e.clientY + 16) + 'px';
+  });
+  n.addEventListener('mouseleave', () => tip.style.display = 'none');
+});
+
+// ─── ARROW DRAWING ────────────────────────────────────
+function getCenter(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const l = parseFloat(el.style.left);
+  const t = parseFloat(el.style.top);
+  const w = el.offsetWidth;
+  const h = el.offsetHeight;
+  return { x: l, y: t, w, h, cx: l, cy: t };
+}
+
+// Edge source/target are anchor points on nodes
+// We specify edge entry/exit using direction hints
+const EDGES = [
+  // ── Entry flow ──
+  { from:'n-browser',        to:'n-nginx',           color:'#475569', label:'HTTP', style:'solid' },
+  // Nginx → zones (conceptual)
+  { from:'n-nginx',          to:'n-home',            color:'#3b82f6', label:'/', style:'solid' },
+  { from:'n-nginx',          to:'n-login',           color:'#3b82f6', label:'/login/', style:'solid' },
+  { from:'n-nginx',          to:'n-j-home',          color:'#7c3aed', label:'/journal', style:'solid' },
+  { from:'n-nginx',          to:'n-dashboard-shell', color:'#3b82f6', label:'/dashboard', style:'solid' },
+  { from:'n-nginx',          to:'n-chart-app',       color:'#d97706', label:'/chart', style:'dashed' },
+
+  // ── Homepage internal ──
+  { from:'n-home',           to:'n-login',           color:'#3b82f688', label:'Login / Sign Up' },
+  { from:'n-home',           to:'n-register',        color:'#3b82f688', label:'Sign Up alt' },
+  { from:'n-home',           to:'n-bootcamp',        color:'#3b82f688', label:'if logged in' },
+  { from:'n-home',           to:'n-strategies-lab',  color:'#3b82f688', label:'if logged in' },
+  { from:'n-home',           to:'n-backtest-page',   color:'#3b82f688', label:'if logged in' },
+  { from:'n-backtest-page',  to:'n-backtest-tab',    color:'#d9770688',  label:'same view' },
+  { from:'n-home',           to:'n-dashboard-shell', color:'#60a5fa',   label:'Go to Dashboard', style:'dashed' },
+
+  // Login → post-auth
+  { from:'n-login',          to:'n-dashboard-shell', color:'#60a5fa',   label:'admin/has access' },
+  { from:'n-login',          to:'n-j-dashboard',     color:'#a78bfa',   label:'has_journal_access' },
+  { from:'n-login',          to:'n-j-pricing',       color:'#f87171',   label:'no journal access' },
+  { from:'n-register',       to:'n-login',           color:'#3b82f688', label:'sign up flow' },
+
+  // Dashboard shell tabs
+  { from:'n-dashboard-shell',to:'n-j-dashboard',     color:'#8b5cf6',   label:'iframe: Journal tab', style:'iframe' },
+  { from:'n-dashboard-shell',to:'n-strategies-lab',  color:'#8b5cf6',   label:'iframe: Strategies', style:'iframe' },
+  { from:'n-dashboard-shell',to:'n-bootcamp',        color:'#8b5cf6',   label:'iframe: Resources', style:'iframe' },
+  { from:'n-dashboard-shell',to:'n-backtest-tab',    color:'#d97706',   label:'Backtest tab' },
+  { from:'n-dashboard-shell',to:'n-cot',             color:'#3b82f688', label:'COT tab' },
+  { from:'n-dashboard-shell',to:'n-support',         color:'#3b82f688', label:'Support tab' },
+  { from:'n-dashboard-shell',to:'n-admin-hp',        color:'#f87171',   label:'admin only' },
+  { from:'n-dashboard-shell',to:'n-login',           color:'#f87171',   label:'not-authed → login' },
+  { from:'n-backtest-tab',   to:'n-chart-app',       color:'#d97706',   label:'BacktestView renders chart' },
+
+  // ── Journal public ──
+  { from:'n-j-home',         to:'n-j-dashboard',     color:'#a78bfa88', label:'if logged in + profile' },
+  { from:'n-j-home',         to:'n-j-select-profile',color:'#fcd34d88', label:'if logged in, no profile' },
+  { from:'n-j-home',         to:'n-login',           color:'#f8717188', label:'not logged in' },
+  { from:'n-j-pricing',      to:'n-j-sub-success',   color:'#a78bfa88', label:'after Stripe payment' },
+  { from:'n-j-sub-success',  to:'n-j-dashboard',     color:'#a78bfa88', label:'redirect' },
+  { from:'n-j-sub-status',   to:'n-j-pricing',       color:'#f8717188', label:'upgrade CTA' },
+
+  // ── Journal auth gate ──
+  { from:'n-j-protected-layout', to:'n-login',            color:'#f87171',   label:'no token → /login/?next=', style:'guard' },
+  { from:'n-j-protected-layout', to:'n-j-select-profile', color:'#fcd34d',   label:'no active profile' },
+  { from:'n-j-protected-layout', to:'n-j-sub-status',     color:'#f87171',   label:'no subscription' },
+  { from:'n-j-protected-layout', to:'n-protected-route',  color:'#fcd34d',   label:'authed + sub OK' },
+  { from:'n-protected-route',    to:'n-sub-guard',         color:'#fcd34d',   label:'feature check passed' },
+  { from:'n-sub-guard',          to:'n-j-dashboard',       color:'#34d399',   label:'access granted' },
+
+  // ── Journal protected → analytics ──
+  { from:'n-j-dashboard',   to:'n-j-analytics',      color:'#a78bfa88', label:'analytics link' },
+  { from:'n-j-trades',      to:'n-j-analytics',      color:'#a78bfa88', label:'' },
+
+  // Analytics hub → sub-pages (sidebar links)
+  { from:'n-j-analytics',   to:'n-an-equity',        color:'#05966988' },
+  { from:'n-j-analytics',   to:'n-an-calendar',      color:'#05966988' },
+  { from:'n-j-analytics',   to:'n-an-perf',          color:'#05966988' },
+  { from:'n-j-analytics',   to:'n-an-streaks',       color:'#05966988' },
+  { from:'n-j-analytics',   to:'n-an-duration',      color:'#05966988' },
+  { from:'n-j-analytics',   to:'n-an-exit',          color:'#05966988' },
+  { from:'n-j-analytics',   to:'n-an-exit2',         color:'#05966988' },
+  { from:'n-j-analytics',   to:'n-an-pnl',           color:'#05966988' },
+  { from:'n-j-analytics',   to:'n-an-daily',         color:'#05966988' },
+  { from:'n-j-analytics',   to:'n-an-symbols',       color:'#05966988' },
+  { from:'n-j-analytics',   to:'n-an-vars',          color:'#05966988' },
+  { from:'n-j-analytics',   to:'n-an-combos',        color:'#05966988' },
+  { from:'n-j-analytics',   to:'n-an-allmetrics',    color:'#05966988' },
+  { from:'n-j-analytics',   to:'n-an-recent',        color:'#05966988' },
+
+  // Strategy builder redirect chain
+  { from:'n-j-strategy-builder', to:'n-strategies-lab', color:'#f59e0b', label:'↪ 3-hop redirect!', style:'redirect' },
+
+  // Settings → profile management
+  { from:'n-j-settings',    to:'n-j-manage-profiles', color:'#a78bfa88' },
+  { from:'n-j-settings',    to:'n-j-pricing',         color:'#a78bfa88', label:'upgrade CTA' },
+
+  // Journal protected → import
+  { from:'n-j-journal',     to:'n-j-import',           color:'#a78bfa88', label:'import button' },
+
+  // Chart service internal
+  { from:'n-chart-app',     to:'n-chart-backtest',     color:'#d9770688' },
+  { from:'n-chart-app',     to:'n-chart-propfirm',     color:'#d9770688' },
+
+  // Logout flows
+  { from:'n-j-dashboard',   to:'n-home',               color:'#f8717166', label:'logout → /', style:'dashed' },
+
+  // Protected route catch-all
+  { from:'n-protected-route', to:'n-j-journal',        color:'#a78bfa44', label:'*→/dashboard', style:'dashed' },
+];
+
+function drawArrows() {
+  const svg = document.getElementById('arrows');
+  svg.innerHTML = '';
+  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+
+  const arrowColors = new Set(EDGES.map(e => e.color));
+  arrowColors.forEach(c => {
+    const m = document.createElementNS('http://www.w3.org/2000/svg','marker');
+    const safeId = 'arr-' + c.replace(/[^a-zA-Z0-9]/g,'');
+    m.setAttribute('id', safeId);
+    m.setAttribute('markerWidth','8');
+    m.setAttribute('markerHeight','6');
+    m.setAttribute('refX','7');
+    m.setAttribute('refY','3');
+    m.setAttribute('orient','auto');
+    const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    poly.setAttribute('points','0 0, 8 3, 0 6');
+    poly.setAttribute('fill', c);
+    m.appendChild(poly);
+    defs.appendChild(m);
+  });
+  svg.appendChild(defs);
+
+  EDGES.forEach(e => {
+    const fromEl = document.getElementById(e.from);
+    const toEl   = document.getElementById(e.to);
+    if (!fromEl || !toEl) return;
+
+    const fL = parseFloat(fromEl.style.left);
+    const fT = parseFloat(fromEl.style.top);
+    const tL = parseFloat(toEl.style.left);
+    const tT = parseFloat(toEl.style.top);
+    const fw = fromEl.offsetWidth || 120;
+    const fh = fromEl.offsetHeight || 54;
+    const tw = toEl.offsetWidth || 120;
+    const th = toEl.offsetHeight || 54;
+
+    // from center
+    let x1 = fL, y1 = fT;
+    let x2 = tL, y2 = tT;
+
+    // Choose best exit/entry edge
+    const dx = x2 - x1, dy = y2 - y1;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      x1 += dx > 0 ? fw/2 : -fw/2;
+      x2 += dx > 0 ? -tw/2 : tw/2;
+    } else {
+      y1 += dy > 0 ? fh/2 : -fh/2;
+      y2 += dy > 0 ? -th/2 : th/2;
+    }
+
+    const cx1 = x1 + (x2 - x1) * 0.5;
+    const cy1 = y1;
+    const cx2 = x1 + (x2 - x1) * 0.5;
+    const cy2 = y2;
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    const d = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', e.color);
+    path.setAttribute('stroke-width', e.style === 'iframe' ? '1.5' : e.style === 'guard' ? '1.5' : e.style === 'redirect' ? '2' : '1.2');
+    path.setAttribute('stroke-dasharray', e.style === 'dashed' ? '5,4' : e.style === 'iframe' ? '3,3' : 'none');
+    const safeId = 'arr-' + e.color.replace(/[^a-zA-Z0-9]/g,'');
+    path.setAttribute('marker-end', `url(#${safeId})`);
+    path.setAttribute('opacity', '0.7');
+    svg.appendChild(path);
+
+    // Label
+    if (e.label) {
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2 - 5;
+      const text = document.createElementNS('http://www.w3.org/2000/svg','text');
+      text.setAttribute('x', mx);
+      text.setAttribute('y', my);
+      text.setAttribute('text-anchor','middle');
+      text.setAttribute('font-size','8.5');
+      text.setAttribute('fill', e.color);
+      text.setAttribute('font-family','Segoe UI, sans-serif');
+      text.setAttribute('font-weight','600');
+      text.setAttribute('paint-order','stroke');
+      text.setAttribute('stroke','#07080e');
+      text.setAttribute('stroke-width','3');
+      text.textContent = e.label;
+      svg.appendChild(text);
+    }
+  });
+}
+
+// Draw after layout
+window.addEventListener('load', () => {
+  setTimeout(drawArrows, 100);
+});
+window.addEventListener('resize', drawArrows);
+
+// ─── ISSUE PANEL ─────────────────────────────────────
+</script>
+
+<!-- ISSUES PANEL (fixed bottom) -->
+<div style="position:fixed;bottom:0;left:0;right:0;background:#0f1119cc;backdrop-filter:blur(10px);border-top:1px solid #1e2d45;padding:8px 20px;display:flex;gap:20px;align-items:flex-start;z-index:100;flex-wrap:wrap">
+  <div style="font-size:0.65rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#334155;white-space:nowrap;margin-top:2px">Issues Found:</div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:8px">
+    <div style="background:#3b1414;border:1px solid #dc262644;border-radius:6px;padding:4px 10px;font-size:0.68rem;color:#f87171">
+      <strong>⚠ 6× Duplicate Pages</strong> — /privacy, /terms, /refunds, /disclaimer on both Homepage &amp; Journal Frontend
+    </div>
+    <div style="background:#3b1414;border:1px solid #dc262644;border-radius:6px;padding:4px 10px;font-size:0.68rem;color:#f87171">
+      <strong>⚠ Duplicate Landing</strong> — /&nbsp;(Next.js, 40KB) &amp; /journal/&nbsp;(Home.jsx, 28KB) are both marketing landing pages
+    </div>
+    <div style="background:#3b1414;border:1px solid #dc262644;border-radius:6px;padding:4px 10px;font-size:0.68rem;color:#f87171">
+      <strong>⚠ Duplicate Features/Contact</strong> — /journal/features &amp; /journal/contact duplicate homepage sections
+    </div>
+    <div style="background:#3b2a0d;border:1px solid #d9770644;border-radius:6px;padding:4px 10px;font-size:0.68rem;color:#fbbf24">
+      <strong>↪ 3-hop Redirect</strong> — /journal/strategy-builder → StrategiesLabRedirect → window.location.replace('/strategies-lab/'). Sidebar should link directly to /strategies-lab/
+    </div>
+    <div style="background:#3b2a0d;border:1px solid #d9770644;border-radius:6px;padding:4px 10px;font-size:0.68rem;color:#fbbf24">
+      <strong>↪ Double Login Hop</strong> — ProtectedRoute redirects to /journal/login (relative), AppRoutes catches it and does window.location.replace('/login/?next=...'). 2 hops for unauthenticated users.
+    </div>
+    <div style="background:#2d1f5e;border:1px solid #7c3aed44;border-radius:6px;padding:4px 10px;font-size:0.68rem;color:#a78bfa">
+      <strong>▣ Dual-Context Apps</strong> — /dashboard/ shell embeds /journal/dashboard &amp; /strategies-lab/ as iframes. These apps initialize twice (standalone + iframe). Risk: auth token conflicts, double API calls.
+    </div>
+    <div style="background:#2d1f5e;border:1px solid #7c3aed44;border-radius:6px;padding:4px 10px;font-size:0.68rem;color:#a78bfa">
+      <strong>▣ Feature Flags Disabled</strong> — ProtectedRoute feature flag check is commented out. All features accessible to any authenticated user regardless of group flags.
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

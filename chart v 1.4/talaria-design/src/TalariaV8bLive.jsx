@@ -6387,7 +6387,7 @@ const TalariaV8bLive = () => {
       if (!style) { style = document.createElement('style'); style.id = 'tlr-scrollbar-css'; document.head.appendChild(style); }
       const sbC = darkMode ? "rgba(140,160,255,0.22)" : "rgba(0,5,40,0.22)";
       const sbH = darkMode ? "rgba(140,160,255,0.44)" : "rgba(0,5,40,0.40)";
-      style.textContent = `*{user-select:none!important;-webkit-user-select:none!important;cursor:default}input,textarea{user-select:text!important;-webkit-user-select:text!important;cursor:text}.tlr-scroll::-webkit-scrollbar{width:3px;height:3px}.tlr-scroll::-webkit-scrollbar-track{background:transparent}.tlr-scroll::-webkit-scrollbar-thumb{background:${sbC};border-radius:2px}.tlr-scroll::-webkit-scrollbar-thumb:hover{background:${sbH}}.tlr-scroll{scrollbar-width:thin;scrollbar-color:${sbC} transparent}.tlr-scroll-tz::-webkit-scrollbar{width:8px;height:8px}.tlr-scroll-tz::-webkit-scrollbar-track{background:rgba(0,0,0,0.12);border-radius:4px}.tlr-scroll-tz::-webkit-scrollbar-thumb{background:${sbH};border-radius:4px;min-height:28px}.tlr-scroll-tz::-webkit-scrollbar-thumb:hover{background:${darkMode?"rgba(180,195,255,0.55)":"rgba(40,55,120,0.55)"}}.tlr-scroll-tz{scrollbar-width:auto;scrollbar-color:${sbH} rgba(0,0,0,0.15)}`;
+      style.textContent = `*{user-select:none!important;-webkit-user-select:none!important;cursor:default}input,textarea{user-select:text!important;-webkit-user-select:text!important;cursor:text}select{user-select:auto!important;-webkit-user-select:auto!important;cursor:default!important}.tlr-ind-select{-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%238d93a1' d='M0 1l5 4 5-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:10px 6px;padding-right:26px!important}.tlr-scroll::-webkit-scrollbar{width:3px;height:3px}.tlr-scroll::-webkit-scrollbar-track{background:transparent}.tlr-scroll::-webkit-scrollbar-thumb{background:${sbC};border-radius:2px}.tlr-scroll::-webkit-scrollbar-thumb:hover{background:${sbH}}.tlr-scroll{scrollbar-width:thin;scrollbar-color:${sbC} transparent}.tlr-scroll-tz::-webkit-scrollbar{width:8px;height:8px}.tlr-scroll-tz::-webkit-scrollbar-track{background:rgba(0,0,0,0.12);border-radius:4px}.tlr-scroll-tz::-webkit-scrollbar-thumb{background:${sbH};border-radius:4px;min-height:28px}.tlr-scroll-tz::-webkit-scrollbar-thumb:hover{background:${darkMode?"rgba(180,195,255,0.55)":"rgba(40,55,120,0.55)"}}.tlr-scroll-tz{scrollbar-width:auto;scrollbar-color:${sbH} rgba(0,0,0,0.15)}`;
     }
   }, [darkMode]);
 
@@ -14405,14 +14405,26 @@ const TalariaV8bLive = () => {
           const row = (right) => (
             <div key={p.id} style={{
               display: "grid",
-              gridTemplateColumns: "1fr auto",
+              gridTemplateColumns: "1fr auto auto 1fr",
               alignItems: "center",
               columnGap: 14,
-              padding: "8px 0",
+              padding: "9px 0",
               borderBottom: `1px solid ${c.br}`,
+              width: "100%",
+              boxSizing: "border-box",
             }}>
-              <span style={{ fontSize: 12, color: c.ts, textAlign: "right", justifySelf: "end", minWidth: 0 }}>{p.label}</span>
+              <div style={{ minWidth: 0 }} />
+              <span style={{
+                fontSize: 12,
+                color: c.ts,
+                textAlign: "right",
+                justifySelf: "end",
+                maxWidth: 220,
+                minWidth: 0,
+                lineHeight: 1.35,
+              }}>{p.label}</span>
               <div style={{ display: "flex", alignItems: "center", justifySelf: "start", flexShrink: 0 }}>{right}</div>
+              <div style={{ minWidth: 0 }} />
             </div>
           );
           if (p.type === "heading") {
@@ -14463,10 +14475,10 @@ const TalariaV8bLive = () => {
           }
           if (p.type === "select" && Array.isArray(p.options)) {
             return row(
-              <select value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
+              <select className="tlr-ind-select" value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
                 onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
                 style={{ width: 130, height: 26, fontSize: 12, fontFamily: F, color: c.tx, boxSizing: "border-box",
-                  background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`, padding: "0 8px", outline: "none" }}>
+                  backgroundColor: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`, padding: "0 8px", outline: "none", borderRadius: 4, cursor: "default" }}>
                 {p.options.map((opt) => (
                   <option key={String(opt.value)} value={opt.value}>{opt.label}</option>
                 ))}
@@ -14517,10 +14529,11 @@ const TalariaV8bLive = () => {
             fontFamily: F,
             color: c.tx,
             boxSizing: "border-box",
-            background: "rgba(140,160,255,0.05)",
+            backgroundColor: "rgba(140,160,255,0.05)",
             border: "1px solid rgba(140,160,255,0.2)",
             borderRadius: 4,
             outline: "none",
+            cursor: "default",
           };
           const ictSec = (label, first) => (
             <div key={"ict-sec-" + label} style={{
@@ -14586,10 +14599,11 @@ const TalariaV8bLive = () => {
             const raw = val(pid);
             return (
               <select
+                className="tlr-ind-select"
                 value={raw != null ? String(raw) : ""}
                 onClick={(e) => e.stopPropagation()}
                 onChange={(e) => setv(pid, e.target.value)}
-                style={{ ...inpBase, width: w != null ? w : "100%", minWidth: 0, padding: "0 8px", cursor: "default" }}
+                style={{ ...inpBase, width: w != null ? w : "100%", minWidth: 0, padding: "0 8px" }}
               >
                 {p.options.map((opt) => (
                   <option key={String(opt.value)} value={opt.value}>{opt.label}</option>
@@ -23148,6 +23162,28 @@ const TalariaV8bLive = () => {
                 color:"#FFD28A", fontSize:10, fontWeight:700, lineHeight:1.35 }}>
                 Futures require at least 1 whole contract.
                 {omFuturesMinRiskTxt ? ` Need at least ${omFuturesMinRiskTxt} risk for this stop.` : " Increase risk or reduce stop distance."}
+              </div>
+            ) : null;
+          })()}
+
+          {(() => {
+            const parseMoney = (txt) => {
+              if (!txt || /∞/u.test(String(txt))) return null;
+              const n = parseFloat(String(txt).replace(/[^0-9.-]/g, ""));
+              return Number.isFinite(n) ? Math.abs(n) : null;
+            };
+            const rsk = parseMoney(omRiskSummaryTxt);
+            const eq = accountEquity;
+            const show =
+              orderPanelOpen &&
+              rsk != null &&
+              eq > 0 &&
+              rsk > eq * 1.0001;
+            return show ? (
+              <div style={{ margin:"5px 8px 0", padding:"5px 7px", flexShrink:0,
+                border:"1px solid rgba(255,80,104,0.35)", background:"rgba(255,80,104,0.08)",
+                color:"#ffb8c8", fontSize:10, fontWeight:700, lineHeight:1.35 }}>
+                Stop loss risk ({omRiskSummaryTxt}) exceeds account equity ({formatV9AccountNum(eq)}). Margin level is buying-power coverage, not a cap on loss if price hits your stop.
               </div>
             ) : null;
           })()}

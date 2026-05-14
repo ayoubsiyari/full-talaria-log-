@@ -14432,6 +14432,12 @@ class OrderManager {
                 riskEl.textContent = `$${risk.toFixed(2)}`;
                 riskEl.style.color = '#ef4444'; // Red for risk
             }
+            const eqR = Number.parseFloat(this.equity);
+            if (hasValidSL && Number.isFinite(risk) && risk > 0 && Number.isFinite(eqR) && eqR > 0 && risk > eqR * 1.0001) {
+                riskEl.title = `Stop loss risk (~$${risk.toFixed(2)}) exceeds account equity ($${eqR.toFixed(2)}). Margin/leverage does not cap cash loss at stop — reduce contracts or tighten the stop.`;
+            } else if (riskEl) {
+                riskEl.removeAttribute('title');
+            }
         }
         
         // Show total (reward - risk)
@@ -14625,15 +14631,38 @@ class OrderManager {
         if (!Number.isFinite(projectedLevel)) {
             badge.textContent = '∞';
             badge.className = 'order-summary-value order-summary-value--positive';
+            badge.removeAttribute('title');
             return;
         }
 
-        badge.textContent = `${projectedLevel.toFixed(2)}%`;
+        const riskTxt = document.getElementById('riskAmount')?.textContent || '';
+        const riskNum = Number.parseFloat(String(riskTxt).replace(/[^0-9.-]/g, ''));
+        const riskExceedsEquity =
+            Number.isFinite(riskNum) &&
+            Number.isFinite(equityNow) &&
+            equityNow > 0 &&
+            riskNum > equityNow * 1.0001 &&
+            !/∞/u.test(riskTxt);
+
+        const MAX_MARGIN_PCT_DISPLAY = 500000;
+        const displayLevel = Math.min(projectedLevel, MAX_MARGIN_PCT_DISPLAY);
+        badge.textContent = `${displayLevel.toFixed(2)}%${projectedLevel > MAX_MARGIN_PCT_DISPLAY ? '+' : ''}`;
         badge.className = 'order-summary-value order-summary-value--positive';
+
+        if (riskExceedsEquity) {
+            badge.title =
+                'Dollar risk at stop (summary) exceeds account equity. Leverage margin % does not cap loss at stop — reduce size, tighten stop, or add capital.';
+        } else if (projectedLevel > MAX_MARGIN_PCT_DISPLAY) {
+            badge.title = 'Margin level capped in UI; underlying model returned an extreme ratio — check entry price and contract specs.';
+        } else {
+            badge.removeAttribute('title');
+        }
 
         if (Number.isFinite(stopOutLevel) && projectedLevel <= stopOutLevel) {
             badge.className = 'order-summary-value order-summary-value--danger';
         } else if (Number.isFinite(marginCallLevel) && projectedLevel <= marginCallLevel) {
+            badge.className = 'order-summary-value order-summary-value--warning';
+        } else if (riskExceedsEquity) {
             badge.className = 'order-summary-value order-summary-value--warning';
         }
     }
@@ -21886,6 +21915,7 @@ class OrderManager {
                     ticker: activeTicker,
                     symbol: activeTicker,
                     quantity: totalLots,
+                    entryPrice,
                     instrument_settings: activeInstrumentSettings
                 };
                 const requiredMargin = this.orderService.estimateTradeMargin(tentative);
@@ -22101,6 +22131,14 @@ class OrderManager {
             const slDistanceInPips = slDistance / this.pipSize;
             actualRisk = slDistanceInPips * quantity * this.pipValuePerLot;
         }
+        if (this.marketType === 'futures' && slEnabled && slPrice > 0 && entryPrice > 0 && quantity > 0) {
+            try {
+                const er = this._engineRisk(entryPrice, slPrice, quantity, entryPrice);
+                if (Number.isFinite(er) && er > 0) actualRisk = er;
+            } catch (_) {
+                /* keep pip-based fallback */
+            }
+        }
         
         // Get risk amount from inputs (for display/logging only)
         let inputRiskAmount = 0;
@@ -22125,6 +22163,7 @@ class OrderManager {
                 ticker: activeTicker,
                 symbol: activeTicker,
                 quantity: quantity,
+                entryPrice,
                 instrument_settings: activeInstrumentSettings
             };
 
@@ -22146,6 +22185,12 @@ class OrderManager {
                 if (Number.isFinite(orderRiskPct) && orderRiskPct > maxRiskPerTradePct) {
                     sessionValidationErrors.push(`❌ Risk per trade too high (${orderRiskPct.toFixed(2)}% > ${maxRiskPerTradePct.toFixed(2)}% max)`);
                 }
+            }
+
+            if (Number.isFinite(riskAmount) && Number.isFinite(equityNow) && equityNow > 0 && riskAmount > equityNow * 1.0001) {
+                sessionValidationErrors.push(
+                    `❌ Stop loss risk ($${riskAmount.toFixed(2)}) exceeds account equity ($${equityNow.toFixed(2)}) — reduce contracts or tighten the stop.`
+                );
             }
 
             const projectedUsedMargin = (Number.isFinite(usedMargin) ? usedMargin : 0) + (Number.isFinite(requiredMargin) ? requiredMargin : 0);

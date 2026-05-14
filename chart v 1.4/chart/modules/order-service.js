@@ -143,10 +143,36 @@ class OrderService {
     estimateTradeMargin(order) {
         if (!order) return 0;
         const leverage = Number.parseFloat(this.multiInstrumentSession.leverage) || 30;
-        const instrument = this.getInstrumentSettings(order.ticker || order.symbol, {
+        const ticker = String(order.ticker || order.symbol || '').toUpperCase();
+        const instrument = this.getInstrumentSettings(ticker, {
             contractSize: this.contractSize
         });
         const qty = Math.abs(Number.parseFloat(order.quantity) || 0);
+        if (!(qty > 0)) return 0;
+
+        let entry = Number.parseFloat(order.entryPrice ?? order.entry_price ?? order.current_price ?? 0);
+        if (!(entry > 0) && typeof document !== 'undefined') {
+            entry = Number.parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        }
+
+        const mce = typeof window !== 'undefined' ? window.marketCalcEngine : null;
+        if (mce && typeof mce.calcMargin === 'function' && entry > 0 && ticker) {
+            try {
+                const resolve =
+                    typeof mce._resolveRegistryKey === 'function'
+                        ? mce._resolveRegistryKey.bind(mce)
+                        : (s) => String(s || '').replace(/[/\-_\s]/g, '').toUpperCase();
+                const norm = resolve(ticker);
+                const specs = mce._registry && mce._registry[norm];
+                if (specs && specs.type === 'futures') {
+                    const mm = mce.calcMargin(entry, qty, norm, 'futures', leverage);
+                    if (Number.isFinite(mm) && mm > 0) return mm;
+                }
+            } catch (_) {
+                /* fall through */
+            }
+        }
+
         const contractSize = Number.parseFloat(instrument.contract_size || instrument.contractSize || this.contractSize || 100000);
         const notional = qty * contractSize;
         return leverage > 0 ? notional / leverage : notional;
