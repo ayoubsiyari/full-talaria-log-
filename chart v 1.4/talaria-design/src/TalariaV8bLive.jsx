@@ -5614,6 +5614,7 @@ const TalariaV8bLive = () => {
     { id:"SESS", type:"sessions", name:"Session Boxes", abbr:"SESS", cat:"sessions", desc:"Highlights major trading sessions" },
     { id:"SESSPLUS", type:"sessionsplus", name:"Sessions+", abbr:"SESS+", cat:"sessions", desc:"Extended sessions module with labels" },
     { id:"KILLZONES", type:"killzones", name:"ICT Kill Zones", abbr:"ICT KZ", cat:"sessions", desc:"ICT session windows and opens" },
+    { id:"ICTEVERYTHING", type:"icteverything", name:"ICT Everything @coldbrewrosh", abbr:"ICT+", cat:"sessions", desc:"Sessions, CBDR/Asia/FLOUT, verticals & opens (Pine-aligned settings)" },
     { id:"OR", type:"openingrange", name:"Opening Range", abbr:"OR", cat:"sessions", desc:"Session opening range high/low levels" },
 
     // Others
@@ -6003,12 +6004,14 @@ const TalariaV8bLive = () => {
       }
       const draft = {};
       def.params.forEach((p) => {
+        if (p.type === "heading" || p.type === "divider") return;
         draft[p.id] = allParams[p.id] !== undefined ? allParams[p.id] : p.default;
       });
       draft.visible = existingIndicator.visible !== false;
       Object.assign(draft, v9IndicatorVisibilityDraftFromIndicator(existingIndicator));
       const counts = { style: 0, input: 0, visibility: 0 };
       def.params.forEach((p) => {
+        if (p.type === "heading" || p.type === "divider") return;
         counts[tabFn(p)]++;
       });
       let first = "visibility";
@@ -6115,6 +6118,79 @@ const TalariaV8bLive = () => {
       return rows.slice(0, maxLegs);
     });
   }, [omOrderQtyTxt, currentSymbol.type, tpRows.length]);
+
+  /** Lot-size (#): SIZE (`riskVal`) is contracts/lots — sync single ENTRY + TP row values (legacy "100" was %). */
+  useEffect(() => {
+    if (!orderPanelOpen || sizeMode !== "#") return;
+    const qCore = Math.max(0, parseFloat(riskVal || "0"));
+    const qn = currentSymbol.type === "futures" ? Math.floor(qCore) : qCore;
+    if (!(qn > 0)) return;
+    const wantEntry =
+      currentSymbol.type === "futures" ? String(Math.floor(qCore)) : String(qCore);
+    const wantTpSingle =
+      currentSymbol.type === "futures" ? String(Math.floor(qCore)) : String(qCore);
+
+    setEntryRows((rows) => {
+      if (rows.length !== 1) return rows;
+      const r0 = rows[0];
+      if (String(r0.risk ?? "") === wantEntry) return rows;
+      return [{ ...r0, risk: wantEntry }];
+    });
+
+    setTpRows((rows) => {
+      if (rows.length === 1) {
+        const r0 = rows[0];
+        if (String(r0.qty ?? "") === wantTpSingle) return rows;
+        return [{ ...r0, qty: wantTpSingle }];
+      }
+      if (currentSymbol.type === "futures") {
+        const active = rows.filter((r) => r.enabled !== false);
+        if (active.length < 2) return rows;
+        const shares = v9TpNormalizeFuturesContractShares(
+          active.map((r) => r.qty),
+          Math.floor(qn)
+        );
+        let changed = false;
+        const next = rows.map((row) => {
+          if (row.enabled === false) return row;
+          const ix = active.findIndex((a) => a.id === row.id);
+          if (ix < 0) return row;
+          const w = String(shares[ix] ?? 0);
+          if (String(row.qty) !== w) changed = true;
+          return { ...row, qty: w };
+        });
+        return changed ? next : rows;
+      }
+      return rows;
+    });
+  }, [orderPanelOpen, sizeMode, riskVal, currentSymbol.type]);
+
+  /** Lot-size (#): changing ENTRY risk or single TP qty pulls SIZE (`riskVal`) to match. */
+  useEffect(() => {
+    if (!orderPanelOpen || sizeMode !== "#") return;
+    const rvF = Math.floor(Math.max(0, parseFloat(riskVal || "0")));
+    const rvX = Math.max(0, parseFloat(riskVal || "0"));
+
+    if (entryRows.length === 1) {
+      const er = Math.max(0, parseFloat(entryRows[0].risk || "0"));
+      const erN = currentSymbol.type === "futures" ? Math.floor(er) : er;
+      const rvN = currentSymbol.type === "futures" ? rvF : rvX;
+      if (erN > 0 && erN !== rvN) {
+        markOrderControlBridge();
+        setRiskVal(String(currentSymbol.type === "futures" ? erN : er));
+        return;
+      }
+    }
+    if (tpRows.length === 1) {
+      const tq = Math.max(0, parseFloat(tpRows[0].qty || "0"));
+      const tqN = currentSymbol.type === "futures" ? Math.floor(tq) : tq;
+      const rvN = currentSymbol.type === "futures" ? rvF : rvX;
+      if (tqN > 0 && tqN !== rvN) {
+        markOrderControlBridge();
+        setRiskVal(String(currentSymbol.type === "futures" ? tqN : tq));
+      }
+    }
+  }, [orderPanelOpen, sizeMode, entryRows, tpRows, riskVal, currentSymbol.type]);
 
   const sessionAssetHintForSymbol = useMemo(() => {
     const want = normalizeSymForBadge(symbol);
@@ -14226,7 +14302,7 @@ const TalariaV8bLive = () => {
           ? window.indicatorSettingsTabForParam
           : (p) => (p.type === "checkbox" ? "visibility" : p.type === "color" ? "style" : "input");
         const isCustom = ctx.indicatorType === "custom";
-        const panelW = isCustom ? 520 : 400;
+        const panelW = isCustom ? 520 : ctx.indicatorType === "icteverything" ? 460 : 400;
         const title = (ctx.indicator && ctx.indicator.name) || def.name || "Indicator";
         const tabOrder = [["style","Style"],["input","Input"],["visibility","Visibility"]];
         const tabsShown = tabOrder;
@@ -14302,6 +14378,20 @@ const TalariaV8bLive = () => {
               <div style={{ display: "flex", alignItems: "center", justifySelf: "start", flexShrink: 0 }}>{right}</div>
             </div>
           );
+          if (p.type === "heading") {
+            return (
+              <div key={p.id} style={{
+                width: "100%",
+                fontSize: 10,
+                fontWeight: 800,
+                color: c.tm,
+                letterSpacing: "0.08em",
+                margin: "14px 0 8px",
+                paddingTop: 6,
+                borderTop: `1px solid ${c.br}`,
+              }}>{p.label}</div>
+            );
+          }
           if (p.type === "number") {
             return row(
               <input type="number" className="tlr-nospinner" value={raw == null ? "" : raw}
@@ -21344,8 +21434,26 @@ const TalariaV8bLive = () => {
               }
               if (!entryAvgDisplay) entryAvgDisplay = "0.00";
             }
-            const updRow = (id, field, val) => { markOrderControlBridge(); setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r)); };
-            const stepRow = (id, field, dir, step=1) => { markOrderControlBridge(); setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r)); };
+            const updRow = (id, field, val) => {
+              markOrderControlBridge();
+              setEntryRows((rows) => rows.map((r) => (r.id === id ? { ...r, [field]: val } : r)));
+            };
+            const stepRow = (id, field, dir, step = 1) => {
+              markOrderControlBridge();
+              setEntryRows((rows) =>
+                rows.map((r) => {
+                  if (r.id !== id) return r;
+                  if (field === "risk" && sizeMode === "#" && currentSymbol.type === "futures") {
+                    const base = Math.round(parseFloat(r[field] || "0") || 0);
+                    return { ...r, [field]: String(Math.max(0, base + dir)) };
+                  }
+                  return {
+                    ...r,
+                    [field]: String(Math.max(0, parseFloat(r[field] || "0") + dir * step)),
+                  };
+                })
+              );
+            };
             const delRow = (id) => {
               omPanelBridgeRef.current.entryDel = Date.now();
               markOrderControlBridge();
@@ -21557,8 +21665,22 @@ const TalariaV8bLive = () => {
                             {sizeMode==="$" && <span style={{ fontSize:10, fontWeight:600, color:c.ts, lineHeight:1, flexShrink:0 }}>$</span>}
                             {sizeMode==="%" && <span style={{ fontSize:9, fontWeight:700, color:c.ts, lineHeight:1, flexShrink:0 }}>%</span>}
                             <input type="text" value={row.risk}
-                              onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updRow(row.id,"risk",e.target.value); }}
-                              onBlur={e => { const n=parseFloat(e.target.value); updRow(row.id,"risk",isNaN(n)?"0":String(n)); }}
+                              onChange={e => {
+                                const v = e.target.value;
+                                if (sizeMode === "#" && currentSymbol.type === "futures") {
+                                  if (/^\d*$/.test(v)) updRow(row.id, "risk", v);
+                                  return;
+                                }
+                                if (/^\d*\.?\d*$/.test(v)) updRow(row.id, "risk", v);
+                              }}
+                              onBlur={e => {
+                                const n = parseFloat(e.target.value);
+                                if (sizeMode === "#" && currentSymbol.type === "futures") {
+                                  updRow(row.id, "risk", String(Math.max(0, Math.round(isNaN(n) ? 0 : n))));
+                                  return;
+                                }
+                                updRow(row.id, "risk", isNaN(n) ? "0" : String(n));
+                              }}
                               style={{ width:26, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                             {sizeMode==="#" && <span style={{ fontSize:9, color:c.ts, flexShrink:0, lineHeight:1, whiteSpace:"nowrap" }}>{sizeUnit}</span>}
                             <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>

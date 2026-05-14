@@ -1,5 +1,198 @@
 // indicator-ui.js
 
+/** Pine-aligned inputs for ICT Everything (native renderer in chart-indicators-full.js). */
+function __ictEverythingParamList() {
+    const tzi = [
+        'UTC -10', 'UTC -7', 'UTC -6', 'UTC -5', 'UTC -4', 'UTC -3', 'UTC +0', 'UTC +1', 'UTC +2', 'UTC +3',
+        'UTC +3:30', 'UTC +4', 'UTC +5', 'UTC +5:30', 'UTC +6', 'UTC +7', 'UTC +8', 'UTC +9', 'UTC +9:30',
+        'UTC +10', 'UTC +10:30', 'UTC +11', 'UTC +13', 'UTC +13:45'
+    ].map(function (v) { return { value: v, label: v }; });
+    const lineStyle = ['Solid', 'Dashed', 'Dotted'].map(function (v) { return { value: v, label: v }; });
+    const lineWidth = ['1px', '2px', '3px', '4px', '5px'].map(function (v) { return { value: v, label: v }; });
+    const labelSize = ['Auto', 'Tiny', 'Small', 'Normal', 'Large', 'Huge'].map(function (v) { return { value: v, label: v }; });
+    const terminus = [
+        'Terminus @ Next Midnight', 'Terminus @ Current Time', 'Terminus @ Current Time +15min', 'Terminus @ Current Time +30min',
+        'Terminus @ Current Time +45min', 'Terminus @ Current Time +1hr', 'Terminus @ Current Time +2hr', 'Terminus @ Current Time +3hr'
+    ].map(function (v) { return { value: v, label: v }; });
+    const tablePos = ['Top Left', 'Top Center', 'Top Right', 'Middle Left', 'Middle Right', 'Bottom Left', 'Bottom Center', 'Bottom Right']
+        .map(function (v) { return { value: v, label: v }; });
+    const biasOpt = ['Bullish', 'Bearish', 'Consolidating', 'Unclear'].map(function (v) { return { value: v, label: v }; });
+    const devSd = ['1 SD', '2 SD', '3 SD', '4 SD'].map(function (v) { return { value: v, label: v }; });
+    const devDir = ['Upside Only', 'Both', 'Downside Only'].map(function (v) { return { value: v, label: v }; });
+    return [
+        { id: 'h_global', type: 'heading', label: 'Global Settings' },
+        { id: 'TZI', label: 'Timezone Selection', type: 'select', options: tzi, default: 'UTC -5' },
+        { id: 'inputMaxInterval', label: 'Hide indicator above (bar minutes)', type: 'number', default: 31, min: 1, max: 1440 },
+        { id: 'h_sessopt', type: 'heading', label: 'Session Options' },
+        { id: 'ShowTSO', label: "Show today's session only", type: 'checkbox', default: true },
+        { id: 'ShowTWO', label: "Show current week's sessions only", type: 'checkbox', default: true },
+        { id: 'SL4W', label: 'Show last 4 week sessions', type: 'checkbox', default: true },
+        { id: 'ShowSFill', label: 'Show session highlighting', type: 'checkbox', default: false },
+        { id: 'h_hist', type: 'heading', label: 'Historical Lines' },
+        { id: 'ShowMOPL', label: 'Midnight historical price lines', type: 'checkbox', default: false },
+        { id: 'MOLHist', label: 'Midnight historical vertical lines', type: 'checkbox', default: true },
+        { id: 'ShowPrev', label: 'Misc. historical price lines', type: 'checkbox', default: false },
+        { id: 'h_sessions', type: 'heading', label: 'Sessions' },
+        { id: 'ShowLondon', label: 'London', type: 'checkbox', default: true },
+        { id: 'txt2', label: 'London label', type: 'text', default: 'LONDON' },
+        { id: 'LDNseshStart', label: 'London start', type: 'time', default: '02:00' },
+        { id: 'LDNseshEnd', label: 'London end', type: 'time', default: '05:00' },
+        { id: 'LSFC', label: 'London fill', type: 'color', default: 'rgba(120,123,134,0.1)' },
+        { id: 'ShowNY', label: 'New York', type: 'checkbox', default: true },
+        { id: 'txt3', label: 'NY label', type: 'text', default: 'NEW YORK' },
+        { id: 'NYseshStart', label: 'NY start', type: 'time', default: '07:00' },
+        { id: 'NYseshEnd', label: 'NY end', type: 'time', default: '10:00' },
+        { id: 'NYSFC', label: 'NY fill', type: 'color', default: 'rgba(120,123,134,0.1)' },
+        { id: 'ShowLC', label: 'London close', type: 'checkbox', default: true },
+        { id: 'txt4', label: 'LC label', type: 'text', default: 'LDN CLOSE' },
+        { id: 'LCseshStart', label: 'LC start', type: 'time', default: '10:00' },
+        { id: 'LCseshEnd', label: 'LC end', type: 'time', default: '12:00' },
+        { id: 'LCSFC', label: 'LC fill', type: 'color', default: 'rgba(120,123,134,0.1)' },
+        { id: 'ShowPM', label: 'Afternoon', type: 'checkbox', default: true },
+        { id: 'txt5', label: 'PM label', type: 'text', default: 'AFTERNOON' },
+        { id: 'PMseshStart', label: 'PM start', type: 'time', default: '13:00' },
+        { id: 'PMseshEnd', label: 'PM end', type: 'time', default: '16:00' },
+        { id: 'PMSFC', label: 'PM fill', type: 'color', default: 'rgba(120,123,134,0.1)' },
+        { id: 'ShowAsian', label: 'Asia (custom)', type: 'checkbox', default: false },
+        { id: 'txt6', label: 'Asia label', type: 'text', default: 'ASIA' },
+        { id: 'ASIA2seshStart', label: 'Asia start', type: 'time', default: '20:00' },
+        { id: 'ASIA2seshEnd', label: 'Asia end', type: 'time', default: '23:59' },
+        { id: 'ASFC', label: 'Asia fill', type: 'color', default: 'rgba(120,123,134,0.1)' },
+        { id: 'ShowFreeSesh', label: 'Free session', type: 'checkbox', default: false },
+        { id: 'txt9', label: 'Free label', type: 'text', default: 'FREE SESH' },
+        { id: 'FreeSeshStart', label: 'Free start', type: 'time', default: '00:00' },
+        { id: 'FreeSeshEnd', label: 'Free end', type: 'time', default: '00:00' },
+        { id: 'FSFC', label: 'Free fill', type: 'color', default: 'rgba(120,123,134,0.1)' },
+        { id: 'h_vert', type: 'heading', label: 'Vertical Lines' },
+        { id: 'ShowMOP', label: 'Midnight (00:00)', type: 'checkbox', default: true },
+        { id: 'txt12', label: 'Midnight vline label', type: 'text', default: 'MIDNIGHT' },
+        { id: 'MOPColor', label: 'Midnight vline color', type: 'color', default: '#787b86' },
+        { id: 'Midnight_Open_LS', label: 'Midnight vline style', type: 'select', options: lineStyle, default: 'Dotted' },
+        { id: 'Midnight_Open_LW', label: 'Midnight vline width', type: 'select', options: lineWidth, default: '1px' },
+        { id: 'ShowLOP', label: 'London 03:00', type: 'checkbox', default: false },
+        { id: 'txt14', label: 'LOP label', type: 'text', default: 'LONDON' },
+        { id: 'LOPColor', label: 'LOP color', type: 'color', default: 'rgba(0,128,128,0.6)' },
+        { id: 'london_Open_LS', label: 'LOP style', type: 'select', options: lineStyle, default: 'Solid' },
+        { id: 'London_Open_LW', label: 'LOP width', type: 'select', options: lineWidth, default: '1px' },
+        { id: 'ShowNYOP', label: 'NY 08:30', type: 'checkbox', default: true },
+        { id: 'txt15', label: 'NYOP label', type: 'text', default: 'NEW YORK' },
+        { id: 'NYOPColor', label: 'NYOP color', type: 'color', default: 'rgba(0,128,128,0.6)' },
+        { id: 'NY_Open_LS', label: 'NYOP style', type: 'select', options: lineStyle, default: 'Solid' },
+        { id: 'NY_Open_LW', label: 'NYOP width', type: 'select', options: lineWidth, default: '1px' },
+        { id: 'ShowEOP', label: 'Equities 09:30', type: 'checkbox', default: false },
+        { id: 'txt16', label: 'EOP label', type: 'text', default: 'EQUITIES' },
+        { id: 'EOPColor', label: 'EOP color', type: 'color', default: 'rgba(0,128,128,0.6)' },
+        { id: 'Equities_Open_LS', label: 'EOP style', type: 'select', options: lineStyle, default: 'Solid' },
+        { id: 'Equities_Open_LW', label: 'EOP width', type: 'select', options: lineWidth, default: '1px' },
+        { id: 'h_openp', type: 'heading', label: 'Opening Price Lines' },
+        { id: 'ShowMOPP', label: 'Midnight open price', type: 'checkbox', default: true },
+        { id: 'txt13', label: 'MOPP label', type: 'text', default: 'MIDNIGHT' },
+        { id: 'MOPColP', label: 'MOPP color', type: 'color', default: '#787b86' },
+        { id: 'MOPLS', label: 'MOPP style', type: 'select', options: lineStyle, default: 'Dotted' },
+        { id: 'i_MOPLW', label: 'MOPP width', type: 'select', options: lineWidth, default: '1px' },
+        { id: 'ShowNYOPP', label: 'NY 08:30 open', type: 'checkbox', default: false },
+        { id: 'txt17', label: 'NYOPP label', type: 'text', default: 'NEW YORK' },
+        { id: 'NYOPColP', label: 'NYOPP color', type: 'color', default: '#787b86' },
+        { id: 'NYOPLS', label: 'NYOPP style', type: 'select', options: lineStyle, default: 'Dotted' },
+        { id: 'i_NYOPLW', label: 'NYOPP width', type: 'select', options: lineWidth, default: '1px' },
+        { id: 'ShowEOPP', label: 'Equities 09:30 open', type: 'checkbox', default: false },
+        { id: 'txt18', label: 'EOPP label', type: 'text', default: 'EQUITIES' },
+        { id: 'EOPColP', label: 'EOPP color', type: 'color', default: '#787b86' },
+        { id: 'EOPLS', label: 'EOPP style', type: 'select', options: lineStyle, default: 'Dotted' },
+        { id: 'i_EOPLW', label: 'EOPP width', type: 'select', options: lineWidth, default: '1px' },
+        { id: 'ShowAFTPP', label: 'Afternoon 13:30 open', type: 'checkbox', default: false },
+        { id: 'txt1330', label: 'AFTPP label', type: 'text', default: 'AFTERNOON' },
+        { id: 'AFTOPColP', label: 'AFTPP color', type: 'color', default: '#787b86' },
+        { id: 'AFTOPLS', label: 'AFTPP style', type: 'select', options: lineStyle, default: 'Dotted' },
+        { id: 'i_AFTOPLW', label: 'AFTPP width', type: 'select', options: lineWidth, default: '1px' },
+        { id: 'h_htf', type: 'heading', label: 'HTF Opening Price Lines' },
+        { id: 'ShowWeekOpen', label: 'Weekly open', type: 'checkbox', default: false },
+        { id: 'txt19', label: 'Weekly label', type: 'text', default: 'WEEKLY' },
+        { id: 'i_WeekOpenCol', label: 'Weekly color', type: 'color', default: '#787b86' },
+        { id: 'WOLS', label: 'Weekly style', type: 'select', options: lineStyle, default: 'Dotted' },
+        { id: 'i_WOPLW', label: 'Weekly width', type: 'select', options: lineWidth, default: '1px' },
+        { id: 'showMonthOpen', label: 'Monthly open', type: 'checkbox', default: false },
+        { id: 'txt20', label: 'Monthly label', type: 'text', default: 'MONTHLY' },
+        { id: 'i_MonthOpenCol', label: 'Monthly color', type: 'color', default: '#787b86' },
+        { id: 'MOLS', label: 'Monthly style', type: 'select', options: lineStyle, default: 'Dotted' },
+        { id: 'i_MONPLW', label: 'Monthly width', type: 'select', options: lineWidth, default: '1px' },
+        { id: 'h_cbdr', type: 'heading', label: 'CBDR, ASIA & FLOUT' },
+        { id: 'ShowCBDR', label: 'CBDR range box', type: 'checkbox', default: true },
+        { id: 'txt0', label: 'CBDR label', type: 'text', default: 'CBDR' },
+        { id: 'CBDRBoxCol', label: 'CBDR box', type: 'color', default: '#787b86' },
+        { id: 'box_text_cbdr', label: 'CBDR show text', type: 'checkbox', default: true },
+        { id: 'box_text_cbdr_col', label: 'CBDR text', type: 'color', default: 'rgba(128,128,128,0.2)' },
+        { id: 'bool_cbdr_dev', label: 'CBDR SD lines', type: 'checkbox', default: true },
+        { id: 'ShowASIA', label: 'Asia range box (20:00–00:00)', type: 'checkbox', default: true },
+        { id: 'txt1', label: 'Asia box label', type: 'text', default: 'ASIA' },
+        { id: 'ASIABoxCol', label: 'Asia box', type: 'color', default: '#787b86' },
+        { id: 'box_text_asia', label: 'Asia show text', type: 'checkbox', default: true },
+        { id: 'box_text_asia_col', label: 'Asia text', type: 'color', default: 'rgba(128,128,128,0.2)' },
+        { id: 'bool_asia_dev', label: 'Asia SD lines', type: 'checkbox', default: true },
+        { id: 'ShowFLOUT', label: 'FLOUT range box', type: 'checkbox', default: false },
+        { id: 'txt7', label: 'FLOUT label', type: 'text', default: 'FLOUT' },
+        { id: 'FLOUTBoxCol', label: 'FLOUT box', type: 'color', default: '#787b86' },
+        { id: 'box_text_flout', label: 'FLOUT show text', type: 'checkbox', default: true },
+        { id: 'box_text_flout_col', label: 'FLOUT text', type: 'color', default: 'rgba(128,128,128,0.2)' },
+        { id: 'bool_flout_dev', label: 'FLOUT SD lines', type: 'checkbox', default: true },
+        { id: 'h_sd', type: 'heading', label: 'Standard Deviation' },
+        { id: 'ShowDevLN', label: 'Deviation guide lines (global style)', type: 'checkbox', default: true },
+        { id: 'DEVLNTXT', label: 'SD lines label', type: 'text', default: 'SD LINES' },
+        { id: 'DevLNCol', label: 'SD line color', type: 'color', default: '#787b86' },
+        { id: 'DEVLS', label: 'SD line style', type: 'select', options: lineStyle, default: 'Solid' },
+        { id: 'i_DEVLW', label: 'SD line width', type: 'select', options: lineWidth, default: '1px' },
+        { id: 'ShowDev', label: 'Draw SD multiples on boxes', type: 'checkbox', default: false },
+        { id: 'txt8', label: 'SD count label', type: 'text', default: 'SD COUNT' },
+        { id: 'SDCountCol', label: 'SD count color', type: 'color', default: '#787b86' },
+        { id: 'DevInput', label: 'SD levels', type: 'select', options: devSd, default: '2 SD' },
+        { id: 'DevDirection', label: 'SD direction', type: 'select', options: devDir, default: 'Both' },
+        { id: 'Auto_Select', label: 'Auto SD selection (forex)', type: 'checkbox', default: false },
+        { id: 'txtSD', label: 'Auto SD label', type: 'text', default: 'AUTO SD' },
+        { id: 'Tab1txtCol', label: 'Table text', type: 'color', default: '#808080' },
+        { id: 'TabOptionShow', label: 'Range table', type: 'select', options: [{ value: 'Show Table', label: 'Show Table' }, { value: 'Hide Table', label: 'Hide Table' }], default: 'Show Table' },
+        { id: 'TabOption1', label: 'Table position', type: 'select', options: tablePos, default: 'Top Right' },
+        { id: 'h_dow', type: 'heading', label: 'Day Of Week & Labels' },
+        { id: 'ShowLabel', label: 'Show labels (open lines)', type: 'checkbox', default: true },
+        { id: 'txt21', label: 'Label title', type: 'text', default: 'LABEL' },
+        { id: 'LabelColor', label: 'Label bg', type: 'color', default: 'rgba(0,0,0,0.6)' },
+        { id: 'LabelSizeInput', label: 'Label size', type: 'select', options: labelSize, default: 'Normal' },
+        { id: 'Terminusinp', label: 'Line terminus', type: 'select', options: terminus, default: 'Terminus @ Current Time +1hr' },
+        { id: 'ShowLabelText', label: 'Show label text body', type: 'checkbox', default: true },
+        { id: 'txt22', label: 'Label text prefix', type: 'text', default: 'LABEL TEXT' },
+        { id: 'LabelTextColor', label: 'Label text color', type: 'color', default: '#787b86' },
+        { id: 'LabelTextOptioninput', label: 'Label mode', type: 'select', options: [{ value: 'Time', label: 'Time' }, { value: 'Text', label: 'Text' }], default: 'Time' },
+        { id: 'ShowPricesBool', label: 'Prices on labels', type: 'select', options: [{ value: 'Show Prices', label: 'Show Prices' }, { value: 'Hide Prices', label: 'Hide Prices' }], default: 'Hide Prices' },
+        { id: 'showDOW', label: 'Day-of-week marker', type: 'checkbox', default: true },
+        { id: 'txt24', label: 'DOW label', type: 'text', default: 'DAY OF WEEK' },
+        { id: 'i_DOWCol', label: 'DOW color', type: 'color', default: '#787b86' },
+        { id: 'DOWTime', label: 'DOW hour', type: 'number', default: 12, min: 0, max: 23 },
+        { id: 'DOWLoc_inpt', label: 'DOW position', type: 'select', options: [{ value: 'Top', label: 'Top' }, { value: 'Bottom', label: 'Bottom' }], default: 'Bottom' },
+        { id: 'h_biaspre', type: 'heading', label: 'BIAS & NOTES PRECONFIG' },
+        { id: 'BIAS_M_Bool', label: 'Show bias table (UI only)', type: 'checkbox', default: false },
+        { id: 'txt100', label: 'Bias table title', type: 'text', default: 'BIAS' },
+        { id: 'Tab2txtCol', label: 'Bias text color', type: 'color', default: '#787b86' },
+        { id: 'TabOption2', label: 'Bias table position', type: 'select', options: tablePos, default: 'Bottom Right' },
+        { id: 'NOTES_M_Bool', label: 'Show notes table (UI only)', type: 'checkbox', default: true },
+        { id: 'txt101', label: 'Notes table title', type: 'text', default: 'NOTES' },
+        { id: 'Tab3txtCol', label: 'Notes text color', type: 'color', default: '#787b86' },
+        { id: 'TabOption3', label: 'Notes table position', type: 'select', options: tablePos, default: 'Top Center' },
+        { id: 'h_bias', type: 'heading', label: 'BIAS & NOTES' },
+        { id: 'BIASbool1', label: 'Row 1', type: 'checkbox', default: true },
+        { id: 'txt52', label: 'Row 1 name', type: 'text', default: 'DXY ' },
+        { id: 'BIASOption1', label: 'Row 1 bias', type: 'select', options: biasOpt, default: 'Bullish' },
+        { id: 'BIASbool2', label: 'Row 2', type: 'checkbox', default: true },
+        { id: 'txt53', label: 'Row 2 name', type: 'text', default: 'EURGBP ' },
+        { id: 'BIASOption2', label: 'Row 2 bias', type: 'select', options: biasOpt, default: 'Bearish' },
+        { id: 'BIASbool3', label: 'Row 3', type: 'checkbox', default: true },
+        { id: 'txt54', label: 'Row 3 name', type: 'text', default: 'AUDNZD ' },
+        { id: 'BIASOption3', label: 'Row 3 bias', type: 'select', options: biasOpt, default: 'Bullish' },
+        { id: 'BIASbool4', label: 'Row 4', type: 'checkbox', default: true },
+        { id: 'txt55', label: 'Row 4 name', type: 'text', default: 'NASDAQ ' },
+        { id: 'BIASOption4', label: 'Row 4 bias', type: 'select', options: biasOpt, default: 'Bearish' },
+        { id: 'notes', label: 'Notes', type: 'textarea', default: '@coldbrewrosh' }
+    ];
+}
+
 // 1. Indicator Definitions
 const INDICATOR_DEFINITIONS = {
     sma: {
@@ -618,6 +811,11 @@ const INDICATOR_DEFINITIONS = {
             { id: 'lowColor', label: 'Equal lows', type: 'color', default: '#2962ff' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 3 }
         ]
+    },
+    icteverything: {
+        name: 'ICT Everything @coldbrewrosh',
+        type: 'overlay',
+        params: __ictEverythingParamList()
     },
     custom: {
         name: 'Custom (sandboxed JS)',
@@ -1419,7 +1617,7 @@ function createIndicatorSelectionMenu(chartInstance) {
         ict: {
             name: 'ICT',
             icon: '',
-            indicators: ['ictpd', 'ictsesspd', 'ictasian', 'ictote', 'ictfvg', 'ictliquidity']
+            indicators: ['ictpd', 'ictsesspd', 'ictasian', 'ictote', 'ictfvg', 'ictliquidity', 'icteverything']
         },
         script: {
             name: 'Custom',
@@ -1817,6 +2015,7 @@ function createIndicatorSelectionMenu(chartInstance) {
 function indicatorSettingsTabForParam(param) {
     const id = String(param.id || '').toLowerCase();
     const label = String(param.label || '').toLowerCase();
+    if (param.type === 'heading' || param.type === 'divider') return 'input';
     if (param.type === 'checkbox') return 'visibility';
     if (param.type === 'color') return 'style';
     if (/color|fill|linewidth|linethickness|thickness|transparency|opacity/.test(id)) return 'style';
@@ -1837,6 +2036,7 @@ function mergeIndicatorDraftForUpdate(indicatorType, existingIndicator, draft) {
     const newParams = {};
     const newStyle = {};
     def.params.forEach(function(param) {
+        if (param.type === 'heading' || param.type === 'divider') return;
         var raw = draft[param.id];
         if (raw === undefined) {
             raw = baseExisting[param.id] !== undefined ? baseExisting[param.id] : param.default;
@@ -2068,6 +2268,22 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     }
 
     function appendIndicatorParamRow(param, mountEl) {
+        if (param.type === 'heading' || param.type === 'divider') {
+            const h = document.createElement('div');
+            h.textContent = param.label || '';
+            h.style.cssText = [
+                'font-size:10px',
+                'font-weight:700',
+                'color:var(--sp-text-muted,#787b86)',
+                'letter-spacing:0.08em',
+                'text-transform:uppercase',
+                'padding:14px 10px 6px',
+                'margin-top:4px',
+                'border-top:1px solid var(--sp-ui-border, rgba(42,46,57,0.55))'
+            ].join(';');
+            mountEl.appendChild(h);
+            return;
+        }
         const wrapper = document.createElement('div');
         wrapper.className = 'settings-input-row';
         wrapper.style.cssText = `
@@ -2262,6 +2478,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         const newStyle = {};
         
         def.params.forEach(param => {
+            if (param.type === 'heading' || param.type === 'divider') return;
             const input = panel.querySelector(`[data-param-id="${param.id}"]`);
             if (!input) {
                 console.warn('Input not found for param:', param.id);

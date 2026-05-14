@@ -901,6 +901,423 @@
         return result;
     }
 
+    /** Pine TZI → fixed offset hours (no DST; matches killzones-style offset usage). */
+    function _ictTzOffsetHoursFromTZI(tzi) {
+        const map = {
+            'UTC -10': -10, 'UTC -7': -7, 'UTC -6': -6, 'UTC -5': -5, 'UTC -4': -4, 'UTC -3': -3,
+            'UTC +0': 0, 'UTC +1': 1, 'UTC +2': 2, 'UTC +3': 3, 'UTC +3:30': 3.5, 'UTC +4': 4, 'UTC +5': 5,
+            'UTC +5:30': 5.5, 'UTC +6': 6, 'UTC +7': 7, 'UTC +8': 8, 'UTC +9': 9, 'UTC +9:30': 9.5,
+            'UTC +10': 10, 'UTC +10:30': 10.5, 'UTC +11': 11, 'UTC +13': 13, 'UTC +13:45': 13.75
+        };
+        const v = map[tzi];
+        return v != null ? v : -5;
+    }
+
+    function _ictParseTimeToDec(timeStr) {
+        if (!timeStr) return 0;
+        const p = String(timeStr).split(':');
+        const h = parseInt(p[0], 10) || 0;
+        const m = parseInt(p[1], 10) || 0;
+        return h + m / 60;
+    }
+
+    function _ictPxWidthFromSelect(s) {
+        const n = parseInt(String(s || '1').replace(/\D/g, ''), 10);
+        return Math.min(5, Math.max(1, n || 1));
+    }
+
+    function _ictDashFromStyle(name) {
+        if (name === 'Dotted') return [2, 4];
+        if (name === 'Dashed') return [7, 5];
+        return [];
+    }
+
+    function _ictMedianBarMinutes(data) {
+        if (!data || data.length < 2) return 60;
+        const n = Math.min(data.length - 1, 200);
+        let acc = 0;
+        let c = 0;
+        for (let i = data.length - n; i < data.length; i++) {
+            if (i <= 0) continue;
+            const d = data[i].t - data[i - 1].t;
+            if (d > 0 && d < 86400000) {
+                acc += d;
+                c++;
+            }
+        }
+        if (!c) return 60;
+        return (acc / c) / 60000;
+    }
+
+    function _ictWallFromUtc(utcMs, offsetHours) {
+        const adj = utcMs + offsetHours * 3600000;
+        const d = new Date(adj);
+        const y = d.getUTCFullYear();
+        const M = d.getUTCMonth() + 1;
+        const D = d.getUTCDate();
+        const h = d.getUTCHours();
+        const m = d.getUTCMinutes();
+        const dec = h + m / 60;
+        const dayKey = y + '-' + (M < 10 ? '0' : '') + M + '-' + (D < 10 ? '0' : '') + D;
+        return { y: y, M: M, D: D, hour: h, minute: m, dec: dec, dayKey: dayKey, dow: d.getUTCDay() };
+    }
+
+    function _ictIsoWeekKey(y, M, D) {
+        const t = Date.UTC(y, M - 1, D);
+        const wd = new Date(t).getUTCDay() || 7;
+        const t2 = t + (4 - wd) * 86400000;
+        const y2 = new Date(t2).getUTCFullYear();
+        const d0 = Date.UTC(y2, 0, 1);
+        const wk = Math.ceil(((t2 - d0) / 86400000 + 1) / 7);
+        return y2 + '-W' + (wk < 10 ? '0' : '') + wk;
+    }
+
+    function _ictInDecSession(dec, startDec, endDec) {
+        if (startDec <= endDec) {
+            return dec >= startDec && dec < endDec;
+        }
+        return dec >= startDec || dec < endDec;
+    }
+
+    function _ictDevCountFromInput(s) {
+        if (s === '1 SD') return 1;
+        if (s === '3 SD') return 3;
+        if (s === '4 SD') return 4;
+        return 2;
+    }
+
+    /**
+     * ICT Everything — session strips, CBDR/Asia/FLOUT range boxes, verticals, opening lines (Pine-aligned inputs).
+     * Tables (bias/notes/range stats) and Auto_Select deletion logic are not drawn on canvas yet.
+     */
+    function calculateIctEverything(data, indicator) {
+        const empty = {
+            dom: false,
+            sessionStrips: [],
+            boxes: [],
+            boxDeviations: [],
+            verticals: [],
+            horizontals: [],
+            dowMarks: [],
+            showMidline: false,
+            showBoxInfo: true,
+            boxTransparency: 88,
+            showDeviations: false,
+            deviationCount: 2,
+            showNYMidnight: false,
+            _ictMeta: {}
+        };
+        if (!data || data.length === 0) return empty;
+
+        const P = Object.assign({}, indicator.params || {}, indicator.style || {});
+        const offH = _ictTzOffsetHoursFromTZI(P.TZI || 'UTC -5');
+        const barMin = _ictMedianBarMinutes(data);
+        const maxIv = P.inputMaxInterval != null ? +P.inputMaxInterval : 31;
+        const dom = barMin <= maxIv && barMin < 18 * 60;
+        if (!dom) {
+            return Object.assign(empty, { dom: false });
+        }
+
+        const n = data.length;
+        const lastMs = data[n - 1].t;
+        const lastWall = _ictWallFromUtc(lastMs, offH);
+        const lastDayKey = lastWall.dayKey;
+        const lastWeekKey = _ictIsoWeekKey(lastWall.y, lastWall.M, lastWall.D);
+
+        function passesTimeFilter(dayKey, weekKey, barT) {
+            if (P.ShowTSO) {
+                return dayKey === lastDayKey;
+            }
+            if (P.ShowTWO) {
+                return weekKey === lastWeekKey;
+            }
+            if (P.SL4W) {
+                if (!barT) return true;
+                return barT >= lastMs - 35 * 86400000;
+            }
+            return true;
+        }
+
+        const sessionStrips = new Array(n);
+        for (let i = 0; i < n; i++) sessionStrips[i] = [];
+
+        const sessionDefs = [
+            { key: 'london', show: P.ShowLondon !== false, start: _ictParseTimeToDec(P.LDNseshStart || '02:00'), end: _ictParseTimeToDec(P.LDNseshEnd || '05:00'), color: P.LSFC || 'rgba(120,123,134,0.12)' },
+            { key: 'ny', show: P.ShowNY !== false, start: _ictParseTimeToDec(P.NYseshStart || '07:00'), end: _ictParseTimeToDec(P.NYseshEnd || '10:00'), color: P.NYSFC || 'rgba(120,123,134,0.12)' },
+            { key: 'lc', show: P.ShowLC !== false, start: _ictParseTimeToDec(P.LCseshStart || '10:00'), end: _ictParseTimeToDec(P.LCseshEnd || '12:00'), color: P.LCSFC || 'rgba(120,123,134,0.12)' },
+            { key: 'pm', show: P.ShowPM !== false, start: _ictParseTimeToDec(P.PMseshStart || '13:00'), end: _ictParseTimeToDec(P.PMseshEnd || '16:00'), color: P.PMSFC || 'rgba(120,123,134,0.12)' },
+            { key: 'asia2', show: !!P.ShowAsian, start: _ictParseTimeToDec(P.ASIA2seshStart || '20:00'), end: _ictParseTimeToDec(P.ASIA2seshEnd || '23:59'), color: P.ASFC || 'rgba(120,123,134,0.12)' },
+            { key: 'free', show: !!P.ShowFreeSesh && (Math.abs(_ictParseTimeToDec(P.FreeSeshEnd || '00:00') - _ictParseTimeToDec(P.FreeSeshStart || '00:00')) > 1e-3),
+                start: _ictParseTimeToDec(P.FreeSeshStart || '00:00'), end: _ictParseTimeToDec(P.FreeSeshEnd || '00:00'), color: P.FSFC || 'rgba(120,123,134,0.12)' }
+        ];
+
+        const order = ['london', 'ny', 'lc', 'pm', 'asia2', 'free'];
+        const activeRun = {};
+        order.forEach(function (k) { activeRun[k] = null; });
+
+        for (let i = 0; i < n; i++) {
+            const w = _ictWallFromUtc(data[i].t, offH);
+            if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) {
+                order.forEach(function (key) {
+                    if (activeRun[key]) {
+                        activeRun[key] = null;
+                    }
+                });
+                continue;
+            }
+            order.forEach(function (key) {
+                const sd = sessionDefs.find(function (s) { return s.key === key; });
+                if (!sd || !sd.show) return;
+                const inside = _ictInDecSession(w.dec, sd.start, sd.end);
+                if (inside) {
+                    if (!activeRun[key]) {
+                        activeRun[key] = { start: i, color: sd.color };
+                    }
+                    if (P.ShowSFill) {
+                        sessionStrips[i].push({ color: sd.color });
+                    }
+                } else if (activeRun[key]) {
+                    activeRun[key] = null;
+                }
+            });
+        }
+        order.forEach(function (key) {
+            if (activeRun[key]) {
+                activeRun[key] = null;
+            }
+        });
+
+        const boxes = [];
+        const boxDeviations = [];
+
+        function pushRangeBox(kind, startDec, endDec, color, name, useFloutStep) {
+            let active = null;
+            for (let i = 0; i < n; i++) {
+                const w = _ictWallFromUtc(data[i].t, offH);
+                if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) {
+                    if (active) {
+                        boxes.push(active);
+                        active = null;
+                    }
+                    continue;
+                }
+                const inside = _ictInDecSession(w.dec, startDec, endDec);
+                if (inside) {
+                    if (!active) {
+                        active = {
+                            type: kind,
+                            name: name || kind,
+                            color: color || '#787b86',
+                            startIndex: i,
+                            endIndex: i,
+                            high: data[i].h,
+                            low: data[i].l,
+                            useFloutStep: !!useFloutStep
+                        };
+                    } else {
+                        active.high = Math.max(active.high, data[i].h);
+                        active.low = Math.min(active.low, data[i].l);
+                        active.endIndex = i;
+                    }
+                } else if (active) {
+                    active.range = active.high - active.low;
+                    boxes.push(active);
+                    active = null;
+                }
+            }
+            if (active) {
+                active.range = active.high - active.low;
+                boxes.push(active);
+            }
+        }
+
+        if (P.ShowCBDR !== false) {
+            pushRangeBox('cbdr', _ictParseTimeToDec('16:00'), _ictParseTimeToDec('20:00'), P.CBDRBoxCol, P.txt0 || 'CBDR', false);
+        }
+        if (P.ShowASIA !== false) {
+            pushRangeBox('asiaR', 20, 24, P.ASIABoxCol, P.txt1 || 'ASIA', false);
+        }
+        if (P.ShowFLOUT) {
+            pushRangeBox('flout', 16, 24, P.FLOUTBoxCol, P.txt7 || 'FLOUT', true);
+        }
+
+        const verticals = [];
+        const pushVline = function (idx, color, dashName, lwName) {
+            if (idx < 0 || idx >= n) return;
+            verticals.push({
+                index: idx,
+                color: color || '#787b86',
+                dash: _ictDashFromStyle(dashName),
+                lw: _ictPxWidthFromSelect(lwName)
+            });
+        };
+        let prevWall = null;
+        for (let i = 0; i < n; i++) {
+            const w = _ictWallFromUtc(data[i].t, offH);
+            if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) {
+                prevWall = w;
+                continue;
+            }
+            if (prevWall) {
+                if (P.ShowMOP !== false && w.dayKey !== prevWall.dayKey) {
+                    pushVline(i, P.MOPColor, P.Midnight_Open_LS, P.Midnight_Open_LW);
+                }
+                if (w.dayKey === prevWall.dayKey) {
+                    const cross = function (targetDec, color, dashN, lwN) {
+                        if (prevWall.dec < targetDec && w.dec >= targetDec) {
+                            pushVline(i, color, dashN, lwN);
+                        }
+                    };
+                    if (P.ShowLOP) cross(3, P.LOPColor, P.london_Open_LS, P.London_Open_LW);
+                    if (P.ShowNYOP !== false) cross(8.5, P.NYOPColor, P.NY_Open_LS, P.NY_Open_LW);
+                    if (P.ShowEOP) cross(9.5, P.EOPColor, P.Equities_Open_LS, P.Equities_Open_LW);
+                }
+            }
+            prevWall = w;
+        }
+
+        const horizontals = [];
+        const devCount = _ictDevCountFromInput(P.DevInput);
+        const devDir = P.DevDirection || 'Both';
+        const showDev = !!P.ShowDev;
+
+        boxes.forEach(function (box) {
+            box.range = box.high - box.low;
+            if (!box.range || box.range <= 0) return;
+            const useFlout = box.useFloutStep;
+            const allowPos = devDir !== 'Downside Only';
+            const allowNeg = devDir !== 'Upside Only';
+            const mults = [];
+            if (useFlout) {
+                for (let x = 0.5; x <= devCount; x += 0.5) mults.push(x);
+            } else {
+                for (let x = 1; x <= devCount; x++) mults.push(x);
+            }
+            if (showDev) {
+                mults.forEach(function (mult) {
+                    if (allowPos) {
+                        const hi = box.high + box.range * mult;
+                        boxDeviations.push({ startIndex: box.startIndex, endIndex: box.endIndex, price: hi, color: P.DevLNCol, dash: _ictDashFromStyle(P.DEVLS), lw: _ictPxWidthFromSelect(P.i_DEVLW) });
+                    }
+                    if (allowNeg) {
+                        const lo = box.low - box.range * mult;
+                        boxDeviations.push({ startIndex: box.startIndex, endIndex: box.endIndex, price: lo, color: P.DevLNCol, dash: _ictDashFromStyle(P.DEVLS), lw: _ictPxWidthFromSelect(P.i_DEVLW) });
+                    }
+                });
+            }
+        });
+
+        let openMidnight = null;
+        midStart = null;
+        for (let i = 0; i < n; i++) {
+            const w = _ictWallFromUtc(data[i].t, offH);
+            const prev = i > 0 ? _ictWallFromUtc(data[i - 1].t, offH) : null;
+            const newDay = !prev || prev.dayKey !== w.dayKey;
+            if (newDay) {
+                if (P.ShowMOPP !== false && openMidnight != null && midStart != null) {
+                    horizontals.push({
+                        startIndex: midStart,
+                        endIndex: Math.max(midStart, i - 1),
+                        price: openMidnight,
+                        color: P.MOPColP,
+                        dash: _ictDashFromStyle(P.MOPLS),
+                        lw: _ictPxWidthFromSelect(P.i_MOPLW),
+                        label: P.txt13 || 'MIDNIGHT',
+                        showLabel: P.ShowLabel !== false
+                    });
+                }
+                openMidnight = data[i].o;
+                midStart = i;
+            } else if (openMidnight != null) {
+                openMidnight = Math.max(openMidnight, data[i].o);
+            }
+        }
+        if (P.ShowMOPP !== false && openMidnight != null && midStart != null) {
+            horizontals.push({
+                startIndex: midStart,
+                endIndex: n - 1,
+                price: openMidnight,
+                color: P.MOPColP,
+                dash: _ictDashFromStyle(P.MOPLS),
+                lw: _ictPxWidthFromSelect(P.i_MOPLW),
+                label: P.txt13 || 'MIDNIGHT',
+                showLabel: P.ShowLabel !== false
+            });
+        }
+
+        function pushOpenAtClock(hour, minute, enabled, color, dashS, lwS, label) {
+            if (!enabled) return;
+            const target = hour + minute / 60;
+            let prevW = _ictWallFromUtc(data[0].t, offH);
+            const seenDay = {};
+            for (let i = 1; i < n; i++) {
+                const w = _ictWallFromUtc(data[i].t, offH);
+                if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) {
+                    prevW = w;
+                    continue;
+                }
+                if (w.dayKey === prevW.dayKey && prevW.dec < target && w.dec >= target) {
+                    const ukey = String(label) + '|' + w.dayKey + '|' + String(hour) + ':' + String(minute);
+                    if (seenDay[ukey]) {
+                        prevW = w;
+                        continue;
+                    }
+                    seenDay[ukey] = true;
+                    horizontals.push({
+                        startIndex: i,
+                        endIndex: Math.min(n - 1, i + Math.floor(240 / Math.max(barMin, 1))),
+                        price: data[i].o,
+                        color: color,
+                        dash: _ictDashFromStyle(dashS),
+                        lw: _ictPxWidthFromSelect(lwS),
+                        label: label,
+                        showLabel: P.ShowLabel !== false
+                    });
+                }
+                prevW = w;
+            }
+        }
+        pushOpenAtClock(8, 30, !!P.ShowNYOPP, P.NYOPColP, P.NYOPLS, P.i_NYOPLW, P.txt17);
+        pushOpenAtClock(9, 30, !!P.ShowEOPP, P.EOPColP, P.EOPLS, P.i_EOPLW, P.txt18);
+        pushOpenAtClock(13, 30, !!P.ShowAFTPP, P.AFTOPColP, P.AFTOPLS, P.i_AFTOPLW, P.txt1330);
+
+        const dowMarks = [];
+        if (P.showDOW) {
+            const ht = P.DOWTime != null ? +P.DOWTime : 12;
+            const names = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+            const seen = {};
+            for (let i = 0; i < n; i++) {
+                const w = _ictWallFromUtc(data[i].t, offH);
+                if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) continue;
+                if (w.dow < 1 || w.dow > 5) continue;
+                if (w.hour !== ht || w.minute !== 0) continue;
+                const key = w.dayKey + '-' + w.dow;
+                if (seen[key]) continue;
+                seen[key] = true;
+                dowMarks.push({ index: i, text: names[w.dow] || '', color: P.i_DOWCol || '#787b86', bottom: (P.DOWLoc_inpt || 'Bottom') === 'Bottom' });
+            }
+        }
+
+        return {
+            dom: true,
+            sessionStrips: sessionStrips,
+            boxes: boxes,
+            boxDeviations: boxDeviations,
+            verticals: verticals,
+            horizontals: horizontals,
+            dowMarks: dowMarks,
+            showMidline: false,
+            showBoxInfo: true,
+            boxTransparency: 88,
+            showDeviations: showDev,
+            deviationCount: devCount,
+            showNYMidnight: false,
+            _params: P,
+            _barMin: barMin,
+            _offH: offH
+        };
+    }
+
     /** Previous UTC calendar day high / low / midpoint (PD reference for premium vs discount). */
     function calculateIctPrevDayPD(data) {
         const n = data.length;
@@ -2980,6 +3397,29 @@
                 });
                 break;
 
+            case 'icteverything':
+                indicator.overlay = true;
+                indicator.isIctEverything = true;
+                indicator.name = 'ICT Everything @coldbrewrosh';
+                indicator.params = indicator.params || {};
+                var ieDefAdd = (typeof window !== 'undefined' && window.INDICATOR_DEFINITIONS && window.INDICATOR_DEFINITIONS.icteverything)
+                    ? window.INDICATOR_DEFINITIONS.icteverything
+                    : null;
+                if (ieDefAdd && ieDefAdd.params) {
+                    ieDefAdd.params.forEach(function(p) {
+                        if (p.type === 'heading' || p.type === 'divider') return;
+                        var raw = params[p.id] !== undefined ? params[p.id] : p.default;
+                        if (p.type === 'checkbox') raw = !!raw;
+                        else if (p.type === 'number') {
+                            raw = parseFloat(raw);
+                            if (isNaN(raw)) raw = p.default;
+                        }
+                        indicator.params[p.id] = raw;
+                    });
+                }
+                this.indicators.data[indicator.id] = calculateIctEverything(this.data, indicator);
+                break;
+
             case 'custom': {
                 const TC = global.TalariaCustomIndicators;
                 if (!TC) {
@@ -3386,6 +3826,24 @@
             if (newParams.color !== undefined) indicator.style.color = newParams.color;
             if (newParams.lineWidth !== undefined) indicator.style.lineWidth = newParams.lineWidth;
         }
+        if (indicator.type === 'icteverything') {
+            var ieDefUp = (typeof window !== 'undefined' && window.INDICATOR_DEFINITIONS && window.INDICATOR_DEFINITIONS.icteverything)
+                ? window.INDICATOR_DEFINITIONS.icteverything
+                : null;
+            if (ieDefUp && ieDefUp.params) {
+                ieDefUp.params.forEach(function(p) {
+                    if (p.type === 'heading' || p.type === 'divider') return;
+                    if (newParams[p.id] === undefined) return;
+                    var raw = newParams[p.id];
+                    if (p.type === 'checkbox') raw = !!raw;
+                    else if (p.type === 'number') {
+                        raw = parseFloat(raw);
+                        if (isNaN(raw)) return;
+                    }
+                    indicator.params[p.id] = raw;
+                });
+            }
+        }
 
         // Recalculate data
         switch (indicator.type) {
@@ -3771,6 +4229,10 @@
                     extendBars: indicator.params.extendBars
                 });
                 break;
+            case 'icteverything':
+                indicator.name = 'ICT Everything @coldbrewrosh';
+                this.indicators.data[indicator.id] = calculateIctEverything(this.data, indicator);
+                break;
             case 'custom':
                 if (typeof this._scheduleCustomIndicatorCompute === 'function') {
                     this._scheduleCustomIndicatorCompute(indicator);
@@ -4057,6 +4519,9 @@
                         maxSegments: indicator.params.maxSegments,
                         extendBars: indicator.params.extendBars
                     });
+                    break;
+                case 'icteverything':
+                    this.indicators.data[indicator.id] = calculateIctEverything(this.data, indicator);
                     break;
                 case 'custom':
                     if (typeof this._scheduleCustomIndicatorCompute === 'function') {
@@ -4388,6 +4853,8 @@
                 this.drawSupertrendOverlay(data, indicator, startIndex, endIndex);
             } else if (indicator.type === 'killzones' || indicator.type === 'ictkz' || indicator.isKillzones) {
                 this.drawKillzones(data, indicator.style, startIndex, endIndex);
+            } else if (indicator.type === 'icteverything' || indicator.isIctEverything) {
+                this.drawIctEverything(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'adr' || indicator.isADR) {
                 this.drawADRBands(data, indicator.style, startIndex, endIndex);
             } else if (indicator.isATR) {
@@ -5833,6 +6300,158 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             ctx.fillText(priceText, lx + 7, ly - 5);
             ctx.restore();
         });
+    }
+};
+
+Chart.prototype.drawIctEverything = function(data, style, startIndex = 0, endIndex) {
+    if (!data || !data.dom) return;
+    const ctx = this.ctx;
+    const m = this.margin;
+    const ch = this.h - m.t - m.b;
+    const effectiveVolumeHeight = this.chartSettings && this.chartSettings.showVolume ? this.volumeHeight : 0;
+    const volumeAreaHeight = ch * effectiveVolumeHeight;
+    const priceAreaBottom = this.h - m.b - volumeAreaHeight;
+    const n = this.data ? this.data.length : 0;
+    endIndex = endIndex == null ? n : Math.min(endIndex, n);
+    const self = this;
+
+    const colorToRgba = function(c, alpha) {
+        if (alpha == null || isNaN(alpha)) alpha = 0.18;
+        alpha = Math.min(1, Math.max(0, alpha));
+        if (!c || typeof c !== 'string') return 'rgba(100,120,160,' + alpha + ')';
+        const s = c.trim();
+        if (s.indexOf('rgba') === 0 || s.indexOf('rgb(') === 0) {
+            const mm = s.match(/rgba?\s*\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+            if (mm) return 'rgba(' + mm[1] + ',' + mm[2] + ',' + mm[3] + ',' + alpha + ')';
+        }
+        let hex = s.replace('#', '');
+        if (hex.length === 3) {
+            hex = hex.split('').map(function(ch) { return ch + ch; }).join('');
+        }
+        if (hex.length === 6) {
+            const r = parseInt(hex.slice(0, 2), 16);
+            const g = parseInt(hex.slice(2, 4), 16);
+            const b = parseInt(hex.slice(4, 6), 16);
+            if (!isNaN(r) && !isNaN(g) && !isNaN(b)) return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+        }
+        return 'rgba(100,120,160,' + alpha + ')';
+    };
+
+    if (data.sessionStrips && data.sessionStrips.length) {
+        const candleWidth = this.candleWidth || 8;
+        for (let i = startIndex; i < endIndex && i < data.sessionStrips.length; i++) {
+            const row = data.sessionStrips[i];
+            if (!row || !row.length) continue;
+            const x = self.dataIndexToPixel(i);
+            if (x < m.l - candleWidth || x > self.w - m.r + candleWidth) continue;
+            row.forEach(function(seg) {
+                ctx.fillStyle = seg.color;
+                ctx.fillRect(x - candleWidth / 2, m.t, candleWidth, priceAreaBottom - m.t);
+            });
+        }
+    }
+
+    if (data.boxes && data.boxes.length) {
+        const kzLike = {
+            boxes: data.boxes,
+            showMidline: false,
+            showBoxInfo: data.showBoxInfo !== false,
+            showDeviations: false,
+            boxTransparency: data.boxTransparency != null ? data.boxTransparency : 88
+        };
+        this.drawKillzones(kzLike, style, startIndex, endIndex);
+    }
+
+    if (data.boxDeviations && data.boxDeviations.length) {
+        data.boxDeviations.forEach(function(seg) {
+            if (seg.endIndex < startIndex || seg.startIndex > endIndex) return;
+            const x1 = self.dataIndexToPixel(seg.startIndex);
+            const x2 = self.dataIndexToPixel(seg.endIndex);
+            if (x2 < m.l || x1 > self.w - m.r) return;
+            const drawX1 = Math.max(x1, m.l);
+            const drawX2 = Math.min(x2, self.w - m.r);
+            const y = self.yScale(seg.price);
+            if (y < m.t || y > priceAreaBottom) return;
+            ctx.save();
+            ctx.strokeStyle = colorToRgba(seg.color || '#787b86', 0.45);
+            ctx.lineWidth = seg.lw != null ? seg.lw : 1;
+            ctx.setLineDash(seg.dash && seg.dash.length ? seg.dash : []);
+            ctx.beginPath();
+            ctx.moveTo(drawX1, y);
+            ctx.lineTo(drawX2, y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+        });
+    }
+
+    if (data.verticals && data.verticals.length) {
+        data.verticals.forEach(function(v) {
+            if (v.index < startIndex || v.index > endIndex) return;
+            const x = self.dataIndexToPixel(v.index);
+            if (x < m.l || x > self.w - m.r) return;
+            ctx.save();
+            ctx.strokeStyle = colorToRgba(v.color || '#787b86', 0.55);
+            ctx.lineWidth = v.lw != null ? v.lw : 1;
+            ctx.setLineDash(v.dash && v.dash.length ? v.dash : []);
+            ctx.beginPath();
+            ctx.moveTo(x, m.t + 2);
+            ctx.lineTo(x, priceAreaBottom - 1);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+        });
+    }
+
+    if (data.horizontals && data.horizontals.length) {
+        const prec = self._symbolPrecision != null ? self._symbolPrecision : (self.pricePrecision != null ? self.pricePrecision : 5);
+        data.horizontals.forEach(function(h) {
+            if (h.endIndex < startIndex || h.startIndex > endIndex) return;
+            const x1 = self.dataIndexToPixel(h.startIndex);
+            const x2 = self.dataIndexToPixel(h.endIndex);
+            const drawX1 = Math.max(x1, m.l);
+            const drawX2 = Math.min(x2, self.w - m.r);
+            const y = self.yScale(h.price);
+            if (y < m.t || y > priceAreaBottom) return;
+            ctx.save();
+            ctx.strokeStyle = colorToRgba(h.color || '#787b86', 0.65);
+            ctx.lineWidth = h.lw != null ? h.lw : 1;
+            ctx.setLineDash(h.dash && h.dash.length ? h.dash : []);
+            ctx.beginPath();
+            ctx.moveTo(drawX1, y);
+            ctx.lineTo(drawX2, y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            if (h.showLabel && h.label && drawX2 - drawX1 > 40) {
+                const txt = String(h.label) + ' ' + h.price.toFixed(prec);
+                ctx.font = '600 10px Roboto, system-ui, sans-serif';
+                ctx.fillStyle = 'rgba(13, 17, 23, 0.88)';
+                const tw = ctx.measureText(txt).width + 8;
+                ctx.fillRect(drawX2 - tw - 2, y - 16, tw, 14);
+                ctx.fillStyle = style.textColor || '#d1d4dc';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.fillText(txt, drawX2 - tw, y - 15);
+            }
+            ctx.restore();
+        });
+    }
+
+    if (data.dowMarks && data.dowMarks.length && this.data) {
+        ctx.save();
+        ctx.font = '700 11px Roboto, system-ui, sans-serif';
+        data.dowMarks.forEach(function(dm) {
+            if (dm.index < startIndex || dm.index > endIndex) return;
+            const x = self.dataIndexToPixel(dm.index);
+            const bar = self.data[dm.index];
+            if (!bar) return;
+            const y = dm.bottom ? self.yScale(bar.l) : m.t + 18;
+            ctx.fillStyle = colorToRgba(dm.color || '#787b86', 0.9);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = dm.bottom ? 'bottom' : 'top';
+            ctx.fillText(dm.text || '', x, y + (dm.bottom ? 4 : -4));
+        });
+        ctx.restore();
     }
 };
 
