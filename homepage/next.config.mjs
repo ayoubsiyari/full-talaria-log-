@@ -20,7 +20,7 @@ const CHART_BACKEND =
 const JOURNAL_BACKEND =
   process.env.JOURNAL_BACKEND?.replace(/\/$/, "") ||
   process.env.NEXT_PUBLIC_JOURNAL_BACKEND?.replace(/\/$/, "") ||
-  "";
+  "http://127.0.0.1:5000";
 
 const nextConfig = {
   output: "export",
@@ -48,10 +48,10 @@ const nextConfig = {
         { source: "/chart/image/:path*", destination: `${b}/chart/image/:path*` },
     ];
     if (JOURNAL_BACKEND) {
-      afterFiles.unshift({
-        source: "/journal/api/:path*",
-        destination: `${JOURNAL_BACKEND}/api/:path*`,
-      });
+      afterFiles.unshift(
+        { source: "/journal/api/:path*",    destination: `${JOURNAL_BACKEND}/api/:path*` },
+        { source: "/api/journal/:path*",    destination: `${JOURNAL_BACKEND}/api/journal/:path*` },
+      );
     }
     return { afterFiles };
   },
