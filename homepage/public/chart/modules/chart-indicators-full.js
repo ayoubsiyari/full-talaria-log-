@@ -6438,13 +6438,18 @@ Chart.prototype.drawIctEverything = function(data, style, startIndex = 0, endInd
         data.dowMarks.forEach(function(dm) {
             if (dm.index < startIndex || dm.index > endIndex) return;
             const x = self.dataIndexToPixel(dm.index);
-            const bar = self.data[dm.index];
-            if (!bar) return;
-            const y = dm.bottom ? self.yScale(bar.l) : m.t + 18;
+            if (!self.data[dm.index]) return;
+            var y;
+            if (dm.bottom) {
+                y = self.h - m.b - 4;
+                ctx.textBaseline = 'bottom';
+            } else {
+                y = m.t + 18;
+                ctx.textBaseline = 'top';
+            }
             ctx.fillStyle = colorToRgba(dm.color || '#787b86', 0.9);
             ctx.textAlign = 'center';
-            ctx.textBaseline = dm.bottom ? 'bottom' : 'top';
-            ctx.fillText(dm.text || '', x, y + (dm.bottom ? 4 : -4));
+            ctx.fillText(dm.text || '', x, y);
         });
         ctx.restore();
     }
