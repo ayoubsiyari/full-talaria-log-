@@ -585,43 +585,40 @@
         #panels-container .nav-integrity-badge.disabled .nav-badge-icon {
             color: #4ade80;
         }
+        /* Replay nav hint — same chrome + placement as path brush hint (#path-drawing-tooltip in drawing-tools-manager.js): fixed, bottom-center over chart */
         #chart-container #chartWrapper .nav-badge-tooltip,
         #panels-container .nav-badge-tooltip {
-            position: absolute;
-            top: 100%;
+            position: fixed;
             left: 50%;
+            bottom: 50px;
+            top: auto;
             transform: translateX(-50%);
-            margin-top: 6px;
-            padding: 3px 8px 3px 11px;
-            background: #0f1119;
-            border: 1px solid rgba(140, 160, 255, 0.12);
-            border-radius: 0;
-            font-size: 10px;
+            margin: 0;
+            padding: 9px 18px;
+            background: var(--sp-bg, #131722);
+            color: var(--sp-text, #f3f6ff);
+            border: 1px solid rgba(var(--sp-accent-rgb), 0.75);
+            border-radius: 10px;
+            font-size: 13px;
             line-height: 1.25;
             font-weight: 600;
-            font-family: "Exo 2", sans-serif;
-            color: rgba(255, 255, 255, 0.92);
+            letter-spacing: 0.01em;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             white-space: nowrap;
-            z-index: 10000;
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+            z-index: 10001;
+            box-shadow:
+                0 4px 12px rgba(0, 0, 0, 0.3),
+                0 0 8px rgba(var(--sp-accent-rgb), 0.5),
+                0 0 20px rgba(var(--sp-accent-rgb), 0.25);
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
             transition: opacity 0.12s, visibility 0.12s;
         }
-        /* Match global V9 showTip(): left accent strip (Layouts / Objects Tree) */
         #chart-container #chartWrapper .nav-badge-tooltip::after,
         #panels-container .nav-badge-tooltip::after {
-            content: "";
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 2px;
-            background: linear-gradient(180deg, transparent, #4a6aff, transparent);
-            pointer-events: none;
+            display: none;
         }
-        /* No caret — same as fixed hover tips */
         #chart-container #chartWrapper .nav-badge-tooltip::before,
         #panels-container .nav-badge-tooltip::before {
             display: none;
@@ -636,7 +633,7 @@
         #chart-container #chartWrapper .nav-badge-tooltip strong,
         #panels-container .nav-badge-tooltip strong {
             display: inline;
-            color: rgba(255, 255, 255, 0.92);
+            color: inherit;
             font-weight: 700;
             letter-spacing: 0.01em;
         }
