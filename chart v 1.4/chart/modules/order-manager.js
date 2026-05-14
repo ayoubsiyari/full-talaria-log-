@@ -29141,7 +29141,7 @@ class OrderManager {
             g.pnlText.style('display', 'none');
 
             const totalW = lotsBW;
-            const rightEdge = this._orderOverlayRightAnchorX(ch);
+            const rightEdge = ch.w - yAxisWidth - 10;
 
             // Find leftmost x of sibling TP labels so we align with them
             let alignX = rightEdge - totalW;
@@ -29302,7 +29302,7 @@ class OrderManager {
                 if (rowW > maxRowW) maxRowW = rowW;
             }
 
-            const rightEdge = this._orderOverlayRightAnchorX(ch);
+            const rightEdge = ch.w - yAxisWidth - 10;
             const alignX = rightEdge - maxRowW;
 
             // --- Position Avg Entry label ---
@@ -30298,7 +30298,7 @@ class OrderManager {
                 const splitW = canPendingTpSplit ? (splitBtnR * 2 + closeBtnGap) : 0;
                 const badgesW = (target.pctArrowsWidth || 0) + xBtnW + splitW;
 
-                const translateX = this._orderOverlayRightAnchorX(ch, marginRight) - totalLabelW - badgesW;
+                const translateX = ch.w - totalLabelW - badgesW - marginRight;
                 const translateY = y - labelHeight / 2;
                 labelGroup
                     .attr('transform', `translate(${translateX}, ${translateY})`)
@@ -31440,32 +31440,6 @@ class OrderManager {
     _entryMarkerAnchorTimeMsFromFillCandle(fillCandle) {
         const t = fillCandle && Number(fillCandle.t);
         return Number.isFinite(t) ? t : undefined;
-    }
-
-    /**
-     * Right X for stacking order UI (entry / SL / TP / BE / split-avg / pending targets).
-     * Defaults to `ch.w - margin.r - pad`, but when replay leaves empty grid past the last
-     * loaded candle, that anchor sits in “future” space — pull left to just past the last bar.
-     * @param {number} [rightReserve] — pixels reserved from `ch.w` (y-axis + padding, or pending margin).
-     */
-    _orderOverlayRightAnchorX(ch, rightReserve) {
-        const m = ch.margin || { l: 0, r: 70 };
-        const reserve = Number.isFinite(rightReserve) ? rightReserve : (Number(m.r) || 70) + 10;
-        const screenRight = ch.w - reserve;
-        const data = ch.data;
-        if (!Array.isArray(data) || data.length === 0 ||
-            typeof ch.dataIndexToPixel !== 'function' || typeof ch.getCandleSpacing !== 'function') {
-            return screenRight;
-        }
-        const lastIdx = data.length - 1;
-        const xc = ch.dataIndexToPixel(lastIdx);
-        const sp = ch.getCandleSpacing();
-        if (!Number.isFinite(xc) || !Number.isFinite(sp) || sp <= 0) return screenRight;
-        const lastBarOuterRight = xc + sp * 0.55 + 4;
-        const minPlot = (Number(m.l) || 0) + 40;
-        if (lastBarOuterRight < minPlot) return screenRight;
-        const anchored = lastBarOuterRight + 8;
-        return Math.min(screenRight, Math.max(minPlot + 60, anchored));
     }
 
     /**
@@ -34115,7 +34089,7 @@ class OrderManager {
                     const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
                     const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
                     
-                    const rightEdge = this._orderOverlayRightAnchorX(ch);
+                    const rightEdge = ch.w - yAxisWidth - 10;
                     const closeBtnX = rightEdge - closeBtnR;
                     const startX = closeBtnX - closeBtnR - closeBtnGap - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
                     
@@ -34374,7 +34348,7 @@ class OrderManager {
                     const splitSpace = splitBtn ? (splitBtnR * 2 + gap) : 0;
                     const badgesW = pctW + deleteSpace + splitSpace;
 
-                    const rightEdge = this._orderOverlayRightAnchorX(ch);
+                    const rightEdge = ch.w - yAxisWidth - 10;
                     const closeBtnX = rightEdge - closeBtnR;
                     const startX = closeBtnX - closeBtnR - closeBtnGap
                         - badgesW - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
@@ -34490,7 +34464,7 @@ class OrderManager {
             // Position label on the RIGHT side (same as SL/TP)
             const labelTW = labelText.node()?.getBBox()?.width || 0;
             const labelBW = labelTW + pad * 2;
-            const rightEdge = this._orderOverlayRightAnchorX(ch);
+            const rightEdge = ch.w - yAxisWidth - 10;
             const startX = rightEdge - labelBW;
             
             labelBox
@@ -34668,7 +34642,7 @@ class OrderManager {
                     if (!tpSlotW && !isPending && !hasMultiTP) tpSlotW = singleTPBadgeW;
                     let totalBadgesW = slBadgeW + tpSlotW + entryPlusBadgeW;
 
-                    const rightEdge = this._orderOverlayRightAnchorX(ch);
+                    const rightEdge = ch.w - yAxisWidth - 10;
                     const closeBtnX = rightEdge - closeBtnR;
                     const startX = closeBtnX - closeBtnR - closeBtnGap - totalBadgesW - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
 
@@ -34941,7 +34915,7 @@ class OrderManager {
         ch.svg.selectAll('.exec-order-connector').remove();
         const yScale = ch.scales.yScale;
         const yAxisWidth = ch.margin?.r || 70;
-        const connX = this._orderOverlayRightAnchorX(ch, yAxisWidth + 6);
+        const connX = ch.w - yAxisWidth - 6;
 
         for (const pos of this.openPositions) {
             if (!this._positionTickerMatchesChartSymbol(pos, ch)) continue;
