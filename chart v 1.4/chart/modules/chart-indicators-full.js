@@ -913,6 +913,11 @@
         return v != null ? v : -5;
     }
 
+    /** Local timezone offset in hours at instant `utcMs` (use per bar for DST correctness). */
+    function _ictLocalOffsetHoursAt(utcMs) {
+        return -new Date(utcMs).getTimezoneOffset() / 60;
+    }
+
     function _ictParseTimeToDec(timeStr) {
         if (!timeStr) return 0;
         const p = String(timeStr).split(':');
@@ -1010,7 +1015,13 @@
         if (!data || data.length === 0) return empty;
 
         const P = Object.assign({}, indicator.params || {}, indicator.style || {});
-        const offH = _ictTzOffsetHoursFromTZI(P.TZI || 'UTC -5');
+        const tziSel = P.TZI != null && P.TZI !== '' ? P.TZI : '__SYSTEM_LOCAL__';
+        const useSysLocal = tziSel === '__SYSTEM_LOCAL__';
+        const offHFixed = useSysLocal ? null : _ictTzOffsetHoursFromTZI(tziSel);
+        function wallAt(utcMs) {
+            var oh = useSysLocal ? _ictLocalOffsetHoursAt(utcMs) : offHFixed;
+            return _ictWallFromUtc(utcMs, oh);
+        }
         const barMin = _ictMedianBarMinutes(data);
         const maxIv = P.inputMaxInterval != null ? +P.inputMaxInterval : 31;
         const dom = barMin <= maxIv && barMin < 18 * 60;
@@ -1020,7 +1031,7 @@
 
         const n = data.length;
         const lastMs = data[n - 1].t;
-        const lastWall = _ictWallFromUtc(lastMs, offH);
+        const lastWall = wallAt(lastMs);
         const lastDayKey = lastWall.dayKey;
         const lastWeekKey = _ictIsoWeekKey(lastWall.y, lastWall.M, lastWall.D);
 
@@ -1056,7 +1067,7 @@
         order.forEach(function (k) { activeRun[k] = null; });
 
         for (let i = 0; i < n; i++) {
-            const w = _ictWallFromUtc(data[i].t, offH);
+            const w = wallAt(data[i].t);
             if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) {
                 order.forEach(function (key) {
                     if (activeRun[key]) {
@@ -1093,7 +1104,7 @@
         function pushRangeBox(kind, startDec, endDec, color, name, useFloutStep) {
             let active = null;
             for (let i = 0; i < n; i++) {
-                const w = _ictWallFromUtc(data[i].t, offH);
+                const w = wallAt(data[i].t);
                 if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) {
                     if (active) {
                         boxes.push(active);
@@ -1153,7 +1164,7 @@
         };
         let prevWall = null;
         for (let i = 0; i < n; i++) {
-            const w = _ictWallFromUtc(data[i].t, offH);
+            const w = wallAt(data[i].t);
             if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) {
                 prevWall = w;
                 continue;
@@ -1210,8 +1221,8 @@
         let openMidnight = null;
         midStart = null;
         for (let i = 0; i < n; i++) {
-            const w = _ictWallFromUtc(data[i].t, offH);
-            const prev = i > 0 ? _ictWallFromUtc(data[i - 1].t, offH) : null;
+            const w = wallAt(data[i].t);
+            const prev = i > 0 ? wallAt(data[i - 1].t) : null;
             const newDay = !prev || prev.dayKey !== w.dayKey;
             if (newDay) {
                 if (P.ShowMOPP !== false && openMidnight != null && midStart != null) {
@@ -1248,10 +1259,10 @@
         function pushOpenAtClock(hour, minute, enabled, color, dashS, lwS, label) {
             if (!enabled) return;
             const target = hour + minute / 60;
-            let prevW = _ictWallFromUtc(data[0].t, offH);
+            let prevW = wallAt(data[0].t);
             const seenDay = {};
             for (let i = 1; i < n; i++) {
-                const w = _ictWallFromUtc(data[i].t, offH);
+                const w = wallAt(data[i].t);
                 if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) {
                     prevW = w;
                     continue;
@@ -1287,7 +1298,7 @@
             const names = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
             const seen = {};
             for (let i = 0; i < n; i++) {
-                const w = _ictWallFromUtc(data[i].t, offH);
+                const w = wallAt(data[i].t);
                 if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) continue;
                 if (w.dow < 1 || w.dow > 5) continue;
                 if (w.hour !== ht || w.minute !== 0) continue;
@@ -1314,7 +1325,7 @@
             showNYMidnight: false,
             _params: P,
             _barMin: barMin,
-            _offH: offH
+            _offH: useSysLocal ? _ictLocalOffsetHoursAt(lastMs) : offHFixed
         };
     }
 

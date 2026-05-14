@@ -3,10 +3,11 @@
 /** Pine-aligned inputs for ICT Everything (native renderer in chart-indicators-full.js). */
 function __ictEverythingParamList() {
     const tzi = [
+        { value: '__SYSTEM_LOCAL__', label: 'Local (system)' },
         'UTC -10', 'UTC -7', 'UTC -6', 'UTC -5', 'UTC -4', 'UTC -3', 'UTC +0', 'UTC +1', 'UTC +2', 'UTC +3',
         'UTC +3:30', 'UTC +4', 'UTC +5', 'UTC +5:30', 'UTC +6', 'UTC +7', 'UTC +8', 'UTC +9', 'UTC +9:30',
         'UTC +10', 'UTC +10:30', 'UTC +11', 'UTC +13', 'UTC +13:45'
-    ].map(function (v) { return { value: v, label: v }; });
+    ].map(function (v) { return typeof v === 'string' ? { value: v, label: v } : v; });
     const lineStyle = ['Solid', 'Dashed', 'Dotted'].map(function (v) { return { value: v, label: v }; });
     const lineWidth = ['1px', '2px', '3px', '4px', '5px'].map(function (v) { return { value: v, label: v }; });
     const labelSize = ['Auto', 'Tiny', 'Small', 'Normal', 'Large', 'Huge'].map(function (v) { return { value: v, label: v }; });
@@ -21,7 +22,7 @@ function __ictEverythingParamList() {
     const devDir = ['Upside Only', 'Both', 'Downside Only'].map(function (v) { return { value: v, label: v }; });
     return [
         { id: 'h_global', type: 'heading', label: 'Global Settings' },
-        { id: 'TZI', label: 'Timezone Selection', type: 'select', options: tzi, default: 'UTC -5' },
+        { id: 'TZI', label: 'Timezone Selection', type: 'select', options: tzi, default: '__SYSTEM_LOCAL__' },
         { id: 'inputMaxInterval', label: 'Hide indicator above (bar minutes)', type: 'number', default: 31, min: 1, max: 1440 },
         { id: 'h_sessopt', type: 'heading', label: 'Session Options' },
         { id: 'ShowTSO', label: "Show today's session only", type: 'checkbox', default: true },

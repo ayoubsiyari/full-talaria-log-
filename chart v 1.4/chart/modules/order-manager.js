@@ -438,7 +438,7 @@ class OrderManager {
             || this.chart;
     }
 
-    /** Timeframe used for replay OHLC / SL-TP (must match getCurrentCandle / chart.data). */
+    /** Timeframe used for replay background series cache (chart TF). SL/TP bar OHLC uses getCurrentCandle() which prefers raw playhead in tick replay when chart TF ≠ native spacing. */
     _getReplayDecisionTimeframe() {
         const ch = this._getOrderContextChart();
         const tf = ch && ch.currentTimeframe ? String(ch.currentTimeframe).toLowerCase().trim() : '';
@@ -23821,8 +23821,18 @@ class OrderManager {
             }
 
             const pbMode = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : (rs.playbackMode || 'tick');
-            const useRawReplayBar = pbMode === 'candle' || this._replayChartTimeframeMatchesRawStep(ch, rs);
+            const chartTfMatchesRaw = this._replayChartTimeframeMatchesRawStep(ch, rs);
+            const useRawReplayBar = pbMode === 'candle' || chartTfMatchesRaw;
             if (useRawReplayBar && Array.isArray(ch.rawData) && ch.rawData.length > 0) {
+                const coerced = coerceBar(ch.rawData[ch.rawData.length - 1]);
+                if (coerced) return coerced;
+            }
+
+            // Tick replay + coarse chart TF: `ch.data[last]` is a resampled bucket whose H/L
+            // aggregate **all** raw bars in that period present in the slice — including
+            // minutes replay has not reached yet. SL/TP must use the walk-forward raw bar at
+            // the playhead (`rawData[last]`), same as when chart TF matches native file spacing.
+            if (pbMode === 'tick' && !chartTfMatchesRaw && Array.isArray(ch.rawData) && ch.rawData.length > 0) {
                 const coerced = coerceBar(ch.rawData[ch.rawData.length - 1]);
                 if (coerced) return coerced;
             }
