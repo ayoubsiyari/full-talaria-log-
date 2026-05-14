@@ -271,6 +271,7 @@ const VIEW_TITLES: Record<string, string> = {
 };
 
 const EXTERNAL_VIEWS: Record<string, string> = {
+  journal: "/journal/dashboard",
   strategies: "/strategies-lab/",
   resources: "/bootcamp/",
 };
@@ -281,10 +282,6 @@ const INTERNAL_NAV: Record<string, string> = {
   support: "/dashboard/support/",
 };
 
-const DIRECT_NAV: Record<string, string> = {
-  journal: "/journal/dashboard",
-};
-
 export default function DashboardLayout({
   children,
 }: {
@@ -293,7 +290,7 @@ export default function DashboardLayout({
   const { isArabic } = useLanguage();
   const [user, setUser] = React.useState<User | null>(null);
   const [activeView, setActiveView] = React.useState<string>("dashboard");
-  const [loadedViews, setLoadedViews] = React.useState<Record<string, boolean>>({});
+  const [loadedViews, setLoadedViews] = React.useState<Record<string, boolean>>({ journal: true });
   const [profilePanelOpen, setProfilePanelOpen] = React.useState(false);
   const [navHoverId, setNavHoverId] = React.useState<string | null>(null);
   const [profileNavHov, setProfileNavHov] = React.useState(false);
@@ -334,9 +331,7 @@ export default function DashboardLayout({
 
   const handleNavClick = (id: string) => {
     setActiveView(id);
-    if (DIRECT_NAV[id]) {
-      window.location.href = DIRECT_NAV[id];
-    } else if (EXTERNAL_VIEWS[id]) {
+    if (EXTERNAL_VIEWS[id]) {
       setLoadedViews((prev) => ({ ...prev, [id]: true }));
     } else if (INTERNAL_NAV[id]) {
       router.push(INTERNAL_NAV[id]);
