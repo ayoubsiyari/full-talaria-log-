@@ -12188,12 +12188,33 @@ class Chart {
             }
         }
 
+        // Backtest TF refetch bypasses replay.onTimeframeChange(); updateChartData() still ends with
+        // orderManager.updatePositions() on fresh resampled OHLC — same false SL/TP as client resample
+        // unless we pre-arm guards (parity with seekTo + onTimeframeChange). Applies to host and multichart iframes.
+        const omTfRefetch = this.orderManager
+            || (typeof window !== 'undefined' && window.chart && window.chart.orderManager);
+        let guardTsTfRefetch = savedReplayTimestamp;
+        if (!Number.isFinite(Number(guardTsTfRefetch)) && Array.isArray(replay.fullRawData) && typeof replay.currentIndex === 'number') {
+            const rbTf = replay.fullRawData[replay.currentIndex];
+            const tRawTf = rbTf != null ? Number(rbTf.t) : NaN;
+            guardTsTfRefetch = Number.isFinite(tRawTf) ? tRawTf : null;
+        }
+        if (omTfRefetch && typeof omTfRefetch._refreshAllGuardsToTimestamp === 'function' && Number.isFinite(Number(guardTsTfRefetch))) {
+            try { omTfRefetch._refreshAllGuardsToTimestamp(Number(guardTsTfRefetch), -1); } catch (_eTf) { /* ignore */ }
+        } else if (omTfRefetch && typeof omTfRefetch._refreshAllGuardsToCurrentCandle === 'function') {
+            try { omTfRefetch._refreshAllGuardsToCurrentCandle(); } catch (_eTf2) { /* ignore */ }
+        }
+
         if (typeof replay.updateChartData === 'function') {
             try {
                 replay.updateChartData(true);
             } catch (e) {
                 console.warn('[backtest] replay updateChartData after refetch failed', e);
             }
+        }
+
+        if (omTfRefetch && typeof omTfRefetch._refreshAllGuardsToCurrentCandle === 'function') {
+            try { omTfRefetch._refreshAllGuardsToCurrentCandle(); } catch (_eTf3) { /* ignore */ }
         }
 
         if (typeof this._fireChartDataLoaded === 'function') {
@@ -12233,6 +12254,17 @@ class Chart {
                 }
             } catch (e) { /* ignore */ }
             this._endTimeframeSwitching();
+            // updatePositions is skipped while _timeframeSwitching; when replay stays paused after
+            // refetch, replay.play() does not run — refresh orders/PnL once after the freeze lifts.
+            if (!wasPlaying) {
+                try {
+                    const omFin = this.orderManager
+                        || (typeof window !== 'undefined' && window.chart && window.chart.orderManager);
+                    if (omFin && typeof omFin.updatePositions === 'function') {
+                        omFin.updatePositions();
+                    }
+                } catch (_eOm) { /* ignore */ }
+            }
         };
         // Run after enterReplayMode's own 150ms realignAfterLayout completes.
         // Two-pass: an immediate rAF render keeps the snapshot bitmap accurate
