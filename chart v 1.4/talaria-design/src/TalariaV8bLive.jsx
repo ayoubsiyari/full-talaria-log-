@@ -4811,6 +4811,8 @@ const TalariaV8bLive = () => {
   const [panelMode, setPanelMode] = useState("advanced");
   /** Short windows where React row counts intentionally lead OM (panel add/delete) so reverse poll must not fight the forward bridge. */
   const omPanelBridgeRef = useRef({ entryAdd: 0, entryDel: 0, tpAdd: 0, tpDel: 0, control: 0 });
+  /** Throttle OM full R:R recompute while React leads the bridge (margin badge reads DOM fed by this). */
+  const omHeaderRecalcRef = useRef(0);
   const closeOthersForIndSettRef = useRef(() => {});
   const indSettCtxRef = useRef({ chart: null, indicatorType: "", indicator: null });
   const rrPushLockRef = useRef(0);
@@ -6387,7 +6389,7 @@ const TalariaV8bLive = () => {
       if (!style) { style = document.createElement('style'); style.id = 'tlr-scrollbar-css'; document.head.appendChild(style); }
       const sbC = darkMode ? "rgba(140,160,255,0.22)" : "rgba(0,5,40,0.22)";
       const sbH = darkMode ? "rgba(140,160,255,0.44)" : "rgba(0,5,40,0.40)";
-      style.textContent = `*{user-select:none!important;-webkit-user-select:none!important;cursor:default}input,textarea{user-select:text!important;-webkit-user-select:text!important;cursor:text}select{user-select:auto!important;-webkit-user-select:auto!important;cursor:default!important}.tlr-ind-select{-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%238d93a1' d='M0 1l5 4 5-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:10px 6px;padding-right:26px!important}.tlr-scroll::-webkit-scrollbar{width:3px;height:3px}.tlr-scroll::-webkit-scrollbar-track{background:transparent}.tlr-scroll::-webkit-scrollbar-thumb{background:${sbC};border-radius:2px}.tlr-scroll::-webkit-scrollbar-thumb:hover{background:${sbH}}.tlr-scroll{scrollbar-width:thin;scrollbar-color:${sbC} transparent}.tlr-scroll-tz::-webkit-scrollbar{width:8px;height:8px}.tlr-scroll-tz::-webkit-scrollbar-track{background:rgba(0,0,0,0.12);border-radius:4px}.tlr-scroll-tz::-webkit-scrollbar-thumb{background:${sbH};border-radius:4px;min-height:28px}.tlr-scroll-tz::-webkit-scrollbar-thumb:hover{background:${darkMode?"rgba(180,195,255,0.55)":"rgba(40,55,120,0.55)"}}.tlr-scroll-tz{scrollbar-width:auto;scrollbar-color:${sbH} rgba(0,0,0,0.15)}`;
+      style.textContent = `*{user-select:none!important;-webkit-user-select:none!important;cursor:default}input,textarea{user-select:text!important;-webkit-user-select:text!important;cursor:text}select{user-select:auto!important;-webkit-user-select:auto!important;cursor:default!important}.tlr-ind-select{-webkit-appearance:none;appearance:none;color-scheme:${darkMode ? "dark" : "light"};forced-color-adjust:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%238d93a1' d='M0 1l5 4 5-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:10px 6px;padding-right:26px!important}.tlr-ind-select option,.tlr-ind-select optgroup{background-color:${darkMode ? "#171a24" : "#ffffff"}!important;color:${darkMode ? "#e4e6eb" : "#1a1d29"}!important}.tlr-scroll::-webkit-scrollbar{width:3px;height:3px}.tlr-scroll::-webkit-scrollbar-track{background:transparent}.tlr-scroll::-webkit-scrollbar-thumb{background:${sbC};border-radius:2px}.tlr-scroll::-webkit-scrollbar-thumb:hover{background:${sbH}}.tlr-scroll{scrollbar-width:thin;scrollbar-color:${sbC} transparent}.tlr-scroll-tz::-webkit-scrollbar{width:8px;height:8px}.tlr-scroll-tz::-webkit-scrollbar-track{background:rgba(0,0,0,0.12);border-radius:4px}.tlr-scroll-tz::-webkit-scrollbar-thumb{background:${sbH};border-radius:4px;min-height:28px}.tlr-scroll-tz::-webkit-scrollbar-thumb:hover{background:${darkMode?"rgba(180,195,255,0.55)":"rgba(40,55,120,0.55)"}}.tlr-scroll-tz{scrollbar-width:auto;scrollbar-color:${sbH} rgba(0,0,0,0.15)}`;
     }
   }, [darkMode]);
 
@@ -7052,12 +7054,83 @@ const TalariaV8bLive = () => {
       const panel = document.getElementById("orderPanel");
       // Mirror from OM + hidden inputs whenever the rail is open (class "visible" can lag toggleOrderPanel).
       if (!panel) return;
+      const om = window.chart?.orderManager;
+
+      /** Header + margin read from native OM (must run even when React leads the input bridge). */
+      const syncOmHeaderAndMargin = () => {
+        try {
+          if (isOmBridgeLead(omPanelBridgeRef.current.control) && om) {
+            const now = Date.now();
+            if (now - omHeaderRecalcRef.current > 50) {
+              omHeaderRecalcRef.current = now;
+              om.calculateAdvancedRiskReward?.();
+            }
+          }
+        } catch (_) {}
+        let spreadHdr = "—";
+        let commHdr = "—";
+        try {
+          om?._updateOrderPanelInstrumentCosts?.();
+        } catch (_) {}
+        const instCostsEl = document.getElementById("orderPanelInstrumentCosts");
+        const instRaw = instCostsEl?.style?.display !== "none" ? instCostsEl?.textContent?.replace(/\s+/g, " ").trim() : "";
+        if (instRaw) {
+          const sm = instRaw.match(/Spread:\s*([\d.]+)\s+(pips|pts)/i);
+          const cm = instRaw.match(/Comm:\s*(\$[\d.]+)/i);
+          if (sm) spreadHdr = `${sm[1]} ${(sm[2] || "pips").toLowerCase()}`;
+          if (cm) commHdr = cm[1];
+        } else if (om && typeof om._getActiveInstrumentSettings === "function") {
+          const inst = om._getActiveInstrumentSettings();
+          const mt = om.marketType;
+          if (mt === "futures") {
+            const spreadTicks = Number.parseFloat(
+              inst.spread_pips ??
+                inst.spreadPips ??
+                inst.spread_ticks ??
+                inst.spreadTicks ??
+                inst.spread ??
+                0
+            );
+            const commSide = Number.parseFloat(
+              inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? inst.commission_per_lot ?? 0
+            );
+            if (Number.isFinite(spreadTicks))
+              spreadHdr = `${Number.isInteger(spreadTicks) ? String(spreadTicks) : spreadTicks.toFixed(2)} ticks`;
+            if (Number.isFinite(commSide) && commSide > 0) commHdr = `$${(commSide * 2).toFixed(2)}`;
+          } else if (mt === "forex") {
+            const spread = Number.parseFloat(inst.spread_pips ?? inst.spreadPips ?? 0);
+            const comm = Number.parseFloat(inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? 0);
+            const cfg = typeof om.getMarketConfig === "function" ? om.getMarketConfig() : {};
+            const pipUnit = cfg?.showTicks ? "pts" : "pips";
+            if (Number.isFinite(spread))
+              spreadHdr = `${Math.abs(spread) >= 100 ? spread.toFixed(1) : spread.toFixed(2)} ${pipUnit}`;
+            if (Number.isFinite(comm)) commHdr = `$${comm.toFixed(2)}`;
+          } else {
+            const spread = Number.parseFloat(inst.spread_pips ?? inst.spreadPips ?? inst.spread ?? 0);
+            const comm = Number.parseFloat(inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? 0);
+            if (Number.isFinite(spread)) spreadHdr = String(spread);
+            if (Number.isFinite(comm)) commHdr = `$${comm.toFixed(2)}`;
+          }
+        }
+        setOmHeaderSpreadTxt((prev) => (prev === spreadHdr ? prev : spreadHdr));
+        setOmHeaderCommTxt((prev) => (prev === commHdr ? prev : commHdr));
+        try {
+          om?.updateMarginLevelBadge?.();
+        } catch (_) {}
+        const mrg = document.getElementById("marginLevelBadge")?.textContent?.replace(/\s+/g, " ").trim() || "—";
+        setOmMarginLevelTxt((prev) => (prev === mrg ? prev : mrg));
+        const rsk0 = document.getElementById("riskAmount")?.textContent?.trim() || "$0";
+        const rwd0 = document.getElementById("rewardAmount")?.textContent?.trim() || "$0";
+        setOmRiskSummaryTxt((prev) => (prev === rsk0 ? prev : rsk0));
+        setOmRewardSummaryTxt((prev) => (prev === rwd0 ? prev : rwd0));
+      };
+      syncOmHeaderAndMargin();
+
       if (isOmBridgeLead(omPanelBridgeRef.current.control)) return;
 
       const ep = document.getElementById("orderEntryPrice")?.value ?? "";
       const slp = document.getElementById("slPrice")?.value ?? "";
       const tpp = document.getElementById("tpPrice")?.value ?? "";
-      const om = window.chart?.orderManager;
       const omMultiEntry =
         !!(om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length > 0);
       const omMultiTp =
@@ -7215,60 +7288,6 @@ const TalariaV8bLive = () => {
       setOmRewardSummaryTxt((prev) => (prev === rwd ? prev : rwd));
       const pbt = document.getElementById("placeOrderButton")?.textContent?.replace(/\s+/g, " ").trim() || "";
       setOmPlaceButtonTxt((prev) => (prev === pbt ? prev : pbt));
-
-      let spreadHdr = "—";
-      let commHdr = "—";
-      try {
-        om?._updateOrderPanelInstrumentCosts?.();
-      } catch (_) {}
-      const instCostsEl = document.getElementById("orderPanelInstrumentCosts");
-      const instRaw = instCostsEl?.style?.display !== "none" ? instCostsEl?.textContent?.replace(/\s+/g, " ").trim() : "";
-      if (instRaw) {
-        const sm = instRaw.match(/Spread:\s*([\d.]+)\s+(pips|pts)/i);
-        const cm = instRaw.match(/Comm:\s*(\$[\d.]+)/i);
-        if (sm) spreadHdr = `${sm[1]} ${(sm[2] || "pips").toLowerCase()}`;
-        if (cm) commHdr = cm[1];
-      } else if (om && typeof om._getActiveInstrumentSettings === "function") {
-        const inst = om._getActiveInstrumentSettings();
-        const mt = om.marketType;
-        if (mt === "futures") {
-          const spreadTicks = Number.parseFloat(
-            inst.spread_pips ??
-              inst.spreadPips ??
-              inst.spread_ticks ??
-              inst.spreadTicks ??
-              inst.spread ??
-              0
-          );
-          const commSide = Number.parseFloat(
-            inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? inst.commission_per_lot ?? 0
-          );
-          if (Number.isFinite(spreadTicks))
-            spreadHdr = `${Number.isInteger(spreadTicks) ? String(spreadTicks) : spreadTicks.toFixed(2)} ticks`;
-          if (Number.isFinite(commSide) && commSide > 0) commHdr = `$${(commSide * 2).toFixed(2)}`;
-        } else if (mt === "forex") {
-          const spread = Number.parseFloat(inst.spread_pips ?? inst.spreadPips ?? 0);
-          const comm = Number.parseFloat(inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? 0);
-          const cfg = typeof om.getMarketConfig === "function" ? om.getMarketConfig() : {};
-          const pipUnit = cfg?.showTicks ? "pts" : "pips";
-          if (Number.isFinite(spread))
-            spreadHdr = `${Math.abs(spread) >= 100 ? spread.toFixed(1) : spread.toFixed(2)} ${pipUnit}`;
-          if (Number.isFinite(comm)) commHdr = `$${comm.toFixed(2)}`;
-        } else {
-          const spread = Number.parseFloat(inst.spread_pips ?? inst.spreadPips ?? inst.spread ?? 0);
-          const comm = Number.parseFloat(inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? 0);
-          if (Number.isFinite(spread)) spreadHdr = String(spread);
-          if (Number.isFinite(comm)) commHdr = `$${comm.toFixed(2)}`;
-        }
-      }
-      setOmHeaderSpreadTxt((prev) => (prev === spreadHdr ? prev : spreadHdr));
-      setOmHeaderCommTxt((prev) => (prev === commHdr ? prev : commHdr));
-
-      try {
-        om?.updateMarginLevelBadge?.();
-      } catch (_) {}
-      const mrg = document.getElementById("marginLevelBadge")?.textContent?.replace(/\s+/g, " ").trim() || "—";
-      setOmMarginLevelTxt((prev) => (prev === mrg ? prev : mrg));
 
       const sd = document.getElementById("slPipsDisplay")?.textContent?.trim() || "—";
       let td = document.getElementById("tpDistanceDisplay")?.textContent?.trim() || "—";
@@ -14476,9 +14495,11 @@ const TalariaV8bLive = () => {
           if (p.type === "select" && Array.isArray(p.options)) {
             return row(
               <select className="tlr-ind-select" value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
                 style={{ width: 130, height: 26, fontSize: 12, fontFamily: F, color: c.tx, boxSizing: "border-box",
-                  backgroundColor: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`, padding: "0 8px", outline: "none", borderRadius: 4, cursor: "default" }}>
+                  backgroundColor: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`, padding: "0 8px", outline: "none", borderRadius: 4, cursor: "default",
+                  colorScheme: darkMode ? "dark" : "light" }}>
                 {p.options.map((opt) => (
                   <option key={String(opt.value)} value={opt.value}>{opt.label}</option>
                 ))}
@@ -14602,8 +14623,15 @@ const TalariaV8bLive = () => {
                 className="tlr-ind-select"
                 value={raw != null ? String(raw) : ""}
                 onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 onChange={(e) => setv(pid, e.target.value)}
-                style={{ ...inpBase, width: w != null ? w : "100%", minWidth: 0, padding: "0 8px" }}
+                style={{
+                  ...inpBase,
+                  width: w != null ? w : "100%",
+                  minWidth: 0,
+                  padding: "0 8px",
+                  colorScheme: darkMode ? "dark" : "light",
+                }}
               >
                 {p.options.map((opt) => (
                   <option key={String(opt.value)} value={opt.value}>{opt.label}</option>
@@ -14860,6 +14888,7 @@ const TalariaV8bLive = () => {
           style={{ position: "fixed", left: indSettPos.x, top: indSettPos.y, zIndex: 11000, width: panelW, fontFamily: F,
             background: c.sf, border: `1px solid ${c.brH}`, boxShadow: "0 24px 64px rgba(0,0,0,0.85)",
             display: "flex", flexDirection: "column",
+            colorScheme: darkMode ? "dark" : "light",
             animation: closing.has("indsett") ? "tlrPopOut 0.155s ease both" : "tlrPopIn 0.15s ease" }}>
           <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`, flexShrink: 0 }} />
           <div onPointerDown={(e) => {
