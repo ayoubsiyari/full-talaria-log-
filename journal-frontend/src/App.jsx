@@ -13,9 +13,7 @@ import {
 import PerformanceAnalysis from './pages/analytics/PerformanceAnalysis';
 import StreakAnalyzer from './pages/analytics/StreakAnalyzer';
 import TradeDuration from './pages/analytics/TradeDuration';
-import TradeDurationSimple from './pages/analytics/TradeDurationSimple';
 
-import Home      from './pages/Home';
 import Sidebar   from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Journal   from './pages/Journal';
@@ -42,23 +40,12 @@ import Calendar from './pages/analytics/Calendar';
 import RecentTrades from './pages/analytics/RecentTrades';
 import VariablesAnalysis from './pages/analytics/VariablesAnalysis';
 import TopCombinationsView from './pages/analytics/TopCombinationsView';
-
-import CombinationFilterTest from './components/CombinationFilterTest';
-import FilterTest from './components/FilterTest';
 import AIDashboard from './pages/AIDashboard';
-
-import Features from './pages/Features';
 import Pricing from './pages/Pricing';
-import Contact from './pages/Contact';
 import VerifyEmail from './pages/VerifyEmail';
 import ResendVerification from './pages/ResendVerification';
 import ImportTrades from './pages/ImportTrades';
-import PrivacyPolicy from './pages/PrivacyPolicy';
-import RefundPolicy from './pages/RefundPolicy';
-import TermsOfService from './pages/TermsOfService';
 import CookiePolicy from './pages/CookiePolicy';
-import Disclaimer from './pages/Disclaimer';
-import Legal from './pages/Legal';
 import ProfileSelectionPage from './pages/ProfileSelectionPage';
 import ManageProfilePage from './pages/ManageProfilePage';
 import SubscriptionSuccess from './pages/SubscriptionSuccess';
@@ -86,16 +73,10 @@ import FeatureDisabled from './components/FeatureDisabled';
 import FeatureFlagManager from './components/FeatureFlagManager';
 import { isFeatureEnabled, logFeatureFlags } from './config/featureFlags';
 
-/** Strategies Lab is served from the main site at /strategies-lab/ (Next homepage), not inside /journal/. */
-function StrategiesLabRedirect() {
-  useEffect(() => {
-    window.location.replace('/strategies-lab/');
-  }, []);
-  return (
-    <div className="flex min-h-[50vh] items-center justify-center text-cyan-200">
-      Opening Strategies Lab…
-    </div>
-  );
+/** Unauthenticated users visiting /journal/ are sent to the main homepage. */
+function GuestHomeRedirect() {
+  useEffect(() => { window.location.replace('/'); }, []);
+  return null;
 }
 
 /**
@@ -177,15 +158,6 @@ function LayoutWithSidebar() {
               }>
                 <SubscriptionGuard feature="Import Trades">
                   <ImportTrades />
-                </SubscriptionGuard>
-              </ProtectedRoute>
-            } />
-            <Route path="/strategy-builder" element={
-              <ProtectedRoute feature="STRATEGY_BUILDER" fallbackComponent={
-                <FeatureDisabled featureName="Strategy Builder" />
-              }>
-                <SubscriptionGuard feature="Strategy Builder">
-                  <StrategiesLabRedirect />
                 </SubscriptionGuard>
               </ProtectedRoute>
             } />
@@ -339,15 +311,6 @@ function LayoutWithSidebar() {
                 </SubscriptionGuard>
               </ProtectedRoute>
             } />
-            <Route path="/analytics/trade-duration-simple" element={
-              <ProtectedRoute feature="ANALYTICS_TRADE_DURATION" fallbackComponent={
-                <FeatureDisabled featureName="Trade Duration Analysis" />
-              }>
-                <SubscriptionGuard feature="Trade Duration">
-                  <TradeDurationSimple />
-                </SubscriptionGuard>
-              </ProtectedRoute>
-            } />
             <Route path="/analytics/all-metrics" element={
               <ProtectedRoute feature="ANALYTICS_ALL_METRICS" fallbackComponent={
                 <FeatureDisabled featureName="All Metrics" />
@@ -358,21 +321,6 @@ function LayoutWithSidebar() {
               </ProtectedRoute>
             } />
             
-            {/* Test/Development Features */}
-            <Route path="/test-combinations" element={
-              <ProtectedRoute feature="TEST_COMBINATIONS" fallbackComponent={
-                <FeatureDisabled featureName="Test Combinations" />
-              }>
-                <CombinationFilterTest />
-              </ProtectedRoute>
-            } />
-            <Route path="/test-filter" element={
-              <ProtectedRoute feature="TEST_FILTER" fallbackComponent={
-                <FeatureDisabled featureName="Test Filter" />
-              }>
-                <FilterTest />
-              </ProtectedRoute>
-            } />
             
             {/* Admin Features */}
             <Route path="/admin/feature-flags" element={
@@ -546,20 +494,12 @@ function AppRoutes() {
 
   // Paths on which we do NOT want to render the Sidebar:
   const isPublicPath =
-    // location.pathname === '/register' ||  // Temporarily disabled
     location.pathname === '/verify-email' ||
     location.pathname === '/resend-verification' ||
-    location.pathname === '/features' ||
     location.pathname === '/pricing' ||
     location.pathname === '/subscription/success' ||
     location.pathname === '/onboarding' ||
-    location.pathname === '/contact' ||
-    location.pathname === '/privacy-policy' ||
-    location.pathname === '/refund-policy' ||
-    location.pathname === '/terms' ||
     location.pathname === '/cookie-policy' ||
-    location.pathname === '/disclaimer' ||
-    location.pathname === '/legal' ||
     location.pathname === '/subscription-status'
 
   // Authenticated users on root or login → send to dashboard (ProtectedLayout handles access check)
@@ -587,20 +527,13 @@ function AppRoutes() {
           <Routes>
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/resend-verification" element={<ResendVerification />} />
-            <Route path="/features" element={<Features />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/subscription/success" element={<SubscriptionSuccess />} />
             <Route path="/onboarding" element={<Onboarding />} />
-            <Route path="/contact" element={<Contact />} />
-            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-            <Route path="/refund-policy" element={<RefundPolicy />} />
-            <Route path="/terms" element={<TermsOfService />} />
             <Route path="/cookie-policy" element={<CookiePolicy />} />
-            <Route path="/disclaimer" element={<Disclaimer />} />
-            <Route path="/legal" element={<Legal />} />
             <Route path="/subscription-status" element={<SubscriptionRequired />} />
-            <Route path="/" element={<Home />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="/" element={<GuestHomeRedirect />} />
+            <Route path="*" element={<GuestHomeRedirect />} />
           </Routes>
         </div>
       ) : (
