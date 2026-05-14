@@ -3067,6 +3067,11 @@
                 separatePanel: ind.separatePanel,
                 isVolume: ind.isVolume || false,
             };
+            if (ind.visibility && typeof ind.visibility === 'object') {
+                try {
+                    base.visibility = JSON.parse(JSON.stringify(ind.visibility));
+                } catch (_) {}
+            }
             if (ind.type === 'custom' && base.params && typeof base.params.script === 'string') {
                 if (base.params.script.length > maxScript) {
                     base.params.script = base.params.script.slice(0, maxScript);
@@ -3274,6 +3279,10 @@
         
         if (newParams.visible !== undefined) {
             indicator.visible = newParams.visible !== false;
+        }
+        
+        if (newParams.visibility !== undefined && newParams.visibility !== null) {
+            indicator.visibility = newParams.visibility;
         }
         
         // Update parameters
@@ -4284,6 +4293,42 @@
         return true;
     };
     
+    Chart.prototype._parseChartTimeframeForVisibility = function(timeframe) {
+        if (typeof timeframe !== 'string') return null;
+        const tf = timeframe.trim();
+        const m = tf.match(/^(\d+)\s*([a-zA-Z]+)$/);
+        if (!m) return null;
+        const value = parseInt(m[1], 10);
+        if (!Number.isFinite(value)) return null;
+        const unitRaw = m[2];
+        const unitLower = unitRaw.toLowerCase();
+        if (unitLower === 'mo' || unitLower === 'mon' || unitLower === 'month' || unitLower === 'months') {
+            return { value: value, unit: 'M' };
+        }
+        const unitChar = unitRaw.length === 1 ? unitRaw : unitRaw[0];
+        if (unitChar === 'M') return { value: value, unit: 'M' };
+        const u = unitChar.toLowerCase();
+        if (u === 's' || u === 'm' || u === 'h' || u === 'd' || u === 'w') {
+            return { value: value, unit: u };
+        }
+        return null;
+    };
+
+    Chart.prototype._indicatorVisibleForCurrentTimeframe = function(indicator) {
+        if (!indicator || !this.currentTimeframe) return true;
+        const vis = indicator.visibility;
+        if (!vis || !vis._ranges) return true;
+        const parsed = this._parseChartTimeframeForVisibility(this.currentTimeframe);
+        if (!parsed) return true;
+        const r = vis._ranges[parsed.unit];
+        if (!r) return true;
+        if (r.enabled === false) return false;
+        const minV = Number.isFinite(+r.min) ? +r.min : null;
+        const maxV = Number.isFinite(+r.max) ? +r.max : null;
+        if (minV === null || maxV === null) return true;
+        return parsed.value >= minV && parsed.value <= maxV;
+    };
+
     Chart.prototype.drawIndicators = function() {
         if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
             return;
@@ -4313,6 +4358,7 @@
             if (indicator.overlay === false) continue;
 
             if (!indicator.visible) continue;
+            if (!this._indicatorVisibleForCurrentTimeframe(indicator)) continue;
 
             const data = this.indicators.data[indicator.id];
             if (!data) continue;
@@ -4575,24 +4621,9 @@ Chart.prototype._getVisibleSeparateIndicators = function() {
         if (ind.type === 'volume' || ind.isVolume) return false;
         const isSeparate = ind.overlay === false || ind.separatePanel === true;
         const isVisible = ind.visible !== false;
-        return isSeparate && isVisible;
+        if (!isSeparate || !isVisible) return false;
+        return this._indicatorVisibleForCurrentTimeframe(ind);
     });
-
-    // Final separator pass: redraw every inter-panel boundary full-width so it
-    // stays visible (including through the right indicator-axis strip).
-    if (panelSlots.length > 1) {
-        panelSlots.slice(0, -1).forEach((slot) => {
-            const y = slot.top;
-            const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - y) <= 2;
-            ctx.strokeStyle = isHoverSep ? _hoverColor : _sepColorStrong;
-            ctx.lineWidth = 3;
-            ctx.setLineDash([]);
-            ctx.beginPath();
-            ctx.moveTo(m.l, y);
-            ctx.lineTo(panelFullRight, y);
-            ctx.stroke();
-        });
-    }
 };
 
 Chart.prototype._getSeparatePanelHeights = function(indicators) {
@@ -6101,7 +6132,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             console.warn('[chart] showIndicatorSettings failed:', error);
         }
     };
-
+    
     // Recompute the total pixel height reserved for separate-panel indicators
     Chart.prototype._updateIndicatorPanelHeight = function() {
         const indicators = this._getVisibleSeparateIndicators();

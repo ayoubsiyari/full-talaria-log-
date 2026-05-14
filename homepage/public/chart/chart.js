@@ -2920,6 +2920,13 @@ class Chart {
                 const p = Object.assign({}, snap.params || {}, snap.style || {});
                 const ind = this.addIndicator(snap.type, p);
                 if (ind && snap.visible === false) ind.visible = false;
+                if (ind && snap.visibility && typeof snap.visibility === 'object') {
+                    try {
+                        ind.visibility = JSON.parse(JSON.stringify(snap.visibility));
+                    } catch (_) {
+                        ind.visibility = snap.visibility;
+                    }
+                }
             } catch (e) {
                 console.warn('⚠️ Could not restore indicator', snap.type, e);
             }

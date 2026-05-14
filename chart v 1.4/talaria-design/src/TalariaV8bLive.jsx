@@ -579,6 +579,67 @@ function v9ApplyVisibilityFromTlStyle(d, tlStyle) {
   return changed;
 }
 
+/** Indicator settings Visibility tab — same draft shape as Ray / tlStyle (visMinutes…visMonths). */
+const V9_IND_VIS_METAS = [
+  ["visMinutes", "m", "Minutes", 60],
+  ["visHours", "h", "Hours", 24],
+  ["visDays", "d", "Days", 366],
+  ["visWeeks", "w", "Weeks", 260],
+  ["visMonths", "M", "Months", 120],
+];
+
+function v9DefaultIndicatorVisibilityDraftPatch() {
+  const patch = {};
+  V9_IND_VIS_METAS.forEach(([key,,, hardMax]) => {
+    patch[key] = { checked: true, min: 1, max: hardMax };
+  });
+  return patch;
+}
+
+function v9IndicatorVisibilityDraftFromIndicator(existingIndicator) {
+  const patch = v9DefaultIndicatorVisibilityDraftPatch();
+  const vis = existingIndicator && existingIndicator.visibility;
+  const ranges = vis && vis._ranges;
+  if (!ranges || typeof ranges !== "object") return patch;
+  V9_IND_VIS_METAS.forEach(([draftKey, unit,, hardMax]) => {
+    const row = ranges[unit];
+    if (!row || typeof row !== "object") return;
+    let min = Number(row.min);
+    let max = Number(row.max);
+    if (!Number.isFinite(min)) min = 1;
+    if (!Number.isFinite(max)) max = hardMax;
+    min = Math.max(1, Math.min(min, hardMax - 1));
+    max = Math.max(min + 1, Math.min(max, hardMax));
+    patch[draftKey] = {
+      checked: row.enabled !== false,
+      min,
+      max,
+    };
+  });
+  return patch;
+}
+
+function v9IndicatorVisibilityFromDraft(draft) {
+  const _ranges = {};
+  V9_IND_VIS_METAS.forEach(([draftKey, unit,, hardMax]) => {
+    const v = draft && draft[draftKey];
+    if (!v || typeof v !== "object") return;
+    let min = Number(v.min);
+    let max = Number(v.max);
+    if (!Number.isFinite(min)) min = 1;
+    if (!Number.isFinite(max)) max = hardMax;
+    min = Math.max(1, Math.min(min, hardMax - 1));
+    max = Math.max(min + 1, Math.min(max, hardMax));
+    _ranges[unit] = {
+      enabled: v.checked !== false,
+      min,
+      max,
+    };
+  });
+  if (_ranges.M) _ranges.mo = { ..._ranges.M };
+  return { _ranges };
+}
+
 // ─── Multi-chart: every panel tile has its own drawingManager. Never assume getActiveChart()
 // or window.chart alone — focus can point at one surface while the selection lives on another.
 function enumerateV9DrawingManagersFromWindow() {
@@ -5905,6 +5966,7 @@ const TalariaV8bLive = () => {
         draft[p.id] = allParams[p.id] !== undefined ? allParams[p.id] : p.default;
       });
       draft.visible = existingIndicator.visible !== false;
+      Object.assign(draft, v9IndicatorVisibilityDraftFromIndicator(existingIndicator));
       const counts = { style: 0, input: 0, visibility: 0 };
       def.params.forEach((p) => {
         counts[tabFn(p)]++;
@@ -14116,6 +14178,7 @@ const TalariaV8bLive = () => {
           const merged = mergeFn ? mergeFn(c2.indicatorType, c2.indicator, indSettDraft) : null;
           if (!merged) { closeIndSett(); return; }
           merged.visible = indSettDraft.visible !== false;
+          merged.visibility = v9IndicatorVisibilityFromDraft(indSettDraft);
           const chart = c2.chart;
           if (c2.indicatorType === "custom") {
             const TC = typeof window !== "undefined" ? window.TalariaCustomIndicators : null;
@@ -14284,27 +14347,131 @@ const TalariaV8bLive = () => {
             </div>
           )}
           <div style={{ padding: "14px 18px 12px", overflowY: "auto", maxHeight: "min(70vh, calc(100vh - 200px))", flex: 1 }}>
-            {indSettTab === "visibility" ? (
-              <>
-                <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", marginBottom: 10 }}>DISPLAY</div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "8px 0", borderBottom: `1px solid ${c.br}` }}>
-                  <span style={{ fontSize: 12, color: c.ts }}>Visible on chart</span>
-                  <input type="checkbox" checked={indSettDraft.visible !== false}
-                    onChange={(e) => setIndSettDraft((d) => ({ ...d, visible: e.target.checked }))}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ width: 16, height: 16, accentColor: c.ac, cursor: "default" }} />
-                </div>
-                <div style={{ fontSize: 11, color: c.tm, marginTop: 10, lineHeight: 1.45 }}>
-                  Same as the eye control in the OHLC legend: off hides the line but keeps the indicator in your list.
-                </div>
-                {inTab.length > 0 && (
-                  <>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", margin: "18px 0 10px" }}>OPTIONS</div>
-                    {inTab.map((p) => renderParam(p))}
-                  </>
-                )}
-              </>
-            ) : inTab.length === 0 ? (
+            {indSettTab === "visibility" ? (() => {
+              const hardMax = { visMinutes: 60, visHours: 24, visDays: 366, visWeeks: 260, visMonths: 120 };
+              const gc = "24px 72px 44px 1fr 44px";
+              return (
+                <>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", marginBottom: 10 }}>TIMEFRAMES</div>
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: gc, gap: "0 8px", padding: "4px 12px 5px" }}>
+                      <div /><div />
+                      <div style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: c.tm, letterSpacing: "0.06em" }}>MIN</div>
+                      <div />
+                      <div style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: c.tm, letterSpacing: "0.06em" }}>MAX</div>
+                    </div>
+                    {[["visMinutes", "Minutes"], ["visHours", "Hours"], ["visDays", "Days"], ["visWeeks", "Weeks"], ["visMonths", "Months"]].map(([k, lbl]) => {
+                      const v = indSettDraft[k] || { checked: true, min: 1, max: hardMax[k] };
+                      const hm = hardMax[k];
+                      const pctMin = (v.min - 1) / Math.max(1, hm - 1) * 100;
+                      const pctMax = (v.max - 1) / Math.max(1, hm - 1) * 100;
+                      const hkMin = `ind-vis-min-${k}`;
+                      const hkMax = `ind-vis-max-${k}`;
+                      const mkDrag = (e, isMin, trackEl) => {
+                        e.stopPropagation();
+                        const rect = trackEl.getBoundingClientRect();
+                        const getVal = (cx) => Math.round(1 + Math.max(0, Math.min(1, (cx - rect.left) / rect.width)) * (hm - 1));
+                        setHov(isMin ? hkMin : hkMax);
+                        const onMove = (ev) => {
+                          const nv = getVal(ev.clientX);
+                          if (isMin) {
+                            setIndSettDraft((s) => ({
+                              ...s,
+                              [k]: { ...s[k], min: Math.max(1, Math.min(nv, s[k].max - 1)) },
+                            }));
+                          } else {
+                            setIndSettDraft((s) => ({
+                              ...s,
+                              [k]: { ...s[k], max: Math.max(s[k].min + 1, Math.min(nv, hm)) },
+                            }));
+                          }
+                        };
+                        const onUp = () => {
+                          setHov(null);
+                          window.removeEventListener("pointermove", onMove);
+                          window.removeEventListener("pointerup", onUp);
+                        };
+                        onMove(e);
+                        window.addEventListener("pointermove", onMove);
+                        window.addEventListener("pointerup", onUp);
+                      };
+                      return (
+                        <div key={k} style={{ display: "grid", gridTemplateColumns: gc, gap: "0 8px", alignItems: "center", padding: "6px 12px" }}>
+                          {TlChk(v.checked, `indchk-${k}`, null, () =>
+                            setIndSettDraft((s) => ({ ...s, [k]: { ...(s[k] || v), checked: !((s[k] || v).checked) } }))
+                          )}
+                          <span style={{ fontSize: 12, color: v.checked ? c.ts : c.tm }}>{lbl}</span>
+                          <div style={{ display: "flex", justifyContent: "center" }}>
+                            <input type="number" min={1} max={v.max - 1} value={v.min} onClick={(e) => e.stopPropagation()}
+                              onChange={(e) =>
+                                setIndSettDraft((s) => ({
+                                  ...s,
+                                  [k]: { ...s[k], min: Math.max(1, Math.min(parseInt(e.target.value, 10) || 1, s[k].max - 1)) },
+                                }))
+                              }
+                              className="tlr-nospinner"
+                              style={{ width: 38, height: 22, textAlign: "center", background: "rgba(140,160,255,0.06)",
+                                border: `1px solid ${c.brL}`, color: c.tx, fontSize: 11, fontFamily: F, outline: "none" }} />
+                          </div>
+                          <div onClick={(e) => e.stopPropagation()}
+                            style={{ position: "relative", height: 28, display: "flex", alignItems: "center", cursor: "default" }}>
+                            <div style={{ position: "absolute", left: 0, right: 0, height: 3, top: "50%", transform: "translateY(-50%)", borderRadius: 99, background: c.trk }}>
+                              <div style={{ position: "absolute", left: `${pctMin}%`, width: `${Math.max(0, pctMax - pctMin)}%`, height: "100%", borderRadius: 99,
+                                background: `linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`, boxShadow: `0 0 5px ${c.acG}` }} />
+                            </div>
+                            <div style={{ position: "absolute", left: `calc(${pctMin}% - 6px)`, top: "calc(50% + 2px)", width: 12, height: 9,
+                              clipPath: "polygon(50% 0%,0% 100%,100% 100%)",
+                              background: `linear-gradient(180deg,${c.acL},${c.ac})`,
+                              filter: hov === hkMin ? `drop-shadow(0 0 8px ${c.acG}) brightness(1.35)` : `drop-shadow(0 0 4px ${c.acG})`,
+                              transform: hov === hkMin ? "scale(1.18)" : "scale(1)", transition: "transform 0.08s ease,filter 0.08s ease",
+                              pointerEvents: "none" }} />
+                            <div style={{ position: "absolute", left: `calc(${pctMax}% - 6px)`, top: "calc(50% + 2px)", width: 12, height: 9,
+                              clipPath: "polygon(50% 0%,0% 100%,100% 100%)",
+                              background: `linear-gradient(180deg,${c.acL},${c.ac})`,
+                              filter: hov === hkMax ? `drop-shadow(0 0 8px ${c.acG}) brightness(1.35)` : `drop-shadow(0 0 4px ${c.acG})`,
+                              transform: hov === hkMax ? "scale(1.18)" : "scale(1)", transition: "transform 0.08s ease,filter 0.08s ease",
+                              pointerEvents: "none" }} />
+                            <div onPointerDown={(e) => {
+                              const t = e.currentTarget.parentElement;
+                              const r = t.getBoundingClientRect();
+                              const cv = Math.round(1 + Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (hm - 1));
+                              mkDrag(e, Math.abs(cv - v.min) <= Math.abs(cv - v.max), t);
+                            }}
+                              style={{ position: "absolute", inset: 0, cursor: "default" }} />
+                            <div onPointerDown={(e) => mkDrag(e, true, e.currentTarget.parentElement)}
+                              onMouseEnter={() => setHov(hkMin)} onMouseLeave={() => setHov(null)}
+                              style={{ position: "absolute", left: `calc(${pctMin}% - 14px)`, top: "calc(50% - 14px)",
+                                width: 28, height: 28, cursor: "default", zIndex: 2 }} />
+                            <div onPointerDown={(e) => mkDrag(e, false, e.currentTarget.parentElement)}
+                              onMouseEnter={() => setHov(hkMax)} onMouseLeave={() => setHov(null)}
+                              style={{ position: "absolute", left: `calc(${pctMax}% - 14px)`, top: "calc(50% - 14px)",
+                                width: 28, height: 28, cursor: "default", zIndex: 2 }} />
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "center" }}>
+                            <input type="number" min={v.min + 1} max={hm} value={v.max} onClick={(e) => e.stopPropagation()}
+                              onChange={(e) =>
+                                setIndSettDraft((s) => ({
+                                  ...s,
+                                  [k]: { ...s[k], max: Math.max(s[k].min + 1, Math.min(parseInt(e.target.value, 10) || 1, hm)) },
+                                }))
+                              }
+                              className="tlr-nospinner"
+                              style={{ width: 38, height: 22, textAlign: "center", background: "rgba(140,160,255,0.06)",
+                                border: `1px solid ${c.brL}`, color: c.tx, fontSize: 11, fontFamily: F, outline: "none" }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {inTab.length > 0 && (
+                    <>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", margin: "18px 0 10px" }}>OPTIONS</div>
+                      {inTab.map((p) => renderParam(p))}
+                    </>
+                  )}
+                </>
+              );
+            })() : inTab.length === 0 ? (
               <div style={{ fontSize: 12, color: c.tm, fontStyle: "italic", padding: "8px 4px" }}>
                 {`No ${emptyLabel} options for this indicator.`}
               </div>

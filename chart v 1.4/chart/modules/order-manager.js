@@ -11429,12 +11429,35 @@ class OrderManager {
     }
 
     /**
+     * Chart preview / pending TP+ affordances: only when size allows multiple legs (matches V9 rail).
+     * @param {number} [overrideQty] - optional (e.g. pending order quantity); else reads #orderQuantity
+     */
+    _orderQtyAllowsEntryTpSplitAffordances(overrideQty) {
+        try {
+            let q;
+            if (overrideQty != null && Number.isFinite(Number(overrideQty))) {
+                q = Number(overrideQty);
+            } else {
+                q = parseFloat(document.getElementById('orderQuantity')?.value || '0');
+            }
+            const x = Math.max(0, Number.isFinite(q) ? q : 0);
+            if (this.marketType === 'futures') {
+                return Math.floor(x) > 1;
+            }
+            return x > 1;
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    /**
      * Green + on preview: enable only the mode that matches where the button was placed
      * (entry row → multi-entry only; TP row / TP badge → multi-TP only). Never both at once.
      * @param {'entry'|'tp'} kind
      */
     _appendPreviewMultiModesActivatorButton(lineData, startX, height, kind) {
         if (this._isOrderEntryPlusUiDisabled()) return;
+        if (!this._orderQtyAllowsEntryTpSplitAffordances()) return;
         const self = this;
         const btnR = 9;
         const g = lineData.labelGroup.append('g')
@@ -11718,7 +11741,8 @@ class OrderManager {
             offsetX += closeSize + gap;
 
             // + add another TP (same behavior as pending multi-TP split)
-            if (document.getElementById('multipleTPToggle')?.checked && !this._isOrderEntryPlusUiDisabled()) {
+            if (document.getElementById('multipleTPToggle')?.checked && !this._isOrderEntryPlusUiDisabled()
+                && this._orderQtyAllowsEntryTpSplitAffordances()) {
                 const splitBtnR = 9;
                 const self = this;
                 const splitG = lineData.labelGroup.append('g')
@@ -19323,6 +19347,7 @@ class OrderManager {
     drawSplitHandle(lineData, parentGroup) {
         if (!lineData || !parentGroup) return null;
         if (this._isOrderEntryPlusUiDisabled()) return null;
+        if (!this._orderQtyAllowsEntryTpSplitAffordances()) return null;
 
         const self = this;
         const ch = lineData._previewChart || self.previewLines?._previewChart || self._getPreviewChart() || self.chart;
@@ -30168,16 +30193,18 @@ class OrderManager {
                 // Layout: Label+PnL → [−][+] (multi-TP share) → [X] → [+] split
                 const isMultiTP = !!target.isPendingMultiTP;
                 const needsCloseBtn = (target.type === 'SL' || target.type === 'TP');
-                const needsSplitBtn = (target.type === 'TP');
+                const canPendingTpSplit = target.type === 'TP'
+                    && !this._isOrderEntryPlusUiDisabled()
+                    && this._orderQtyAllowsEntryTpSplitAffordances(entry.pendingOrder?.quantity);
                 const closeBtnR = 9;
-                const splitBtnR = needsSplitBtn ? 9 : 0;
+                const splitBtnR = canPendingTpSplit ? 9 : 0;
                 const closeBtnGap = 6;
                 const arrowSize = 18;
                 const arrowGap = 2;
                 const showPctArrows = isMultiTP && entry.pendingOrder.tpTargets && entry.pendingOrder.tpTargets.length > 1;
                 target.pctArrowsWidth = showPctArrows ? (arrowSize + arrowGap) * 2 : 0;
                 const xBtnW = needsCloseBtn ? (closeBtnR * 2 + closeBtnGap) : 0;
-                const splitW = needsSplitBtn ? (splitBtnR * 2 + closeBtnGap) : 0;
+                const splitW = canPendingTpSplit ? (splitBtnR * 2 + closeBtnGap) : 0;
                 const badgesW = (target.pctArrowsWidth || 0) + xBtnW + splitW;
 
                 const translateX = ch.w - totalLabelW - badgesW - marginRight;
@@ -30286,7 +30313,7 @@ class OrderManager {
                 }
 
                 // + split button for TP targets
-                if (needsSplitBtn) {
+                if (canPendingTpSplit) {
                     const splitX = xAfterLabel + splitBtnR;
                     if (!target._splitBtn || !target._splitBtn.node()?.parentNode) {
                         if (target._splitBtn) { try { target._splitBtn.remove(); } catch (_) {} }
@@ -30323,6 +30350,9 @@ class OrderManager {
                     try {
                         if (typeof target._splitBtn.raise === 'function') target._splitBtn.raise();
                     } catch (_) {}
+                } else if (target._splitBtn) {
+                    try { target._splitBtn.remove(); } catch (_) {}
+                    target._splitBtn = null;
                 }
 
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} target._tpPlusBadge = null; }
@@ -32700,7 +32730,14 @@ class OrderManager {
                 chart
             });
         }
-        
+
+        let openPosQtyForTpSplit = Number(order.quantity) || 0;
+        if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
+            openPosQtyForTpSplit = this._getSplitGroupOpenPositions(order).reduce((s, m) => s + (m.quantity || 0), 0);
+        }
+        const canOpenTpSplitPlus = !this._isOrderEntryPlusUiDisabled()
+            && this._orderQtyAllowsEntryTpSplitAffordances(openPosQtyForTpSplit);
+
         // Draw Take Profit lines (check for multiple TPs first)
         if (order.tpTargets && Array.isArray(order.tpTargets) && order.tpTargets.length > 0) {
             const nonHitTargets = order.tpTargets.filter((t, i) => this._tpTargetStillActiveOnChart(order, t, i));
@@ -32851,7 +32888,9 @@ class OrderManager {
                     });
 
                     // TP+ split button for multi-TP (adds another target)
-                    const tpMultiSplitBtn = this._createSplitPlusButton(
+                    let tpMultiSplitBtn = null;
+                    if (canOpenTpSplitPlus) {
+                        tpMultiSplitBtn = this._createSplitPlusButton(
                         chart.svg,
                         `tp-split-btn tp-${order.id} tp-target-${tpKey}`,
                         '#22c55e',
@@ -32865,6 +32904,7 @@ class OrderManager {
                         },
                         8
                     );
+                    }
 
                     tpLines.push({ 
                         orderId: order.id,
@@ -32960,7 +33000,9 @@ class OrderManager {
             );
 
             // TP+ split button (adds a new TP target)
-            const tpSplitBtn = this._createSplitPlusButton(
+            let tpSplitBtn = null;
+            if (canOpenTpSplitPlus) {
+                tpSplitBtn = this._createSplitPlusButton(
                 chart.svg,
                 `tp-split-btn tp-${order.id}`,
                 '#089981',
@@ -32972,7 +33014,8 @@ class OrderManager {
                     this._splitTPAtPrice(order.id, newTP, false);
                 }
             );
-            
+            }
+
             // Right side price box (green)
             const tpPriceBox = chart.svg.append('rect')
                 .attr('class', `tp-price-box tp-${order.id}`)
