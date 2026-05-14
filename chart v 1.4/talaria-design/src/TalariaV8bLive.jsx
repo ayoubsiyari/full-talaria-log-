@@ -6015,14 +6015,16 @@ const TalariaV8bLive = () => {
         counts[tabFn(p)]++;
       });
       let first = "visibility";
-      if (counts.style) first = "style";
+      if (indicatorType === "icteverything") first = "input";
+      else if (counts.style) first = "style";
       else if (counts.input) first = "input";
       indSettCtxRef.current = { chart: chartInstance, indicatorType, indicator: existingIndicator };
       setIndSettDraft(draft);
       setIndSettTab(first);
       const zForPos = (typeof window !== "undefined" && Number(window.__v9Zoom)) || 1;
       const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
-      setIndSettPos({ x: Math.max(8, vw / zForPos / 2 - (indicatorType === "custom" ? 270 : 210)), y: 72 });
+      const halfW = indicatorType === "custom" ? 270 : indicatorType === "icteverything" ? 260 : 210;
+      setIndSettPos({ x: Math.max(8, vw / zForPos / 2 - halfW), y: 72 });
       setIndSettOpen(true);
       return true;
     };
@@ -6109,7 +6111,9 @@ const TalariaV8bLive = () => {
   // Futures: cannot have more TP rows than whole contracts (e.g. 1 contract → single TP only).
   useEffect(() => {
     if (currentSymbol.type !== "futures") return;
-    const q = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
+    const qOm = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
+    const qRv = Math.floor(Math.max(0, parseFloat(riskVal || "0")));
+    const q = sizeMode === "#" ? (qRv >= 1 ? qRv : qOm) : qOm;
     const maxLegs = q < 1 ? 1 : q;
     setTpRows((rows) => {
       if (rows.length <= maxLegs) return rows;
@@ -6117,7 +6121,7 @@ const TalariaV8bLive = () => {
       omPanelBridgeRef.current.tpDel = Date.now();
       return rows.slice(0, maxLegs);
     });
-  }, [omOrderQtyTxt, currentSymbol.type, tpRows.length]);
+  }, [omOrderQtyTxt, riskVal, sizeMode, currentSymbol.type, tpRows.length]);
 
   /** Lot-size (#): SIZE (`riskVal`) is contracts/lots — sync single ENTRY + TP row values (legacy "100" was %). */
   useEffect(() => {
@@ -6164,33 +6168,6 @@ const TalariaV8bLive = () => {
       return rows;
     });
   }, [orderPanelOpen, sizeMode, riskVal, currentSymbol.type]);
-
-  /** Lot-size (#): changing ENTRY risk or single TP qty pulls SIZE (`riskVal`) to match. */
-  useEffect(() => {
-    if (!orderPanelOpen || sizeMode !== "#") return;
-    const rvF = Math.floor(Math.max(0, parseFloat(riskVal || "0")));
-    const rvX = Math.max(0, parseFloat(riskVal || "0"));
-
-    if (entryRows.length === 1) {
-      const er = Math.max(0, parseFloat(entryRows[0].risk || "0"));
-      const erN = currentSymbol.type === "futures" ? Math.floor(er) : er;
-      const rvN = currentSymbol.type === "futures" ? rvF : rvX;
-      if (erN > 0 && erN !== rvN) {
-        markOrderControlBridge();
-        setRiskVal(String(currentSymbol.type === "futures" ? erN : er));
-        return;
-      }
-    }
-    if (tpRows.length === 1) {
-      const tq = Math.max(0, parseFloat(tpRows[0].qty || "0"));
-      const tqN = currentSymbol.type === "futures" ? Math.floor(tq) : tq;
-      const rvN = currentSymbol.type === "futures" ? rvF : rvX;
-      if (tqN > 0 && tqN !== rvN) {
-        markOrderControlBridge();
-        setRiskVal(String(currentSymbol.type === "futures" ? tqN : tq));
-      }
-    }
-  }, [orderPanelOpen, sizeMode, entryRows, tpRows, riskVal, currentSymbol.type]);
 
   const sessionAssetHintForSymbol = useMemo(() => {
     const want = normalizeSymForBadge(symbol);
@@ -14298,14 +14275,16 @@ const TalariaV8bLive = () => {
         const def = typeof window !== "undefined" && window.INDICATOR_DEFINITIONS && ctx.indicatorType
           ? window.INDICATOR_DEFINITIONS[ctx.indicatorType] : null;
         if (!def || !ctx.indicator) return null;
-        const tabFn = typeof window.indicatorSettingsTabForParam === "function"
+        const isIctEverything = ctx.indicatorType === "icteverything";
+        const tabFnBase = typeof window.indicatorSettingsTabForParam === "function"
           ? window.indicatorSettingsTabForParam
           : (p) => (p.type === "checkbox" ? "visibility" : p.type === "color" ? "style" : "input");
+        const tabFn = isIctEverything ? () => "input" : tabFnBase;
         const isCustom = ctx.indicatorType === "custom";
-        const panelW = isCustom ? 520 : ctx.indicatorType === "icteverything" ? 460 : 400;
+        const panelW = isCustom ? 520 : isIctEverything ? 520 : 400;
         const title = (ctx.indicator && ctx.indicator.name) || def.name || "Indicator";
         const tabOrder = [["style","Style"],["input","Input"],["visibility","Visibility"]];
-        const tabsShown = tabOrder;
+        const tabsShown = isIctEverything ? [["input","Settings"],["visibility","Visibility"]] : tabOrder;
         const tabIdx = Math.max(0, tabsShown.findIndex(([id]) => id === indSettTab));
         const openIndCP = (e, paramId, val) => {
           const p0 = parseColor(val || "#ffffff");
@@ -14465,6 +14444,299 @@ const TalariaV8bLive = () => {
           );
         };
         const inTab = def.params.filter((p) => tabFn(p) === indSettTab);
+        const renderIctEverythingSettings = () => {
+          const def0 = (id) => def.params.find((x) => x.id === id);
+          const val = (id) => (indSettDraft[id] !== undefined ? indSettDraft[id] : def0(id)?.default);
+          const setv = (id, v) => setIndSettDraft((d) => ({ ...d, [id]: v }));
+          const flip = (id) => setIndSettDraft((d) => {
+            const p = def0(id);
+            const cur = d[id] !== undefined ? !!d[id] : !!p?.default;
+            return { ...d, [id]: !cur };
+          });
+          const inpBase = {
+            height: 26,
+            fontSize: 11,
+            fontFamily: F,
+            color: c.tx,
+            boxSizing: "border-box",
+            background: "rgba(140,160,255,0.05)",
+            border: "1px solid rgba(140,160,255,0.22)",
+            borderRadius: 4,
+            outline: "none",
+          };
+          const ictSec = (label, first) => (
+            <div key={"ict-sec-" + label} style={{
+              fontSize: 10,
+              fontWeight: 800,
+              color: c.tm,
+              letterSpacing: "0.08em",
+              marginTop: first ? 0 : 14,
+              marginBottom: 8,
+              paddingTop: first ? 0 : 8,
+              borderTop: first ? "none" : `1px solid ${c.br}`,
+            }}>{label}</div>
+          );
+          const Info = ({ t }) => (
+            <span title={t} style={{
+              width: 15,
+              height: 15,
+              flexShrink: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 999,
+              border: `1px solid ${c.brL}`,
+              color: c.tm,
+              fontSize: 9,
+              fontWeight: 800,
+              cursor: "default",
+            }}>i</span>
+          );
+          const Swatch = ({ pid }) => {
+            const raw = val(pid);
+            const ck = "ind-" + pid;
+            const colStr = String(raw != null ? raw : "#787b86");
+            const isAct = colorPicker === ck;
+            const isH = hov === ck;
+            return (
+              <div
+                onMouseEnter={() => setHov(ck)}
+                onMouseLeave={() => setHov(null)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openIndCP(e, pid, colStr);
+                }}
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 4,
+                  background: colStr,
+                  flexShrink: 0,
+                  cursor: "default",
+                  border: `1px solid ${isAct || isH ? "rgba(255,255,255,0.45)" : c.hvLn}`,
+                  boxShadow: isAct ? `0 0 8px ${colStr}` : "inset 0 1px 3px rgba(0,0,0,0.45)",
+                }}
+              />
+            );
+          };
+          const Sel = ({ pid, w }) => {
+            const p = def0(pid);
+            if (!p || p.type !== "select" || !p.options) return null;
+            const raw = val(pid);
+            return (
+              <select
+                value={raw != null ? String(raw) : ""}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setv(pid, e.target.value)}
+                style={{ ...inpBase, width: w || 88, minWidth: 0, padding: "0 6px", cursor: "default" }}
+              >
+                {p.options.map((opt) => (
+                  <option key={String(opt.value)} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            );
+          };
+          const ictRow = (key, children) => (
+            <div key={key} style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "7px 0",
+              borderBottom: `1px solid ${c.br}`,
+              flexWrap: "wrap",
+            }}>{children}</div>
+          );
+          const pill = (pid, w) => (
+            <input
+              type="text"
+              value={val(pid) != null ? String(val(pid)) : ""}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setv(pid, e.target.value)}
+              style={{
+                ...inpBase,
+                width: w || 86,
+                minWidth: 0,
+                textAlign: "center",
+                fontWeight: 700,
+                fontSize: 10,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+              }}
+            />
+          );
+          const timeInp = (pid) => (
+            <input
+              type="time"
+              value={val(pid) || def0(pid)?.default || ""}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setv(pid, e.target.value)}
+              style={{ ...inpBase, width: 86, padding: "0 4px", fontVariantNumeric: "tabular-nums" }}
+            />
+          );
+          const sessRow = (rk, showId, txtId, tStart, tEnd, fillId, tip) => ictRow(rk, <>
+            {TlChk(!!val(showId), `ict-${showId}`, null, () => flip(showId))}
+            {pill(txtId, 88)}
+            {timeInp(tStart)}
+            <span style={{ color: c.tm, fontSize: 11, flexShrink: 0 }}>–</span>
+            {timeInp(tEnd)}
+            <Swatch pid={fillId} />
+            <Info t={tip} />
+          </>);
+          const vLineRow = (rk, showId, txtId, colId, lsId, lwId, tip) => ictRow(rk, <>
+            {TlChk(!!val(showId), `ict-v-${showId}`, null, () => flip(showId))}
+            {pill(txtId, 84)}
+            <Swatch pid={colId} />
+            <Sel pid={lsId} w={80} />
+            <Sel pid={lwId} w={62} />
+            <Info t={tip} />
+          </>);
+          const boxRow = (rk, showId, txtId, boxCol, showTxtId, txtColId, sdId, tip) => ictRow(rk, <>
+            {TlChk(!!val(showId), `ict-bx-${showId}`, null, () => flip(showId))}
+            {pill(txtId, 68)}
+            <Swatch pid={boxCol} />
+            {TlChk(!!val(showTxtId), `ict-${showTxtId}`, "Text", () => flip(showTxtId))}
+            <Swatch pid={txtColId} />
+            {TlChk(!!val(sdId), `ict-${sdId}`, "SD", () => flip(sdId))}
+            <Info t={tip} />
+          </>);
+          const sd3Row = (rk, chkId, txtId, colId, d1, d2, tip) => ictRow(rk, <>
+            {TlChk(!!val(chkId), `ict-sd-${chkId}`, null, () => flip(chkId))}
+            {pill(txtId, 76)}
+            <Swatch pid={colId} />
+            <Sel pid={d1} w={118} />
+            <Sel pid={d2} w={100} />
+            <Info t={tip} />
+          </>);
+          return (
+            <div style={{ width: "100%", maxWidth: 500, boxSizing: "border-box" }}>
+              {ictSec("GLOBAL SETTINGS", true)}
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: "10px 12px", alignItems: "center", padding: "4px 0 10px", borderBottom: `1px solid ${c.br}` }}>
+                <span style={{ fontSize: 12, color: c.ts }}>Timezone selection</span>
+                <Sel pid="TZI" w={132} />
+                <span style={{ fontSize: 12, color: c.ts }}>Hide indicator above (bar minutes)</span>
+                <input type="number" className="tlr-nospinner" min={1} max={1440} value={val("inputMaxInterval") == null ? "" : val("inputMaxInterval")}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setv("inputMaxInterval", e.target.value)}
+                  style={{ ...inpBase, width: 56, textAlign: "center", fontVariantNumeric: "tabular-nums" }} />
+              </div>
+              {ictSec("SESSION OPTIONS", false)}
+              {[
+                ["ShowTSO", "Show today's session only"],
+                ["ShowTWO", "Show current week's sessions only"],
+                ["SL4W", "Show last 4 week sessions"],
+                ["ShowSFill", "Show session highlighting"],
+              ].map(([id, lbl]) => (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${c.br}` }}>
+                  {TlChk(!!val(id), `ict-${id}`, lbl, () => flip(id))}
+                </div>
+              ))}
+              {ictSec("HISTORICAL LINES", false)}
+              {[
+                ["ShowMOPL", "Midnight historical price lines"],
+                ["MOLHist", "Midnight historical vertical lines"],
+                ["ShowPrev", "Misc. historical price lines"],
+              ].map(([id, lbl]) => (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${c.br}` }}>
+                  {TlChk(!!val(id), `ict-${id}`, lbl, () => flip(id))}
+                </div>
+              ))}
+              {ictSec("SESSIONS", false)}
+              {sessRow("s-lon", "ShowLondon", "txt2", "LDNseshStart", "LDNseshEnd", "LSFC", def0("ShowLondon")?.label || "")}
+              {sessRow("s-ny", "ShowNY", "txt3", "NYseshStart", "NYseshEnd", "NYSFC", def0("ShowNY")?.label || "")}
+              {sessRow("s-lc", "ShowLC", "txt4", "LCseshStart", "LCseshEnd", "LCSFC", def0("ShowLC")?.label || "")}
+              {sessRow("s-pm", "ShowPM", "txt5", "PMseshStart", "PMseshEnd", "PMSFC", def0("ShowPM")?.label || "")}
+              {sessRow("s-asia", "ShowAsian", "txt6", "ASIA2seshStart", "ASIA2seshEnd", "ASFC", def0("ShowAsian")?.label || "")}
+              {sessRow("s-free", "ShowFreeSesh", "txt9", "FreeSeshStart", "FreeSeshEnd", "FSFC", def0("ShowFreeSesh")?.label || "")}
+              {ictSec("VERTICAL LINES", false)}
+              {vLineRow("vl-mn", "ShowMOP", "txt12", "MOPColor", "Midnight_Open_LS", "Midnight_Open_LW", def0("ShowMOP")?.label || "")}
+              {vLineRow("vl-lo", "ShowLOP", "txt14", "LOPColor", "london_Open_LS", "London_Open_LW", def0("ShowLOP")?.label || "")}
+              {vLineRow("vl-ny", "ShowNYOP", "txt15", "NYOPColor", "NY_Open_LS", "NY_Open_LW", def0("ShowNYOP")?.label || "")}
+              {vLineRow("vl-eq", "ShowEOP", "txt16", "EOPColor", "Equities_Open_LS", "Equities_Open_LW", def0("ShowEOP")?.label || "")}
+              {ictSec("OPENING PRICE LINES", false)}
+              {vLineRow("op-mo", "ShowMOPP", "txt13", "MOPColP", "MOPLS", "i_MOPLW", def0("ShowMOPP")?.label || "")}
+              {vLineRow("op-ny", "ShowNYOPP", "txt17", "NYOPColP", "NYOPLS", "i_NYOPLW", def0("ShowNYOPP")?.label || "")}
+              {vLineRow("op-eq", "ShowEOPP", "txt18", "EOPColP", "EOPLS", "i_EOPLW", def0("ShowEOPP")?.label || "")}
+              {vLineRow("op-aft", "ShowAFTPP", "txt1330", "AFTOPColP", "AFTOPLS", "i_AFTOPLW", def0("ShowAFTPP")?.label || "")}
+              {ictSec("HTF OPENING PRICE LINES", false)}
+              {vLineRow("htf-w", "ShowWeekOpen", "txt19", "i_WeekOpenCol", "WOLS", "i_WOPLW", def0("ShowWeekOpen")?.label || "")}
+              {vLineRow("htf-m", "showMonthOpen", "txt20", "i_MonthOpenCol", "MOLS", "i_MONPLW", def0("showMonthOpen")?.label || "")}
+              {ictSec("CBDR, ASIA & FLOUT", false)}
+              {boxRow("bx-cbdr", "ShowCBDR", "txt0", "CBDRBoxCol", "box_text_cbdr", "box_text_cbdr_col", "bool_cbdr_dev", def0("ShowCBDR")?.label || "")}
+              {boxRow("bx-asia", "ShowASIA", "txt1", "ASIABoxCol", "box_text_asia", "box_text_asia_col", "bool_asia_dev", def0("ShowASIA")?.label || "")}
+              {boxRow("bx-flout", "ShowFLOUT", "txt7", "FLOUTBoxCol", "box_text_flout", "box_text_flout_col", "bool_flout_dev", def0("ShowFLOUT")?.label || "")}
+              {ictSec("STANDARD DEVIATION", false)}
+              {sd3Row("sd1", "ShowDevLN", "DEVLNTXT", "DevLNCol", "DEVLS", "i_DEVLW", def0("ShowDevLN")?.label || "")}
+              {sd3Row("sd2", "ShowDev", "txt8", "SDCountCol", "DevInput", "DevDirection", def0("ShowDev")?.label || "")}
+              {sd3Row("sd3", "Auto_Select", "txtSD", "Tab1txtCol", "TabOptionShow", "TabOption1", def0("Auto_Select")?.label || "")}
+              {ictSec("DAY OF WEEK & LABELS", false)}
+              {ictRow("dow-lab", <>
+                {TlChk(!!val("ShowLabel"), "ict-ShowLabel", null, () => flip("ShowLabel"))}
+                {pill("txt21", 72)}
+                <Swatch pid="LabelColor" />
+                <Sel pid="LabelSizeInput" w={88} />
+                <Sel pid="Terminusinp" w={148} />
+                <Info t={def0("ShowLabel")?.label || ""} />
+              </>)}
+              {ictRow("dow-lab2", <>
+                {TlChk(!!val("ShowLabelText"), "ict-ShowLabelText", null, () => flip("ShowLabelText"))}
+                {pill("txt22", 72)}
+                <Swatch pid="LabelTextColor" />
+                <Sel pid="LabelTextOptioninput" w={72} />
+                <Sel pid="ShowPricesBool" w={112} />
+                <Info t={def0("ShowLabelText")?.label || ""} />
+              </>)}
+              {ictRow("dow-mk", <>
+                {TlChk(!!val("showDOW"), "ict-showDOW", null, () => flip("showDOW"))}
+                {pill("txt24", 72)}
+                <Swatch pid="i_DOWCol" />
+                <input type="number" className="tlr-nospinner" min={0} max={23} value={val("DOWTime") == null ? "" : val("DOWTime")}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setv("DOWTime", e.target.value)}
+                  style={{ ...inpBase, width: 44, textAlign: "center", fontVariantNumeric: "tabular-nums" }} />
+                <Sel pid="DOWLoc_inpt" w={88} />
+                <Info t={def0("showDOW")?.label || ""} />
+              </>)}
+              {ictSec("BIAS & NOTES PRECONFIG", false)}
+              {ictRow("bias-pre", <>
+                {TlChk(!!val("BIAS_M_Bool"), "ict-BIAS_M_Bool", null, () => flip("BIAS_M_Bool"))}
+                {pill("txt100", 56)}
+                <Swatch pid="Tab2txtCol" />
+                <Sel pid="TabOption2" w={112} />
+                <Info t={def0("BIAS_M_Bool")?.label || ""} />
+              </>)}
+              {ictRow("notes-pre", <>
+                {TlChk(!!val("NOTES_M_Bool"), "ict-NOTES_M_Bool", null, () => flip("NOTES_M_Bool"))}
+                {pill("txt101", 56)}
+                <Swatch pid="Tab3txtCol" />
+                <Sel pid="TabOption3" w={112} />
+                <Info t={def0("NOTES_M_Bool")?.label || ""} />
+              </>)}
+              {ictSec("BIAS & NOTES", false)}
+              {[1, 2, 3, 4].map((n) => {
+                const b = `BIASbool${n}`;
+                const t = n === 1 ? "txt52" : n === 2 ? "txt53" : n === 3 ? "txt54" : "txt55";
+                const o = `BIASOption${n}`;
+                return (
+                  <div key={`bias-${n}`} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 0", borderBottom: `1px solid ${c.br}`, flexWrap: "wrap" }}>
+                    {TlChk(!!val(b), `ict-${b}`, null, () => flip(b))}
+                    {pill(t, 88)}
+                    <Sel pid={o} w={120} />
+                    <Info t={def0(b)?.label || ""} />
+                  </div>
+                );
+              })}
+              <div key="ict-notes" style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${c.br}` }}>
+                <div style={{ fontSize: 11, color: c.ts, marginBottom: 6 }}>{def0("notes")?.label || "Notes"}</div>
+                <textarea value={val("notes") != null ? String(val("notes")) : ""} onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setv("notes", e.target.value)}
+                  rows={5}
+                  style={{ width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 90,
+                    fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 11, lineHeight: 1.35, padding: 10,
+                    background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)", color: c.tx, outline: "none", borderRadius: 4 }} />
+              </div>
+            </div>
+          );
+        };
         const emptyLabel = indSettTab === "style" ? "style" : indSettTab === "input" ? "input" : "visibility";
         return (
         <div data-sdrop="1" data-v9-ind-sett="1" onClick={(e) => e.stopPropagation()}
@@ -21272,9 +21544,19 @@ const TalariaV8bLive = () => {
             const sizeUnit = currentSymbol.type==="futures" ? "contracts" : "lots";
             const basisAmt = riskBasis==="balance" ? accountBalance : accountEquity;
             const qtyNum = parseFloat(omOrderQtyTxt || "0");
-            const minRiskHint = currentSymbol.type==="futures" && omFuturesMinRiskTxt && (!Number.isFinite(qtyNum) || qtyNum < 1);
-            const qtyDisplay = Number.isFinite(qtyNum)
-              ? `${currentSymbol.type==="futures" ? Math.floor(Math.max(0, qtyNum)) : qtyNum.toFixed(2)} ${sizeUnit}`
+            const qtyRv = Math.max(0, parseFloat(riskVal || "0"));
+            const qtyDisplayNum =
+              sizeMode === "#" && Number.isFinite(qtyRv) ? qtyRv : qtyNum;
+            const minLotsHint =
+              sizeMode === "#" && currentSymbol.type === "futures"
+                ? Math.floor(Math.max(0, qtyRv))
+                : qtyNum;
+            const minRiskHint =
+              currentSymbol.type === "futures" &&
+              omFuturesMinRiskTxt &&
+              (!Number.isFinite(minLotsHint) || minLotsHint < 1);
+            const qtyDisplay = Number.isFinite(qtyDisplayNum)
+              ? `${currentSymbol.type==="futures" ? Math.floor(Math.max(0, qtyDisplayNum)) : qtyDisplayNum.toFixed(2)} ${sizeUnit}`
               : `0.00 ${sizeUnit}`;
             const calcUsdRead =
               typeof document !== "undefined"
@@ -21405,10 +21687,14 @@ const TalariaV8bLive = () => {
             const sortedEntryRows = sortEntryRowsBySide(entryRows, buySell);
             const pricedEntryRows = entryRows.filter((r) => parseFloat(r.price) > 0);
             const orderQtyNum = parseFloat(omOrderQtyTxt || "0");
+            const entryTotalLotsForHint =
+              sizeMode === "#" && currentSymbol.type === "futures"
+                ? Math.floor(Math.max(0, entryRows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0)))
+                : orderQtyNum;
             const futuresMinRiskHint =
               currentSymbol.type === "futures" &&
               omFuturesMinRiskTxt &&
-              (!Number.isFinite(orderQtyNum) || orderQtyNum < 1);
+              (!Number.isFinite(entryTotalLotsForHint) || entryTotalLotsForHint < 1);
             const omFmt = typeof window !== "undefined" ? window.chart?.orderManager : null;
             let entryAvgDisplay = "";
             if (entryRows.length > 1) {
@@ -21440,8 +21726,8 @@ const TalariaV8bLive = () => {
             };
             const stepRow = (id, field, dir, step = 1) => {
               markOrderControlBridge();
-              setEntryRows((rows) =>
-                rows.map((r) => {
+              setEntryRows((rows) => {
+                const next = rows.map((r) => {
                   if (r.id !== id) return r;
                   if (field === "risk" && sizeMode === "#" && currentSymbol.type === "futures") {
                     const base = Math.round(parseFloat(r[field] || "0") || 0);
@@ -21451,8 +21737,16 @@ const TalariaV8bLive = () => {
                     ...r,
                     [field]: String(Math.max(0, parseFloat(r[field] || "0") + dir * step)),
                   };
-                })
-              );
+                });
+                if (field === "risk" && sizeMode === "#" && currentSymbol.type === "futures" && next.length === 1) {
+                  const r0 = next.find((x) => x.id === id) || next[0];
+                  queueMicrotask(() => {
+                    markOrderControlBridge();
+                    setRiskVal(String(r0.risk));
+                  });
+                }
+                return next;
+              });
             };
             const delRow = (id) => {
               omPanelBridgeRef.current.entryDel = Date.now();
@@ -21645,6 +21939,12 @@ const TalariaV8bLive = () => {
                   <div ref={entryScrollRef} className="tlr-scroll" style={{ padding:"3px 6px", maxHeight:52, overflowY:"auto" }}>
                     {sortedEntryRows.map((row, i) => {
                       const pct = totalRisk > 0 ? ((parseFloat(row.risk)||0)/totalRisk*100).toFixed(0) : "0";
+                      const rowContractsDisplay =
+                        sizeMode === "#"
+                          ? currentSymbol.type === "futures"
+                            ? Math.floor(Math.max(0, parseFloat(row.risk || "0")))
+                            : Math.max(0, parseFloat(row.risk || "0"))
+                          : orderQtyNum;
                       return (
                         <div key={row.id} style={{ display:"flex", alignItems:"center", gap:3, height:22, marginBottom:1 }}>
                           {/* Level number — only when 2+ rows */}
@@ -21676,7 +21976,14 @@ const TalariaV8bLive = () => {
                               onBlur={e => {
                                 const n = parseFloat(e.target.value);
                                 if (sizeMode === "#" && currentSymbol.type === "futures") {
-                                  updRow(row.id, "risk", String(Math.max(0, Math.round(isNaN(n) ? 0 : n))));
+                                  const v = String(Math.max(0, Math.round(isNaN(n) ? 0 : n)));
+                                  updRow(row.id, "risk", v);
+                                  if (entryRows.length === 1) {
+                                    queueMicrotask(() => {
+                                      markOrderControlBridge();
+                                      setRiskVal(v);
+                                    });
+                                  }
                                   return;
                                 }
                                 updRow(row.id, "risk", isNaN(n) ? "0" : String(n));
@@ -21702,7 +22009,7 @@ const TalariaV8bLive = () => {
                                     : <><span style={{ color:c.ts }}>${(parseFloat(row.risk||"0")/100*(riskBasis==="balance"?accountBalance:accountEquity)).toFixed(0)}</span>{" · "}{Number.isFinite(orderQtyNum) ? orderQtyNum.toFixed(currentSymbol.type==="futures"?0:2) : "0.00"} {sizeUnit}</>
                                   : futuresMinRiskHint
                                     ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
-                                    : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Number.isFinite(orderQtyNum) ? orderQtyNum.toFixed(currentSymbol.type==="futures"?0:2) : "0.00"} {sizeUnit}</>
+                                    : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Number.isFinite(rowContractsDisplay) ? rowContractsDisplay.toFixed(currentSymbol.type==="futures"?0:2) : "0.00"} {sizeUnit}</>
                             }
                           </span>
                           <div style={{ flex:1 }}/>
@@ -22088,15 +22395,19 @@ const TalariaV8bLive = () => {
             const sortedTpRows = sortTpRowsBySide(tpRows, buySell);
             const basisAmtTp = riskBasis === "balance" ? accountBalance : accountEquity;
             const orderQtyNumTp = parseFloat(omOrderQtyTxt || "0");
+            const tpTotalLotsForHint =
+              sizeMode === "#" && currentSymbol.type === "futures"
+                ? Math.floor(Math.max(0, tpRows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0)))
+                : orderQtyNumTp;
             const futuresMinRiskHintTp =
               currentSymbol.type === "futures" &&
               omFuturesMinRiskTxt &&
-              (!Number.isFinite(orderQtyNumTp) || orderQtyNumTp < 1);
+              (!Number.isFinite(tpTotalLotsForHint) || tpTotalLotsForHint < 1);
             const updTp  = (id, field, val) => { markOrderControlBridge(); setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r)); };
             const stepTp = (id, field, dir, step = 1) => {
               markOrderControlBridge();
-              setTpRows((rows) =>
-                rows.map((r) => {
+              setTpRows((rows) => {
+                const next = rows.map((r) => {
                   if (r.id !== id) return r;
                   if (field === "qty" && sizeMode === "#" && currentSymbol.type === "futures") {
                     const base = Math.round(parseFloat(r[field] || "0") || 0);
@@ -22106,8 +22417,16 @@ const TalariaV8bLive = () => {
                     ...r,
                     [field]: String(Math.max(0, parseFloat(r[field] || "0") + dir * step)),
                   };
-                })
-              );
+                });
+                if (field === "qty" && sizeMode === "#" && currentSymbol.type === "futures" && next.length === 1) {
+                  const r0 = next.find((x) => x.id === id) || next[0];
+                  queueMicrotask(() => {
+                    markOrderControlBridge();
+                    setRiskVal(String(r0.qty));
+                  });
+                }
+                return next;
+              });
             };
             const delTp = (id) => {
               omPanelBridgeRef.current.tpDel = Date.now();
@@ -22237,7 +22556,11 @@ const TalariaV8bLive = () => {
                       ? String(
                           Math.max(
                             1,
-                            Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")))
+                            (() => {
+                              const qRv = Math.floor(Math.max(0, parseFloat(riskVal || "0")));
+                              const qOm = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
+                              return qRv >= 1 ? qRv : qOm >= 1 ? qOm : 1;
+                            })()
                           )
                         )
                       : "100",
@@ -22263,11 +22586,12 @@ const TalariaV8bLive = () => {
                   return rows.map((r, i) => ({ ...r, qty: String(i < n - 1 ? share : lastAmt) }));
                 }
                 if (sizeMode === "#" && currentSymbol.type === "futures") {
-                  const q = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
-                  const oq = q >= 1 ? q : 1;
+                  const qRv = Math.floor(Math.max(0, parseFloat(riskVal || "0")));
+                  const qOm = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
+                  const q = qRv >= 1 ? qRv : qOm >= 1 ? qOm : 1;
                   const shares = v9TpNormalizeFuturesContractShares(
                     rows.map((r) => r.qty),
-                    oq
+                    q
                   );
                   return rows.map((r, i) => ({ ...r, qty: String(shares[i] ?? 0) }));
                 }
@@ -22408,7 +22732,14 @@ const TalariaV8bLive = () => {
                               onBlur={e => {
                                 const n = parseFloat(e.target.value);
                                 if (sizeMode === "#" && currentSymbol.type === "futures") {
-                                  updTp(row.id,"qty", String(Math.max(0, Math.round(isNaN(n) ? 0 : n))));
+                                  const v = String(Math.max(0, Math.round(isNaN(n) ? 0 : n)));
+                                  updTp(row.id,"qty", v);
+                                  if (tpRows.length === 1) {
+                                    queueMicrotask(() => {
+                                      markOrderControlBridge();
+                                      setRiskVal(v);
+                                    });
+                                  }
                                   return;
                                 }
                                 updTp(row.id,"qty", isNaN(n)?"0":String(n));
