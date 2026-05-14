@@ -31424,7 +31424,13 @@ class OrderManager {
 
     /** Entry tick / connector start X: same column rules as {@link _chartIndexForCloseMarkerOnChart}. */
     _chartIndexForEntryMarkerOnChart(ch, openTime) {
-        return this._chartIndexForCloseMarkerOnChart(ch, openTime);
+        const data = ch?.data;
+        let t = Number(openTime);
+        if (Array.isArray(data) && data.length && Number.isFinite(t)) {
+            const lastT = Number(data[data.length - 1].t);
+            if (Number.isFinite(lastT) && t > lastT) t = lastT;
+        }
+        return this._chartIndexForCloseMarkerOnChart(ch, t);
     }
 
     /**
@@ -31432,6 +31438,9 @@ class OrderManager {
      * OHLC `t` is the period open; a fill at that bar's close aligns with the next bar's
      * open (e.g. daily 1/2 close → first 1m bucket of 1/3). SL/TP guards still use the
      * fill bar's `t` on `_slNoTriggerBeforeTime` / `_tpNoTriggerBeforeTime`.
+     *
+     * Never returns a time past the last loaded bar: sparse slices or irregular gaps made
+     * `ft + (ft - prevT)` overshoot (e.g. +5m) so the entry marker sat in empty grid ahead of replay.
      */
     _marketFillOpenTimeMs(chart, fillCandle) {
         const ch = chart || this.chart;
@@ -31439,6 +31448,13 @@ class OrderManager {
         const ft = fillCandle && Number(fillCandle.t);
         if (!Number.isFinite(ft)) return ft;
         if (!Array.isArray(data) || data.length === 0) return ft;
+
+        const lastBarT = Number(data[data.length - 1].t);
+        const clampToSeries = (ms) => {
+            if (!Number.isFinite(ms)) return ft;
+            if (Number.isFinite(lastBarT) && ms > lastBarT) return lastBarT;
+            return ms;
+        };
 
         let idx = -1;
         for (let i = 0; i < data.length; i++) {
@@ -31452,13 +31468,13 @@ class OrderManager {
 
         if (idx >= 0 && idx + 1 < data.length) {
             const nt = Number(data[idx + 1].t);
-            if (Number.isFinite(nt) && nt > ft) return nt;
+            if (Number.isFinite(nt) && nt > ft) return clampToSeries(nt);
         }
 
         if (idx > 0) {
             const prevT = Number(data[idx - 1].t);
             const step = ft - prevT;
-            if (Number.isFinite(step) && step > 0) return ft + step;
+            if (Number.isFinite(step) && step > 0) return clampToSeries(ft + step);
         }
 
         if (idx === -1 && data.length >= 2) {
@@ -31466,11 +31482,11 @@ class OrderManager {
             if (lastT === ft) {
                 const prevT = Number(data[data.length - 2].t);
                 const step = lastT - prevT;
-                if (Number.isFinite(step) && step > 0) return lastT + step;
+                if (Number.isFinite(step) && step > 0) return clampToSeries(lastT + step);
             }
         }
 
-        return ft;
+        return clampToSeries(ft);
     }
 
     _chartIndexForCloseMarker(closeTime) {
