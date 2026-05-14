@@ -588,7 +588,9 @@ function allReadyIframesShareHostFileForMirror(managerCharts, hostChart) {
             if (!c || c.host || !c.ready) continue;
             n += 1;
             const fid = c.state && c.state.fileId != null ? String(c.state.fileId) : "";
-            if (fid !== hostFid) return false;
+            // chart-state fileId can lag empty after bridge-ready; treat
+            // blank as "same dataset" unless we already know a different file.
+            if (fid && fid !== hostFid) return false;
         }
         return n > 0;
     } catch (_) {
@@ -2900,6 +2902,7 @@ export default function MultichartGrid({
 
         function broadcastOrder(sourceId, kind, order) {
             if (!order || order.id == null) return;
+            const mgr = managerRef.current;
             const symNorm = normalizeOrderTickerForMirror(
                 order.symbol || order.ticker || order.pair || order.instrument || ""
             );
@@ -2916,12 +2919,31 @@ export default function MultichartGrid({
                 : order;
 
             let peers;
-            if (isMultichartBacktestFileLock() || allReadyIframesShareHostFileForMirror(mgr.charts, window.chart)) {
+            if (isMultichartBacktestFileLock() || allReadyIframesShareHostFileForMirror(mgr && mgr.charts, window.chart)) {
                 peers = findAllSameDatasetMirrorPeers(sourceId);
                 if (!peers.length) return;
             } else {
                 if (!symNorm && !orderFid) return;
                 peers = findPanelsForSymbol(symNorm, sourceId, orderAug);
+                // Host bus events: if the order is on the host's current file,
+                // also push to any ready iframe whose chart-state fileId is
+                // still blank (lag) or already matches — avoids empty peer list
+                // when symbol/file matching misses.
+                if (sourceId === HOST_PANEL_ID && orderFid && mgr && mgr.charts) {
+                    const hCh = window.chart;
+                    if (hCh && String(hCh.currentFileId || "") === orderFid) {
+                        const seen = new Set(peers.map((p) => p.id));
+                        for (const c of mgr.charts.values()) {
+                            if (!c || c.host || !c.ready) continue;
+                            if (seen.has(c.id)) continue;
+                            const pf = c.state && c.state.fileId != null ? String(c.state.fileId) : "";
+                            if (!pf || pf === orderFid) {
+                                peers.push({ id: c.id, isHost: false });
+                                seen.add(c.id);
+                            }
+                        }
+                    }
+                }
             }
 
             const grid = window.__multichartGrid;
