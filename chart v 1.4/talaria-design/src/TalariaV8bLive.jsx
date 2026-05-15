@@ -6171,21 +6171,23 @@ const TalariaV8bLive = () => {
   /** Matches order-manager: hide Entry/TP “add level” + when DISABLE_ORDER_ENTRY_PLUS_UI is not false. */
   const chartEntryPlusSplitUiOff =
     typeof window !== "undefined" && window.__CHART_ENV?.DISABLE_ORDER_ENTRY_PLUS_UI !== false;
-  /** Show split (+) only when size allows multiple legs (futures: whole contracts > 1; else qty > 1). */
+  /** Show Entry/TP (+): futures need ≥1 whole contract; spot/forex/etc. allow fractional lots (>0). */
   const v9OrderQtyForSplitUi = Math.max(0, parseFloat(omOrderQtyTxt || "0"));
   const v9EntryTpPlusVisible =
     !chartEntryPlusSplitUiOff &&
     (currentSymbol.type === "futures"
-      ? Math.floor(v9OrderQtyForSplitUi) > 1
-      : v9OrderQtyForSplitUi > 1);
+      ? Math.floor(v9OrderQtyForSplitUi) >= 1
+      : v9OrderQtyForSplitUi > 0);
 
-  // Futures: cannot have more TP rows than whole contracts (e.g. 1 contract → single TP only).
+  // Futures: when there is no contract size yet, collapse to a single TP row. With ≥1 contract,
+  // multi-TP is allowed (integer shares per leg sum to contracts via v9TpNormalizeFuturesContractShares).
   useEffect(() => {
     if (currentSymbol.type !== "futures") return;
     const qOm = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
     const qRv = Math.floor(Math.max(0, parseFloat(riskVal || "0")));
     const q = sizeMode === "#" ? (qRv >= 1 ? qRv : qOm) : qOm;
-    const maxLegs = q < 1 ? 1 : q;
+    if (q >= 1) return;
+    const maxLegs = 1;
     setTpRows((rows) => {
       if (rows.length <= maxLegs) return rows;
       markOrderControlBridge();
@@ -6982,8 +6984,7 @@ const TalariaV8bLive = () => {
         }
 
         // Multi-TP: mirror React rows into om.tpTargets + list DOM (avoid toggling checkbox every tick — it re-inits).
-        // Futures: never more TP rows than whole contracts (#orderQuantity). Refresh size first when splitting
-        // so qty is not stale; trim React + OM in the same tick (omOrderQtyTxt alone does not rerun when only +TP changes).
+        // Futures: TP legs share whole contracts via v9TpNormalizeFuturesContractShares (multiple TPs on 1 contract OK).
         let tpRowsForOm = tpRows;
         if (!skipPosSync && om && currentSymbol.type === "futures") {
           const activePre = tpRows.filter((r) => r.enabled !== false);
@@ -6991,24 +6992,6 @@ const TalariaV8bLive = () => {
             try {
               om.calculatePositionFromRisk?.();
             } catch (_) {}
-          }
-          const oqDom = Math.floor(
-            Math.max(0, parseFloat(document.getElementById("orderQuantity")?.value || "0"))
-          );
-          const maxTp = oqDom < 1 ? 1 : oqDom;
-          if (tpRows.length > maxTp) {
-            tpRowsForOm = tpRows.slice(0, maxTp);
-            markOrderControlBridge();
-            omPanelBridgeRef.current.tpDel = Date.now();
-            setTpRows(tpRowsForOm);
-            while (Array.isArray(om.tpTargets) && om.tpTargets.length > maxTp) {
-              const last = om.tpTargets[om.tpTargets.length - 1];
-              try {
-                om.removeTPTarget(last != null && last.id != null ? last.id : om.tpTargets.length - 1);
-              } catch (_) {
-                break;
-              }
-            }
           }
         }
         const tpActive = tpRowsForOm.filter((r) => r.enabled !== false);
@@ -23031,12 +23014,6 @@ const TalariaV8bLive = () => {
               omPanelBridgeRef.current.tpAdd = Date.now();
               markOrderControlBridge();
               setTpRows((rows) => {
-                if (currentSymbol.type === "futures") {
-                  const q = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
-                  const maxLegs = q < 1 ? 1 : q;
-                  const active = rows.filter((r) => r.enabled !== false);
-                  if (active.length >= maxLegs) return rows;
-                }
                 const initPx = defaultPriceForNewTp(rows);
                 const n = rows.length + 1;
                 const next = [
