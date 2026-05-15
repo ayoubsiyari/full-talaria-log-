@@ -627,7 +627,7 @@ class CompareOverlay {
         const listContainer = document.getElementById('compareSymbolsList');
         if (!listContainer) return;
         
-        const items = listContainer.querySelectorAll('.compare-symbol-row');
+        const items = listContainer.querySelectorAll('.ssd-item[data-name]');
         const lowerQuery = query.toLowerCase();
         
         items.forEach(item => {
@@ -710,27 +710,16 @@ class CompareOverlay {
         });
         
         if (availableSymbols.length === 0) {
-            listContainer.innerHTML = `
-                <div class="compare-empty-state">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <circle cx="11" cy="11" r="8"/>
-                        <path d="m21 21-4.35-4.35"/>
-                    </svg>
-                    <p>No additional symbols available</p>
-                </div>
-            `;
+            listContainer.innerHTML = '<div class="ssd-empty">No additional symbols available.</div>';
             return;
         }
-        
-        // Helper to determine icon type based on symbol name
-        const getIconType = (name) => {
-            const upperName = name.toUpperCase();
-            if (upperName.includes('BTC') || upperName.includes('ETH') || upperName.includes('CRYPTO')) return 'crypto';
-            if (upperName.includes('GOLD') || upperName.includes('XAU') || upperName.includes('SILVER') || upperName.includes('XAG')) return 'gold';
-            if (upperName.includes('AAPL') || upperName.includes('MSFT') || upperName.includes('GOOGL') || upperName.includes('TSLA')) return 'stock';
-            return '';
-        };
-        
+
+        const esc = (t) => String(t ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+
         // Helper to extract clean symbol name from filename
         const extractSymbolName = (filename) => {
             if (!filename) return null;
@@ -765,63 +754,75 @@ class CompareOverlay {
             return map[(ccy || '').toUpperCase()] || null;
         };
 
-        const getPairIconHTML = (symbol) => {
-            const clean = String(symbol || '').replace(/[\s\-_\/\.]/g, '').toUpperCase();
-            if (clean.length < 6) {
-                return String(symbol || '').slice(0, 2).toUpperCase() || '•';
+        /** Same visuals as chart symbol switcher when chart._buildPairFlagIcon is unavailable */
+        const pairFlagsFallback = (symbol) => {
+            const sym = String(symbol || '');
+            const clean = sym.replace(/[\s\-_\/\.]/g, '').toUpperCase();
+            if (clean.length >= 6) {
+                const base = clean.slice(0, 3);
+                const quote = clean.slice(3, 6);
+                const baseCC = currencyToCountry(base);
+                const quoteCC = currencyToCountry(quote);
+                if (baseCC && quoteCC && baseCC !== 'xau' && baseCC !== 'xag' && quoteCC !== 'xau' && quoteCC !== 'xag') {
+                    const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
+                    const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
+                    return `<div class="ssd-pair-flags">
+            <img class="ssd-flag ssd-flag-base" src="${baseUrl}" alt="${base}" onerror="this.style.display='none'" />
+            <img class="ssd-flag ssd-flag-quote" src="${quoteUrl}" alt="${quote}" onerror="this.style.display='none'" />
+        </div>`;
+                }
             }
-
-            const base = clean.slice(0, 3);
-            const quote = clean.slice(3, 6);
-            const baseCC = currencyToCountry(base);
-            const quoteCC = currencyToCountry(quote);
-            if (!baseCC || !quoteCC || baseCC === 'xau' || baseCC === 'xag' || quoteCC === 'xau' || quoteCC === 'xag') {
-                return `${base.slice(0, 2)}${quote.slice(0, 2)}`;
-            }
-
-            const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
-            const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
-            return `
-                <img class="compare-pair-flag compare-pair-flag-base" src="${baseUrl}" alt="${base}" onerror="this.style.display='none'" style="position:absolute;left:5px;top:9px;width:20px;height:20px;border-radius:50%;object-fit:cover;border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);" />
-                <img class="compare-pair-flag compare-pair-flag-quote" src="${quoteUrl}" alt="${quote}" onerror="this.style.display='none'" style="position:absolute;left:15px;top:9px;width:20px;height:20px;border-radius:50%;object-fit:cover;border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);" />
-            `;
+            const initials = clean.slice(0, 2).toUpperCase() || '•';
+            return `<div class="ssd-item-icon">${initials}</div>`;
         };
-        
-        // Render available symbols with action buttons
-        availableSymbols.forEach(file => {
+
+        const resolveFlagHtml = (symbolName) => {
+            const ch = this.chart;
+            if (ch && typeof ch._buildPairFlagIcon === 'function') {
+                try {
+                    return ch._buildPairFlagIcon(symbolName);
+                } catch (_) { /* use fallback */ }
+            }
+            return pairFlagsFallback(symbolName);
+        };
+
+        // Render available symbols with action buttons (ssd-item layout = symbol switcher)
+        availableSymbols.forEach((file) => {
             const fullName = file.original_name?.replace(/\.(csv|CSV)$/, '').toUpperCase() || `FILE_${file.id}`;
             const symbolName = extractSymbolName(file.original_name) || fullName;
-            const pairIconHTML = getPairIconHTML(symbolName);
-            const iconType = getIconType(symbolName);
+            const flagHtml = resolveFlagHtml(symbolName);
             const isAdded = overlayedIds.includes(file.id) || linkedPaneIds.includes(file.id);
-            
+
             const item = document.createElement('div');
-            item.className = `compare-symbol-row${isAdded ? ' added' : ''}`;
+            item.className = `ssd-item compare-ssd-item${isAdded ? ' added' : ''}`;
             item.dataset.name = symbolName;
-            item.dataset.fileId = file.id;
-            
+            item.dataset.fileId = String(file.id);
+
+            const subLine = `${file.row_count != null ? Number(file.row_count).toLocaleString() : '?'} candles`;
             item.innerHTML = `
-                <div class="compare-symbol-icon ${iconType}" style="position:relative;overflow:visible;background:transparent;border:none;box-shadow:none;">${pairIconHTML}</div>
-                <div class="compare-symbol-info">
-                    <span class="compare-symbol-name">${symbolName}</span>
-                    <span class="compare-symbol-desc">${file.row_count?.toLocaleString() || '?'} candles</span>
+                ${flagHtml}
+                <div class="ssd-item-body">
+                    <div class="ssd-item-name">${esc(symbolName)}</div>
+                    <div class="ssd-item-sub">${subLine}</div>
                 </div>
                 <div class="compare-symbol-actions">
-                    <button class="compare-action-btn" data-mode="same-scale" data-file-id="${file.id}" data-symbol="${symbolName}">Overlay</button>
+                    <button type="button" class="compare-action-btn" data-mode="same-scale" data-file-id="${file.id}">Overlay</button>
                 </div>
             `;
-            
-            // Add click handlers for action buttons
-            item.querySelectorAll('.compare-action-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
+
+            const btn = item.querySelector('.compare-action-btn');
+            if (btn) btn.dataset.symbol = symbolName;
+
+            item.querySelectorAll('.compare-action-btn').forEach((b) => {
+                b.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    const mode = btn.dataset.mode;
-                    const fileId = parseInt(btn.dataset.fileId);
-                    const symbol = btn.dataset.symbol;
+                    const mode = b.dataset.mode;
+                    const fileId = parseInt(b.dataset.fileId, 10);
+                    const symbol = b.dataset.symbol;
                     this.addSymbolWithMode(fileId, symbol, mode);
                 });
             });
-            
+
             listContainer.appendChild(item);
         });
     }
