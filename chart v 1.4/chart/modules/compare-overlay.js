@@ -261,6 +261,59 @@ class CompareOverlay {
         return null;
     }
     
+    /**
+     * Normalize ticker / filename fragment for matching session symbols to /api/files rows.
+     * @param {string} s
+     * @returns {string}
+     */
+    _compareTickerKey(s) {
+        return String(s || '').replace(/[\s\-_\/\.]/g, '').toUpperCase();
+    }
+
+    /**
+     * Bind compare modal DOM once the overlay exists (V9 injects modal after first chart init —
+     * the old "bind once globally" path often missed #compareModalClose, so X did nothing).
+     */
+    _bindCompareModalDomOnce() {
+        if (window.__compareModalDomBound) return;
+        const modalOverlay = document.getElementById('compareModalOverlay');
+        if (!modalOverlay) return;
+
+        const resolveOwner = () => {
+            const activeChart = (typeof window.getActiveChart === 'function')
+                ? window.getActiveChart()
+                : window.chart;
+            return (activeChart && activeChart.compareOverlay) || window.__activeCompareOverlayOwner || null;
+        };
+
+        const closeBtn = document.getElementById('compareModalClose');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const owner = window.__activeCompareOverlayOwner;
+                if (owner) owner.closeModal();
+            });
+        }
+
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) {
+                const owner = window.__activeCompareOverlayOwner;
+                if (owner) owner.closeModal();
+            }
+        });
+
+        const searchInput = document.getElementById('compareSearchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const owner = window.__activeCompareOverlayOwner || resolveOwner();
+                if (owner) owner.filterSymbols(e.target.value);
+            });
+        }
+
+        window.__compareModalDomBound = true;
+    }
+
     setupEventListeners() {
         // Bind global compare modal listeners once and route to active chart overlay.
         if (!window.__compareOverlayGlobalHandlersBound) {
@@ -278,33 +331,7 @@ class CompareOverlay {
                     if (owner) owner.openModal();
                 });
             }
-            
-            const closeBtn = document.getElementById('compareModalClose');
-            if (closeBtn) {
-                closeBtn.addEventListener('click', () => {
-                    const owner = window.__activeCompareOverlayOwner;
-                    if (owner) owner.closeModal();
-                });
-            }
-            
-            const modalOverlay = document.getElementById('compareModalOverlay');
-            if (modalOverlay) {
-                modalOverlay.addEventListener('click', (e) => {
-                    if (e.target === modalOverlay) {
-                        const owner = window.__activeCompareOverlayOwner;
-                        if (owner) owner.closeModal();
-                    }
-                });
-            }
-            
-            const searchInput = document.getElementById('compareSearchInput');
-            if (searchInput) {
-                searchInput.addEventListener('input', (e) => {
-                    const owner = window.__activeCompareOverlayOwner || resolveOwner();
-                    if (owner) owner.filterSymbols(e.target.value);
-                });
-            }
-            
+
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') {
                     const owner = window.__activeCompareOverlayOwner || resolveOwner();
@@ -318,14 +345,87 @@ class CompareOverlay {
 
             window.__compareOverlayGlobalHandlersBound = true;
         }
-        
+
+        this._bindCompareModalDomOnce();
+
         // Initialize settings popup
         this.initSettingsPopup();
         
         // Initialize pane settings popup
         this.initPaneSettingsPopup();
     }
-    
+
+    getSessionSymbolFiles() {
+        let session = null;
+        try {
+            if (this.chart && this.chart.backtestingSession) {
+                session = this.chart.backtestingSession;
+            }
+            if (!session) {
+                session = JSON.parse(userStorage.getItem('backtestingSession') || '{}');
+            }
+        } catch (_) {
+            session = null;
+        }
+        if (!session || typeof session !== 'object') return [];
+
+        // Session wizard (BacktestNewSessionModal) stores view-only instruments here — these
+        // are the pairs users expect in "Add symbol to compare", not necessarily every `files` row.
+        const supporting = session.supporting_tickers || session.supportingTickers;
+        if (Array.isArray(supporting) && supporting.length > 0) {
+            return supporting
+                .map((t) => ({ name: String(t || '').trim() }))
+                .filter((row) => row.name);
+        }
+
+        if (Array.isArray(session.files) && session.files.length > 0) {
+            return session.files;
+        }
+        return [];
+    }
+
+    getCompareSourceFiles() {
+        const sessionFiles = this.getSessionSymbolFiles();
+        if (!Array.isArray(sessionFiles) || sessionFiles.length === 0) {
+            return this.availableFiles;
+        }
+
+        const symKey = (s) => this._compareTickerKey(s);
+
+        const byId = new Map();
+        const byName = new Map();
+        (this.availableFiles || []).forEach(file => {
+            byId.set(String(file.id), file);
+            const fname = String(file.original_name || file.name || '')
+                .replace(/\.(csv|CSV)$/, '')
+                .toUpperCase();
+            if (fname) {
+                byName.set(fname, file);
+                const firstSeg = fname.split('_')[0] || fname;
+                const k = symKey(firstSeg);
+                if (k && !byName.has(k)) byName.set(k, file);
+            }
+        });
+
+        const scoped = [];
+        const seen = new Set();
+        sessionFiles.forEach(sf => {
+            const sid = String(sf.id ?? sf.fileId ?? '');
+            const rawName = String(sf.name || sf.symbol || sf.ticker || '').replace(/\.(csv|CSV)$/, '');
+            const sname = symKey(rawName) || symKey(sf.name);
+            let match = null;
+            if (sid && byId.has(sid)) match = byId.get(sid);
+            else if (sname && byName.has(sname)) match = byName.get(sname);
+            else if (rawName && byName.has(rawName.toUpperCase())) match = byName.get(rawName.toUpperCase());
+            if (match && !seen.has(String(match.id))) {
+                seen.add(String(match.id));
+                scoped.push(match);
+            }
+        });
+
+        return scoped;
+    }
+
     async loadAvailableSymbols() {
         try {
             console.log('📊 Loading available symbols from:', `${this.apiUrl}/files`);
@@ -343,52 +443,10 @@ class CompareOverlay {
             this.availableFiles = [];
         }
     }
-
-    getSessionSymbolFiles() {
-        try {
-            const session = JSON.parse(userStorage.getItem('backtestingSession') || '{}');
-            if (session && Array.isArray(session.files) && session.files.length > 0) {
-                return session.files;
-            }
-        } catch (_) {}
-        return [];
-    }
-
-    getCompareSourceFiles() {
-        const sessionFiles = this.getSessionSymbolFiles();
-        if (!Array.isArray(sessionFiles) || sessionFiles.length === 0) {
-            return this.availableFiles;
-        }
-
-        const byId = new Map();
-        const byName = new Map();
-        (this.availableFiles || []).forEach(file => {
-            byId.set(String(file.id), file);
-            const fname = String(file.original_name || file.name || '')
-                .replace(/\.(csv|CSV)$/, '')
-                .toUpperCase();
-            if (fname) byName.set(fname, file);
-        });
-
-        const scoped = [];
-        const seen = new Set();
-        sessionFiles.forEach(sf => {
-            const sid = String(sf.id ?? '');
-            const sname = String(sf.name || '').replace(/\.(csv|CSV)$/, '').toUpperCase();
-            let match = null;
-            if (sid && byId.has(sid)) match = byId.get(sid);
-            else if (sname && byName.has(sname)) match = byName.get(sname);
-            if (match && !seen.has(String(match.id))) {
-                seen.add(String(match.id));
-                scoped.push(match);
-            }
-        });
-
-        return scoped;
-    }
     
     openModal() {
         console.log('📊 Opening compare modal');
+        this._bindCompareModalDomOnce();
         window.__activeCompareOverlayOwner = this;
         const modal = document.getElementById('compareModalOverlay');
         if (modal) {
