@@ -785,6 +785,58 @@ const TalariaV8b = () => {
   const [detachPos, setDetachPos] = useState({ x: 900, y: 80 });
   const [detachSize, setDetachSize] = useState({ w: 336, h: 560 });
   const [panelMode, setPanelMode] = useState("advanced");
+  /** Order panel dropdown triggers (fixed overlays); re-measured while detached panel is dragged (transform). */
+  const opOrderSizeBtnRef = useRef(null);
+  const opOrderDotsBtnRef = useRef(null);
+  const opOrderTplBtnRef = useRef(null);
+  const opOrderSymBtnRef = useRef(null);
+  const orderDropdownOpenRef = useRef({ size: false, dots: false, tpl: false, sym: false });
+  useEffect(() => {
+    orderDropdownOpenRef.current = { size: opSizeOpen, dots: opDotsOpen, tpl: opTplOpen, sym: opSymOpen };
+  }, [opSizeOpen, opDotsOpen, opTplOpen, opSymOpen]);
+
+  const syncOrderPanelAnchoredDropdowns = useCallback(() => {
+    const o = orderDropdownOpenRef.current;
+    const symZ =
+      typeof window !== "undefined" && Number(window.__v9Zoom) > 0 ? Number(window.__v9Zoom) : 1.05;
+    try {
+      if (o.dots && opOrderDotsBtnRef.current) {
+        const r = opOrderDotsBtnRef.current.getBoundingClientRect();
+        const mw = 152;
+        setOpDotsPos({ top: r.bottom + 4, left: Math.max(4, Math.min(r.right - mw, window.innerWidth - mw - 4)) });
+      }
+      if (o.size && opOrderSizeBtnRef.current) {
+        const r = opOrderSizeBtnRef.current.getBoundingClientRect();
+        setOpSizePos({ top: r.bottom + 4, left: r.left });
+      }
+      if (o.tpl && opOrderTplBtnRef.current) {
+        const r = opOrderTplBtnRef.current.getBoundingClientRect();
+        setOpTplPos({ top: r.bottom + 4, left: r.right - 160 });
+      }
+      if (o.sym && opOrderSymBtnRef.current) {
+        const r = opOrderSymBtnRef.current.getBoundingClientRect();
+        setOpSymPos({ top: r.bottom / symZ + 2, left: r.left / symZ });
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }, []);
+
+  const syncOrderDropdownsRef = useRef(syncOrderPanelAnchoredDropdowns);
+  syncOrderDropdownsRef.current = syncOrderPanelAnchoredDropdowns;
+
+  useLayoutEffect(() => {
+    if (!opDotsOpen && !opSizeOpen && !opSymOpen && !opTplOpen) return;
+    syncOrderPanelAnchoredDropdowns();
+  }, [opDotsOpen, opSizeOpen, opSymOpen, opTplOpen, detachPos, detachSize, panelDetached, syncOrderPanelAnchoredDropdowns]);
+
+  useEffect(() => {
+    if (!opDotsOpen && !opSizeOpen && !opSymOpen && !opTplOpen) return undefined;
+    const onResize = () => syncOrderPanelAnchoredDropdowns();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [opDotsOpen, opSizeOpen, opSymOpen, opTplOpen, syncOrderPanelAnchoredDropdowns]);
+
   const isWide = panelDetached && detachSize.w >= 520;
   const opTemplates = ["Default","Scalp — Trend","Swing Trade","Breakout","Reversal"];
   const [rightPanel, setRightPanel] = useState(null);
@@ -11090,6 +11142,7 @@ const TalariaV8b = () => {
                 const el = panelRef.current;
                 if (!el) return;
                 el.style.transform = `translate(${lastX - baseX}px,${lastY - baseY}px)`;
+                syncOrderDropdownsRef.current();
               };
               const onMove = (pe) => {
                 lastX = Math.max(0, Math.min(pe.clientX - ox, window.innerWidth - sw));
@@ -11107,6 +11160,7 @@ const TalariaV8b = () => {
                 const el = panelRef.current;
                 if (el) el.style.transform = "";
                 setDetachPos({ x: lastX, y: lastY });
+                queueMicrotask(() => syncOrderDropdownsRef.current());
                 window.removeEventListener("pointermove", onMove);
                 window.removeEventListener("pointerup", onUp);
                 window.removeEventListener("pointercancel", onUp);
@@ -11119,7 +11173,7 @@ const TalariaV8b = () => {
             <span style={{ fontSize:11, fontWeight:700, color:c.tx, letterSpacing:"-0.01em" }}>Place Order</span>
             <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", letterSpacing:"0.04em" }}>#<span style={{ color:c.ts, fontWeight:700 }}>1004</span></span>
             {/* Size mode dropdown trigger — shows current mode symbol, opens list */}
-            <div data-nodrag="1" onClick={e => { e.stopPropagation(); if(opSizeOpen){setOpSizeOpen(false);return;} const r=e.currentTarget.getBoundingClientRect(); setOpSizePos({top:r.bottom+4, left:r.left}); setOpSizeOpen(true); }}
+            <div ref={opOrderSizeBtnRef} data-nodrag="1" onClick={e => { e.stopPropagation(); if(opSizeOpen){setOpSizeOpen(false);return;} const r=e.currentTarget.getBoundingClientRect(); setOpSizePos({top:r.bottom+4, left:r.left}); setOpSizeOpen(true); }}
               onMouseEnter={() => setSwHov("op-size")} onMouseLeave={() => setSwHov(null)}
               style={{ display:"flex", alignItems:"center", gap:3, padding:"0 6px", height:20, cursor:"default", position:"relative", flexShrink:0,
                        background:c.acD, border:`1px solid ${opSizeOpen||swHov==="op-size"?c.acB:"rgba(74,106,255,0.35)"}`, transition:"border-color 0.12s" }}>
@@ -11130,7 +11184,7 @@ const TalariaV8b = () => {
             <div style={{ flex:1 }}/>
             {/* Dots (panel options) button */}
             {(()=>{ const isH=swHov==="op-dots"; const isAct=opDotsOpen; return (
-              <div data-nodrag="1" onClick={e=>{ e.stopPropagation(); const r=e.currentTarget.getBoundingClientRect(); const mw=152; setOpDotsPos({top:r.bottom+4,left:Math.max(4,Math.min(r.right-mw,window.innerWidth-mw-4))}); setOpDotsOpen(v=>!v); setOpTplOpen(false); }}
+              <div ref={opOrderDotsBtnRef} data-nodrag="1" onClick={e=>{ e.stopPropagation(); const r=e.currentTarget.getBoundingClientRect(); const mw=152; setOpDotsPos({top:r.bottom+4,left:Math.max(4,Math.min(r.right-mw,window.innerWidth-mw-4))}); setOpDotsOpen(v=>!v); setOpTplOpen(false); }}
                 onMouseEnter={()=>setSwHov("op-dots")} onMouseLeave={()=>setSwHov(null)}
                 style={{ width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", position:"relative",
                          color:isAct?c.acL:isH?c.tx:c.ts, background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent", transition:"color 0.12s, background 0.12s" }}>
@@ -11140,7 +11194,7 @@ const TalariaV8b = () => {
             ); })()}
             {/* Template button */}
             {(()=>{ const isH=swHov==="op-tpl-hdr"; const isAct=opTplOpen||activeTemplate!==null; return (
-              <div data-nodrag="1" onClick={e=>{ e.stopPropagation(); const r=e.currentTarget.getBoundingClientRect(); setOpTplPos({top:r.bottom+4,left:r.right-160}); setOpTplOpen(v=>!v); setOpDotsOpen(false); }}
+              <div ref={opOrderTplBtnRef} data-nodrag="1" onClick={e=>{ e.stopPropagation(); const r=e.currentTarget.getBoundingClientRect(); setOpTplPos({top:r.bottom+4,left:r.right-160}); setOpTplOpen(v=>!v); setOpDotsOpen(false); }}
                 onMouseEnter={()=>setSwHov("op-tpl-hdr")} onMouseLeave={()=>setSwHov(null)}
                 style={{ width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", position:"relative",
                          color:isAct?c.acL:isH?c.tx:c.ts, background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent", transition:"color 0.12s, background 0.12s" }}>
@@ -11160,7 +11214,7 @@ const TalariaV8b = () => {
 
           {/* 2 — Ticker + asset class + spread */}
           <div style={{ padding:"0 8px", borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", alignItems:"center", gap:6, height:26, flexShrink:0 }}>
-            <div onClick={e => { e.stopPropagation(); if(opSymOpen){setOpSymOpen(false);return;} const r=e.currentTarget.getBoundingClientRect(); setOpSymPos({top:r.bottom/Z+2, left:r.left/Z}); setOpSymSearch(""); setOpSymOpen(true); }}
+            <div ref={opOrderSymBtnRef} onClick={e => { e.stopPropagation(); if(opSymOpen){setOpSymOpen(false);return;} const r=e.currentTarget.getBoundingClientRect(); setOpSymPos({top:r.bottom/Z+2, left:r.left/Z}); setOpSymSearch(""); setOpSymOpen(true); }}
               onMouseEnter={()=>setSwHov("op-sym")} onMouseLeave={()=>setSwHov(null)}
               style={{ display:"flex", alignItems:"center", gap:3, padding:"0 7px", height:20, cursor:"default", position:"relative",
                        background:c.acD, border:`1px solid ${opSymOpen||swHov==="op-sym"?c.acB:"rgba(74,106,255,0.35)"}`, transition:"border-color 0.12s" }}>

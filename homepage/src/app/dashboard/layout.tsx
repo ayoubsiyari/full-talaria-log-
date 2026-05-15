@@ -6,12 +6,17 @@ import { usePathname, useRouter } from "next/navigation";
 import { useLanguage } from "../LanguageProvider";
 import { BacktestNewSessionProvider } from "./BacktestNewSessionContext";
 import "./dashboard-shell.css";
+import {
+  dashboardPathRequiresPaidJournal,
+  userHasJournalEntitlement,
+} from "@/lib/dashboardAccess";
 
 type User = {
   id: number;
   name: string;
   email: string;
   role: string;
+  has_journal_access?: boolean;
 };
 
 async function fetchMe(): Promise<User> {
@@ -292,6 +297,7 @@ export default function DashboardLayout({
 }) {
   const { isArabic } = useLanguage();
   const [user, setUser] = React.useState<User | null>(null);
+  const [authReady, setAuthReady] = React.useState(false);
   const [activeView, setActiveView] = React.useState<string>("dashboard");
   const [loadedViews, setLoadedViews] = React.useState<Record<string, boolean>>({ journal: true });
   const [profilePanelOpen, setProfilePanelOpen] = React.useState(false);
@@ -307,12 +313,27 @@ export default function DashboardLayout({
 
   React.useEffect(() => {
     fetchMe()
-      .then((u) => setUser(u))
+      .then((u) => {
+        setUser(u);
+        setAuthReady(true);
+      })
       .catch(() => {
         const target = `${window.location.pathname}${window.location.search || ""}`;
         window.location.href = `/login/?next=${encodeURIComponent(target)}`;
       });
   }, []);
+
+  const entitled = userHasJournalEntitlement(user);
+
+  const gatedPath = dashboardPathRequiresPaidJournal(pathname);
+  const subscriptionWall =
+    authReady && !!user && !entitled && gatedPath;
+  const gatedAuthLoading = gatedPath && !authReady;
+
+  React.useEffect(() => {
+    if (!subscriptionWall) return;
+    window.location.replace("/pricing/?browse=1");
+  }, [subscriptionWall]);
 
   React.useEffect(() => {
     if (pathname.startsWith("/dashboard/journal")) setActiveView("journal");
@@ -338,6 +359,10 @@ export default function DashboardLayout({
   }, [profilePanelOpen]);
 
   const handleNavClick = (id: string) => {
+    if ((id === "journal" || id === "backtest") && user && !userHasJournalEntitlement(user)) {
+      window.location.href = "/pricing/?browse=1";
+      return;
+    }
     setActiveView(id);
     if (EXTERNAL_VIEWS[id]) {
       setLoadedViews((prev) => ({ ...prev, [id]: true }));
@@ -454,11 +479,14 @@ export default function DashboardLayout({
             const bg = active ? DASH_C.acD : hovered ? DASH_C.hv : "transparent";
             const color = active ? DASH_C.acL : hovered ? DASH_C.tx : DASH_C.ts;
             const railSide = isArabic ? "right" : "left";
+            const navLocked =
+              !!user && !userHasJournalEntitlement(user) && (id === "journal" || id === "backtest");
             return (
               <div
                 key={id}
                 role="button"
                 tabIndex={0}
+                title={navLocked ? "Active subscription required — opens plans & pricing" : undefined}
                 onClick={() => handleNavClick(id)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -476,11 +504,12 @@ export default function DashboardLayout({
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 4,
-                  cursor:"default",
+                  cursor: navLocked ? "not-allowed" : "default",
                   position: "relative",
                   background: bg,
                   color,
-                  transition: "background 0.12s,color 0.12s",
+                  opacity: navLocked ? 0.38 : 1,
+                  transition: "background 0.12s,color 0.12s,opacity 0.12s",
                 }}
               >
                 {active ? (
@@ -612,7 +641,36 @@ export default function DashboardLayout({
               visibility: !EXTERNAL_VIEWS[activeView] ? "visible" : "hidden",
               pointerEvents: !EXTERNAL_VIEWS[activeView] ? "auto" : "none",
             }}>
-              {children}
+              {gatedAuthLoading || subscriptionWall ? (
+                <div
+                  style={{
+                    minHeight: "40vh",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexDirection: "column",
+                    gap: 12,
+                    color: DASH_C.ts,
+                    fontFamily: F,
+                    fontSize: 13,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      border: "2px solid rgba(74,106,255,0.25)",
+                      borderTopColor: DASH_C.acL,
+                      borderRadius: "50%",
+                      animation: "db-spin 0.8s linear infinite",
+                    }}
+                  />
+                  {subscriptionWall ? "Redirecting to plans…" : "Checking access…"}
+                  <style>{`@keyframes db-spin { to { transform: rotate(360deg); } }`}</style>
+                </div>
+              ) : (
+                children
+              )}
             </div>
 
             {/* External views loaded as full-page iframes */}

@@ -943,7 +943,7 @@ class Chart {
                     const md = await mer.json();
                     const u = md && md.user;
                     if (u && u.role !== 'admin' && !u.has_journal_access) {
-                        window.location.replace('/journal/pricing');
+                        window.location.replace('/pricing/');
                         return;
                     }
                 }

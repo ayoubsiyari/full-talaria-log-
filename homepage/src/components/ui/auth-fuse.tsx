@@ -31,6 +31,8 @@ function isJournalPublicNextPath(path: string): boolean {
     pathname === "/journal/pricing" ||
     pathname.startsWith("/journal/pricing/") ||
     pathname === "/pricing" ||
+    pathname === "/pricing/" ||
+    pathname.startsWith("/pricing/") ||
     pathname.startsWith("/journal/features") ||
     pathname.startsWith("/journal/contact") ||
     pathname.startsWith("/journal/legal") ||
@@ -40,7 +42,7 @@ function isJournalPublicNextPath(path: string): boolean {
     pathname.startsWith("/journal/disclaimer") ||
     pathname.startsWith("/journal/refund-policy") ||
     pathname.startsWith("/journal/verify-email") ||
-    pathname.startsWith("/journal/resend-verification") ||
+    pathname.startsWith("/journal/subscription-status") ||
     pathname.startsWith("/journal/subscription/success") ||
     pathname.startsWith("/journal/onboarding")
   );
@@ -65,7 +67,7 @@ export function getPostAuthRedirectUrl(opts: {
     if (safeNext && isJournalPublicNextPath(safeNext)) {
       return safeNext;
     }
-    return "/journal/pricing";
+    return "/pricing/";
   }
   if (safeNext) {
     return safeNext;

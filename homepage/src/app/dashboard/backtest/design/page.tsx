@@ -44,7 +44,7 @@ export default function BacktestDesignDemoPage() {
         if (mounted) {
           const role = body?.user?.role;
           if (role !== "admin" && !body?.user?.has_journal_access) {
-            window.location.href = "/journal/pricing";
+            window.location.href = "/pricing/?browse=1";
             return;
           }
         }

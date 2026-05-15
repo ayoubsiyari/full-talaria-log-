@@ -11,7 +11,7 @@ import {
 import { API_BASE_URL } from '../config';
 
 /** Lets logged-in users without access view plans instead of being bounced back to billing. */
-const PRICING_BROWSE = '/pricing?browse=1';
+const PRICING_BROWSE = '/pricing/?browse=1';
 
 /**
  * Full-page billing / access state (TradingView / SaaS style) when the user
@@ -179,7 +179,7 @@ export default function SubscriptionRequired() {
             onClick={() => {
               localStorage.removeItem('token');
               localStorage.removeItem('talaria_current_user');
-              window.location.href = '/login/?next=' + encodeURIComponent('/journal/pricing?browse=1');
+              window.location.href = '/login/?next=' + encodeURIComponent('/pricing/?browse=1');
             }}
             className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1.5"
           >

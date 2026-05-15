@@ -96,7 +96,7 @@ export default function HomePage() {
   const journalTabHref = React.useMemo(() => {
     if (!user) return "/login/?next=/journal/dashboard";
     if (user.role === "admin" || user.has_journal_access) return "/journal/dashboard";
-    return "/journal/pricing";
+    return "/pricing/";
   }, [user]);
 
   React.useEffect(() => {

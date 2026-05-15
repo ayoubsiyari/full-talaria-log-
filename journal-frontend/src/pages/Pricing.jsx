@@ -134,7 +134,11 @@ export default function Pricing() {
   const handleRemoveCoupon = () => { setCouponCode(''); setCouponResult(null); };
 
   const handleSubscribe = async (planId) => {
-    if (!isLoggedIn) { navigate('/login'); return; }
+    if (!isLoggedIn) {
+      const next = `${window.location.pathname}${window.location.search || ''}`;
+      window.location.href = '/login/?next=' + encodeURIComponent(next || '/journal/pricing');
+      return;
+    }
     if (currentSubscription?.has_subscription && ['active', 'trialing'].includes(currentSubscription?.subscription?.status)) {
       navigate('/dashboard'); return;
     }
@@ -144,8 +148,8 @@ export default function Pricing() {
       const cancelQs = browseMode ? '?browse=1' : '';
       const body = {
         plan_id: planId,
-        success_url: window.location.origin + '/journal/subscription/success',
-        cancel_url: `${window.location.origin}/journal/pricing${cancelQs}`
+        success_url: `${window.location.origin}/pricing/success/`,
+        cancel_url: `${window.location.origin}/pricing/${cancelQs}`,
       };
       if (couponResult?.valid && couponResult.discount?.code) body.coupon_code = couponResult.discount.code;
       const res = await fetch(`${API_BASE_URL}/subscriptions/checkout`, {
