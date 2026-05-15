@@ -501,8 +501,6 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   const sessionListTruncated = filteredSessionsAll.length > SESSION_LIST_DISPLAY_MAX;
 
   /* ── Actions ── */
-  const goNew = () => setNewSessOpen(true);
-
   const openSession = (s: Session) => {
     try {
       if (s.config) {
@@ -991,9 +989,6 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
               <svg width={56} height={56} viewBox="0 0 24 24" fill="none" style={{ marginBottom: 18, color: c.tm, opacity: 0.5 }}><rect x="3" y="3" width="18" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.2" /><line x1="7" y1="8" x2="17" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><line x1="7" y1="12" x2="13" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
               <div style={{ fontSize: 16, fontWeight: 700, color: c.ts, marginBottom: 8 }}>No saved sessions yet</div>
               <div style={{ fontSize: 13, color: c.tm, marginBottom: 24 }}>Create your first backtesting session to get started</div>
-              <div onClick={goNew} style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 38, padding: "0 22px", background: "linear-gradient(135deg,#1e38e8,#4A6AFF)", cursor:"default", fontSize: 12, fontWeight: 800, color: "rgba(255,255,255,0.96)", letterSpacing: "0.08em", boxShadow: "0 4px 18px rgba(38,67,247,0.4)", clipPath: "polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%)" }}>
-                + Create New Session
-              </div>
             </div>
           ) : layoutMode === "cards" ? (
             /* ── Cards layout (parity with dashboardV8.jsx sessions cards) ── */
