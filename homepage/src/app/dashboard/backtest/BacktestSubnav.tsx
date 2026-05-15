@@ -27,7 +27,7 @@ export function BacktestSubnav({
   sessionId,
 }: {
   active: BacktestSubnavActive;
-  /** When set (e.g. on Analytics page), Analytics link keeps this session in the URL. */
+  /** When set (e.g. on dashboard analytics), Dashboard link keeps this session in the URL. */
   sessionId?: string;
 }) {
   const [suffix, setSuffix] = useState(() =>
@@ -52,7 +52,7 @@ export function BacktestSubnav({
     setSuffix(a ? `?sessionId=${encodeURIComponent(a)}` : "");
   }, [sessionId]);
 
-  const analyticsHref = `/dashboard/backtest/analytics/${suffix}`;
+  const dashboardHref = `/dashboard/${suffix}`;
 
   return (
     <nav className="sd-subnav" aria-label="Backtest sections">
@@ -63,10 +63,10 @@ export function BacktestSubnav({
         Sessions
       </a>
       <a
-        href={analyticsHref}
+        href={dashboardHref}
         className={`sd-subnav-link ${active === "analytics" ? "sd-subnav-link--active" : ""}`}
       >
-        Analytics
+        Dashboard
       </a>
     </nav>
   );

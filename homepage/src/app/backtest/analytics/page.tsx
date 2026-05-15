@@ -8,7 +8,7 @@ function LegacyBacktestAnalyticsRedirectInner() {
 
   useEffect(() => {
     const q = searchParams?.toString() ?? "";
-    window.location.replace(q ? `/dashboard/backtest/analytics/?${q}` : "/dashboard/backtest/analytics/");
+    window.location.replace(q ? `/dashboard/?${q}` : "/dashboard/");
   }, [searchParams]);
 
   return (

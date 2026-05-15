@@ -516,7 +516,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   };
 
   const openAnalytics = (s: Session) => {
-    window.location.href = `/dashboard/backtest/analytics/?sessionId=${encodeURIComponent(String(s.id))}`;
+    window.location.href = `/dashboard/?sessionId=${encodeURIComponent(String(s.id))}`;
   };
 
   const deleteSession = async (s: Session) => {

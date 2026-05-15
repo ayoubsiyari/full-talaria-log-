@@ -1498,14 +1498,19 @@ class CompareOverlay {
         let lastPrice = 0;
         let pointCount = 0;
         
-        // Build array of visible points with x positions
+        // Build visible points with x positions; break runs on unmapped bars or
+        // backwards time index so line/area never draws a bogus diagonal across gaps.
         const points = [];
+        let lastOkMain = -2;
         paneData.forEach((candle) => {
             const closePrice = candle.c !== undefined ? candle.c : candle.close;
             if (closePrice === undefined || isNaN(closePrice)) return;
             
             const mainIndex = this.findClosestIndex(mainData, candle.t, startIdx, endIdx);
-            if (mainIndex === -1) return;
+            if (mainIndex === -1) {
+                lastOkMain = -1;
+                return;
+            }
             
             const x = mainChart.dataIndexToPixel ? 
                 mainChart.dataIndexToPixel(mainIndex) : 
@@ -1513,49 +1518,55 @@ class CompareOverlay {
             
             if (x < margin.l - 50 || x > chartWidth + margin.l + 50) return;
             
-            points.push({ candle, x, mainIndex });
+            const newSegment = lastOkMain === -1 || mainIndex < lastOkMain;
+            points.push({ candle, x, mainIndex, newSegment });
+            lastOkMain = mainIndex;
         });
         
         // Draw based on display type
         if (displayType === 'line' || displayType === 'area') {
-            // Line or Area chart
-            ctx.beginPath();
             ctx.strokeStyle = pane.color;
             ctx.lineWidth = 2;
             ctx.lineJoin = 'round';
             ctx.lineCap = 'round';
             
-            let firstPoint = true;
-            const areaPath = [];
-            
-            points.forEach(({ candle, x }) => {
-                const closePrice = candle.c !== undefined ? candle.c : candle.close;
-                const y = yScale(closePrice);
-                
-                if (firstPoint) {
-                    ctx.moveTo(x, y);
-                    areaPath.push({ x, y });
-                    firstPoint = false;
-                } else {
-                    ctx.lineTo(x, y);
-                    areaPath.push({ x, y });
+            const runs = [];
+            let run = [];
+            points.forEach((p) => {
+                if (p.newSegment && run.length) {
+                    runs.push(run);
+                    run = [];
                 }
-                lastY = y;
-                lastPrice = closePrice;
-                pointCount++;
+                run.push(p);
             });
-            ctx.stroke();
+            if (run.length) runs.push(run);
             
-            // Fill area if area style
-            if (displayType === 'area' && areaPath.length > 0) {
+            runs.forEach((seg) => {
+                if (seg.length === 0) return;
+                const areaPath = [];
                 ctx.beginPath();
-                ctx.moveTo(areaPath[0].x, chartHeight + margin.t);
-                areaPath.forEach(p => ctx.lineTo(p.x, p.y));
-                ctx.lineTo(areaPath[areaPath.length - 1].x, chartHeight + margin.t);
-                ctx.closePath();
-                ctx.fillStyle = pane.color + '30'; // 30% opacity
-                ctx.fill();
-            }
+                seg.forEach(({ candle, x }, si) => {
+                    const closePrice = candle.c !== undefined ? candle.c : candle.close;
+                    const y = yScale(closePrice);
+                    if (si === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                    areaPath.push({ x, y });
+                    lastY = y;
+                    lastPrice = closePrice;
+                    pointCount++;
+                });
+                ctx.stroke();
+                
+                if (displayType === 'area' && areaPath.length > 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(areaPath[0].x, chartHeight + margin.t);
+                    areaPath.forEach((ap) => ctx.lineTo(ap.x, ap.y));
+                    ctx.lineTo(areaPath[areaPath.length - 1].x, chartHeight + margin.t);
+                    ctx.closePath();
+                    ctx.fillStyle = pane.color + '30';
+                    ctx.fill();
+                }
+            });
         } else {
             // Candles, Bars, Hollow, Heikin Ashi
             const candleW = Math.max(1, mainChart.candleWidth * 0.8);
@@ -3307,31 +3318,42 @@ class CompareOverlay {
                     }
                 });
             } else {
-                // Draw as line
+                // Draw as line — one stroke per contiguous segment so skipped mappings
+                // (findClosestIndex === -1) never connect with a diagonal across the gap.
                 ctx.strokeStyle = overlay.color;
                 ctx.lineWidth = overlay.lineWidth;
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
-                ctx.beginPath();
                 
-                let started = false;
-                overlayData.forEach((candle, i) => {
+                const mapped = [];
+                let lastMi = -2;
+                overlayData.forEach((candle) => {
                     const mainIndex = this.findClosestIndex(mainData, candle.t, startIdx, endIdx);
-                    if (mainIndex === -1) return;
-                    
-                    // Use chart's dataIndexToPixel for smooth movement
+                    if (mainIndex === -1) {
+                        lastMi = -1;
+                        return;
+                    }
                     const x = Math.round(this.chart.dataIndexToPixel(mainIndex));
                     const y = Math.round(overlayYScale(candle.c));
-                    
-                    if (!started) {
-                        ctx.moveTo(x, y);
-                        started = true;
-                    } else {
-                        ctx.lineTo(x, y);
-                    }
+                    const breakSeg = lastMi === -1 || mainIndex < lastMi;
+                    mapped.push({ x, y, breakSeg });
+                    lastMi = mainIndex;
                 });
                 
-                ctx.stroke();
+                let seg = [];
+                const flush = () => {
+                    if (seg.length === 0) return;
+                    ctx.beginPath();
+                    ctx.moveTo(seg[0].x, seg[0].y);
+                    for (let s = 1; s < seg.length; s++) ctx.lineTo(seg[s].x, seg[s].y);
+                    ctx.stroke();
+                    seg = [];
+                };
+                mapped.forEach((pt) => {
+                    if (pt.breakSeg && seg.length) flush();
+                    seg.push(pt);
+                });
+                flush();
             }
             
             ctx.restore();
@@ -3685,14 +3707,25 @@ class CompareOverlay {
             }
         }
         
-        // Only return if within reasonable time range (half a candle width)
-        const timeframe = this.chart.currentTimeframe;
-        const maxDiff = this.getTimeframeDuration(timeframe) / 2;
+        const tfKey = String(this.chart.currentTimeframe || '1m').toLowerCase().trim();
+        let tfMs = 60 * 1000;
+        if (this.chart && typeof this.chart.parseTimeframe === 'function') {
+            const parsed = this.chart.parseTimeframe(tfKey);
+            if (Number.isFinite(parsed) && parsed > 0) tfMs = parsed;
+        } else {
+            tfMs = this.getTimeframeDuration(tfKey);
+        }
+        const maxDiff = tfMs / 2;
         
         return minDiff <= maxDiff ? closestIdx : -1;
     }
     
     getTimeframeDuration(timeframe) {
+        const tf = String(timeframe || '').toLowerCase().trim();
+        if (this.chart && typeof this.chart.parseTimeframe === 'function') {
+            const ms = this.chart.parseTimeframe(tf);
+            if (Number.isFinite(ms) && ms > 0) return ms;
+        }
         const durations = {
             '1m': 60 * 1000,
             '5m': 5 * 60 * 1000,
@@ -3704,7 +3737,7 @@ class CompareOverlay {
             '1w': 7 * 24 * 60 * 60 * 1000,
             '1mo': 30 * 24 * 60 * 60 * 1000
         };
-        return durations[timeframe] || 60 * 1000;
+        return durations[tf] || 60 * 1000;
     }
     
     drawOverlayYAxis(overlay, minPrice, maxPrice, priceHeight, index, yScale) {
