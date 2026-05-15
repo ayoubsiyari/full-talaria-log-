@@ -1,5 +1,23 @@
-import StrategiesLabPage from "@/components/strategy-lab/StrategiesLabPage";
+"use client";
 
-export default function StrategiesLabRoutePage() {
-  return <StrategiesLabPage />;
+import { useEffect } from "react";
+
+export default function StrategiesLabLegacyRedirect() {
+  useEffect(() => {
+    window.location.replace("/dashboard/strategies/");
+  }, []);
+
+  return (
+    <div
+      style={{
+        padding: 24,
+        fontFamily: "system-ui, sans-serif",
+        color: "#e5e7eb",
+        background: "#07080e",
+        minHeight: "100vh",
+      }}
+    >
+      Redirecting…
+    </div>
+  );
 }

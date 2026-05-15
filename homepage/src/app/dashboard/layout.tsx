@@ -3,7 +3,7 @@
 import React from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useLanguage } from "../LanguageProvider";
-import { BacktestView } from "./BacktestView";
+import { BacktestNewSessionProvider } from "./BacktestNewSessionContext";
 import "./dashboard-shell.css";
 
 type User = {
@@ -271,13 +271,14 @@ const VIEW_TITLES: Record<string, string> = {
 };
 
 const EXTERNAL_VIEWS: Record<string, string> = {
-  strategies: "/strategies-lab/",
   resources: "/bootcamp/",
 };
 
 const INTERNAL_NAV: Record<string, string> = {
   dashboard: "/dashboard/",
   journal:   "/dashboard/journal/",
+  backtest:  "/dashboard/backtest/",
+  strategies: "/dashboard/strategies/",
   cot:       "/dashboard/cot/",
   support:   "/dashboard/support/",
 };
@@ -312,9 +313,13 @@ export default function DashboardLayout({
   }, []);
 
   React.useEffect(() => {
-    if (pathname.startsWith("/dashboard/cot")) setActiveView("cot");
+    if (pathname.startsWith("/dashboard/journal")) setActiveView("journal");
+    else if (pathname.startsWith("/dashboard/backtest")) setActiveView("backtest");
+    else if (pathname.startsWith("/dashboard/strategies")) setActiveView("strategies");
+    else if (pathname.startsWith("/dashboard/cot")) setActiveView("cot");
     else if (pathname.startsWith("/dashboard/support")) setActiveView("support");
     else if (pathname.startsWith("/dashboard/admin")) setActiveView("admin");
+    else if (pathname === "/dashboard" || pathname === "/dashboard/") setActiveView("dashboard");
     else if (pathname.startsWith("/dashboard")) setActiveView("dashboard");
   }, [pathname]);
 
@@ -575,43 +580,33 @@ export default function DashboardLayout({
         {/* Main content area */}
         <main style={{ flex: 1, overflow: "hidden", background: DASH_C.bg, position: "relative" }}>
 
-          {/* Internal Next.js pages (dashboard, cot, support) */}
-          <div style={{
-            position: "absolute", inset: 0, overflowY: "auto",
-            visibility: !EXTERNAL_VIEWS[activeView] && activeView !== "backtest" ? "visible" : "hidden",
-            pointerEvents: !EXTERNAL_VIEWS[activeView] && activeView !== "backtest" ? "auto" : "none",
-          }}>
-            {children}
-          </div>
-
-          {/* BacktestView — mount only when tab is active to avoid N× /analytics calls on Dashboard */}
-          {activeView === "backtest" ? (
+          <BacktestNewSessionProvider register={registerBacktestOpenNewSession}>
+            {/* Internal Next.js pages (dashboard, journal, backtest, strategies, cot, support, …) */}
             <div style={{
-              position: "absolute", inset: 0,
-              opacity: 1,
-              pointerEvents: "auto",
-              transition: "opacity 0.15s",
+              position: "absolute", inset: 0, overflowY: "auto",
+              visibility: !EXTERNAL_VIEWS[activeView] ? "visible" : "hidden",
+              pointerEvents: !EXTERNAL_VIEWS[activeView] ? "auto" : "none",
             }}>
-              <BacktestView onProvideOpenNewSession={registerBacktestOpenNewSession} />
+              {children}
             </div>
-          ) : null}
 
-          {/* External views loaded as full-page iframes */}
-          {Object.entries(EXTERNAL_VIEWS).map(([id, url]) => (
-            <iframe
-              key={id}
-              title={id}
-              src={loadedViews[id] ? url : undefined}
-              style={{
-                position: "absolute", inset: 0,
-                width: "100%", height: "100%",
-                border: "none",
-                opacity: activeView === id ? 1 : 0,
-                pointerEvents: activeView === id ? "auto" : "none",
-                transition: "opacity 0.15s",
-              }}
-            />
-          ))}
+            {/* External views loaded as full-page iframes */}
+            {Object.entries(EXTERNAL_VIEWS).map(([id, url]) => (
+              <iframe
+                key={id}
+                title={id}
+                src={loadedViews[id] ? url : undefined}
+                style={{
+                  position: "absolute", inset: 0,
+                  width: "100%", height: "100%",
+                  border: "none",
+                  opacity: activeView === id ? 1 : 0,
+                  pointerEvents: activeView === id ? "auto" : "none",
+                  transition: "opacity 0.15s",
+                }}
+              />
+            ))}
+          </BacktestNewSessionProvider>
         </main>
       </div>
     </div>

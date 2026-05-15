@@ -14063,12 +14063,137 @@ class Chart {
             this._symbolPrecision = dataDec;
             return dataDec;
         }
-        if (priceRange < 0.01) return 6;
-        if (priceRange < 0.1)  return 4;
-        if (priceRange < 1)    return 3;
-        if (priceRange < 10)   return 2;
-        if (priceRange < 1000) return 2;
+        return this._decimalsFromPriceRangeHeuristic(priceRange);
+    }
+
+    /** Range-only fallback (matches previous tail of getPriceDecimals). */
+    _decimalsFromPriceRangeHeuristic(priceRange) {
+        const r = Number(priceRange);
+        if (!Number.isFinite(r) || r < 0) return 2;
+        if (r < 0.01) return 6;
+        if (r < 0.1) return 4;
+        if (r < 1) return 3;
+        if (r < 10) return 2;
+        if (r < 1000) return 2;
         return 0;
+    }
+
+    /**
+     * Infer decimal precision from an arbitrary OHLC series (e.g. compare overlay bars).
+     * Does not touch main-series caches.
+     */
+    _inferPrecisionFromSeriesBars(series) {
+        if (!series || series.length === 0) return null;
+        let maxDec = 0;
+        const step = Math.max(1, Math.floor(series.length / 200));
+        for (let i = 0; i < series.length; i += step) {
+            const bar = series[i];
+            if (!bar) continue;
+            const vals = [bar.o, bar.h, bar.l, bar.c];
+            for (let j = 0; j < vals.length; j++) {
+                const v = Number(vals[j]);
+                if (!Number.isFinite(v)) continue;
+                const d = this._significantDecimals(v);
+                if (d > maxDec) maxDec = d;
+            }
+            if (maxDec >= 6) break;
+        }
+        return maxDec;
+    }
+
+    /**
+     * Price decimals for a specific symbol (compare overlay / linked pane).
+     * Honors chartSettings.pricePrecision the same way as the main axis.
+     * Does not read or write this._symbolPrecision (that stays tied to the primary symbol).
+     *
+     * @param {string} symbol - e.g. AUDUSD, AUD/USD
+     * @param {number} priceRange - visible max - min for that series
+     * @param {{ data?: Array }} [options] - optional OHLC bars for data-driven precision
+     */
+    getPriceDecimalsForSymbol(symbol, priceRange, options = {}) {
+        const decimalsFromStep = (step) => {
+            const n = Number(step);
+            if (!Number.isFinite(n) || n <= 0) return null;
+            const s = String(n).toLowerCase();
+            if (s.includes('e-')) {
+                const e = parseInt(s.split('e-')[1], 10);
+                return Number.isFinite(e) ? e : null;
+            }
+            const dot = s.indexOf('.');
+            return dot === -1 ? 0 : (s.length - dot - 1);
+        };
+        const override = this.chartSettings && this.chartSettings.pricePrecision;
+        if (override && override !== 'default' && override !== 'Default') {
+            const n = parseInt(override, 10);
+            if (!isNaN(n) && n >= 0) return n;
+        }
+
+        const symKey = String(symbol || '').trim();
+        if (symKey && typeof window !== 'undefined' && window.marketCalcEngine) {
+            const tryKeys = [symKey, symKey.replace(/\//g, ''), symKey.replace(/-/g, ''), symKey.replace(/\s+/g, '')];
+            const seen = new Set();
+            for (const c of tryKeys) {
+                if (!c || seen.has(c)) continue;
+                seen.add(c);
+                try {
+                    const calc = window.marketCalcEngine.getCalculator(c);
+                    const specs = calc && calc.specs;
+                    if (specs) {
+                        if (Number.isFinite(specs.precision) && specs.precision >= 0) {
+                            return specs.precision;
+                        }
+                        if (Number.isFinite(specs.tickSize) && specs.tickSize > 0) {
+                            const str = String(specs.tickSize);
+                            let dec;
+                            if (str.includes('e-')) {
+                                dec = parseInt(str.split('e-')[1], 10) || 0;
+                            } else {
+                                const dot = str.indexOf('.');
+                                dec = dot === -1 ? 0 : str.length - dot - 1;
+                            }
+                            return dec;
+                        }
+                    }
+                } catch (_) { /* try next */ }
+            }
+        }
+
+        if (symKey && this.orderService && this.orderService.multiInstrumentSession
+            && this.orderService.multiInstrumentSession.instruments) {
+            try {
+                const map = this.orderService.multiInstrumentSession.instruments;
+                const raw = symKey.toUpperCase();
+                const compact = raw.replace(/[/\-\s]/g, '');
+                const segs = raw
+                    .split(/[/\-_.\s]+/)
+                    .map((x) => (x || '').toUpperCase())
+                    .filter((x) => /^[A-Z0-9]{2,}$/.test(x));
+                const candidates = [compact, raw, ...segs].filter(Boolean);
+                let inst = null;
+                for (const k of candidates) {
+                    if (map[k]) {
+                        inst = map[k];
+                        break;
+                    }
+                }
+                if (inst) {
+                    const p = decimalsFromStep(inst.precision);
+                    if (Number.isFinite(p) && p >= 0) return p;
+                    const fromTick = decimalsFromStep(inst.tick_size ?? inst.tickSize);
+                    if (Number.isFinite(fromTick) && fromTick >= 0) return fromTick;
+                    const fromPip = decimalsFromStep(inst.pip_size ?? inst.pipSize);
+                    if (Number.isFinite(fromPip) && fromPip >= 0) return fromPip;
+                }
+            } catch (_) { /* */ }
+        }
+
+        const altData = options && options.data;
+        if (altData && altData.length) {
+            const inferred = this._inferPrecisionFromSeriesBars(altData);
+            if (Number.isFinite(inferred) && inferred >= 0) return inferred;
+        }
+
+        return this._decimalsFromPriceRangeHeuristic(Math.abs(Number(priceRange) || 0));
     }
 
     /**

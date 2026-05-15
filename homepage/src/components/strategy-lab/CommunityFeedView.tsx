@@ -83,7 +83,7 @@ export default function CommunityFeedView({ posts, isAuthed, onLike, onOpenStrat
           </div>
           {!isAuthed && (
             <Link
-              href="/login/?next=/strategies-lab/"
+              href="/login/?next=/dashboard/strategies/"
               className="mt-4 inline-flex shrink-0 items-center justify-center rounded-xl bg-[var(--sl-accent)] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[var(--sl-accent)]/25 transition hover:opacity-95 sm:mt-0"
             >
               Sign in to interact
@@ -145,7 +145,7 @@ export default function CommunityFeedView({ posts, isAuthed, onLike, onOpenStrat
         ) : (
           <>
             You&apos;re viewing the public explore feed or a filtered subset.{" "}
-            <Link href="/login/?next=/strategies-lab/" className="text-[var(--sl-accent-light)] underline">
+            <Link href="/login/?next=/dashboard/strategies/" className="text-[var(--sl-accent-light)] underline">
               Sign in
             </Link>{" "}
             for the full community feed and interactions.

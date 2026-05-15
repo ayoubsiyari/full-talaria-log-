@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { BacktestNewSessionModal } from "./BacktestNewSessionModal";
+import { useOptionalBacktestNewSessionRegister } from "./BacktestNewSessionContext";
 import {
   sessionJournalLocalKey,
   flattenJournalApiTrade,
@@ -287,6 +288,7 @@ export type BacktestViewProps = {
 
 /* ── Main component ── */
 export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}) {
+  const registerFromContext = useOptionalBacktestNewSessionRegister();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [kpis, setKpis] = useState<Record<number, Kpis>>({});
   const [loading, setLoading] = useState(true);
@@ -340,11 +342,12 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   }, [cardSortOpen]);
 
   useEffect(() => {
-    if (!onProvideOpenNewSession) return;
+    const register = onProvideOpenNewSession ?? registerFromContext;
+    if (!register) return;
     const open = () => setNewSessOpen(true);
-    onProvideOpenNewSession(open);
-    return () => onProvideOpenNewSession(null);
-  }, [onProvideOpenNewSession]);
+    register(open);
+    return () => register(null);
+  }, [onProvideOpenNewSession, registerFromContext]);
 
   useEffect(() => {
     if (!journalSession) {
@@ -515,7 +518,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   };
 
   const openAnalytics = (s: Session) => {
-    window.location.href = `/backtest/analytics?sessionId=${encodeURIComponent(String(s.id))}`;
+    window.location.href = `/dashboard/backtest/analytics/?sessionId=${encodeURIComponent(String(s.id))}`;
   };
 
   const deleteSession = async (s: Session) => {

@@ -1356,7 +1356,8 @@ class CompareOverlay {
         
         const mainChart = this.chart;
         const axisBg = this.getMainChartBackground();
-        const axisBorder = mainChart.chartSettings?.scaleLineColor || '#363a45';
+        const csPane = mainChart.chartSettings || {};
+        const axisBorder = csPane.scaleLinesColor ?? csPane.scaleLineColor ?? '#363a45';
         const axisText = mainChart.chartSettings?.scaleTextColor || '#787b86';
         const axisCrosshairBg = mainChart.chartSettings?.scaleLineColor || '#363a45';
         const axisCrosshairText = mainChart.chartSettings?.scaleTextColor || '#d1d4dc';
@@ -1650,10 +1651,12 @@ class CompareOverlay {
         
         console.log(`📊 Pane drew ${pointCount} ${displayType}, range: ${minPrice.toFixed(2)} - ${maxPrice.toFixed(2)}`);
         
-        // Determine decimal places from same logic as main chart
-        const decimals = typeof mainChart.getPriceDecimals === 'function'
-            ? mainChart.getPriceDecimals(priceRange)
-            : (maxPrice > 100 ? 2 : (maxPrice > 10 ? 3 : 5));
+        // Same decimal rules as main price axis, but resolved for this pane's symbol
+        const decimals = typeof mainChart.getPriceDecimalsForSymbol === 'function'
+            ? mainChart.getPriceDecimalsForSymbol(pane.symbol, priceRange, { data: paneData })
+            : (typeof mainChart._decimalsFromPriceRangeHeuristic === 'function'
+                ? mainChart._decimalsFromPriceRangeHeuristic(Math.abs(Number(priceRange) || 0))
+                : 5);
         const scaleTextSize = mainChart.chartSettings?.scaleTextSize || 11;
         const scaleFont = `${scaleTextSize}px Roboto`;
         
@@ -1661,12 +1664,12 @@ class CompareOverlay {
         ctx.fillStyle = axisBg;
         ctx.fillRect(width - margin.r, 0, margin.r, height);
         
-        // Draw Y-axis border using the same style model as main chart scale line
-        const scaleLineColor = mainChart.chartSettings?.scaleLineColor || axisBorder;
-        const scaleLineWidth = mainChart.chartSettings?.scaleLineWidth || 1;
-        const scaleLinePattern = mainChart.chartSettings?.scaleLinePattern || 'solid';
+        // Draw Y-axis border using the same style model as main chart drawAxes()
+        const scaleLineColor = csPane.scaleLinesColor ?? csPane.scaleLineColor ?? '#e0e3eb';
+        const scaleLineWidth = Math.max(1, parseInt(csPane.scaleLineWidth, 10) || 2);
+        const scaleLinePattern = csPane.scaleLinePattern || 'solid';
         if (scaleLinePattern === 'dashed') {
-            ctx.setLineDash([4, 4]);
+            ctx.setLineDash([6, 4]);
         } else if (scaleLinePattern === 'dotted') {
             ctx.setLineDash([2, 4]);
         } else {
@@ -1709,8 +1712,11 @@ class CompareOverlay {
             ctx.fillStyle = currentPriceLabelColor;
             ctx.fillRect(width - margin.r, lastY - 10, margin.r, 20);
             
-            // Price label text
-            ctx.fillStyle = '#ffffff';
+            const pillBg = currentPriceLabelColor;
+            const pillText = typeof mainChart.isLightColor === 'function' && mainChart.isLightColor(pillBg)
+                ? '#111111'
+                : '#FFFFFF';
+            ctx.fillStyle = pillText;
             ctx.font = `500 ${scaleTextSize}px Roboto`;
             ctx.textAlign = 'center';
             ctx.fillText(lastPrice.toFixed(decimals), width - margin.r / 2, lastY + 4);
@@ -3503,7 +3509,11 @@ class CompareOverlay {
             const latestCandle = overlay.data[overlay.data.length - 1];
             if (!latestCandle) return;
             
-            const decimals = this.getPriceDecimals(latestCandle.h - latestCandle.l);
+            const decimals = typeof this.chart.getPriceDecimalsForSymbol === 'function'
+                ? this.chart.getPriceDecimalsForSymbol(overlay.symbol, latestCandle.h - latestCandle.l, { data: overlay.data })
+                : (typeof this.chart._decimalsFromPriceRangeHeuristic === 'function'
+                    ? this.chart._decimalsFromPriceRangeHeuristic(Math.abs(Number(latestCandle.h - latestCandle.l) || 0))
+                    : 5);
             const isBullish = latestCandle.c >= latestCandle.o;
             const changeColor = isBullish ? '#26a69a' : '#ef5350';
             const isHidden = !overlay.visible;
@@ -3700,85 +3710,125 @@ class CompareOverlay {
     drawOverlayYAxis(overlay, minPrice, maxPrice, priceHeight, index, yScale) {
         const ctx = this.chart.ctx;
         const m = this.chart.margin;
+        const cs = this.chart.chartSettings || {};
         
         // Position left Y-axis (same width as right axis, stacked for multiple overlays)
         const axisWidth = m.r; // Same as right margin
         const axisX = index * axisWidth; // Stack axes side by side
+        const axisMidX = axisX + axisWidth / 2;
         
         ctx.save();
         
         // Draw axis background - same as chart background
-        ctx.fillStyle = this.chart.chartSettings?.backgroundColor || '#131722';
+        ctx.fillStyle = cs.backgroundColor || '#131722';
         ctx.fillRect(axisX, m.t, axisWidth, priceHeight);
         
-        // Draw axis border (right edge) - same opacity as main chart
-        ctx.strokeStyle = '#e0e3eb';
-        ctx.lineWidth = 1;
+        const scaleLineColor = cs.scaleLinesColor ?? cs.scaleLineColor ?? '#e0e3eb';
+        const scaleLineWidth = Math.max(1, parseInt(cs.scaleLineWidth, 10) || 2);
+        const scaleLinePattern = cs.scaleLinePattern || 'solid';
+        const applyScaleLineStyle = () => {
+            ctx.strokeStyle = scaleLineColor;
+            ctx.lineWidth = scaleLineWidth;
+            if (scaleLinePattern === 'dashed') {
+                ctx.setLineDash([6, 4]);
+            } else if (scaleLinePattern === 'dotted') {
+                ctx.setLineDash([2, 4]);
+            } else {
+                ctx.setLineDash([]);
+            }
+        };
+        
+        // Draw axis border (right edge) — same stroke model as drawAxes()
+        applyScaleLineStyle();
         ctx.beginPath();
         ctx.moveTo(axisX + axisWidth, m.t);
         ctx.lineTo(axisX + axisWidth, m.t + priceHeight);
         ctx.stroke();
+        ctx.setLineDash([]);
         
         // Calculate nice round tick values - same as main chart
         const numTicks = Math.max(8, Math.min(15, Math.floor(priceHeight / 60)));
         const priceRange = maxPrice - minPrice;
-        const decimals = this.getPriceDecimals(priceRange);
+        const decimals = typeof this.chart.getPriceDecimalsForSymbol === 'function'
+            ? this.chart.getPriceDecimalsForSymbol(overlay.symbol, priceRange, { data: overlay.data })
+            : (typeof this.chart._decimalsFromPriceRangeHeuristic === 'function'
+                ? this.chart._decimalsFromPriceRangeHeuristic(Math.abs(Number(priceRange) || 0))
+                : 5);
         
         // Generate nice round tick values (like d3.ticks)
         const ticks = this.generateNiceTicks(minPrice, maxPrice, numTicks);
         
-        // Draw price labels and tick marks - same style as right axis
-        ctx.font = `${this.chart.chartSettings?.scaleTextSize || 12}px Roboto`;
-        ctx.textAlign = 'left';
-        ctx.fillStyle = this.chart.chartSettings?.scaleTextColor || '#787b86';
+        const scaleTextSize = cs.scaleTextSize || 12;
+        const scaleFont = `${scaleTextSize}px Roboto`;
+        ctx.font = scaleFont;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = cs.scaleTextColor || '#787b86';
         
         ticks.forEach(price => {
-            // Use yScale to get Y position - this makes labels move with the chart
             const y = yScale(price);
             
-
             if (y < m.t + 5 || y > m.t + priceHeight - 5) return;
             
-            // Draw tick mark - same as main chart
-            ctx.strokeStyle = '#e0e3eb';
-            ctx.lineWidth = 1;
+            // Tick mark on axis edge (uses same scale line styling)
+            applyScaleLineStyle();
             ctx.beginPath();
             ctx.moveTo(axisX + axisWidth - 5, y);
             ctx.lineTo(axisX + axisWidth, y);
             ctx.stroke();
+            ctx.setLineDash([]);
             
-            // Price label - same as main chart (8px padding like right axis)
-            ctx.fillStyle = this.chart.chartSettings?.scaleTextColor || '#787b86';
+            // Price label — centered in strip like drawAxes() (axisMidX, y + 4)
+            ctx.fillStyle = cs.scaleTextColor || '#787b86';
+            ctx.font = scaleFont;
             const priceStr = price.toFixed(decimals);
-            ctx.fillText(priceStr, axisX + 8, y + 4);
+            ctx.fillText(priceStr, axisMidX, y + 4);
         });
         
-        // Draw current price label (floating, like main chart)
+        // Draw current price label (floating, like drawCurrentPriceLabel)
         if (overlay.showPriceLine) {
             const latestCandle = overlay.data[overlay.data.length - 1];
             if (latestCandle && yScale) {
                 const currentPrice = latestCandle.c;
                 const currentY = yScale(currentPrice);
                 
-                // Only draw if within visible area
                 if (currentY >= m.t && currentY <= m.t + priceHeight) {
-                    const priceStr = currentPrice.toFixed(decimals);
-                    ctx.font = 'bold 11px Roboto';
-                    const labelHeight = 18;
+                    const priceStr = Number(currentPrice).toFixed(decimals);
+                    const bgColor = overlay.color || this.chart.chartSettings?.priceLineColor || '#787B86';
+                    const labelWidth = axisWidth - 4;
+                    const labelX = axisX + 2;
+                    const radius = 2;
+                    const priceHeightPx = 20;
+                    const labelY = currentY - priceHeightPx / 2;
                     
-                    // Draw label background
-                    ctx.fillStyle = overlay.color;
-                    ctx.fillRect(axisX, currentY - labelHeight/2, axisWidth, labelHeight);
+                    ctx.fillStyle = bgColor;
+                    ctx.beginPath();
+                    ctx.moveTo(labelX + radius, labelY);
+                    ctx.lineTo(labelX + labelWidth - radius, labelY);
+                    ctx.arcTo(labelX + labelWidth, labelY, labelX + labelWidth, labelY + radius, radius);
+                    ctx.lineTo(labelX + labelWidth, labelY + priceHeightPx - radius);
+                    ctx.arcTo(labelX + labelWidth, labelY + priceHeightPx, labelX + labelWidth - radius, labelY + priceHeightPx, radius);
+                    ctx.lineTo(labelX + radius, labelY + priceHeightPx);
+                    ctx.arcTo(labelX, labelY + priceHeightPx, labelX, labelY + priceHeightPx - radius, radius);
+                    ctx.lineTo(labelX, labelY + radius);
+                    ctx.arcTo(labelX, labelY, labelX + radius, labelY, radius);
+                    ctx.closePath();
+                    ctx.fill();
                     
-                    // Draw price text
-                    ctx.fillStyle = '#ffffff';
-                    ctx.textAlign = 'left';
-                    ctx.fillText(priceStr, axisX + 8, currentY + 4);
+                    const labelTextColor = typeof this.chart.isLightColor === 'function' && this.chart.isLightColor(bgColor)
+                        ? '#111111'
+                        : '#FFFFFF';
+                    ctx.fillStyle = labelTextColor;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.font = `500 ${scaleTextSize}px Roboto`;
+                    ctx.fillText(priceStr, labelX + labelWidth / 2, labelY + priceHeightPx / 2);
                     
-                    // Draw dashed line across chart
+                    // Dashed line across chart
                     ctx.strokeStyle = overlay.color;
                     ctx.globalAlpha = 0.4;
                     ctx.setLineDash([4, 4]);
+                    ctx.lineWidth = 1;
                     ctx.beginPath();
                     ctx.moveTo(axisX + axisWidth, currentY);
                     ctx.lineTo(this.chart.w - m.r, currentY);
@@ -3790,15 +3840,6 @@ class CompareOverlay {
         }
         
         ctx.restore();
-    }
-    
-    getPriceDecimals(priceRange) {
-        if (priceRange >= 100) return 0;
-        if (priceRange >= 10) return 1;
-        if (priceRange >= 1) return 2;
-        if (priceRange >= 0.1) return 3;
-        if (priceRange >= 0.01) return 4;
-        return 5;
     }
     
     generateNiceTicks(min, max, count) {

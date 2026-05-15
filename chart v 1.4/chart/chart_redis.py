@@ -17,23 +17,6 @@ if TYPE_CHECKING:
 
 KEY_PREFIX = "chart:"
 
-_SLIDING_WINDOW_LUA = """
-local zkey = KEYS[1]
-local now = tonumber(ARGV[1])
-local window = tonumber(ARGV[2])
-local maxn = tonumber(ARGV[3])
-local member = ARGV[4]
-redis.call('ZREMRANGEBYSCORE', zkey, '-inf', now - window)
-redis.call('ZADD', zkey, now, member)
-local n = redis.call('ZCARD', zkey)
-redis.call('EXPIRE', zkey, math.ceil(window) + 2)
-if n > maxn then
-  redis.call('ZREM', zkey, member)
-  return 0
-end
-return 1
-"""
-
 _BINARY_WAKE_LIST = f"{KEY_PREFIX}binary_wake"
 
 _pool = None
@@ -88,6 +71,10 @@ def ping_ok() -> bool | None:
 
 
 def sliding_window_allow(redis_key: str, max_events: int, window_sec: float) -> bool:
+    """
+    Sliding-window limiter using a sorted set (ZSET). Uses a pipeline (not Lua) so it works
+    with fakeredis in tests; under extreme concurrency a few extra events may slip through.
+    """
     c = get_client()
     if c is None:
         raise RuntimeError("redis_unavailable")
@@ -95,8 +82,16 @@ def sliding_window_allow(redis_key: str, max_events: int, window_sec: float) -> 
     member = f"{now}:{secrets.token_hex(6)}"
     max_events = max(1, int(max_events))
     window_sec = float(window_sec)
-    allowed = c.eval(_SLIDING_WINDOW_LUA, 1, redis_key, str(now), str(window_sec), str(max_events), member)
-    return int(allowed) == 1
+    pipe = c.pipeline()
+    pipe.zremrangebyscore(redis_key, "-inf", now - window_sec)
+    pipe.zadd(redis_key, {member: now})
+    pipe.zcard(redis_key)
+    pipe.expire(redis_key, int(window_sec) + 2)
+    _, _, n, _ = pipe.execute()
+    if int(n) > max_events:
+        c.zrem(redis_key, member)
+        return False
+    return True
 
 
 def signal_binary_job_queued() -> None:

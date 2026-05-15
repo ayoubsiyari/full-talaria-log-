@@ -18,7 +18,7 @@ function getToken(): string | null {
 }
 
 function loginUrlWithNext() {
-  return `/login/?next=${encodeURIComponent("/strategies-lab/")}`;
+  return `/login/?next=${encodeURIComponent("/dashboard/strategies/")}`;
 }
 
 function authHeaders() {
@@ -285,7 +285,7 @@ export default function StrategiesLabPage() {
               journal, and post to the community.
             </p>
             <Link
-              href="/login/?next=/strategies-lab/"
+              href="/login/?next=/dashboard/strategies/"
               className="mt-6 inline-flex items-center justify-center rounded-lg bg-[var(--sl-accent)] px-5 py-2.5 text-sm font-medium text-white"
             >
               Sign in to continue
@@ -427,7 +427,7 @@ export default function StrategiesLabPage() {
             {!isAuthed && (
               <p className="mb-4 text-xs text-[var(--sl-text-muted)]">
                 Browse published templates below.{" "}
-                <Link href="/login/?next=/strategies-lab/" className="text-[var(--sl-accent-light)] underline">
+                <Link href="/login/?next=/dashboard/strategies/" className="text-[var(--sl-accent-light)] underline">
                   Sign in
                 </Link>{" "}
                 to copy a template into your strategies.
@@ -451,7 +451,7 @@ export default function StrategiesLabPage() {
                     </button>
                   ) : (
                     <Link
-                      href="/login/?next=/strategies-lab/"
+                      href="/login/?next=/dashboard/strategies/"
                       className="mt-3 inline-block rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] px-3 py-1.5 text-sm text-[var(--sl-text)] hover:bg-[var(--sl-card)]"
                     >
                       Sign in to use

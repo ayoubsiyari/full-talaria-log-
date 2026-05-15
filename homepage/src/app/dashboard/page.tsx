@@ -149,7 +149,7 @@ function cn(...c: (string | false | undefined | null)[]): string {
   return c.filter(Boolean).join(" ");
 }
 
-/** Same card / label / link tokens as Sessions (/backtest) dashboard */
+/** Same card / label / link tokens as Sessions (/dashboard/backtest/) dashboard */
 const CARD = "db-card";
 const SECTION = "db-section-label";
 const LINK_MUTED = "db-link-muted";
@@ -306,7 +306,7 @@ export default function GlobalDashboard() {
         <div className="db-section-label">Quick access</div>
         <div className="db-shortcuts">
           {[
-            { icon: BarChart3, title: "Backtesting", desc: "Historical strategy practice", href: "/backtest/" },
+            { icon: BarChart3, title: "Backtesting", desc: "Historical strategy practice", href: "/dashboard/backtest/" },
             { icon: BookOpen, title: "Trade Journal", desc: "Log and review trades", href: journalShortcutHref },
             { icon: GraduationCap, title: "Mentorship", desc: "Learn from professionals", href: "/bootcamp/" },
           ].map((item) => (
@@ -590,7 +590,7 @@ export default function GlobalDashboard() {
           <div className="db-panel-head">
             <span className="db-panel-title">Backtest sessions</span>
             {sessions.length > 0 ? (
-              <a href="/backtest/" className={LINK_MUTED}>
+              <a href="/dashboard/backtest/" className={LINK_MUTED}>
                 View all →
               </a>
             ) : null}
@@ -635,7 +635,7 @@ export default function GlobalDashboard() {
           ) : (
             <div className="px-5 py-8 text-center">
               <p className="text-sm text-[rgba(255,255,255,0.40)] mb-3">No sessions yet</p>
-              <a href="/backtest/" className={LINK_MUTED}>
+              <a href="/dashboard/backtest/" className={LINK_MUTED}>
                 Start your first backtest →
               </a>
             </div>

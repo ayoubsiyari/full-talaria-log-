@@ -898,7 +898,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                               </div>
                             </div>
                             {/* New Strategy button – bottom-aligned beside the 50% block */}
-                            <div onClick={()=>{window.location.href="/strategies-lab/";}}
+                            <div onClick={()=>{window.location.href="/dashboard/strategies/";}}
                               style={{flexShrink:0,height:27,width:110,justifyContent:"center",display:"flex",alignItems:"center",gap:5,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.96)",letterSpacing:"0.05em",boxShadow:"0 2px 8px rgba(38,67,247,0.35)",fontFamily:F,whiteSpace:"nowrap",transition:"filter 0.12s"}}
                               onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                               onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>

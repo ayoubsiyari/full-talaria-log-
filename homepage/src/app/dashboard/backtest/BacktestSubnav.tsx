@@ -52,12 +52,12 @@ export function BacktestSubnav({
     setSuffix(a ? `?sessionId=${encodeURIComponent(a)}` : "");
   }, [sessionId]);
 
-  const analyticsHref = `/backtest/analytics${suffix}`;
+  const analyticsHref = `/dashboard/backtest/analytics/${suffix}`;
 
   return (
     <nav className="sd-subnav" aria-label="Backtest sections">
       <a
-        href="/backtest"
+        href="/dashboard/backtest/"
         className={`sd-subnav-link ${active === "sessions" ? "sd-subnav-link--active" : ""}`}
       >
         Sessions
