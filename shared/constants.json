@@ -83,6 +83,12 @@
       "user_monitor": "/api/admin/users/{id}/monitor",
       "user_timeline": "/api/admin/users/{id}/timeline",
       "audit_log": "/api/admin/audit-log",
+      "stripe_customer_portal": "/api/admin/users/{id}/stripe/customer-portal",
+      "stripe_invoices": "/api/admin/users/{id}/stripe/invoices",
+      "subscription_cancel": "/api/admin/subscriptions/{id}/cancel",
+      "subscription_sync_stripe": "/api/admin/subscriptions/{id}/sync-from-stripe",
+      "subscription_reactivate_stripe": "/api/admin/subscriptions/{id}/reactivate-stripe",
+      "subscription_notify_pay": "/api/admin/subscriptions/{id}/notify-payment-reminder",
       "groups": "/api/admin/groups",
       "login_as_user": "/api/admin/login-as-user/{id}"
     }

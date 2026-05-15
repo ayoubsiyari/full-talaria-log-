@@ -10922,6 +10922,7 @@ def _sub_public_dict(s, db):
         "plan_id": s.plan_id,
         "plan_name": plan.name if plan else ("Manual" if s.is_manual else "—"),
         "stripe_subscription_id": s.stripe_subscription_id,
+        "user_stripe_customer_id": (user.stripe_customer_id or None) if user else None,
         "status": s.status,
         "is_manual": bool(s.is_manual),
         "started_at": s.started_at.isoformat() if s.started_at else None,
@@ -11159,7 +11160,7 @@ async def admin_cancel_subscription(sub_id: int, request: Request):
                 import stripe as _stripe_mod
 
                 if isinstance(e, _stripe_mod.error.StripeError):
-                    raise HTTPException(status_code=400, detail=(e.user_message or str(e))[:500])
+                    raise HTTPException(status_code=400, detail=(getattr(e, "user_message", None) or str(e))[:500])
                 raise HTTPException(status_code=400, detail=str(e)[:500])
         elif payload.sync_stripe and not sid and not sub.is_manual:
             stripe_meta["stripe_skipped"] = "no_stripe_subscription_id"
@@ -11234,7 +11235,7 @@ async def admin_sync_subscription_from_stripe(sub_id: int, request: Request):
             import stripe as _stripe_mod
 
             if isinstance(e, _stripe_mod.error.StripeError):
-                raise HTTPException(status_code=400, detail=(e.user_message or str(e))[:500])
+                raise HTTPException(status_code=400, detail=(getattr(e, "user_message", None) or str(e))[:500])
             raise HTTPException(status_code=400, detail=str(e)[:500])
         patch = _stripe_subscription_fields_from_object(ss)
         _apply_stripe_subscription_fields(sub, patch)
@@ -11282,7 +11283,7 @@ async def admin_reactivate_stripe_subscription(sub_id: int, request: Request):
             import stripe as _stripe_mod
 
             if isinstance(e, _stripe_mod.error.StripeError):
-                raise HTTPException(status_code=400, detail=(e.user_message or str(e))[:500])
+                raise HTTPException(status_code=400, detail=(getattr(e, "user_message", None) or str(e))[:500])
             raise HTTPException(status_code=400, detail=str(e)[:500])
         patch = _stripe_subscription_fields_from_object(ss)
         _apply_stripe_subscription_fields(sub, patch)
@@ -11398,7 +11399,7 @@ async def admin_stripe_customer_portal(user_id: int, request: Request):
             import stripe as _stripe_mod
 
             if isinstance(e, _stripe_mod.error.StripeError):
-                raise HTTPException(status_code=400, detail=(e.user_message or str(e))[:500])
+                raise HTTPException(status_code=400, detail=(getattr(e, "user_message", None) or str(e))[:500])
             raise HTTPException(status_code=400, detail=str(e)[:500])
         url = getattr(session, "url", None) or (session.get("url") if isinstance(session, dict) else None)
         if not url:
@@ -11442,7 +11443,7 @@ async def admin_stripe_invoices(user_id: int, request: Request, limit: int = 25)
             import stripe as _stripe_mod
 
             if isinstance(e, _stripe_mod.error.StripeError):
-                raise HTTPException(status_code=400, detail=(e.user_message or str(e))[:500])
+                raise HTTPException(status_code=400, detail=(getattr(e, "user_message", None) or str(e))[:500])
             raise HTTPException(status_code=400, detail=str(e)[:500])
         rows = []
         stream = lst.auto_paging_iter() if hasattr(lst, "auto_paging_iter") else lst.data

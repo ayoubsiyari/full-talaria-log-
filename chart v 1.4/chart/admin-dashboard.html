@@ -1539,6 +1539,38 @@ select { cursor:default; }
   </div>
 </div>
 
+<!-- Cancel subscription (Stripe + notify) -->
+<div class="modal-overlay" id="cancelSubModal">
+  <div class="modal" style="max-width:440px">
+    <h2 id="cancelSubModalTitle">Cancel subscription</h2>
+    <p style="font-size:13px;color:var(--text-secondary);margin:8px 0 14px" id="cancelSubModalSub"></p>
+    <input type="hidden" id="cancelSubId" value="" />
+    <div class="field fg-full" style="margin-bottom:10px">
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:13px">
+        <input type="checkbox" id="cancelSubSyncStripe" checked style="margin-top:3px" />
+        <span>Cancel in <strong>Stripe</strong> (recommended for paid plans). Uncheck to only mark canceled in this database.</span>
+      </label>
+    </div>
+    <div class="field fg-full" style="margin-bottom:10px">
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:13px">
+        <input type="checkbox" id="cancelSubAtPeriodEnd" style="margin-top:3px" />
+        <span>At <strong>period end</strong> only (customer keeps access until <code>current_period_end</code>). If unchecked, Stripe cancels immediately.</span>
+      </label>
+    </div>
+    <div class="field fg-full" style="margin-bottom:6px">
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:13px">
+        <input type="checkbox" id="cancelSubNotify" checked style="margin-top:3px" />
+        <span>Send an <strong>in-app notification</strong> to the user (billing / renew reminder).</span>
+      </label>
+    </div>
+    <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0">Email is not sent from this action; the user sees the message in the bell notifications in the app.</p>
+    <div class="modal-actions" style="margin-top:18px">
+      <button type="button" class="btn" onclick="closeCancelSubModal()">Close</button>
+      <button type="button" class="btn danger" onclick="confirmCancelSubscription()">Confirm cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- User monitor (full sessions / trades / replay / analytics) -->
 <div class="modal-overlay" id="userMonitorModal">
   <div class="modal um-modal">
@@ -8117,7 +8149,9 @@ function renderSubscriptions() {
     const periodEnd = s.current_period_end
       ? new Date(s.current_period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : '∞';
-    const canCancel = s.status === 'active' || s.status === 'trialing';
+    const canCancel = ['active', 'trialing', 'past_due', 'unpaid'].includes(s.status);
+    const hasStripe = !!(s.stripe_subscription_id && !s.is_manual);
+    const hasCustomer = !!(s.user_stripe_customer_id);
     const payBadge = s.needs_payment
       ? '<span class="badge badge-expired" style="background:var(--warn-subtle);color:var(--warn)">Must pay</span>'
       : '<span style="font-size:11px;color:var(--text-muted)">OK</span>';
@@ -8145,8 +8179,13 @@ function renderSubscriptions() {
       <td>${extCell}</td>
       <td>${accessBadge}</td>
       <td style="font-size:12px;color:var(--text-secondary)">${periodEnd}</td>
-      <td><div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;max-width:320px;margin-left:auto">
-        ${canCancel ? `<button class="btn sm danger" onclick="cancelSubscription(${s.id},'${esc(s.user_name)}')">Cancel</button>` : ''}
+      <td><div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;max-width:420px;margin-left:auto">
+        ${canCancel ? `<button class="btn sm danger" onclick="openCancelSubModalById(${s.id})">Cancel</button>` : ''}
+        ${hasStripe ? `<button class="btn sm" type="button" onclick="syncSubStripe(${s.id})" title="Pull latest from Stripe">Sync</button>` : ''}
+        ${hasStripe ? `<button class="btn sm" type="button" onclick="notifyPayReminder(${s.id})" title="In-app payment reminder">Pay nudge</button>` : ''}
+        ${hasStripe && s.cancel_at_period_end ? `<button class="btn sm primary" type="button" onclick="reactivateSubStripe(${s.id})" title="Undo cancel at period end in Stripe">Reactivate</button>` : ''}
+        ${hasCustomer ? `<button class="btn sm" type="button" onclick="stripePortalForUser(${uid})" title="Create Stripe billing portal link">Portal</button>` : ''}
+        ${hasCustomer ? `<button class="btn sm" type="button" onclick="showStripeInvoices(${uid})" title="List recent Stripe invoices">Invoices</button>` : ''}
         ${extBtns}
         <button type="button" class="btn sm" style="border-color:rgba(139,92,246,.3);color:var(--accent)" onclick="openAssignSubModal(${uid},'${esc(s.user_name)}')" title="Add or stack a manual subscription">Manual sub</button>
       </div></td>
@@ -8224,10 +8263,122 @@ async function deletePlan(id, name) {
   catch (e) { toast(e.message, 'err'); }
 }
 
+function openCancelSubModal(s) {
+  if (!s) return;
+  $('cancelSubId').value = String(s.id);
+  $('cancelSubModalTitle').textContent = 'Cancel subscription';
+  $('cancelSubModalSub').textContent = (s.user_name || '') + ' · ' + (s.plan_name || '') + (s.stripe_subscription_id ? ' · Stripe' : ' · No Stripe sub id');
+  const canSync = !!(s.stripe_subscription_id && !s.is_manual);
+  const syncEl = $('cancelSubSyncStripe');
+  if (syncEl) {
+    syncEl.checked = canSync;
+    syncEl.disabled = !canSync;
+  }
+  const endEl = $('cancelSubAtPeriodEnd');
+  if (endEl) endEl.checked = false;
+  const nEl = $('cancelSubNotify');
+  if (nEl) nEl.checked = true;
+  $('cancelSubModal').classList.add('open');
+}
+
+function openCancelSubModalById(id) {
+  const s = allSubscriptions.find(x => x.id === id);
+  if (!s) { toast('Subscription not in list — refresh Subscriptions', 'err'); return; }
+  openCancelSubModal(s);
+}
+
+function closeCancelSubModal() {
+  const m = $('cancelSubModal');
+  if (m) m.classList.remove('open');
+}
+
+async function confirmCancelSubscription() {
+  const id = parseInt($('cancelSubId').value, 10);
+  if (!id) return;
+  const body = {
+    sync_stripe: !!$('cancelSubSyncStripe').checked,
+    cancel_at_period_end: !!$('cancelSubAtPeriodEnd').checked,
+    notify_user: !!$('cancelSubNotify').checked
+  };
+  try {
+    await api('/api/admin/subscriptions/' + id + '/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    toast('Subscription updated', 'ok');
+    closeCancelSubModal();
+    await loadSubscriptionData();
+  } catch (e) { toast(e.message || String(e), 'err'); }
+}
+
+async function syncSubStripe(id) {
+  try {
+    await api('/api/admin/subscriptions/' + id + '/sync-from-stripe', { method: 'POST' });
+    toast('Synced from Stripe', 'ok');
+    await loadSubscriptionData();
+  } catch (e) { toast(e.message || String(e), 'err'); }
+}
+
+async function reactivateSubStripe(id) {
+  if (!confirm('Clear cancel-at-period-end in Stripe for this subscription?')) return;
+  try {
+    await api('/api/admin/subscriptions/' + id + '/reactivate-stripe', { method: 'POST' });
+    toast('Reactivated in Stripe', 'ok');
+    await loadSubscriptionData();
+  } catch (e) { toast(e.message || String(e), 'err'); }
+}
+
+async function notifyPayReminder(id) {
+  if (!confirm('Send an in-app payment reminder notification to this user?')) return;
+  try {
+    await api('/api/admin/subscriptions/' + id + '/notify-payment-reminder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+    toast('Notification sent', 'ok');
+  } catch (e) { toast(e.message || String(e), 'err'); }
+}
+
+async function stripePortalForUser(userId) {
+  try {
+    const data = await api('/api/admin/users/' + userId + '/stripe/customer-portal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ return_url: null })
+    });
+    const url = data.url;
+    if (!url) { toast('No portal URL returned', 'err'); return; }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('Portal link copied — paste to user or open in a new tab', 'ok');
+    } catch (e) {
+      window.prompt('Copy billing portal URL:', url);
+    }
+  } catch (e) { toast(e.message || String(e), 'err'); }
+}
+
+async function showStripeInvoices(userId) {
+  try {
+    const data = await api('/api/admin/users/' + userId + '/stripe/invoices?limit=15');
+    const inv = data.invoices || [];
+    if (!inv.length) { toast(data.message || 'No invoices', 'ok'); return; }
+    const lines = inv.map(function (i) {
+      const cur = String(i.currency || '').toLowerCase();
+      const zeroDec = { jpy: 1, krw: 1, vnd: 1, clp: 1 };
+      const div = zeroDec[cur] ? 1 : 100;
+      const amt = i.total != null && i.currency
+        ? (Number(i.total) / div).toLocaleString(undefined, { maximumFractionDigits: div === 1 ? 0 : 2 }) + ' ' + String(i.currency).toUpperCase()
+        : '—';
+      return (i.number || i.id || '') + ' · ' + (i.status || '') + ' · ' + amt + (i.hosted_invoice_url ? '\n  ' + i.hosted_invoice_url : '');
+    });
+    alert(lines.join('\n\n'));
+  } catch (e) { toast(e.message || String(e), 'err'); }
+}
+
 async function cancelSubscription(id, name) {
-  if (!confirm(`Cancel subscription for ${name}?`)) return;
-  try { await api(`/api/admin/subscriptions/${id}/cancel`, { method: 'POST' }); toast('Subscription canceled', 'ok'); await loadSubscriptionData(); }
-  catch (e) { toast(e.message, 'err'); }
+  openCancelSubModalById(id);
 }
 
 async function grantAccessExtension(userId, days) {
