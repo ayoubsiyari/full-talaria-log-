@@ -7205,9 +7205,9 @@ const TalariaV8bLive = () => {
   }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, riskBasis, slEnabled, slRows, entryRows, tpRows, currentSymbol.type, symbol]);
 
   // Multichart focus change: when the user clicks a different panel, clear the
-  // draft preview from the previously focused iframe (so its line disappears)
-  // and immediately draw the current draft on the new focused iframe (so the
-  // preview reappears on Panel B without waiting for the next form-edit tick).
+  // draft preview on the previously focused surface (host or iframe) so stale
+  // "new order" lines do not stack on executed TP/SL. Then draw the current
+  // draft on the newly focused iframe when the rail is open.
   useEffect(() => {
     if (typeof window === "undefined") return;
     let lastFocusedForDraft = null;
@@ -7219,7 +7219,10 @@ const TalariaV8bLive = () => {
       const prevId = lastFocusedForDraft;
       lastFocusedForDraft = fid;
       multichartDraftDragBusyRef.current = false;
-      if (prevId != null && String(prevId) !== String(fid) && String(prevId) !== String(hid)) {
+      // Always clear the *previous* panel when focus moves, including when the
+      // previous panel was the host (prevId === hid). Excluding hid left host
+      // preview lines visible after switching to an iframe tile.
+      if (prevId != null && String(prevId) !== String(fid)) {
         try { grid.runCommand("clearDraftPreview", null, { panelId: prevId }).catch(() => {}); } catch (_) {}
       }
       if (!orderPanelOpen) return;
