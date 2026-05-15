@@ -400,6 +400,7 @@ import {
   buildNodesFromTemplate,
   TemplatePickerModal,
   StrategyBuilderModal,
+  MKT_CAT_OPTS,
 } from "../strategy-lab-v9/strategyBuilderModule.jsx";
 
 
