@@ -7,6 +7,8 @@ import {
   buildSessionJournalCsvText,
   downloadUtf8Csv,
   generateSessionJournalPlaceholders,
+  formatJournalCellForDisplay,
+  formatJournalCellRawTitle,
 } from "./sessionJournalUtils";
 
 // ── Color utilities ──────────────────────────────────────────────────────────
@@ -5305,11 +5307,16 @@ const TalariaV8b = () => {
                           <tbody>
                             {sessionJournalRows.map((row, ri) => (
                               <tr key={ri} style={{ borderBottom: `1px solid ${c.br}` }}>
-                                {journalCols.map((col) => (
-                                  <td key={col} style={{ padding: "8px 12px", color: c.ts, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row[col] != null ? String(row[col]) : ""}>
-                                    {row[col] != null && row[col] !== "" ? String(row[col]) : "—"}
-                                  </td>
-                                ))}
+                                {journalCols.map((col) => {
+                                  const raw = row[col];
+                                  const display = formatJournalCellForDisplay(raw, col);
+                                  const show = display !== "";
+                                  return (
+                                    <td key={col} style={{ padding: "8px 12px", color: c.ts, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={raw != null && raw !== "" ? formatJournalCellRawTitle(raw, col) : ""}>
+                                      {show ? display : "—"}
+                                    </td>
+                                  );
+                                })}
                               </tr>
                             ))}
                           </tbody>

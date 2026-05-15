@@ -22,6 +22,127 @@ export function flattenJournalApiTrade(item: JournalApiTradeItem): Record<string
   };
 }
 
+/** Tooltip — avoid multi‑MB base64 in DOM title; JSON for objects/variables. */
+export function formatJournalCellRawTitle(val: unknown, columnKey?: string): string {
+  if (val == null) return "";
+  const key = columnKey || "";
+  if (typeof val === "string") {
+    if ((/screenshot|rail/i.test(key) && val.length > 120) || isLikelyBase64ImageString(val)) {
+      const kb = Math.max(1, Math.round(val.length / 1024));
+      return `Image / binary payload (~${kb} KB). Full value omitted in tooltip — use chart trade details or CSV export.`;
+    }
+    return val;
+  }
+  if (Array.isArray(val)) {
+    if (/screenshot|rail/i.test(key)) {
+      return `${val.length} row(s) of image / capture data (tooltip truncated — open trade in chart for full view).`;
+    }
+    try {
+      const s = JSON.stringify(val);
+      return s.length > 4000 ? `${s.slice(0, 3997)}…` : s;
+    } catch {
+      return "";
+    }
+  }
+  if (typeof val === "object") {
+    try {
+      const s = JSON.stringify(val);
+      return s.length > 4000 ? `${s.slice(0, 3997)}…` : s;
+    } catch {
+      return "";
+    }
+  }
+  return String(val);
+}
+
+function isLikelyBase64ImageString(s: string): boolean {
+  const t = s.trim();
+  if (/^data:image\//i.test(t)) return t.length > 80;
+  if (t.length < 400) return false;
+  const head = t.slice(0, 240).replace(/\s/g, "");
+  return /^[A-Za-z0-9+/=]+$/.test(head);
+}
+
+/**
+ * Table display: max 2 decimal places for numbers, JSON for objects,
+ * compact labels for screenshots (payload can include entry/exit/rail images),
+ * readable blobs for strategy PRE/POST variable maps.
+ */
+export function formatJournalCellForDisplay(val: unknown, columnKey?: string): string {
+  if (val == null) return "";
+  const key = columnKey || "";
+  const shotKey = /screenshot|rail/i.test(key);
+
+  if (typeof val === "string") {
+    const t = val.trim();
+    if (t === "") return "";
+    if (shotKey || isLikelyBase64ImageString(t)) {
+      const kb = Math.max(1, Math.round(t.length / 1024));
+      const label = key ? key.replace(/_/g, " ") : "Image";
+      return `[${label} · ~${kb} KB]`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(t)) {
+      return t.length >= 19 ? t.slice(0, 19) : t;
+    }
+    if (/^-?\d+$/.test(t)) return t;
+    const n = Number(t);
+    if (
+      Number.isFinite(n) &&
+      /^-?\d*\.?\d+([eE][+-]?\d+)?$/.test(t) &&
+      !/^\d{4}-\d{2}-\d{2}/.test(t)
+    ) {
+      return new Intl.NumberFormat("en-US", {
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 0,
+        useGrouping: false,
+      }).format(n);
+    }
+    return t;
+  }
+
+  if (Array.isArray(val)) {
+    if (shotKey) {
+      if (val.length === 0) return "";
+      const first = val[0];
+      if (first && typeof first === "object" && "dataUrl" in (first as object)) {
+        return `[${val.length} chart image(s)]`;
+      }
+      return `[${val.length} item(s)]`;
+    }
+    try {
+      const s = JSON.stringify(val);
+      const max = /tp|active|leg|partial|split|scaled|exit/i.test(key) ? 520 : 280;
+      return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+    } catch {
+      return "";
+    }
+  }
+
+  if (typeof val === "boolean") return val ? "true" : "false";
+  if (typeof val === "bigint") return val.toString();
+
+  if (typeof val === "object") {
+    try {
+      const s = JSON.stringify(val);
+      const max = /variable|playbook|post_trade|postTrade|strategy/i.test(key) ? 360 : 240;
+      return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+    } catch {
+      return "";
+    }
+  }
+
+  if (typeof val === "number") {
+    if (!Number.isFinite(val)) return String(val);
+    return new Intl.NumberFormat("en-US", {
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+      useGrouping: false,
+    }).format(val);
+  }
+
+  return String(val);
+}
+
 export function buildSessionJournalColumns(rows: Record<string, unknown>[]): string[] {
   const keys = new Set<string>();
   (rows || []).forEach((r) => {
@@ -44,6 +165,16 @@ export function buildSessionJournalColumns(rows: Record<string, unknown>[]): str
     "tags",
     "notes",
     "screenshots",
+    "post_trade_notes",
+    "postTradeNotes",
+    "strategy_variables",
+    "strategyVariables",
+    "post_strategy_variables",
+    "postStrategyVariables",
+    "entryScreenshot",
+    "exitScreenshot",
+    "entryScreenshots",
+    "railScreenshots",
     "tp",
     "sl",
     "mae",
@@ -75,6 +206,16 @@ export function buildSessionJournalColumns(rows: Record<string, unknown>[]): str
       "tags",
       "notes",
       "screenshots",
+      "post_trade_notes",
+      "postTradeNotes",
+      "strategy_variables",
+      "strategyVariables",
+      "post_strategy_variables",
+      "postStrategyVariables",
+      "entryScreenshot",
+      "exitScreenshot",
+      "entryScreenshots",
+      "railScreenshots",
       "tp",
       "sl",
       "mae",

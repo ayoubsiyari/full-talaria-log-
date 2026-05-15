@@ -9,6 +9,8 @@ import {
   buildSessionJournalCsvText,
   downloadUtf8Csv,
   generateSessionJournalPlaceholders,
+  formatJournalCellForDisplay,
+  formatJournalCellRawTitle,
   type JournalApiTradeItem,
 } from "./sessionJournalUtils";
 
@@ -1742,8 +1744,9 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                       {journalRows.map((row, ri) => (
                         <tr key={ri} style={{ borderBottom: `1px solid ${c.br}` }}>
                           {cols.map(col => {
-                            const v = row[col];
-                            const show = v != null && v !== "";
+                            const raw = row[col];
+                            const display = formatJournalCellForDisplay(raw, col);
+                            const show = display !== "";
                             return (
                               <td
                                 key={col}
@@ -1755,9 +1758,9 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
                                   textOverflow: "ellipsis",
                                   whiteSpace: "nowrap",
                                 }}
-                                title={show ? String(v) : ""}
+                                title={raw != null && raw !== "" ? formatJournalCellRawTitle(raw, col) : ""}
                               >
-                                {show ? String(v) : "—"}
+                                {show ? display : "—"}
                               </td>
                             );
                           })}

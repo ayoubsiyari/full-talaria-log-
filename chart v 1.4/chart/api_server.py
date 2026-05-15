@@ -100,6 +100,8 @@ def _load_dotenv_files_from_chart_dir() -> None:
 
 _load_dotenv_files_from_chart_dir()
 
+import chart_redis
+
 from analytics_engine import (
     normalize_trades,
     filter_by_instrument,
@@ -1152,7 +1154,7 @@ SUPPORT_BODY_MAX = 8000
 SUPPORT_IMAGE_MAX_BYTES = max(1024, int(os.getenv("SUPPORT_IMAGE_MAX_BYTES", str(2 * 1024 * 1024))))
 SUPPORT_IMAGE_ALLOWED_MIME = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp"})
 
-# Anti-spam: sliding windows per user id (in-memory; each worker has its own counters).
+# Anti-spam / auth limits: Redis sliding window when REDIS_URL is set (shared across workers); else in-memory.
 SUPPORT_RATE_MSG_PER_MINUTE = max(1, int(os.getenv("SUPPORT_RATE_MSG_PER_MINUTE", "30")))
 SUPPORT_RATE_THREAD_PER_HOUR = max(1, int(os.getenv("SUPPORT_RATE_THREAD_PER_HOUR", "10")))
 _support_msg_times: dict[int, deque] = {}
@@ -1165,13 +1167,14 @@ def _support_rate_exempt(user: User) -> bool:
     return getattr(user, "role", None) == "admin"
 
 
-def _sliding_window_allow(bucket: dict[int, deque], uid: int, max_events: int, window_sec: float) -> bool:
+def _sliding_window_allow_local(bucket: dict, key, lock: threading.Lock, max_events: int, window_sec: float) -> bool:
+    """In-memory sliding window (per process). key is int (user id) or str (ip)."""
     now = time.monotonic()
-    with _support_rate_lock:
-        q = bucket.get(uid)
+    with lock:
+        q = bucket.get(key)
         if q is None:
             q = deque()
-            bucket[uid] = q
+            bucket[key] = q
         cutoff = now - window_sec
         while q and q[0] < cutoff:
             q.popleft()
@@ -1181,15 +1184,50 @@ def _sliding_window_allow(bucket: dict[int, deque], uid: int, max_events: int, w
         return True
 
 
+def _redis_sliding_allow_or_local(
+    redis_key: str,
+    bucket: dict,
+    bucket_key,
+    lock: threading.Lock,
+    max_events: int,
+    window_sec: float,
+    label: str,
+) -> bool:
+    if chart_redis.get_client() is not None:
+        try:
+            return chart_redis.sliding_window_allow(redis_key, max_events, window_sec)
+        except Exception as exc:
+            print(f"⚠️ Redis rate limit fallback ({label}): {exc}")
+    return _sliding_window_allow_local(bucket, bucket_key, lock, max_events, window_sec)
+
+
 def _support_rate_allow_message(uid: int) -> bool:
-    return _sliding_window_allow(_support_msg_times, uid, SUPPORT_RATE_MSG_PER_MINUTE, 60.0)
+    rk = f"{chart_redis.KEY_PREFIX}rl:support:msg:{uid}"
+    return _redis_sliding_allow_or_local(
+        rk,
+        _support_msg_times,
+        uid,
+        _support_rate_lock,
+        SUPPORT_RATE_MSG_PER_MINUTE,
+        60.0,
+        "support_msg",
+    )
 
 
 def _support_rate_allow_new_thread(uid: int) -> bool:
-    return _sliding_window_allow(_support_thread_times, uid, SUPPORT_RATE_THREAD_PER_HOUR, 3600.0)
+    rk = f"{chart_redis.KEY_PREFIX}rl:support:thread:{uid}"
+    return _redis_sliding_allow_or_local(
+        rk,
+        _support_thread_times,
+        uid,
+        _support_rate_lock,
+        SUPPORT_RATE_THREAD_PER_HOUR,
+        3600.0,
+        "support_thread",
+    )
 
 
-# Public GET /api/affiliate/click — limit abuse (cookie spam / redirect probing). Per worker process.
+# Public GET /api/affiliate/click — limit abuse (cookie spam / redirect probing).
 AFFILIATE_CLICK_MAX_PER_MINUTE = max(10, int(os.getenv("AFFILIATE_CLICK_MAX_PER_MINUTE", "90")))
 _affiliate_click_ip_times: dict[str, deque] = {}
 _affiliate_click_rate_lock = threading.Lock()
@@ -1208,22 +1246,20 @@ def _client_ip_for_rate_limit(request: Request) -> str:
 
 
 def _affiliate_click_rate_allow(ip: str) -> bool:
-    now = time.monotonic()
-    with _affiliate_click_rate_lock:
-        q = _affiliate_click_ip_times.get(ip)
-        if q is None:
-            q = deque()
-            _affiliate_click_ip_times[ip] = q
-        cutoff = now - 60.0
-        while q and q[0] < cutoff:
-            q.popleft()
-        if len(q) >= AFFILIATE_CLICK_MAX_PER_MINUTE:
-            return False
-        q.append(now)
-        return True
+    safe = ip.replace(":", "_")[:200]
+    rk = f"{chart_redis.KEY_PREFIX}rl:affiliate:{safe}"
+    return _redis_sliding_allow_or_local(
+        rk,
+        _affiliate_click_ip_times,
+        ip,
+        _affiliate_click_rate_lock,
+        AFFILIATE_CLICK_MAX_PER_MINUTE,
+        60.0,
+        "affiliate",
+    )
 
 
-# Brute-force / credential-stuffing mitigation (per worker process). Tune via env.
+# Brute-force / credential-stuffing mitigation. Tune via env.
 AUTH_LOGIN_MAX_PER_MINUTE = max(5, int(os.getenv("AUTH_LOGIN_MAX_PER_MINUTE", "30")))
 AUTH_SIGNUP_MAX_PER_MINUTE = max(3, int(os.getenv("AUTH_SIGNUP_MAX_PER_MINUTE", "12")))
 _auth_rate_lock = threading.Lock()
@@ -1231,20 +1267,25 @@ _auth_login_ip_times: dict[str, deque] = {}
 _auth_signup_ip_times: dict[str, deque] = {}
 
 
-def _auth_ip_rate_allow(bucket: dict[str, deque], ip: str, max_n: int, window_sec: float = 60.0) -> bool:
-    now = time.monotonic()
-    with _auth_rate_lock:
-        q = bucket.get(ip)
-        if q is None:
-            q = deque()
-            bucket[ip] = q
-        cutoff = now - window_sec
-        while q and q[0] < cutoff:
-            q.popleft()
-        if len(q) >= max_n:
-            return False
-        q.append(now)
-        return True
+def _auth_ip_rate_allow(
+    bucket: dict[str, deque],
+    ip: str,
+    max_n: int,
+    window_sec: float = 60.0,
+    *,
+    redis_scope: str = "login",
+) -> bool:
+    safe = ip.replace(":", "_")[:200]
+    rk = f"{chart_redis.KEY_PREFIX}rl:auth:{redis_scope}:{safe}"
+    return _redis_sliding_allow_or_local(
+        rk,
+        bucket,
+        ip,
+        _auth_rate_lock,
+        max_n,
+        window_sec,
+        f"auth_{redis_scope}",
+    )
 
 
 def _support_user_can_access_thread(user: User, thread: SupportThread) -> bool:
@@ -5674,7 +5715,9 @@ def _enqueue_binary_build_job(file_id: int, file_path: Path, original_filename: 
         db.add(job)
         db.commit()
         db.refresh(job)
-        return int(job.id)
+        jid = int(job.id)
+        chart_redis.signal_binary_job_queued()
+        return jid
     finally:
         db.close()
 
@@ -6408,7 +6451,10 @@ def _run_binary_build_worker():
     while True:
         did_work = _process_next_binary_build_job()
         if not did_work:
-            time.sleep(poll_seconds)
+            if chart_redis.get_client() is not None:
+                chart_redis.brpop_wake(poll_seconds)
+            else:
+                time.sleep(poll_seconds)
 
 # Startup background behavior
 if APP_ROLE == "worker" and BINARY_BUILD_MODE == "queue":
@@ -6420,7 +6466,15 @@ elif APP_ROLE == "api":
 
 @app.get("/api/status")
 async def api_status():
-    return {"message": "Trading Chart API is running", "version": "1.0"}
+    out: dict = {"message": "Trading Chart API is running", "version": "1.0"}
+    rp = chart_redis.ping_ok()
+    if rp is True:
+        out["redis"] = "ok"
+    elif rp is False:
+        out["redis"] = "unavailable"
+    else:
+        out["redis"] = "not_configured"
+    return out
 
 
 def _finnhub_api_key() -> str:
@@ -7487,7 +7541,7 @@ def _dataset_settings_public_dict(settings: DatasetSettings | None, file_obj: CS
 @app.post("/api/auth/signup")
 async def auth_signup(payload: SignUpIn, request: Request):
     ip = _client_ip_for_rate_limit(request)
-    if not _auth_ip_rate_allow(_auth_signup_ip_times, ip, AUTH_SIGNUP_MAX_PER_MINUTE):
+    if not _auth_ip_rate_allow(_auth_signup_ip_times, ip, AUTH_SIGNUP_MAX_PER_MINUTE, redis_scope="signup"):
         raise HTTPException(
             status_code=429,
             detail="Too many signup attempts. Please try again later.",

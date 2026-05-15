@@ -17,3 +17,5 @@ binance-historical-data==0.1.14
 yfinance==0.2.55
 psutil==6.1.0
 numpy==1.26.4
+redis==5.0.8
+fakeredis==2.23.3
