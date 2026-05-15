@@ -7629,21 +7629,58 @@ class DrawingToolsManager {
     }
 
     /**
-     * Show tooltip for path/brush drawing — same shell as V9 toolbar tooltips (e.g. Object Tree hover).
-     * Styled via `.path-drawing-hint` in modules/v9-chrome.css (matches [data-tooltip]::after).
+     * Path/polyline hint — matches V9 global toolbar tooltip (TalariaV8bLive.jsx `tipData`):
+     * c.el background, c.brH border, 2px left gradient (c.acL), padding 3px 8px 3px 11px, Exo 2 10px/600.
      */
     showPathTooltip() {
         this.hidePathTooltip();
 
-        const el = document.createElement('div');
-        el.id = 'path-drawing-tooltip';
-        el.className = 'path-drawing-hint';
-        el.setAttribute('role', 'status');
-        el.setAttribute('aria-live', 'polite');
-        el.textContent = 'Right click to end';
+        const light = typeof document !== 'undefined'
+            && document.body
+            && document.body.classList.contains('light-mode');
+        const bg = light ? '#E8EBF6' : '#0F1119';
+        const brH = light ? 'rgba(0,5,40,0.26)' : 'rgba(140,160,255,0.12)';
+        const tx = light ? 'rgba(0,0,0,0.92)' : 'rgba(255,255,255,0.92)';
+        const acL = light ? '#2F55E8' : '#4A6AFF';
 
-        document.body.appendChild(el);
-        this.pathTooltip = el;
+        const wrap = document.createElement('div');
+        wrap.id = 'path-drawing-tooltip';
+        wrap.setAttribute('role', 'status');
+        wrap.setAttribute('aria-live', 'polite');
+        wrap.style.cssText = [
+            'position:fixed',
+            'bottom:50px',
+            'left:50%',
+            'transform:translateX(-50%)',
+            'z-index:100002',
+            'pointer-events:none',
+            'white-space:nowrap',
+            'background:' + bg,
+            'border:1px solid ' + brH,
+            "font-family:'Exo 2',sans-serif",
+            'font-size:10px',
+            'font-weight:600',
+            'color:' + tx,
+            'padding:3px 8px 3px 11px',
+            'box-shadow:0 4px 14px rgba(0,0,0,0.55)',
+        ].join(';');
+
+        const stripe = document.createElement('div');
+        stripe.style.cssText = [
+            'position:absolute',
+            'left:0',
+            'top:0',
+            'bottom:0',
+            'width:2px',
+            'pointer-events:none',
+            'background:linear-gradient(180deg,transparent,' + acL + ',transparent)',
+        ].join(';');
+
+        wrap.appendChild(stripe);
+        wrap.appendChild(document.createTextNode('Right click to end'));
+
+        document.body.appendChild(wrap);
+        this.pathTooltip = wrap;
     }
 
     /**

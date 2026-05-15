@@ -518,28 +518,6 @@ html, body, #chart-container, .container, .chart-wrapper, #panels-container {
     pointer-events: none;
 }
 
-/* Path / polyline “Right click to end” — same visual shell as toolbar tooltips ([data-tooltip]::after) */
-.path-drawing-hint {
-    position: fixed;
-    bottom: 50px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 100002;
-    pointer-events: none;
-    background: var(--v9-el, #0f1119) !important;
-    border: 1px solid var(--v9-brH, rgba(140, 160, 255, 0.12)) !important;
-    border-left: 2px solid var(--v9-acL, #4a6aff) !important;
-    color: var(--v9-tx, rgba(255, 255, 255, 0.88)) !important;
-    font-family: var(--v9-font, 'Exo 2', sans-serif) !important;
-    font-size: 10px !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.02em !important;
-    border-radius: 2px !important;
-    padding: 4px 8px !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-    white-space: nowrap;
-}
-
 /* ---------- SCROLLBARS ---------- */
 * { scrollbar-width: thin; scrollbar-color: var(--v9-brH) transparent; }
 *::-webkit-scrollbar { width: 8px; height: 8px; }

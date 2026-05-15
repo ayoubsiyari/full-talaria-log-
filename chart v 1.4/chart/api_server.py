@@ -7852,6 +7852,12 @@ def _support_user_detail_dict(db, u: User, *, admin_style: bool) -> dict:
     d["session_count"] = int(sess_row.cnt or 0) if sess_row else 0
     la = sess_row.last_active if sess_row else None
     d["last_active_at"] = la.isoformat() if la else None
+    tc = (
+        db.query(func.count(TradingSession.id))
+        .filter(TradingSession.user_id == u.id)
+        .scalar()
+    )
+    d["trading_sessions_count"] = int(tc or 0)
     now = datetime.utcnow()
     expired = u.access_expires_at and u.access_expires_at < now
     d["account_status"] = "banned" if not u.is_active else ("expired" if expired else "active")
@@ -8411,12 +8417,19 @@ async def admin_list_users(request: Request):
             func.max(UserSession.last_active_at).label("last_active"),
         ).group_by(UserSession.user_id).all()
         session_map = {s.user_id: {"count": s.cnt, "last_active": s.last_active} for s in sessions}
+        ts_rows = (
+            db.query(TradingSession.user_id, func.count(TradingSession.id).label("cnt"))
+            .group_by(TradingSession.user_id)
+            .all()
+        )
+        trading_count_map = {int(row[0]): int(row[1]) for row in ts_rows}
         result = []
         now = datetime.utcnow()
         for u in users:
             d = _user_public_dict(u, db)
             info = session_map.get(u.id, {})
             d["session_count"] = info.get("count", 0)
+            d["trading_sessions_count"] = trading_count_map.get(int(u.id), 0)
             la = info.get("last_active")
             d["last_active_at"] = la.isoformat() if la else None
             expired = u.access_expires_at and u.access_expires_at < now
@@ -8515,6 +8528,10 @@ async def admin_user_monitor(user_id: int, request: Request):
             .filter(TradingSessionJournalTrade.user_id == user_id)
             .scalar()
             or 0
+        )
+
+        total_trading_sessions = int(
+            db.query(func.count(TradingSession.id)).filter(TradingSession.user_id == user_id).scalar() or 0
         )
 
         ts_list = (
@@ -8642,12 +8659,13 @@ async def admin_user_monitor(user_id: int, request: Request):
             "summary": {
                 "chart_connections": len(chart_connections),
                 "last_chart_activity_at": last_chart_activity.isoformat() if last_chart_activity else None,
-                "trading_sessions_count": len(ts_list),
-                "total_trading_sessions_in_response": len(ts_list),
+                "trading_sessions_total": total_trading_sessions,
+                "trading_sessions_shown": len(ts_list),
+                "trading_sessions_list_cap": MAX_TRADING_SESSIONS,
                 "journal_trades_total": total_journal_trades,
                 "replay_elapsed_days_sum": round(total_replay_elapsed_days, 2) if total_replay_elapsed_days else 0.0,
                 "replay_sessions_with_elapsed": replay_sessions_counted,
-                "note": "last_chart_activity_at is max(UserSession.last_active_at). Replay elapsed_days summed from replay.dashboard where present.",
+                "note": "last_chart_activity_at is max(UserSession.last_active_at). trading_sessions_total counts all TradingSession rows (same as dashboard). trading_sessions_shown is capped for this response. Replay elapsed_days summed from replay.dashboard where present.",
             },
             "chart_connections": chart_connections,
             "trading_sessions": trading_sessions_out,

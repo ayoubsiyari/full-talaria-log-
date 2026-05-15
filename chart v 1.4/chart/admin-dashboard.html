@@ -2050,7 +2050,8 @@ select { cursor:default; }
                   <th>Subscription</th>
                   <th onclick="sortBy('access_expires_at')">Access Expires</th>
                   <th onclick="sortBy('last_active_at')">Last Active</th>
-                  <th onclick="sortBy('session_count')">Sessions</th>
+                  <th onclick="sortBy('trading_sessions_count')" title="Saved backtest / trading sessions (same as dashboard)">Backtests</th>
+                  <th onclick="sortBy('session_count')" title="Concurrent chart browser connections (UserSession)">Chart devices</th>
                   <th>Actions</th>
                 </tr></thead>
                 <tbody id="usersBody"></tbody>
@@ -3336,7 +3337,8 @@ function renderSupportUserCRM(req) {
       <div class="crm-item"><div class="k">User ID</div><div class="v">${esc(String(req.id))}</div></div>
       <div class="crm-item"><div class="k">Account</div><div class="v">${esc(req.account_status || '')}</div></div>
       <div class="crm-item"><div class="k">Role</div><div class="v">${esc(req.role || '')}</div></div>
-      <div class="crm-item"><div class="k">Sessions</div><div class="v">${esc(String(req.session_count ?? '—'))} devices · last active ${esc(req.last_active_at ? timeAgo(req.last_active_at) : '—')}</div></div>
+      <div class="crm-item"><div class="k">Backtest sessions</div><div class="v">${esc(String(req.trading_sessions_count ?? '—'))} saved (TradingSession)</div></div>
+      <div class="crm-item"><div class="k">Chart devices</div><div class="v">${esc(String(req.session_count ?? '—'))} / max · last active ${esc(req.last_active_at ? timeAgo(req.last_active_at) : '—')}</div></div>
       <div class="crm-item"><div class="k">Journal access</div><div class="v">${req.has_journal_access ? 'Yes' : 'No'}</div></div>
       <div class="crm-item"><div class="k">Access expires</div><div class="v">${esc(req.access_expires_at || '—')}</div></div>
       <div class="crm-item" style="grid-column:1/-1"><div class="k">Subscription</div><div class="v">${esc(subLine)}</div></div>
@@ -3842,6 +3844,7 @@ function renderUsers() {
       <td style="font-size:12px">${subBadge}</td>
       <td style="font-size:12px;color:var(--text-secondary)">${expires}</td>
       <td style="font-size:12px;color:var(--text-muted)">${lastActive}</td>
+      <td style="text-align:center;font-weight:700;font-size:13px;font-variant-numeric:tabular-nums">${u.trading_sessions_count != null ? u.trading_sessions_count : 0}</td>
       <td style="text-align:center;font-weight:600;font-size:12px">${u.session_count || 0}<span style="color:var(--text-muted);font-weight:400">/${u.max_sessions || 1}</span></td>
       <td><div style="display:flex;gap:4px;flex-wrap:wrap">
         <button type="button" class="btn sm primary" onclick="openUserMonitor(${u.id})" title="Sessions, trades, replay, analytics">Monitor</button>
@@ -3940,7 +3943,14 @@ function renderUserMonitorContent(data) {
   parts.push(umKpi('Created', u.created_at ? esc(new Date(u.created_at).toLocaleString()) : '—'));
   parts.push(umKpi('Last chart activity', s.last_chart_activity_at ? esc(timeAgo(s.last_chart_activity_at)) + ' · ' + esc(new Date(s.last_chart_activity_at).toLocaleString()) : 'Never'));
   parts.push(umKpi('Chart connections', umFmtNum(s.chart_connections, 0)));
-  parts.push(umKpi('Backtest sessions (list)', umFmtNum(s.trading_sessions_count, 0)));
+  const tsTot = s.trading_sessions_total != null ? s.trading_sessions_total : null;
+  const tsShown = s.trading_sessions_shown != null ? s.trading_sessions_shown : null;
+  const tsCap = s.trading_sessions_list_cap != null ? s.trading_sessions_list_cap : null;
+  let backtestLine = umFmtNum(tsTot, 0);
+  if (tsTot != null && tsShown != null && tsCap != null && tsTot > tsShown) {
+    backtestLine += ' <span style="font-size:10px;color:var(--text-muted)">(newest ' + tsShown + ' below)</span>';
+  }
+  parts.push(umKpi('Backtest sessions (saved)', backtestLine));
   parts.push(umKpi('Journal trades (total)', umFmtNum(s.journal_trades_total, 0)));
   parts.push(umKpi('Replay days (sum)', umFmtNum(s.replay_elapsed_days_sum, 2) + (s.replay_sessions_with_elapsed ? ' <span style="font-size:10px;color:var(--text-muted)">(' + s.replay_sessions_with_elapsed + ' sessions)</span>' : '')));
   const sub = u.subscription;
@@ -3985,6 +3995,9 @@ function renderUserMonitorContent(data) {
 
   const tss = data.trading_sessions || [];
   parts.push('<div class="um-section"><div class="um-section-k">Trading / backtest sessions</div>');
+  if (s.trading_sessions_total != null && s.trading_sessions_shown != null && s.trading_sessions_total > s.trading_sessions_shown) {
+    parts.push('<p class="um-note">Showing newest ' + esc(String(s.trading_sessions_shown)) + ' of ' + esc(String(s.trading_sessions_total)) + ' saved sessions.</p>');
+  }
   if (!tss.length) parts.push('<p style="color:var(--text-muted)">No sessions.</p>');
   else {
     tss.forEach(function (ts) {
