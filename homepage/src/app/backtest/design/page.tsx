@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 
-export default function LegacyBacktestDesignRedirect() {
+function LegacyBacktestDesignRedirectInner() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -23,5 +23,13 @@ export default function LegacyBacktestDesignRedirect() {
     >
       Redirecting…
     </div>
+  );
+}
+
+export default function LegacyBacktestDesignRedirect() {
+  return (
+    <Suspense fallback={<div style={{ padding: 24, color: "#e5e7eb", background: "#07080e", minHeight: "100vh" }}>Redirecting…</div>}>
+      <LegacyBacktestDesignRedirectInner />
+    </Suspense>
   );
 }

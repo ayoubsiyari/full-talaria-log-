@@ -275,7 +275,7 @@ export default function Sidebar() {
           {isCollapsed ? (
             <Tooltip content="Strategies Lab" position="right">
               <a
-                href="/strategies-lab/"
+                href="/dashboard/strategies/"
                 className="text-cyan-100/55 flex items-center justify-center px-2 py-2 rounded-lg hover:bg-cyan-500/10 hover:text-cyan-50 transition-all duration-300"
               >
                 <ClipboardList className="h-5 w-5" />
@@ -283,7 +283,7 @@ export default function Sidebar() {
             </Tooltip>
           ) : (
             <a
-              href="/strategies-lab/"
+              href="/dashboard/strategies/"
               className="text-cyan-100/55 flex items-center px-3 py-2 rounded-lg hover:bg-cyan-500/10 hover:text-cyan-50 hover:translate-x-1 transition-all duration-300"
             >
               <ClipboardList className="h-5 w-5" />

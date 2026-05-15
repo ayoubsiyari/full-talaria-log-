@@ -471,7 +471,7 @@ export default function Dashboard() {
 
         {/* ═══ QUICK ACTIONS ═══ */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
-          <QuickActionCard icon={BarChart3} title="Backtesting" description="Practice strategies" href="/backtest" color="bg-cyan-600/80" />
+          <QuickActionCard icon={BarChart3} title="Backtesting" description="Practice strategies" href="/dashboard/backtest/" color="bg-cyan-600/80" />
           <QuickActionCard icon={BookOpen} title="Trade Journal" description="Log your trades" href="/journal/journal" color="bg-indigo-600/80" />
           <QuickActionCard icon={Upload} title="Import Trades" description="CSV, Excel & more" href="/journal/import-trades" color="bg-violet-600/80" />
           <QuickActionCard icon={Brain} title="AI Assistant" description="Get trading insights" href="/journal/ai-dashboard" color="bg-cyan-600/80" />
@@ -689,7 +689,7 @@ export default function Dashboard() {
           <div className="mb-6 rounded-xl bg-cyan-950/40/[0.03] border border-white/[0.08] p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-white/70">Recent Backtest Sessions</h3>
-              <a href="/backtest" className="text-xs text-cyan-300/70 hover:text-cyan-300 transition-colors">View all &rarr;</a>
+              <a href="/dashboard/backtest/" className="text-xs text-cyan-300/70 hover:text-cyan-300 transition-colors">View all &rarr;</a>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {backtestSessions.map(s => (
