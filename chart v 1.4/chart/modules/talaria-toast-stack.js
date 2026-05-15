@@ -122,6 +122,9 @@
     const api = {
         relayout: scheduleRelayout,
 
+        /** Same vertical anchor as stacked toasts (px from viewport bottom). For OHLC rollback hover tooltip, etc. */
+        anchorBottomPx: baseBottomPx,
+
         setPinned(key, el) {
             if (!key || !el) return function () {};
             const prev = pinned.get(key);

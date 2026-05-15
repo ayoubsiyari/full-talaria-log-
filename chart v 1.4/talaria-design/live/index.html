@@ -585,34 +585,41 @@
         #panels-container .nav-integrity-badge.disabled .nav-badge-icon {
             color: #4ade80;
         }
-        /* Replay nav hint — same chrome as path brush hint + Objects Tree panel (V9 sliding panel). */
+        /* Replay rollback hover — shell matches path hint / bottom toasts (Exo 2, #0F1119, left stripe). Bottom aligned via JS (__TalariaToastStack.anchorBottomPx) when present. */
         #chart-container #chartWrapper .nav-badge-tooltip,
         #panels-container .nav-badge-tooltip {
             position: fixed;
             left: 50%;
-            bottom: 50px;
+            bottom: 100px;
             top: auto;
             transform: translateX(-50%);
             margin: 0;
-            padding: 10px 18px 9px 14px;
-            overflow: hidden;
-            background: var(--sp-bg, #0a0c14);
-            color: var(--sp-text, rgba(255, 255, 255, 0.92));
-            border: 1px solid rgba(140, 160, 255, 0.22);
-            border-left: 3px solid rgba(74, 106, 255, 0.95);
-            border-radius: 6px;
-            font-size: 13px;
-            line-height: 1.25;
-            font-weight: 700;
-            letter-spacing: 0.02em;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            white-space: nowrap;
-            z-index: 10001;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+            padding: 5px 11px 5px 14px;
+            overflow: visible;
+            background: #0f1119;
+            color: rgba(255, 255, 255, 0.92);
+            border: 1px solid rgba(140, 160, 255, 0.12);
+            border-radius: 0;
+            font-size: 11px;
+            line-height: 1.35;
+            font-weight: 600;
+            font-family: "Exo 2", sans-serif;
+            white-space: normal;
+            max-width: min(92vw, 360px);
+            text-align: center;
+            box-sizing: border-box;
+            z-index: 100065;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
             transition: opacity 0.12s, visibility 0.12s;
+        }
+        body.light-mode #chart-container #chartWrapper .nav-badge-tooltip,
+        body.light-mode #panels-container .nav-badge-tooltip {
+            background: #e8ebf6;
+            color: rgba(0, 0, 0, 0.92);
+            border-color: rgba(0, 5, 40, 0.26);
         }
         #chart-container #chartWrapper .nav-badge-tooltip::after,
         #panels-container .nav-badge-tooltip::after {
@@ -624,11 +631,15 @@
             content: "";
             position: absolute;
             left: 0;
-            right: 0;
             top: 0;
-            height: 2px;
-            background: linear-gradient(90deg, rgba(38, 67, 247, 1), rgba(74, 106, 255, 1), rgba(38, 67, 247, 1));
+            bottom: 0;
+            width: 3px;
             pointer-events: none;
+            background: linear-gradient(180deg, transparent, #4a6aff, transparent);
+        }
+        body.light-mode #chart-container #chartWrapper .nav-badge-tooltip::before,
+        body.light-mode #panels-container .nav-badge-tooltip::before {
+            background: linear-gradient(180deg, transparent, #2f55e8, transparent);
         }
         #chart-container #chartWrapper .nav-integrity-badge:hover .nav-badge-tooltip,
         #chart-container #chartWrapper .nav-integrity-badge.show-tooltip .nav-badge-tooltip,
@@ -641,7 +652,7 @@
         #panels-container .nav-badge-tooltip strong {
             display: inline;
             color: inherit;
-            font-weight: 700;
+            font-weight: 600;
             letter-spacing: 0.01em;
         }
 

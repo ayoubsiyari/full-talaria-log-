@@ -10990,29 +10990,492 @@ async def admin_assign_subscription(user_id: int, payload: _ManualSubIn, request
     finally:
         db.close()
 
+
+class _AdminCancelSubIn(BaseModel):
+    """Cancel a subscription in our DB and optionally in Stripe."""
+
+    sync_stripe: bool = True
+    cancel_at_period_end: bool = False
+    notify_user: bool = True
+    notify_title: str | None = Field(None, max_length=300)
+    notify_body: str | None = Field(None, max_length=4000)
+
+
+class _AdminStripePortalIn(BaseModel):
+    return_url: str | None = Field(None, max_length=2000)
+
+
+class _AdminNotifyPayIn(BaseModel):
+    title: str | None = Field(None, max_length=300)
+    body: str | None = Field(None, max_length=4000)
+
+
+def _chart_stripe_return_origins() -> set[str]:
+    raw: list[str] = []
+    fu = (os.environ.get("FRONTEND_URL") or "").strip()
+    if fu:
+        raw.append(fu)
+    for x in (os.environ.get("STRIPE_REDIRECT_ALLOWED_ORIGINS") or "").split(","):
+        x = x.strip()
+        if x:
+            raw.append(x)
+    raw.extend(
+        [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3001",
+        ]
+    )
+    out: set[str] = set()
+    for r in raw:
+        s = r.strip()
+        if not s:
+            continue
+        if "://" not in s:
+            s = "https://" + s
+        p = urlparse(s)
+        if p.scheme in ("http", "https") and p.netloc:
+            out.add(f"{p.scheme.lower()}://{p.netloc.lower()}")
+    return out
+
+
+def _chart_is_allowed_stripe_return_url(url: str) -> bool:
+    if not url or not isinstance(url, str):
+        return False
+    p = urlparse(url.strip())
+    if p.scheme not in ("http", "https") or not p.netloc:
+        return False
+    origin = f"{p.scheme.lower()}://{p.netloc.lower()}"
+    if origin not in _chart_stripe_return_origins():
+        return False
+    env = (os.environ.get("ENV") or os.environ.get("NODE_ENV") or "").lower()
+    if env == "production":
+        host = (p.hostname or "").lower()
+        local = host in ("localhost", "127.0.0.1", "::1") or host.startswith("127.")
+        if not local and p.scheme != "https":
+            return False
+    return True
+
+
+def _stripe_ts_to_utc(v) -> datetime | None:
+    if v is None:
+        return None
+    try:
+        iv = int(v)
+        if iv <= 0:
+            return None
+        return datetime.utcfromtimestamp(iv)
+    except Exception:
+        return None
+
+
+def _stripe_subscription_fields_from_object(ss) -> dict:
+    """Map Stripe Subscription object/dict to chart `Subscription` columns."""
+    if isinstance(ss, dict):
+        status = ss.get("status") or "active"
+        catpe = bool(ss.get("cancel_at_period_end", False))
+        cps = ss.get("current_period_start")
+        cpe = ss.get("current_period_end")
+        c_at = ss.get("canceled_at")
+    else:
+        status = getattr(ss, "status", None) or "active"
+        catpe = bool(getattr(ss, "cancel_at_period_end", False))
+        cps = getattr(ss, "current_period_start", None)
+        cpe = getattr(ss, "current_period_end", None)
+        c_at = getattr(ss, "canceled_at", None)
+    out: dict = {
+        "status": str(status)[:32],
+        "cancel_at_period_end": catpe,
+        "current_period_start": _stripe_ts_to_utc(cps),
+        "current_period_end": _stripe_ts_to_utc(cpe),
+    }
+    ct = _stripe_ts_to_utc(c_at)
+    if ct is not None:
+        out["cancelled_at"] = ct
+    return out
+
+
+def _apply_stripe_subscription_fields(sub: Subscription, patch: dict) -> None:
+    st = patch.get("status")
+    if st:
+        sub.status = str(st)[:32]
+    if patch.get("current_period_start") is not None:
+        sub.current_period_start = patch["current_period_start"]
+    if patch.get("current_period_end") is not None:
+        sub.current_period_end = patch["current_period_end"]
+        sub.ends_at = patch["current_period_end"]
+    if "cancel_at_period_end" in patch:
+        sub.cancel_at_period_end = bool(patch["cancel_at_period_end"])
+    if patch.get("cancelled_at") is not None:
+        sub.cancelled_at = patch["cancelled_at"]
+
+
 @app.post("/api/admin/subscriptions/{sub_id}/cancel")
 async def admin_cancel_subscription(sub_id: int, request: Request):
+    _require_admin(request)
+    try:
+        raw = await request.json()
+    except Exception:
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    payload = _AdminCancelSubIn(**raw)
+
+    db = SessionLocal()
+    try:
+        sub = db.query(Subscription).filter(Subscription.id == sub_id).first()
+        if not sub:
+            raise HTTPException(status_code=404, detail="Subscription not found")
+
+        stripe_meta: dict = {
+            "sync_stripe": payload.sync_stripe,
+            "cancel_at_period_end": payload.cancel_at_period_end,
+            "notify_user": payload.notify_user,
+        }
+        sid = (sub.stripe_subscription_id or "").strip()
+        applied_stripe = False
+
+        if payload.sync_stripe and sid and not sub.is_manual:
+            _stripe = _stripe_client()
+            if not _stripe:
+                raise HTTPException(status_code=503, detail="Stripe not configured (set STRIPE_SECRET_KEY)")
+            try:
+                if payload.cancel_at_period_end:
+                    ss = _stripe.Subscription.modify(sid, cancel_at_period_end=True)
+                else:
+                    cancel_fn = getattr(_stripe.Subscription, "cancel", None) or getattr(
+                        _stripe.Subscription, "delete", None
+                    )
+                    if cancel_fn is None:
+                        raise HTTPException(status_code=500, detail="Stripe SDK missing Subscription.cancel/delete")
+                    ss = cancel_fn(sid)
+                patch = _stripe_subscription_fields_from_object(ss)
+                _apply_stripe_subscription_fields(sub, patch)
+                applied_stripe = True
+            except HTTPException:
+                raise
+            except Exception as e:
+                import stripe as _stripe_mod
+
+                if isinstance(e, _stripe_mod.error.StripeError):
+                    raise HTTPException(status_code=400, detail=(e.user_message or str(e))[:500])
+                raise HTTPException(status_code=400, detail=str(e)[:500])
+        elif payload.sync_stripe and not sid and not sub.is_manual:
+            stripe_meta["stripe_skipped"] = "no_stripe_subscription_id"
+
+        if not applied_stripe:
+            sub.status = "canceled"
+            sub.cancelled_at = datetime.utcnow()
+            sub.cancel_at_period_end = False
+
+        user = db.query(User).filter(User.id == sub.user_id).first()
+        if user:
+            user.has_journal_access = _user_entitles_journal_db(db, user)
+
+        if payload.notify_user and user:
+            title = (payload.notify_title or "Your subscription was updated").strip()[:300]
+            body = (
+                payload.notify_body
+                or (
+                    "Your subscription has been updated by support. "
+                    "If your access changed, sign in and open billing to renew or update your payment method."
+                )
+            ).strip()[:4000]
+            db.add(
+                Notification(
+                    user_id=int(user.id),
+                    type="subscription_admin",
+                    thread_id=None,
+                    message_id=None,
+                    title=title,
+                    body=body,
+                )
+            )
+
+        db.commit()
+        db.refresh(sub)
+        _record_admin_action(
+            request,
+            action="subscription_cancel",
+            target_type="subscription",
+            target_id=str(sub_id),
+            params=stripe_meta,
+            status="ok",
+        )
+        return {"success": True, "subscription": _sub_public_dict(sub, db), "stripe": stripe_meta}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/subscriptions/{sub_id}/sync-from-stripe")
+async def admin_sync_subscription_from_stripe(sub_id: int, request: Request):
+    """Pull latest status/period from Stripe into the local `subscriptions` row."""
     _require_admin(request)
     db = SessionLocal()
     try:
         sub = db.query(Subscription).filter(Subscription.id == sub_id).first()
         if not sub:
             raise HTTPException(status_code=404, detail="Subscription not found")
-        sub.status = "canceled"
-        sub.cancelled_at = datetime.utcnow()
-        sub.cancel_at_period_end = False
+        sid = (sub.stripe_subscription_id or "").strip()
+        if not sid or sub.is_manual:
+            raise HTTPException(status_code=400, detail="Subscription has no Stripe subscription id")
+        _stripe = _stripe_client()
+        if not _stripe:
+            raise HTTPException(status_code=503, detail="Stripe not configured (set STRIPE_SECRET_KEY)")
+        try:
+            ss = _stripe.Subscription.retrieve(sid)
+        except Exception as e:
+            import stripe as _stripe_mod
 
+            if isinstance(e, _stripe_mod.error.StripeError):
+                raise HTTPException(status_code=400, detail=(e.user_message or str(e))[:500])
+            raise HTTPException(status_code=400, detail=str(e)[:500])
+        patch = _stripe_subscription_fields_from_object(ss)
+        _apply_stripe_subscription_fields(sub, patch)
         user = db.query(User).filter(User.id == sub.user_id).first()
         if user:
             user.has_journal_access = _user_entitles_journal_db(db, user)
-
         db.commit()
+        db.refresh(sub)
+        _record_admin_action(
+            request,
+            action="subscription_sync_stripe",
+            target_type="subscription",
+            target_id=str(sub_id),
+            params={"stripe_subscription_id": sid[:40]},
+            status="ok",
+        )
+        return {"success": True, "subscription": _sub_public_dict(sub, db)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/subscriptions/{sub_id}/reactivate-stripe")
+async def admin_reactivate_stripe_subscription(sub_id: int, request: Request):
+    """Clear cancel-at-period-end in Stripe (user keeps billing after an accidental cancel schedule)."""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        sub = db.query(Subscription).filter(Subscription.id == sub_id).first()
+        if not sub:
+            raise HTTPException(status_code=404, detail="Subscription not found")
+        sid = (sub.stripe_subscription_id or "").strip()
+        if not sid or sub.is_manual:
+            raise HTTPException(status_code=400, detail="No Stripe subscription linked")
+        _stripe = _stripe_client()
+        if not _stripe:
+            raise HTTPException(status_code=503, detail="Stripe not configured (set STRIPE_SECRET_KEY)")
+        try:
+            ss = _stripe.Subscription.modify(sid, cancel_at_period_end=False)
+        except Exception as e:
+            import stripe as _stripe_mod
+
+            if isinstance(e, _stripe_mod.error.StripeError):
+                raise HTTPException(status_code=400, detail=(e.user_message or str(e))[:500])
+            raise HTTPException(status_code=400, detail=str(e)[:500])
+        patch = _stripe_subscription_fields_from_object(ss)
+        _apply_stripe_subscription_fields(sub, patch)
+        user = db.query(User).filter(User.id == sub.user_id).first()
+        if user:
+            user.has_journal_access = _user_entitles_journal_db(db, user)
+        db.commit()
+        db.refresh(sub)
+        _record_admin_action(
+            request,
+            action="subscription_reactivate_stripe",
+            target_type="subscription",
+            target_id=str(sub_id),
+            status="ok",
+        )
+        return {"success": True, "subscription": _sub_public_dict(sub, db)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/subscriptions/{sub_id}/notify-payment-reminder")
+async def admin_notify_subscription_payment_reminder(sub_id: int, request: Request):
+    """Send an in-app notification asking the user to fix payment / renew (no Stripe call)."""
+    _require_admin(request)
+    try:
+        raw = await request.json()
+    except Exception:
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    payload = _AdminNotifyPayIn(**raw)
+    db = SessionLocal()
+    try:
+        sub = db.query(Subscription).filter(Subscription.id == sub_id).first()
+        if not sub:
+            raise HTTPException(status_code=404, detail="Subscription not found")
+        user = db.query(User).filter(User.id == sub.user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        title = (payload.title or "Action needed: subscription payment").strip()[:300]
+        body = (
+            payload.body
+            or (
+                "We could not keep your subscription active without a successful payment. "
+                "Please open your account billing page and update your payment method, or renew your plan."
+            )
+        ).strip()[:4000]
+        db.add(
+            Notification(
+                user_id=int(user.id),
+                type="subscription_payment_reminder",
+                thread_id=None,
+                message_id=None,
+                title=title,
+                body=body,
+            )
+        )
+        db.commit()
+        _record_admin_action(
+            request,
+            action="subscription_notify_pay",
+            target_type="subscription",
+            target_id=str(sub_id),
+            status="ok",
+        )
         return {"success": True}
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/users/{user_id}/stripe/customer-portal")
+async def admin_stripe_customer_portal(user_id: int, request: Request):
+    """Create a Stripe Billing Portal session for a user (admin may copy URL to the user)."""
+    _require_admin(request)
+    try:
+        raw = await request.json()
+    except Exception:
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    payload = _AdminStripePortalIn(**raw)
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        cust = (user.stripe_customer_id or "").strip()
+        if not cust:
+            raise HTTPException(status_code=400, detail="User has no stripe_customer_id")
+        base = (os.environ.get("FRONTEND_URL") or "http://localhost:3000").rstrip("/")
+        return_url = (payload.return_url or (base + "/settings")).strip()
+        if not _chart_is_allowed_stripe_return_url(return_url):
+            raise HTTPException(
+                status_code=400,
+                detail="return_url origin not allowed; set FRONTEND_URL or STRIPE_REDIRECT_ALLOWED_ORIGINS",
+            )
+        _stripe = _stripe_client()
+        if not _stripe:
+            raise HTTPException(status_code=503, detail="Stripe not configured (set STRIPE_SECRET_KEY)")
+        try:
+            session = _stripe.billing_portal.Session.create(customer=cust, return_url=return_url)
+        except Exception as e:
+            import stripe as _stripe_mod
+
+            if isinstance(e, _stripe_mod.error.StripeError):
+                raise HTTPException(status_code=400, detail=(e.user_message or str(e))[:500])
+            raise HTTPException(status_code=400, detail=str(e)[:500])
+        url = getattr(session, "url", None) or (session.get("url") if isinstance(session, dict) else None)
+        if not url:
+            raise HTTPException(status_code=500, detail="Stripe returned no portal URL")
+        _record_admin_action(
+            request,
+            action="stripe_billing_portal",
+            target_type="user",
+            target_id=str(user_id),
+            params={"return_url_host": urlparse(return_url).netloc[:120]},
+            status="ok",
+        )
+        return {"success": True, "url": url}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/users/{user_id}/stripe/invoices")
+async def admin_stripe_invoices(user_id: int, request: Request, limit: int = 25):
+    """List recent Stripe invoices for the user's customer id (read-only)."""
+    _require_admin(request)
+    limit = max(1, min(100, int(limit or 25)))
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        cust = (user.stripe_customer_id or "").strip()
+        if not cust:
+            return {"success": True, "invoices": [], "message": "No stripe_customer_id on user"}
+        _stripe = _stripe_client()
+        if not _stripe:
+            raise HTTPException(status_code=503, detail="Stripe not configured (set STRIPE_SECRET_KEY)")
+        try:
+            lst = _stripe.Invoice.list(customer=cust, limit=limit)
+        except Exception as e:
+            import stripe as _stripe_mod
+
+            if isinstance(e, _stripe_mod.error.StripeError):
+                raise HTTPException(status_code=400, detail=(e.user_message or str(e))[:500])
+            raise HTTPException(status_code=400, detail=str(e)[:500])
+        rows = []
+        stream = lst.auto_paging_iter() if hasattr(lst, "auto_paging_iter") else lst.data
+        for inv in stream:
+            if len(rows) >= limit:
+                break
+            if isinstance(inv, dict):
+                rows.append(
+                    {
+                        "id": inv.get("id"),
+                        "number": inv.get("number"),
+                        "status": inv.get("status"),
+                        "total": inv.get("total"),
+                        "currency": inv.get("currency"),
+                        "created": inv.get("created"),
+                        "hosted_invoice_url": inv.get("hosted_invoice_url"),
+                        "invoice_pdf": inv.get("invoice_pdf"),
+                    }
+                )
+            else:
+                rows.append(
+                    {
+                        "id": getattr(inv, "id", None),
+                        "number": getattr(inv, "number", None),
+                        "status": getattr(inv, "status", None),
+                        "total": getattr(inv, "total", None),
+                        "currency": getattr(inv, "currency", None),
+                        "created": int(getattr(inv, "created", 0) or 0),
+                        "hosted_invoice_url": getattr(inv, "hosted_invoice_url", None),
+                        "invoice_pdf": getattr(inv, "invoice_pdf", None),
+                    }
+                )
+        return {"success": True, "invoices": rows}
     finally:
         db.close()
 

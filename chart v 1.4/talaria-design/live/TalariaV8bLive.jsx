@@ -2972,6 +2972,41 @@ const TalariaV8bLive = () => {
   const [replayRollbackBlocked, setReplayRollbackBlocked] = useState(false);
   /** Replay active — show OHLC rollback badge (padding-right reserves space so the icon stays fixed). */
   const [replayOhlcBadgeVisible, setReplayOhlcBadgeVisible] = useState(false);
+  const navRollbackTooltipResizeListenerRef = useRef(null);
+
+  const positionNavRollbackTooltip = useCallback(() => {
+    try {
+      const tip = document.getElementById("navBadgeTooltip");
+      if (!tip || typeof window === "undefined") return;
+      const stack = window.__TalariaToastStack;
+      if (stack && typeof stack.anchorBottomPx === "function") {
+        const b = stack.anchorBottomPx();
+        if (Number.isFinite(b)) tip.style.bottom = `${Math.round(b)}px`;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }, []);
+
+  const onNavIntegrityBadgeMouseEnter = useCallback(() => {
+    positionNavRollbackTooltip();
+    const onReflow = () => positionNavRollbackTooltip();
+    window.addEventListener("resize", onReflow);
+    window.addEventListener("scroll", onReflow, true);
+    navRollbackTooltipResizeListenerRef.current = () => {
+      window.removeEventListener("resize", onReflow);
+      window.removeEventListener("scroll", onReflow, true);
+    };
+  }, [positionNavRollbackTooltip]);
+
+  const onNavIntegrityBadgeMouseLeave = useCallback(() => {
+    const cleanup = navRollbackTooltipResizeListenerRef.current;
+    if (cleanup) {
+      cleanup();
+      navRollbackTooltipResizeListenerRef.current = null;
+    }
+  }, []);
+
   const [rollbackLineX, setRollbackLineX] = useState(60);
   const [rbDragging, setRbDragging] = useState(false);
   const [rbPressed, setRbPressed] = useState(false);
@@ -4016,9 +4051,17 @@ const TalariaV8bLive = () => {
       badge.classList.toggle("disabled", !allowBack);
       if (tooltip) {
         tooltip.style.removeProperty("color");
-        tooltip.innerHTML = allowBack
-          ? "<strong>You can navigate</strong>"
-          : "<strong>You cannot navigate</strong>";
+        tooltip.replaceChildren();
+        const s = document.createElement("strong");
+        s.textContent = allowBack ? "You can navigate" : "You cannot navigate";
+        tooltip.appendChild(s);
+      }
+      if (tooltip && badge && (badge.matches(":hover") || badge.classList.contains("show-tooltip"))) {
+        const stack = typeof window !== "undefined" && window.__TalariaToastStack;
+        if (stack && typeof stack.anchorBottomPx === "function") {
+          const b = stack.anchorBottomPx();
+          if (Number.isFinite(b)) tooltip.style.bottom = `${Math.round(b)}px`;
+        }
       }
     };
     sync();
@@ -9474,7 +9517,7 @@ const TalariaV8bLive = () => {
                 width: replayOhlcBadgeVisible ? 32 : 0,
                 minWidth: replayOhlcBadgeVisible ? 32 : 0,
                 maxWidth: replayOhlcBadgeVisible ? 32 : 0,
-                overflow: "hidden",
+                overflow: "visible",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -9492,9 +9535,13 @@ const TalariaV8bLive = () => {
                   flexShrink: 0,
                   zIndex: 2,
                 }}
+                onMouseEnter={onNavIntegrityBadgeMouseEnter}
+                onMouseLeave={onNavIntegrityBadgeMouseLeave}
                 onClick={(e) => {
                   e.stopPropagation();
-                  e.currentTarget.classList.toggle("show-tooltip");
+                  const t = e.currentTarget;
+                  t.classList.toggle("show-tooltip");
+                  if (t.classList.contains("show-tooltip")) positionNavRollbackTooltip();
                 }}
               >
                 <div className="nav-badge-icon" style={{ width: 30, height: 30, border: "none", background: "transparent", padding: 0 }}>
@@ -9549,7 +9596,7 @@ const TalariaV8bLive = () => {
         </div>
       </div>
     ),
-    [ohlcTextColor, ohlcMutedTextColor, ohlcIndicatorTextColor, replayOhlcBadgeVisible]
+    [ohlcTextColor, ohlcMutedTextColor, ohlcIndicatorTextColor, replayOhlcBadgeVisible, onNavIntegrityBadgeMouseEnter, onNavIntegrityBadgeMouseLeave, positionNavRollbackTooltip]
   );
 
   // Repaint indicator chips after OHLC host exists (race vs chart init).
