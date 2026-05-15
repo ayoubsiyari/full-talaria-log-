@@ -7501,7 +7501,14 @@ def _user_public_dict(user: User, db=None):
     updated = getattr(user, 'updated_at', created)
     expires = getattr(user, 'access_expires_at', None)
     sub_info = None
+    trading_sessions_count = 0
     if db:
+        try:
+            trading_sessions_count = int(
+                db.query(func.count(TradingSession.id)).filter(TradingSession.user_id == user.id).scalar() or 0
+            )
+        except Exception:
+            trading_sessions_count = 0
         try:
             active_sub = db.query(Subscription).filter(
                 Subscription.user_id == user.id,
@@ -7532,6 +7539,7 @@ def _user_public_dict(user: User, db=None):
         "has_journal_access": bool(getattr(user, 'has_journal_access', False)),
         "access_expires_at": expires.isoformat() if expires else None,
         "max_sessions": getattr(user, 'max_sessions', 1) or 1,
+        "trading_sessions_count": trading_sessions_count,
         "subscription": sub_info,
         "created_at": created.isoformat() if created else None,
         "updated_at": updated.isoformat() if updated else None,
@@ -7680,6 +7688,98 @@ async def auth_logout(request: Request, response: Response):
             db.close()
     _clear_session_cookie(response)
     return {"success": True}
+
+
+def _stripe_customer_card_preview(_stripe, cust_id: str) -> dict | None:
+    """Default card on Stripe customer for profile UI: brand, last4, exp_month, exp_year."""
+    if not _stripe or not cust_id:
+        return None
+    try:
+        co = _stripe.Customer.retrieve(cust_id, expand=["invoice_settings.default_payment_method"])
+    except Exception:
+        return None
+    pm = None
+    if isinstance(co, dict):
+        inv = co.get("invoice_settings") or {}
+        pm = inv.get("default_payment_method")
+    else:
+        inv = getattr(co, "invoice_settings", None)
+        pm = getattr(inv, "default_payment_method", None) if inv is not None else None
+    if pm is None:
+        return None
+    if isinstance(pm, str):
+        try:
+            pm = _stripe.PaymentMethod.retrieve(pm)
+        except Exception:
+            return None
+    ctype = pm.get("type") if isinstance(pm, dict) else getattr(pm, "type", None)
+    if ctype != "card":
+        return None
+    card = pm.get("card") if isinstance(pm, dict) else getattr(pm, "card", None)
+    if isinstance(card, dict):
+        brand = (card.get("display_brand") or card.get("brand") or "card").upper()
+        return {
+            "brand": str(brand)[:16],
+            "last4": card.get("last4"),
+            "exp_month": card.get("exp_month"),
+            "exp_year": card.get("exp_year"),
+        }
+    if card is None:
+        return None
+    brand = (getattr(card, "display_brand", None) or getattr(card, "brand", None) or "CARD")
+    return {
+        "brand": str(brand).upper()[:16],
+        "last4": getattr(card, "last4", None),
+        "exp_month": getattr(card, "exp_month", None),
+        "exp_year": getattr(card, "exp_year", None),
+    }
+
+
+@app.get("/api/auth/billing-snapshot")
+async def auth_billing_snapshot(request: Request, limit: int = 12):
+    """Signed-in user: default card + recent Stripe invoices (no admin)."""
+    if not AUTH_ENABLED:
+        raise HTTPException(501, detail="Auth disabled")
+    user = _get_user_from_request(request)
+    if user is None:
+        raise HTTPException(401, detail="Not authenticated")
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.id == user.id).first()
+        cust = (u.stripe_customer_id or "").strip() if u else ""
+    finally:
+        db.close()
+    if not cust:
+        return {"success": True, "card": None, "invoices": [], "stripe_configured": bool(_stripe_client())}
+    _stripe = _stripe_client()
+    if not _stripe:
+        return {"success": True, "card": None, "invoices": [], "stripe_configured": False}
+    card = _stripe_customer_card_preview(_stripe, cust)
+    lim = max(1, min(25, int(limit or 12)))
+    inv_out: list[dict] = []
+    try:
+        lst = _stripe.Invoice.list(customer=cust, limit=lim)
+        stream = getattr(lst, "data", None) or []
+        for inv in stream:
+            d = _stripe_invoice_to_admin_dict(inv)
+            inv_out.append(
+                {
+                    "id": d.get("id"),
+                    "created": d.get("created"),
+                    "total": d.get("total"),
+                    "currency": (d.get("currency") or "usd"),
+                    "invoice_pdf": d.get("invoice_pdf"),
+                    "hosted_invoice_url": d.get("hosted_invoice_url"),
+                    "status": d.get("status"),
+                }
+            )
+    except Exception as e:
+        import logging as _logging
+
+        _logging.warning("auth_billing_snapshot invoices: %s", e)
+        inv_out = []
+    return {"success": True, "card": card, "invoices": inv_out, "stripe_configured": True}
+
 
 @app.get("/api/auth/me")
 async def auth_me(request: Request):
@@ -11297,6 +11397,10 @@ def _chart_stripe_return_origins() -> set[str]:
             "http://127.0.0.1:3000",
             "http://localhost:3001",
             "http://127.0.0.1:3001",
+            "https://localhost:3000",
+            "https://127.0.0.1:3000",
+            "https://localhost:3001",
+            "https://127.0.0.1:3001",
         ]
     )
     out: set[str] = set()
@@ -11312,6 +11416,23 @@ def _chart_stripe_return_origins() -> set[str]:
     return out
 
 
+def _chart_is_loopback_stripe_return_url(p) -> bool:
+    """True if URL points at loopback (any port). Used for dev/staging when origin is not in the env allowlist."""
+    if p.scheme not in ("http", "https") or not p.hostname:
+        return False
+    h = (p.hostname or "").lower().strip("[]")
+    if h in ("localhost", "::1"):
+        return True
+    if h.startswith("127."):
+        parts = h.split(".")
+        if len(parts) == 4:
+            try:
+                return int(parts[0]) == 127 and all(0 <= int(x) <= 255 for x in parts[1:])
+            except ValueError:
+                return False
+    return False
+
+
 def _chart_is_allowed_stripe_return_url(url: str) -> bool:
     if not url or not isinstance(url, str):
         return False
@@ -11319,9 +11440,12 @@ def _chart_is_allowed_stripe_return_url(url: str) -> bool:
     if p.scheme not in ("http", "https") or not p.netloc:
         return False
     origin = f"{p.scheme.lower()}://{p.netloc.lower()}"
-    if origin not in _chart_stripe_return_origins():
-        return False
+    allowed = _chart_stripe_return_origins()
     env = (os.environ.get("ENV") or os.environ.get("NODE_ENV") or "").lower()
+    if origin not in allowed:
+        # Any port on loopback (e.g. Next on 5173 or `next start` with NODE_ENV=production on :5555).
+        if not _chart_is_loopback_stripe_return_url(p):
+            return False
     if env == "production":
         host = (p.hostname or "").lower()
         local = host in ("localhost", "127.0.0.1", "::1") or host.startswith("127.")

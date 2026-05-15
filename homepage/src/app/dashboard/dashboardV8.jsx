@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { normalizeBadgeAsset } from "./backtestModal/symbolIcons";
 import {
   sessionJournalLocalKey,
@@ -814,6 +814,10 @@ const TalariaV8b = () => {
   const [profileCurPw, setProfileCurPw] = useState("");
   const [profileNewPw, setProfileNewPw] = useState("");
   const [profileConfirmPw, setProfileConfirmPw] = useState("");
+  const [profileMe, setProfileMe] = useState(null);
+  const [profileBilling, setProfileBilling] = useState(null);
+  const [profileMeErr, setProfileMeErr] = useState(null);
+  const [profileMeLoading, setProfileMeLoading] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
   const [faqOpen, setFaqOpen] = useState(false);
   const [faqCat, setFaqCat] = useState("faq");
@@ -1704,6 +1708,180 @@ const TalariaV8b = () => {
       setPinnedBarPos(p => ({ ...p, x: Math.min(p.x, vpW - panelW - barW) }));
     }
   }, [rightPanel, orderPanelOpen]);
+
+  const openProfileBillingPortal = useCallback(async () => {
+    try {
+      const returnUrl = `${window.location.origin}${window.location.pathname || "/"}`;
+      const r = await fetch("/api/auth/billing-portal", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ return_url: returnUrl }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const d = j.detail;
+        const msg = Array.isArray(d)
+          ? d.map((x) => (typeof x === "object" && x && x.msg ? x.msg : String(x))).join("; ")
+          : typeof d === "string"
+            ? d
+            : "Billing portal failed";
+        window.alert(msg);
+        return;
+      }
+      if (j.url) window.location.assign(j.url);
+    } catch (e) {
+      window.alert(e && e.message ? e.message : "Billing portal failed");
+    }
+  }, []);
+
+  const saveProfileAndClose = useCallback(async () => {
+    try {
+      if (profileMe) {
+        const body = {};
+        const trimmed = (profileName || "").trim();
+        if (trimmed && trimmed !== String(profileMe.name || "").trim()) body.name = trimmed;
+        if (profileNewPw) {
+          if (profileNewPw.length < 8) {
+            window.alert("New password must be at least 8 characters.");
+            return;
+          }
+          if (profileNewPw !== profileConfirmPw) {
+            window.alert("New password and confirmation do not match.");
+            return;
+          }
+          if (!profileCurPw) {
+            window.alert("Enter your current password to set a new one.");
+            return;
+          }
+          body.password = profileNewPw;
+          body.current_password = profileCurPw;
+        }
+        if (Object.keys(body).length) {
+          const r = await fetch("/api/auth/profile", {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const raw = await r.json().catch(() => ({}));
+          if (!r.ok) {
+            const d = raw.detail;
+            const msg = Array.isArray(d)
+              ? d.map((x) => (typeof x === "object" && x && x.msg ? x.msg : String(x))).join("; ")
+              : typeof d === "string"
+                ? d
+                : "Save failed";
+            window.alert(msg);
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      window.alert(e && e.message ? e.message : "Save failed");
+      return;
+    }
+    setProfileCurPw("");
+    setProfileNewPw("");
+    setProfileConfirmPw("");
+    animClose(setProfileOpen, "profile");
+  }, [profileMe, profileName, profileNewPw, profileConfirmPw, profileCurPw]);
+
+  const updateProfilePasswordOnly = useCallback(async () => {
+    if (!profileMe) {
+      window.alert("Account not loaded yet.");
+      return;
+    }
+    if (!profileNewPw) {
+      window.alert("Enter a new password.");
+      return;
+    }
+    if (profileNewPw.length < 8) {
+      window.alert("New password must be at least 8 characters.");
+      return;
+    }
+    if (profileNewPw !== profileConfirmPw) {
+      window.alert("New password and confirmation do not match.");
+      return;
+    }
+    if (!profileCurPw) {
+      window.alert("Enter your current password.");
+      return;
+    }
+    try {
+      const r = await fetch("/api/auth/profile", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: profileMe.name,
+          password: profileNewPw,
+          current_password: profileCurPw,
+        }),
+      });
+      const raw = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const d = raw.detail;
+        const msg = Array.isArray(d)
+          ? d.map((x) => (typeof x === "object" && x && x.msg ? x.msg : String(x))).join("; ")
+          : typeof d === "string"
+            ? d
+            : "Update failed";
+        window.alert(msg);
+        return;
+      }
+      setProfileCurPw("");
+      setProfileNewPw("");
+      setProfileConfirmPw("");
+      window.alert("Password updated.");
+    } catch (e) {
+      window.alert(e && e.message ? e.message : "Update failed");
+    }
+  }, [profileMe, profileCurPw, profileNewPw, profileConfirmPw]);
+
+  useEffect(() => {
+    if (!profileOpen) return;
+    let cancelled = false;
+    setProfileMeLoading(true);
+    setProfileMeErr(null);
+    (async () => {
+      try {
+        const r = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+        if (!r.ok) {
+          if (!cancelled) {
+            setProfileMe(null);
+            setProfileBilling(null);
+            setProfileMeErr(r.status === 401 ? "Sign in to load account." : `Could not load profile (${r.status})`);
+          }
+          return;
+        }
+        const j = await r.json();
+        const u = j.user;
+        if (cancelled) return;
+        setProfileMe(u);
+        setProfileName(u && u.name ? String(u.name) : "Trader");
+        const cust = u && String(u.stripe_customer_id || "").trim();
+        if (cust) {
+          try {
+            const br = await fetch("/api/auth/billing-snapshot?limit=12", { credentials: "include", cache: "no-store" });
+            const bj = br.ok ? await br.json() : { success: false, card: null, invoices: [] };
+            if (!cancelled) setProfileBilling(bj);
+          } catch {
+            if (!cancelled) setProfileBilling({ card: null, invoices: [] });
+          }
+        } else if (!cancelled) {
+          setProfileBilling({ card: null, invoices: [] });
+        }
+      } catch (e) {
+        if (!cancelled) setProfileMeErr(e && e.message ? String(e.message) : "Network error");
+      } finally {
+        if (!cancelled) setProfileMeLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profileOpen]);
 
   // Rollback overlay — callback ref attaches native mousemove the instant the node mounts
   // (avoids useEffect timing gap when rollback first becomes true)
@@ -12022,6 +12200,42 @@ const TalariaV8b = () => {
         const profTabIdx = profTabs.findIndex(([id])=>id===profileTab);
         const pwInputSx = { width:"100%", background:c.hv, border:"1px solid rgba(140,160,255,0.22)", color:c.tx, fontSize:13, fontFamily:F, padding:"6px 9px", outline:"none", boxSizing:"border-box", transition:"border-color 0.14s" };
         const langLabels = { english:"English", arabic:"العربية" };
+        const pm = profileMe;
+        const pSub = pm && pm.subscription;
+        const pmCard = profileBilling && profileBilling.card;
+        const pmInv = profileBilling && Array.isArray(profileBilling.invoices) ? profileBilling.invoices : [];
+        const tlrUid = pm ? `#TLR-${String(pm.id ?? 0).padStart(5, "0")}` : "—";
+        const pmEmail = pm && pm.email ? String(pm.email) : "—";
+        const fmtInvMoney = (total, cur) => {
+          const n = (Number(total) || 0) / 100;
+          try {
+            return new Intl.NumberFormat(undefined, { style: "currency", currency: String(cur || "usd").toUpperCase() }).format(n);
+          } catch {
+            return `$${n.toFixed(2)}`;
+          }
+        };
+        const sessUsed = pm && typeof pm.trading_sessions_count === "number" ? pm.trading_sessions_count : 0;
+        const showPro = !!(pm && (pm.has_journal_access || pSub));
+        let renewSub = "";
+        if (pSub && pSub.period_end) {
+          renewSub = `Renews ${new Date(pSub.period_end).toLocaleDateString(undefined, { dateStyle: "medium" })} · ${sessUsed} sessions used`;
+        } else {
+          renewSub = `${sessUsed} sessions used`;
+        }
+        if (pSub && pSub.cancel_at_period_end) renewSub += " · Renewal stops at period end";
+        const planTitle = pSub && pSub.plan_name ? String(pSub.plan_name) : pm ? "No active subscription" : "—";
+        const accessExpStr =
+          pm && pm.access_expires_at
+            ? new Date(pm.access_expires_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+            : "—";
+        const createdStr =
+          pm && pm.created_at
+            ? new Date(pm.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+            : "—";
+        const subSummary =
+          pSub && pSub.plan_name
+            ? `${pSub.plan_name} · ${pSub.status || ""}${pSub.period_end ? ` · renews ${new Date(pSub.period_end).toLocaleDateString()}` : ""}`
+            : "—";
         return (
         <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${profilePos.y}px)`,left:`calc(50% + ${profilePos.x}px)`,transform:"translate(-50%,-50%)",width:400,height:540,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("profile")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
@@ -12123,31 +12337,137 @@ const TalariaV8b = () => {
                   )}
                   <div style={{fontSize:10,color:c.tm}}>Click the camera icon to upload a photo</div>
                 </div>
-                <span style={{padding:"3px 8px",background:c.acD,border:`1px solid ${c.acB}`,fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.06em",alignSelf:"flex-start"}}>PRO</span>
+                {showPro ? (
+                  <span style={{padding:"3px 8px",background:c.acD,border:`1px solid ${c.acB}`,fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.06em",alignSelf:"flex-start"}}>PRO</span>
+                ) : null}
               </div>
               <div style={{height:1,background:c.br,margin:"4px 0 14px"}}/>
               {/* Account info */}
               <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:8}}>ACCOUNT</div>
               <div style={{background:c.bg,border:`1px solid ${c.br}`,marginBottom:14}}>
-                {[["User ID","#TLR-00471"],["Email","trader@talaria.io"],["Language",null]].map(([k,v],i,arr)=>(
-                  <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",borderBottom:i<arr.length-1?`1px solid ${c.br}`:"none"}}>
-                    <span style={{fontSize:13,color:c.ts,flexShrink:0,marginRight:10}}>{k}</span>
-                    {k==="Language"
-                      ? (()=>{const isAct=settDrop==="profLang"; const isH=swHov==="prof-lang-btn"; return(
-                          <div onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:100,rightAlign:true,w:r.width/Z}));setSettDrop(settDrop==="profLang"?null:"profLang");}}
-                            onMouseEnter={()=>setSwHov("prof-lang-btn")} onMouseLeave={()=>setSwHov(null)}
-                            style={{display:"flex",alignItems:"center",gap:5,padding:"4px 8px",cursor:"default",minWidth:90,justifyContent:"space-between",position:"relative",
-                              background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
-                              transition:"background 0.12s"}}>
-                            <span style={{fontSize:13,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,transition:"color 0.12s"}}>{langLabels[profileLang]||"English"}</span>
-                            <svg width={8} height={5} viewBox="0 0 8 5"><path d="M0.5,0.5 L4,4 L7.5,0.5" stroke={isAct?c.acL:c.ts} strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                            {isAct&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
-                            {!isAct&&isH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
+                {profileMeLoading && !pm ? (
+                  <div style={{ padding: "12px 14px", fontSize: 12, color: c.tm }}>Loading account…</div>
+                ) : profileMeErr ? (
+                  <div style={{ padding: "12px 14px", fontSize: 12, color: c.rd }}>{profileMeErr}</div>
+                ) : (
+                  <>
+                    {[
+                      ["User ID", tlrUid],
+                      ["Email", pmEmail],
+                      ["Access expires", accessExpStr],
+                      ["Date created", createdStr],
+                      ["Subscription", subSummary],
+                    ].map(([k, v], i, arr) => (
+                      <div
+                        key={k}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "7px 12px",
+                          borderBottom: i < arr.length - 1 ? `1px solid ${c.br}` : "none",
+                        }}
+                      >
+                        <span style={{ fontSize: 13, color: c.ts, flexShrink: 0, marginRight: 10 }}>{k}</span>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: k === "User ID" ? c.acL : c.tm,
+                            fontWeight: k === "User ID" ? 700 : 400,
+                            fontVariantNumeric: "tabular-nums",
+                            textAlign: "right",
+                            maxWidth: "62%",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {v}
+                        </span>
+                      </div>
+                    ))}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "7px 12px",
+                        borderBottom: "none",
+                      }}
+                    >
+                      <span style={{ fontSize: 13, color: c.ts, flexShrink: 0, marginRight: 10 }}>Language</span>
+                      {(() => {
+                        const isAct = settDrop === "profLang";
+                        const isH = swHov === "prof-lang-btn";
+                        return (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const r = e.currentTarget.getBoundingClientRect();
+                              setSettDropPos(sdPos(r, { h: 100, rightAlign: true, w: r.width / Z }));
+                              setSettDrop(settDrop === "profLang" ? null : "profLang");
+                            }}
+                            onMouseEnter={() => setSwHov("prof-lang-btn")}
+                            onMouseLeave={() => setSwHov(null)}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 5,
+                              padding: "4px 8px",
+                              cursor: "default",
+                              minWidth: 90,
+                              justifyContent: "space-between",
+                              position: "relative",
+                              background: isAct ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent",
+                              transition: "background 0.12s",
+                            }}
+                          >
+                            <span style={{ fontSize: 13, color: isAct ? c.acL : isH ? c.tx : c.ts, fontFamily: F, transition: "color 0.12s" }}>
+                              {langLabels[profileLang] || "English"}
+                            </span>
+                            <svg width={8} height={5} viewBox="0 0 8 5">
+                              <path
+                                d="M0.5,0.5 L4,4 L7.5,0.5"
+                                stroke={isAct ? c.acL : c.ts}
+                                strokeWidth={1.5}
+                                fill="none"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                            {isAct && (
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  bottom: 0,
+                                  left: "50%",
+                                  transform: "translateX(-50%)",
+                                  width: "70%",
+                                  height: 2,
+                                  background: `linear-gradient(90deg,transparent,${c.acL},transparent)`,
+                                  boxShadow: `0 0 6px ${c.acG}`,
+                                  pointerEvents: "none",
+                                }}
+                              />
+                            )}
+                            {!isAct && isH && (
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  bottom: 0,
+                                  left: "50%",
+                                  transform: "translateX(-50%)",
+                                  width: "50%",
+                                  height: 1,
+                                  background: `linear-gradient(90deg,transparent,` + c.hvLn + `,transparent)`,
+                                  pointerEvents: "none",
+                                }}
+                              />
+                            )}
                           </div>
-                        );})()
-                      : <span style={{fontSize:11,color:k==="User ID"?c.acL:c.tm,fontWeight:k==="User ID"?700:400,fontVariantNumeric:"tabular-nums"}}>{v}</span>}
-                  </div>
-                ))}
+                        );
+                      })()}
+                    </div>
+                  </>
+                )}
               </div>
               <div style={{height:1,background:c.br,margin:"4px 0 14px"}}/>
               {/* Change password */}
@@ -12169,71 +12489,145 @@ const TalariaV8b = () => {
                       </div>
                     ))}
                     <div style={{display:"flex",justifyContent:"flex-end",marginTop:2}}>
-                      <B primary small hk="prof-pw-save">Update Password</B>
+                      <B primary small hk="prof-pw-save" onClick={() => void updateProfilePasswordOnly()}>
+                        Update Password
+                      </B>
                     </div>
                   </div>
                 )}
               </div>
             </>}
             {profileTab==="billing" && <>
-              {/* Current plan */}
               <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:8}}>CURRENT PLAN</div>
               <div style={{background:c.bg,border:`1px solid ${c.acB}`,marginBottom:14}}>
                 <div style={{padding:"10px 12px"}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                     <div>
-                      <div style={{fontSize:13,fontWeight:800,color:c.tx}}>Pro Monthly</div>
-                      <div style={{fontSize:13,color:c.ts,marginTop:2}}>Renews May 15, 2026 · 147 sessions used</div>
+                      <div style={{fontSize:13,fontWeight:800,color:c.tx}}>{planTitle}</div>
+                      <div style={{fontSize:13,color:c.ts,marginTop:2}}>{renewSub}</div>
                     </div>
-                    <span style={{padding:"3px 8px",background:c.acD,border:`1px solid ${c.acB}`,fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.06em"}}>PRO</span>
+                    {showPro ? (
+                      <span style={{padding:"3px 8px",background:c.acD,border:`1px solid ${c.acB}`,fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.06em"}}>PRO</span>
+                    ) : null}
                   </div>
-                  <div style={{display:"flex",gap:6}}>
-                    {(()=>{const isH=swHov==="prof-upgrade",isP=swHov==="prof-upgrade_dn";return(
-                      <div onClick={()=>{}} onMouseEnter={()=>setSwHov("prof-upgrade")} onMouseLeave={()=>setSwHov(null)} onMouseDown={()=>setSwHov("prof-upgrade_dn")} onMouseUp={()=>setSwHov("prof-upgrade")}
-                        style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"5px 12px",cursor:"default",flex:1,
-                          background:isP?c.ac:isH?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,
-                          border:`1px solid ${isH||isP?c.acL:"rgba(74,106,255,0.5)"}`,
-                          boxShadow:isH?`0 4px 14px ${c.acG}`:`0 2px 8px ${c.acG}`,
-                          transform:isP?"scale(0.98)":"scale(1)",transition:"all 0.12s"}}>
-                        <span style={{fontSize:13,fontWeight:700,color:"#fff",WebkitFontSmoothing:"antialiased"}}>Upgrade to Annual — Save 20%</span>
-                      </div>
-                    );})()}
-                  </div>
+                  {pSub && pSub.stripe_subscription_id && !pSub.is_manual ? (
+                    <div style={{display:"flex",gap:6}}>
+                      {(() => {
+                        const isH = swHov === "prof-upgrade";
+                        const isP = swHov === "prof-upgrade_dn";
+                        return (
+                          <div
+                            onClick={() => {
+                              window.location.href = "/dashboard/";
+                            }}
+                            onMouseEnter={() => setSwHov("prof-upgrade")}
+                            onMouseLeave={() => setSwHov(null)}
+                            onMouseDown={() => setSwHov("prof-upgrade_dn")}
+                            onMouseUp={() => setSwHov("prof-upgrade")}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 6,
+                              padding: "5px 12px",
+                              cursor: "default",
+                              flex: 1,
+                              background: isP ? c.ac : isH ? `linear-gradient(135deg,${c.acL},#6A8AFF)` : `linear-gradient(135deg,${c.ac},${c.acL})`,
+                              border: `1px solid ${isH || isP ? c.acL : "rgba(74,106,255,0.5)"}`,
+                              boxShadow: isH ? `0 4px 14px ${c.acG}` : `0 2px 8px ${c.acG}`,
+                              transform: isP ? "scale(0.98)" : "scale(1)",
+                              transition: "all 0.12s",
+                            }}
+                          >
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "#fff", WebkitFontSmoothing: "antialiased" }}>Upgrade to Annual — Save 20%</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <div style={{height:1,background:c.br,margin:"4px 0 14px"}}/>
-              {/* Payment method */}
               <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:8}}>PAYMENT METHOD</div>
               <div style={{padding:"10px 12px",background:c.bg,border:`1px solid ${c.br}`,display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
                 <div style={{width:38,height:24,background:"rgba(255,255,255,0.04)",border:`1px solid ${c.brH}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  <span style={{fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.06em"}}>VISA</span>
+                  <span style={{fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.06em"}}>{pmCard && pmCard.brand ? String(pmCard.brand).slice(0, 4) : "—"}</span>
                 </div>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:13,color:c.ts}}>•••• •••• •••• 4242</div>
-                  <div style={{fontSize:10,color:c.tm,marginTop:2}}>Expires 12/27</div>
+                  {pmCard && pmCard.last4 ? (
+                    <>
+                      <div style={{fontSize:13,color:c.ts}}>•••• •••• •••• {pmCard.last4}</div>
+                      <div style={{fontSize:10,color:c.tm,marginTop:2}}>
+                        Expires {String(pmCard.exp_month || "").padStart(2, "0")}/{String(pmCard.exp_year || "").slice(-2)}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 12, color: c.tm }}>No card on file. Use Update to add one in Stripe.</div>
+                  )}
                 </div>
-                <B small hk="update-card">Update</B>
+                <B small hk="update-card" onClick={() => void openProfileBillingPortal()}>
+                  Update
+                </B>
               </div>
               <div style={{height:1,background:c.br,margin:"4px 0 14px"}}/>
-              {/* Invoice history */}
               <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:8}}>INVOICE HISTORY</div>
               <div style={{background:c.bg,border:`1px solid ${c.br}`,marginBottom:4}}>
-                {[["Apr 2026","$29.00"],["Mar 2026","$29.00"],["Feb 2026","$29.00"]].map(([d,a],i,arr)=>{
-                  const hk=`pdf-${i}`; const isH=swHov===hk;
-                  return(
-                  <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 12px",borderBottom:i<arr.length-1?`1px solid ${c.br}`:"none"}}>
-                    <span style={{fontSize:13,color:c.ts}}>{d}</span>
-                    <span style={{fontSize:13,fontWeight:700,color:c.gn}}>{a}</span>
-                    <button onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
-                      style={{height:20,padding:"0 9px",cursor:"default",fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.04em",
-                        color:isH?"#fff":c.acL,
-                        background:isH?`linear-gradient(135deg,${c.ac},${c.acL})`:"transparent",
-                        border:`1px solid ${isH?"rgba(74,106,255,0.5)":c.acB}`,
-                        transition:"background 0.12s,color 0.12s,border-color 0.12s"}}>
-                      PDF
-                    </button>
-                  </div>
-                );})}
+                {pmInv.length ? (
+                  pmInv.map((inv, i) => {
+                    const hk = `pdf-${inv.id || i}`;
+                    const isH = swHov === hk;
+                    const ts = inv.created != null ? Number(inv.created) * 1000 : NaN;
+                    const dlab = Number.isFinite(ts) ? new Date(ts).toLocaleDateString(undefined, { dateStyle: "medium" }) : "—";
+                    return (
+                      <div
+                        key={inv.id || i}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: "7px 12px",
+                          borderBottom: i < pmInv.length - 1 ? `1px solid ${c.br}` : "none",
+                          gap: 8,
+                        }}
+                      >
+                        <span style={{ fontSize: 13, color: c.ts, flex: 1 }}>{dlab}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: c.gn }}>{fmtInvMoney(inv.total, inv.currency)}</span>
+                        {inv.invoice_pdf ? (
+                          <a
+                            href={inv.invoice_pdf}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onMouseEnter={() => setSwHov(hk)}
+                            onMouseLeave={() => setSwHov(null)}
+                            style={{
+                              height: 20,
+                              padding: "0 9px",
+                              cursor: "default",
+                              fontFamily: F,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              letterSpacing: "0.04em",
+                              textDecoration: "none",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: isH ? "#fff" : c.acL,
+                              background: isH ? `linear-gradient(135deg,${c.ac},${c.acL})` : "transparent",
+                              border: `1px solid ${isH ? "rgba(74,106,255,0.5)" : c.acB}`,
+                              transition: "background 0.12s,color 0.12s,border-color 0.12s",
+                            }}
+                          >
+                            PDF
+                          </a>
+                        ) : (
+                          <span style={{ fontSize: 11, color: c.tm }}>—</span>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div style={{ padding: "10px 12px", fontSize: 12, color: c.tm }}>No invoices yet.</div>
+                )}
               </div>
             </>}
           </div>
@@ -12241,6 +12635,15 @@ const TalariaV8b = () => {
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:4,flexShrink:0}}>
             {profileTab==="account" && <button
+              onClick={async () => {
+                try {
+                  await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+                } catch {
+                  /* ignore */
+                }
+                const next = `${window.location.pathname || "/dashboard/"}${window.location.search || ""}`;
+                window.location.href = `/login/?next=${encodeURIComponent(next)}`;
+              }}
               onMouseEnter={()=>setSwHov("prof-logout")} onMouseLeave={()=>setSwHov(null)}
               onMouseDown={()=>setSwHov("prof-logout_dn")} onMouseUp={()=>setSwHov("prof-logout")}
               style={{marginRight:"auto",height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,
@@ -12252,7 +12655,7 @@ const TalariaV8b = () => {
               Log Out
             </button>}
             <button onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="profCancel"?c.tx:c.ts,background:swHov==="profCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="profCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button onClick={() => void saveProfileAndClose()} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
         );

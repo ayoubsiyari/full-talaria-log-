@@ -442,26 +442,6 @@ export default function ProfilePage() {
             <h2>{isArabic ? "تفاصيل الحساب" : "Account details"}</h2>
             <div className="prof-kv">
               <div className="prof-kv-row">
-                <span className="prof-kv-k">User ID</span>
-                <span className="prof-kv-v">{user.id}</span>
-              </div>
-              <div className="prof-kv-row">
-                <span className="prof-kv-k">{isArabic ? "الدور" : "Role"}</span>
-                <span className="prof-kv-v">{user.role}</span>
-              </div>
-              <div className="prof-kv-row">
-                <span className="prof-kv-k">{isArabic ? "الحالة" : "Status"}</span>
-                <span className="prof-kv-v">{user.is_active ? (isArabic ? "نشط" : "Active") : isArabic ? "غير نشط" : "Inactive"}</span>
-              </div>
-              <div className="prof-kv-row">
-                <span className="prof-kv-k">{isArabic ? "صلاحية اليوميات" : "Journal access"}</span>
-                <span className="prof-kv-v">{user.has_journal_access ? (isArabic ? "نعم" : "Yes") : isArabic ? "لا" : "No"}</span>
-              </div>
-              <div className="prof-kv-row">
-                <span className="prof-kv-k">{isArabic ? "حد الأجهزة" : "Max devices"}</span>
-                <span className="prof-kv-v">{user.max_sessions}</span>
-              </div>
-              <div className="prof-kv-row">
                 <span className="prof-kv-k">{isArabic ? "انتهاء الوصول" : "Access expires"}</span>
                 <span className="prof-kv-v">
                   {user.access_expires_at
@@ -470,19 +450,7 @@ export default function ProfilePage() {
                 </span>
               </div>
               <div className="prof-kv-row">
-                <span className="prof-kv-k">Stripe customer</span>
-                <span className="prof-kv-v">{user.stripe_customer_id || "—"}</span>
-              </div>
-              <div className="prof-kv-row">
-                <span className="prof-kv-k">{isArabic ? "المنطقة الزمنية (عرض)" : "Timezone (display)"}</span>
-                <span className="prof-kv-v">{user.timezone || "UTC"}</span>
-              </div>
-              <div className="prof-kv-row">
-                <span className="prof-kv-k">{isArabic ? "العملة الأساسية (عرض)" : "Base currency (display)"}</span>
-                <span className="prof-kv-v">{user.base_currency || "USD"}</span>
-              </div>
-              <div className="prof-kv-row">
-                <span className="prof-kv-k">{isArabic ? "أنشئ في" : "Created"}</span>
+                <span className="prof-kv-k">{isArabic ? "تاريخ الإنشاء" : "Date created"}</span>
                 <span className="prof-kv-v">
                   {user.created_at ? new Date(user.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—"}
                 </span>

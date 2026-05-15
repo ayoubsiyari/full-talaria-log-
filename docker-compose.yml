@@ -85,6 +85,9 @@ services:
       TILE_CDN_BASE_URL: ${TILE_CDN_BASE_URL:-}
       TILE_CDN_REDIRECT: ${TILE_CDN_REDIRECT:-false}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      # Billing portal return_url allowlist (api_server). Until DNS is live, use the origin you open in the browser (e.g. http://localhost:3000). Production: https://www.talaria-log.com
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      STRIPE_REDIRECT_ALLOWED_ORIGINS: ${STRIPE_REDIRECT_ALLOWED_ORIGINS:-}
     # Optional: inject FINNHUB (and other keys) from chart/.env — required:false so compose works if file is missing.
     env_file:
       - path: "./chart v 1.4/chart/.env"
