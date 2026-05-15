@@ -31,6 +31,102 @@ function cpBuildColor(r, g, b, a) {
   return a>=1 ? `#${toHex2(r)}${toHex2(g)}${toHex2(b)}` : `rgba(${r},${g},${b},${+a.toFixed(2)})`;
 }
 
+// ── Session Journal (trades-only) helpers ──────────────────────────────────
+function sessionJournalLocalKey(sessionId) {
+  return `talaria_v8_session_journal_${sessionId}`;
+}
+function flattenJournalApiTrade(item) {
+  const p = item && item.payload && typeof item.payload === "object" && !Array.isArray(item.payload) ? item.payload : {};
+  return {
+    ...p,
+    client_trade_id: item.client_trade_id ?? p.client_trade_id,
+    updated_at: item.updated_at ?? p.updated_at,
+  };
+}
+function buildSessionJournalColumns(rows) {
+  const keys = new Set();
+  (rows || []).forEach((r) => {
+    if (r && typeof r === "object") Object.keys(r).forEach((k) => keys.add(k));
+  });
+  const fixedOrder = [
+    "client_trade_id", "updated_at", "id", "time", "symbol", "side", "status", "size", "type",
+    "entry", "exit", "pnl", "duration", "tags", "notes", "screenshots", "tp", "sl", "mae", "mfe",
+  ];
+  const ordered = [];
+  fixedOrder.forEach((k) => {
+    if (keys.has(k)) {
+      ordered.push(k);
+      keys.delete(k);
+    }
+  });
+  [...keys].sort().forEach((k) => ordered.push(k));
+  if (ordered.length === 0) {
+    return ["client_trade_id", "updated_at", "id", "time", "symbol", "side", "status", "size", "type", "entry", "exit", "pnl", "duration", "tags", "notes", "screenshots", "tp", "sl", "mae", "mfe"];
+  }
+  return ordered;
+}
+function escapeCsvCell(val) {
+  const s = val == null ? "" : String(val);
+  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+function buildSessionJournalCsvText(columns, rows) {
+  const lines = [columns.map(escapeCsvCell).join(",")];
+  (rows || []).forEach((r) => {
+    lines.push(columns.map((k) => escapeCsvCell(r[k])).join(","));
+  });
+  return lines.join("\r\n");
+}
+function downloadUtf8Csv(filename, csvBody) {
+  const blob = new Blob([`\uFEFF${csvBody}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+function generateSessionJournalPlaceholders(session, maxN = 500) {
+  const n = Math.min(maxN, Math.max(0, Number(session.trades) || 0));
+  if (!n) return [];
+  const tickers = session.tickers && session.tickers.length ? session.tickers : [session.symbol || "—"];
+  let seed = typeof session.id === "number" ? session.id : String(session.id).split("").reduce((a, ch) => a + ch.charCodeAt(0), 0);
+  const rnd = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const sides = ["Long", "Short"];
+  const stat = ["Closed", "Open"];
+  const rows = [];
+  for (let i = 0; i < n; i++) {
+    const sym = tickers[Math.floor(rnd() * tickers.length)] || "—";
+    const pnl = Math.round((rnd() - 0.45) * 400);
+    rows.push({
+      client_trade_id: `demo-${session.id}-${i + 1}`,
+      time: new Date(Date.now() - Math.floor(rnd() * 90 * 86400000)).toISOString(),
+      symbol: sym,
+      side: sides[Math.floor(rnd() * 2)],
+      status: stat[Math.floor(rnd() * 2)],
+      size: (rnd() * 4 + 0.25).toFixed(2),
+      type: rnd() > 0.7 ? "Limit" : "Market",
+      entry: (18000 + rnd() * 2000).toFixed(2),
+      exit: rnd() > 0.15 ? (18000 + rnd() * 2000).toFixed(2) : "—",
+      pnl: String(pnl),
+      duration: `${Math.floor(rnd() * 8) + 1}h ${Math.floor(rnd() * 59)}m`,
+      tags: rnd() > 0.6 ? "demo" : "",
+      notes: "",
+      tp: rnd() > 0.5 ? (1 + rnd() * 2).toFixed(1) : "",
+      sl: rnd() > 0.5 ? (1 + rnd()).toFixed(1) : "",
+      mae: String(-Math.floor(rnd() * 120)),
+      mfe: String(Math.floor(rnd() * 200)),
+    });
+  }
+  return rows;
+}
+
 // ── Color Picker Popup ───────────────────────────────────────────────────────
 const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange, onAChange, onHexChange, onClose, onDragStart, dragging, animation, hideAlpha }) => {
   const rgb = hsvToRgb(h, s, v);
@@ -463,6 +559,8 @@ const TalariaV8b = () => {
   const [symPopup, setSymPopup] = useState(null);
   const [sessView, setSessView] = useState("sessions");
   const [dashSessId, setDashSessId] = useState(null);
+  const [sessionJournalRows, setSessionJournalRows] = useState([]);
+  const [sessionJournalLoading, setSessionJournalLoading] = useState(false);
   const [dashHov, setDashHov] = useState(null);
   const [sessSelected, setSessSelected] = useState(null);
   const [sessSearchQ, setSessSearchQ] = useState("");
@@ -1309,6 +1407,88 @@ const TalariaV8b = () => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    if (sessView !== "sessionJournal" || dashSessId == null) return undefined;
+    let cancelled = false;
+    const session = sessions.find((s) => s.id === dashSessId);
+    if (!session) {
+      setSessionJournalRows([]);
+      setSessionJournalLoading(false);
+      return undefined;
+    }
+    setSessionJournalRows([]);
+    setSessionJournalLoading(true);
+
+    (async () => {
+      const serverIds = [session.apiSessionId, session.session_id, session.sessionId]
+        .filter((v) => v != null && v !== "")
+        .map((v) => String(v).trim())
+        .filter((sid) => /^\d+$/.test(sid));
+
+      if (serverIds.length) {
+        for (const sid of serverIds) {
+          try {
+            const r = await fetch(`/api/sessions/${encodeURIComponent(sid)}/journal-trades`, { credentials: "include" });
+            if (r.status === 404 || r.status === 403) continue;
+            if (!r.ok) continue;
+            const data = await r.json();
+            const items = Array.isArray(data?.trades) ? data.trades : [];
+            if (cancelled) return;
+            if (items.length > 0) {
+              setSessionJournalRows(items.map(flattenJournalApiTrade));
+              setSessionJournalLoading(false);
+              return;
+            }
+          } catch {
+            /* try next id or fall through to local */
+          }
+        }
+      }
+
+      if (cancelled) return;
+      let local = [];
+      try {
+        const raw = localStorage.getItem(sessionJournalLocalKey(session.id));
+        local = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(local)) local = [];
+      } catch {
+        local = [];
+      }
+      local = local.map((x) => (x && typeof x === "object" ? x : {}));
+      if (local.length > 0) {
+        setSessionJournalRows(local);
+        setSessionJournalLoading(false);
+        return;
+      }
+
+      const demo = (session.trades || 0) > 0 ? generateSessionJournalPlaceholders(session) : [];
+      setSessionJournalRows(demo);
+      setSessionJournalLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessView, dashSessId, sessions]);
+
+  useEffect(() => {
+    const onLinkApi = (ev) => {
+      const d = ev && ev.detail;
+      if (!d || d.v8SessionId == null || d.apiSessionId == null) return;
+      const apiNum = Number(d.apiSessionId);
+      if (!Number.isFinite(apiNum)) return;
+      setSessions((prev) => {
+        const next = prev.map((s) => (s.id === d.v8SessionId ? { ...s, apiSessionId: apiNum } : s));
+        try {
+          localStorage.setItem("talaria_sessions", JSON.stringify(next));
+        } catch { /* ignore */ }
+        return next;
+      });
+    };
+    window.addEventListener("talaria-v8-link-api-session-id", onLinkApi);
+    return () => window.removeEventListener("talaria-v8-link-api-session-id", onLinkApi);
   }, []);
 
   useEffect(() => {
@@ -2280,6 +2460,9 @@ const TalariaV8b = () => {
   const duplicateSession = (e, sess) => {
     e.stopPropagation();
     const copy = { ...sess, id: Date.now(), name: `Copy of ${sess.name}`, progress: 0, trades: 0, pnl: null, winRate: null, avgRR: null, createdAt: new Date().toISOString() };
+    delete copy.apiSessionId;
+    delete copy.session_id;
+    delete copy.sessionId;
     const updated = [copy, ...sessions];
     setSessions(updated);
     try { localStorage.setItem("talaria_sessions", JSON.stringify(updated)); } catch {}
@@ -3317,6 +3500,8 @@ const TalariaV8b = () => {
                       icon:<svg width={14} height={14} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>},
                     {label:"Dashboard", handler:()=>{setDashSessId(ms.id);setSessView("dashboard");setSessActMenu(null);}, col:c.ts, disabled:false, danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill="currentColor"/><rect x="11" y="1" width="8" height="8" fill="currentColor"/><rect x="1" y="11" width="8" height="8" fill="currentColor"/><rect x="11" y="11" width="8" height="8" fill="currentColor"/></svg>},
+                    {label:"Journal", handler:()=>{setDashSessId(ms.id);setSessView("sessionJournal");setSessActMenu(null);}, col:c.ts, disabled:false, danger:false,
+                      icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="15" height="18" rx="1" stroke="currentColor" strokeWidth="1.5"/><line x1="7" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="7" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="7" y1="16" x2="11" y2="16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>},
                     {label:"divider"},
                     {label:"Edit",      handler:e=>{openEditSession(e,ms);setSessActMenu(null);}, col:hasStarted?"rgba(255,255,255,0.3)":c.ts, disabled:hasStarted, sub:hasStarted?"started":null, danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
@@ -5105,6 +5290,123 @@ const TalariaV8b = () => {
                 </div>
               </div>
               </div>{/* end body */}
+            </div>
+          );
+        }
+
+        /* ── VIEW: SESSION JOURNAL (trades only) ── */
+        if (sessView === "sessionJournal") {
+          const ds = sessions.find((s) => s.id === dashSessId);
+          if (!ds) {
+            setSessView("sessions");
+            return null;
+          }
+          const isPropJ = ds.tradingMode === "prop";
+          const stripeJ = isPropJ ? c.gold : c.acL;
+          const journalCols = buildSessionJournalColumns(sessionJournalRows);
+          const safeName = String(ds.name || "session").replace(/[^\w\-]+/g, "_").replace(/_+/g, "_").slice(0, 80) || "session";
+          const exportJournalCsv = () => {
+            const csv = buildSessionJournalCsvText(journalCols, sessionJournalRows);
+            downloadUtf8Csv(`journal-${safeName}-${ds.id}.csv`, csv);
+          };
+          return (
+            <div style={{ position: "fixed", inset: 0, zIndex: 99998, background: c.bg, fontFamily: F, display: "flex", flexDirection: "column" }}>
+              <div style={{ height: 64, flexShrink: 0, display: "flex", alignItems: "center", gap: 0, background: c.el, boxShadow: "0 2px 18px rgba(0,0,0,0.5)", zIndex: 2 }}>
+                <div style={{ width: 64, flexShrink: 0, height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <img src="/LOGO-07.png" style={{ width: 52, height: 52, objectFit: "contain" }} alt="" />
+                </div>
+                <div style={{ width: 7, height: 7, borderRadius: "50%", background: stripeJ, boxShadow: `0 0 8px ${stripeJ}`, flexShrink: 0, marginLeft: 16 }} />
+                <div style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: c.tx, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: F }}>{ds.name}</div>
+                  <div style={{ fontSize: 9, fontWeight: 600, color: c.tm, fontFamily: F, marginTop: 2 }}>Trades only — session journal</div>
+                </div>
+                <div style={{ fontSize: 9, fontWeight: 800, color: stripeJ, letterSpacing: "0.1em", border: `1px solid ${stripeJ}44`, padding: "3px 10px", flexShrink: 0, fontFamily: F, marginRight: 10 }}>{isPropJ ? "PROP FIRM" : "STANDARD"}</div>
+                <div
+                  onClick={exportJournalCsv}
+                  style={{
+                    height: 34,
+                    padding: "0 18px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: c.sf,
+                    border: `1px solid ${c.brH}`,
+                    cursor: "default",
+                    fontSize: 10,
+                    fontWeight: 800,
+                    color: c.ts,
+                    letterSpacing: "0.06em",
+                    fontFamily: F,
+                    marginRight: 12,
+                    position: "relative",
+                    flexShrink: 0,
+                  }}
+                >
+                  <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,${c.acL},${c.gold})`, opacity: 0.55, pointerEvents: "none" }} />
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M12 3v12M8 11l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M5 21h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                  Export CSV
+                </div>
+                <div
+                  onClick={() => setSessView("sessions")}
+                  style={{ height: 34, padding: "0 16px", display: "flex", alignItems: "center", border: `1px solid ${c.brH}`, background: c.sf, cursor: "default", fontSize: 10, fontWeight: 700, color: c.ts, fontFamily: F, marginRight: 20, flexShrink: 0 }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = c.brH; e.currentTarget.style.color = c.tx; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = c.brH; e.currentTarget.style.color = c.ts; }}
+                >
+                  Back
+                </div>
+              </div>
+              <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+                {navPanel}
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", padding: "20px 28px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: c.tm, fontFamily: F, marginBottom: 12 }}>
+                    {sessionJournalLoading ? "Loading trades…" : `${sessionJournalRows.length} trade${sessionJournalRows.length === 1 ? "" : "s"}`}
+                  </div>
+                  <div style={{ flex: 1, minHeight: 0, background: c.sf, border: `1px solid ${c.brH}`, position: "relative", display: "flex", flexDirection: "column" }}>
+                    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,${c.acL},${c.gold})`, opacity: 0.55, pointerEvents: "none" }} />
+                    {!sessionJournalLoading && sessionJournalRows.length === 0 && (
+                      <div style={{ padding: 48, textAlign: "center", color: c.tm, fontSize: 12, fontFamily: F }}>No trades recorded for this session yet.</div>
+                    )}
+                    {(sessionJournalLoading || sessionJournalRows.length > 0) && (
+                      <div className="tlr-scroll" style={{ flex: 1, overflow: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, fontFamily: F }}>
+                          <thead>
+                            <tr style={{ position: "sticky", top: 0, zIndex: 1, background: c.el, boxShadow: `0 1px 0 ${c.brH}` }}>
+                              {journalCols.map((col) => (
+                                <th
+                                  key={col}
+                                  style={{
+                                    textAlign: "left",
+                                    padding: "10px 12px",
+                                    fontWeight: 800,
+                                    color: c.tm,
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.06em",
+                                    whiteSpace: "nowrap",
+                                    borderBottom: `1px solid ${c.brH}`,
+                                  }}
+                                >
+                                  {col.replace(/_/g, " ")}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sessionJournalRows.map((row, ri) => (
+                              <tr key={ri} style={{ borderBottom: `1px solid ${c.br}` }}>
+                                {journalCols.map((col) => (
+                                  <td key={col} style={{ padding: "8px 12px", color: c.ts, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row[col] != null ? String(row[col]) : ""}>
+                                    {row[col] != null && row[col] !== "" ? String(row[col]) : "—"}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           );
         }
