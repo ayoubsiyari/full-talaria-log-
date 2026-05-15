@@ -2,6 +2,15 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { BacktestNewSessionModal } from "./BacktestNewSessionModal";
+import {
+  sessionJournalLocalKey,
+  flattenJournalApiTrade,
+  buildSessionJournalColumns,
+  buildSessionJournalCsvText,
+  downloadUtf8Csv,
+  generateSessionJournalPlaceholders,
+  type JournalApiTradeItem,
+} from "./sessionJournalUtils";
 
 /* ── Design system tokens (dark mode) ── */
 const c = {
@@ -292,6 +301,9 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   const [tradeTip, setTradeTip] = useState<TradeTip | null>(null);
   type ActMenu = { id: number; x: number; y: number };
   const [actMenu, setActMenu] = useState<ActMenu | null>(null);
+  const [journalSession, setJournalSession] = useState<Session | null>(null);
+  const [journalRows, setJournalRows] = useState<Record<string, unknown>[]>([]);
+  const [journalLoading, setJournalLoading] = useState(false);
   type StratPop = { id: number; x: number; y: number; name: string; desc: string };
   const [stratPop, setStratPop] = useState<StratPop | null>(null);
   const contentFrameStyle: React.CSSProperties = { width: "fit-content", minWidth: 1288, margin: "0 auto" };
@@ -331,6 +343,67 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
     onProvideOpenNewSession(open);
     return () => onProvideOpenNewSession(null);
   }, [onProvideOpenNewSession]);
+
+  useEffect(() => {
+    if (!journalSession) {
+      setJournalRows([]);
+      setJournalLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    const sess = journalSession;
+    setJournalRows([]);
+    setJournalLoading(true);
+
+    (async () => {
+      try {
+        const r = await fetch(`/api/sessions/${encodeURIComponent(String(sess.id))}/journal-trades`, {
+          credentials: "include",
+        });
+        if (r.ok) {
+          const data = (await r.json()) as { trades?: JournalApiTradeItem[] };
+          const items = Array.isArray(data?.trades) ? data.trades : [];
+          if (cancelled) return;
+          if (items.length > 0) {
+            setJournalRows(items.map(flattenJournalApiTrade));
+            setJournalLoading(false);
+            return;
+          }
+        }
+      } catch { /* fall through */ }
+
+      if (cancelled) return;
+      let local: unknown[] = [];
+      try {
+        const raw = localStorage.getItem(sessionJournalLocalKey(sess.id));
+        local = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(local)) local = [];
+      } catch {
+        local = [];
+      }
+      const normalized = local.map((x) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {}));
+      if (normalized.length > 0) {
+        setJournalRows(normalized);
+        setJournalLoading(false);
+        return;
+      }
+
+      const tradeCount = kpis[sess.id]?.trades || 0;
+      const tickerSyms = sessionTickerRows(sess).map((t) => t.sym);
+      const pseudo = {
+        id: sess.id,
+        trades: tradeCount,
+        tickers: tickerSyms.length ? tickerSyms : undefined,
+        symbol: sess.symbol,
+      };
+      setJournalRows(tradeCount > 0 ? generateSessionJournalPlaceholders(pseudo) : []);
+      setJournalLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [journalSession, kpis]);
 
   /* ── Derived stats ── */
   const propSess = sessions.filter(s => s.session_type === "propfirm");
@@ -452,6 +525,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
       });
       if (!res.ok) throw new Error(String(res.status));
       setActMenu(null);
+      setJournalSession(js => (js && js.id === s.id ? null : js));
       await loadSessions();
     } catch { /* ignore */ }
   };
@@ -491,6 +565,7 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   }
 
   return (
+    <>
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: c.bg, fontFamily: F, overflow: "hidden" }}>
 
       {/* ── Scrollable body ── */}
@@ -1482,6 +1557,20 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
             fn: () => { openAnalytics(ms); setActMenu(null); },
             icon: <svg width={14} height={14} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill="currentColor" /><rect x="11" y="1" width="8" height="8" fill="currentColor" /><rect x="1" y="11" width="8" height="8" fill="currentColor" /><rect x="11" y="11" width="8" height="8" fill="currentColor" /></svg>,
           },
+          {
+            type: "item",
+            label: "Journal",
+            col: c.ts,
+            fn: () => { setJournalSession(ms); setActMenu(null); },
+            icon: (
+              <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                <rect x="3" y="3" width="15" height="18" rx="1" stroke="currentColor" strokeWidth="1.5" />
+                <line x1="7" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="7" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="7" y1="16" x2="11" y2="16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            ),
+          },
           { type: "div" },
           {
             type: "item",
@@ -1540,5 +1629,149 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
 
       <BacktestNewSessionModal open={newSessOpen} onClose={() => setNewSessOpen(false)} onSaved={loadSessions} />
     </div>
+
+    {journalSession && (() => {
+      const isPropJ = journalSession.session_type === "propfirm";
+      const stripeJ = isPropJ ? c.gold : c.acL;
+      const cols = buildSessionJournalColumns(journalRows);
+      const safeName = String(journalSession.name || "session").replace(/[^\w\-]+/g, "_").replace(/_+/g, "_").slice(0, 80) || "session";
+      const exportCsv = () => {
+        const csv = buildSessionJournalCsvText(cols, journalRows);
+        downloadUtf8Csv(`journal-${safeName}-${journalSession.id}.csv`, csv);
+      };
+      return (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100000,
+            background: c.bg,
+            fontFamily: F,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div style={{ height: 56, flexShrink: 0, display: "flex", alignItems: "center", gap: 0, background: c.el, boxShadow: "0 2px 18px rgba(0,0,0,0.5)", zIndex: 2, paddingRight: 16 }}>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: stripeJ, boxShadow: `0 0 8px ${stripeJ}`, flexShrink: 0, marginLeft: 20 }} />
+            <div style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: c.tx, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{journalSession.name}</div>
+              <div style={{ fontSize: 9, fontWeight: 600, color: c.tm, marginTop: 2 }}>Trades only — session journal</div>
+            </div>
+            <div style={{ fontSize: 9, fontWeight: 800, color: stripeJ, letterSpacing: "0.1em", border: `1px solid ${stripeJ}44`, padding: "3px 10px", flexShrink: 0, marginRight: 10 }}>
+              {isPropJ ? "PROP FIRM" : "STANDARD"}
+            </div>
+            <div
+              onClick={exportCsv}
+              style={{
+                height: 34,
+                padding: "0 18px",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                background: c.sf,
+                border: `1px solid ${c.brH}`,
+                cursor: "default",
+                fontSize: 10,
+                fontWeight: 800,
+                color: c.ts,
+                letterSpacing: "0.06em",
+                marginRight: 10,
+                position: "relative",
+                flexShrink: 0,
+              }}
+            >
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,${c.acL},${c.gold})`, opacity: 0.55, pointerEvents: "none" }} />
+              <svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M12 3v12M8 11l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /><path d="M5 21h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+              Export CSV
+            </div>
+            <div
+              onClick={() => setJournalSession(null)}
+              style={{
+                height: 34,
+                padding: "0 16px",
+                display: "flex",
+                alignItems: "center",
+                border: `1px solid ${c.brH}`,
+                background: c.sf,
+                cursor: "default",
+                fontSize: 10,
+                fontWeight: 700,
+                color: c.ts,
+                flexShrink: 0,
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.color = c.tx; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.color = c.ts; }}
+            >
+              Back
+            </div>
+          </div>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", padding: "20px 28px" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: c.tm, marginBottom: 12 }}>
+              {journalLoading ? "Loading trades…" : `${journalRows.length} trade${journalRows.length === 1 ? "" : "s"}`}
+            </div>
+            <div style={{ flex: 1, minHeight: 0, background: c.sf, border: `1px solid ${c.brH}`, position: "relative", display: "flex", flexDirection: "column" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,${c.acL},${c.gold})`, opacity: 0.55, pointerEvents: "none" }} />
+              {!journalLoading && journalRows.length === 0 && (
+                <div style={{ padding: 48, textAlign: "center", color: c.tm, fontSize: 12 }}>No trades recorded for this session yet.</div>
+              )}
+              {(journalLoading || journalRows.length > 0) && (
+                <div className="tlr-scroll" style={{ flex: 1, overflow: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                    <thead>
+                      <tr style={{ position: "sticky", top: 0, zIndex: 1, background: c.el, boxShadow: `0 1px 0 ${c.brH}` }}>
+                        {cols.map(col => (
+                          <th
+                            key={col}
+                            style={{
+                              textAlign: "left",
+                              padding: "10px 12px",
+                              fontWeight: 800,
+                              color: c.tm,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.06em",
+                              whiteSpace: "nowrap",
+                              borderBottom: `1px solid ${c.brH}`,
+                            }}
+                          >
+                            {col.replace(/_/g, " ")}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {journalRows.map((row, ri) => (
+                        <tr key={ri} style={{ borderBottom: `1px solid ${c.br}` }}>
+                          {cols.map(col => {
+                            const v = row[col];
+                            const show = v != null && v !== "";
+                            return (
+                              <td
+                                key={col}
+                                style={{
+                                  padding: "8px 12px",
+                                  color: c.ts,
+                                  maxWidth: 220,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                                title={show ? String(v) : ""}
+                              >
+                                {show ? String(v) : "—"}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    })()}
+    </>
   );
 }
