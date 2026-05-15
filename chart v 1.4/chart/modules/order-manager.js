@@ -13070,6 +13070,23 @@ class OrderManager {
                     lotSizeInput.classList.remove('is-hidden');
                     if (balToggle) balToggle.style.display = 'none';
                 }
+
+                // When leaving $ / % for lot-size, align #lotSizeAmount with implied #orderQuantity
+                // so the lots field does not keep a stale value (e.g. 50) while risk was $50.
+                if (mode === 'lot-size' && prevMode !== 'lot-size') {
+                    const oqEl = document.getElementById('orderQuantity');
+                    const oq = parseFloat(String(oqEl?.value ?? '').replace(/,/g, '') || '0');
+                    const lotEl = document.getElementById('lotSizeAmount');
+                    if (lotEl && Number.isFinite(oq) && oq > 0) {
+                        const snapped = this._roundQtyToStep(oq);
+                        const formatted = this._formatQty(snapped);
+                        if (String(lotEl.value) !== String(formatted)) {
+                            lotEl.value = formatted;
+                            lotEl.dispatchEvent(new Event('input', { bubbles: true }));
+                            lotEl.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    }
+                }
                 
                 // TP distribution is always percent-based (equal fraction of position at each level)
                 if (false) {

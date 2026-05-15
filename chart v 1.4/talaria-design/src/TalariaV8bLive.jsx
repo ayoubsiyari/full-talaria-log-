@@ -6952,7 +6952,24 @@ const TalariaV8bLive = () => {
           const wantBal = "current";
           const br = document.querySelector(`input[name="balanceType"][value="${wantBal}"]`);
           if (br && !br.checked) br.click();
-        } else setIn("lotSizeAmount", riskVal);
+        } else {
+          // Lot-size: do not push prior $/% `riskVal` into lots (e.g. "100" dollars → wrong 100 lots).
+          // After the tab switch, #orderQuantity already reflects the last risk-based size — use that.
+          const oqEl = document.getElementById("orderQuantity");
+          const oq = parseFloat(String(oqEl?.value ?? "").replace(/,/g, "") || "0");
+          let lotStr = riskVal;
+          if (Number.isFinite(oq) && oq > 0 && om && typeof om._formatQty === "function" && typeof om._roundQtyToStep === "function") {
+            lotStr = om._formatQty(om._roundQtyToStep(oq));
+          } else if (Number.isFinite(oq) && oq > 0) {
+            lotStr = String(oq);
+          }
+          setIn("lotSizeAmount", lotStr);
+          queueMicrotask(() => {
+            try {
+              setRiskVal((prev) => (prev === lotStr ? prev : lotStr));
+            } catch (_) {}
+          });
+        }
 
         // Recompute size immediately after risk-mode + inputs sync (otherwise #orderQuantity / readouts
         // can lag one tick when switching $ ↔ % ↔ #).
