@@ -12320,7 +12320,7 @@ class OrderManager {
         setTimeout(_resizeChartsAfterDrawer, 290);
 
         // New order draft: drop multi-entry rows from the last session (preview was cleared on close).
-        if (!this.editingPendingOrderId) {
+        if (!this.editingPendingOrderId && !v9OrderRail) {
             this._resetMultiEntryStateForNewOrder();
 
             // Default to market order for every new draft
@@ -12334,10 +12334,12 @@ class OrderManager {
         this.updateOrderPanel();
         this._renderStrategyVariablesPanel();
 
-        // Reset TP/SL positioning flags and values for new order
-        this.tpManuallyPositioned = false;
-        this.slManuallyPositioned = false;
-        if (!this.editingPendingOrderId) {
+        // Reset TP/SL positioning flags and values for new order (classic drawer only).
+        // V9 React rail + multichart: hidden #orderPanel is driven by React / iframe snapshots;
+        // clearing here zeros TP/SL on every open and drops dragged TP/SL after close → reopen.
+        if (!v9OrderRail && !this.editingPendingOrderId) {
+            this.tpManuallyPositioned = false;
+            this.slManuallyPositioned = false;
             const tpIn = document.getElementById('tpPrice');
             const slIn = document.getElementById('slPrice');
             if (tpIn) tpIn.value = 0;
@@ -12351,11 +12353,13 @@ class OrderManager {
             orderValidationBox.innerHTML = '';
         }
 
-        // Reset multiple TP UI to avoid stale state
-        const multipleTPToggle = document.getElementById('multipleTPToggle');
-        const multipleTPSettings = document.getElementById('multipleTPSettings');
-        if (multipleTPToggle) multipleTPToggle.checked = false;
-        if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
+        // Reset multiple TP UI to avoid stale state (classic drawer only — V9 React owns TP rows).
+        if (!v9OrderRail) {
+            const multipleTPToggle = document.getElementById('multipleTPToggle');
+            const multipleTPSettings = document.getElementById('multipleTPSettings');
+            if (multipleTPToggle) multipleTPToggle.checked = false;
+            if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
+        }
 
         this.updateOrderPanelPrice();
 
@@ -16700,9 +16704,36 @@ class OrderManager {
         if (dm && typeof dm.raiseDrawingLayersAboveOrderPreviews === 'function') {
             dm.raiseDrawingLayersAboveOrderPreviews();
         }
+        // Entry preview uses a full-width invisible hit strip; SL badge sits left of TP and can
+        // end up underneath other preview layers — move badges to top for reliable drags.
+        this._raiseEntryAnchoredPreviewBadgesToFront();
         } finally {
             this._previewTargetChart = null;
         }
+    }
+
+    /** Move entry-anchored SL/TP (and multi-TP) badge groups to the end of the SVG stack for hit-testing. */
+    _raiseEntryAnchoredPreviewBadgesToFront() {
+        try {
+            if (!this._useEntryAnchoredTpSlBadges()) return;
+            const ch = this.previewLines?._previewChart || this._getPreviewChart();
+            const svg = ch?.svg;
+            if (!svg || typeof svg.node !== 'function') return;
+            const root = svg.node();
+            if (!root || typeof root.appendChild !== 'function') return;
+            const lift = (ld) => {
+                if (!ld || !ld.labelGroup || typeof ld.labelGroup.node !== 'function') return;
+                const n = ld.labelGroup.node();
+                if (n && n.parentNode === root) {
+                    try { root.appendChild(n); } catch (_) {}
+                }
+            };
+            lift(this.previewLines?.sl);
+            lift(this.previewLines?.tp);
+            if (Array.isArray(this.previewLines?.multiTPBadges)) {
+                this.previewLines.multiTPBadges.forEach(lift);
+            }
+        } catch (_) { /* ignore */ }
     }
 
     drawPreviewLine(price, color, label, direction = null, isDraggable = false, targetIndex = undefined, targetId = undefined, options = null) {
