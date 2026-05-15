@@ -7325,7 +7325,18 @@ class OrderManager {
      */
     _onPanelSelectedForOrderUI() {
         const panelEl = document.getElementById('orderPanel');
-        if (!panelEl || !panelEl.classList.contains('visible')) return;
+        // V9 live: React owns the visible rail; #orderPanel stays off-DOM with
+        // .order-panel--v9-react-hidden and never gets `.visible`. The rail is
+        // still "open" though — same flags `updatePreviewLines` consults at
+        // line ~16320 — so without this check, switching panels while the V9
+        // rail is open silently skipped refilling entry/SL/TP and redrawing
+        // the draft preview on the newly-focused panel, leaving the order
+        // overlay on the previously-focused chart.
+        const v9ReactRailOpen = typeof window !== 'undefined'
+            && !!window.__talariaV9ReactOrderUi
+            && !!window.__talariaV9OrderRailOpen;
+        if (!panelEl) return;
+        if (!panelEl.classList.contains('visible') && !v9ReactRailOpen) return;
         if (typeof this._isMultiPanelLayout !== 'function' || !this._isMultiPanelLayout()) return;
         if (this._orderPlacedAwaitingReset) return;
         if (this.editingPendingOrderId) return;

@@ -1887,24 +1887,24 @@ class PanelManager {
         selectBar.className = 'panel-select-bar';
         panel.appendChild(selectBar);
         
-        // Click anywhere on panel to select it (like TradingView)
+        // Click anywhere on panel to select it (like TradingView).
+        // We do NOT call preventDefault/stopPropagation here, so inner controls
+        // (OHLC collapse, follow button, etc.) still receive their click — but
+        // selection ALWAYS updates so downstream consumers (order rail / getActiveChart)
+        // route to the panel the user actually clicked. Previously this handler
+        // skipped selection on any `button` target, which meant clicking near the
+        // OHLC header in Panel B left selectedPanelIndex on Panel A and orders
+        // opened on the wrong chart.
         panel.addEventListener('mousedown', (e) => {
             console.log(`🖱️ Panel ${index} clicked`, e.target);
-            
-            // Don't interfere with resize handles, buttons, or other controls
+
+            // Resize handles must not steal selection — dragging a divider
+            // shouldn't reassign the focused panel.
             if (e.target.closest('.panel-resize-handle')) {
                 console.log('⏭️ Skipping - resize handle');
                 return;
             }
-            if (e.target.closest('.ohlc-collapse-btn')) {
-                console.log('⏭️ Skipping - collapse button');
-                return;
-            }
-            if (e.target.closest('button')) {
-                console.log('⏭️ Skipping - button');
-                return;
-            }
-            
+
             // Select this panel if not already selected
             if (this.selectedPanelIndex !== index) {
                 console.log(`✅ Selecting panel ${index}`);
