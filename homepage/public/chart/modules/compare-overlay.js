@@ -959,6 +959,8 @@ class CompareOverlay {
                 symbol: symbolName,
                 color: this.colors[this.colorIndex % this.colors.length],
                 rawData: rawData,  // Use parsed data
+                rawFetchTf: null,
+                nativeBarMs: this._inferMedianBarPeriodMs(rawData),
                 data: [], // Will be resampled
                 visible: true,
                 height: '50%', // 50% of main chart height
@@ -2701,18 +2703,9 @@ class CompareOverlay {
         // Update any legend displays if needed
     }
     
-    // Update linked panes when timeframe changes
+    // Update linked panes when timeframe changes (legacy hook — same as refreshForTimeframe)
     onTimeframeChange(newTimeframe) {
-        if (!this.linkedPanes || this.linkedPanes.length === 0) return;
-        
-        console.log(`📊 Updating linked panes for timeframe: ${newTimeframe}`);
-        
-        this.linkedPanes.forEach(pane => {
-            pane.data = this.resampleData(pane.rawData, newTimeframe);
-            this.calculateLinkedPaneScale(pane);
-        });
-        
-        this.renderLinkedPanes();
+        this.refreshForTimeframe(newTimeframe);
     }
     
     renderActiveOverlays() {
@@ -2767,6 +2760,45 @@ class CompareOverlay {
     }
 
     /**
+     * TF to request for compare /smart loads — align with primary replay raw stream
+     * (usually 1m) so overlay.rawData can be resampled to any chart TF. Using only
+     * chart.currentTimeframe here caused coarse raw (e.g. 1h) when the user was on
+     * 1h; switching to 5m then resampled that sparse series → gaps / wrong overlay.
+     */
+    _resolveOverlaySmartFetchTimeframe() {
+        const ch = this.chart;
+        if (!ch) return '1m';
+        const rs = ch.replaySystem;
+        if (rs && (rs.isActive || ch.isBacktestMode) && rs.rawTimeframe) {
+            return String(rs.rawTimeframe);
+        }
+        return String(ch.currentTimeframe || '1m');
+    }
+
+    _parseTimeframeMs(tfStr) {
+        const ch = this.chart;
+        if (!ch || typeof ch.parseTimeframe !== 'function') return NaN;
+        return ch.parseTimeframe(String(tfStr || '').toLowerCase().trim());
+    }
+
+    /**
+     * Median step between consecutive bar timestamps (ms) — used when rawFetchTf
+     * is unknown (legacy overlays / CSV) to decide if a finer chart TF needs refetch.
+     */
+    _inferMedianBarPeriodMs(bars) {
+        if (!Array.isArray(bars) || bars.length < 2) return NaN;
+        const maxI = Math.min(bars.length - 1, 300);
+        const diffs = [];
+        for (let i = 1; i <= maxI; i++) {
+            const d = Math.abs(Number(bars[i].t) - Number(bars[i - 1].t));
+            if (Number.isFinite(d) && d > 0) diffs.push(d);
+        }
+        if (!diffs.length) return NaN;
+        diffs.sort((a, b) => a - b);
+        return diffs[Math.floor(diffs.length / 2)];
+    }
+
+    /**
      * Time span to load for compare symbols — align with primary chart (replay full history,
      * current rawData, or visible resampled bars). Avoids /file/{id}?limit=50000 which only
      * covers ~50k *intraday* rows (~weeks) while the main series uses /file/.../smart.
@@ -2807,11 +2839,15 @@ class CompareOverlay {
 
     /**
      * Load OHLCV for an overlay via the same GET /file/{id}/smart path as the main chart.
+     * @param {string|number} fileId
+     * @param {string} [fetchTf] - API timeframe for this request; defaults to {@link #_resolveOverlaySmartFetchTimeframe}.
      */
-    async _fetchOverlayBarsViaSmart(fileId) {
+    async _fetchOverlayBarsViaSmart(fileId, fetchTf) {
         const ch = this.chart;
         if (!ch || typeof ch._fetchSmartWindow !== 'function') return [];
-        const tf = ch.currentTimeframe || '1m';
+        const tf = fetchTf != null && String(fetchTf).trim() !== ''
+            ? String(fetchTf).trim()
+            : this._resolveOverlaySmartFetchTimeframe();
         const session = this._resolveCompareSession();
         const windowRange = this._resolveCompareWindowRange();
         const explicit = !!(windowRange && Number.isFinite(windowRange.startTs) && Number.isFinite(windowRange.endTs));
@@ -2865,10 +2901,13 @@ class CompareOverlay {
         try {
             console.log(`📊 Adding overlay: ${symbol} (fileId: ${fileId})`);
             
-            let rawData = await this._fetchOverlayBarsViaSmart(fileId);
+            const fetchTf = this._resolveOverlaySmartFetchTimeframe();
+            let rawData = await this._fetchOverlayBarsViaSmart(fileId, fetchTf);
+            let usedSmart = rawData.length > 0;
             if (!rawData.length) {
                 console.warn('📊 Compare: /smart returned no rows; falling back to raw CSV slice (may truncate long intraday history)');
                 rawData = await this._fetchOverlayBarsLegacyCsv(fileId);
+                usedSmart = false;
             }
             console.log(`📊 Parsed ${rawData.length} overlay candles (smart or legacy)`);
             if (!Array.isArray(rawData) || rawData.length === 0) {
@@ -2878,6 +2917,10 @@ class CompareOverlay {
             // Resample to match current timeframe
             const resampledData = this.resampleData(rawData, this.chart.currentTimeframe);
             console.log(`📊 Resampled to ${resampledData.length} candles`);
+            
+            const nativeBarMs = usedSmart
+                ? (this._parseTimeframeMs(fetchTf) || this._inferMedianBarPeriodMs(rawData))
+                : this._inferMedianBarPeriodMs(rawData);
             
             // Create overlay object with customization options
             const baseColor = this.getNextColor();
@@ -2893,6 +2936,10 @@ class CompareOverlay {
                 priceZoom: 1.0,      // Vertical scale multiplier
                 priceOffset: 0,      // Vertical offset
                 showPriceLine: true,
+                /** API timeframe last used for rawData (when from /smart); null if legacy CSV only */
+                rawFetchTf: usedSmart ? fetchTf : null,
+                /** Typical spacing of bars in rawData (ms); used to refetch when chart TF goes finer */
+                nativeBarMs: Number.isFinite(nativeBarMs) ? nativeBarMs : NaN,
                 // Candle colors
                 bodyUpColor: '#26a69a',
                 bodyDownColor: '#ef5350',
@@ -3942,20 +3989,80 @@ class CompareOverlay {
     }
     
     /**
-     * Refresh overlays when timeframe changes
+     * Refresh overlays when timeframe changes. When switching to a **finer** TF than
+     * the data we have in rawData, re-fetch /smart at the new TF (same as primary chart
+     * refetch) — client-side resample cannot invent intrabar detail from coarse-only raw.
      */
     refreshForTimeframe(timeframe) {
-        this.overlays.forEach(overlay => {
-            overlay.data = this.resampleData(overlay.rawData, timeframe);
-        });
-        if (Array.isArray(this.linkedPanes)) {
-            this.linkedPanes.forEach(pane => {
-                pane.data = this.resampleData(pane.rawData || [], timeframe);
-                this.calculateLinkedPaneScale(pane);
-            });
-            this.renderLinkedPanes();
-        }
-        this.chart.render();
+        const ch = this.chart;
+        if (!ch) return;
+        const parseMs = (tf) => this._parseTimeframeMs(tf);
+        const newMs = parseMs(timeframe);
+
+        (async () => {
+            try {
+                for (const overlay of this.overlays) {
+                    const nativeMs = Number.isFinite(overlay.nativeBarMs)
+                        ? overlay.nativeBarMs
+                        : (overlay.rawFetchTf ? parseMs(overlay.rawFetchTf) : this._inferMedianBarPeriodMs(overlay.rawData));
+                    const needRefetch = !!overlay.fileId
+                        && Number.isFinite(newMs)
+                        && Number.isFinite(nativeMs)
+                        && newMs < nativeMs * 0.92;
+                    if (needRefetch) {
+                        let rows = await this._fetchOverlayBarsViaSmart(overlay.fileId, timeframe);
+                        if (!rows.length) {
+                            try {
+                                rows = await this._fetchOverlayBarsLegacyCsv(overlay.fileId);
+                            } catch (_) {
+                                rows = [];
+                            }
+                        }
+                        if (Array.isArray(rows) && rows.length) {
+                            overlay.rawData = rows;
+                            overlay.rawFetchTf = timeframe;
+                            overlay.nativeBarMs = parseMs(timeframe) || this._inferMedianBarPeriodMs(rows);
+                        }
+                    }
+                    overlay.data = this.resampleData(overlay.rawData || [], timeframe);
+                }
+                if (Array.isArray(this.linkedPanes)) {
+                    for (const pane of this.linkedPanes) {
+                        const nativeMs = Number.isFinite(pane.nativeBarMs)
+                            ? pane.nativeBarMs
+                            : (pane.rawFetchTf ? parseMs(pane.rawFetchTf) : this._inferMedianBarPeriodMs(pane.rawData));
+                        const needRefetch = !!pane.fileId
+                            && Number.isFinite(newMs)
+                            && Number.isFinite(nativeMs)
+                            && newMs < nativeMs * 0.92;
+                        if (needRefetch) {
+                            let rows = await this._fetchOverlayBarsViaSmart(pane.fileId, timeframe);
+                            if (!rows.length) {
+                                try {
+                                    rows = await this._fetchOverlayBarsLegacyCsv(pane.fileId);
+                                } catch (_) {
+                                    rows = [];
+                                }
+                            }
+                            if (Array.isArray(rows) && rows.length) {
+                                pane.rawData = rows;
+                                pane.rawFetchTf = timeframe;
+                                pane.nativeBarMs = parseMs(timeframe) || this._inferMedianBarPeriodMs(rows);
+                            }
+                        }
+                        pane.data = this.resampleData(pane.rawData || [], timeframe);
+                        this.calculateLinkedPaneScale(pane);
+                    }
+                    this.renderLinkedPanes();
+                }
+            } catch (e) {
+                console.warn('📊 refreshForTimeframe:', e && e.message ? e.message : e);
+            } finally {
+                if (typeof ch.render === 'function') {
+                    try { ch.render(); } catch (_) { /* ignore */ }
+                }
+            }
+        })();
     }
     
     /**

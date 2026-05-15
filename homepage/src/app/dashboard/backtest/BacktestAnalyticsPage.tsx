@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Syne, Space_Mono } from "next/font/google";
+import { Space_Mono } from "next/font/google";
 import { ArrowLeft, Filter } from "lucide-react";
 import "./sessions-dashboard.css";
 import "./backtest-os-dashboard.css";
@@ -20,11 +20,6 @@ import {
   varCvar95,
 } from "./backtestOsCompute";
 
-const syne = Syne({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-syne",
-});
 const spaceMono = Space_Mono({
   subsets: ["latin"],
   weight: ["400", "700"],
@@ -1204,7 +1199,7 @@ export default function BacktestAnalyticsPage() {
   };
 
   return (
-    <div className={`${syne.variable} ${spaceMono.variable} bt-os-dashboard`} style={{ fontFamily: "var(--font-syne), Syne, sans-serif" }}>
+    <div className={`${spaceMono.variable} bt-os-dashboard`} style={{ fontFamily: "'Exo 2', sans-serif" }}>
 
       {whatIfError ? (
         <div className="bt-os-api-error">Analytics API: {whatIfError}</div>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import type { OsMetricCard } from "./backtestOsTypes";
 import type { BacktestOsChartPack } from "./BacktestOsCharts";
 import {
@@ -13,6 +13,15 @@ import {
 } from "./BacktestOsCharts";
 
 export type { BacktestOsChartPack } from "./BacktestOsCharts";
+
+const TABS = [
+  { id: "overview" as const, label: "Overview" },
+  { id: "returns" as const, label: "Returns" },
+  { id: "risk" as const, label: "Risk" },
+  { id: "trades" as const, label: "Trades" },
+];
+
+export type AnalyticsTabId = (typeof TABS)[number]["id"];
 
 function MetricGrid({ cards }: { cards: OsMetricCard[] }) {
   return (
@@ -60,25 +69,6 @@ export type BacktestOsDashboardLayoutProps = {
   advancedSection: React.ReactNode;
 };
 
-function useHashSection(): string {
-  const [hash, setHash] = useState(() =>
-    typeof window !== "undefined" ? window.location.hash.replace(/^#/, "") : ""
-  );
-  useEffect(() => {
-    const read = () => setHash(window.location.hash.replace(/^#/, ""));
-    window.addEventListener("hashchange", read);
-    return () => window.removeEventListener("hashchange", read);
-  }, []);
-  return hash;
-}
-
-const NAV: { id: string; label: string }[] = [
-  { id: "bt-os-overview", label: "Overview" },
-  { id: "bt-os-returns", label: "Returns" },
-  { id: "bt-os-risk", label: "Risk" },
-  { id: "bt-os-trades", label: "Trades" },
-];
-
 export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps) {
   const {
     sessionName,
@@ -97,26 +87,35 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
     advancedSection,
   } = props;
 
-  const hash = useHashSection();
-  const navActive = (id: string) => hash === id || (hash === "" && id === "bt-os-overview");
+  const [tab, setTab] = useState<AnalyticsTabId>("overview");
 
   return (
     <>
       <header className="bt-os-header">
-        <div className="bt-os-header-inner">
-          <div className="bt-os-header-brand">
-            <div className="bt-os-logo">
-              <div className="bt-os-logo-mark" aria-hidden />
-              <span className="bt-os-logo-text"></span>
+        <div className="bt-os-header-inner bt-os-header-inner--tabs">
+          <div className="bt-os-header-context" title={strategyLine}>
+            <div className="bt-os-header-context-mark" aria-hidden />
+            <div className="bt-os-header-context-text">
+              <span className="bt-os-session-name">{sessionName}</span>
+              <span className="bt-os-session-range">{dateRangeLine}</span>
             </div>
           </div>
-          <nav className="bt-os-nav" aria-label="Dashboard views">
-            {NAV.map(({ id, label }) => (
-              <a key={id} href={`#${id}`} className={navActive(id) ? "bt-os-nav-active" : undefined}>
+
+          <nav className="bt-os-tabbar" role="tablist" aria-label="Analytics sections">
+            {TABS.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                className={tab === id ? "bt-os-tab bt-os-tab--active" : "bt-os-tab"}
+                onClick={() => setTab(id)}
+              >
                 {label}
-              </a>
+              </button>
             ))}
           </nav>
+
           <div className="bt-os-header-meta">
             <div className="bt-os-header-meta-primary">{strategyLine}</div>
             <div className="bt-os-header-meta-secondary">{dateRangeLine}</div>
@@ -128,97 +127,114 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
         </div>
       </header>
 
-      <main id="bt-os-overview" className="bt-os-main">
-        <div className="bt-os-cluster">
-          <div id="bt-os-returns" className="bt-os-section bt-os-nav-target">
-            <SectionHeader tag="Return" tagClass="bt-os-tag-return" title="Return metrics" />
-            <MetricGrid cards={returnCards} />
-          </div>
-          <div className="bt-os-section">
-            <SectionHeader tag="Chart" tagClass="bt-os-tag-return" title="Equity curve & rolling return" />
-            <OsChartsEquityRolling equity={chartPack.equity} rolling={chartPack.rolling} />
-          </div>
-        </div>
+      <main className="bt-os-main">
+        {tab === "overview" ? (
+          <>
+            <div className="bt-os-cluster">
+              <div className="bt-os-section">
+                <SectionHeader tag="Return" tagClass="bt-os-tag-return" title="Return metrics" />
+                <MetricGrid cards={returnCards} />
+              </div>
+              <div className="bt-os-section">
+                <SectionHeader tag="Chart" tagClass="bt-os-tag-return" title="Equity curve & rolling return" />
+                <OsChartsEquityRolling equity={chartPack.equity} rolling={chartPack.rolling} />
+              </div>
+              {calendarSection ? (
+                <div className="bt-os-section">
+                  <SectionHeader tag="Time" tagClass="bt-os-tag-time" title="Calendar & rhythm" />
+                  <div className="bt-os-calendar-shell">{calendarSection}</div>
+                </div>
+              ) : null}
+            </div>
+          </>
+        ) : null}
 
-        <div className="bt-os-cluster">
-          <div id="bt-os-risk" className="bt-os-section bt-os-nav-target">
-            <SectionHeader tag="Risk" tagClass="bt-os-tag-risk" title="Risk metrics" />
-            <MetricGrid cards={riskCards} />
+        {tab === "returns" ? (
+          <div className="bt-os-cluster">
+            <div className="bt-os-section">
+              <SectionHeader tag="Chart" tagClass="bt-os-tag-return" title="Return distribution & monthly %" />
+              <OsChartsDistMonthly dist={chartPack.dist} monthlyPct={chartPack.monthlyPct} />
+            </div>
           </div>
-          <div className="bt-os-section">
-            <SectionHeader tag="Chart" tagClass="bt-os-tag-risk" title="Return distribution & monthly %" />
-            <OsChartsDistMonthly dist={chartPack.dist} monthlyPct={chartPack.monthlyPct} />
-          </div>
-        </div>
+        ) : null}
 
-        <div className="bt-os-cluster">
-          <div className="bt-os-section">
-            <SectionHeader tag="Drawdown" tagClass="bt-os-tag-draw" title="Drawdown metrics" />
-            <MetricGrid cards={drawCards} />
-          </div>
-          <div className="bt-os-section">
-            <SectionHeader tag="Chart" tagClass="bt-os-tag-draw" title="Drawdown over time" />
-            <OsChartsDrawdown drawdown={chartPack.drawdown} />
-          </div>
-        </div>
+        {tab === "risk" ? (
+          <>
+            <div className="bt-os-cluster">
+              <div className="bt-os-section">
+                <SectionHeader tag="Risk" tagClass="bt-os-tag-risk" title="Risk metrics" />
+                <MetricGrid cards={riskCards} />
+              </div>
+              <div className="bt-os-section">
+                <SectionHeader tag="Drawdown" tagClass="bt-os-tag-draw" title="Drawdown metrics" />
+                <MetricGrid cards={drawCards} />
+              </div>
+              <div className="bt-os-section">
+                <SectionHeader tag="Chart" tagClass="bt-os-tag-draw" title="Drawdown over time" />
+                <OsChartsDrawdown drawdown={chartPack.drawdown} />
+              </div>
+            </div>
+            <div className="bt-os-cluster">
+              <div className="bt-os-section">
+                <SectionHeader tag="Ratios" tagClass="bt-os-tag-ratio" title="Risk-adjusted ratios" />
+                <MetricGrid cards={ratioCards} />
+              </div>
+              <div className="bt-os-section">
+                <SectionHeader tag="Chart" tagClass="bt-os-tag-ratio" title="Risk-adjusted radar & annual" />
+                <OsChartsRadarAnnual radar={chartPack.radar} annual={chartPack.annual} />
+              </div>
+            </div>
+          </>
+        ) : null}
 
-        <div className="bt-os-cluster">
-          <div className="bt-os-section">
-            <SectionHeader tag="Ratios" tagClass="bt-os-tag-ratio" title="Risk-adjusted ratios" />
-            <MetricGrid cards={ratioCards} />
-          </div>
-          <div className="bt-os-section">
-            <SectionHeader tag="Chart" tagClass="bt-os-tag-ratio" title="Risk-adjusted radar & annual" />
-            <OsChartsRadarAnnual radar={chartPack.radar} annual={chartPack.annual} />
-          </div>
-        </div>
+        {tab === "trades" ? (
+          <>
+            <div className="bt-os-cluster">
+              <div className="bt-os-section">
+                <SectionHeader tag="Trades" tagClass="bt-os-tag-trade" title="Trade metrics" />
+                <MetricGrid cards={tradeCards} />
+              </div>
+              <div className="bt-os-section">
+                <SectionHeader tag="Chart" tagClass="bt-os-tag-trade" title="Trade analysis" />
+                <OsChartsTradeTriple
+                  tradePL={chartPack.tradePL}
+                  winLoss={chartPack.winLoss}
+                  duration={chartPack.duration}
+                />
+              </div>
+            </div>
 
-        <div className="bt-os-cluster">
-          <div id="bt-os-trades" className="bt-os-section bt-os-nav-target">
-            <SectionHeader tag="Trades" tagClass="bt-os-tag-trade" title="Trade metrics" />
-            <MetricGrid cards={tradeCards} />
-          </div>
-          <div className="bt-os-section">
-            <SectionHeader tag="Chart" tagClass="bt-os-tag-trade" title="Trade analysis" />
-            <OsChartsTradeTriple
-              tradePL={chartPack.tradePL}
-              winLoss={chartPack.winLoss}
-              duration={chartPack.duration}
-            />
-          </div>
-        </div>
+            <div className="bt-os-cluster bt-os-cluster--wide">
+              <div className="bt-os-section">
+                <SectionHeader tag="Log" tagClass="bt-os-tag-trade" title="Recent trade log" />
+                {advancedSection}
+              </div>
+            </div>
 
-        <div className="bt-os-cluster bt-os-cluster--wide">
-          <div className="bt-os-section">
-            <SectionHeader tag="Log" tagClass="bt-os-tag-trade" title="Recent trade log" />
-            {advancedSection}
-          </div>
-        </div>
+            <div className="bt-os-cluster">
+              <div className="bt-os-section">
+                <SectionHeader tag="Stats" tagClass="bt-os-tag-stat" title="Statistical metrics" />
+                <MetricGrid cards={statCards} />
+              </div>
+              <div className="bt-os-section">
+                <SectionHeader tag="Chart" tagClass="bt-os-tag-stat" title="Monte Carlo simulation" />
+                <OsChartsMonteCarlo monteCarlo={chartPack.monteCarlo} />
+              </div>
+            </div>
 
-        <div className="bt-os-cluster">
-          <div className="bt-os-section">
-            <SectionHeader tag="Stats" tagClass="bt-os-tag-stat" title="Statistical metrics" />
-            <MetricGrid cards={statCards} />
-          </div>
-          <div className="bt-os-section">
-            <SectionHeader tag="Chart" tagClass="bt-os-tag-stat" title="Monte Carlo simulation" />
-            <OsChartsMonteCarlo monteCarlo={chartPack.monteCarlo} />
-          </div>
-        </div>
-
-        <div className="bt-os-cluster">
-          <div className="bt-os-section">
-            <SectionHeader tag="Time" tagClass="bt-os-tag-time" title="Time & calendar" />
-            <MetricGrid cards={timeCards} />
-            {calendarSection ? <div className="bt-os-calendar-shell">{calendarSection}</div> : null}
-          </div>
-        </div>
+            <div className="bt-os-cluster">
+              <div className="bt-os-section">
+                <SectionHeader tag="Time" tagClass="bt-os-tag-time" title="Time & session stats" />
+                <MetricGrid cards={timeCards} />
+              </div>
+            </div>
+          </>
+        ) : null}
       </main>
 
       <footer className="bt-os-footer">
         <div className="bt-os-footer-inner">
-          BacktestOS — {sessionName} &nbsp;|&nbsp; {dateRangeLine} &nbsp;|&nbsp; {nTrades} trades in scope
-          &nbsp;|&nbsp; Journal analytics. Past performance ≠ future results.
+          {sessionName} · {dateRangeLine} · {nTrades} trades · Past performance ≠ future results.
         </div>
       </footer>
     </>
