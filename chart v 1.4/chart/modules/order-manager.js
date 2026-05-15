@@ -7325,7 +7325,18 @@ class OrderManager {
      */
     _onPanelSelectedForOrderUI() {
         const panelEl = document.getElementById('orderPanel');
-        if (!panelEl || !panelEl.classList.contains('visible')) return;
+        // V9 live: React owns the visible rail; #orderPanel stays off-DOM with
+        // .order-panel--v9-react-hidden and never gets `.visible`. Without the
+        // V9 escape hatch this method bailed silently, so switching panels left
+        // the previously-focused panel's entry/SL/TP values + draft preview
+        // line in place — orders then drew on the wrong chart.
+        // `updatePreviewLines` already special-cases the same flag at ~line
+        // 16320, so it's safe to proceed here too.
+        const v9ReactRailOpen = typeof window !== 'undefined'
+            && !!window.__talariaV9ReactOrderUi
+            && !!window.__talariaV9OrderRailOpen;
+        if (!panelEl) return;
+        if (!panelEl.classList.contains('visible') && !v9ReactRailOpen) return;
         if (typeof this._isMultiPanelLayout !== 'function' || !this._isMultiPanelLayout()) return;
         if (this._orderPlacedAwaitingReset) return;
         if (this.editingPendingOrderId) return;
