@@ -8,6 +8,7 @@ from sqlalchemy import (
     Integer,
     String,
     DateTime,
+    Date,
     Boolean,
     ForeignKey,
     Text,
@@ -625,6 +626,9 @@ class User(Base):
     max_sessions = Column(Integer, default=1, nullable=False, server_default="1")
     has_journal_access = Column(Boolean, default=False)
     stripe_customer_id = Column(String, nullable=True)
+    country = Column(String(100), nullable=True)
+    phone = Column(String(50), nullable=True)
+    birth_date = Column(Date, nullable=True)
 
 class SubscriptionPlan(Base):
     """Maps to journal-backend's subscription_plans table (read/write for admin)."""
@@ -903,6 +907,9 @@ try:
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS max_sessions INTEGER NOT NULL DEFAULT 1"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_journal_access BOOLEAN DEFAULT FALSE"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(100)"))
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS country VARCHAR(100)"))
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)"))
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE"))
         _conn.commit()
 except Exception:
     pass
@@ -7526,6 +7533,10 @@ def _user_public_dict(user: User, db=None):
         "subscription": sub_info,
         "created_at": created.isoformat() if created else None,
         "updated_at": updated.isoformat() if updated else None,
+        "country": getattr(user, "country", None),
+        "phone": getattr(user, "phone", None),
+        "birth_date": getattr(user, "birth_date", None).isoformat() if getattr(user, "birth_date", None) else None,
+        "stripe_customer_id": getattr(user, "stripe_customer_id", None),
     }
 
 def _dataset_settings_public_dict(settings: DatasetSettings | None, file_obj: CSVFile):
@@ -7678,6 +7689,100 @@ async def auth_me(request: Request):
     db = SessionLocal()
     try:
         return {"user": _user_public_dict(user, db=db)}
+    finally:
+        db.close()
+
+
+class _UserSelfProfileIn(BaseModel):
+    """Self-service profile update. Email and role cannot be changed here."""
+
+    name: str | None = Field(None, min_length=1, max_length=120)
+    password: str | None = Field(None, min_length=8, max_length=200)
+    current_password: str | None = Field(None, max_length=200)
+    country: str | None = Field(None, max_length=100)
+    phone: str | None = Field(None, max_length=50)
+
+
+@app.patch("/api/auth/profile")
+async def auth_patch_profile(request: Request):
+    """Update the signed-in user's profile (not email)."""
+    if not AUTH_ENABLED:
+        raise HTTPException(status_code=501, detail="Auth disabled")
+    user = _get_user_from_request(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    body.pop("email", None)
+    body.pop("role", None)
+    body.pop("id", None)
+    birth_sent = "birth_date" in body
+    birth_val = body.get("birth_date") if birth_sent else None
+    filtered = {k: body[k] for k in ("name", "password", "current_password", "country", "phone") if k in body}
+    try:
+        payload = _UserSelfProfileIn(**filtered)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    has_any = (
+        payload.name is not None
+        or payload.password is not None
+        or payload.country is not None
+        or payload.phone is not None
+        or birth_sent
+    )
+    if not has_any:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.id == user.id).first()
+        if not u:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if payload.name is not None:
+            u.name = payload.name.strip()[:120]
+
+        if payload.country is not None:
+            c = payload.country.strip()
+            u.country = c[:100] if c else None
+
+        if payload.phone is not None:
+            p = payload.phone.strip()
+            u.phone = p[:50] if p else None
+
+        if birth_sent:
+            val = birth_val
+            if val is None or (isinstance(val, str) and not str(val).strip()):
+                u.birth_date = None
+            else:
+                try:
+                    u.birth_date = datetime.strptime(str(val).strip()[:10], "%Y-%m-%d").date()
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="birth_date must be YYYY-MM-DD")
+
+        if payload.password is not None:
+            if not payload.current_password:
+                raise HTTPException(
+                    status_code=400,
+                    detail="current_password is required to change password",
+                )
+            if not _verify_password(payload.current_password, u.password_hash):
+                raise HTTPException(status_code=400, detail="Current password is incorrect")
+            u.password_hash = _hash_password(payload.password)
+
+        db.commit()
+        db.refresh(u)
+        return {"success": True, "user": _user_public_dict(u, db=db)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useLanguage } from "../LanguageProvider";
 import { BacktestNewSessionProvider } from "./BacktestNewSessionContext";
@@ -268,6 +269,7 @@ const VIEW_TITLES: Record<string, string> = {
   support: "Support",
   cot: "COT Analysis",
   admin: "Admin",
+  profile: "Account",
 };
 
 const EXTERNAL_VIEWS: Record<string, string> = {
@@ -319,6 +321,7 @@ export default function DashboardLayout({
     else if (pathname.startsWith("/dashboard/cot")) setActiveView("cot");
     else if (pathname.startsWith("/dashboard/support")) setActiveView("support");
     else if (pathname.startsWith("/dashboard/admin")) setActiveView("admin");
+    else if (pathname.startsWith("/dashboard/profile")) setActiveView("profile");
     else if (pathname === "/dashboard" || pathname === "/dashboard/") setActiveView("dashboard");
     else if (pathname.startsWith("/dashboard")) setActiveView("dashboard");
   }, [pathname]);
@@ -547,6 +550,28 @@ export default function DashboardLayout({
                     {user.email}
                   </div>
                 ) : null}
+                <Link
+                  href="/dashboard/profile/"
+                  onClick={() => setProfilePanelOpen(false)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "center" as const,
+                    padding: "10px 12px",
+                    marginBottom: 10,
+                    borderRadius: 8,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "rgba(74,106,255,0.95)",
+                    background: "rgba(74,106,255,0.08)",
+                    border: "1px solid rgba(74,106,255,0.22)",
+                    textDecoration: "none",
+                    fontFamily: F,
+                    boxSizing: "border-box" as const,
+                  }}
+                >
+                  {isArabic ? "إعدادات الحساب الكاملة" : "Account settings"}
+                </Link>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <div style={{ width: "100%" }}>
                     <DashboardNotificationBell isArabic={isArabic} dropdownAnchorStart fullWidthButton />
