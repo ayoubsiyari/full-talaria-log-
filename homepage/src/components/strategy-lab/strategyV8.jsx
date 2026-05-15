@@ -398,6 +398,7 @@ const LOAD_QUOTES = [
 import {
   STRATEGY_TEMPLATES,
   buildNodesFromTemplate,
+  buildInitialSections,
   TemplatePickerModal,
   StrategyBuilderModal,
   MKT_CAT_OPTS,

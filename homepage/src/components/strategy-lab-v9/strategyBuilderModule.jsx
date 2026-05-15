@@ -6122,4 +6122,4 @@ function StrategyBuilderModal(props) {
   );
 }
 
-export { STRATEGY_TEMPLATES, buildNodesFromTemplate, TemplatePickerModal, StrategyBuilderModal, MKT_CAT_OPTS };
+export { STRATEGY_TEMPLATES, buildNodesFromTemplate, buildInitialSections, TemplatePickerModal, StrategyBuilderModal, MKT_CAT_OPTS };
