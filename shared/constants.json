@@ -80,6 +80,7 @@
     },
     "admin": {
       "users": "/api/admin/users",
+      "user_monitor": "/api/admin/users/{id}/monitor",
       "groups": "/api/admin/groups",
       "login_as_user": "/api/admin/login-as-user/{id}"
     }

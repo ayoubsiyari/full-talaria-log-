@@ -8427,6 +8427,237 @@ async def admin_list_users(request: Request):
         db.close()
 
 
+def _journal_dicts_from_journal_trade_rows(rows) -> list:
+    """Build journal-style trade dicts from ORM rows (for analytics)."""
+    out = []
+    for r in rows or []:
+        try:
+            p = json.loads(r.payload_json) if getattr(r, "payload_json", None) else {}
+            if isinstance(p, dict):
+                out.append(p)
+        except Exception:
+            pass
+    return out
+
+
+def _replay_dashboard_from_state_json(state_json: str | None, max_bytes: int = 2_000_000) -> dict | None:
+    """Extract replay.dashboard from session state (bounded parse)."""
+    if not state_json or len(state_json) > max_bytes:
+        return None
+    try:
+        state = json.loads(state_json)
+    except Exception:
+        return None
+    if not isinstance(state, dict):
+        return None
+    replay = state.get("replay")
+    if not isinstance(replay, dict):
+        return None
+    dash = replay.get("dashboard")
+    if not isinstance(dash, dict) or not dash:
+        return None
+    keep = (
+        "elapsed_days",
+        "progress_pct",
+        "furthest_replay_ts",
+        "configured_start_ts",
+        "configured_end_ts",
+        "updated_at",
+    )
+    slim = {k: dash.get(k) for k in keep if k in dash}
+    return _sanitize_for_json(slim) if slim else None
+
+
+@app.get("/api/admin/users/{user_id}/monitor")
+async def admin_user_monitor(user_id: int, request: Request):
+    """
+    Admin-only: full user monitor — chart connections (UserSession), all trading sessions,
+    journal trade counts, replay/backtest progress from state, and combined + per-session analytics.
+    """
+    _require_admin(request)
+    MAX_CHART_CONN = 120
+    MAX_TRADING_SESSIONS = 50
+    MAX_TRADES_PER_SESSION = 1200
+    MAX_COMBINED_TRADES = 3000
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        user_dict = _user_public_dict(user, db)
+
+        conns = (
+            db.query(UserSession)
+            .filter(UserSession.user_id == user_id)
+            .order_by(UserSession.last_active_at.desc())
+            .limit(MAX_CHART_CONN)
+            .all()
+        )
+        last_chart_activity = None
+        chart_connections = []
+        for c in conns:
+            la = c.last_active_at
+            if la and (last_chart_activity is None or la > last_chart_activity):
+                last_chart_activity = la
+            chart_connections.append(
+                {
+                    "id": c.id,
+                    "ip_address": c.ip_address,
+                    "device": c.device,
+                    "last_active_at": la.isoformat() if la else None,
+                }
+            )
+
+        total_journal_trades = int(
+            db.query(func.count(TradingSessionJournalTrade.id))
+            .filter(TradingSessionJournalTrade.user_id == user_id)
+            .scalar()
+            or 0
+        )
+
+        ts_list = (
+            db.query(TradingSession)
+            .filter(TradingSession.user_id == user_id)
+            .order_by(TradingSession.updated_at.desc())
+            .limit(MAX_TRADING_SESSIONS)
+            .all()
+        )
+        sid_list = [int(s.id) for s in ts_list]
+        state_by_sid: dict[int, TradingSessionState] = {}
+        if sid_list:
+            for st in db.query(TradingSessionState).filter(TradingSessionState.session_id.in_(sid_list)).all():
+                state_by_sid[int(st.session_id)] = st
+
+        tc_map: dict[int, int] = {}
+        if sid_list:
+            for sid, cnt in (
+                db.query(TradingSessionJournalTrade.session_id, func.count(TradingSessionJournalTrade.id))
+                .filter(
+                    TradingSessionJournalTrade.user_id == user_id,
+                    TradingSessionJournalTrade.session_id.in_(sid_list),
+                )
+                .group_by(TradingSessionJournalTrade.session_id)
+                .all()
+            ):
+                tc_map[int(sid)] = int(cnt)
+
+        trading_sessions_out = []
+        total_replay_elapsed_days = 0.0
+        replay_sessions_counted = 0
+        for s in ts_list:
+            pub = _session_public_dict(s)
+            st = state_by_sid.get(int(s.id))
+            trades_count = tc_map.get(int(s.id), 0)
+            replay_dash = None
+            state_updated = st.updated_at.isoformat() if st and st.updated_at else None
+            if st and st.state_json:
+                replay_dash = _replay_dashboard_from_state_json(st.state_json)
+                if replay_dash and replay_dash.get("elapsed_days") is not None:
+                    try:
+                        ed = float(replay_dash["elapsed_days"])
+                        if math.isfinite(ed) and ed > 0:
+                            total_replay_elapsed_days += ed
+                            replay_sessions_counted += 1
+                    except (TypeError, ValueError):
+                        pass
+
+            session_kpis = None
+            session_analytics = None
+            if st:
+                rows = (
+                    db.query(TradingSessionJournalTrade)
+                    .filter(
+                        TradingSessionJournalTrade.session_id == int(s.id),
+                        TradingSessionJournalTrade.user_id == user_id,
+                    )
+                    .order_by(TradingSessionJournalTrade.updated_at.asc())
+                    .limit(MAX_TRADES_PER_SESSION)
+                    .all()
+                )
+                journal = _journal_dicts_from_journal_trade_rows(rows)
+                if journal:
+                    try:
+                        session_analytics = _sanitize_for_json(_compute_session_analytics(pub, journal))
+                        session_kpis = session_analytics.get("kpis") if isinstance(session_analytics, dict) else None
+                    except Exception:
+                        session_analytics = None
+                        session_kpis = None
+
+            trading_sessions_out.append(
+                {
+                    **pub,
+                    "trades_count": trades_count,
+                    "state_updated_at": state_updated,
+                    "replay_dashboard": replay_dash,
+                    "kpis": session_kpis,
+                    "analytics": session_analytics,
+                }
+            )
+
+        comb_rows = (
+            db.query(TradingSessionJournalTrade)
+            .filter(TradingSessionJournalTrade.user_id == user_id)
+            .order_by(TradingSessionJournalTrade.updated_at.desc())
+            .limit(MAX_COMBINED_TRADES)
+            .all()
+        )
+        comb_rows = list(reversed(comb_rows))
+        combined_journal = _journal_dicts_from_journal_trade_rows(comb_rows)
+        combined_analytics = None
+        if combined_journal:
+            try:
+                agg_session = {
+                    "id": None,
+                    "name": "Combined (recent trades)",
+                    "session_type": "aggregate",
+                    "start_balance": None,
+                }
+                combined_analytics = _sanitize_for_json(_compute_session_analytics(agg_session, combined_journal))
+            except Exception:
+                combined_analytics = None
+
+        payments_rows = (
+            db.query(Payment)
+            .filter(Payment.user_id == user_id)
+            .order_by(Payment.created_at.desc())
+            .limit(8)
+            .all()
+        )
+        recent_payments = [
+            {
+                "id": p.id,
+                "amount": float(p.amount) if p.amount is not None else None,
+                "currency": p.currency,
+                "status": p.status,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "description": (p.description or "")[:200],
+            }
+            for p in payments_rows
+        ]
+
+        return {
+            "user": user_dict,
+            "summary": {
+                "chart_connections": len(chart_connections),
+                "last_chart_activity_at": last_chart_activity.isoformat() if last_chart_activity else None,
+                "trading_sessions_count": len(ts_list),
+                "total_trading_sessions_in_response": len(ts_list),
+                "journal_trades_total": total_journal_trades,
+                "replay_elapsed_days_sum": round(total_replay_elapsed_days, 2) if total_replay_elapsed_days else 0.0,
+                "replay_sessions_with_elapsed": replay_sessions_counted,
+                "note": "last_chart_activity_at is max(UserSession.last_active_at). Replay elapsed_days summed from replay.dashboard where present.",
+            },
+            "chart_connections": chart_connections,
+            "trading_sessions": trading_sessions_out,
+            "combined_analytics": combined_analytics,
+            "recent_payments": recent_payments,
+        }
+    finally:
+        db.close()
+
+
 class _CreateUserIn(BaseModel):
     name: str
     email: str

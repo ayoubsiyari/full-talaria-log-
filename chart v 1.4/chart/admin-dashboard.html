@@ -620,6 +620,72 @@ select { cursor:default; }
   border-top: 1px solid var(--border);
 }
 
+.modal.um-modal {
+  width: 920px;
+  max-width: 96vw;
+  padding: 22px 24px 20px;
+}
+.um-h2-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.um-h2-row h2 { margin-bottom: 0; flex: 1; font-size: 17px; }
+.um-err { color: var(--danger); font-size: 13px; margin: 0 0 10px; }
+.um-body { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.um-section { margin-top: 18px; }
+.um-section-k {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.um-kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; }
+.um-kpi {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.um-kpi .v { font-size: 17px; font-weight: 800; color: var(--text); letter-spacing: -0.02em; }
+.um-kpi .l {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.um-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  max-height: 260px;
+}
+.um-table-wrap table { font-size: 12px; }
+.um-table-wrap th, .um-table-wrap td { padding: 8px 10px; }
+.um-ts-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--surface-raised);
+}
+.um-ts-card h4 { margin: 0 0 6px; font-size: 14px; color: var(--text); }
+.um-ts-meta { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.45; }
+.um-kpis-inline { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; }
+.um-kpis-inline span {
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+}
+.um-note { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+
 /* ── Access Mode Toggle ─────────────────────────── */
 .access-mode {
   display: flex;
@@ -1447,6 +1513,21 @@ select { cursor:default; }
     <div class="modal-actions">
       <button class="btn" onclick="closeEditModal()">Cancel</button>
       <button class="btn primary" onclick="saveUser()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- User monitor (full sessions / trades / replay / analytics) -->
+<div class="modal-overlay" id="userMonitorModal">
+  <div class="modal um-modal">
+    <div class="um-h2-row">
+      <h2 id="userMonitorTitle">User monitor</h2>
+      <button type="button" class="btn sm" onclick="closeUserMonitor()">Close</button>
+    </div>
+    <p id="userMonitorError" class="um-err" style="display:none"></p>
+    <div id="userMonitorBody" class="um-body"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn" onclick="closeUserMonitor()">Done</button>
     </div>
   </div>
 </div>
@@ -3763,6 +3844,7 @@ function renderUsers() {
       <td style="font-size:12px;color:var(--text-muted)">${lastActive}</td>
       <td style="text-align:center;font-weight:600;font-size:12px">${u.session_count || 0}<span style="color:var(--text-muted);font-weight:400">/${u.max_sessions || 1}</span></td>
       <td><div style="display:flex;gap:4px;flex-wrap:wrap">
+        <button type="button" class="btn sm primary" onclick="openUserMonitor(${u.id})" title="Sessions, trades, replay, analytics">Monitor</button>
         <button class="btn sm" onclick="openEditModal(${u.id})">Edit</button>
         <button class="btn sm primary" onclick="kickUser(${u.id},'${esc(u.name)}')" ${u.session_count ? '' : 'disabled'}>Kick</button>
         ${u.role !== 'admin' ? `<button class="btn sm" style="border-color:rgba(139,92,246,.3);color:var(--accent)" onclick="openAssignSubModal(${u.id},'${esc(u.name)}')" title="Grant manual subscription (e.g. checkout failed)">Manual sub</button>` : ''}
@@ -3824,6 +3906,135 @@ async function deleteUser(id, name) {
   if (!confirm(`Delete ${name}? This cannot be undone.`)) return;
   try { await api(`/api/admin/users/${id}`, { method: 'DELETE' }); toast('User deleted', 'ok'); await Promise.all([loadUsers(), loadSessions()]); }
   catch (e) { toast(e.message, 'err'); }
+}
+
+function umKpi(label, val) {
+  return `<div class="um-kpi"><div class="l">${label}</div><div class="v">${val}</div></div>`;
+}
+
+function umFmtNum(n, digits) {
+  if (n == null || n === '' || (typeof n === 'number' && !Number.isFinite(n))) return '—';
+  if (typeof n === 'number') {
+    if (digits != null) return n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+    return n.toLocaleString();
+  }
+  return esc(String(n));
+}
+
+function umFmtPct01(x) {
+  if (x == null || typeof x !== 'number' || !Number.isFinite(x)) return '—';
+  return (x <= 1 ? Math.round(x * 1000) / 10 : Math.round(x * 10) / 10) + '%';
+}
+
+function renderUserMonitorContent(data) {
+  const u = data.user || {};
+  const s = data.summary || {};
+  const parts = [];
+
+  parts.push('<div class="um-kpi-grid">');
+  parts.push(umKpi('Email', esc(u.email || '—')));
+  parts.push(umKpi('Role', esc(u.role || '—')));
+  parts.push(umKpi('Status', u.is_active === false ? 'Inactive' : 'Active'));
+  parts.push(umKpi('Journal access', u.has_journal_access ? 'Yes' : 'No'));
+  parts.push(umKpi('Max devices', umFmtNum(u.max_sessions, 0)));
+  parts.push(umKpi('Created', u.created_at ? esc(new Date(u.created_at).toLocaleString()) : '—'));
+  parts.push(umKpi('Last chart activity', s.last_chart_activity_at ? esc(timeAgo(s.last_chart_activity_at)) + ' · ' + esc(new Date(s.last_chart_activity_at).toLocaleString()) : 'Never'));
+  parts.push(umKpi('Chart connections', umFmtNum(s.chart_connections, 0)));
+  parts.push(umKpi('Backtest sessions (list)', umFmtNum(s.trading_sessions_count, 0)));
+  parts.push(umKpi('Journal trades (total)', umFmtNum(s.journal_trades_total, 0)));
+  parts.push(umKpi('Replay days (sum)', umFmtNum(s.replay_elapsed_days_sum, 2) + (s.replay_sessions_with_elapsed ? ' <span style="font-size:10px;color:var(--text-muted)">(' + s.replay_sessions_with_elapsed + ' sessions)</span>' : '')));
+  const sub = u.subscription;
+  parts.push(umKpi('Subscription', sub ? esc(sub.plan_name + ' · ' + (sub.status || '')) : 'None'));
+  parts.push('</div>');
+  parts.push('<p class="um-note">' + esc(s.note || '') + '</p>');
+
+  const ca = data.combined_analytics;
+  if (ca && ca.kpis) {
+    const k = ca.kpis;
+    parts.push('<div class="um-section"><div class="um-section-k">Combined analytics (recent trades sample)</div>');
+    parts.push('<div class="um-kpis-inline">');
+    parts.push('<span>Trades ' + umFmtNum(k.trades, 0) + '</span>');
+    parts.push('<span>Net PnL ' + umFmtNum(k.net_pnl, 2) + '</span>');
+    parts.push('<span>Win rate ' + umFmtPct01(k.win_rate) + '</span>');
+    parts.push('<span>Profit factor ' + umFmtNum(k.profit_factor, 2) + '</span>');
+    parts.push('<span>Expectancy R ' + umFmtNum(k.expectancy_r, 2) + '</span>');
+    parts.push('<span>Max DD % ' + umFmtNum(k.max_drawdown_pct != null ? k.max_drawdown_pct * 100 : null, 2) + '</span>');
+    parts.push('</div></div>');
+  }
+
+  const pays = data.recent_payments || [];
+  if (pays.length) {
+    parts.push('<div class="um-section"><div class="um-section-k">Recent payments</div><div class="um-table-wrap"><table><thead><tr><th>When</th><th>Amount</th><th>Status</th><th>Note</th></tr></thead><tbody>');
+    pays.forEach(function (p) {
+      parts.push('<tr><td>' + esc(p.created_at || '—') + '</td><td>' + umFmtNum(p.amount, 2) + ' ' + esc((p.currency || '').toUpperCase()) + '</td><td>' + esc(p.status || '') + '</td><td>' + esc(p.description || '') + '</td></tr>');
+    });
+    parts.push('</tbody></table></div></div>');
+  }
+
+  const conns = data.chart_connections || [];
+  parts.push('<div class="um-section"><div class="um-section-k">Chart connections (UserSession)</div>');
+  if (!conns.length) parts.push('<p style="color:var(--text-muted)">No active browser/device rows.</p>');
+  else {
+    parts.push('<div class="um-table-wrap"><table><thead><tr><th>Last active</th><th>IP</th><th>Device</th><th>Session id</th></tr></thead><tbody>');
+    conns.forEach(function (c) {
+      parts.push('<tr><td>' + esc(c.last_active_at || '—') + '</td><td>' + esc(c.ip_address || '—') + '</td><td>' + esc(c.device || '—') + '</td><td style="font-family:monospace;font-size:11px">' + esc(c.id || '') + '</td></tr>');
+    });
+    parts.push('</tbody></table></div>');
+  }
+  parts.push('</div>');
+
+  const tss = data.trading_sessions || [];
+  parts.push('<div class="um-section"><div class="um-section-k">Trading / backtest sessions</div>');
+  if (!tss.length) parts.push('<p style="color:var(--text-muted)">No sessions.</p>');
+  else {
+    tss.forEach(function (ts) {
+      const dash = ts.replay_dashboard || {};
+      const rd = (dash.elapsed_days != null ? 'Elapsed days: ' + umFmtNum(dash.elapsed_days, 2) : '') +
+        (dash.progress_pct != null ? ' · Progress: ' + umFmtNum(dash.progress_pct, 1) + '%' : '');
+      parts.push('<div class="um-ts-card"><h4>' + esc(ts.name || 'Session') + ' <span style="font-weight:500;color:var(--text-muted)">#' + umFmtNum(ts.id, 0) + '</span></h4>');
+      parts.push('<div class="um-ts-meta">Type: ' + esc(ts.session_type || '') + ' · Trades (journal rows): ' + umFmtNum(ts.trades_count, 0) + ' · State updated: ' + esc(ts.state_updated_at || '—') + '</div>');
+      if (rd) parts.push('<div class="um-ts-meta" style="color:var(--ok)">' + rd + '</div>');
+      if (ts.kpis) {
+        const k = ts.kpis;
+        parts.push('<div class="um-kpis-inline">');
+        parts.push('<span>Net ' + umFmtNum(k.net_pnl, 2) + '</span>');
+        parts.push('<span>W/L ' + umFmtNum(k.wins, 0) + '/' + umFmtNum(k.losses, 0) + '</span>');
+        parts.push('<span>WR ' + umFmtPct01(k.win_rate) + '</span>');
+        parts.push('<span>PF ' + umFmtNum(k.profit_factor, 2) + '</span>');
+        parts.push('</div>');
+      } else parts.push('<div class="um-ts-meta">No journal trade rows synced for analytics (or empty session).</div>');
+      const dashUrl = (typeof window.location !== 'undefined' && window.location.origin) ? window.location.origin + '/dashboard/?sessionId=' + encodeURIComponent(String(ts.id)) : '';
+      if (dashUrl) parts.push('<div style="margin-top:8px"><a class="btn sm" href="' + esc(dashUrl) + '" target="_blank" rel="noopener">Open in dashboard</a></div>');
+      parts.push('</div>');
+    });
+  }
+  parts.push('</div>');
+
+  $('userMonitorBody').innerHTML = parts.join('');
+}
+
+async function openUserMonitor(userId) {
+  const modal = $('userMonitorModal');
+  const body = $('userMonitorBody');
+  const title = $('userMonitorTitle');
+  const err = $('userMonitorError');
+  if (err) { err.style.display = 'none'; err.textContent = ''; }
+  body.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
+  modal.classList.add('open');
+  try {
+    const data = await api('/api/admin/users/' + userId + '/monitor');
+    title.textContent = 'User monitor — ' + (data.user && data.user.name ? data.user.name : '#' + userId);
+    renderUserMonitorContent(data);
+  } catch (e) {
+    body.innerHTML = '';
+    if (err) { err.style.display = ''; err.textContent = e.message || String(e); }
+    else body.innerHTML = '<p style="color:var(--danger)">' + esc(e.message || String(e)) + '</p>';
+  }
+}
+
+function closeUserMonitor() {
+  const modal = $('userMonitorModal');
+  if (modal) modal.classList.remove('open');
 }
 
 // Edit modal
