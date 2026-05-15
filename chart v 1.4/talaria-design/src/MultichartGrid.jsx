@@ -2030,8 +2030,8 @@ export default function MultichartGrid({
                 const om = ch && ch.orderManager;
                 const grid = window.__multichartGrid;
                 if (om && grid && typeof grid.runCommand === "function") {
-                    const openPositions = om.orders || om.positions || [];
-                    const pendingOrders = om.pendingOrders || [];
+                    const openPositions = Array.isArray(om.openPositions) ? om.openPositions : [];
+                    const pendingOrders = Array.isArray(om.pendingOrders) ? om.pendingOrders : [];
                     for (const panelId of readyPanels) {
                         if (panelId === HOST_PANEL_ID) continue;
                         if (orderSyncedPanelsRef.current.has(panelId)) continue;
@@ -3026,6 +3026,21 @@ export default function MultichartGrid({
             }
         }
 
+        /**
+         * Host chart keeps the canonical multichart session order list (open + pending).
+         * Iframe-originated events must still touch the host even when the host tile was on
+         * another pair — otherwise switching the host to that instrument later has nothing
+         * for syncOrderVisualsToActiveChart (chart.js loadFileData) to draw.
+         */
+        function ensureHostInMirrorPeers(sourceId, peers) {
+            const list = (peers && peers.slice()) || [];
+            if (sourceId === HOST_PANEL_ID) return list;
+            if (!list.some((p) => p && p.id === HOST_PANEL_ID)) {
+                list.push({ id: HOST_PANEL_ID, isHost: true });
+            }
+            return list;
+        }
+
         /** Fan-out order line / pending removal to every peer that mirrors this instrument (not the source). */
         function broadcastOrderRemoval(sourceId, kind, order) {
             if (!order || order.id == null) return;
@@ -3068,6 +3083,7 @@ export default function MultichartGrid({
                     }
                 }
             }
+            peers = ensureHostInMirrorPeers(sourceId, peers);
             if (!peers || !peers.length) return;
             for (const p of peers) {
                 mirrorRemoveTo(p.id, oid);
@@ -3119,6 +3135,8 @@ export default function MultichartGrid({
                     }
                 }
             }
+
+            peers = ensureHostInMirrorPeers(sourceId, peers);
 
             const grid = window.__multichartGrid;
             if (kind === "pending-updated") {
