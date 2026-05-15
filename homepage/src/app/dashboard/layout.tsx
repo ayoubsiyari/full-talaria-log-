@@ -272,6 +272,7 @@ const VIEW_TITLES: Record<string, string> = {
   journal: "Journal",
   backtest: "Backtesting Sessions",
   strategies: "Strategies",
+  strategylabV9: "Strategy Lab V9",
   resources: "Resources",
   support: "Support",
   cot: "COT Analysis",
@@ -288,6 +289,7 @@ const INTERNAL_NAV: Record<string, string> = {
   journal:   "/dashboard/journal/",
   backtest:  "/dashboard/backtest/",
   strategies: "/dashboard/strategies/",
+  strategylabV9: "/dashboard/strategylab-v9/",
   cot:       "/dashboard/cot/",
   support:   "/dashboard/support/",
 };
@@ -356,6 +358,7 @@ export default function DashboardLayout({
   React.useEffect(() => {
     if (pathname.startsWith("/dashboard/journal")) setActiveView("journal");
     else if (pathname.startsWith("/dashboard/backtest")) setActiveView("backtest");
+    else if (pathname.startsWith("/dashboard/strategylab-v9")) setActiveView("strategylabV9");
     else if (pathname.startsWith("/dashboard/strategies")) setActiveView("strategies");
     else if (pathname.startsWith("/dashboard/cot")) setActiveView("cot");
     else if (pathname.startsWith("/dashboard/support")) setActiveView("support");
@@ -377,7 +380,7 @@ export default function DashboardLayout({
   }, [profilePanelOpen]);
 
   const handleNavClick = (id: string) => {
-    const paidNavIds = ["dashboard", "journal", "backtest", "cot", "strategies"];
+    const paidNavIds = ["dashboard", "journal", "backtest", "cot", "strategies", "strategylabV9"];
     if (paidNavIds.includes(id) && user && !userHasJournalEntitlement(user)) {
       goPricing();
       return;
@@ -409,6 +412,7 @@ export default function DashboardLayout({
     { id: "backtest",  label: "Backtest",  icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><polyline points="3,20 3,4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="3,15 8,11 12,14 18,7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><polygon points="20,10 23,13 20,16" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg> },
     { id: "cot",       label: "COT",       icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="12" width="3" height="8" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><rect x="8" y="8" width="3" height="12" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><rect x="13" y="5" width="3" height="15" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><rect x="18" y="9" width="3" height="11" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="3" y1="3" x2="21" y2="3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeDasharray="2 2"/></svg> },
     { id: "strategies",label: "Strategies",icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="2" width="14" height="20" rx="1" stroke="currentColor" strokeWidth="1.4"/><rect x="8" y="1" width="4" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.3"/><circle cx="7" cy="9" r="1.2" fill="currentColor" opacity="0.8"/><circle cx="13" cy="9" r="1.2" fill="currentColor" opacity="0.8"/><circle cx="10" cy="14" r="1.2" fill="currentColor" opacity="0.8"/><path d="M7 9c0 3 3 3 3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><path d="M13 9c-1 2-1 3-3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="8.5" y1="19" x2="11.5" y2="19" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
+    { id: "strategylabV9", label: "Lab V9", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><path d="M9 3h6v2l-1 14a3 3 0 01-6 0L7 5V3z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M8 8h8M9 21h6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg> },
     { id: "resources", label: "Resources", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="2" y="16.5" width="20" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="5.5" y1="16.5" x2="5.5" y2="20" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="3.5" y="12" width="17" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="7" y1="12" x2="7" y2="15.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="5" y="7.5" width="14" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="8.5" y1="7.5" x2="8.5" y2="11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg> },
     { id: "support",   label: "Support",   icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="currentColor" strokeWidth="1"/></svg> },
   ];
@@ -501,7 +505,7 @@ export default function DashboardLayout({
             const navLocked =
               !!user &&
               !userHasJournalEntitlement(user) &&
-              (id === "dashboard" || id === "journal" || id === "backtest" || id === "cot" || id === "strategies");
+              (id === "dashboard" || id === "journal" || id === "backtest" || id === "cot" || id === "strategies" || id === "strategylabV9");
             return (
               <div
                 key={id}
