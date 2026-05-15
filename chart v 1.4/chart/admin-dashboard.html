@@ -2964,6 +2964,50 @@ select { cursor:default; }
             </div>
           </div>
         </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted)"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+            <div class="card-title">Stripe invoices (live)</div>
+            <span class="card-badge" id="stripeInvCountBadge">0</span>
+            <select id="stripeInvFilterStatus" onchange="loadStripeInvoices(true)" style="margin-left:8px;padding:4px 8px;font-size:11px">
+              <option value="">All statuses</option>
+              <option value="paid">paid</option>
+              <option value="open">open</option>
+              <option value="draft">draft</option>
+              <option value="void">void</option>
+              <option value="uncollectible">uncollectible</option>
+            </select>
+            <button type="button" class="btn sm" onclick="loadStripeInvoices(true)">Refresh</button>
+          </div>
+          <div class="card-body" style="font-size:12px;line-height:1.45;color:var(--text-secondary);padding:12px 16px;border-bottom:1px solid var(--border)">
+            Pulled directly from Stripe (<code style="font-size:11px">Invoice.list</code>). Rows are matched to Talaria users when <code style="font-size:11px">users.stripe_customer_id</code> equals the invoice customer. Use <strong>Load more</strong> for older pages.
+          </div>
+          <div class="card-body" style="padding:0;max-height:min(520px,calc(100vh - 420px));overflow-y:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Invoice</th>
+                  <th>Status</th>
+                  <th>Total</th>
+                  <th>Due</th>
+                  <th>Stripe customer</th>
+                  <th>Talaria user</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="stripeInvoicesBody"></tbody>
+            </table>
+            <div class="empty-state" id="emptyStripeInvoices" style="display:none">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg></div>
+              <p>No Stripe invoices (check API key or filters).</p>
+            </div>
+            <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;justify-content:center">
+              <button type="button" class="btn sm" id="stripeInvLoadMore" style="display:none" onclick="loadStripeInvoices(false)">Load more</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ════════ AFFILIATES SECTION ════════ -->
@@ -8365,12 +8409,7 @@ async function showStripeInvoices(userId) {
     const inv = data.invoices || [];
     if (!inv.length) { toast(data.message || 'No invoices', 'ok'); return; }
     const lines = inv.map(function (i) {
-      const cur = String(i.currency || '').toLowerCase();
-      const zeroDec = { jpy: 1, krw: 1, vnd: 1, clp: 1 };
-      const div = zeroDec[cur] ? 1 : 100;
-      const amt = i.total != null && i.currency
-        ? (Number(i.total) / div).toLocaleString(undefined, { maximumFractionDigits: div === 1 ? 0 : 2 }) + ' ' + String(i.currency).toUpperCase()
-        : '—';
+      const amt = formatStripeMinorAmount(i.total, i.currency);
       return (i.number || i.id || '') + ' · ' + (i.status || '') + ' · ' + amt + (i.hosted_invoice_url ? '\n  ' + i.hosted_invoice_url : '');
     });
     alert(lines.join('\n\n'));
@@ -8687,6 +8726,82 @@ async function assignSubscription() {
 // ═══════════════════════════════════════════════════════════
 //  PAYMENTS
 // ═══════════════════════════════════════════════════════════
+let stripeInvoicesNext = null;
+let stripeInvoicesLoaded = 0;
+
+function formatStripeMinorAmount(total, currency) {
+  if (total == null || total === '' || currency == null || currency === '') return '—';
+  const c = String(currency).toLowerCase();
+  const zeroDec = { jpy: 1, krw: 1, vnd: 1, clp: 1 };
+  const div = zeroDec[c] ? 1 : 100;
+  const n = Number(total) / div;
+  if (!Number.isFinite(n)) return '—';
+  return n.toLocaleString(undefined, { maximumFractionDigits: div === 1 ? 0 : 2 }) + ' ' + String(currency).toUpperCase();
+}
+
+async function loadStripeInvoices(reset) {
+  const tbody = $('stripeInvoicesBody');
+  const empty = $('emptyStripeInvoices');
+  const loadMore = $('stripeInvLoadMore');
+  const badge = $('stripeInvCountBadge');
+  if (!tbody) return;
+  if (reset) {
+    stripeInvoicesNext = null;
+    stripeInvoicesLoaded = 0;
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:14px;color:var(--text-muted)">Loading…</td></tr>';
+  }
+  try {
+    const params = new URLSearchParams();
+    params.set('limit', '40');
+    const fs = $('stripeInvFilterStatus');
+    if (fs && fs.value) params.set('status', fs.value);
+    if (!reset && stripeInvoicesNext) params.set('starting_after', stripeInvoicesNext);
+    const data = await api('/api/admin/stripe/invoices?' + params.toString());
+    const rows = data.invoices || [];
+    stripeInvoicesNext = data.next_starting_after || null;
+    if (reset) tbody.innerHTML = '';
+    if (!rows.length && reset) {
+      tbody.innerHTML = '';
+      if (empty) empty.style.display = 'flex';
+      if (badge) badge.textContent = '0';
+      if (loadMore) loadMore.style.display = 'none';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    stripeInvoicesLoaded += rows.length;
+    if (badge) badge.textContent = String(stripeInvoicesLoaded) + (data.has_more ? '+' : '');
+    const chunk = rows.map(function (i) {
+      const ts = i.created != null ? Number(i.created) : NaN;
+      const dt = Number.isFinite(ts) ? new Date(ts * 1000).toLocaleString() : '—';
+      const invNo = esc(i.number || i.id || '—');
+      const st = esc(i.status || '');
+      const tot = formatStripeMinorAmount(i.total, i.currency);
+      const due = formatStripeMinorAmount(i.amount_due, i.currency);
+      const cust = esc((i.customer || '').toString().slice(0, 28));
+      const cmail = i.customer_email ? esc(i.customer_email) : '';
+      let userCell = '<span style="color:var(--text-muted)">—</span>';
+      if (i.user_id) {
+        userCell = '<div style="font-weight:600">' + esc(i.user_name || '') + '</div><div style="font-size:11px;color:var(--text-muted)">' + esc(i.user_email || '') + '</div><div style="font-size:10px;color:var(--text-muted)">#' + esc(String(i.user_id)) + '</div>';
+      } else if (cmail) {
+        userCell = '<span style="font-size:11px;color:var(--text-muted)">' + cmail + '</span>';
+      }
+      const links = [];
+      if (i.hosted_invoice_url) links.push('<a href="' + esc(i.hosted_invoice_url) + '" target="_blank" rel="noopener" class="btn sm">Hosted</a>');
+      if (i.invoice_pdf) links.push('<a href="' + esc(i.invoice_pdf) + '" target="_blank" rel="noopener" class="btn sm">PDF</a>');
+      return '<tr><td style="white-space:nowrap;font-variant-numeric:tabular-nums;font-size:11px">' + dt + '</td><td style="font-family:monospace;font-size:11px">' + invNo + '</td><td><span class="badge badge-user">' + st + '</span></td><td style="font-weight:600">' + tot + '</td><td style="font-size:11px;color:var(--text-muted)">' + due + '</td><td style="font-size:10px;word-break:break-all;color:var(--text-muted)">' + cust + '</td><td>' + userCell + '</td><td><div style="display:flex;flex-wrap:wrap;gap:4px">' + links.join('') + '</div></td></tr>';
+    }).join('');
+    tbody.insertAdjacentHTML('beforeend', chunk);
+    if (loadMore) loadMore.style.display = stripeInvoicesNext ? '' : 'none';
+  } catch (e) {
+    if (reset) {
+      tbody.innerHTML = '<tr><td colspan="8" style="padding:12px;color:var(--danger)">' + esc(e.message || String(e)) + '</td></tr>';
+    } else {
+      toast(e.message || String(e), 'err');
+    }
+    if (loadMore) loadMore.style.display = 'none';
+  }
+}
+
 async function loadPayments() {
   try {
     const data = await api('/api/admin/payments');
@@ -8694,6 +8809,7 @@ async function loadPayments() {
     $('payCountBadge').textContent = allPayments.length;
     renderPayments();
     renderPaymentStats();
+    await loadStripeInvoices(true).catch(function () {});
   } catch (e) { toast('Failed to load payments: ' + e.message, 'err'); }
 }
 

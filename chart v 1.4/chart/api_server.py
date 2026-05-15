@@ -11421,6 +11421,119 @@ async def admin_stripe_customer_portal(user_id: int, request: Request):
         db.close()
 
 
+def _stripe_invoice_to_admin_dict(inv) -> dict:
+    """Normalize Stripe Invoice object or dict for admin JSON (no secrets)."""
+    if isinstance(inv, dict):
+        cust = inv.get("customer")
+        if isinstance(cust, dict):
+            cust = cust.get("id")
+        return {
+            "id": inv.get("id"),
+            "number": inv.get("number"),
+            "status": inv.get("status"),
+            "total": inv.get("total"),
+            "amount_due": inv.get("amount_due"),
+            "currency": inv.get("currency"),
+            "created": inv.get("created"),
+            "customer": cust,
+            "customer_email": inv.get("customer_email"),
+            "hosted_invoice_url": inv.get("hosted_invoice_url"),
+            "invoice_pdf": inv.get("invoice_pdf"),
+        }
+    cust = getattr(inv, "customer", None)
+    if cust is not None and not isinstance(cust, str):
+        cust = getattr(cust, "id", None)
+    cr = getattr(inv, "created", None)
+    try:
+        created_int = int(cr) if cr is not None else None
+    except Exception:
+        created_int = None
+    return {
+        "id": getattr(inv, "id", None),
+        "number": getattr(inv, "number", None),
+        "status": getattr(inv, "status", None),
+        "total": getattr(inv, "total", None),
+        "amount_due": getattr(inv, "amount_due", None),
+        "currency": getattr(inv, "currency", None),
+        "created": created_int,
+        "customer": cust,
+        "customer_email": getattr(inv, "customer_email", None),
+        "hosted_invoice_url": getattr(inv, "hosted_invoice_url", None),
+        "invoice_pdf": getattr(inv, "invoice_pdf", None),
+    }
+
+
+def _enrich_invoice_rows_with_users(db, rows: list[dict]) -> None:
+    """Attach local user id/name/email when `stripe_customer_id` matches."""
+    ids = list({(r.get("customer") or "").strip() for r in rows if r.get("customer")})
+    if not ids:
+        return
+    um: dict[str, dict] = {}
+    for u in db.query(User).filter(User.stripe_customer_id.in_(ids)).all():
+        sc = (u.stripe_customer_id or "").strip()
+        if sc:
+            um[sc] = {"user_id": int(u.id), "user_name": u.name or "", "user_email": u.email or ""}
+    for r in rows:
+        m = um.get((r.get("customer") or "").strip())
+        if m:
+            r["user_id"] = m["user_id"]
+            r["user_name"] = m["user_name"]
+            r["user_email"] = m["user_email"]
+
+
+@app.get("/api/admin/stripe/invoices")
+async def admin_stripe_invoices_global(
+    request: Request,
+    limit: int = 40,
+    starting_after: str | None = None,
+    status: str | None = None,
+    customer: str | None = None,
+):
+    """
+    List Stripe invoices (newest first). Paginate with `starting_after` = last invoice `id` from previous page.
+    Optional `status`: draft | open | paid | uncollectible | void
+    Optional `customer`: Stripe customer id (cus_…)
+    """
+    _require_admin(request)
+    limit = max(1, min(100, int(limit or 40)))
+    _stripe = _stripe_client()
+    if not _stripe:
+        raise HTTPException(status_code=503, detail="Stripe not configured (set STRIPE_SECRET_KEY)")
+    kw: dict = {"limit": limit}
+    if starting_after and starting_after.strip():
+        kw["starting_after"] = starting_after.strip()[:120]
+    if customer and customer.strip():
+        kw["customer"] = customer.strip()[:120]
+    st = (status or "").strip().lower()
+    if st in ("draft", "open", "paid", "uncollectible", "void"):
+        kw["status"] = st
+    try:
+        lst = _stripe.Invoice.list(**kw)
+    except Exception as e:
+        import stripe as _stripe_mod
+
+        if isinstance(e, _stripe_mod.error.StripeError):
+            raise HTTPException(status_code=400, detail=(getattr(e, "user_message", None) or str(e))[:500])
+        raise HTTPException(status_code=400, detail=str(e)[:500])
+    data = getattr(lst, "data", None) or []
+    rows = [_stripe_invoice_to_admin_dict(inv) for inv in data]
+    has_more = bool(getattr(lst, "has_more", False))
+    next_after = rows[-1]["id"] if rows and has_more else None
+
+    db = SessionLocal()
+    try:
+        _enrich_invoice_rows_with_users(db, rows)
+    finally:
+        db.close()
+
+    return {
+        "success": True,
+        "invoices": rows,
+        "has_more": has_more,
+        "next_starting_after": next_after,
+    }
+
+
 @app.get("/api/admin/users/{user_id}/stripe/invoices")
 async def admin_stripe_invoices(user_id: int, request: Request, limit: int = 25):
     """List recent Stripe invoices for the user's customer id (read-only)."""
@@ -11445,37 +11558,9 @@ async def admin_stripe_invoices(user_id: int, request: Request, limit: int = 25)
             if isinstance(e, _stripe_mod.error.StripeError):
                 raise HTTPException(status_code=400, detail=(getattr(e, "user_message", None) or str(e))[:500])
             raise HTTPException(status_code=400, detail=str(e)[:500])
-        rows = []
-        stream = lst.auto_paging_iter() if hasattr(lst, "auto_paging_iter") else lst.data
-        for inv in stream:
-            if len(rows) >= limit:
-                break
-            if isinstance(inv, dict):
-                rows.append(
-                    {
-                        "id": inv.get("id"),
-                        "number": inv.get("number"),
-                        "status": inv.get("status"),
-                        "total": inv.get("total"),
-                        "currency": inv.get("currency"),
-                        "created": inv.get("created"),
-                        "hosted_invoice_url": inv.get("hosted_invoice_url"),
-                        "invoice_pdf": inv.get("invoice_pdf"),
-                    }
-                )
-            else:
-                rows.append(
-                    {
-                        "id": getattr(inv, "id", None),
-                        "number": getattr(inv, "number", None),
-                        "status": getattr(inv, "status", None),
-                        "total": getattr(inv, "total", None),
-                        "currency": getattr(inv, "currency", None),
-                        "created": int(getattr(inv, "created", 0) or 0),
-                        "hosted_invoice_url": getattr(inv, "hosted_invoice_url", None),
-                        "invoice_pdf": getattr(inv, "invoice_pdf", None),
-                    }
-                )
+        stream = getattr(lst, "data", None) or []
+        rows = [_stripe_invoice_to_admin_dict(inv) for inv in stream]
+        _enrich_invoice_rows_with_users(db, rows)
         return {"success": True, "invoices": rows}
     finally:
         db.close()
