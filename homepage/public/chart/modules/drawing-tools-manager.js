@@ -7630,7 +7630,8 @@ class DrawingToolsManager {
 
     /**
      * Path/polyline hint — matches V9 global toolbar tooltip (TalariaV8bLive.jsx `tipData`):
-     * c.el background, c.brH border, 2px left gradient (c.acL), padding 3px 8px 3px 11px, Exo 2 10px/600.
+     * c.el background, c.brH border, 2px left gradient (c.acL), Exo 2 / 600.
+     * Placed just above the chart time-axis (from canvas rect + margin.b); slightly larger than the icon tooltips.
      */
     showPathTooltip() {
         this.hidePathTooltip();
@@ -7647,9 +7648,28 @@ class DrawingToolsManager {
         wrap.id = 'path-drawing-tooltip';
         wrap.setAttribute('role', 'status');
         wrap.setAttribute('aria-live', 'polite');
+
+        let bottomPx = null;
+        try {
+            const ch = this.chart;
+            const cv = ch && ch.canvas;
+            const m = ch && ch.margin;
+            if (cv && m && typeof cv.getBoundingClientRect === 'function' && Number.isFinite(ch.h) && ch.h > 0) {
+                const r = cv.getBoundingClientRect();
+                const scaleY = r.height > 0 ? (r.height / ch.h) : 1;
+                const mB = Math.max(20, Number(m.b) || 30);
+                const timeAxisTop = r.top + (ch.h - mB) * scaleY;
+                const gap = 10;
+                bottomPx = window.innerHeight - timeAxisTop + gap;
+            }
+        } catch (_) { /* fallback below */ }
+        if (bottomPx == null || !Number.isFinite(bottomPx)) {
+            bottomPx = 100;
+        }
+
         wrap.style.cssText = [
             'position:fixed',
-            'bottom:50px',
+            'bottom:' + Math.round(bottomPx) + 'px',
             'left:50%',
             'transform:translateX(-50%)',
             'z-index:100002',
@@ -7658,11 +7678,11 @@ class DrawingToolsManager {
             'background:' + bg,
             'border:1px solid ' + brH,
             "font-family:'Exo 2',sans-serif",
-            'font-size:10px',
+            'font-size:11px',
             'font-weight:600',
             'color:' + tx,
-            'padding:3px 8px 3px 11px',
-            'box-shadow:0 4px 14px rgba(0,0,0,0.55)',
+            'padding:5px 11px 5px 14px',
+            'box-shadow:0 4px 16px rgba(0,0,0,0.55)',
         ].join(';');
 
         const stripe = document.createElement('div');
@@ -7671,7 +7691,7 @@ class DrawingToolsManager {
             'left:0',
             'top:0',
             'bottom:0',
-            'width:2px',
+            'width:3px',
             'pointer-events:none',
             'background:linear-gradient(180deg,transparent,' + acL + ',transparent)',
         ].join(';');
