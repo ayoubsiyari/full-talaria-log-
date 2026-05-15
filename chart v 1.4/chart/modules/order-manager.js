@@ -16595,7 +16595,9 @@ class OrderManager {
                 if (this.previewLines.sl) {
                     this.previewLines.sl.targetPrice = slPrice;
                 }
-            } else if (slEnabled) {
+            } else if (slEnabled && !this.slManuallyPositioned) {
+                // Match TP: only anchor SL badge on entry when not yet dragged; if slManuallyPositioned
+                // but #slPrice is briefly 0 (multichart host/iframe race), do not redraw at entry.
                 this.previewLines.sl = this.drawPreviewBadge(entryPrice, '#f23645', 'SL', slPrice);
             }
 
@@ -16616,7 +16618,7 @@ class OrderManager {
                 if (this.previewLines.sl) {
                     this.previewLines.sl.targetPrice = slPrice;
                 }
-            } else if (slEnabled) {
+            } else if (slEnabled && !this.slManuallyPositioned) {
                 this.previewLines.sl = this.drawPreviewBadge(entryPrice, '#f23645', 'SL', slPrice);
             }
         }
@@ -17669,7 +17671,8 @@ class OrderManager {
                 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
-                self._multichartPostDraftDragBusy(false);
+                // Keep multichart-draft-drag-busy true until snapshot posts (see inner rAF) so the host
+                // does not setDraftPreview(slPrice:0) between drag end and iframe field snapshot.
 
                 // Clean up temporary indicators
                 if (lineData.pipIndicator) {
@@ -17706,6 +17709,7 @@ class OrderManager {
                         }
                         requestAnimationFrame(() => {
                             self._multichartPostDraftSnapshotToParent();
+                            self._multichartPostDraftDragBusy(false);
                         });
                     });
                 } else {
@@ -17714,6 +17718,7 @@ class OrderManager {
                         self._syncPendingOrdersBreakevenFromPanel();
                     }
                     self._multichartPostDraftSnapshotToParent();
+                    self._multichartPostDraftDragBusy(false);
                 }
             });
 
@@ -17854,11 +17859,11 @@ class OrderManager {
                 })
                 .on('end', () => {
                     badgeGroup.style('opacity', 1);
-                    self._multichartPostDraftDragBusy(false);
                     requestAnimationFrame(() => {
                         self.calculateAdvancedRiskReward();
                         self.updatePlaceButtonText();
                         self._multichartPostDraftSnapshotToParent();
+                        self._multichartPostDraftDragBusy(false);
                     });
                 });
 
@@ -18037,12 +18042,11 @@ class OrderManager {
             })
             .on('end', () => {
                 badgeGroup.style('opacity', 1);
-                self._multichartPostDraftDragBusy(false);
-                // Final calculation on drag end
                 requestAnimationFrame(() => {
                     self.calculateAdvancedRiskReward();
                     self.updatePlaceButtonText();
                     self._multichartPostDraftSnapshotToParent();
+                    self._multichartPostDraftDragBusy(false);
                 });
             });
 

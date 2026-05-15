@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { normalizeBadgeAsset } from "./backtestModal/symbolIcons";
 
 // ── Color utilities ──────────────────────────────────────────────────────────
 function parseColor(str) {
@@ -580,6 +581,10 @@ const TalariaV8b = () => {
   });
   const [newSessSymbolSpreads, setNewSessSymbolSpreads] = useState({});
   const [newSessFuturesData, setNewSessFuturesData] = useState({});
+  /** Chart-ready files from `/api/files?session_ready=1` — drives session symbol pickers + instrument table (same source as BacktestNewSessionModal). */
+  const [sessionChartFiles, setSessionChartFiles] = useState([]);
+  const [sessionChartFilesLoading, setSessionChartFilesLoading] = useState(false);
+  const [sessionChartFilesError, setSessionChartFilesError] = useState(null);
 
   /* ── Strategies page state ── */
   const [stratTab, setStratTab] = useState("mine");
@@ -1305,6 +1310,93 @@ const TalariaV8b = () => {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    if (!sessionPage) return;
+    let cancelled = false;
+    setSessionChartFilesLoading(true);
+    setSessionChartFilesError(null);
+    const symCat = {
+      EURUSD: "Forex", GBPUSD: "Forex", USDJPY: "Forex", USDCHF: "Forex", AUDUSD: "Forex", NZDUSD: "Forex",
+      USDCAD: "Forex", EURGBP: "Forex", EURJPY: "Forex", GBPJPY: "Forex", XAUUSD: "Forex", XAGUSD: "Forex",
+      BTCUSD: "Crypto", ETHUSD: "Crypto", BNBUSD: "Crypto", SOLUSD: "Crypto", ADAUSD: "Crypto", XRPUSD: "Crypto", DOGEUSD: "Crypto",
+      NQ: "Futures", ES: "Futures", YM: "Futures", RTY: "Futures", MNQ: "Futures", MES: "Futures",
+      MYM: "Futures", M2K: "Futures", MGC: "Futures", MCL: "Futures", CL: "Futures", GC: "Futures", SI: "Futures", NG: "Futures",
+      AAPL: "Stocks", TSLA: "Stocks", NVDA: "Stocks", MSFT: "Stocks", AMZN: "Stocks", GOOG: "Stocks",
+    };
+    const inferAsset = (name, ticker) => {
+      const n = String(name || "").toUpperCase();
+      const t = String(ticker || "").toUpperCase();
+      if (symCat[t]) return symCat[t];
+      if (/(BTC|ETH|BNB|SOL|ADA|XRP|DOGE|CRYPTO|USDT|USDC)/.test(t) || /(CRYPTO|USDT|USDC)/.test(n)) return "Crypto";
+      if (/(NQ|ES|YM|RTY|MNQ|MES|MYM|M2K|MGC|MCL|CL|GC|SI|NG|FUTURE)/.test(t) || /(FUTURE|CME|CBOT|NYMEX|COMEX)/.test(n)) return "Futures";
+      if (/^[A-Z]{3}[A-Z]{3}$/.test(t) || /(FOREX|FX)/.test(n)) return "Forex";
+      if (/(STOCK|NASDAQ|NYSE)/.test(n) || /^[A-Z]{1,5}$/.test(t)) return "Stocks";
+      return "Forex";
+    };
+    const guessTicker = (name) => {
+      const base = String(name || "").replace(/\.csv$/i, "");
+      const first = base.split(/[ _-]/)[0] || "";
+      const fu = first.toUpperCase();
+      if (fu && /^[A-Z0-9]{2,10}$/.test(fu)) return fu;
+      const six = base.slice(0, 6).toUpperCase();
+      if (/^[A-Z]{3}[A-Z]{3}$/.test(six)) return six;
+      return base.toUpperCase();
+    };
+    const guessTf = (name) => {
+      const m = String(name || "").match(/_(M\d+|H\d+|D\d+|W\d+|1m|5m|15m|30m|1H|4H|1D)/i);
+      if (!m) return "1m";
+      const t = m[1].toUpperCase();
+      if (t === "1M") return "1m";
+      if (t === "M5") return "5m";
+      if (t === "M15") return "15m";
+      if (t === "M30") return "30m";
+      if (t === "H1" || t === "1H") return "1H";
+      if (t === "H4" || t === "4H") return "4H";
+      if (t === "D1" || t === "1D") return "1D";
+      return t;
+    };
+    void fetch("/api/files?session_ready=1", { credentials: "include" })
+      .then((res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        return res.json();
+      })
+      .then((payload) => {
+        if (cancelled) return;
+        const next = (payload.files || []).map((f) => {
+          const name = f.original_name || `File ${f.id}`;
+          const serverTicker = String(f.ticker || "").trim().toUpperCase();
+          const ticker = serverTicker || guessTicker(name);
+          const serverAsset = normalizeBadgeAsset(f.asset_class || undefined);
+          const asset = serverAsset || inferAsset(name, ticker);
+          const tf = guessTf(name);
+          const approxSize = f.row_count ? `${(f.row_count / 1_000_000).toFixed(2)}M rows` : "rows";
+          return {
+            id: String(f.id),
+            name,
+            ticker,
+            tf,
+            from: "",
+            to: "",
+            size: approxSize,
+            asset,
+          };
+        });
+        setSessionChartFiles(next);
+        if (next.length === 0) {
+          setSessionChartFilesError(
+            "No chart-ready datasets on the server yet. Build or upload in Admin, then refresh.",
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSessionChartFilesError("Failed to load datasets. Start the backtest server first.");
+      })
+      .finally(() => {
+        if (!cancelled) setSessionChartFilesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [sessionPage]);
 
   // Load initial sync settings and current layout from panelManager (it initialises asynchronously)
   useEffect(() => {
@@ -2396,19 +2488,11 @@ const TalariaV8b = () => {
         const lockedBox = {opacity:0.35, pointerEvents:"none", userSelect:"none"};
         const activeBox = {};
         const goNew = () => { setNewSessName(""); setNewSessStart(""); setNewSessEnd(""); setNewSessCapital("10000"); setSessTradingMode("standard"); setNewSessDescription(""); setNewSessPlaybook(""); setNewSessMarginCall("100"); setNewSessStopOut("50"); setNewSessProtect("none"); setNewSessNavEnabled(true); setNewSessFilePickerOpen(false); setNewSessTickers([]); setNewSessTickerInput(""); setNewSessTickerFocus(false); setNewSessAssetClass("Forex"); setNewSessAdvancedOrder(false); setNewSessRollback(false); setNewSessTradingStyle(""); setNewSessSupportTickers([]); setNewSessSupportAssetClass("Forex"); setNewSessSupportInput(""); setNewSessOpen(true); };
-        const availFiles=[
-          {id:"f1",name:"EURUSD_M1_2020-2024.csv",ticker:"EURUSD",tf:"1m",from:"2020-01-02",to:"2024-12-31",size:"4.2 GB",asset:"Forex"},
-          {id:"f2",name:"GBPUSD_M5_2018-2024.csv",ticker:"GBPUSD",tf:"5m",from:"2018-03-01",to:"2024-12-31",size:"1.8 GB",asset:"Forex"},
-          {id:"f3",name:"NQ_M1_2019-2024.csv",ticker:"NQ",tf:"1m",from:"2019-01-02",to:"2024-12-31",size:"6.1 GB",asset:"Futures"},
-          {id:"f4",name:"ES_M5_2017-2024.csv",ticker:"ES",tf:"5m",from:"2017-06-01",to:"2024-12-31",size:"2.3 GB",asset:"Futures"},
-          {id:"f5",name:"XAUUSD_H1_2015-2024.csv",ticker:"XAUUSD",tf:"1H",from:"2015-01-05",to:"2024-12-31",size:"820 MB",asset:"Forex"},
-          {id:"f6",name:"BTCUSD_M15_2020-2024.csv",ticker:"BTCUSD",tf:"15m",from:"2020-01-01",to:"2024-12-31",size:"1.1 GB",asset:"Crypto"},
-          {id:"f7",name:"USDJPY_M1_2021-2024.csv",ticker:"USDJPY",tf:"1m",from:"2021-01-04",to:"2024-12-31",size:"2.9 GB",asset:"Forex"},
-        ];
+        const availFiles = sessionChartFiles;
         const instrDefaults={Forex:{spread:"1.2",commission:"0",pipSize:"0.0001",pipVal:"10",contractSize:"100000",minLot:"0.01",lotStep:"0.01"},Futures:{spread:"0.25",commission:"2.50",pipSize:"0.25",pipVal:"12.50",contractSize:"1",minLot:"1",lotStep:"1"},Crypto:{spread:"15",commission:"0",pipSize:"1",pipVal:"1",contractSize:"1",minLot:"0.001",lotStep:"0.001"}};
         const instrRows=newSessFiles.map(fid=>{const f=availFiles.find(a=>a.id===fid);if(!f)return null;const def=instrDefaults[f.asset]||instrDefaults.Forex;return{...f,...def};}).filter(Boolean);
         const autoAsset=instrRows.length>0?instrRows[0].asset:"—";
-        const dateRangeHint=newSessFiles.length>0?(()=>{const files=newSessFiles.map(id=>availFiles.find(f=>f.id===id)).filter(Boolean);const minFrom=files.reduce((a,f)=>f.from<a?f.from:a,files[0].from);const maxTo=files.reduce((a,f)=>f.to>a?f.to:a,files[0].to);return`Available: ${minFrom} → ${maxTo}`;})():"Select a data file to see available date range";
+        const dateRangeHint=newSessFiles.length>0?(()=>{const files=newSessFiles.map(id=>availFiles.find(f=>f.id===id)).filter(Boolean);if(!files.length)return"—";const hasDates=files.every(f=>f.from&&f.to);if(!hasDates)return"Set start/end manually (file date range loads after pick)";const minFrom=files.reduce((a,f)=>f.from<a?f.from:a,files[0].from);const maxTo=files.reduce((a,f)=>f.to>a?f.to:a,files[0].to);return`Available: ${minFrom} → ${maxTo}`;})():"Select a data file to see available date range";
         const isValid2=!!(newSessName&&newSessTickers.length>0&&newSessStart&&newSessEnd&&newSessCapital);
         const playbookOpts=["","Momentum Breakout","EMA Mean Reversion","London Session Scalp","Volume Breakout","Golden Cross Trend","Custom label…"];
         const protectPresets=[["none","— None (Configure in chart) —"],["be","Breakeven only"],["trailing","Trailing stop"],["full","Breakeven + Trailing + TP"]];
@@ -3370,17 +3454,18 @@ const TalariaV8b = () => {
                       <div style={{border:`1px solid ${sessInfoDone?c.brH:c.br}`,padding:"12px 14px",transition:"opacity 0.2s,border-color 0.2s",...(sessInfoDone?activeBox:lockedBox)}}>
                       {secH("Session Settings")}
                       {(()=>{
-                        const allSymbols=[
-                          {sym:"EURUSD",cat:"Forex"},{sym:"GBPUSD",cat:"Forex"},{sym:"USDJPY",cat:"Forex"},{sym:"USDCHF",cat:"Forex"},{sym:"AUDUSD",cat:"Forex"},
-                          {sym:"NZDUSD",cat:"Forex"},{sym:"USDCAD",cat:"Forex"},{sym:"EURGBP",cat:"Forex"},{sym:"EURJPY",cat:"Forex"},{sym:"GBPJPY",cat:"Forex"},
-                          {sym:"XAUUSD",cat:"Forex"},{sym:"XAGUSD",cat:"Forex"},{sym:"USDSEK",cat:"Forex"},{sym:"USDNOK",cat:"Forex"},
-                          {sym:"NQ",cat:"Futures"},{sym:"ES",cat:"Futures"},{sym:"YM",cat:"Futures"},{sym:"RTY",cat:"Futures"},
-                          {sym:"CL",cat:"Futures"},{sym:"GC",cat:"Futures"},{sym:"SI",cat:"Futures"},{sym:"NG",cat:"Futures"},
-                          {sym:"MNQ",cat:"Futures"},{sym:"MES",cat:"Futures"},{sym:"MYM",cat:"Futures"},{sym:"M2K",cat:"Futures"},
-                          {sym:"MGC",cat:"Futures"},{sym:"MCL",cat:"Futures"},
-                          {sym:"BTCUSD",cat:"Crypto"},{sym:"ETHUSD",cat:"Crypto"},{sym:"BNBUSD",cat:"Crypto"},{sym:"SOLUSD",cat:"Crypto"},{sym:"ADAUSD",cat:"Crypto"},
-                          {sym:"AAPL",cat:"Equities"},{sym:"TSLA",cat:"Equities"},{sym:"NVDA",cat:"Equities"},{sym:"MSFT",cat:"Equities"},{sym:"AMZN",cat:"Equities"},{sym:"GOOG",cat:"Equities"},
-                        ];
+                        const fileSymbols = sessionChartFiles
+                          .filter((f) => f.ticker)
+                          .map((f) => ({ sym: String(f.ticker).toUpperCase(), cat: f.asset === "Stocks" ? "Equities" : f.asset }));
+                        const allSymbols = fileSymbols.reduce((acc, cur) => {
+                          if (!acc.some((x) => x.sym === cur.sym)) acc.push(cur);
+                          return acc;
+                        }, []);
+                        const sessSymPoolMsg = () => {
+                          if (sessionChartFilesLoading) return "Loading symbols…";
+                          if (sessionChartFiles.length === 0) return sessionChartFilesError || "No chart-ready datasets. Upload or build data, then refresh.";
+                          return "No symbols in this category";
+                        };
                         const catMap={"Forex":"Forex","Futures":"Futures","Crypto":"Crypto","Stocks":"Equities"};
                         const catOf=sym=>allSymbols.find(s=>s.sym===sym)?.cat||"";
                         const assetLabel=cat=>({"Forex":"Forex","Futures":"Futures","Crypto":"Crypto","Equities":"Stocks"}[cat]||cat);
@@ -3557,7 +3642,8 @@ const TalariaV8b = () => {
                                         {(()=>{
                                           const catKey=catMap[newSessAssetClass]||newSessAssetClass;
                                           const pool=allSymbols.filter(s=>s.cat===catKey&&(!newSessSymPickerSearch||s.sym.toLowerCase().includes(newSessSymPickerSearch.toLowerCase())));
-                                          if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
+                                          if(sessionChartFilesLoading)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>Loading symbols…</div>;
+                                          if(pool.length===0){const msg=newSessSymPickerSearch.trim()?"No results":sessSymPoolMsg();return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>{msg}</div>;}
                                           return pool.map(s=>{
                                             const isChk=newSessTickers.includes(s.sym);
                                             const hk="spick_"+s.sym;const isH=hov===hk;
@@ -3666,7 +3752,8 @@ const TalariaV8b = () => {
                                         {(()=>{
                                           const catKey=catMap[newSessSupPickerCat]||newSessSupPickerCat;
                                           const pool=allSymbols.filter(s=>s.cat===catKey&&(!newSessSupPickerSearch||s.sym.toLowerCase().includes(newSessSupPickerSearch.toLowerCase())));
-                                          if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
+                                          if(sessionChartFilesLoading)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>Loading symbols…</div>;
+                                          if(pool.length===0){const msg=newSessSupPickerSearch.trim()?"No results":sessSymPoolMsg();return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>{msg}</div>;}
                                           return pool.map(s=>{
                                             const isChk=newSessSupportTickers.includes(s.sym);
                                             const hk="suppick_"+s.sym;const isH=hov===hk;
@@ -3920,7 +4007,7 @@ const TalariaV8b = () => {
                                         const primList=allSymbols.filter(s=>s.cat===primCat&&(newSessTickerInput.trim()?s.sym.includes(newSessTickerInput.trim()):true));
                                         return(
                                           <div style={{flex:1,overflowY:"auto"}} className="tlr-scroll">
-                                            {primList.length===0?<div style={{padding:"20px",fontSize:11,color:c.tm,textAlign:"center",fontFamily:F}}>No results</div>:primList.map(({sym})=>{
+                                            {sessionChartFilesLoading?<div style={{padding:"20px",fontSize:11,color:c.tm,textAlign:"center",fontFamily:F}}>Loading symbols…</div>:primList.length===0?<div style={{padding:"20px",fontSize:11,color:c.tm,textAlign:"center",fontFamily:F}}>{newSessTickerInput.trim()?"No results":sessSymPoolMsg()}</div>:primList.map(({sym})=>{
                                               const isSel=newSessTickers.includes(sym);
                                               const isOther=newSessSupportTickers.includes(sym);
                                               const isMax=!isSel&&newSessTickers.length>=10;
@@ -4054,7 +4141,7 @@ const TalariaV8b = () => {
                                         const suppList=allSymbols.filter(s=>s.cat===suppCat&&(newSessSupportInput.trim()?s.sym.includes(newSessSupportInput.trim()):true));
                                         return(
                                           <div style={{flex:1,overflowY:"auto"}} className="tlr-scroll">
-                                            {suppList.length===0?<div style={{padding:"20px",fontSize:11,color:c.tm,textAlign:"center",fontFamily:F}}>No results</div>:suppList.map(({sym})=>{
+                                            {sessionChartFilesLoading?<div style={{padding:"20px",fontSize:11,color:c.tm,textAlign:"center",fontFamily:F}}>Loading symbols…</div>:suppList.length===0?<div style={{padding:"20px",fontSize:11,color:c.tm,textAlign:"center",fontFamily:F}}>{newSessSupportInput.trim()?"No results":sessSymPoolMsg()}</div>:suppList.map(({sym})=>{
                                               const isSel=newSessSupportTickers.includes(sym);
                                               const isOther=newSessTickers.includes(sym);
                                               const isMax=!isSel&&newSessSupportTickers.length>=10;

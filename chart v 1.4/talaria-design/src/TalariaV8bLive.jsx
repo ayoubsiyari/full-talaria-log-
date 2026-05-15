@@ -10674,6 +10674,15 @@ const TalariaV8bLive = () => {
           });
         }
         if (typeof d.slEnabled === "boolean") setSlEnabled(d.slEnabled);
+        // Mirror TP: iframe chart SL drags post slPrice — without this, slRows stays "0" and the host
+        // forwards setDraftPreview(slPrice: 0) into the iframe, snapping the SL badge back to entry.
+        if (typeof d.slPrice === "number" && Number.isFinite(d.slPrice)) {
+          setSlRows((rows) => {
+            const r0 = rows[0] || { id: 0, price: "0" };
+            const next = { ...r0, price: d.slPrice > 0 ? String(d.slPrice) : "0" };
+            return [next];
+          });
+        }
         if (typeof d.tpEnabled === "boolean" || (typeof d.tpPrice === "number" && Number.isFinite(d.tpPrice))) {
           setTpRows((rows) => {
             const r0 = rows[0] || { id: 0, price: "0", qty: "100", enabled: true };
