@@ -3999,6 +3999,24 @@ class CompareOverlay {
         const parseMs = (tf) => this._parseTimeframeMs(tf);
         const newMs = parseMs(timeframe);
 
+        // Resample synchronously first so overlay.data matches the new chart TF immediately.
+        // If we only updated inside the async /smart refetch, main.data could already be on
+        // the new TF while overlay.data stayed on the old aggregation — findClosestIndex would
+        // miss and the compare line would not draw until the fetch finished (or never, if it failed).
+        for (const overlay of this.overlays) {
+            overlay.data = this.resampleData(overlay.rawData || [], timeframe);
+        }
+        if (Array.isArray(this.linkedPanes)) {
+            this.linkedPanes.forEach((pane) => {
+                pane.data = this.resampleData(pane.rawData || [], timeframe);
+                this.calculateLinkedPaneScale(pane);
+            });
+            this.renderLinkedPanes();
+        }
+        if (typeof ch.render === 'function') {
+            try { ch.render(); } catch (_) { /* ignore */ }
+        }
+
         (async () => {
             try {
                 for (const overlay of this.overlays) {
@@ -4022,9 +4040,9 @@ class CompareOverlay {
                             overlay.rawData = rows;
                             overlay.rawFetchTf = timeframe;
                             overlay.nativeBarMs = parseMs(timeframe) || this._inferMedianBarPeriodMs(rows);
+                            overlay.data = this.resampleData(overlay.rawData, timeframe);
                         }
                     }
-                    overlay.data = this.resampleData(overlay.rawData || [], timeframe);
                 }
                 if (Array.isArray(this.linkedPanes)) {
                     for (const pane of this.linkedPanes) {
@@ -4048,10 +4066,10 @@ class CompareOverlay {
                                 pane.rawData = rows;
                                 pane.rawFetchTf = timeframe;
                                 pane.nativeBarMs = parseMs(timeframe) || this._inferMedianBarPeriodMs(rows);
+                                pane.data = this.resampleData(pane.rawData, timeframe);
+                                this.calculateLinkedPaneScale(pane);
                             }
                         }
-                        pane.data = this.resampleData(pane.rawData || [], timeframe);
-                        this.calculateLinkedPaneScale(pane);
                     }
                     this.renderLinkedPanes();
                 }
