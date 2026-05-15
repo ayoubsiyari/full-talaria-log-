@@ -16081,7 +16081,15 @@ class OrderManager {
      */
     updatePreviewLinePositions() {
         const orderPanelEl = document.getElementById('orderPanel');
-        if (!orderPanelEl || !orderPanelEl.classList.contains('visible')) {
+        // Mirror the open-predicate of updatePreviewLines so multichart-iframe drafts
+        // and V9 React rail drafts continue to track scale changes even when the
+        // legacy #orderPanel never gets the `.visible` class.
+        const v9ReactRailOpen = typeof window !== 'undefined'
+            && !!window.__talariaV9ReactOrderUi
+            && !!window.__talariaV9OrderRailOpen;
+        const multichartDraftActive = typeof window !== 'undefined'
+            && !!window.__talariaMultichartDraftActive;
+        if (!orderPanelEl || (!orderPanelEl.classList.contains('visible') && !v9ReactRailOpen && !multichartDraftActive)) {
             if (this.previewLines) this.removePreviewLines();
             return;
         }
@@ -16337,10 +16345,16 @@ class OrderManager {
         // V9 live: React owns the visible rail; #orderPanel stays off-DOM with order-panel--v9-react-hidden.
         // Bridge may call updatePreviewLines before toggleOrderPanel adds .visible — still treat as "open"
         // when the rail flags are set so TP/SL/entry edits from React actually redraw on the chart.
+        // Multichart iframe: parent forwards `setDraftPreview` via panel-cmd-bridge so the FOCUSED
+        // iframe draws the draft on its own chart even though its #orderPanel never becomes .visible
+        // (multichart hides V9 chrome). The bridge sets __talariaMultichartDraftActive while a draft
+        // is being mirrored — clear it on focus loss to remove the preview.
         const v9ReactRailOpen = typeof window !== 'undefined'
             && !!window.__talariaV9ReactOrderUi
             && !!window.__talariaV9OrderRailOpen;
-        if (!orderPanelEl || (!orderPanelEl.classList.contains('visible') && !v9ReactRailOpen)) {
+        const multichartDraftActive = typeof window !== 'undefined'
+            && !!window.__talariaMultichartDraftActive;
+        if (!orderPanelEl || (!orderPanelEl.classList.contains('visible') && !v9ReactRailOpen && !multichartDraftActive)) {
             this.removePreviewLines();
             return;
         }

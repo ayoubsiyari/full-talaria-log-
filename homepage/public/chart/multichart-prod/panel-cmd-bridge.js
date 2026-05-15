@@ -1084,6 +1084,64 @@
                         throw new Error('orderManager.removePreviewLines is not a function');
                     }
                     omPv.removePreviewLines({ multichartSkipBroadcast: true });
+                    try { global.__talariaMultichartDraftActive = false; } catch (_) {}
+                    return { ok: true };
+                }
+                // setDraftPreview { side, type, entryPrice, slEnabled, slPrice, tpEnabled, tpPrice }
+                //
+                // Parent's React rail forwards every entry/SL/TP/side/type change so
+                // this iframe's orderManager mirrors the draft preview line on its
+                // own chart. Without this, the preview only appeared on the host
+                // chart even when the user had focused panel B (different symbol).
+                //
+                // We write into the iframe's hidden #orderPanel inputs (so all the
+                // existing read-paths in updatePreviewLines stay unchanged) and flip
+                // __talariaMultichartDraftActive so updatePreviewLines won't bail on
+                // the missing `.visible` class (multichart hides V9 chrome).
+                case 'setDraftPreview': {
+                    var omSet = ch.orderManager;
+                    if (!omSet || typeof omSet.updatePreviewLines !== 'function') {
+                        throw new Error('orderManager.updatePreviewLines is not a function');
+                    }
+                    var docSet = global.document;
+                    function setValSet(id, v) {
+                        var el = docSet.getElementById(id);
+                        if (!el) return;
+                        var nv = (v == null) ? '' : String(v);
+                        if (el.value !== nv) el.value = nv;
+                        try { el.dispatchEvent(new Event('input',  { bubbles: true })); } catch (_) {}
+                        try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+                    }
+                    function setChkSet(id, v) {
+                        var el = docSet.getElementById(id);
+                        if (!el) return;
+                        if (el.checked !== !!v) {
+                            el.checked = !!v;
+                            try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+                        }
+                    }
+                    var sideSet = (args.side === 'SELL') ? 'SELL' : 'BUY';
+                    omSet.orderSide = sideSet;
+                    var btSet = docSet.getElementById('buyTab');
+                    var stSet = docSet.getElementById('sellTab');
+                    if (btSet) btSet.classList.toggle('active', sideSet === 'BUY');
+                    if (stSet) stSet.classList.toggle('active', sideSet === 'SELL');
+                    var otSet = (args.type === 'limit' || args.type === 'stop') ? args.type : 'market';
+                    var typeBtnsSet = docSet.querySelectorAll('#orderPanel .order-type-btn');
+                    if (typeBtnsSet && typeBtnsSet.forEach) {
+                        typeBtnsSet.forEach(function (b) {
+                            b.classList.toggle('active', b.getAttribute('data-type') === otSet);
+                        });
+                    }
+                    if (args.entryPrice != null) setValSet('orderEntryPrice', args.entryPrice);
+                    setChkSet('enableSL', !!args.slEnabled);
+                    if (args.slPrice != null)   setValSet('slPrice', args.slPrice);
+                    setChkSet('enableTP', !!args.tpEnabled);
+                    if (args.tpPrice != null)   setValSet('tpPrice', args.tpPrice);
+                    try { global.__talariaMultichartDraftActive = true; } catch (_) {}
+                    try { omSet.updatePreviewLines(); } catch (e) {
+                        warn('setDraftPreview: updatePreviewLines threw', e && e.message);
+                    }
                     return { ok: true };
                 }
                 case 'closeOrder': {
@@ -1191,6 +1249,7 @@
                 'syncPendingOrder',
                 'removeMirroredOrder',
                 'clearDraftPreview',
+                'setDraftPreview',
                 'closeOrder',
                 'cancelOrder',
             ],

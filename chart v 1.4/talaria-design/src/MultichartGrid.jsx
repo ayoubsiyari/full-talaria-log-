@@ -2455,6 +2455,57 @@ export default function MultichartGrid({
                         }
                         try {
                             omPv.removePreviewLines({ multichartSkipBroadcast: true });
+                            try { window.__talariaMultichartDraftActive = false; } catch (_) {}
+                        } catch (e) {
+                            return Promise.reject(e);
+                        }
+                        return Promise.resolve({ ok: true });
+                    }
+                    // Symmetric host-side counterpart of panel-cmd-bridge `setDraftPreview`.
+                    // Called when the focused panel IS the host (panel A); writes form
+                    // values into parent #orderPanel and asks the host orderManager to
+                    // redraw its draft preview. The V9 React rail already keeps the
+                    // host's #orderPanel in sync, but routing through this case lets
+                    // TalariaV8bLive use one uniform `runCommand("setDraftPreview", …)`
+                    // call regardless of which panel has focus.
+                    case "setDraftPreview": {
+                        const omSet = ch.orderManager;
+                        if (!omSet || typeof omSet.updatePreviewLines !== "function") {
+                            return Promise.reject(new Error("orderManager.updatePreviewLines is not a function"));
+                        }
+                        const setVal = (id, v) => {
+                            const el = document.getElementById(id);
+                            if (!el) return;
+                            const nv = (v == null) ? "" : String(v);
+                            if (el.value !== nv) el.value = nv;
+                            try { el.dispatchEvent(new Event("input",  { bubbles: true })); } catch (_) {}
+                            try { el.dispatchEvent(new Event("change", { bubbles: true })); } catch (_) {}
+                        };
+                        const setChk = (id, v) => {
+                            const el = document.getElementById(id);
+                            if (!el) return;
+                            if (el.checked !== !!v) {
+                                el.checked = !!v;
+                                try { el.dispatchEvent(new Event("change", { bubbles: true })); } catch (_) {}
+                            }
+                        };
+                        const sideSet = (args.side === "SELL") ? "SELL" : "BUY";
+                        omSet.orderSide = sideSet;
+                        const bt = document.getElementById("buyTab");
+                        const st = document.getElementById("sellTab");
+                        if (bt) bt.classList.toggle("active", sideSet === "BUY");
+                        if (st) st.classList.toggle("active", sideSet === "SELL");
+                        const otSet = (args.type === "limit" || args.type === "stop") ? args.type : "market";
+                        document.querySelectorAll("#orderPanel .order-type-btn").forEach((b) => {
+                            b.classList.toggle("active", b.getAttribute("data-type") === otSet);
+                        });
+                        if (args.entryPrice != null) setVal("orderEntryPrice", args.entryPrice);
+                        setChk("enableSL", !!args.slEnabled);
+                        if (args.slPrice != null)   setVal("slPrice", args.slPrice);
+                        setChk("enableTP", !!args.tpEnabled);
+                        if (args.tpPrice != null)   setVal("tpPrice", args.tpPrice);
+                        try {
+                            omSet.updatePreviewLines();
                         } catch (e) {
                             return Promise.reject(e);
                         }
