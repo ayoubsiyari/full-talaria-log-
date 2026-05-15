@@ -1067,6 +1067,25 @@
                     }
                     return { ok: true };
                 }
+                case 'removeMirroredOrder': {
+                    var omRm = ch.orderManager;
+                    if (!omRm || typeof omRm.multichartRemoveMirroredOrderClone !== 'function') {
+                        throw new Error('orderManager.multichartRemoveMirroredOrderClone is not a function');
+                    }
+                    if (args.orderId == null) {
+                        throw new Error('removeMirroredOrder: missing args.orderId');
+                    }
+                    omRm.multichartRemoveMirroredOrderClone(args.orderId);
+                    return { ok: true };
+                }
+                case 'clearDraftPreview': {
+                    var omPv = ch.orderManager;
+                    if (!omPv || typeof omPv.removePreviewLines !== 'function') {
+                        throw new Error('orderManager.removePreviewLines is not a function');
+                    }
+                    omPv.removePreviewLines({ multichartSkipBroadcast: true });
+                    return { ok: true };
+                }
                 case 'closeOrder': {
                     var omC = ch.orderManager;
                     if (!omC) throw new Error('orderManager not available');
@@ -1170,6 +1189,8 @@
                 'placeOrder',
                 'addOrder',
                 'syncPendingOrder',
+                'removeMirroredOrder',
+                'clearDraftPreview',
                 'closeOrder',
                 'cancelOrder',
             ],

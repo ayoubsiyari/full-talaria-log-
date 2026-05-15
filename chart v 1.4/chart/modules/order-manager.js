@@ -21162,8 +21162,11 @@ class OrderManager {
 
     /**
      * Remove all preview lines from chart
+     * @param {object} [opt]
+     * @param {boolean} [opt.multichartSkipBroadcast] — when true, do not fan-out
+     *   clear-preview to peer multichart panels (avoids ping-pong when parent syncs).
      */
-    removePreviewLines() {
+    removePreviewLines(opt) {
         console.log('🗑️ Removing preview lines...');
         this._removePendingLimitStopConnector();
         // Always drop preview avg-TP registry entry — previewLines may already be null while SVG orphans remain.
@@ -21261,6 +21264,30 @@ class OrderManager {
         this._stripPreviewOrphansFromAllChartSurfaces();
 
         console.log('✅ Preview lines cleanup complete');
+
+        // Multichart: notify parent / grid so peer tiles clear draft preview in sync.
+        const skipMc = !!(opt && opt.multichartSkipBroadcast);
+        if (!skipMc) {
+            try {
+                const mcGrid = typeof window !== 'undefined' ? window.__multichartGrid : null;
+                const root = typeof document !== 'undefined' ? document.documentElement : null;
+                const isEmbed = !!(root && root.classList && root.classList.contains('multichart-embed'));
+                if (isEmbed && window.parent && window.parent !== window) {
+                    const qs = (typeof window.location !== 'undefined' && window.location.search)
+                        ? window.location.search : '';
+                    const params = typeof URLSearchParams !== 'undefined' ? new URLSearchParams(qs) : null;
+                    const pid = params ? (params.get('panelId') || params.get('id')) : null;
+                    if (pid) {
+                        window.parent.postMessage({ type: 'multichart-clear-preview', source: String(pid) }, '*');
+                    }
+                } else if (mcGrid && window.parent === window) {
+                    const hostPid = (typeof window.__MULTICHART_PANEL_ID__ === 'string' && window.__MULTICHART_PANEL_ID__)
+                        ? window.__MULTICHART_PANEL_ID__
+                        : 'A';
+                    window.dispatchEvent(new CustomEvent('multichart-clear-preview', { detail: { source: hostPid } }));
+                }
+            } catch (_eMcClearPrev) { /* ignore */ }
+        }
     }
 
     alignPreviewLabels() {
@@ -23503,6 +23530,95 @@ class OrderManager {
     }
     
     /**
+     * Multichart: remove a mirrored order clone on this tile only (no PnL, balance, journal, or bus close).
+     * The source panel already executed the real close/cancel; peers only drop lines + list rows.
+     * @param {number} orderId
+     */
+    multichartRemoveMirroredOrderClone(orderId) {
+        const id = Number(orderId);
+        if (!Number.isFinite(id)) return;
+
+        const pos = (this.openPositions || []).find((p) => p && p.id === id)
+            || (this.orderService?.openPositions || []).find((p) => p && p.id === id);
+        if (pos) {
+            try { this.removeEntryMarker(id); } catch (_e0) { /* ignore */ }
+            try { this.removeOrderLine(id); } catch (_e1) { /* ignore */ }
+            try { this.removeSLTPLines(id); } catch (_e2) { /* ignore */ }
+            try { this.removeMultiTPAvgLine(id); } catch (_e3) { /* ignore */ }
+            try { this.removeMfeMaeMarkers(id); } catch (_e4) { /* ignore */ }
+            if (pos.splitGroupId && pos.isSplitEntry && typeof this._splitGroupHasAnyOpenLeg === 'function'
+                && !this._splitGroupHasAnyOpenLeg(pos.splitGroupId)) {
+                try { this.removeSplitGroupAvgLine(pos.splitGroupId); } catch (_e5) { /* ignore */ }
+            }
+            try { this._cleanupOrphanedYAxisHighlights(); } catch (_e6) { /* ignore */ }
+
+            if (pos.splitGroupId && pos.isSplitEntry) {
+                const _seenOpen = new Set();
+                const _openSiblings = [...(this.openPositions || []), ...(this.orderService?.openPositions || [])]
+                    .filter((p) => {
+                        if (!p || p.splitGroupId !== pos.splitGroupId || _seenOpen.has(p.id)) return false;
+                        _seenOpen.add(p.id);
+                        return true;
+                    });
+                if (_openSiblings.length > 0) {
+                    try { this.removeSplitGroupAvgLine(pos.splitGroupId); } catch (_e7) { /* ignore */ }
+                    try { this.removeMultiTPAvgLine(`splitgrp_${pos.splitGroupId}`); } catch (_e8) { /* ignore */ }
+                    _openSiblings.forEach((leg) => {
+                        leg.isSplitEntry = false;
+                        leg.splitGroupId = undefined;
+                        leg.splitIndex = undefined;
+                        leg.splitTotal = undefined;
+                    });
+                    _openSiblings.forEach((leg) => {
+                        try { this.removeSLTPLines(leg.id); } catch (_e9) { /* ignore */ }
+                        try { this.drawSLTPLines(leg); } catch (_e10) { /* ignore */ }
+                        if (Array.isArray(leg.tpTargets) && leg.tpTargets.length >= 1) {
+                            try { this.removeMultiTPAvgLine(leg.id); } catch (_e11) { /* ignore */ }
+                            try { this.drawMultiTPAvgLine(leg); } catch (_e12) { /* ignore */ }
+                        }
+                    });
+                }
+            }
+
+            this.openPositions = (this.openPositions || []).filter((p) => !p || p.id !== id);
+            this.orders = (this.orders || []).filter((o) => !o || o.id !== id);
+            try {
+                if (this.orderService && typeof this.orderService.recomputeSharedMarginState === 'function') {
+                    this.orderService.recomputeSharedMarginState();
+                }
+            } catch (_e13) { /* ignore */ }
+            try { this.updateOrderLines(this.chart); } catch (_e14) { /* ignore */ }
+            try { if (this.chart && typeof this.chart.render === 'function') this.chart.render(); } catch (_e15) { /* ignore */ }
+            this.updatePositionsPanel();
+            return;
+        }
+
+        const pend = (this.pendingOrders || []).find((p) => p && p.id === id)
+            || (this.orderService?.pendingOrders || []).find((p) => p && p.id === id);
+        if (pend) {
+            const wasSplitEntry = pend.isSplitEntry && pend.splitGroupId;
+            const splitGroupId = pend.splitGroupId;
+            try { this.removePendingOrderLine(id); } catch (_p0) { /* ignore */ }
+            if (!wasSplitEntry) {
+                try { this.removePendingSLTPLines(id); } catch (_p1) { /* ignore */ }
+                try { this.removeMultiTPAvgLine(id); } catch (_p2) { /* ignore */ }
+            } else if (splitGroupId) {
+                try { this._removeSplitGroupTPAvgIfEmpty(splitGroupId, id); } catch (_p3) { /* ignore */ }
+            }
+            this.pendingOrders = (this.pendingOrders || []).filter((p) => !p || p.id !== id);
+            this.orders = (this.orders || []).filter((o) => !o || o.id !== id);
+            try {
+                if (this.orderService && typeof this.orderService.recomputeSharedMarginState === 'function') {
+                    this.orderService.recomputeSharedMarginState();
+                }
+            } catch (_p4) { /* ignore */ }
+            try { this.updateOrderLines(this.chart); } catch (_p5) { /* ignore */ }
+            try { if (this.chart && typeof this.chart.render === 'function') this.chart.render(); } catch (_p6) { /* ignore */ }
+            this.updatePositionsPanel();
+        }
+    }
+    
+    /**
      * Close a position
      */
     closePosition(orderId) {
@@ -23573,6 +23689,13 @@ class OrderManager {
         // Move to closed positions
         this.openPositions = this.openPositions.filter(p => p.id !== orderId);
         this.closedPositions.push(position);
+
+        // Multichart: notify peers to drop mirrored visuals only (no second balance close).
+        if (this.orderService && typeof this.orderService.emit === 'function') {
+            try {
+                this.orderService.emit('order:closed', position);
+            } catch (_eMcClosed) { /* ignore */ }
+        }
         
         console.log(`✅ Position closed: #${orderId} | P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`);
         
@@ -25786,6 +25909,12 @@ class OrderManager {
             // Move to closed positions first
             this.openPositions = this.openPositions.filter(p => p.id !== orderId);
             this.closedPositions.push(position);
+
+            if (this.orderService && typeof this.orderService.emit === 'function') {
+                try {
+                    this.orderService.emit('order:closed', position);
+                } catch (_eMcClosed2) { /* ignore */ }
+            }
 
             // Multi-entry ladder: one leg filled and closed → remove remaining unfilled limits/stops in the same group
             if (position.splitGroupId && position.isSplitEntry && !position.tradeGroupId) {

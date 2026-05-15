@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260515T1800";
+const BRIDGE_VERSION = "20260514T2300";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -2432,6 +2432,34 @@ export default function MultichartGrid({
                             : String(closePx);
                         return Promise.resolve({ close: closePx, formatted: fmt });
                     }
+                    case "removeMirroredOrder": {
+                        const omRm = ch.orderManager;
+                        if (!omRm || typeof omRm.multichartRemoveMirroredOrderClone !== "function") {
+                            return Promise.reject(new Error(
+                                "orderManager.multichartRemoveMirroredOrderClone is not a function"));
+                        }
+                        if (args.orderId == null) {
+                            return Promise.reject(new Error("removeMirroredOrder: missing orderId"));
+                        }
+                        try {
+                            omRm.multichartRemoveMirroredOrderClone(args.orderId);
+                        } catch (e) {
+                            return Promise.reject(e);
+                        }
+                        return Promise.resolve({ ok: true });
+                    }
+                    case "clearDraftPreview": {
+                        const omPv = ch.orderManager;
+                        if (!omPv || typeof omPv.removePreviewLines !== "function") {
+                            return Promise.reject(new Error("orderManager.removePreviewLines is not a function"));
+                        }
+                        try {
+                            omPv.removePreviewLines({ multichartSkipBroadcast: true });
+                        } catch (e) {
+                            return Promise.reject(e);
+                        }
+                        return Promise.resolve({ ok: true });
+                    }
 
                     // ─── orders (host-side) ─────────────────────────
                     //
@@ -2906,6 +2934,95 @@ export default function MultichartGrid({
             }
         }
 
+        function mirrorRemoveTo(panelId, orderId) {
+            const grid = window.__multichartGrid;
+            if (!grid || typeof grid.runCommand !== "function") return;
+            try {
+                grid.runCommand("removeMirroredOrder", { orderId }, { panelId })
+                    .catch((e) => {
+                        console.warn("[MultichartGrid] removeMirroredOrder",
+                            panelId, "failed:", e && e.message || e);
+                    });
+            } catch (e) {
+                console.warn("[MultichartGrid] removeMirroredOrder", panelId, "threw:", e);
+            }
+        }
+
+        /** Fan-out draft preview clear to every other multichart tile (host + iframes). */
+        function broadcastClearDraftPreview(sourceId) {
+            const sid = sourceId != null ? String(sourceId) : "";
+            if (!sid) return;
+            const grid = window.__multichartGrid;
+            if (!grid || typeof grid.runCommand !== "function") return;
+            const targets = [];
+            if (HOST_PANEL_ID !== sid) targets.push(HOST_PANEL_ID);
+            const mgr = managerRef.current;
+            if (mgr && mgr.charts) {
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || !c.id) continue;
+                    if (c.id === sid) continue;
+                    targets.push(c.id);
+                }
+            }
+            for (const tid of targets) {
+                try {
+                    grid.runCommand("clearDraftPreview", null, { panelId: tid }).catch((e) => {
+                        console.warn("[MultichartGrid] clearDraftPreview", tid, "failed:", e && e.message || e);
+                    });
+                } catch (e) {
+                    console.warn("[MultichartGrid] clearDraftPreview", tid, "threw:", e);
+                }
+            }
+        }
+
+        /** Fan-out order line / pending removal to every peer that mirrors this instrument (not the source). */
+        function broadcastOrderRemoval(sourceId, kind, order) {
+            if (!order || order.id == null) return;
+            const oid = order.id;
+            const mgr = managerRef.current;
+            const symNorm = normalizeOrderTickerForMirror(
+                order.symbol || order.ticker || order.pair || order.instrument || ""
+            );
+            let orderFid = order.sourceFileId != null && String(order.sourceFileId) !== ""
+                ? String(order.sourceFileId) : "";
+            if (!orderFid && sourceId === HOST_PANEL_ID) {
+                const ch = window.chart;
+                if (ch && ch.currentFileId != null && String(ch.currentFileId) !== "") {
+                    orderFid = String(ch.currentFileId);
+                }
+            }
+            const orderAug = orderFid && (order.sourceFileId == null || String(order.sourceFileId) === "")
+                ? Object.assign({}, order, { sourceFileId: orderFid })
+                : order;
+
+            let peers;
+            if (allReadyIframesShareHostFileForMirror(mgr && mgr.charts, window.chart)) {
+                peers = findAllSameDatasetMirrorPeers(sourceId);
+            } else {
+                if (!symNorm && !orderFid) return;
+                peers = findPanelsForSymbol(symNorm, sourceId, orderAug);
+                if (sourceId === HOST_PANEL_ID && orderFid && mgr && mgr.charts) {
+                    const hCh = window.chart;
+                    if (hCh && String(hCh.currentFileId || "") === orderFid) {
+                        const seen = new Set(peers.map((p) => p.id));
+                        for (const c of mgr.charts.values()) {
+                            if (!c || c.host || !c.ready) continue;
+                            if (seen.has(c.id)) continue;
+                            const pf = c.state && c.state.fileId != null ? String(c.state.fileId) : "";
+                            if (!pf || pf === orderFid) {
+                                peers.push({ id: c.id, isHost: false });
+                                seen.add(c.id);
+                            }
+                        }
+                    }
+                }
+            }
+            if (!peers || !peers.length) return;
+            for (const p of peers) {
+                mirrorRemoveTo(p.id, oid);
+            }
+        }
+
         function broadcastOrder(sourceId, kind, order) {
             if (!order || order.id == null) return;
             const mgr = managerRef.current;
@@ -2979,6 +3096,7 @@ export default function MultichartGrid({
         let hostOffPending = null;
         let hostOffPendingUpdated = null;
         let hostOffClosed = null;
+        let hostOffPendingRemoved = null;
         function tryInstallHostBus() {
             const ch = window.chart;
             const svc = ch && ch.orderManager && ch.orderManager.orderService;
@@ -2998,13 +3116,19 @@ export default function MultichartGrid({
             });
             hostOffPendingUpdated = bus.on("order:pending-updated", (o) => {
                 if (!o || o.id == null) return;
+                if (hostOrderStateRef.current.suppressEmitId === o.id) return;
                 broadcastOrder(HOST_PANEL_ID, "pending-updated", o);
             });
-            // Note: we do NOT mirror order:closed yet — the chart
-            // engine handles SL/TP hits + manual closes per-panel
-            // already via shared session state on the next render.
-            // Adding it here would risk double-closing positions
-            // that the iframe's own simulated price already closed.
+            hostOffClosed = bus.on("order:closed", (o) => {
+                if (!o || o.id == null) return;
+                if (hostOrderStateRef.current.suppressEmitId === o.id) return;
+                broadcastOrderRemoval(HOST_PANEL_ID, "closed", o);
+            });
+            hostOffPendingRemoved = bus.on("order:pending-removed", (o) => {
+                if (!o || o.id == null) return;
+                if (hostOrderStateRef.current.suppressEmitId === o.id) return;
+                broadcastOrderRemoval(HOST_PANEL_ID, "pending-removed", o);
+            });
             return true;
         }
         if (!tryInstallHostBus()) {
@@ -3017,16 +3141,32 @@ export default function MultichartGrid({
             }, 100);
         }
 
-        // ─── 2. iframe-order postMessage listener ──────────────────
+        function onMultichartClearPreviewHost(ev) {
+            const d = ev && ev.detail;
+            if (!d || d.source == null) return;
+            broadcastClearDraftPreview(String(d.source));
+        }
+        window.addEventListener("multichart-clear-preview", onMultichartClearPreviewHost);
+
+        // ─── 2. iframe-order + clear-preview postMessage listener ──
         function onIframeOrder(ev) {
             const msg = ev && ev.data;
             if (!msg || typeof msg !== "object") return;
+            if (msg.type === "multichart-clear-preview") {
+                if (msg.source != null) broadcastClearDraftPreview(String(msg.source));
+                return;
+            }
             if (msg.type !== "iframe-order") return;
             const sourceId = msg.source;
             const kind     = msg.kind;
             const order    = msg.order;
             if (!order || order.id == null) return;
-            if (kind !== "opened" && kind !== "pending" && kind !== "pending-updated") return;
+            if (kind !== "opened" && kind !== "pending" && kind !== "pending-updated"
+                && kind !== "closed" && kind !== "pending-removed") return;
+            if (kind === "closed" || kind === "pending-removed") {
+                broadcastOrderRemoval(sourceId, kind, order);
+                return;
+            }
             broadcastOrder(sourceId, kind, order);
         }
         window.addEventListener("message", onIframeOrder);
@@ -3070,11 +3210,13 @@ export default function MultichartGrid({
 
         return () => {
             document.removeEventListener("click", onPlaceOrderClickCapture, true);
+            window.removeEventListener("multichart-clear-preview", onMultichartClearPreviewHost);
             window.removeEventListener("message", onIframeOrder);
             try { if (typeof hostOffOpened === "function") hostOffOpened(); } catch (_) {}
             try { if (typeof hostOffPending === "function") hostOffPending(); } catch (_) {}
             try { if (typeof hostOffPendingUpdated === "function") hostOffPendingUpdated(); } catch (_) {}
             try { if (typeof hostOffClosed === "function") hostOffClosed(); } catch (_) {}
+            try { if (typeof hostOffPendingRemoved === "function") hostOffPendingRemoved(); } catch (_) {}
             hostOrderStateRef.current.listenerInstalled = false;
         };
         // Mount-once. Refs supply the latest focused panel + manager
