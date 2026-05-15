@@ -418,7 +418,7 @@ const VWAP_RECLAIM_DEMO_SESSIONS = [
 ];
 
 // ── Main component ───────────────────────────────────────────────────────────
-const TalariaV8b = ({ initialSessView = "sessions" } = {}) => {
+const TalariaV8b = ({ initialSessView = "sessions", registerDashboardOpenBuilder } = {}) => {
   const [loading, setLoading] = useState(false);
   const [loadFading, setLoadFading] = useState(false);
   const [loadPhase, setLoadPhase] = useState("chart");
@@ -667,6 +667,18 @@ const TalariaV8b = ({ initialSessView = "sessions" } = {}) => {
   const [stratShareStrat, setStratShareStrat] = useState(null);
   const [stratCardHov, setStratCardHov] = useState(null);
   const [stratActMenu, setStratActMenu] = useState(null);
+  /** Latest strat-bank `openBuilder` — used when dashboard header registers an opener (Lab V9). */
+  const stratOpenBuilderLatestRef = useRef((editStrat = null) => {});
+  useEffect(() => {
+    if (!registerDashboardOpenBuilder) return;
+    if (sessView !== "stratbank") {
+      registerDashboardOpenBuilder(null);
+      return;
+    }
+    const run = () => stratOpenBuilderLatestRef.current();
+    registerDashboardOpenBuilder(run);
+    return () => registerDashboardOpenBuilder(null);
+  }, [registerDashboardOpenBuilder, sessView]);
   useEffect(() => {
     if (stratTab !== "mine") setStratTab("mine");
   }, [stratTab]);
@@ -5520,6 +5532,8 @@ const TalariaV8b = ({ initialSessView = "sessions" } = {}) => {
               }
             }
           };
+
+          stratOpenBuilderLatestRef.current = openBuilder;
 
           const applyTemplateToBuilder = (tpl) => {
             if (!tpl) return;

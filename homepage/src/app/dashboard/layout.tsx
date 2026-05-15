@@ -12,6 +12,7 @@ import {
 } from "@/lib/dashboardAccess";
 import SubscriptionGateOverlay from "./SubscriptionGateOverlay";
 import DashboardAccessSkeleton from "./DashboardAccessSkeleton";
+import { StrategyLabV9BuilderProvider } from "./StrategyLabV9BuilderContext";
 
 type User = {
   id: number;
@@ -314,6 +315,10 @@ export default function DashboardLayout({
   const registerBacktestOpenNewSession = React.useCallback((fn: (() => void) | null) => {
     openBacktestNewSessionRef.current = fn;
   }, []);
+  const openStrategyLabV9BuilderRef = React.useRef<(() => void) | null>(null);
+  const registerStrategyLabV9OpenBuilder = React.useCallback((fn: (() => void) | null) => {
+    openStrategyLabV9BuilderRef.current = fn;
+  }, []);
 
   React.useEffect(() => {
     fetchMe()
@@ -481,6 +486,44 @@ export default function DashboardLayout({
                 <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
               </svg>
               {isArabic ? "جلسة جديدة" : "New Session"}
+            </button>
+          ) : null}
+          {activeView === "strategylabV9" ? (
+            <button
+              type="button"
+              onClick={() => openStrategyLabV9BuilderRef.current?.()}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                height: 36,
+                padding: "0 20px",
+                background: "linear-gradient(135deg,#1e38e8,#4A6AFF)",
+                border: "none",
+                cursor: "default",
+                fontFamily: F,
+                fontSize: 13,
+                fontWeight: 800,
+                color: "rgba(255,255,255,0.96)",
+                letterSpacing: "0.08em",
+                boxShadow: "0 2px 10px rgba(38,67,247,0.35)",
+                flexShrink: 0,
+                transition: "filter 0.12s",
+                marginInlineEnd: 20,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.filter = "brightness(1.12)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.filter = "brightness(1)";
+              }}
+              aria-label={isArabic ? "استراتيجية جديدة" : "New strategy"}
+            >
+              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" aria-hidden>
+                <line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              {isArabic ? "استراتيجية جديدة" : "New Strategy"}
             </button>
           ) : null}
           {user?.role === "admin" && (
@@ -660,6 +703,7 @@ export default function DashboardLayout({
         <main style={{ flex: 1, overflow: "hidden", background: DASH_C.bg, position: "relative" }}>
 
           <BacktestNewSessionProvider register={registerBacktestOpenNewSession}>
+            <StrategyLabV9BuilderProvider register={registerStrategyLabV9OpenBuilder}>
             {/* Internal Next.js pages (dashboard, journal, backtest, strategies, cot, support, …) */}
             <div style={{
               position: "absolute", inset: 0, overflowY: "auto",
@@ -700,6 +744,7 @@ export default function DashboardLayout({
                 }}
               />
             ))}
+          </StrategyLabV9BuilderProvider>
           </BacktestNewSessionProvider>
         </main>
       </div>
