@@ -11131,15 +11131,24 @@ class OrderManager {
             if (el._precInputHandler) el.removeEventListener('input', el._precInputHandler);
             if (el._precBlurHandler)  el.removeEventListener('blur',  el._precBlurHandler);
 
-            // Input handler: truncate extra decimals while typing (cursor-safe)
+            // Input handler: truncate extra decimals while typing (cursor-safe).
+            // `setSelectionRange`/`selectionStart` throw `InvalidStateError` on
+            // <input type="number"> — guard so V9 React bridge writes (which
+            // fire programmatic 'input' events on number-typed inputs) don't
+            // abort mid-flight and break the order-rail → chart sync.
             el._precInputHandler = () => {
                 const raw = el.value;
                 const dot = raw.indexOf('.');
                 if (dot !== -1 && raw.length - dot - 1 > prec) {
-                    const sel = el.selectionStart;
+                    let sel = null;
+                    try { sel = el.selectionStart; } catch (_) { sel = null; }
                     el.value = raw.slice(0, dot + prec + 1);
-                    // Restore cursor position (clamped to new length)
-                    el.setSelectionRange(Math.min(sel, el.value.length), Math.min(sel, el.value.length));
+                    if (sel != null) {
+                        try {
+                            const pos = Math.min(sel, el.value.length);
+                            el.setSelectionRange(pos, pos);
+                        } catch (_) { /* number/range/etc. inputs don't support selection */ }
+                    }
                 }
             };
 
