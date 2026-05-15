@@ -1554,8 +1554,21 @@ class ScreenshotManager {
             if (!chartContainer) chartContainer = document.body;
 
             // scale=1 keeps file size small for journal storage
-            const canvas = await this.captureCanvasDirect(chartContainer, 1);
-            
+            const scale = 1;
+            const isMultichart = !!document.querySelector('[data-multichart-grid] iframe');
+            let fromComposite = false;
+            let canvas = null;
+            if (isMultichart) {
+                canvas = await this.captureMultichartComposite(scale);
+                if (canvas) fromComposite = true;
+            }
+            if (!canvas) canvas = await this.captureCanvasDirect(chartContainer, scale);
+            if (!canvas) return null;
+
+            // Symbol + OHLC live in DOM (#chartSymbol, #open, …), not on the WebGL canvas.
+            // captureMultichartComposite already stamps each panel; single capture (incl. multichart fallback) needs it here.
+            if (!fromComposite) this.addOHLCOverlay(canvas, scale);
+
             // Add subtle watermark
             this.addWatermark(canvas);
             await this.addBrandLogo(canvas, chartContainer);

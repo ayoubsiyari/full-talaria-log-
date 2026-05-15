@@ -11477,6 +11477,8 @@ const TalariaV8bLive = () => {
         @keyframes tlrFullscreenIn { from { opacity:0.6; transform:scale(1.015); } to { opacity:1; transform:scale(1); } }
         @keyframes tlrFlash { 0%{opacity:0.82} 60%{opacity:0.55} 100%{opacity:0} }
         @keyframes tlrPanelIn { from{opacity:0;transform:translateX(8px)} to{opacity:1;transform:translateX(0)} }
+        /* Detached panels: opacity only so drag-time inline transform is never fighting keyframes */
+        @keyframes tlrPanelInFade { from { opacity: 0; } to { opacity: 1; } }
         @keyframes tlrDotPulse { 0%,100% { opacity:0.35; transform:scale(0.85); } 50% { opacity:1; transform:scale(1.3); } }
         @keyframes tlrIdPulse { 0%,100% { color:rgba(0,212,161,0.55); } 50% { color:rgba(0,212,161,1); } }
         @keyframes tlrReplayPlaySpin { to { transform: rotate(360deg); } }
@@ -22474,34 +22476,63 @@ const TalariaV8bLive = () => {
           );
         })() : orderPanelOpen ? (
         <div ref={panelRef} key={panelDetached?"order-float":"order-dock"} style={panelDetached
-          ? { position:"fixed", top:detachPos.y, left:detachPos.x, width:detachSize.w, height:detachSize.h, background:c.sf, border:`1px solid rgba(140,160,255,0.28)`, display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:F, zIndex:10050, boxShadow:"0 12px 40px rgba(0,0,0,0.75), 0 0 0 1px rgba(140,160,255,0.18)", animation:"tlrPanelIn 0.18s ease forwards" }
+          ? { position:"fixed", top:detachPos.y, left:detachPos.x, width:detachSize.w, height:detachSize.h, background:c.sf, border:`1px solid rgba(140,160,255,0.28)`, display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:F, zIndex:10050, boxShadow:"0 12px 40px rgba(0,0,0,0.75), 0 0 0 1px rgba(140,160,255,0.18)", animation:"tlrPanelInFade 0.18s ease forwards" }
           : { width:"100%", background:c.sf, borderLeft:`2px solid rgba(140,160,255,0.3)`, display:"flex", flexDirection:"column", height:"100%", animation:"tlrPanelIn 0.18s ease forwards", overflow:"hidden", fontFamily:F }
         }>
 
           {/* 1 — Header */}
           <div
-            onMouseDown={panelDetached ? (e) => {
-              if(e.target.closest("[data-nodrag]")) return;
+            onPointerDown={panelDetached ? (e) => {
+              if (e.button !== 0) return;
+              if (e.target.closest("[data-nodrag]")) return;
               e.preventDefault();
-              const ox = e.clientX - detachPos.x, oy = e.clientY - detachPos.y;
-              const sw = detachSize.w, sh = detachSize.h;
-              const baseX = detachPos.x, baseY = detachPos.y;
-              let lastX = baseX, lastY = baseY;
-              const onMove = (me) => {
-                lastX = Math.max(0, Math.min(me.clientX - ox, window.innerWidth - sw));
-                lastY = Math.max(0, Math.min(me.clientY - oy, window.innerHeight - sh));
-                if (panelRef.current) panelRef.current.style.transform = `translate(${lastX - baseX}px,${lastY - baseY}px)`;
+              const capEl = e.currentTarget;
+              if (!panelRef.current) return;
+              try {
+                capEl.setPointerCapture(e.pointerId);
+              } catch (_) {
+                /* ignore */
+              }
+              const ox = e.clientX - detachPos.x;
+              const oy = e.clientY - detachPos.y;
+              const sw = detachSize.w;
+              const sh = detachSize.h;
+              const baseX = detachPos.x;
+              const baseY = detachPos.y;
+              let lastX = baseX;
+              let lastY = baseY;
+              let raf = 0;
+              const flush = () => {
+                raf = 0;
+                const el = panelRef.current;
+                if (!el) return;
+                el.style.transform = `translate(${lastX - baseX}px,${lastY - baseY}px)`;
               };
-              const onUp = () => {
-                if (panelRef.current) panelRef.current.style.transform = "";
+              const onMove = (pe) => {
+                lastX = Math.max(0, Math.min(pe.clientX - ox, window.innerWidth - sw));
+                lastY = Math.max(0, Math.min(pe.clientY - oy, window.innerHeight - sh));
+                if (!raf) raf = requestAnimationFrame(flush);
+              };
+              const onUp = (pe) => {
+                cancelAnimationFrame(raf);
+                raf = 0;
+                try {
+                  capEl.releasePointerCapture(pe.pointerId);
+                } catch (_) {
+                  /* ignore */
+                }
+                const el = panelRef.current;
+                if (el) el.style.transform = "";
                 setDetachPos({ x: lastX, y: lastY });
-                window.removeEventListener("mousemove", onMove);
-                window.removeEventListener("mouseup", onUp);
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+                window.removeEventListener("pointercancel", onUp);
               };
-              window.addEventListener("mousemove", onMove);
-              window.addEventListener("mouseup", onUp);
+              window.addEventListener("pointermove", onMove);
+              window.addEventListener("pointerup", onUp);
+              window.addEventListener("pointercancel", onUp);
             } : undefined}
-            style={{ padding:"0 8px", borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", alignItems:"center", gap:6, height:34, flexShrink:0, cursor:panelDetached?"move":"default" }}>
+            style={{ padding:"0 8px", borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", alignItems:"center", gap:6, height:34, flexShrink:0, cursor:panelDetached?"move":"default", touchAction: panelDetached ? "none" : undefined }}>
             <span style={{ fontSize:11, fontWeight:700, color:c.tx, letterSpacing:"-0.01em" }}>Place Order</span>
             <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", letterSpacing:"0.04em" }}>#<span style={{ color:c.ts, fontWeight:700 }}>1004</span></span>
             {/* Size mode dropdown trigger — shows current mode symbol, opens list */}
