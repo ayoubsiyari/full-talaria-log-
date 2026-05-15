@@ -11463,7 +11463,8 @@ class OrderManager {
     }
 
     /**
-     * Chart preview / pending TP+ affordances: only when size allows multiple legs (matches V9 rail).
+     * Chart preview / pending TP+ affordances: same rules as V9 rail Entry/TP (+).
+     * Futures: ≥1 whole contract; forex/crypto/etc.: any positive size (fractional lots OK).
      * @param {number} [overrideQty] - optional (e.g. pending order quantity); else reads #orderQuantity
      */
     _orderQtyAllowsEntryTpSplitAffordances(overrideQty) {
@@ -11476,9 +11477,9 @@ class OrderManager {
             }
             const x = Math.max(0, Number.isFinite(q) ? q : 0);
             if (this.marketType === 'futures') {
-                return Math.floor(x) > 1;
+                return Math.floor(x) >= 1;
             }
-            return x > 1;
+            return x > 0;
         } catch (_e) {
             return false;
         }

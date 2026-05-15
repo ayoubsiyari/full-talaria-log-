@@ -340,6 +340,14 @@ function v9TpFuturesContractsFromPercentages(percentages, orderQtyFloor) {
   return out;
 }
 
+/** $-mode multi-TP: total $ at risk — SIZE (`riskVal`) or sum of entry legs when split. */
+function v9TpDollarBasisForSplit(entryRows, riskVal) {
+  const rv = Math.max(0, parseFloat(String(riskVal ?? "0")) || 0);
+  if (!Array.isArray(entryRows) || entryRows.length <= 1) return rv;
+  const es = entryRows.reduce((s, r) => s + (parseFloat(String(r?.risk ?? "0")) || 0), 0);
+  return es > 0 ? es : rv;
+}
+
 function formatV9AccountNum(n) {
   const x = Number(n);
   if (!Number.isFinite(x)) return "—";
@@ -6241,6 +6249,50 @@ const TalariaV8bLive = () => {
       return rows;
     });
   }, [orderPanelOpen, sizeMode, riskVal, currentSymbol.type]);
+
+  /** $-mode: TP row $ amounts must sum to order basis (SIZE / entry total), not a stale partial. */
+  useEffect(() => {
+    if (!orderPanelOpen || sizeMode !== "$") return;
+    setTpRows((rows) => {
+      if (rows.length < 2) return rows;
+      const basis = v9TpDollarBasisForSplit(entryRows, riskVal);
+      if (!(basis > 0)) return rows;
+      const enabledIdx = rows
+        .map((r, i) => (r.enabled !== false ? i : null))
+        .filter((i) => i != null);
+      if (enabledIdx.length < 2) return rows;
+      let sum = 0;
+      for (const i of enabledIdx) sum += parseFloat(rows[i].qty) || 0;
+      if (Math.abs(sum - basis) <= 0.01) return rows;
+      markOrderControlBridge();
+      if (sum <= 0) {
+        const n = enabledIdx.length;
+        const share = Math.max(1, Math.round(basis / n));
+        const lastAmt = Math.max(0, basis - share * (n - 1));
+        let k = 0;
+        return rows.map((r) => {
+          if (r.enabled === false) return r;
+          const q = k < n - 1 ? share : lastAmt;
+          k++;
+          return { ...r, qty: String(q) };
+        });
+      }
+      const factor = basis / sum;
+      const qs = enabledIdx.map((i) =>
+        Math.max(0, Math.round((parseFloat(rows[i].qty) || 0) * factor))
+      );
+      let drift = basis - qs.reduce((a, b) => a + b, 0);
+      if (qs.length && drift !== 0) {
+        qs[qs.length - 1] = Math.max(0, qs[qs.length - 1] + drift);
+      }
+      let k = 0;
+      return rows.map((r) => {
+        if (r.enabled === false) return r;
+        const q = qs[k++];
+        return { ...r, qty: String(q) };
+      });
+    });
+  }, [orderPanelOpen, sizeMode, riskVal, entryRows, tpRows.length]);
 
   const sessionAssetHintForSymbol = useMemo(() => {
     const want = normalizeSymForBadge(symbol);
@@ -23036,8 +23088,7 @@ const TalariaV8bLive = () => {
                   return next.map((r, i) => ({ ...r, qty: String(i < n - 1 ? base : last) }));
                 }
                 if (sizeMode === "$") {
-                  let total = prevSum;
-                  if (total <= 0) total = Math.max(1, parseFloat(riskVal) || 100);
+                  const total = Math.max(1, v9TpDollarBasisForSplit(entryRows, riskVal) || 100);
                   const share = Math.max(1, Math.round(total / n));
                   const lastAmt = Math.max(0, total - share * (n - 1));
                   return next.map((r, i) => ({ ...r, qty: String(i < n - 1 ? share : lastAmt) }));
@@ -23097,8 +23148,7 @@ const TalariaV8bLive = () => {
                   return rows.map((r, i) => ({ ...r, qty: String(i < n - 1 ? base : last) }));
                 }
                 if (sizeMode === "$") {
-                  const total = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
-                  const t = total > 0 ? total : Math.max(1, parseFloat(riskVal) || 100);
+                  const t = Math.max(1, v9TpDollarBasisForSplit(entryRows, riskVal) || 100);
                   const share = Math.max(1, Math.round(t / n));
                   const lastAmt = Math.max(0, t - share * (n - 1));
                   return rows.map((r, i) => ({ ...r, qty: String(i < n - 1 ? share : lastAmt) }));
