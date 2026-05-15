@@ -11978,7 +11978,7 @@ class OrderManager {
                 })
                 .on('click', function(event) {
                     event.stopPropagation();
-                    self.toggleOrderPanel();
+                    self.closeOrderRailFromChartCancel();
                 });
         }
 
@@ -12220,6 +12220,26 @@ class OrderManager {
         if (panel.parentElement !== target) {
             target.appendChild(panel);
         }
+    }
+
+    /**
+     * Chart preview ✕: close V9 React rail when running in a multichart iframe — toggleOrderPanel()
+     * only sees a hidden #orderPanel (never .visible), so it would wrongly take the "open" branch.
+     */
+    closeOrderRailFromChartCancel() {
+        try {
+            const mc = typeof document !== 'undefined'
+                && document.documentElement?.classList?.contains?.('multichart-embed');
+            if (mc && window.parent && window.parent !== window) {
+                try {
+                    window.parent.postMessage({ type: 'talaria-multichart-close-order-rail' }, '*');
+                } catch (_e1) { /* ignore */ }
+                this.removePreviewLines();
+                try { window.__talariaMultichartDraftActive = false; } catch (_e2) { /* ignore */ }
+                return;
+            }
+        } catch (_e0) { /* ignore */ }
+        this.toggleOrderPanel();
     }
 
     /**
@@ -16905,7 +16925,8 @@ class OrderManager {
                 
                 // Set flag to prevent full redraw during drag
                 self.isDraggingPreviewLine = true;
-                
+                self._multichartPostDraftDragBusy(true);
+
                 // Store initial values for comparison
                 lineData.dragStartPrice = lineData.price;
                 
@@ -17617,7 +17638,8 @@ class OrderManager {
                 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
-                
+                self._multichartPostDraftDragBusy(false);
+
                 // Clean up temporary indicators
                 if (lineData.pipIndicator) {
                     lineData.pipIndicator.remove();
@@ -17651,16 +17673,17 @@ class OrderManager {
                         if (document.getElementById('autoBreakevenToggle')?.checked) {
                             self._syncPendingOrdersBreakevenFromPanel();
                         }
+                        requestAnimationFrame(() => {
+                            self._multichartPostDraftSnapshotToParent();
+                        });
                     });
                 } else {
                     self.updatePreviewLines();
                     if (document.getElementById('autoBreakevenToggle')?.checked) {
                         self._syncPendingOrdersBreakevenFromPanel();
                     }
+                    self._multichartPostDraftSnapshotToParent();
                 }
-                
-                const dragDuration = Date.now() - dragStartTime;
-                console.log(`✅ Drag completed in ${dragDuration}ms: ${lineData.label} @ ${lineData.price.toFixed(5)}`);
             });
 
         lineData.line.call(drag);
@@ -17775,7 +17798,10 @@ class OrderManager {
 
             // Drag to set this target's price
             const drag = d3.drag()
-                .on('start', () => { badgeGroup.style('opacity', 0.8); })
+                .on('start', () => {
+                    badgeGroup.style('opacity', 0.8);
+                    self._multichartPostDraftDragBusy(true);
+                })
                 .on('drag', (event) => {
                     if (!ch?.scales?.yScale) return;
                     if (event.sourceEvent && ch.updateCrosshair) ch.updateCrosshair(event.sourceEvent);
@@ -17797,9 +17823,11 @@ class OrderManager {
                 })
                 .on('end', () => {
                     badgeGroup.style('opacity', 1);
+                    self._multichartPostDraftDragBusy(false);
                     requestAnimationFrame(() => {
                         self.calculateAdvancedRiskReward();
                         self.updatePlaceButtonText();
+                        self._multichartPostDraftSnapshotToParent();
                     });
                 });
 
@@ -17848,6 +17876,7 @@ class OrderManager {
         const drag = d3.drag()
             .on('start', () => {
                 badgeGroup.style('opacity', 0.8);
+                self._multichartPostDraftDragBusy(true);
             })
             .on('drag', event => {
                 if (!ch?.scales?.yScale) return;
@@ -17977,10 +18006,12 @@ class OrderManager {
             })
             .on('end', () => {
                 badgeGroup.style('opacity', 1);
+                self._multichartPostDraftDragBusy(false);
                 // Final calculation on drag end
                 requestAnimationFrame(() => {
                     self.calculateAdvancedRiskReward();
                     self.updatePlaceButtonText();
+                    self._multichartPostDraftSnapshotToParent();
                 });
             });
 
@@ -21047,6 +21078,7 @@ class OrderManager {
         this.calculatePositionFromRisk();
         this.calculateAdvancedRiskReward();
         this.updatePreviewLines();
+        this._multichartPostDraftSnapshotToParent();
     }
 
     /**
@@ -21060,6 +21092,7 @@ class OrderManager {
         this.calculatePositionFromRisk();
         this.calculateAdvancedRiskReward();
         this.updatePreviewLines();
+        this._multichartPostDraftSnapshotToParent();
     }
 
     /**
@@ -21309,6 +21342,64 @@ class OrderManager {
                 }
             } catch (_eMcClearPrev) { /* ignore */ }
         }
+    }
+
+    _multichartEmbedPanelId() {
+        try {
+            const qs = (typeof window !== 'undefined' && window.location.search) ? window.location.search : '';
+            const params = typeof URLSearchParams !== 'undefined' ? new URLSearchParams(qs) : null;
+            return params ? (params.get('panelId') || params.get('id')) : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _multichartIsEmbedIframe() {
+        try {
+            const root = typeof document !== 'undefined' ? document.documentElement : null;
+            return !!(root && root.classList && root.classList.contains('multichart-embed')
+                && window.parent && window.parent !== window);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /** Parent pauses setDraftPreview while user drags preview on an iframe tile (avoids TP/SL flicker). */
+    _multichartPostDraftDragBusy(busy) {
+        if (!this._multichartIsEmbedIframe()) return;
+        const pid = this._multichartEmbedPanelId();
+        if (!pid) return;
+        try {
+            window.parent.postMessage({
+                type: 'multichart-draft-drag-busy',
+                source: String(pid),
+                busy: !!busy,
+            }, '*');
+        } catch (_) { /* ignore */ }
+    }
+
+    /** Push hidden #orderPanel numbers to parent so the V9 React rail matches chart drags (iframe OM). */
+    _multichartPostDraftSnapshotToParent() {
+        if (!this._multichartIsEmbedIframe()) return;
+        const pid = this._multichartEmbedPanelId();
+        if (!pid) return;
+        try {
+            const num = (id) => {
+                const el = document.getElementById(id);
+                if (!el || el.value === '' || el.value == null) return null;
+                const v = parseFloat(String(el.value).replace(/,/g, ''));
+                return Number.isFinite(v) ? v : null;
+            };
+            window.parent.postMessage({
+                type: 'multichart-draft-field-snapshot',
+                source: String(pid),
+                slEnabled: !!document.getElementById('enableSL')?.checked,
+                tpEnabled: !!document.getElementById('enableTP')?.checked,
+                slPrice: num('slPrice'),
+                tpPrice: num('tpPrice'),
+                orderEntryPrice: num('orderEntryPrice'),
+            }, '*');
+        } catch (_) { /* ignore */ }
     }
 
     alignPreviewLabels() {

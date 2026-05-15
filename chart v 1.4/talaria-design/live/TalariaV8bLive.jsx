@@ -9371,6 +9371,26 @@ const TalariaV8bLive = () => {
         <div className="ohlc-header">
           <div className="ohlc-symbol-block" style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
             <span id="chartSymbol" className="ohlc-symbol-text" />
+            <button
+              type="button"
+              className="add-symbol-btn"
+              id="symbolPlusBtn"
+              title="Compare / add symbol"
+              aria-label="Compare or add symbol"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof window.openCompareSymbolModal === "function") {
+                  window.openCompareSymbolModal();
+                }
+              }}
+              style={{ flexShrink: 0, pointerEvents: "auto" }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19" strokeLinecap="round" />
+                <line x1="5" y1="12" x2="19" y2="12" strokeLinecap="round" />
+              </svg>
+            </button>
             <span className="ohlc-separator">{" · "}</span>
             <span id="chartTimeframe" />
           </div>

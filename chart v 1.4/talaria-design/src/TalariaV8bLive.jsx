@@ -4880,6 +4880,8 @@ const TalariaV8bLive = () => {
   const OM_PANEL_BRIDGE_LEAD_MS = 750;
   const isOmBridgeLead = (ts) => !!(ts && Date.now() - ts < OM_PANEL_BRIDGE_LEAD_MS);
   const markOrderControlBridge = () => { omPanelBridgeRef.current.control = Date.now(); };
+  /** Multichart iframe: parent skips setDraftPreview while tile reports SL/TP/entry line drag in progress. */
+  const multichartDraftDragBusyRef = useRef(false);
   const clickHiddenOrderSide = (side) => {
     markOrderControlBridge();
     document.getElementById(side === "sell" ? "sellTab" : "buyTab")?.click();
@@ -7168,6 +7170,9 @@ const TalariaV8bLive = () => {
               const fid = grid.getFocusedPanelId();
               const hid = grid.hostPanelId != null ? grid.hostPanelId : "A";
               if (fid != null && String(fid) !== String(hid)) {
+                if (multichartDraftDragBusyRef.current) {
+                  /* iframe chart drag in progress — do not overwrite SL/TP with stale host snapshot */
+                } else {
                 const numFromInput = (id) => {
                   const el = document.getElementById(id);
                   const v = el ? parseFloat(el.value) : NaN;
@@ -7187,6 +7192,7 @@ const TalariaV8bLive = () => {
                   tpEnabled:  chkOf("enableTP"),
                   tpPrice:    numFromInput("tpPrice"),
                 }, { panelId: fid }).catch(() => {});
+                }
               }
             }
           } catch (_) {}
@@ -7212,6 +7218,7 @@ const TalariaV8bLive = () => {
       const fid    = ev?.detail?.panelId;
       const prevId = lastFocusedForDraft;
       lastFocusedForDraft = fid;
+      multichartDraftDragBusyRef.current = false;
       if (prevId != null && String(prevId) !== String(fid) && String(prevId) !== String(hid)) {
         try { grid.runCommand("clearDraftPreview", null, { panelId: prevId }).catch(() => {}); } catch (_) {}
       }
@@ -7227,15 +7234,17 @@ const TalariaV8bLive = () => {
         const sideFwd = (document.getElementById("buyTab")?.classList.contains("active")) ? "BUY" : "SELL";
         const typeBtn = document.querySelector("#orderPanel .order-type-btn.active");
         const typeFwd = (typeBtn && typeBtn.getAttribute("data-type")) || "market";
-        grid.runCommand("setDraftPreview", {
-          side:       sideFwd,
-          type:       typeFwd,
-          entryPrice: numFromInput("orderEntryPrice"),
-          slEnabled:  chkOf("enableSL"),
-          slPrice:    numFromInput("slPrice"),
-          tpEnabled:  chkOf("enableTP"),
-          tpPrice:    numFromInput("tpPrice"),
-        }, { panelId: fid }).catch(() => {});
+        if (!multichartDraftDragBusyRef.current) {
+          grid.runCommand("setDraftPreview", {
+            side:       sideFwd,
+            type:       typeFwd,
+            entryPrice: numFromInput("orderEntryPrice"),
+            slEnabled:  chkOf("enableSL"),
+            slPrice:    numFromInput("slPrice"),
+            tpEnabled:  chkOf("enableTP"),
+            tpPrice:    numFromInput("tpPrice"),
+          }, { panelId: fid }).catch(() => {});
+        }
       } catch (_) {}
     };
     window.addEventListener("multichartFocusChanged", onMultichartFocusChangedForDraft);
@@ -10628,22 +10637,61 @@ const TalariaV8bLive = () => {
   }, []);
 
   // Multichart iframe tiles → parent shell opens Settings so the modal is not
-  // clipped to the iframe's small viewport.
+  // clipped to the iframe's small viewport. Also: draft drag busy, field snapshot,
+  // close order rail from chart ✕ inside iframe.
   useEffect(() => {
     const onMsg = (ev) => {
       const d = ev && ev.data;
-      if (!d || typeof d !== "object" || d.type !== "v9-multichart-open-settings") return;
+      if (!d || typeof d !== "object") return;
       try {
         if (window.location.origin && ev.origin && ev.origin !== window.location.origin) return;
       } catch (_) {}
-      try {
-        closeWindowsRef.current?.();
-      } catch (_) {}
-      setSettingsOpen(true);
+      if (d.type === "v9-multichart-open-settings") {
+        try {
+          closeWindowsRef.current?.();
+        } catch (_) {}
+        setSettingsOpen(true);
+        return;
+      }
+      if (d.type === "multichart-draft-drag-busy") {
+        const grid = window.__multichartGrid;
+        const fid = grid && typeof grid.getFocusedPanelId === "function" ? grid.getFocusedPanelId() : null;
+        if (fid == null || String(d.source || "") !== String(fid)) return;
+        multichartDraftDragBusyRef.current = !!d.busy;
+        return;
+      }
+      if (d.type === "multichart-draft-field-snapshot") {
+        if (!orderPanelOpen) return;
+        const grid = window.__multichartGrid;
+        const fid = grid && typeof grid.getFocusedPanelId === "function" ? grid.getFocusedPanelId() : null;
+        if (fid == null || String(d.source || "") !== String(fid)) return;
+        markOrderControlBridge();
+        if (typeof d.orderEntryPrice === "number" && Number.isFinite(d.orderEntryPrice)) {
+          const ep = String(d.orderEntryPrice);
+          setEntryRows((rows) => {
+            if (!rows.length) return [{ id: 0, price: ep, risk: "100" }];
+            return [{ ...rows[0], price: ep }];
+          });
+        }
+        if (typeof d.slEnabled === "boolean") setSlEnabled(d.slEnabled);
+        if (typeof d.tpEnabled === "boolean" || (typeof d.tpPrice === "number" && Number.isFinite(d.tpPrice))) {
+          setTpRows((rows) => {
+            const r0 = rows[0] || { id: 0, price: "0", qty: "100", enabled: true };
+            const next = { ...r0 };
+            if (typeof d.tpEnabled === "boolean") next.enabled = d.tpEnabled;
+            if (typeof d.tpPrice === "number" && Number.isFinite(d.tpPrice)) next.price = String(d.tpPrice);
+            return [next];
+          });
+        }
+        return;
+      }
+      if (d.type === "talaria-multichart-close-order-rail") {
+        setOrderPanelOpen(false);
+      }
     };
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, []);
+  }, [orderPanelOpen]);
 
   // Render a tool button
   const renderTB = (t, ref) => {
@@ -10879,6 +10927,26 @@ const TalariaV8bLive = () => {
         <div className="ohlc-header">
           <div className="ohlc-symbol-block" style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
             <span id="chartSymbol" className="ohlc-symbol-text" />
+            <button
+              type="button"
+              className="add-symbol-btn"
+              id="symbolPlusBtn"
+              title="Compare / add symbol"
+              aria-label="Compare or add symbol"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof window.openCompareSymbolModal === "function") {
+                  window.openCompareSymbolModal();
+                }
+              }}
+              style={{ flexShrink: 0, pointerEvents: "auto" }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19" strokeLinecap="round" />
+                <line x1="5" y1="12" x2="19" y2="12" strokeLinecap="round" />
+              </svg>
+            </button>
             <span className="ohlc-separator">{" · "}</span>
             <span id="chartTimeframe" />
           </div>

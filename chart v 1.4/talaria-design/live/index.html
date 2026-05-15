@@ -771,6 +771,153 @@
         @keyframes loaderShimmerSweep { 0% { transform: translate3d(-100%, 0, 0); } 100% { transform: translate3d(400%, 0, 0); } }
         @keyframes tlrLoaderStars { 0%,100% { opacity: 0.58; } 50% { opacity: 0.9; } }
         @keyframes tlrLoadPulse { 0%,100% { transform: scale(0.985); filter: brightness(1); } 50% { transform: scale(1.02); filter: brightness(1.08); } }
+
+        /* Compare-on-chart (+) + modal — ported from legacy-index for V9 OHLC (chart.js CompareOverlay). */
+        .add-symbol-btn {
+            width: 22px; height: 22px; margin-left: 2px;
+            display: inline-flex !important; align-items: center; justify-content: center;
+            flex-shrink: 0;
+            background: rgba(74, 106, 255, 0.12);
+            border: 1px solid rgba(122, 140, 255, 0.85);
+            border-radius: 50%;
+            color: #a8b8ff;
+            cursor: default;
+            transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        .add-symbol-btn:hover {
+            background: rgba(74, 106, 255, 0.28);
+            border-color: #8ea5ff;
+            color: #e8ecff;
+        }
+        .add-symbol-btn svg { width: 12px; height: 12px; pointer-events: none; display: block; }
+        .compare-modal-overlay {
+            position: fixed; inset: 0; z-index: 10000;
+            display: none; align-items: center; justify-content: center;
+            background: rgba(0, 0, 0, 0.72); backdrop-filter: blur(8px);
+        }
+        .compare-modal-overlay.open { display: flex; }
+        .compare-modal {
+            background: #0d0f18; border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px; width: 520px; max-width: 95vw; max-height: 85vh;
+            display: flex; flex-direction: column; overflow: hidden;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+        }
+        .compare-modal-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 20px; background: #080a12;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .compare-modal-header h3 { margin: 0; font-size: 15px; font-weight: 600; color: #e1e3e8; }
+        .compare-modal-close {
+            background: rgba(255, 255, 255, 0.06); border: none; color: #9ca3af;
+            cursor: default; padding: 8px; border-radius: 8px; display: flex;
+            align-items: center; justify-content: center;
+        }
+        .compare-modal-close:hover { background: rgba(255, 255, 255, 0.12); color: #f3f4f6; }
+        .compare-modal-close svg { width: 16px; height: 16px; }
+        .compare-modal-body { padding: 0; overflow-y: auto; flex: 1; }
+        .compare-search-box { position: relative; padding: 14px 18px; background: rgba(0, 0, 0, 0.25); }
+        .compare-search-icon {
+            position: absolute; left: 32px; top: 50%; transform: translateY(-50%);
+            width: 18px; height: 18px; color: #6b7280; pointer-events: none;
+        }
+        .compare-search-input {
+            width: 100%; padding: 11px 14px 11px 42px;
+            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px; color: #e8eaef; font-size: 14px; outline: none; box-sizing: border-box;
+        }
+        .compare-search-input:focus {
+            border-color: rgba(122, 140, 255, 0.55);
+            box-shadow: 0 0 0 2px rgba(74, 106, 255, 0.15);
+        }
+        .compare-section-title {
+            font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase;
+            letter-spacing: 0.08em; padding: 12px 18px 6px;
+        }
+        .compare-section-list { padding: 0 8px 12px; }
+        .compare-symbol-row {
+            display: flex; align-items: center; padding: 10px 14px; margin: 4px 0;
+            border-radius: 8px; border: 1px solid transparent; cursor: default;
+            transition: background 0.12s ease, border-color 0.12s ease;
+        }
+        .compare-symbol-row:hover {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.06);
+        }
+        .compare-symbol-row.added {
+            background: rgba(74, 106, 255, 0.1);
+            border-color: rgba(122, 140, 255, 0.25);
+        }
+        .compare-symbol-icon {
+            width: 36px; height: 36px; border-radius: 8px; margin-right: 12px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 700; background: #0a0c14;
+            border: 1px solid rgba(96, 165, 250, 0.25); color: #93c5fd;
+        }
+        .compare-symbol-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+        .compare-symbol-name { font-size: 13px; font-weight: 600; color: #e5e7eb; }
+        .compare-symbol-desc { font-size: 11px; color: #6b7280; }
+        .compare-action-btn {
+            padding: 6px 10px; border: none; border-radius: 6px; font-size: 11px; font-weight: 600;
+            background: rgba(74, 106, 255, 0.2); color: #93c5fd; cursor: default;
+            white-space: nowrap; transition: background 0.12s ease, color 0.12s ease;
+        }
+        .compare-action-btn:hover { background: rgba(74, 106, 255, 0.32); color: #bfdbfe; }
+        .compare-added-pills {
+            display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 18px;
+            background: rgba(0, 0, 0, 0.2); border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .overlay-settings-popup {
+            display: none; position: fixed; inset: 0; z-index: 10001;
+            align-items: center; justify-content: center;
+            background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(4px);
+        }
+        .overlay-settings-popup.open { display: flex; }
+        .overlay-settings-content {
+            width: 340px; max-width: 94vw; max-height: 80vh; overflow: hidden;
+            border-radius: 10px; background: #0d0f18;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex; flex-direction: column;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+        }
+        .overlay-settings-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 14px 18px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .overlay-settings-title { font-size: 15px; font-weight: 600; color: #e8eaef; }
+        .overlay-settings-close {
+            background: transparent; border: none; color: #9ca3af; cursor: default;
+            padding: 6px; border-radius: 6px; display: flex;
+        }
+        .overlay-settings-close:hover { color: #f3f4f6; background: rgba(255, 255, 255, 0.06); }
+        .overlay-settings-tabs { display: none; }
+        .overlay-settings-body { padding: 12px 18px; overflow-y: auto; color: #d1d5db; font-size: 13px; }
+        .overlay-setting-row {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; margin: 8px 0; flex-wrap: wrap;
+        }
+        .overlay-setting-divider { height: 1px; background: rgba(255, 255, 255, 0.08); margin: 10px 0; }
+        .overlay-settings-footer {
+            display: flex; justify-content: flex-end; gap: 10px;
+            padding: 12px 18px; border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .overlay-btn-cancel, .overlay-btn-ok {
+            padding: 8px 14px; border-radius: 6px; font-size: 12px; font-weight: 600;
+            cursor: default; border: none;
+        }
+        .overlay-btn-cancel { background: rgba(255, 255, 255, 0.08); color: #d1d5db; }
+        .overlay-btn-ok { background: rgba(74, 106, 255, 0.45); color: #fff; }
+        .overlay-select {
+            background: rgba(0, 0, 0, 0.35); color: #e8eaef;
+            border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; padding: 6px 8px;
+        }
+        .overlay-color-pair { display: flex; gap: 6px; align-items: center; }
+        .overlay-color-swatch {
+            width: 22px; height: 22px; border-radius: 4px; cursor: default;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
     </style>
 
     <!--
@@ -983,6 +1130,137 @@
       })();
     </script>
     <div id="root"></div>
+    <!-- Compare / overlay UI (CompareOverlay in chart.js expects these ids; legacy-index always had them). -->
+    <div id="compareModalOverlay" class="compare-modal-overlay">
+        <div class="compare-modal">
+            <div class="compare-modal-header">
+                <h3>Add symbol to compare</h3>
+                <button type="button" class="compare-modal-close" id="compareModalClose" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="compare-added-pills" id="compareAddedPills" style="display:none;"></div>
+            <div class="compare-modal-body">
+                <div class="compare-search-box">
+                    <svg class="compare-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" class="compare-search-input" id="compareSearchInput" placeholder="Search symbol…" autocomplete="off" />
+                </div>
+                <div class="compare-section">
+                    <div class="compare-section-title">Available symbols</div>
+                    <div class="compare-section-list" id="compareSymbolsList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="overlay-legend" id="overlayLegend" style="display:none;"></div>
+    <div id="overlaySettingsPopup" class="overlay-settings-popup">
+        <div class="overlay-settings-content">
+            <div class="overlay-settings-header">
+                <span class="overlay-settings-title" id="overlaySettingsTitle">SYMBOL</span>
+                <button type="button" class="overlay-settings-close" id="overlaySettingsClose" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="overlay-settings-body">
+                <div class="overlay-setting-row"><label>Style</label>
+                    <select id="overlayStyleSelect" class="overlay-select">
+                        <option value="line">Line</option>
+                        <option value="candles">Candles</option>
+                    </select>
+                </div>
+                <div class="overlay-setting-divider"></div>
+                <div class="overlay-setting-row">
+                    <label><input type="checkbox" id="overlayShowBody" checked /> Body</label>
+                    <div class="overlay-color-pair">
+                        <div class="overlay-color-swatch" id="overlayBodyUp" data-color="#26a69a" style="background:#26a69a" title="Up"></div>
+                        <div class="overlay-color-swatch" id="overlayBodyDown" data-color="#ef5350" style="background:#ef5350" title="Down"></div>
+                    </div>
+                </div>
+                <div class="overlay-setting-row">
+                    <label><input type="checkbox" id="overlayShowBorder" checked /> Borders</label>
+                    <div class="overlay-color-pair">
+                        <div class="overlay-color-swatch" id="overlayBorderUp" data-color="#26a69a" style="background:#26a69a"></div>
+                        <div class="overlay-color-swatch" id="overlayBorderDown" data-color="#ef5350" style="background:#ef5350"></div>
+                    </div>
+                </div>
+                <div class="overlay-setting-row">
+                    <label><input type="checkbox" id="overlayShowWick" checked /> Wick</label>
+                    <div class="overlay-color-pair">
+                        <div class="overlay-color-swatch" id="overlayWickUp" data-color="#26a69a" style="background:#26a69a"></div>
+                        <div class="overlay-color-swatch" id="overlayWickDown" data-color="#ef5350" style="background:#ef5350"></div>
+                    </div>
+                </div>
+                <div class="overlay-setting-divider"></div>
+                <div class="overlay-setting-row"><label><input type="checkbox" id="overlayShowPriceLine" checked /> Price line</label></div>
+            </div>
+            <div class="overlay-settings-footer">
+                <button type="button" class="overlay-btn-cancel" id="overlaySettingsCancel">Cancel</button>
+                <button type="button" class="overlay-btn-ok" id="overlaySettingsOk">OK</button>
+            </div>
+        </div>
+    </div>
+    <div id="newPaneSettingsPopup" class="overlay-settings-popup">
+        <div class="overlay-settings-content">
+            <div class="overlay-settings-header">
+                <span class="overlay-settings-title" id="newPaneSettingsTitle">SYMBOL</span>
+                <button type="button" class="overlay-settings-close" id="newPaneSettingsClose" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="overlay-settings-tabs"><button type="button" class="overlay-tab active" data-tab="style">Style</button></div>
+            <div class="overlay-settings-body">
+                <div class="overlay-setting-row"><label>Chart style</label>
+                    <select id="newPaneStyleSelect" class="overlay-select">
+                        <option value="candles">Candles</option>
+                        <option value="line">Line</option>
+                        <option value="area">Area</option>
+                        <option value="bars">Bars</option>
+                        <option value="hollow">Hollow candles</option>
+                        <option value="heikin">Heikin Ashi</option>
+                    </select>
+                </div>
+                <div class="overlay-setting-divider"></div>
+                <div class="overlay-setting-row">
+                    <label><input type="checkbox" id="newPaneShowBody" checked /> Body</label>
+                    <div class="overlay-color-pair">
+                        <div class="overlay-color-swatch" id="newPaneBodyUp" data-color="#089981" style="background:#089981"></div>
+                        <div class="overlay-color-swatch" id="newPaneBodyDown" data-color="#f23645" style="background:#f23645"></div>
+                    </div>
+                </div>
+                <div class="overlay-setting-row">
+                    <label><input type="checkbox" id="newPaneShowBorder" checked /> Borders</label>
+                    <div class="overlay-color-pair">
+                        <div class="overlay-color-swatch" id="newPaneBorderUp" data-color="#089981" style="background:#089981"></div>
+                        <div class="overlay-color-swatch" id="newPaneBorderDown" data-color="#f23645" style="background:#f23645"></div>
+                    </div>
+                </div>
+                <div class="overlay-setting-row">
+                    <label><input type="checkbox" id="newPaneShowWick" checked /> Wick</label>
+                    <div class="overlay-color-pair">
+                        <div class="overlay-color-swatch" id="newPaneWickUp" data-color="#089981" style="background:#089981"></div>
+                        <div class="overlay-color-swatch" id="newPaneWickDown" data-color="#f23645" style="background:#f23645"></div>
+                    </div>
+                </div>
+                <input type="checkbox" id="newPaneShowPriceLine" checked hidden />
+            </div>
+            <div class="overlay-settings-footer">
+                <button type="button" class="overlay-btn-cancel" id="newPaneSettingsCancel">Cancel</button>
+                <button type="button" class="overlay-btn-ok" id="newPaneSettingsOk">OK</button>
+            </div>
+        </div>
+    </div>
     <!-- Off-screen target for economic-news-sidebar.js (list HTML + countdown ticks). V9 News UI is React. -->
     <div id="v9-economic-calendar-shim" aria-hidden="true" style="position:absolute;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none;">
         <div id="newsContent" class="unified-panel-content">
@@ -1002,6 +1280,15 @@
     if (typeof window.getActiveChart !== 'function') {
         window.getActiveChart = function() { return window.chart || null; };
     }
+    window.openCompareSymbolModal = function () {
+        var ch = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : window.chart;
+        if (ch && ch.compareOverlay && typeof ch.compareOverlay.openModal === 'function') {
+            ch.compareOverlay.openModal();
+        } else {
+            var modal = document.getElementById('compareModalOverlay');
+            if (modal) modal.classList.add('open');
+        }
+    };
     if (!window.panelDrawingSync) {
         window.panelDrawingSync = {
             enabled: false,
