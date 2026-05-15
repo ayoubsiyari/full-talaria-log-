@@ -7516,6 +7516,8 @@ def _user_public_dict(user: User, db=None):
                     "status": active_sub.status,
                     "is_manual": bool(active_sub.is_manual),
                     "period_end": period_end.isoformat() if period_end else None,
+                    "cancel_at_period_end": bool(active_sub.cancel_at_period_end),
+                    "stripe_subscription_id": active_sub.stripe_subscription_id,
                 }
         except Exception:
             pass
@@ -7783,6 +7785,170 @@ async def auth_patch_profile(request: Request):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+def _user_stripe_manageable_subscription(db, user_id: int):
+    """Active/trialing Stripe-linked subscription for self-service cancel/reactivate."""
+    return (
+        db.query(Subscription)
+        .filter(
+            Subscription.user_id == user_id,
+            Subscription.status.in_(["active", "trialing"]),
+            Subscription.is_manual == False,
+            Subscription.stripe_subscription_id.isnot(None),
+        )
+        .order_by(Subscription.updated_at.desc())
+        .first()
+    )
+
+
+class _UserBillingPortalIn(BaseModel):
+    return_url: str | None = Field(None, max_length=2000)
+
+
+@app.post("/api/auth/billing-portal")
+async def auth_billing_portal(request: Request):
+    """Stripe Customer Portal for the signed-in user (payment method, invoices, cancel in Stripe UI if enabled)."""
+    if not AUTH_ENABLED:
+        raise HTTPException(501, detail="Auth disabled")
+    user = _get_user_from_request(request)
+    if user is None:
+        raise HTTPException(401, detail="Not authenticated")
+    body = {}
+    try:
+        raw = await request.json()
+        if isinstance(raw, dict):
+            body = raw
+    except Exception:
+        pass
+    try:
+        payload = _UserBillingPortalIn(**{k: body[k] for k in ("return_url",) if k in body})
+    except Exception as e:
+        raise HTTPException(400, detail=str(e)) from e
+    base = (os.environ.get("FRONTEND_URL") or "http://localhost:3000").rstrip("/")
+    return_url = (payload.return_url or (base + "/dashboard/profile/")).strip()
+    if not _chart_is_allowed_stripe_return_url(return_url):
+        raise HTTPException(
+            status_code=400,
+            detail="return_url origin not allowed; set FRONTEND_URL or STRIPE_REDIRECT_ALLOWED_ORIGINS",
+        )
+    cust = (getattr(user, "stripe_customer_id", None) or "").strip()
+    if not cust:
+        raise HTTPException(status_code=400, detail="User has no stripe_customer_id")
+    _stripe = _stripe_client()
+    if not _stripe:
+        raise HTTPException(status_code=503, detail="Stripe not configured (set STRIPE_SECRET_KEY)")
+    try:
+        session = _stripe.billing_portal.Session.create(customer=cust, return_url=return_url)
+    except Exception as e:
+        import stripe as _stripe_mod
+
+        if isinstance(e, _stripe_mod.error.StripeError):
+            raise HTTPException(status_code=400, detail=(getattr(e, "user_message", None) or str(e))[:500]) from e
+        raise HTTPException(status_code=400, detail=str(e)[:500]) from e
+    url = getattr(session, "url", None) or (session.get("url") if isinstance(session, dict) else None)
+    if not url:
+        raise HTTPException(status_code=500, detail="Stripe returned no portal URL")
+    return {"success": True, "url": url}
+
+
+@app.post("/api/auth/subscription/cancel-at-period-end")
+async def auth_subscription_cancel_at_period_end(request: Request):
+    """Schedule Stripe cancel at period end; journal access stays until period ends while status stays active/trialing."""
+    if not AUTH_ENABLED:
+        raise HTTPException(501, detail="Auth disabled")
+    user = _get_user_from_request(request)
+    if user is None:
+        raise HTTPException(401, detail="Not authenticated")
+    db = SessionLocal()
+    try:
+        sub = _user_stripe_manageable_subscription(db, user.id)
+        if not sub:
+            raise HTTPException(
+                status_code=404,
+                detail="No active Stripe subscription found (manual or promotional plans: contact support).",
+            )
+        if sub.cancel_at_period_end:
+            return {"success": True, "already_scheduled": True, "subscription": _sub_public_dict(sub, db)}
+        _stripe = _stripe_client()
+        if not _stripe:
+            raise HTTPException(status_code=503, detail="Stripe not configured (set STRIPE_SECRET_KEY)")
+        try:
+            ss = _stripe.Subscription.modify(sub.stripe_subscription_id, cancel_at_period_end=True)
+        except Exception as e:
+            import stripe as _stripe_mod
+
+            db.rollback()
+            if isinstance(e, _stripe_mod.error.StripeError):
+                raise HTTPException(status_code=400, detail=(getattr(e, "user_message", None) or str(e))[:500]) from e
+            raise HTTPException(status_code=400, detail=str(e)[:500]) from e
+        patch = _stripe_subscription_fields_from_object(ss)
+        _apply_stripe_subscription_fields(sub, patch)
+        u = db.query(User).filter(User.id == user.id).first()
+        if u:
+            u.has_journal_access = _user_entitles_journal_db(db, u)
+        db.commit()
+        db.refresh(sub)
+        return {"success": True, "subscription": _sub_public_dict(sub, db)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    finally:
+        db.close()
+
+
+@app.post("/api/auth/subscription/reactivate")
+async def auth_subscription_reactivate(request: Request):
+    """Undo cancel_at_period_end before the period ends (Stripe still active/trialing)."""
+    if not AUTH_ENABLED:
+        raise HTTPException(501, detail="Auth disabled")
+    user = _get_user_from_request(request)
+    if user is None:
+        raise HTTPException(401, detail="Not authenticated")
+    db = SessionLocal()
+    try:
+        sub = (
+            db.query(Subscription)
+            .filter(
+                Subscription.user_id == user.id,
+                Subscription.status.in_(["active", "trialing"]),
+                Subscription.is_manual == False,
+                Subscription.stripe_subscription_id.isnot(None),
+                Subscription.cancel_at_period_end == True,
+            )
+            .first()
+        )
+        if not sub:
+            raise HTTPException(status_code=404, detail="No scheduled cancellation to undo.")
+        _stripe = _stripe_client()
+        if not _stripe:
+            raise HTTPException(status_code=503, detail="Stripe not configured (set STRIPE_SECRET_KEY)")
+        try:
+            ss = _stripe.Subscription.modify(sub.stripe_subscription_id, cancel_at_period_end=False)
+        except Exception as e:
+            import stripe as _stripe_mod
+
+            db.rollback()
+            if isinstance(e, _stripe_mod.error.StripeError):
+                raise HTTPException(status_code=400, detail=(getattr(e, "user_message", None) or str(e))[:500]) from e
+            raise HTTPException(status_code=400, detail=str(e)[:500]) from e
+        patch = _stripe_subscription_fields_from_object(ss)
+        _apply_stripe_subscription_fields(sub, patch)
+        u = db.query(User).filter(User.id == user.id).first()
+        if u:
+            u.has_journal_access = _user_entitles_journal_db(db, u)
+        db.commit()
+        db.refresh(sub)
+        return {"success": True, "subscription": _sub_public_dict(sub, db)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e)) from e
     finally:
         db.close()
 

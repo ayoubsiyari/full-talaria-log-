@@ -195,6 +195,37 @@
   border: 1px solid rgba(140, 160, 255, 0.15);
 }
 
+.prof-btn--danger {
+  background: transparent;
+  color: #ff8a9a;
+  border: 1px solid rgba(255, 80, 104, 0.28);
+}
+
+.prof-btn--danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.prof-bill-copy {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.52);
+  line-height: 1.55;
+}
+
+.prof-bill-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.prof-btn--ghost:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .prof-msg {
   font-size: 13px;
   padding: 10px 14px;

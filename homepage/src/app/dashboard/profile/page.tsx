@@ -11,6 +11,8 @@ type SubscriptionInfo = {
   status: string;
   is_manual: boolean;
   period_end: string | null;
+  cancel_at_period_end?: boolean;
+  stripe_subscription_id?: string | null;
 } | null;
 
 type MeUser = {
@@ -54,6 +56,8 @@ export default function ProfilePage() {
   const [currentPassword, setCurrentPassword] = React.useState("");
   const [newPassword, setNewPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [billingMsg, setBillingMsg] = React.useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [billingBusy, setBillingBusy] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
     try {
@@ -72,9 +76,106 @@ export default function ProfilePage() {
     }
   }, []);
 
+  const parseApiDetail = (raw: unknown): string => {
+    const d = (raw as { detail?: unknown }).detail;
+    if (typeof d === "string") return d;
+    if (Array.isArray(d)) {
+      return d
+        .map((x: unknown) =>
+          typeof x === "object" && x && "msg" in x ? String((x as { msg: string }).msg) : String(x),
+        )
+        .join("; ");
+    }
+    return "";
+  };
+
   React.useEffect(() => {
     void load();
   }, [load]);
+
+  const openBillingPortal = async () => {
+    setBillingMsg(null);
+    setBillingBusy("portal");
+    const returnUrl = `${window.location.origin}/dashboard/profile/`;
+    try {
+      const res = await fetch("/api/auth/billing-portal", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ return_url: returnUrl }),
+      });
+      const raw = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(parseApiDetail(raw) || res.statusText);
+      }
+      const url = (raw as { url?: string }).url;
+      if (!url) throw new Error("No portal URL");
+      window.location.assign(url);
+    } catch (e) {
+      setBillingMsg({
+        type: "err",
+        text: e instanceof Error ? e.message : "Portal failed",
+      });
+    } finally {
+      setBillingBusy(null);
+    }
+  };
+
+  const cancelRenewalAtPeriodEnd = async () => {
+    const ok = window.confirm(
+      isArabic
+        ? "سيتوقف التجديد تلقائياً في نهاية الفترة الحالية. ستبقى صلاحية الوصول حتى ذلك التاريخ. متابعة؟"
+        : "Renewal will stop at the end of your current billing period. You keep access until that date. Continue?",
+    );
+    if (!ok) return;
+    setBillingMsg(null);
+    setBillingBusy("cancel");
+    try {
+      const res = await fetch("/api/auth/subscription/cancel-at-period-end", {
+        method: "POST",
+        credentials: "include",
+      });
+      const raw = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(parseApiDetail(raw) || res.statusText);
+      await load();
+      setBillingMsg({
+        type: "ok",
+        text: isArabic ? "تم جدولة إيقاف التجديد." : "Renewal scheduled to stop at period end.",
+      });
+    } catch (e) {
+      setBillingMsg({
+        type: "err",
+        text: e instanceof Error ? e.message : "Request failed",
+      });
+    } finally {
+      setBillingBusy(null);
+    }
+  };
+
+  const resumeRenewal = async () => {
+    setBillingMsg(null);
+    setBillingBusy("resume");
+    try {
+      const res = await fetch("/api/auth/subscription/reactivate", {
+        method: "POST",
+        credentials: "include",
+      });
+      const raw = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(parseApiDetail(raw) || res.statusText);
+      await load();
+      setBillingMsg({
+        type: "ok",
+        text: isArabic ? "تم استئناف التجديد." : "Renewal resumed.",
+      });
+    } catch (e) {
+      setBillingMsg({
+        type: "err",
+        text: e instanceof Error ? e.message : "Request failed",
+      });
+    } finally {
+      setBillingBusy(null);
+    }
+  };
 
   const onSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,6 +267,9 @@ export default function ProfilePage() {
   }
 
   const sub = user.subscription;
+  const stripeCustomer = (user.stripe_customer_id || "").trim();
+  const stripeSub = sub?.stripe_subscription_id && !sub.is_manual;
+  const scheduledCancel = Boolean(sub?.cancel_at_period_end);
 
   return (
     <div className="prof-wrap">
@@ -253,7 +357,85 @@ export default function ProfilePage() {
                   autoComplete="new-password"
                 />
               </div>
+              <div className="prof-hint" style={{ marginTop: 4 }}>
+                {isArabic
+                  ? "بعد تغيير كلمة المرور تبقى جلستك نشطة على هذا الجهاز ما لم تسجّل الخروج أو تُلغَ الجلسة من مكان آخر."
+                  : "After you change your password, this session stays signed in on this device unless you sign out or sessions are revoked elsewhere."}
+              </div>
             </div>
+          </section>
+
+          <section className="prof-card prof-card--wide">
+            <h2>{isArabic ? "الفوترة والاشتراك" : "Billing & subscription"}</h2>
+            <p className="prof-bill-copy">
+              {isArabic ? (
+                <>
+                  يمكنك تحديث طريقة الدفع والفواتير عبر بوابة Stripe الآمنة. إلغاء التجديد هنا يعني التوقف في نهاية
+                  الفترة الحالية — تبقى صلاحية الوصول حتى ذلك التاريخ طالما وضع الاشتراك نشطاً في النظام.
+                </>
+              ) : (
+                <>
+                  Update your card and download invoices in Stripe&apos;s secure billing portal. Cancelling renewal here
+                  stops the next charge at the end of the current period — you keep access until that date while the
+                  subscription remains active.
+                </>
+              )}
+            </p>
+            {billingMsg ? (
+              <div className={`prof-msg ${billingMsg.type === "ok" ? "prof-msg--ok" : "prof-msg--err"}`} style={{ marginBottom: 12 }}>
+                {billingMsg.text}
+              </div>
+            ) : null}
+            <div className="prof-bill-actions">
+              <button
+                type="button"
+                className="prof-btn prof-btn--primary"
+                disabled={!stripeCustomer || billingBusy !== null}
+                onClick={() => void openBillingPortal()}
+              >
+                {billingBusy === "portal"
+                  ? isArabic
+                    ? "جاري الفتح…"
+                    : "Opening…"
+                  : isArabic
+                    ? "إدارة الدفع والفواتير"
+                    : "Manage payment & invoices"}
+              </button>
+              {stripeSub && !scheduledCancel ? (
+                <button
+                  type="button"
+                  className="prof-btn prof-btn--danger"
+                  disabled={billingBusy !== null}
+                  onClick={() => void cancelRenewalAtPeriodEnd()}
+                >
+                  {billingBusy === "cancel" ? (isArabic ? "جاري…" : "Working…") : isArabic ? "إيقاف التجديد (نهاية الفترة)" : "Stop renewal at period end"}
+                </button>
+              ) : null}
+              {stripeSub && scheduledCancel ? (
+                <button
+                  type="button"
+                  className="prof-btn prof-btn--ghost"
+                  disabled={billingBusy !== null}
+                  onClick={() => void resumeRenewal()}
+                >
+                  {billingBusy === "resume" ? (isArabic ? "جاري…" : "Working…") : isArabic ? "استئناف التجديد" : "Resume renewal"}
+                </button>
+              ) : null}
+            </div>
+            {!stripeCustomer ? (
+              <p className="prof-hint" style={{ marginTop: 12 }}>
+                {isArabic
+                  ? "لا يوجد عميل Stripe مرتبط بهذا الحساب بعد — أكمل الاشتراك من صفحة الأسعار ليظهر هنا إدارة الفوترة."
+                  : "No Stripe billing profile is linked yet — complete checkout from pricing to manage payment methods here."}
+              </p>
+            ) : null}
+            {sub?.is_manual ? (
+              <p className="prof-hint" style={{ marginTop: 12 }}>
+                {isArabic
+                  ? "خطتك مفعّلة يدوياً من الدعم؛ للتعديل أو الإلغاء تواصل معنا."
+                  : "Your access was set up manually by support; contact us to change or remove it."}
+              </p>
+            ) : null}
           </section>
 
           <section className="prof-card prof-card--wide">
@@ -312,6 +494,11 @@ export default function ProfilePage() {
                     <>
                       {sub.plan_name} · {sub.status}
                       {sub.period_end ? ` · ${isArabic ? "حتى" : "renews"} ${new Date(sub.period_end).toLocaleDateString()}` : ""}
+                      {sub.cancel_at_period_end
+                        ? isArabic
+                          ? " · التجديد متوقف عند نهاية الفترة"
+                          : " · renewal stops at period end"
+                        : ""}
                     </>
                   ) : (
                     "—"
