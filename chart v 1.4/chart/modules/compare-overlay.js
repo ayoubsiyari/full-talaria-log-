@@ -3443,6 +3443,34 @@ class CompareOverlay {
         });
     }
     
+    /**
+     * Same 3-dot pulse as chart.js `_showTimeframeLoadingIndicator` (keyframes id shared).
+     */
+    _compareLegendLoadingDotsHtml() {
+        if (!document.getElementById('tf-loading-dots-style')) {
+            const styleEl = document.createElement('style');
+            styleEl.id = 'tf-loading-dots-style';
+            styleEl.textContent = '@keyframes tfLoadingDotPulse {'
+                + '0%,80%,100% { opacity: 0.25; transform: scale(0.7); }'
+                + '40% { opacity: 1; transform: scale(1.15); }'
+                + '}';
+            document.head.appendChild(styleEl);
+        }
+        const dotCss = [
+            'width:5px',
+            'height:5px',
+            'border-radius:50%',
+            'background:#9598a1',
+            'display:inline-block',
+            'animation:tfLoadingDotPulse 1.1s ease-in-out infinite'
+        ].join(';');
+        return '<span style="display:inline-flex;align-items:center;gap:4px;margin-left:4px;line-height:1" aria-label="Loading">'
+            + '<span style="' + dotCss + ';animation-delay:0s"></span>'
+            + '<span style="' + dotCss + ';animation-delay:0.18s"></span>'
+            + '<span style="' + dotCss + ';animation-delay:0.36s"></span>'
+            + '</span>';
+    }
+
     drawOverlayInfo(overlay, overlayData, index) {
         // Use HTML overlay legend instead of canvas drawing
         this.updateOverlayLegend();
@@ -3575,18 +3603,38 @@ class CompareOverlay {
         
         // Show ALL overlays (not just visible ones) so we can toggle visibility
         this.overlays.forEach((overlay, index) => {
-            const latestCandle = overlay.data[overlay.data.length - 1];
-            if (!latestCandle) return;
+            const latestCandle = overlay.data && overlay.data.length
+                ? overlay.data[overlay.data.length - 1]
+                : null;
+            const showLoading = !!overlay.timeframeLoading || !latestCandle;
             
-            const decimals = typeof this.chart.getPriceDecimalsForSymbol === 'function'
-                ? this.chart.getPriceDecimalsForSymbol(overlay.symbol, latestCandle.h - latestCandle.l, { data: overlay.data })
-                : (typeof this.chart._decimalsFromPriceRangeHeuristic === 'function'
-                    ? this.chart._decimalsFromPriceRangeHeuristic(Math.abs(Number(latestCandle.h - latestCandle.l) || 0))
-                    : 5);
-            const isBullish = latestCandle.c >= latestCandle.o;
-            const changeColor = isBullish ? '#26a69a' : '#ef5350';
+            let decimals = 5;
+            let isBullish = true;
+            let changeColor = '#26a69a';
+            if (!showLoading && latestCandle) {
+                decimals = typeof this.chart.getPriceDecimalsForSymbol === 'function'
+                    ? this.chart.getPriceDecimalsForSymbol(overlay.symbol, latestCandle.h - latestCandle.l, { data: overlay.data })
+                    : (typeof this.chart._decimalsFromPriceRangeHeuristic === 'function'
+                        ? this.chart._decimalsFromPriceRangeHeuristic(Math.abs(Number(latestCandle.h - latestCandle.l) || 0))
+                        : 5);
+                isBullish = latestCandle.c >= latestCandle.o;
+                changeColor = isBullish ? '#26a69a' : '#ef5350';
+            }
             const isHidden = !overlay.visible;
             const pairFlags = buildOverlayPairFlags(overlay.symbol);
+            
+            const ohlcStatsHtml = showLoading
+                ? this._compareLegendLoadingDotsHtml()
+                : `
+                <span style="color: #787b86;">O</span>
+                <span style="color: ${changeColor};">${latestCandle.o.toFixed(decimals)}</span>
+                <span style="color: #787b86;">H</span>
+                <span style="color: ${changeColor};">${latestCandle.h.toFixed(decimals)}</span>
+                <span style="color: #787b86;">L</span>
+                <span style="color: ${changeColor};">${latestCandle.l.toFixed(decimals)}</span>
+                <span style="color: #787b86;">C</span>
+                <span style="color: ${changeColor};">${latestCandle.c.toFixed(decimals)}</span>
+            `;
             
             const row = document.createElement('div');
             row.style.cssText = `
@@ -3653,14 +3701,7 @@ class CompareOverlay {
                         ${COMPARE_TRASH_ICON_SVG}
                     </button>
                 </div>
-                <span style="color: #787b86;">O</span>
-                <span style="color: ${changeColor};">${latestCandle.o.toFixed(decimals)}</span>
-                <span style="color: #787b86;">H</span>
-                <span style="color: ${changeColor};">${latestCandle.h.toFixed(decimals)}</span>
-                <span style="color: #787b86;">L</span>
-                <span style="color: ${changeColor};">${latestCandle.l.toFixed(decimals)}</span>
-                <span style="color: #787b86;">C</span>
-                <span style="color: ${changeColor};">${latestCandle.c.toFixed(decimals)}</span>
+                ${ohlcStatsHtml}
             `;
             
             // Add hover effects
@@ -3999,6 +4040,12 @@ class CompareOverlay {
         const parseMs = (tf) => this._parseTimeframeMs(tf);
         const newMs = parseMs(timeframe);
 
+        // Keep compare rows visible with the same 3-dot loading affordance as the main OHLC bar.
+        this.overlays.forEach((overlay) => {
+            overlay.timeframeLoading = true;
+        });
+        this.updateOverlayLegend();
+
         // Resample synchronously first so overlay.data matches the new chart TF immediately.
         // If we only updated inside the async /smart refetch, main.data could already be on
         // the new TF while overlay.data stayed on the old aggregation — findClosestIndex would
@@ -4076,6 +4123,12 @@ class CompareOverlay {
             } catch (e) {
                 console.warn('📊 refreshForTimeframe:', e && e.message ? e.message : e);
             } finally {
+                this.overlays.forEach((overlay) => {
+                    overlay.timeframeLoading = false;
+                });
+                if (typeof this.updateOverlayLegend === 'function') {
+                    try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
+                }
                 if (typeof ch.render === 'function') {
                     try { ch.render(); } catch (_) { /* ignore */ }
                 }
