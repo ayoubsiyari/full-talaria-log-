@@ -11729,6 +11729,11 @@ class Chart {
         // frame. If we removed the overlay before render() the user would see a
         // single blank canvas frame between the snapshot and the new chart.
         try { if (typeof this.render === 'function') this.render(); } catch (e) { /* ignore */ }
+        // Compare legend / loading state: keep in sync once main data is committed so
+        // compare OHLC does not drop before the main 3-dot indicator hides.
+        if (this.compareOverlay && typeof this.compareOverlay.onMainChartTimeframeReady === 'function') {
+            try { this.compareOverlay.onMainChartTimeframeReady(); } catch (_e) { /* ignore */ }
+        }
         requestAnimationFrame(() => {
             try {
                 if (typeof this.render === 'function') this.render();

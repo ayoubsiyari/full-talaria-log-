@@ -3307,7 +3307,8 @@ class CompareOverlay {
             
             // Draw based on display type
             ctx.save();
-            ctx.globalAlpha = overlay.opacity;
+            const baseOp = overlay.opacity != null ? overlay.opacity : 1;
+            ctx.globalAlpha = baseOp * (overlay.timeframeLoading ? 0.5 : 1);
             
             if (overlay.displayType === 'candles') {
                 // Draw as candles with customizable colors
@@ -3464,11 +3465,57 @@ class CompareOverlay {
             'display:inline-block',
             'animation:tfLoadingDotPulse 1.1s ease-in-out infinite'
         ].join(';');
-        return '<span style="display:inline-flex;align-items:center;gap:4px;margin-left:4px;line-height:1" aria-label="Loading">'
+        const label = '<span style="color:#787b86;font-size:11px;font-weight:500;margin-right:4px;white-space:nowrap">Updating</span>';
+        return label + '<span style="display:inline-flex;align-items:center;gap:4px;line-height:1" aria-label="Loading compare data">'
             + '<span style="' + dotCss + ';animation-delay:0s"></span>'
             + '<span style="' + dotCss + ';animation-delay:0.18s"></span>'
             + '<span style="' + dotCss + ';animation-delay:0.36s"></span>'
             + '</span>';
+    }
+
+    /**
+     * Called from chart.js when main timeframe data is committed and the freeze lifts.
+     * Refreshes compare legend so OHLC appears in lockstep with the main symbol row.
+     */
+    onMainChartTimeframeReady() {
+        try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
+        const ch = this.chart;
+        if (ch && typeof ch.render === 'function') {
+            try { ch.render(); } catch (_) { /* ignore */ }
+        }
+    }
+
+    _clearOverlayTimeframeLoadingFlags() {
+        this.overlays.forEach((o) => { o.timeframeLoading = false; });
+    }
+
+    /**
+     * Drop compare TF loading only after the main chart leaves `_timeframeSwitching`
+     * (render() is a no-op while frozen — clearing early made compare OHLC appear
+     * while the main row still showed loading dots).
+     */
+    _finishCompareTimeframeLoading(chart) {
+        const ch = chart || this.chart;
+        if (!ch) {
+            this._clearOverlayTimeframeLoadingFlags();
+            try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
+            return;
+        }
+        const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+        const maxWaitMs = 90000;
+        const step = () => {
+            const timedOut = (typeof performance !== 'undefined' && performance.now)
+                ? (performance.now() - t0 > maxWaitMs)
+                : false;
+            if (ch._timeframeSwitching && !timedOut) {
+                requestAnimationFrame(step);
+                return;
+            }
+            this._clearOverlayTimeframeLoadingFlags();
+            try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
+            try { if (typeof ch.render === 'function') ch.render(); } catch (_) { /* ignore */ }
+        };
+        requestAnimationFrame(step);
     }
 
     drawOverlayInfo(overlay, overlayData, index) {
@@ -4123,15 +4170,7 @@ class CompareOverlay {
             } catch (e) {
                 console.warn('📊 refreshForTimeframe:', e && e.message ? e.message : e);
             } finally {
-                this.overlays.forEach((overlay) => {
-                    overlay.timeframeLoading = false;
-                });
-                if (typeof this.updateOverlayLegend === 'function') {
-                    try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
-                }
-                if (typeof ch.render === 'function') {
-                    try { ch.render(); } catch (_) { /* ignore */ }
-                }
+                this._finishCompareTimeframeLoading(ch);
             }
         })();
     }
