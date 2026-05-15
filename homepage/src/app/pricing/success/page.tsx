@@ -115,12 +115,6 @@ function SubscriptionSuccessInner() {
               >
                 Back to pricing
               </Link>
-              <Link
-                href="/dashboard/"
-                className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-2.5 text-sm font-medium text-cyan-200 hover:bg-cyan-500/15"
-              >
-                Dashboard
-              </Link>
             </div>
           </div>
         )}

@@ -72,6 +72,9 @@ export default function PricingClient() {
   const [currentSubscription, setCurrentSubscription] = useState<SubscriptionPayload | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  /** After `/my-subscription` (or admin short-circuit); avoids showing Dashboard before we know entitlement. */
+  const [accessNavReady, setAccessNavReady] = useState(false);
+  const [userIsAdmin, setUserIsAdmin] = useState(false);
   const [couponCode, setCouponCode] = useState("");
   const [couponValidating, setCouponValidating] = useState(false);
   const [couponResult, setCouponResult] = useState<{
@@ -85,10 +88,32 @@ export default function PricingClient() {
     let cancelled = false;
     (async () => {
       const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-      if (token) {
-        setIsLoggedIn(true);
+      if (!token) {
+        setAccessNavReady(true);
+        await fetchPlans();
+        if (!cancelled) setLoading(false);
+        return;
+      }
+      setIsLoggedIn(true);
+      let isAdmin = false;
+      try {
+        const payload = JSON.parse(atob(token.split(".")[1] || ""));
+        isAdmin = payload.is_admin === true || payload.role === "admin";
+      } catch {
+        /* ignore */
+      }
+      if (!cancelled) setUserIsAdmin(isAdmin);
+      if (isAdmin) {
+        if (!cancelled) setAccessNavReady(true);
+        await fetchPlans();
+        if (!cancelled) setLoading(false);
+        return;
+      }
+      try {
         const redirected = await checkAuthAndMaybeRedirectSubscriptionPage(token, browseMode);
         if (cancelled || redirected) return;
+      } finally {
+        if (!cancelled) setAccessNavReady(true);
       }
       await fetchPlans();
       if (!cancelled) setLoading(false);
@@ -109,15 +134,6 @@ export default function PricingClient() {
       if (!res.ok) return false;
       const data = (await res.json()) as SubscriptionPayload;
       setCurrentSubscription(data);
-
-      let isAdmin = false;
-      try {
-        const payload = JSON.parse(atob(token.split(".")[1] || ""));
-        isAdmin = payload.is_admin === true || payload.role === "admin";
-      } catch {
-        /* ignore */
-      }
-      if (isAdmin) return false;
 
       const entitled =
         (data.has_subscription && ["active", "trialing"].includes(data.subscription?.status || "")) ||
@@ -255,6 +271,9 @@ export default function PricingClient() {
   const hasActivePaidPlan =
     !!currentSubscription?.has_subscription &&
     ["active", "trialing"].includes(currentSubscription?.subscription?.status ?? "");
+  const showDashboardNav =
+    accessNavReady &&
+    (userIsAdmin || hasActivePaidPlan || currentSubscription?.has_journal_access === true);
   const lapsedInfo = currentSubscription?.lapsed_subscription;
   const showResumeBanner =
     isLoggedIn &&
@@ -298,13 +317,17 @@ export default function PricingClient() {
             Talaria
           </Link>
           {isLoggedIn ? (
-            <Link
-              href="/dashboard/"
-              className="flex items-center gap-1.5 text-[13px] text-white/45 transition-colors hover:text-white/75"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-              Dashboard
-            </Link>
+            showDashboardNav ? (
+              <Link
+                href="/dashboard/"
+                className="flex items-center gap-1.5 text-[13px] text-white/45 transition-colors hover:text-white/75"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
+                Dashboard
+              </Link>
+            ) : accessNavReady ? null : (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-white/35" aria-label="Loading" />
+            )
           ) : (
             <div className="flex items-center gap-3">
               <Link href="/login/" className="text-[13px] text-white/45 transition-colors hover:text-white/75">

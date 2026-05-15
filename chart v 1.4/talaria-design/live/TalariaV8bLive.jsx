@@ -24282,9 +24282,9 @@ const TalariaV8bLive = () => {
 
         </div>
         ) : null}
-        {/* Order panel size mode picker */}
-        {opSizeOpen && orderPanelOpen && (
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{ position:"fixed", top:opSizePos.top, left:opSizePos.left, zIndex:9200, width:120, background:c.sf, border:`1px solid rgba(140,160,255,0.22)`, boxShadow:"0 4px 16px rgba(0,0,0,0.5)", fontFamily:F, animation:"tlrDropIn 0.15s ease" }}>
+        {/* Order panel size mode picker — portal to body so detached panel / chrome overflow cannot clip or stack above */}
+        {typeof document !== "undefined" && opSizeOpen && orderPanelOpen && createPortal(
+          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{ position:"fixed", top:opSizePos.top, left:opSizePos.left, zIndex:10060, width:120, background:c.sf, border:`1px solid rgba(140,160,255,0.22)`, boxShadow:"0 4px 16px rgba(0,0,0,0.5)", fontFamily:F, animation:"tlrDropIn 0.15s ease" }}>
             <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
             {[["$","Dollar Amount"],["%","Percentage"],["#","Quantity"]].map(([m, label]) => {
               const isAct = sizeMode === m;
@@ -24299,11 +24299,12 @@ const TalariaV8bLive = () => {
                 </div>
               );
             })}
-          </div>
+          </div>,
+          document.body
         )}
-        {/* Order panel symbol picker */}
-        {opSymOpen && orderPanelOpen && (
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{ position:"fixed", top:opSymPos.top, left:opSymPos.left, zIndex:9200, width:160, background:c.sf, border:`1px solid ${c.brH}`, boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`, fontFamily:F, animation:"tlrDropIn 0.15s ease" }}>
+        {/* Order panel symbol picker — portal to body (same as size picker) */}
+        {typeof document !== "undefined" && opSymOpen && orderPanelOpen && createPortal(
+          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{ position:"fixed", top:opSymPos.top, left:opSymPos.left, zIndex:10060, width:160, background:c.sf, border:`1px solid ${c.brH}`, boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`, fontFamily:F, animation:"tlrDropIn 0.15s ease" }}>
             <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
             <div style={{ padding:"5px 8px 4px", borderBottom:`1px solid ${c.br}` }}>
               <div style={{ display:"flex", alignItems:"center", background:c.well, border:`1px solid ${c.brH}`, padding:"3px 7px", gap:5 }}>
@@ -24340,14 +24341,16 @@ const TalariaV8bLive = () => {
                 );
               })}
             </div>
-          </div>
+          </div>,
+          document.body
         )}
         </div>
       </div>
 
-      {/* Order panel — Template list */}
-      {opTplOpen && (
-        <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{ position:"fixed", top:opTplPos.top, left:opTplPos.left, zIndex:9200, width:180, background:c.sf, border:`1px solid rgba(140,160,255,0.22)`, boxShadow:"0 4px 16px rgba(0,0,0,0.5)", fontFamily:F, animation:"tlrDropIn 0.15s ease" }}>
+      {/* Order panel — Template list — portal so dots/template sit above detached order panel */}
+      {typeof document !== "undefined" && opTplOpen && createPortal(
+        <>
+        <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{ position:"fixed", top:opTplPos.top, left:opTplPos.left, zIndex:10060, width:180, background:c.sf, border:`1px solid rgba(140,160,255,0.22)`, boxShadow:"0 4px 16px rgba(0,0,0,0.5)", fontFamily:F, animation:"tlrDropIn 0.15s ease" }}>
           <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
           <div style={{padding:"4px 0"}}>
             {[["Save as",()=>{setOpSaveAsMode(true);setOpNewTplName("");}],
@@ -24403,12 +24406,15 @@ const TalariaV8bLive = () => {
             })}
           </div>
         </div>
+        <div onClick={()=>{setOpTplOpen(false);setOpSaveAsMode(false);}} style={{ position:"fixed", inset:0, zIndex:10055 }}/>
+        </>,
+        document.body
       )}
-      {opTplOpen && <div onClick={()=>{setOpTplOpen(false);setOpSaveAsMode(false);}} style={{ position:"fixed", inset:0, zIndex:9199 }}/>}
 
-      {/* Order panel — Dots menu */}
-      {opDotsOpen && (
-        <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{ position:"fixed", top:opDotsPos.top, left:opDotsPos.left, zIndex:9200, width:152, background:c.sf, border:`1px solid rgba(140,160,255,0.22)`, boxShadow:"0 4px 16px rgba(0,0,0,0.5)", fontFamily:F, animation:"tlrDropIn 0.15s ease" }}>
+      {/* Order panel — Dots menu — portal to body */}
+      {typeof document !== "undefined" && opDotsOpen && createPortal(
+        <>
+        <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{ position:"fixed", top:opDotsPos.top, left:opDotsPos.left, zIndex:10060, width:152, background:c.sf, border:`1px solid rgba(140,160,255,0.22)`, boxShadow:"0 4px 16px rgba(0,0,0,0.5)", fontFamily:F, animation:"tlrDropIn 0.15s ease" }}>
           <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
           {(()=>{ const isH=swHov==="dots-detach"; return (
             <div onClick={()=>{ setPanelDetached(v=>{ if(!v){ const pw=detachSize.w,ph=detachSize.h; setDetachPos({x:Math.max(0,Math.round((window.innerWidth-pw)/2)),y:Math.max(0,Math.round((window.innerHeight-ph)/2))}); } return !v; }); setOpDotsOpen(false); }}
@@ -24433,8 +24439,10 @@ const TalariaV8bLive = () => {
             </div>
           ); })()}
         </div>
+        <div onClick={()=>setOpDotsOpen(false)} style={{ position:"fixed", inset:0, zIndex:10055 }}/>
+        </>,
+        document.body
       )}
-      {opDotsOpen && <div onClick={()=>setOpDotsOpen(false)} style={{ position:"fixed", inset:0, zIndex:9199 }}/>}
 
       {settDrop && (()=>{
         const defaultTplOpts = defaultTpls;

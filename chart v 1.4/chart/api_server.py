@@ -7536,7 +7536,11 @@ def _user_public_dict(user: User, db=None):
         "timezone": getattr(user, 'timezone', 'UTC'),
         "base_currency": getattr(user, 'base_currency', 'USD'),
         "is_active": bool(user.is_active),
-        "has_journal_access": bool(getattr(user, 'has_journal_access', False)),
+        "has_journal_access": (
+            _user_entitles_journal_db(db, user)
+            if db is not None
+            else bool(getattr(user, "has_journal_access", False))
+        ),
         "access_expires_at": expires.isoformat() if expires else None,
         "max_sessions": getattr(user, 'max_sessions', 1) or 1,
         "trading_sessions_count": trading_sessions_count,

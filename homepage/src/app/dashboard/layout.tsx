@@ -10,6 +10,8 @@ import {
   dashboardPathRequiresPaidJournal,
   userHasJournalEntitlement,
 } from "@/lib/dashboardAccess";
+import SubscriptionGateOverlay from "./SubscriptionGateOverlay";
+import DashboardAccessSkeleton from "./DashboardAccessSkeleton";
 
 type User = {
   id: number;
@@ -323,6 +325,18 @@ export default function DashboardLayout({
       });
   }, []);
 
+  /** Re-sync after checkout in another tab or Stripe return (keeps gate accurate). */
+  React.useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== "visible" || !authReady) return;
+      fetchMe()
+        .then((u) => setUser(u))
+        .catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [authReady]);
+
   const entitled = userHasJournalEntitlement(user);
 
   const gatedPath = dashboardPathRequiresPaidJournal(pathname);
@@ -330,10 +344,14 @@ export default function DashboardLayout({
     authReady && !!user && !entitled && gatedPath;
   const gatedAuthLoading = gatedPath && !authReady;
 
+  const goPricing = React.useCallback(() => {
+    router.prefetch("/pricing/");
+    router.replace("/pricing/?browse=1");
+  }, [router]);
+
   React.useEffect(() => {
-    if (!subscriptionWall) return;
-    window.location.replace("/pricing/?browse=1");
-  }, [subscriptionWall]);
+    if (gatedPath) router.prefetch("/pricing/");
+  }, [gatedPath, router]);
 
   React.useEffect(() => {
     if (pathname.startsWith("/dashboard/journal")) setActiveView("journal");
@@ -359,8 +377,9 @@ export default function DashboardLayout({
   }, [profilePanelOpen]);
 
   const handleNavClick = (id: string) => {
-    if ((id === "journal" || id === "backtest") && user && !userHasJournalEntitlement(user)) {
-      window.location.href = "/pricing/?browse=1";
+    const paidNavIds = ["dashboard", "journal", "backtest", "cot", "strategies"];
+    if (paidNavIds.includes(id) && user && !userHasJournalEntitlement(user)) {
+      goPricing();
       return;
     }
     setActiveView(id);
@@ -480,7 +499,9 @@ export default function DashboardLayout({
             const color = active ? DASH_C.acL : hovered ? DASH_C.tx : DASH_C.ts;
             const railSide = isArabic ? "right" : "left";
             const navLocked =
-              !!user && !userHasJournalEntitlement(user) && (id === "journal" || id === "backtest");
+              !!user &&
+              !userHasJournalEntitlement(user) &&
+              (id === "dashboard" || id === "journal" || id === "backtest" || id === "cot" || id === "strategies");
             return (
               <div
                 key={id}
@@ -641,32 +662,18 @@ export default function DashboardLayout({
               visibility: !EXTERNAL_VIEWS[activeView] ? "visible" : "hidden",
               pointerEvents: !EXTERNAL_VIEWS[activeView] ? "auto" : "none",
             }}>
-              {gatedAuthLoading || subscriptionWall ? (
-                <div
-                  style={{
-                    minHeight: "40vh",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexDirection: "column",
-                    gap: 12,
-                    color: DASH_C.ts,
-                    fontFamily: F,
-                    fontSize: 13,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 28,
-                      height: 28,
-                      border: "2px solid rgba(74,106,255,0.25)",
-                      borderTopColor: DASH_C.acL,
-                      borderRadius: "50%",
-                      animation: "db-spin 0.8s linear infinite",
+              {gatedAuthLoading ? (
+                <DashboardAccessSkeleton isArabic={isArabic} />
+              ) : subscriptionWall ? (
+                <div style={{ position: "absolute", inset: 0, background: DASH_C.bg }}>
+                  <SubscriptionGateOverlay
+                    active
+                    isArabic={isArabic}
+                    onContinueToPlans={goPricing}
+                    onAccountSettings={() => {
+                      router.push("/dashboard/profile/");
                     }}
                   />
-                  {subscriptionWall ? "Redirecting to plans…" : "Checking access…"}
-                  <style>{`@keyframes db-spin { to { transform: rotate(360deg); } }`}</style>
                 </div>
               ) : (
                 children
