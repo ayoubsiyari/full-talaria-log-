@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Syne, Space_Mono } from "next/font/google";
 import { ArrowLeft, Filter } from "lucide-react";
-import { BacktestSubnav } from "./BacktestSubnav";
 import "./sessions-dashboard.css";
 import "./backtest-os-dashboard.css";
 import { BacktestOsDashboardLayout } from "./BacktestOsDashboardLayout";
@@ -1206,7 +1205,6 @@ export default function BacktestAnalyticsPage() {
 
   return (
     <div className={`${syne.variable} ${spaceMono.variable} bt-os-dashboard`} style={{ fontFamily: "var(--font-syne), Syne, sans-serif" }}>
-      <BacktestSubnav active="analytics" sessionId={selectedSessionId || undefined} />
 
       {whatIfError ? (
         <div className="bt-os-api-error">Analytics API: {whatIfError}</div>

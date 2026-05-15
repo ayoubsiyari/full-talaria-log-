@@ -3707,6 +3707,10 @@ class CompareOverlay {
             }
         }
         
+        // Only map when the overlay bar time is within ~half a main candle of a bar.
+        // Must use the same TF duration as chart.resampleData() (parseTimeframe), not a
+        // hard-coded map — unknown/custom TFs (e.g. 3m) defaulted to 1m here and caused
+        // mass rejections + stray diagonals across "gaps" when points were skipped.
         const tfKey = String(this.chart.currentTimeframe || '1m').toLowerCase().trim();
         let tfMs = 60 * 1000;
         if (this.chart && typeof this.chart.parseTimeframe === 'function') {
