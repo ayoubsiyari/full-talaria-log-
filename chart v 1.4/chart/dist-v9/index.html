@@ -1063,6 +1063,9 @@
     <!-- Compare / multi-symbol overlay — must load before chart.js (defines window.CompareOverlay). -->
     <script defer src="/chart/modules/compare-overlay.js?v=bmp76ddii"></script>
 
+    <!-- Bottom toast stack (shared notifications + path hint); must load before chart.js. -->
+    <script defer src="/chart/modules/talaria-toast-stack.js?v=bmp76ddii"></script>
+
     <!-- Chart engine.
          chart.js exposes window.Chart synchronously and window.initializeChart
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
@@ -1271,7 +1274,7 @@
             <div class="news-items" id="newsItems"></div>
         </div>
     </div>
-    <!-- Module scripts are deferred too, so this runs AFTER all defers above. -->
+    <!-- Module scripts are deferred too, so this runs AFTER all defers above. -->
 
     <!-- ──────────────────────────────────────────────────────────────────
          PANEL MANAGER BOOTSTRAP — REMOVED

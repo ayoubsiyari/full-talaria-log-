@@ -1284,6 +1284,8 @@
     <!-- Compare / multi-symbol overlay — must load before chart.js (defines window.CompareOverlay). -->
     <script defer src="/chart/modules/compare-overlay.js?v=20260515a1"></script>
 
+    <!-- Bottom toast stack (shared showNotification + path hint); must load before chart.js. -->
+    <script defer src="/chart/modules/talaria-toast-stack.js?v=20260515a1"></script>
     <!-- Chart engine.
          chart.js exposes window.Chart synchronously and window.initializeChart
          as a callable. Its DOMContentLoaded handler fires after main.jsx has

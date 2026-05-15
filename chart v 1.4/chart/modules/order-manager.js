@@ -36247,11 +36247,12 @@ class OrderManager {
     }
     
     /**
-     * Create notification container
+     * Create notification container (legacy top-right rail). Unused when __TalariaToastStack is present.
      */
     createNotificationContainer() {
+        if (typeof window !== 'undefined' && window.__TalariaToastStack) return;
         if (document.getElementById('orderNotifications')) return;
-        
+
         const container = document.createElement('div');
         container.id = 'orderNotifications';
         container.style.cssText = `
@@ -36265,6 +36266,106 @@ class OrderManager {
             pointer-events: none;
         `;
         document.body.appendChild(container);
+    }
+
+    /**
+     * Show notification — stacked bottom toasts (same shell as path hint) when __TalariaToastStack exists.
+     */
+    showNotification(message, type = 'info', opts = {}) {
+        if (typeof window !== 'undefined' && window.__TalariaToastStack) {
+            const safeType = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
+            const timeoutMs = Number.isFinite(Number(opts.timeoutMs)) ? Number(opts.timeoutMs) : 4000;
+            window.__TalariaToastStack.show(String(message != null ? message : ''), {
+                type: safeType,
+                duration: timeoutMs,
+                onClick: opts && typeof opts.onClick === 'function' ? opts.onClick : undefined,
+                title: opts && opts.title,
+            });
+            return;
+        }
+
+        const container = document.getElementById('orderNotifications');
+        if (!container) return;
+
+        const safeTypeLegacy = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
+        const accent = {
+            success: '#22c55e',
+            error: '#ef4444',
+            warning: '#f59e0b',
+            info: '#3b82f6'
+        }[safeTypeLegacy];
+
+        const notification = document.createElement('div');
+        notification.className = 'chart-toast-tooltip';
+        /* Match .chart-tooltip surface: compact panel + colored left rail for severity */
+        notification.style.cssText = `
+            background: rgba(42, 46, 57, 0.95);
+            color: #ffffff;
+            border: 1px solid #363a45;
+            border-left: 3px solid ${accent};
+            border-radius: 4px;
+            padding: 7px 11px;
+            font-size: 11px;
+            line-height: 14px;
+            font-weight: 600;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+            box-sizing: border-box;
+            animation: slideIn 0.3s ease-out;
+            pointer-events: auto;
+            min-width: 200px;
+            max-width: 380px;
+            white-space: normal;
+            word-break: break-word;
+        `;
+        notification.textContent = message;
+        if (opts && typeof opts.onClick === 'function') {
+            notification.style.cursor = 'default';
+            notification.title = opts.title || 'Click to open related instrument';
+            notification.addEventListener('click', () => {
+                try { opts.onClick(); } catch (e) { console.error(e); }
+            });
+        }
+
+        // Add animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from {
+                    transform: translateX(400px);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+            @keyframes slideOut {
+                from {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(400px);
+                    opacity: 0;
+                }
+            }
+        `;
+        if (!document.getElementById('notificationStyles')) {
+            style.id = 'notificationStyles';
+            document.head.appendChild(style);
+        }
+
+        container.appendChild(notification);
+
+        // Auto remove after timeout
+        const timeoutMs = Number.isFinite(Number(opts.timeoutMs)) ? Number(opts.timeoutMs) : 4000;
+        setTimeout(() => {
+            notification.style.animation = 'slideOut 0.3s ease-in';
+            setTimeout(() => {
+                notification.remove();
+            }, 300);
+        }, timeoutMs);
     }
 
     createCrossInstrumentPositionsDock() {
@@ -37421,94 +37522,6 @@ class OrderManager {
         setTimeout(() => {
             document.getElementById('modalPresetName')?.focus();
         }, 100);
-    }
-    
-    /**
-     * Show notification
-     */
-    showNotification(message, type = 'info', opts = {}) {
-        const container = document.getElementById('orderNotifications');
-        if (!container) return;
-        
-        const safeType = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
-        const accent = {
-            success: '#22c55e',
-            error: '#ef4444',
-            warning: '#f59e0b',
-            info: '#3b82f6'
-        }[safeType];
-
-        const notification = document.createElement('div');
-        notification.className = 'chart-toast-tooltip';
-        /* Match .chart-tooltip surface: compact panel + colored left rail for severity */
-        notification.style.cssText = `
-            background: rgba(42, 46, 57, 0.95);
-            color: #ffffff;
-            border: 1px solid #363a45;
-            border-left: 3px solid ${accent};
-            border-radius: 4px;
-            padding: 7px 11px;
-            font-size: 11px;
-            line-height: 14px;
-            font-weight: 600;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-            box-sizing: border-box;
-            animation: slideIn 0.3s ease-out;
-            pointer-events: auto;
-            min-width: 200px;
-            max-width: 380px;
-            white-space: normal;
-            word-break: break-word;
-        `;
-        notification.textContent = message;
-        if (opts && typeof opts.onClick === 'function') {
-            notification.style.cursor = 'default';
-            notification.title = opts.title || 'Click to open related instrument';
-            notification.addEventListener('click', () => {
-                try { opts.onClick(); } catch (e) { console.error(e); }
-            });
-        }
-        
-        // Add animation
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from {
-                    transform: translateX(400px);
-                    opacity: 0;
-                }
-                to {
-                    transform: translateX(0);
-                    opacity: 1;
-                }
-            }
-            @keyframes slideOut {
-                from {
-                    transform: translateX(0);
-                    opacity: 1;
-                }
-                to {
-                    transform: translateX(400px);
-                    opacity: 0;
-                }
-            }
-        `;
-        if (!document.getElementById('notificationStyles')) {
-            style.id = 'notificationStyles';
-            document.head.appendChild(style);
-        }
-        
-        container.appendChild(notification);
-        
-        // Auto remove after timeout
-        const timeoutMs = Number.isFinite(Number(opts.timeoutMs)) ? Number(opts.timeoutMs) : 4000;
-        setTimeout(() => {
-            notification.style.animation = 'slideOut 0.3s ease-in';
-            setTimeout(() => {
-                notification.remove();
-            }, 300);
-        }, timeoutMs);
     }
     
     /**

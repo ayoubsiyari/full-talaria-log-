@@ -465,39 +465,88 @@ class AlertSystem {
      * Show alert notification popup
      */
     showAlertNotification(alert, currentPrice) {
+        const wrap = document.createElement('div');
+        wrap.className = 'tlr-alert-toast-wrap';
+
         const notification = document.createElement('div');
         notification.className = 'alert-notification chart-toast-tooltip';
-        notification.innerHTML = `
-            <div class="alert-notification-header">
-                <span class="alert-notification-icon">🔔</span>
-                <span class="alert-notification-symbol">${alert.symbol}</span>
-                <button class="alert-notification-close">&times;</button>
-            </div>
-            <div class="alert-notification-body">
-                <div class="alert-notification-message">${alert.message}</div>
-                <div class="alert-notification-price">
-                    <span>Alert: ${this.formatPrice(alert.price)}</span>
-                    <span>Current: ${this.formatPrice(currentPrice)}</span>
-                </div>
-            </div>
-        `;
-        
-        document.body.appendChild(notification);
-        
-        // Animate in
-        setTimeout(() => notification.classList.add('show'), 10);
-        
-        // Close button
-        notification.querySelector('.alert-notification-close').addEventListener('click', () => {
+
+        const header = document.createElement('div');
+        header.className = 'alert-notification-header';
+
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'alert-notification-icon';
+        iconSpan.textContent = '🔔';
+
+        const symbolSpan = document.createElement('span');
+        symbolSpan.className = 'alert-notification-symbol';
+        symbolSpan.textContent = String(alert.symbol != null ? alert.symbol : '');
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'alert-notification-close';
+        closeBtn.setAttribute('aria-label', 'Close');
+        closeBtn.textContent = '×';
+
+        header.appendChild(iconSpan);
+        header.appendChild(symbolSpan);
+        header.appendChild(closeBtn);
+
+        const bodyEl = document.createElement('div');
+        bodyEl.className = 'alert-notification-body';
+
+        const msg = document.createElement('div');
+        msg.className = 'alert-notification-message';
+        msg.textContent = String(alert.message != null ? alert.message : '');
+
+        const priceRow = document.createElement('div');
+        priceRow.className = 'alert-notification-price';
+        const spanAlert = document.createElement('span');
+        spanAlert.textContent = 'Alert: ' + this.formatPrice(alert.price);
+        const spanCur = document.createElement('span');
+        spanCur.textContent = 'Current: ' + this.formatPrice(currentPrice);
+        priceRow.appendChild(spanAlert);
+        priceRow.appendChild(spanCur);
+
+        bodyEl.appendChild(msg);
+        bodyEl.appendChild(priceRow);
+        notification.appendChild(header);
+        notification.appendChild(bodyEl);
+        wrap.appendChild(notification);
+
+        const fadeOutRemove = (dismissStack) => {
             notification.classList.remove('show');
-            setTimeout(() => notification.remove(), 300);
-        });
-        
-        // Auto-close after 5 seconds
-        setTimeout(() => {
-            notification.classList.remove('show');
-            setTimeout(() => notification.remove(), 300);
-        }, 5000);
+            if (typeof dismissStack === 'function') {
+                setTimeout(() => {
+                    try {
+                        dismissStack();
+                    } catch (e) {
+                        console.error(e);
+                    }
+                }, 280);
+            } else {
+                setTimeout(() => {
+                    try {
+                        wrap.remove();
+                    } catch (e) {
+                        /* ignore */
+                    }
+                }, 300);
+            }
+        };
+
+        if (typeof window !== 'undefined' && window.__TalariaToastStack) {
+            wrap.style.maxWidth = 'min(92vw, 340px)';
+            wrap.style.margin = '0 auto';
+            const dismiss = window.__TalariaToastStack.pushElement(wrap, { duration: 5000 });
+            closeBtn.addEventListener('click', () => fadeOutRemove(dismiss));
+            requestAnimationFrame(() => notification.classList.add('show'));
+        } else {
+            document.body.appendChild(wrap);
+            setTimeout(() => notification.classList.add('show'), 10);
+            closeBtn.addEventListener('click', () => fadeOutRemove(null));
+            setTimeout(() => fadeOutRemove(null), 5000);
+        }
     }
     
     /**

@@ -1609,17 +1609,21 @@ class ScreenshotManager {
      * Show notification at top-right
      */
     showNotification(message, type = 'info') {
-        // Remove existing screenshot notification if any
+        if (typeof window !== 'undefined' && window.__TalariaToastStack) {
+            const safeType = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
+            window.__TalariaToastStack.show(String(message != null ? message : ''), { type: safeType, duration: 2500 });
+            return;
+        }
         const existing = document.querySelector('.screenshot-notification');
         if (existing) existing.remove();
 
-        const safeType = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
+        const safeTypeLegacy = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
         const accent = {
             success: '#22c55e',
             error: '#ef4444',
             warning: '#f59e0b',
             info: '#3b82f6'
-        }[safeType];
+        }[safeTypeLegacy];
         
         const notification = document.createElement('div');
         notification.className = 'screenshot-notification chart-toast-tooltip';

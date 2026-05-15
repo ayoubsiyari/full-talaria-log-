@@ -16,6 +16,8 @@ from sqlalchemy import (
     func,
     nulls_last,
     UniqueConstraint,
+    or_,
+    and_,
 )
 from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime, timedelta
@@ -8654,7 +8656,7 @@ async def admin_user_monitor(user_id: int, request: Request):
             for p in payments_rows
         ]
 
-        return {
+        out = {
             "user": user_dict,
             "summary": {
                 "chart_connections": len(chart_connections),
@@ -8672,6 +8674,254 @@ async def admin_user_monitor(user_id: int, request: Request):
             "combined_analytics": combined_analytics,
             "recent_payments": recent_payments,
         }
+        _record_admin_action(
+            request,
+            action="user_monitor_view",
+            status="ok",
+            status_code=200,
+            target_type="user",
+            target_id=user_id,
+            params={"cap_sessions": MAX_TRADING_SESSIONS, "cap_connections": MAX_CHART_CONN},
+        )
+        return out
+    finally:
+        db.close()
+
+
+def _timeline_iso(dt: datetime | None) -> str | None:
+    if not dt:
+        return None
+    return dt.isoformat() + "Z"
+
+
+def _timeline_sort_key(at: str | None) -> float:
+    if not at:
+        return 0.0
+    try:
+        s = at[:-1] + "+00:00" if at.endswith("Z") else at
+        return datetime.fromisoformat(s).timestamp()
+    except Exception:
+        return 0.0
+
+
+@app.get("/api/admin/users/{user_id}/timeline")
+async def admin_user_timeline(user_id: int, request: Request, limit: int = 200):
+    """
+    Admin-only: merged chronological activity for a user (sessions, payments,
+    support, subscriptions, chart connections, affiliate events, admin audit rows).
+    """
+    _require_admin(request)
+    limit = max(20, min(500, int(limit or 200)))
+    uid = int(user_id)
+    uid_s = str(uid)
+    user_path = f"/api/admin/users/{uid}"
+
+    db = SessionLocal()
+    events: list[dict] = []
+    try:
+        user = db.query(User).filter(User.id == uid).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if user.created_at:
+            events.append(
+                {
+                    "at": _timeline_iso(user.created_at),
+                    "kind": "account",
+                    "label": "Account created",
+                    "detail": None,
+                    "ref": {"type": "user", "id": uid},
+                }
+            )
+
+        for sub in (
+            db.query(Subscription)
+            .filter(Subscription.user_id == uid)
+            .order_by(Subscription.updated_at.desc())
+            .limit(20)
+            .all()
+        ):
+            st = (sub.status or "")[:64]
+            if sub.created_at:
+                events.append(
+                    {
+                        "at": _timeline_iso(sub.created_at),
+                        "kind": "subscription",
+                        "label": f"Subscription #{sub.id} created",
+                        "detail": st or None,
+                        "ref": {"type": "subscription", "id": sub.id},
+                    }
+                )
+            if sub.updated_at and sub.created_at and sub.updated_at != sub.created_at:
+                events.append(
+                    {
+                        "at": _timeline_iso(sub.updated_at),
+                        "kind": "subscription",
+                        "label": f"Subscription #{sub.id} updated",
+                        "detail": st or None,
+                        "ref": {"type": "subscription", "id": sub.id},
+                    }
+                )
+            if sub.cancelled_at:
+                events.append(
+                    {
+                        "at": _timeline_iso(sub.cancelled_at),
+                        "kind": "subscription",
+                        "label": f"Subscription #{sub.id} cancelled",
+                        "detail": st or None,
+                        "ref": {"type": "subscription", "id": sub.id},
+                    }
+                )
+
+        for p in (
+            db.query(Payment)
+            .filter(Payment.user_id == uid)
+            .order_by(Payment.created_at.desc())
+            .limit(30)
+            .all()
+        ):
+            if p.created_at:
+                amt = float(p.amount) if p.amount is not None else None
+                cur = (p.currency or "").upper()
+                amt_s = f"{amt:.2f} {cur}".strip() if amt is not None else ""
+                events.append(
+                    {
+                        "at": _timeline_iso(p.created_at),
+                        "kind": "payment",
+                        "label": f"Payment · {p.status or 'unknown'}" + (f" · {amt_s}" if amt_s else ""),
+                        "detail": ((p.description or "")[:160] or None),
+                        "ref": {"type": "payment", "id": p.id},
+                    }
+                )
+
+        for t in (
+            db.query(SupportThread)
+            .filter(SupportThread.user_id == uid)
+            .order_by(SupportThread.updated_at.desc())
+            .limit(25)
+            .all()
+        ):
+            subj = (t.subject or "")[:120]
+            if t.created_at:
+                events.append(
+                    {
+                        "at": _timeline_iso(t.created_at),
+                        "kind": "support",
+                        "label": f"Support thread opened · {subj}" if subj else f"Support thread #{t.id} opened",
+                        "detail": f"#{t.id} · {t.category} · {t.status}",
+                        "ref": {"type": "support_thread", "id": t.id},
+                    }
+                )
+            if t.last_message_at and (not t.created_at or t.last_message_at != t.created_at):
+                events.append(
+                    {
+                        "at": _timeline_iso(t.last_message_at),
+                        "kind": "support",
+                        "label": f"Support activity · thread #{t.id}",
+                        "detail": subj or None,
+                        "ref": {"type": "support_thread", "id": t.id},
+                    }
+                )
+
+        for s in (
+            db.query(TradingSession)
+            .filter(TradingSession.user_id == uid)
+            .order_by(TradingSession.updated_at.desc())
+            .limit(45)
+            .all()
+        ):
+            nm = (s.name or "Session")[:100]
+            if s.created_at:
+                events.append(
+                    {
+                        "at": _timeline_iso(s.created_at),
+                        "kind": "trading_session",
+                        "label": f"Backtest session created · {nm}",
+                        "detail": f"#{s.id} · {s.session_type}",
+                        "ref": {"type": "trading_session", "id": s.id},
+                    }
+                )
+            if s.updated_at and (not s.created_at or s.updated_at != s.created_at):
+                events.append(
+                    {
+                        "at": _timeline_iso(s.updated_at),
+                        "kind": "trading_session",
+                        "label": f"Backtest session updated · {nm}",
+                        "detail": f"#{s.id}",
+                        "ref": {"type": "trading_session", "id": s.id},
+                    }
+                )
+
+        for c in (
+            db.query(UserSession)
+            .filter(UserSession.user_id == uid)
+            .order_by(UserSession.last_active_at.desc())
+            .limit(35)
+            .all()
+        ):
+            if c.last_active_at:
+                dip = (c.ip_address or "")[:48]
+                dev = (c.device or "")[:100]
+                events.append(
+                    {
+                        "at": _timeline_iso(c.last_active_at),
+                        "kind": "chart_connection",
+                        "label": "Chart / device activity",
+                        "detail": " · ".join(x for x in (dip, dev) if x) or None,
+                        "ref": {"type": "user_session", "id": c.id},
+                    }
+                )
+
+        for ev in (
+            db.query(AffiliateEvent)
+            .filter(AffiliateEvent.user_id == uid)
+            .order_by(AffiliateEvent.created_at.desc())
+            .limit(35)
+            .all()
+        ):
+            if ev.created_at:
+                events.append(
+                    {
+                        "at": _timeline_iso(ev.created_at),
+                        "kind": "affiliate",
+                        "label": f"Affiliate · {ev.event_type or 'event'}",
+                        "detail": f"affiliate #{ev.affiliate_id}",
+                        "ref": {"type": "affiliate_event", "id": ev.id},
+                    }
+                )
+
+        for r in (
+            db.query(AdminAuditLog)
+            .filter(
+                or_(
+                    and_(AdminAuditLog.target_type == "user", AdminAuditLog.target_id == uid_s),
+                    AdminAuditLog.path.like(f"{user_path}/%"),
+                    AdminAuditLog.path == user_path,
+                )
+            )
+            .order_by(AdminAuditLog.created_at.desc())
+            .limit(100)
+            .all()
+        ):
+            if not r.created_at:
+                continue
+            events.append(
+                {
+                    "at": _timeline_iso(r.created_at),
+                    "kind": "admin_audit",
+                    "label": (r.action or "admin_action")[:120],
+                    "detail": f"{r.method or ''} {(r.path or '')[:200]} · {r.status or ''}".strip(),
+                    "ref": {"type": "admin_audit_log", "id": r.id},
+                    "meta": {
+                        "admin_email": r.admin_email,
+                        "status_code": r.status_code,
+                    },
+                }
+            )
+
+        events.sort(key=lambda e: _timeline_sort_key(e.get("at")), reverse=True)
+        events = events[:limit]
+        return {"success": True, "user_id": uid, "events": events, "limit": limit}
     finally:
         db.close()
 
@@ -12384,6 +12634,7 @@ async def admin_audit_log_list(
     status: str | None = None,
     since_days: int | None = None,
     q: str | None = None,
+    target_user_id: int | None = None,
 ):
     """
     Paginated, filterable view of `admin_audit_log`. Admin-only.
@@ -12396,6 +12647,7 @@ async def admin_audit_log_list(
       * `status`        — ok | error | denied | dry_run
       * `since_days`    — only rows created within the last N days
       * `q`             — free-text substring across path + params + result
+      * `target_user_id` — rows that concern this user (structured target or path under `/api/admin/users/{id}/`)
 
     The list itself is read-only; the middleware will not log this call
     because GET isn't in `_AUDIT_MUTATING_METHODS` (no self-referential noise).
@@ -12423,6 +12675,17 @@ async def admin_audit_log_list(
                 | (AdminAuditLog.params_json.ilike(needle))
                 | (AdminAuditLog.result_json.ilike(needle))
                 | (AdminAuditLog.error_message.ilike(needle))
+            )
+        if target_user_id is not None:
+            tid = int(target_user_id)
+            tid_s = str(tid)
+            user_path = f"/api/admin/users/{tid}"
+            qry = qry.filter(
+                or_(
+                    and_(AdminAuditLog.target_type == "user", AdminAuditLog.target_id == tid_s),
+                    AdminAuditLog.path.like(f"{user_path}/%"),
+                    AdminAuditLog.path == user_path,
+                )
             )
         total = qry.count()
         rows = (

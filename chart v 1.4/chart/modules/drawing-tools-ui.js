@@ -25506,6 +25506,14 @@ applyTemplate(drawing, templateId, modal) {
 
     showNotification(message) {
 
+        if (typeof window !== 'undefined' && window.__TalariaToastStack) {
+            window.__TalariaToastStack.show(String(message != null ? message : ''), {
+                type: 'success',
+                duration: 2500,
+            });
+            return;
+        }
+
         const accent = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#3b82f6';
 
         const el = document.createElement('div');

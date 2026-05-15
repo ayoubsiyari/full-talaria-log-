@@ -7629,9 +7629,8 @@ class DrawingToolsManager {
     }
 
     /**
-     * Path/polyline hint — matches V9 global toolbar tooltip (TalariaV8bLive.jsx `tipData`):
-     * c.el background, c.brH border, 2px left gradient (c.acL), Exo 2 / 600.
-     * Placed just above the chart time-axis (from canvas rect + margin.b); slightly larger than the icon tooltips.
+     * Path/polyline hint — same shell as V9 toolbar tips; stacked via __TalariaToastStack
+     * so it never overlaps other toasts (sits at bottom of stack, closest to time axis).
      */
     showPathTooltip() {
         this.hidePathTooltip();
@@ -7649,32 +7648,7 @@ class DrawingToolsManager {
         wrap.setAttribute('role', 'status');
         wrap.setAttribute('aria-live', 'polite');
 
-        let bottomPx = null;
-        try {
-            const ch = this.chart;
-            const cv = ch && ch.canvas;
-            const m = ch && ch.margin;
-            if (cv && m && typeof cv.getBoundingClientRect === 'function' && Number.isFinite(ch.h) && ch.h > 0) {
-                const r = cv.getBoundingClientRect();
-                const scaleY = r.height > 0 ? (r.height / ch.h) : 1;
-                const mB = Math.max(20, Number(m.b) || 30);
-                const timeAxisTop = r.top + (ch.h - mB) * scaleY;
-                const gap = 10;
-                bottomPx = window.innerHeight - timeAxisTop + gap;
-            }
-        } catch (_) { /* fallback below */ }
-        if (bottomPx == null || !Number.isFinite(bottomPx)) {
-            bottomPx = 100;
-        }
-
         wrap.style.cssText = [
-            'position:fixed',
-            'bottom:' + Math.round(bottomPx) + 'px',
-            'left:50%',
-            'transform:translateX(-50%)',
-            'z-index:100002',
-            'pointer-events:none',
-            'white-space:nowrap',
             'background:' + bg,
             'border:1px solid ' + brH,
             "font-family:'Exo 2',sans-serif",
@@ -7683,6 +7657,10 @@ class DrawingToolsManager {
             'color:' + tx,
             'padding:5px 11px 5px 14px',
             'box-shadow:0 4px 16px rgba(0,0,0,0.55)',
+            'white-space:nowrap',
+            'pointer-events:none',
+            'line-height:1.35',
+            'box-sizing:border-box',
         ].join(';');
 
         const stripe = document.createElement('div');
@@ -7699,16 +7677,63 @@ class DrawingToolsManager {
         wrap.appendChild(stripe);
         wrap.appendChild(document.createTextNode('Right click to end'));
 
-        document.body.appendChild(wrap);
-        this.pathTooltip = wrap;
+        if (typeof window !== 'undefined' && window.__TalariaToastStack) {
+            window.__TalariaToastStack.setPinned('path-draw-hint', wrap);
+            this.pathTooltip = wrap;
+        } else {
+            let bottomPx = null;
+            try {
+                const ch = this.chart;
+                const cv = ch && ch.canvas;
+                const m = ch && ch.margin;
+                if (cv && m && typeof cv.getBoundingClientRect === 'function' && Number.isFinite(ch.h) && ch.h > 0) {
+                    const r = cv.getBoundingClientRect();
+                    const scaleY = r.height > 0 ? (r.height / ch.h) : 1;
+                    const mB = Math.max(20, Number(m.b) || 30);
+                    const timeAxisTop = r.top + (ch.h - mB) * scaleY;
+                    bottomPx = window.innerHeight - timeAxisTop + 10;
+                }
+            } catch (_) { /* ignore */ }
+            if (bottomPx == null || !Number.isFinite(bottomPx)) bottomPx = 100;
+            wrap.style.cssText = [
+                'background:' + bg,
+                'border:1px solid ' + brH,
+                "font-family:'Exo 2',sans-serif",
+                'font-size:11px',
+                'font-weight:600',
+                'color:' + tx,
+                'padding:5px 11px 5px 14px',
+                'box-shadow:0 4px 16px rgba(0,0,0,0.55)',
+                'white-space:nowrap',
+                'pointer-events:none',
+                'line-height:1.35',
+                'box-sizing:border-box',
+                'position:fixed',
+                'bottom:' + Math.round(bottomPx) + 'px',
+                'left:50%',
+                'transform:translateX(-50%)',
+                'z-index:100002',
+            ].join(';');
+            document.body.appendChild(wrap);
+            this.pathTooltip = wrap;
+        }
     }
 
     /**
      * Hide path drawing tooltip
      */
     hidePathTooltip() {
+        if (typeof window !== 'undefined' && window.__TalariaToastStack) {
+            try {
+                window.__TalariaToastStack.clearPinned('path-draw-hint');
+            } catch (_) { /* ignore */ }
+        }
         if (this.pathTooltip) {
-            this.pathTooltip.remove();
+            try {
+                if (this.pathTooltip.parentNode) {
+                    this.pathTooltip.parentNode.removeChild(this.pathTooltip);
+                }
+            } catch (_) { /* ignore */ }
             this.pathTooltip = null;
         }
     }

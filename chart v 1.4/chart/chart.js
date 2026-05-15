@@ -3965,7 +3965,13 @@ class Chart {
         this.saveToolDefaults();
     }
     
-    showNotification(message) {
+    showNotification(message, type, duration) {
+        if (typeof window !== 'undefined' && window.__TalariaToastStack) {
+            const t = type && ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
+            const d = Number.isFinite(Number(duration)) ? Number(duration) : 2200;
+            window.__TalariaToastStack.show(String(message != null ? message : ''), { type: t, duration: d });
+            return;
+        }
         const el = document.createElement('div');
         el.className = 'chart-notification chart-toast-tooltip';
         el.style.cssText = [

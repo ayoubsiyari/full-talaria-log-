@@ -985,6 +985,13 @@ class KeyboardShortcutsManager {
     }
     
     showNotification(message, icon = 'mdi-information') {
+        if (typeof window !== 'undefined' && window.__TalariaToastStack) {
+            window.__TalariaToastStack.show(String(message != null ? message : ''), {
+                type: 'info',
+                duration: 1500,
+            });
+            return;
+        }
         // Create temporary notification
         let notification = document.getElementById('shortcutNotification');
         if (!notification) {

@@ -685,6 +685,28 @@ select { cursor:default; }
   color: var(--text-secondary);
 }
 .um-note { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+.um-timeline { margin-top: 8px; max-height: 340px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-raised); }
+.um-tl-row {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px;
+  gap: 10px;
+  align-items: start;
+  font-size: 12px;
+}
+.um-tl-row:last-child { border-bottom: none; }
+.um-tl-kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.um-tl-time { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
+.um-tl-label { color: var(--text); font-weight: 600; line-height: 1.35; }
+.um-tl-detail { color: var(--text-muted); font-size: 11px; margin-top: 4px; word-break: break-word; line-height: 1.4; }
 
 /* ── Access Mode Toggle ─────────────────────────── */
 .access-mode {
@@ -1719,6 +1741,10 @@ select { cursor:default; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
         Support
       </a>
+      <a class="nav-item" data-section="audit-log" onclick="navigate('audit-log')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+        Audit log
+      </a>
       <div class="nav-sep"></div>
       <a class="nav-item" data-section="settings" onclick="navigate('settings')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -1895,11 +1921,11 @@ select { cursor:default; }
             <div class="adm-map-title">Support tickets</div>
             <div class="adm-map-desc">Queue, SLA — live in Support.</div>
           </button>
-          <button type="button" class="adm-map-card" onclick="adminRoadmapStub('Audit log')" title="Roadmap">
+          <button type="button" class="adm-map-card" onclick="navigate('audit-log')" title="Open Audit log">
             <span class="adm-bdg adm-bdg-compliance">Compliance</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Audit log</div>
-            <div class="adm-map-desc">Admin actions, exports — mock.</div>
+            <div class="adm-map-desc">Admin mutations and structured actions — live.</div>
           </button>
           <button type="button" class="adm-map-card" onclick="adminRoadmapStub('Abuse &amp; fraud detection')" title="Roadmap">
             <span class="adm-bdg adm-bdg-trust">Trust</span>
@@ -3054,6 +3080,78 @@ select { cursor:default; }
         </div>
       </div>
 
+      <!-- ════════ AUDIT LOG SECTION ════════ -->
+      <div class="section" id="sec-audit-log">
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+            <div class="card-title">Admin audit log</div>
+            <span class="card-badge" id="auditLogCountBadge">0</span>
+            <button type="button" class="btn sm" onclick="loadAuditLog(true)">Refresh</button>
+          </div>
+          <div class="card-body" style="font-size:13px;line-height:1.55;color:var(--text-secondary)">
+            <p style="margin:0 0 12px">Append-only trail: mutating <code style="font-size:11px">/api/admin/*</code> requests plus structured entries from high-risk handlers. Reads such as this page are not auto-logged.</p>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px">
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">Action contains
+                <input type="text" id="auditFilterAction" placeholder="ban, delete…" style="padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);min-width:120px;font-size:12px" />
+              </label>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">Status
+                <select id="auditFilterStatus" style="padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-size:12px">
+                  <option value="">Any</option>
+                  <option value="ok">ok</option>
+                  <option value="error">error</option>
+                  <option value="denied">denied</option>
+                  <option value="dry_run">dry_run</option>
+                </select>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">Admin user id
+                <input type="text" id="auditFilterAdminId" placeholder="id" style="padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);width:72px;font-size:12px" />
+              </label>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">Target user id
+                <input type="text" id="auditFilterTargetUserId" placeholder="user id" style="padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);width:88px;font-size:12px" />
+              </label>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">Since (days)
+                <input type="text" id="auditFilterSinceDays" placeholder="7" style="padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);width:56px;font-size:12px" />
+              </label>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted);flex:1;min-width:160px">Search (path / params / error)
+                <input type="text" id="auditFilterQ" placeholder="substring…" style="padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);width:100%;font-size:12px" />
+              </label>
+              <button type="button" class="btn sm primary" onclick="loadAuditLog(true)">Apply</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;font-size:12px;color:var(--text-muted)">
+              <span id="auditLogPageInfo">—</span>
+              <button type="button" class="btn sm" id="auditLogPrevBtn" onclick="auditLogPrevPage()">Previous</button>
+              <button type="button" class="btn sm" id="auditLogNextBtn" onclick="auditLogNextPage()">Next</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hdr">
+            <div class="card-title">Entries</div>
+          </div>
+          <div class="card-body" style="padding:0;max-height:calc(100vh - 380px);overflow:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Action</th>
+                  <th>Admin</th>
+                  <th>Status</th>
+                  <th>Method</th>
+                  <th>Path</th>
+                  <th>Target</th>
+                </tr>
+              </thead>
+              <tbody id="auditLogBody"></tbody>
+            </table>
+            <div class="empty-state" id="emptyAuditLog" style="display:none">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg></div>
+              <p>No audit entries match the filters.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ════════ SETTINGS SECTION ════════ -->
       <div class="section" id="sec-settings">
         <div class="card">
@@ -3168,6 +3266,7 @@ const sectionTitles = {
   affiliates: 'Affiliates',
   'bulk-email': 'Bulk email',
   support: 'Support',
+  'audit-log': 'Audit log',
   settings: 'Settings'
 };
 
@@ -3503,6 +3602,75 @@ async function loadSupport() {
   if (selectedSupportId) await selectSupportThread(selectedSupportId);
 }
 
+let auditLogLimit = 100;
+let auditLogOffset = 0;
+let auditLogTotal = 0;
+
+async function loadAuditLog(resetOffset) {
+  if (resetOffset) auditLogOffset = 0;
+  const tbody = $('auditLogBody');
+  const empty = $('emptyAuditLog');
+  const badge = $('auditLogCountBadge');
+  const pageInfo = $('auditLogPageInfo');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="7" style="padding:16px;color:var(--text-muted)">Loading…</td></tr>';
+  try {
+    const params = new URLSearchParams();
+    params.set('limit', String(auditLogLimit));
+    params.set('offset', String(auditLogOffset));
+    const action = ($('auditFilterAction') && $('auditFilterAction').value || '').trim();
+    const status = ($('auditFilterStatus') && $('auditFilterStatus').value) || '';
+    const adminId = ($('auditFilterAdminId') && $('auditFilterAdminId').value || '').trim();
+    const targetUserId = ($('auditFilterTargetUserId') && $('auditFilterTargetUserId').value || '').trim();
+    const sinceDays = ($('auditFilterSinceDays') && $('auditFilterSinceDays').value || '').trim();
+    const qv = ($('auditFilterQ') && $('auditFilterQ').value || '').trim();
+    if (action) params.set('action', action);
+    if (status) params.set('status', status);
+    if (/^\d+$/.test(adminId)) params.set('admin_user_id', adminId);
+    if (/^\d+$/.test(targetUserId)) params.set('target_user_id', targetUserId);
+    if (/^\d+$/.test(sinceDays)) params.set('since_days', sinceDays);
+    if (qv) params.set('q', qv);
+    const data = await api('/api/admin/audit-log?' + params.toString());
+    const entries = data.entries || [];
+    auditLogTotal = typeof data.total === 'number' ? data.total : entries.length;
+    if (badge) badge.textContent = String(auditLogTotal);
+    const start = auditLogTotal === 0 ? 0 : auditLogOffset + 1;
+    const end = Math.min(auditLogOffset + entries.length, auditLogTotal);
+    if (pageInfo) pageInfo.textContent = auditLogTotal ? ('Showing ' + start + '–' + end + ' of ' + auditLogTotal) : 'No rows';
+    const prev = $('auditLogPrevBtn');
+    const next = $('auditLogNextBtn');
+    if (prev) prev.disabled = auditLogOffset <= 0;
+    if (next) next.disabled = auditLogOffset + entries.length >= auditLogTotal;
+    if (!entries.length) {
+      tbody.innerHTML = '';
+      if (empty) empty.style.display = 'flex';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    tbody.innerHTML = entries.map(function (row) {
+      const when = row.created_at ? esc(new Date(row.created_at).toLocaleString()) : '—';
+      const adm = row.admin_email ? esc(row.admin_email) : (row.admin_user_id != null ? ('#' + esc(String(row.admin_user_id))) : '—');
+      const tgt = (row.target_type && row.target_id) ? esc(row.target_type + ':' + row.target_id) : '—';
+      return '<tr><td style="white-space:nowrap;font-variant-numeric:tabular-nums">' + when + '</td><td>' + esc(row.action || '') + '</td><td>' + adm + '</td><td>' + esc(row.status || '') + '</td><td>' + esc(row.method || '') + '</td><td style="font-family:monospace;font-size:11px;max-width:280px;word-break:break-all">' + esc(row.path || '') + '</td><td style="font-size:11px">' + tgt + '</td></tr>';
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:12px;color:var(--danger)">' + esc(e.message || String(e)) + '</td></tr>';
+    if (empty) empty.style.display = 'none';
+  }
+}
+
+function auditLogNextPage() {
+  if (auditLogOffset + auditLogLimit >= auditLogTotal) return;
+  auditLogOffset += auditLogLimit;
+  loadAuditLog(false);
+}
+
+function auditLogPrevPage() {
+  if (auditLogOffset <= 0) return;
+  auditLogOffset = Math.max(0, auditLogOffset - auditLogLimit);
+  loadAuditLog(false);
+}
+
 function navigate(section) {
   stopInsightsSystemPoll();
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -3528,6 +3696,7 @@ function navigate(section) {
   if (section === 'bulk-email') { loadUsers().then(() => renderBulkEmailPanel()); }
   if (section === 'settings') updateSettingsPage();
   if (section === 'support') loadSupport();
+  if (section === 'audit-log') loadAuditLog(true);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3929,7 +4098,7 @@ function umFmtPct01(x) {
   return (x <= 1 ? Math.round(x * 1000) / 10 : Math.round(x * 10) / 10) + '%';
 }
 
-function renderUserMonitorContent(data) {
+function renderUserMonitorContent(data, userId) {
   const u = data.user || {};
   const s = data.summary || {};
   const parts = [];
@@ -3957,6 +4126,8 @@ function renderUserMonitorContent(data) {
   parts.push(umKpi('Subscription', sub ? esc(sub.plan_name + ' · ' + (sub.status || '')) : 'None'));
   parts.push('</div>');
   parts.push('<p class="um-note">' + esc(s.note || '') + '</p>');
+
+  parts.push('<div class="um-section" id="userMonitorTimelineSection"><div class="um-section-k" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">Activity timeline <button type="button" class="btn sm" id="umTimelineRefreshBtn">Refresh</button></div><div class="um-timeline" id="userMonitorTimelineInner"><p style="padding:12px;color:var(--text-muted)">Loading…</p></div></div>');
 
   const ca = data.combined_analytics;
   if (ca && ca.kpis) {
@@ -4024,6 +4195,31 @@ function renderUserMonitorContent(data) {
   parts.push('</div>');
 
   $('userMonitorBody').innerHTML = parts.join('');
+  const rb = $('umTimelineRefreshBtn');
+  if (rb && userId != null) rb.onclick = function () { loadUserMonitorTimeline(userId); };
+}
+
+async function loadUserMonitorTimeline(userId) {
+  const inner = $('userMonitorTimelineInner');
+  if (!inner) return;
+  inner.innerHTML = '<p style="padding:12px;color:var(--text-muted)">Loading…</p>';
+  try {
+    const data = await api('/api/admin/users/' + userId + '/timeline?limit=180');
+    const evs = data.events || [];
+    if (!evs.length) {
+      inner.innerHTML = '<p style="padding:12px;color:var(--text-muted)">No timeline events yet.</p>';
+      return;
+    }
+    inner.innerHTML = evs.map(function (ev) {
+      const t = ev.at ? esc(new Date(ev.at).toLocaleString()) : '—';
+      const kind = esc((ev.kind || '').replace(/_/g, ' '));
+      const lab = esc(ev.label || '');
+      const det = ev.detail ? '<div class="um-tl-detail">' + esc(ev.detail) + '</div>' : '';
+      return '<div class="um-tl-row"><div><div class="um-tl-kind">' + kind + '</div><div class="um-tl-label">' + lab + '</div>' + det + '</div><div class="um-tl-time">' + t + '</div></div>';
+    }).join('');
+  } catch (e) {
+    inner.innerHTML = '<p style="padding:12px;color:var(--danger)">' + esc(e.message || String(e)) + '</p>';
+  }
 }
 
 async function openUserMonitor(userId) {
@@ -4037,7 +4233,8 @@ async function openUserMonitor(userId) {
   try {
     const data = await api('/api/admin/users/' + userId + '/monitor');
     title.textContent = 'User monitor — ' + (data.user && data.user.name ? data.user.name : '#' + userId);
-    renderUserMonitorContent(data);
+    renderUserMonitorContent(data, userId);
+    await loadUserMonitorTimeline(userId);
   } catch (e) {
     body.innerHTML = '';
     if (err) { err.style.display = ''; err.textContent = e.message || String(e); }

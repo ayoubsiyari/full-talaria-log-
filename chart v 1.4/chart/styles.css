@@ -1223,3 +1223,17 @@ body.text-editing * {
     color: #d1d5db;
     font-weight: 600;
 }
+
+/* Price alerts in bottom toast stack: inner card is relative; stack positions the wrapper */
+.tlr-alert-toast-wrap .alert-notification {
+    position: relative;
+    top: auto;
+    right: auto;
+    left: auto;
+    transform: none;
+    max-width: min(92vw, 320px);
+    margin: 0 auto;
+}
+.tlr-alert-toast-wrap .alert-notification.show {
+    opacity: 1;
+}

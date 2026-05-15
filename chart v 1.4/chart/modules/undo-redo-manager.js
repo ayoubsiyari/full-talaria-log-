@@ -495,6 +495,13 @@ class UndoRedoManager {
      * Show notification
      */
     showNotification(message) {
+        if (typeof window !== 'undefined' && window.__TalariaToastStack) {
+            window.__TalariaToastStack.show(String(message != null ? message : ''), {
+                type: 'info',
+                duration: 1000,
+            });
+            return;
+        }
         // Use the keyboard shortcuts notification if available
         let notification = document.getElementById('shortcutNotification');
         if (!notification) {

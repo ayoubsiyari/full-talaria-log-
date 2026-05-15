@@ -1,6 +1,6 @@
 /**
  * Chart Notifications Module
- * Optional helpers; toast visuals align with .chart-tooltip (see chart.js showNotification).
+ * Optional helpers; when __TalariaToastStack is present, toasts stack above the time axis like chart.js.
  */
 
 (function() {
@@ -50,6 +50,13 @@
     };
 
     Chart.prototype.showNotification = function(message, duration = 3000) {
+        if (typeof window !== 'undefined' && window.__TalariaToastStack) {
+            window.__TalariaToastStack.show(String(message != null ? message : ''), {
+                type: 'info',
+                duration: duration,
+            });
+            return;
+        }
         const notification = d3.select('body').append('div');
         applyToastStyles(notification, '3px solid #3b82f6');
         notification.text(message);
@@ -69,6 +76,13 @@
     };
 
     Chart.prototype.showError = function(message) {
+        if (typeof window !== 'undefined' && window.__TalariaToastStack) {
+            window.__TalariaToastStack.show('❌ ' + String(message != null ? message : ''), {
+                type: 'error',
+                duration: 4000,
+            });
+            return;
+        }
         const notification = d3.select('body').append('div');
         applyToastStyles(notification, '3px solid #ef4444');
         notification.text('❌ ' + message);
@@ -88,6 +102,13 @@
     };
 
     Chart.prototype.showSuccess = function(message) {
+        if (typeof window !== 'undefined' && window.__TalariaToastStack) {
+            window.__TalariaToastStack.show('✓ ' + String(message != null ? message : ''), {
+                type: 'success',
+                duration: 3000,
+            });
+            return;
+        }
         const notification = d3.select('body').append('div');
         applyToastStyles(notification, '3px solid #22c55e');
         notification.text('✓ ' + message);
