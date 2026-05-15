@@ -300,6 +300,54 @@ function formatV9HudClock(ms, use12h) {
   return `${String(h12).padStart(2, "0")}:${pad(mm)} ${ampm}`;
 }
 
+/** Futures + lot-size TP rows: integer contracts per leg summing to orderQtyFloor → OM percentages. */
+function v9TpNormalizeFuturesContractShares(rawQtyStrings, orderQtyFloor) {
+  const n = rawQtyStrings.length;
+  if (!n || orderQtyFloor < 1) return rawQtyStrings.map(() => 0);
+  const ri = rawQtyStrings.map((q) => Math.max(0, Math.round(parseFloat(q) || 0)));
+  let sum = ri.reduce((a, b) => a + b, 0);
+  if (sum === 0) {
+    const per = Math.floor(orderQtyFloor / n);
+    const extra = orderQtyFloor - per * n;
+    return ri.map((_, i) => per + (i < extra ? 1 : 0));
+  }
+  if (sum === orderQtyFloor) return ri;
+  const scaled = ri.map((c) => (sum > 0 ? (c * orderQtyFloor) / sum : 0));
+  const floors = scaled.map((x) => Math.floor(x));
+  let used = floors.reduce((a, b) => a + b, 0);
+  let rem = orderQtyFloor - used;
+  const order = scaled
+    .map((x, i) => ({ i, frac: x - floors[i] }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i);
+  const out = [...floors];
+  for (let k = 0; k < rem && k < order.length; k++) out[order[k].i]++;
+  return out;
+}
+
+/** OM TP percentages + total contracts → integer shares (largest remainder). */
+function v9TpFuturesContractsFromPercentages(percentages, orderQtyFloor) {
+  const n = percentages.length;
+  if (!n || orderQtyFloor < 1) return percentages.map(() => 0);
+  const raw = percentages.map((pct) => ((parseFloat(pct) || 0) / 100) * orderQtyFloor);
+  const floors = raw.map((x) => Math.floor(x));
+  let used = floors.reduce((a, b) => a + b, 0);
+  let rem = orderQtyFloor - used;
+  const order = raw
+    .map((x, i) => ({ i, frac: x - floors[i] }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i);
+  const out = [...floors];
+  for (let k = 0; k < rem && k < order.length; k++) out[order[k].i]++;
+  return out;
+}
+
+/** $-mode multi-TP: total $ at risk — SIZE (`riskVal`) or sum of entry legs when split. */
+function v9TpDollarBasisForSplit(entryRows, riskVal) {
+  const rv = Math.max(0, parseFloat(String(riskVal ?? "0")) || 0);
+  if (!Array.isArray(entryRows) || entryRows.length <= 1) return rv;
+  const es = entryRows.reduce((s, r) => s + (parseFloat(String(r?.risk ?? "0")) || 0), 0);
+  return es > 0 ? es : rv;
+}
+
 function formatV9AccountNum(n) {
   const x = Number(n);
   if (!Number.isFinite(x)) return "—";
@@ -579,6 +627,67 @@ function v9ApplyVisibilityFromTlStyle(d, tlStyle) {
   return changed;
 }
 
+/** Indicator settings Visibility tab — same draft shape as Ray / tlStyle (visMinutes…visMonths). */
+const V9_IND_VIS_METAS = [
+  ["visMinutes", "m", "Minutes", 60],
+  ["visHours", "h", "Hours", 24],
+  ["visDays", "d", "Days", 366],
+  ["visWeeks", "w", "Weeks", 260],
+  ["visMonths", "M", "Months", 120],
+];
+
+function v9DefaultIndicatorVisibilityDraftPatch() {
+  const patch = {};
+  V9_IND_VIS_METAS.forEach(([key,,, hardMax]) => {
+    patch[key] = { checked: true, min: 1, max: hardMax };
+  });
+  return patch;
+}
+
+function v9IndicatorVisibilityDraftFromIndicator(existingIndicator) {
+  const patch = v9DefaultIndicatorVisibilityDraftPatch();
+  const vis = existingIndicator && existingIndicator.visibility;
+  const ranges = vis && vis._ranges;
+  if (!ranges || typeof ranges !== "object") return patch;
+  V9_IND_VIS_METAS.forEach(([draftKey, unit,, hardMax]) => {
+    const row = ranges[unit];
+    if (!row || typeof row !== "object") return;
+    let min = Number(row.min);
+    let max = Number(row.max);
+    if (!Number.isFinite(min)) min = 1;
+    if (!Number.isFinite(max)) max = hardMax;
+    min = Math.max(1, Math.min(min, hardMax - 1));
+    max = Math.max(min + 1, Math.min(max, hardMax));
+    patch[draftKey] = {
+      checked: row.enabled !== false,
+      min,
+      max,
+    };
+  });
+  return patch;
+}
+
+function v9IndicatorVisibilityFromDraft(draft) {
+  const _ranges = {};
+  V9_IND_VIS_METAS.forEach(([draftKey, unit,, hardMax]) => {
+    const v = draft && draft[draftKey];
+    if (!v || typeof v !== "object") return;
+    let min = Number(v.min);
+    let max = Number(v.max);
+    if (!Number.isFinite(min)) min = 1;
+    if (!Number.isFinite(max)) max = hardMax;
+    min = Math.max(1, Math.min(min, hardMax - 1));
+    max = Math.max(min + 1, Math.min(max, hardMax));
+    _ranges[unit] = {
+      enabled: v.checked !== false,
+      min,
+      max,
+    };
+  });
+  if (_ranges.M) _ranges.mo = { ..._ranges.M };
+  return { _ranges };
+}
+
 // ─── Multi-chart: every panel tile has its own drawingManager. Never assume getActiveChart()
 // or window.chart alone — focus can point at one surface while the selection lives on another.
 function enumerateV9DrawingManagersFromWindow() {
@@ -757,6 +866,20 @@ function v9TxtStylePatchFromDrawing(d) {
     out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
   }
 
+  if (t === "pin") {
+    out.pinLabelColor = s.fill || s.stroke || "#2962ff";
+    out.bgColor = s.backgroundColor || "#363a45";
+    out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
+    out.borderColor = s.borderColor || "#555";
+    out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
+  } else if (t === "signpost" || t === "signpost-2") {
+    out.bgColor = s.color || "#787b86";
+    out.bgOn = true;
+  } else if (t === "flag-mark") {
+    out.bgColor = s.fill || s.stroke || "#787b86";
+    out.bgOn = true;
+  }
+
   if (s.textAlign) out.horizAlign = s.textAlign;
   if (typeof d.text === "string") out.content = d.text;
   return out;
@@ -844,6 +967,23 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
     applyTextBlock();
     if (txt.bgOn && txt.bgColor != null) s.fill = txt.bgColor;
     else if (!txt.bgOn) s.fill = "#787b86";
+    return;
+  }
+  if (t === "pin") {
+    applyCommon();
+    if (txt.content != null) { d.text = String(txt.content); try { if (typeof d.setText === "function") d.setText(d.text); } catch (_) {} }
+    if (txt.pinLabelColor != null) { s.fill = txt.pinLabelColor; s.stroke = txt.pinLabelColor; }
+    s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
+    s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "none";
+    return;
+  }
+  if (t === "signpost" || t === "signpost-2") {
+    if (txt.bgOn && txt.bgColor != null) s.color = txt.bgColor;
+    if (txt.content != null) { d.text = String(txt.content); try { if (typeof d.setText === "function") d.setText(d.text); } catch (_) {} }
+    return;
+  }
+  if (t === "flag-mark") {
+    if (txt.bgOn && txt.bgColor != null) { s.fill = txt.bgColor; s.stroke = txt.bgColor; }
     return;
   }
   applyCommon();
@@ -1620,7 +1760,10 @@ function v9TlStylePatchFromDrawing(d) {
         })()
       : {}),
     ...(typeof d.text === 'string' ? { textContent: d.text } : {}),
-    ...(s.textColor ? { textColor: s.textColor } : {}),
+    ...(s.textColor ? { textColor: s.textColor }
+       : s.labelTextColor ? { textColor: s.labelTextColor }
+       : s.ratioTextColor ? { textColor: s.ratioTextColor }
+       : {}),
     ...(s.fontSize != null ? { textSize: String(s.fontSize) } : {}),
     ...(s.fontWeight != null && s.fontWeight !== '' ? { textBold: bold } : {}),
     ...(s.fontStyle ? { textItalic: s.fontStyle === 'italic' } : {}),
@@ -2836,6 +2979,7 @@ const TalariaV8bLive = () => {
   const [dlgTab, setDlgTab] = useState("style");
   const [tickCandle, setTickCandle] = useState("candle");
   const [playing, setPlaying] = useState(true);
+  const [replayPlayStarting, setReplayPlayStarting] = useState(false);
   const [speed, setSpeed] = useState(30);
   const [buySell, setBuySell] = useState("buy");
   const [orderType, setOrderType] = useState("market");
@@ -2895,6 +3039,9 @@ const TalariaV8bLive = () => {
   const [omRewardSummaryTxt, setOmRewardSummaryTxt] = useState("$0");
   const [omSlDistTxt, setOmSlDistTxt] = useState("—");
   const [omTpDistTxt, setOmTpDistTxt] = useState("—");
+  const [omPlaceButtonTxt, setOmPlaceButtonTxt] = useState("");
+  const [omOrderQtyTxt, setOmOrderQtyTxt] = useState("0");
+  const [omFuturesMinRiskTxt, setOmFuturesMinRiskTxt] = useState("");
   /** Per-row strings scraped from hidden #orderPanel (order-manager) — matches chart/preview math. */
   const [omEntryRowStatLines, setOmEntryRowStatLines] = useState([]);
   const [omTpRowStatLines, setOmTpRowStatLines] = useState([]);
@@ -2904,6 +3051,10 @@ const TalariaV8bLive = () => {
   /** Multi-TP footer: total size (#orderQuantity) + WAP — matches chart "Avg TP … lots" + weighted price. */
   const [omTpAvgLotsTxt, setOmTpAvgLotsTxt] = useState("");
   const [omTpWapPriceTxt, setOmTpWapPriceTxt] = useState("");
+  /** Row 2 header: spread / commission from session instrument (create-session); margin from #marginLevelBadge. */
+  const [omHeaderSpreadTxt, setOmHeaderSpreadTxt] = useState("—");
+  const [omHeaderCommTxt, setOmHeaderCommTxt] = useState("—");
+  const [omMarginLevelTxt, setOmMarginLevelTxt] = useState("—");
   /** Strategies Lab PRE/POST playbook revision — bumps when session strategy_variables change. */
   const [preTradeDefRevision, setPreTradeDefRevision] = useState(0);
   const preTradeStrategySigRef = useRef("");
@@ -2923,6 +3074,9 @@ const TalariaV8bLive = () => {
   const [notesText, setNotesText] = useState("");
   const [notesOpen, setNotesOpen] = useState(false);
   const [tradeNotes, setTradeNotes] = useState({});
+  const tradeNotesRef = useRef({});
+  /** Latest `c` theme for listeners registered before `const c` exists (avoids TDZ on `c`). */
+  const tradeRowThemeRef = useRef({ gn: "#00D4A1", rd: "#FF5068", tm: "rgba(255,255,255,0.50)" });
   const [tradeScreenshots, setTradeScreenshots] = useState({});
   const [screenshots, setScreenshots] = useState([]);
   const [ssOpen, setSsOpen] = useState(true);
@@ -2930,10 +3084,66 @@ const TalariaV8bLive = () => {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
+    tradeNotesRef.current = tradeNotes;
+  }, [tradeNotes]);
+
+  useEffect(() => {
     const onClearDraft = () => setScreenshots([]);
     window.addEventListener("talaria:order-rail-clear-draft", onClearDraft);
     return () => window.removeEventListener("talaria:order-rail-clear-draft", onClearDraft);
   }, []);
+
+  /** OrderManager legacy journal modal → V9 trade card when `showTradeJournalModal` dispatches on the live shell. */
+  useEffect(() => {
+    const onOpenV9Card = (ev) => {
+      const oid = ev?.detail?.orderId;
+      if (oid == null) return;
+      const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+      let attempts = 0;
+      const maxAttempts = 25;
+      const tryOpen = () => {
+        attempts += 1;
+        const rows = buildLiveTradeRowsFromOrderManager(om, tradeRowThemeRef.current);
+        const r = rows.find((x) => Number(x.omId) === Number(oid));
+        if (r) {
+          const tid = r.omId;
+          let j = null;
+          if (om && tid != null) {
+            j = Array.isArray(om.tradeJournal)
+              ? om.tradeJournal.find((t) => Number(t.tradeId ?? t.id) === Number(tid))
+              : null;
+          }
+          const order =
+            om?.pendingOrders?.find((o) => o.id === tid) ||
+            om?.openPositions?.find((o) => o.id === tid) ||
+            om?.closedPositions?.find((o) => o.id === tid);
+          const noteFallback = j?.v9TradeNotes || order?.journalEntry?.v9TradeNotes || "";
+          const notesMap = tradeNotesRef.current;
+          setTradeCard(r);
+          setTradeCardPreTags([...r.preTags]);
+          setTradeCardPostTags([...r.postTags]);
+          setTradeCardNotes(notesMap[r.id] || noteFallback || "");
+          if (j && (j.entryScreenshot || j.exitScreenshot)) {
+            setTradeScreenshots((prev) => {
+              const ex = prev[r.id] || {};
+              const pre = clampScreenshotSlot([...(ex.pre || [])]);
+              const post = clampScreenshotSlot([...(ex.post || [])]);
+              if (j.entryScreenshot && !pre.includes(j.entryScreenshot)) pre.push(j.entryScreenshot);
+              if (j.exitScreenshot && !post.includes(j.exitScreenshot)) post.push(j.exitScreenshot);
+              return { ...prev, [r.id]: { ...ex, pre: clampScreenshotSlot(pre), post: clampScreenshotSlot(post) } };
+            });
+          }
+          setOmTradeRev((n) => n + 1);
+          return;
+        }
+        if (attempts < maxAttempts) requestAnimationFrame(tryOpen);
+      };
+      requestAnimationFrame(tryOpen);
+    };
+    window.addEventListener("talaria:open-v9-trade-card", onOpenV9Card);
+    return () => window.removeEventListener("talaria:open-v9-trade-card", onOpenV9Card);
+  }, []);
+
   const replaceInputRef = useRef(null);
   const tipTimerRef = useRef(null);
   const [tipData, setTipData] = useState(null);
@@ -3143,8 +3353,11 @@ const TalariaV8bLive = () => {
             if (window.chart && window.chart.resize) {
               window.chart._lastResizeDpr = 0;
               window.chart.resize();
-              window.chart._chartViewRestored = false;
-              window.chart.fitToView && window.chart.fitToView();
+              const replayOwnsViewport = !!(window.chart.isBacktestMode && window.chart.replaySystem);
+              if (!replayOwnsViewport) {
+                window.chart._chartViewRestored = false;
+                window.chart.fitToView && window.chart.fitToView();
+              }
               window.chart.render && window.chart.render();
             }
           } catch (_) {}
@@ -3929,6 +4142,9 @@ const TalariaV8bLive = () => {
       if (cancelled) return;
       const rs = getReplaySystem();
       if (rs) {
+        if (typeof rs.isPlayStarting === 'boolean' && rs.isPlayStarting !== replayPlayStarting) {
+          setReplayPlayStarting(!!rs.isPlayStarting);
+        }
         if (typeof rs.isPlaying === 'boolean' && rs.isPlaying !== playing) {
           setPlaying(rs.isPlaying);
         }
@@ -3940,7 +4156,7 @@ const TalariaV8bLive = () => {
     const id = setInterval(sync, 250);
     return () => { cancelled = true; clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, replayMode, speed]);
+  }, [playing, replayPlayStarting, replayMode, speed]);
 
   // Push V9 mode changes into the replaySystem (skip if user just synced from rs).
   useEffect(() => {
@@ -4110,6 +4326,10 @@ const TalariaV8bLive = () => {
   const [profileCurPw, setProfileCurPw] = useState("");
   const [profileNewPw, setProfileNewPw] = useState("");
   const [profileConfirmPw, setProfileConfirmPw] = useState("");
+  const [profileMe, setProfileMe] = useState(null);
+  const [profileBilling, setProfileBilling] = useState(null);
+  const [profileMeErr, setProfileMeErr] = useState(null);
+  const [profileMeLoading, setProfileMeLoading] = useState(false);
 
   // ─── PROFILE ↔ LEGACY USER STORAGE ──────────────────────────────────────
   // Mirror V9's profile UI to the same sources legacy index.html uses:
@@ -4362,7 +4582,9 @@ const TalariaV8bLive = () => {
         const el = document.getElementById("chart-container");
         if (sm && typeof sm.captureCanvasDirect === "function" && el) {
           try {
-            const rect = el.getBoundingClientRect();
+            const gridEl = document.querySelector("[data-multichart-grid]");
+            const refEl = gridEl || el;
+            const rect = refEl.getBoundingClientRect();
             const rw = rect.width || 1;
             const rh = rect.height || 1;
             const dpr =
@@ -4371,7 +4593,10 @@ const TalariaV8bLive = () => {
                 : 2;
             const maxLongEdge = 4096;
             const captureScale = Math.max(1, Math.min(dpr, maxLongEdge / Math.max(rw, rh)));
-            const canvas = await sm.captureCanvasDirect(el, captureScale);
+            let canvas = (typeof sm.captureMultichartComposite === "function")
+              ? await sm.captureMultichartComposite(captureScale)
+              : null;
+            if (!canvas) canvas = await sm.captureCanvasDirect(el, captureScale);
             if (cancelled || !canvas) return;
             setCanvasDims({ w: canvas.width, h: canvas.height });
             setScreenshotPreviewUrl(canvas.toDataURL("image/jpeg", 0.92));
@@ -4675,6 +4900,12 @@ const TalariaV8bLive = () => {
     visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
     visMonths: { checked: true, min: 1, max: 120 },
   });
+  const [indSettOpen, setIndSettOpen] = useState(false);
+  const [indSettPos, setIndSettPos] = useState({ x: 120, y: 80 });
+  const [indSettTab, setIndSettTab] = useState("style");
+  const [indSettDraft, setIndSettDraft] = useState({});
+  /** Open V9 indicator settings dropdown + viewport anchor (fixed layer avoids overflow clipping). */
+  const [v9IndSelectMenu, setV9IndSelectMenu] = useState(null);
   const [screenshotFlash, setScreenshotFlash] = useState(false);
   const [orderPanelOpen, setOrderPanelOpen] = useState(false);
   const [opSymOpen, setOpSymOpen] = useState(false);
@@ -4695,9 +4926,31 @@ const TalariaV8bLive = () => {
   const [detachSize, setDetachSize] = useState({ w: 336, h: 560 });
   const [panelMode, setPanelMode] = useState("advanced");
   /** Short windows where React row counts intentionally lead OM (panel add/delete) so reverse poll must not fight the forward bridge. */
-  const omPanelBridgeRef = useRef({ entryAdd: 0, entryDel: 0, tpAdd: 0, tpDel: 0 });
+  const omPanelBridgeRef = useRef({ entryAdd: 0, entryDel: 0, tpAdd: 0, tpDel: 0, control: 0 });
+  /** Throttle OM full R:R recompute while React leads the bridge (margin badge reads DOM fed by this). */
+  const omHeaderRecalcRef = useRef(0);
+  const closeOthersForIndSettRef = useRef(() => {});
+  const indSettCtxRef = useRef({ chart: null, indicatorType: "", indicator: null });
+  const rrPushLockRef = useRef(0);
   const OM_PANEL_BRIDGE_LEAD_MS = 750;
   const isOmBridgeLead = (ts) => !!(ts && Date.now() - ts < OM_PANEL_BRIDGE_LEAD_MS);
+  const markOrderControlBridge = () => { omPanelBridgeRef.current.control = Date.now(); };
+  /** Multichart iframe: parent skips setDraftPreview while tile reports SL/TP/entry line drag in progress. */
+  const multichartDraftDragBusyRef = useRef(false);
+  const clickHiddenOrderSide = (side) => {
+    markOrderControlBridge();
+    document.getElementById(side === "sell" ? "sellTab" : "buyTab")?.click();
+  };
+  const clickHiddenOrderType = (type) => {
+    markOrderControlBridge();
+    document.querySelector(`#orderPanel .order-type-btn[data-type="${type}"]`)?.click();
+  };
+  const clickHiddenSizeMode = (mode) => {
+    markOrderControlBridge();
+    const modeMap = { $: "risk-usd", "%": "risk-percent", "#": "lot-size" };
+    const nativeMode = modeMap[mode];
+    if (nativeMode) document.querySelector(`#orderPanel .position-mode-tab[data-mode="${nativeMode}"]`)?.click();
+  };
   const isWide = panelDetached && detachSize.w >= 520;
   const opTemplates = ["Default","Scalp — Trend","Swing Trade","Breakout","Reversal"];
   const [rightPanel, setRightPanel] = useState(null);
@@ -4736,6 +4989,201 @@ const TalariaV8bLive = () => {
   // races re-enabling sync modes (especially `time`) unexpectedly.
   const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: true, interval: false, dateRange: false, indicators: false, chartType: false });
   const [layoutTab, setLayoutTab] = useState("panels");
+
+  // ── Support Chat Widget state ─────────────────────────────────────────
+  const [supportChatOpen, setSupportChatOpen] = useState(false);
+  const [supportThreads, setSupportThreads] = useState([]);
+  const [supportSelThread, setSupportSelThread] = useState(null);
+  const [supportMessages, setSupportMessages] = useState([]);
+  const [supportUnread, setSupportUnread] = useState(0);
+  const [supportNewThread, setSupportNewThread] = useState(false);
+  const [supportReply, setSupportReply] = useState("");
+  const [supportNewSubject, setSupportNewSubject] = useState("");
+  const [supportNewCategory, setSupportNewCategory] = useState("other");
+  const [supportNewBody, setSupportNewBody] = useState("");
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [supportSending, setSupportSending] = useState(false);
+  const [supportError, setSupportError] = useState(null);
+  const supportBtnRef = useRef(null);
+  const supportPopRef = useRef(null);
+  const supportWsRef = useRef(null);
+  const supportMsgEndRef = useRef(null);
+  const supportReplyFileRef = useRef(null);
+  const supportNewFileRef = useRef(null);
+  const [supportReplyFile, setSupportReplyFile] = useState(null);
+  const [supportNewFile, setSupportNewFile] = useState(null);
+  const supportThreadsRef = useRef(supportThreads);
+  supportThreadsRef.current = supportThreads;
+  const supportPingTimerRef = useRef(null);
+
+  const supportApi = async (url, opts = {}) => {
+    const headers = { ...(opts.headers || {}) };
+    if (opts.body != null && !(opts.body instanceof FormData) && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+    const res = await fetch(url, { ...opts, credentials: "include", headers });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Error ${res.status}`);
+    }
+    return res.json();
+  };
+
+  const supportWsUrl = () => {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${proto}//${window.location.host}/ws/support`;
+  };
+
+  const supportLoadThreads = async () => {
+    try {
+      const data = await supportApi("/api/support/threads");
+      setSupportThreads(data.threads || []);
+    } catch (e) { console.warn("[Support] loadThreads", e); }
+  };
+
+  const supportLoadMessages = async (threadId) => {
+    try {
+      const data = await supportApi(`/api/support/threads/${threadId}/messages?limit=200`);
+      setSupportMessages(data.messages || []);
+    } catch (e) { console.warn("[Support] loadMessages", e); }
+  };
+
+  const supportMarkRead = async (threadId) => {
+    try { await supportApi(`/api/support/threads/${threadId}/read`, { method: "PATCH", body: JSON.stringify({}) }); } catch {}
+  };
+
+  const supportLoadNotifications = async () => {
+    try {
+      const data = await supportApi("/api/notifications?limit=50");
+      const unread = (data.notifications || []).filter(n => !n.read_at).length;
+      setSupportUnread(unread);
+    } catch {}
+  };
+
+  const supportDisconnectWs = () => {
+    if (supportPingTimerRef.current) { clearInterval(supportPingTimerRef.current); supportPingTimerRef.current = null; }
+    if (supportWsRef.current) { try { supportWsRef.current.close(); } catch {} supportWsRef.current = null; }
+  };
+
+  const supportConnectWs = (threadId) => {
+    supportDisconnectWs();
+    try {
+      const ws = new WebSocket(supportWsUrl());
+      supportWsRef.current = ws;
+      ws.onopen = () => {
+        try {
+          ws.send(JSON.stringify({ type: "subscribe_inbox" }));
+          if (threadId) ws.send(JSON.stringify({ type: "subscribe", thread_id: threadId }));
+        } catch {}
+        supportPingTimerRef.current = setInterval(() => { try { ws.send(JSON.stringify({ type: "ping" })); } catch {} }, 30000);
+      };
+      ws.onmessage = (ev) => {
+        try {
+          const d = JSON.parse(ev.data);
+          if (d.type === "notification_ping") { supportLoadNotifications(); supportLoadThreads(); return; }
+          if (d.type === "message" && d.message && d.thread_id === threadId) {
+            setSupportMessages(prev => prev.some(x => x.id === d.message.id) ? prev : [...prev, d.message]);
+            supportLoadThreads();
+          }
+        } catch {}
+      };
+      ws.onclose = () => { if (supportWsRef.current === ws) supportWsRef.current = null; };
+    } catch (e) { console.warn("[Support] WS connect failed", e); }
+  };
+
+  const supportSendReply = async () => {
+    const body = supportReply.trim();
+    if ((!body && !supportReplyFile) || !supportSelThread) return;
+    if (supportReplyFile && supportReplyFile.size > 2 * 1024 * 1024) { setSupportError("Image must be 2 MB or smaller."); return; }
+    setSupportSending(true); setSupportError(null);
+    try {
+      if (supportReplyFile) {
+        const fd = new FormData(); fd.append("body", body); fd.append("file", supportReplyFile);
+        await supportApi(`/api/support/threads/${supportSelThread.id}/messages`, { method: "POST", body: fd });
+      } else {
+        await supportApi(`/api/support/threads/${supportSelThread.id}/messages`, { method: "POST", body: JSON.stringify({ body }) });
+      }
+      setSupportReply(""); setSupportReplyFile(null);
+      if (supportReplyFileRef.current) supportReplyFileRef.current.value = "";
+      await supportLoadMessages(supportSelThread.id);
+      await supportMarkRead(supportSelThread.id);
+      await supportLoadThreads();
+      await supportLoadNotifications();
+    } catch (e) { setSupportError(e.message); }
+    setSupportSending(false);
+  };
+
+  const supportCreateThread = async () => {
+    const subject = supportNewSubject.trim();
+    const body = supportNewBody.trim();
+    if (!subject || (!body && !supportNewFile)) return;
+    if (supportNewFile && supportNewFile.size > 2 * 1024 * 1024) { setSupportError("Image must be 2 MB or smaller."); return; }
+    setSupportSending(true); setSupportError(null);
+    try {
+      let data;
+      if (supportNewFile) {
+        const fd = new FormData(); fd.append("subject", subject); fd.append("category", supportNewCategory); fd.append("body", body); fd.append("file", supportNewFile);
+        data = await supportApi("/api/support/threads", { method: "POST", body: fd });
+      } else {
+        data = await supportApi("/api/support/threads", { method: "POST", body: JSON.stringify({ subject, category: supportNewCategory, body }) });
+      }
+      setSupportNewSubject(""); setSupportNewBody(""); setSupportNewFile(null); setSupportNewCategory("other");
+      if (supportNewFileRef.current) supportNewFileRef.current.value = "";
+      setSupportNewThread(false);
+      await supportLoadThreads();
+      if (data.thread?.id) {
+        const thread = data.thread;
+        setSupportSelThread(thread);
+        await supportLoadMessages(thread.id);
+        await supportMarkRead(thread.id);
+        supportConnectWs(thread.id);
+      }
+    } catch (e) { setSupportError(e.message); }
+    setSupportSending(false);
+  };
+
+  // click-away listener for support chat
+  useEffect(() => {
+    if (!supportChatOpen) return;
+    const onDocDown = (e) => {
+      const t = e.target;
+      if (supportBtnRef.current && supportBtnRef.current.contains(t)) return;
+      if (supportPopRef.current && supportPopRef.current.contains(t)) return;
+      setSupportChatOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setSupportChatOpen(false); };
+    document.addEventListener("mousedown", onDocDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDocDown, true); document.removeEventListener("keydown", onKey); };
+  }, [supportChatOpen]);
+
+  // load threads + notifications when panel opens; connect WS
+  useEffect(() => {
+    if (supportChatOpen) {
+      setSupportLoading(true);
+      Promise.all([supportLoadThreads(), supportLoadNotifications()]).finally(() => setSupportLoading(false));
+      if (!supportWsRef.current) supportConnectWs(supportSelThread?.id);
+    }
+    return () => { if (!supportChatOpen) supportDisconnectWs(); };
+  }, [supportChatOpen]);
+
+  // when thread selected, load messages + reconnect WS
+  useEffect(() => {
+    if (supportSelThread) {
+      supportLoadMessages(supportSelThread.id);
+      supportMarkRead(supportSelThread.id);
+      supportConnectWs(supportSelThread.id);
+      supportLoadNotifications();
+    }
+  }, [supportSelThread?.id]);
+
+  // scroll to bottom on new messages
+  useEffect(() => {
+    supportMsgEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [supportMessages]);
+
+  // load unread count on mount
+  useEffect(() => { supportLoadNotifications(); }, []);
 
   /** Same keys as the legacy News country filter (economic-news-sidebar.js). */
   const ECON_CAL_COUNTRIES = ["US", "EU", "GB", "JP", "AU", "CA", "DE", "FR", "IT", "CN", "CH"];
@@ -5290,6 +5738,7 @@ const TalariaV8bLive = () => {
     { id:"SESS", type:"sessions", name:"Session Boxes", abbr:"SESS", cat:"sessions", desc:"Highlights major trading sessions" },
     { id:"SESSPLUS", type:"sessionsplus", name:"Sessions+", abbr:"SESS+", cat:"sessions", desc:"Extended sessions module with labels" },
     { id:"KILLZONES", type:"killzones", name:"ICT Kill Zones", abbr:"ICT KZ", cat:"sessions", desc:"ICT session windows and opens" },
+    { id:"ICTEVERYTHING", type:"icteverything", name:"ICT Everything", abbr:"ICT+", cat:"sessions", desc:"Sessions, CBDR/Asia/FLOUT, verticals & opens (Pine-aligned settings)" },
     { id:"OR", type:"openingrange", name:"Opening Range", abbr:"OR", cat:"sessions", desc:"Session opening range high/low levels" },
 
     // Others
@@ -5302,6 +5751,14 @@ const TalariaV8bLive = () => {
     acc[row.id] = row.type;
     return acc;
   }, {});
+  const MAX_ACTIVE_INDICATORS = 10;
+  const clampActiveIndicatorIds = (ids) => {
+    const out = [];
+    (Array.isArray(ids) ? ids : []).forEach((id) => {
+      if (ID_TO_TYPE[id] && !out.includes(id) && out.length < MAX_ACTIVE_INDICATORS) out.push(id);
+    });
+    return out;
+  };
 
   // ─── SYNC INDICATORS → chart.js ──────────────────────────────────────────
   // V9's indActive (array of V9 indicator IDs like "SMA", "RSI") drives
@@ -5429,9 +5886,11 @@ const TalariaV8bLive = () => {
       };
 
       window.addEventListener("multichartFocusChanged", syncIndUiFromMultichartFocus);
+      window.addEventListener("indicatorsChanged", syncIndUiFromMultichartFocus);
       return () => {
         cancelled = true;
         window.removeEventListener("multichartFocusChanged", syncIndUiFromMultichartFocus);
+        window.removeEventListener("indicatorsChanged", syncIndUiFromMultichartFocus);
       };
     }
     // ─── /Phase 7.2.4 multichart branch ─────────────────────────────────
@@ -5547,11 +6006,13 @@ const TalariaV8bLive = () => {
     window.addEventListener("panelSelected", syncIndUiFromFocusedChart);
     window.addEventListener("panelsCreated", onPanelOrData);
     window.addEventListener("chartDataLoaded", onPanelOrData);
+    window.addEventListener("indicatorsChanged", syncIndUiFromFocusedChart);
     return () => {
       cancelled = true;
       window.removeEventListener("panelSelected", syncIndUiFromFocusedChart);
       window.removeEventListener("panelsCreated", onPanelOrData);
       window.removeEventListener("chartDataLoaded", onPanelOrData);
+      window.removeEventListener("indicatorsChanged", syncIndUiFromFocusedChart);
     };
     // Also re-run when the multichart grid mounts/unmounts (layoutPanels.n
     // crossing 1 ↔ N) so we switch between the legacy single-chart path
@@ -5606,20 +6067,99 @@ const TalariaV8bLive = () => {
     setTimeout(() => { setTxtSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("txtsett"); return n; }); }, 155);
   };
   const closeVwapSett = () => {
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
     setClosing(s => new Set([...s, "vwapsett"]));
     setVwapStyleDrop(null);
     setTimeout(() => { setVwapSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("vwapsett"); return n; }); }, 155);
   };
   const closeVpSett = () => {
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
     setClosing(s => new Set([...s, "vpsett"]));
     setVpStyleDrop(null);
     setTimeout(() => { setVpSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("vpsett"); return n; }); }, 155);
   };
   const closeAvSett = () => {
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
     setClosing(s => new Set([...s, "avsett"]));
     setAvStyleDrop(null);
     setTimeout(() => { setAvSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("avsett"); return n; }); }, 155);
   };
+  const closeIndSett = () => {
+    setV9IndSelectMenu(null);
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
+    setClosing(s => new Set([...s, "indsett"]));
+    setTimeout(() => { setIndSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("indsett"); return n; }); }, 155);
+  };
+  closeOthersForIndSettRef.current = () => {
+    try {
+      if (tlSettOpen) closeTlSett();
+      if (txtSettOpen) closeTxtSett();
+      if (vwapSettOpen) closeVwapSett();
+      if (vpSettOpen) closeVpSett();
+      if (avSettOpen) closeAvSett();
+    } catch (_) {}
+  };
+  useEffect(() => {
+    const openInd = (chartInstance, indicatorType, existingIndicator) => {
+      if (!existingIndicator || !chartInstance || !indicatorType) return false;
+      const defs = typeof window !== "undefined" ? window.INDICATOR_DEFINITIONS : null;
+      const def = defs && defs[indicatorType];
+      if (!def) return false;
+      const tabFn = typeof window.indicatorSettingsTabForParam === "function"
+        ? window.indicatorSettingsTabForParam
+        : (p) => (p.type === "checkbox" ? "visibility" : p.type === "color" ? "style" : "input");
+      try {
+        closeOthersForIndSettRef.current();
+      } catch (_) {}
+      const initialParams = existingIndicator.params || {};
+      const initialStyle = existingIndicator.style || {};
+      const allParams = { ...initialParams, ...initialStyle };
+      if (indicatorType === "custom" && existingIndicator.params) {
+        if (allParams.placement === undefined || allParams.placement === "") {
+          allParams.placement = existingIndicator.params.separatePanel ? "panel" : "overlay";
+        }
+        const cp = existingIndicator.params.customParams;
+        if ((allParams.period === undefined || allParams.period === "") && cp && cp.period != null) {
+          allParams.period = cp.period;
+        }
+      }
+      const draft = {};
+      def.params.forEach((p) => {
+        if (p.type === "heading" || p.type === "divider") return;
+        draft[p.id] = allParams[p.id] !== undefined ? allParams[p.id] : p.default;
+      });
+      draft.visible = existingIndicator.visible !== false;
+      Object.assign(draft, v9IndicatorVisibilityDraftFromIndicator(existingIndicator));
+      const counts = { style: 0, input: 0, visibility: 0 };
+      def.params.forEach((p) => {
+        if (p.type === "heading" || p.type === "divider") return;
+        counts[tabFn(p)]++;
+      });
+      let first = "visibility";
+      if (indicatorType === "icteverything") first = "input";
+      else if (counts.style) first = "style";
+      else if (counts.input) first = "input";
+      indSettCtxRef.current = { chart: chartInstance, indicatorType, indicator: existingIndicator };
+      setIndSettDraft(draft);
+      setIndSettTab(first);
+      const zForPos = (typeof window !== "undefined" && Number(window.__v9Zoom)) || 1;
+      const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+      const halfW = indicatorType === "custom" ? 270 : indicatorType === "icteverything" ? 260 : 210;
+      setIndSettPos({ x: Math.max(8, vw / zForPos / 2 - halfW), y: 72 });
+      setIndSettOpen(true);
+      return true;
+    };
+    if (typeof window !== "undefined") window.__v9OpenIndicatorSettings = openInd;
+    return () => {
+      if (typeof window !== "undefined" && window.__v9OpenIndicatorSettings === openInd) {
+        delete window.__v9OpenIndicatorSettings;
+      }
+    };
+  }, []);
   const closeDropdown = () => {
     if (!dropdown) return;
     cpBarAnchorRef.current = null;
@@ -5679,9 +6219,128 @@ const TalariaV8bLive = () => {
     inputScheme: "light",
   };
   const F = "'Exo 2',sans-serif";
+  tradeRowThemeRef.current = c;
 
   const allSymbols = SYMBOLS_DATA.flatMap(c => c.items);
   const currentSymbol = resolveSessionChartSymbol(symbol, allSymbols);
+  /** Matches order-manager: hide Entry/TP “add level” + when DISABLE_ORDER_ENTRY_PLUS_UI is not false. */
+  const chartEntryPlusSplitUiOff =
+    typeof window !== "undefined" && window.__CHART_ENV?.DISABLE_ORDER_ENTRY_PLUS_UI !== false;
+  /** Show Entry/TP (+): futures need ≥1 whole contract; spot/forex/etc. allow fractional lots (>0). */
+  const v9OrderQtyForSplitUi = Math.max(0, parseFloat(omOrderQtyTxt || "0"));
+  const v9EntryTpPlusVisible =
+    !chartEntryPlusSplitUiOff &&
+    (currentSymbol.type === "futures"
+      ? Math.floor(v9OrderQtyForSplitUi) >= 1
+      : v9OrderQtyForSplitUi > 0);
+
+  // Futures: when there is no contract size yet, collapse to a single TP row. With ≥1 contract,
+  // multi-TP is allowed (integer shares per leg sum to contracts via v9TpNormalizeFuturesContractShares).
+  useEffect(() => {
+    if (currentSymbol.type !== "futures") return;
+    const qOm = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
+    const qRv = Math.floor(Math.max(0, parseFloat(riskVal || "0")));
+    const q = sizeMode === "#" ? (qRv >= 1 ? qRv : qOm) : qOm;
+    if (q >= 1) return;
+    const maxLegs = 1;
+    setTpRows((rows) => {
+      if (rows.length <= maxLegs) return rows;
+      markOrderControlBridge();
+      omPanelBridgeRef.current.tpDel = Date.now();
+      return rows.slice(0, maxLegs);
+    });
+  }, [omOrderQtyTxt, riskVal, sizeMode, currentSymbol.type, tpRows.length]);
+
+  /** Lot-size (#): SIZE (`riskVal`) is contracts/lots — sync single ENTRY + TP row values (legacy "100" was %). */
+  useEffect(() => {
+    if (!orderPanelOpen || sizeMode !== "#") return;
+    const qCore = Math.max(0, parseFloat(riskVal || "0"));
+    const qn = currentSymbol.type === "futures" ? Math.floor(qCore) : qCore;
+    if (!(qn > 0)) return;
+    const wantEntry =
+      currentSymbol.type === "futures" ? String(Math.floor(qCore)) : String(qCore);
+    const wantTpSingle =
+      currentSymbol.type === "futures" ? String(Math.floor(qCore)) : String(qCore);
+
+    setEntryRows((rows) => {
+      if (rows.length !== 1) return rows;
+      const r0 = rows[0];
+      if (String(r0.risk ?? "") === wantEntry) return rows;
+      return [{ ...r0, risk: wantEntry }];
+    });
+
+    setTpRows((rows) => {
+      if (rows.length === 1) {
+        const r0 = rows[0];
+        if (String(r0.qty ?? "") === wantTpSingle) return rows;
+        return [{ ...r0, qty: wantTpSingle }];
+      }
+      if (currentSymbol.type === "futures") {
+        const active = rows.filter((r) => r.enabled !== false);
+        if (active.length < 2) return rows;
+        const shares = v9TpNormalizeFuturesContractShares(
+          active.map((r) => r.qty),
+          Math.floor(qn)
+        );
+        let changed = false;
+        const next = rows.map((row) => {
+          if (row.enabled === false) return row;
+          const ix = active.findIndex((a) => a.id === row.id);
+          if (ix < 0) return row;
+          const w = String(shares[ix] ?? 0);
+          if (String(row.qty) !== w) changed = true;
+          return { ...row, qty: w };
+        });
+        return changed ? next : rows;
+      }
+      return rows;
+    });
+  }, [orderPanelOpen, sizeMode, riskVal, currentSymbol.type]);
+
+  /** $-mode: TP row $ amounts must sum to order basis (SIZE / entry total), not a stale partial. */
+  useEffect(() => {
+    if (!orderPanelOpen || sizeMode !== "$") return;
+    setTpRows((rows) => {
+      if (rows.length < 2) return rows;
+      const basis = v9TpDollarBasisForSplit(entryRows, riskVal);
+      if (!(basis > 0)) return rows;
+      const enabledIdx = rows
+        .map((r, i) => (r.enabled !== false ? i : null))
+        .filter((i) => i != null);
+      if (enabledIdx.length < 2) return rows;
+      let sum = 0;
+      for (const i of enabledIdx) sum += parseFloat(rows[i].qty) || 0;
+      if (Math.abs(sum - basis) <= 0.01) return rows;
+      markOrderControlBridge();
+      if (sum <= 0) {
+        const n = enabledIdx.length;
+        const share = Math.max(1, Math.round(basis / n));
+        const lastAmt = Math.max(0, basis - share * (n - 1));
+        let k = 0;
+        return rows.map((r) => {
+          if (r.enabled === false) return r;
+          const q = k < n - 1 ? share : lastAmt;
+          k++;
+          return { ...r, qty: String(q) };
+        });
+      }
+      const factor = basis / sum;
+      const qs = enabledIdx.map((i) =>
+        Math.max(0, Math.round((parseFloat(rows[i].qty) || 0) * factor))
+      );
+      let drift = basis - qs.reduce((a, b) => a + b, 0);
+      if (qs.length && drift !== 0) {
+        qs[qs.length - 1] = Math.max(0, qs[qs.length - 1] + drift);
+      }
+      let k = 0;
+      return rows.map((r) => {
+        if (r.enabled === false) return r;
+        const q = qs[k++];
+        return { ...r, qty: String(q) };
+      });
+    });
+  }, [orderPanelOpen, sizeMode, riskVal, entryRows, tpRows.length]);
+
   const sessionAssetHintForSymbol = useMemo(() => {
     const want = normalizeSymForBadge(symbol);
     const hit = sessionPairs.find(p => normalizeSymForBadge(p.ticker) === want);
@@ -5826,6 +6485,12 @@ const TalariaV8bLive = () => {
     const chromeMouseHandler = (e) => {
       const el = eventTargetEl(e);
       if (!el) return;
+      // Native <select> lists can deliver mousedown outside the portal subtree; never treat that as
+      // "chart chrome" while a V9 indicator settings select is active (closes list on mouseup).
+      try {
+        const ae = document.activeElement;
+        if (ae && ae.tagName === "SELECT" && typeof ae.closest === "function" && ae.closest("[data-v9-ind-sett=\"1\"]")) return;
+      } catch (_) {}
       // IMPORTANT: return BEFORE tlBar / chart dismiss setState. Presses inside [data-sdrop] must not
       // clear tlBar on first press ("needs many taps").
       if (!isOutsideUiChrome(el)) return;
@@ -5860,6 +6525,26 @@ const TalariaV8bLive = () => {
       document.removeEventListener("wheel", scrollHandler);
     };
   }, []);
+
+  useEffect(() => {
+    if (v9IndSelectMenu == null) return;
+    const onDoc = (ev) => {
+      const t = ev && ev.target;
+      if (t && typeof t.closest === "function" && t.closest("[data-v9-ind-select-root='1']")) return;
+      setV9IndSelectMenu(null);
+    };
+    const onKey = (ev) => {
+      if (ev && ev.key === "Escape") setV9IndSelectMenu(null);
+    };
+    document.addEventListener("pointerdown", onDoc, true);
+    document.addEventListener("mousedown", onDoc, true);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDoc, true);
+      document.removeEventListener("mousedown", onDoc, true);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [v9IndSelectMenu]);
 
   // While the V9 style panel is open, release the full-chart #drawingSvg hit-capture layer
   // (z-index 11 + pointer-events all) so nothing under the body-portaled panel eats clicks.
@@ -5896,7 +6581,7 @@ const TalariaV8bLive = () => {
       if (!style) { style = document.createElement('style'); style.id = 'tlr-scrollbar-css'; document.head.appendChild(style); }
       const sbC = darkMode ? "rgba(140,160,255,0.22)" : "rgba(0,5,40,0.22)";
       const sbH = darkMode ? "rgba(140,160,255,0.44)" : "rgba(0,5,40,0.40)";
-      style.textContent = `*{user-select:none!important;-webkit-user-select:none!important;cursor:default}input,textarea{user-select:text!important;-webkit-user-select:text!important;cursor:text}.tlr-scroll::-webkit-scrollbar{width:3px;height:3px}.tlr-scroll::-webkit-scrollbar-track{background:transparent}.tlr-scroll::-webkit-scrollbar-thumb{background:${sbC};border-radius:2px}.tlr-scroll::-webkit-scrollbar-thumb:hover{background:${sbH}}.tlr-scroll{scrollbar-width:thin;scrollbar-color:${sbC} transparent}.tlr-scroll-tz::-webkit-scrollbar{width:8px;height:8px}.tlr-scroll-tz::-webkit-scrollbar-track{background:rgba(0,0,0,0.12);border-radius:4px}.tlr-scroll-tz::-webkit-scrollbar-thumb{background:${sbH};border-radius:4px;min-height:28px}.tlr-scroll-tz::-webkit-scrollbar-thumb:hover{background:${darkMode?"rgba(180,195,255,0.55)":"rgba(40,55,120,0.55)"}}.tlr-scroll-tz{scrollbar-width:auto;scrollbar-color:${sbH} rgba(0,0,0,0.15)}`;
+      style.textContent = `*{user-select:none!important;-webkit-user-select:none!important;cursor:default}input,textarea{user-select:text!important;-webkit-user-select:text!important;cursor:text}select{user-select:auto!important;-webkit-user-select:auto!important;cursor:default!important}.tlr-ind-select{-webkit-appearance:none;appearance:none;color-scheme:${darkMode ? "dark" : "light"};forced-color-adjust:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%238d93a1' d='M0 1l5 4 5-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:10px 6px;padding-right:26px!important}.tlr-ind-select option,.tlr-ind-select optgroup{background-color:${darkMode ? "#171a24" : "#ffffff"}!important;color:${darkMode ? "#e4e6eb" : "#1a1d29"}!important}.tlr-scroll::-webkit-scrollbar{width:3px;height:3px}.tlr-scroll::-webkit-scrollbar-track{background:transparent}.tlr-scroll::-webkit-scrollbar-thumb{background:${sbC};border-radius:2px}.tlr-scroll::-webkit-scrollbar-thumb:hover{background:${sbH}}.tlr-scroll{scrollbar-width:thin;scrollbar-color:${sbC} transparent}.tlr-scroll-tz::-webkit-scrollbar{width:8px;height:8px}.tlr-scroll-tz::-webkit-scrollbar-track{background:rgba(0,0,0,0.12);border-radius:4px}.tlr-scroll-tz::-webkit-scrollbar-thumb{background:${sbH};border-radius:4px;min-height:28px}.tlr-scroll-tz::-webkit-scrollbar-thumb:hover{background:${darkMode?"rgba(180,195,255,0.55)":"rgba(40,55,120,0.55)"}}.tlr-scroll-tz{scrollbar-width:auto;scrollbar-color:${sbH} rgba(0,0,0,0.15)}`;
     }
   }, [darkMode]);
 
@@ -6001,7 +6686,7 @@ const TalariaV8bLive = () => {
          'price-label', 'price-label-2', 'signpost', 'signpost-2', 'flag-mark', 'image', 'emoji', 'pin', 'table'].includes(type)) {
       return 'text';
     }
-    if (['anchored-vwap', 'fixed-range-volume-profile', 'anchored-volume-profile'].includes(type)) return 'brush';
+    if (['anchored-vwap', 'fixed-range-volume-profile', 'volume-profile', 'anchored-volume-profile'].includes(type)) return 'brush';
     if (type.startsWith('fibonacci-') || type.startsWith('fib-') || type.startsWith('trend-fib-')) return 'fib';
     // Gann tools live on the Fibonacci & Gann rail (`gannBox` … are in V9_RAIL_ICONS_BY_GROUP.fib, not `pattern`).
     // Mapping them to `pattern` caused v9SanitizeGroupSelected to strip the selection → Elliott fallback → no Input tab.
@@ -6016,7 +6701,7 @@ const TalariaV8bLive = () => {
          'disjoint-channel', 'pitchfork'].includes(type)) return 'channel';
     if (['brush', 'highlighter'].includes(type)) return 'brush2';
     if (['ruler', 'short-position', 'long-position', 'price-range',
-         'date-range', 'date-and-price-range'].includes(type)) return 'measure';
+         'date-range', 'date-and-price-range', 'date-price-range'].includes(type)) return 'measure';
     if (['trendline', 'horizontal', 'vertical', 'horizontal-ray', 'ray',
          'extended-line', 'cross-line', 'polyline', 'path', 'curve', 'double-curve'].includes(type)) {
       return 'trendline';
@@ -6166,6 +6851,199 @@ const TalariaV8bLive = () => {
     }
   }, [rightPanel, orderPanelOpen]);
 
+  const openProfileBillingPortal = useCallback(async () => {
+    try {
+      const returnUrl = `${window.location.origin}${window.location.pathname || "/"}`;
+      const r = await fetch("/api/auth/billing-portal", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ return_url: returnUrl }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const d = j.detail;
+        const msg = Array.isArray(d)
+          ? d.map((x) => (typeof x === "object" && x && x.msg ? x.msg : String(x))).join("; ")
+          : typeof d === "string"
+            ? d
+            : "Billing portal failed";
+        window.alert(msg);
+        return;
+      }
+      if (j.url) window.location.assign(j.url);
+    } catch (e) {
+      window.alert(e && e.message ? e.message : "Billing portal failed");
+    }
+  }, []);
+
+  const saveProfileAndClose = useCallback(async () => {
+    try {
+      if (profileMe) {
+        const body = {};
+        const trimmed = (profileName || "").trim();
+        if (trimmed && trimmed !== String(profileMe.name || "").trim()) body.name = trimmed;
+        if (profileNewPw) {
+          if (profileNewPw.length < 8) {
+            window.alert("New password must be at least 8 characters.");
+            return;
+          }
+          if (profileNewPw !== profileConfirmPw) {
+            window.alert("New password and confirmation do not match.");
+            return;
+          }
+          if (!profileCurPw) {
+            window.alert("Enter your current password to set a new one.");
+            return;
+          }
+          body.password = profileNewPw;
+          body.current_password = profileCurPw;
+        }
+        if (Object.keys(body).length) {
+          const r = await fetch("/api/auth/profile", {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const raw = await r.json().catch(() => ({}));
+          if (!r.ok) {
+            const d = raw.detail;
+            const msg = Array.isArray(d)
+              ? d.map((x) => (typeof x === "object" && x && x.msg ? x.msg : String(x))).join("; ")
+              : typeof d === "string"
+                ? d
+                : "Save failed";
+            window.alert(msg);
+            return;
+          }
+          const u = raw.user;
+          if (u) {
+            setProfileMe(u);
+            if (u.name) setProfileName(String(u.name));
+            try {
+              localStorage.setItem("talaria_current_user", JSON.stringify(u));
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (e) {
+      window.alert(e && e.message ? e.message : "Save failed");
+      return;
+    }
+    setProfileCurPw("");
+    setProfileNewPw("");
+    setProfileConfirmPw("");
+    animClose(setProfileOpen, "profile");
+  }, [profileMe, profileName, profileNewPw, profileConfirmPw, profileCurPw]);
+
+  const updateProfilePasswordOnly = useCallback(async () => {
+    if (!profileMe) {
+      window.alert("Account not loaded yet.");
+      return;
+    }
+    if (!profileNewPw) {
+      window.alert("Enter a new password.");
+      return;
+    }
+    if (profileNewPw.length < 8) {
+      window.alert("New password must be at least 8 characters.");
+      return;
+    }
+    if (profileNewPw !== profileConfirmPw) {
+      window.alert("New password and confirmation do not match.");
+      return;
+    }
+    if (!profileCurPw) {
+      window.alert("Enter your current password.");
+      return;
+    }
+    try {
+      const r = await fetch("/api/auth/profile", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: profileMe.name,
+          password: profileNewPw,
+          current_password: profileCurPw,
+        }),
+      });
+      const raw = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const d = raw.detail;
+        const msg = Array.isArray(d)
+          ? d.map((x) => (typeof x === "object" && x && x.msg ? x.msg : String(x))).join("; ")
+          : typeof d === "string"
+            ? d
+            : "Update failed";
+        window.alert(msg);
+        return;
+      }
+      const u = raw.user;
+      if (u) {
+        setProfileMe(u);
+        if (u.name) setProfileName(String(u.name));
+        try {
+          localStorage.setItem("talaria_current_user", JSON.stringify(u));
+        } catch (_) {}
+      }
+      setProfileCurPw("");
+      setProfileNewPw("");
+      setProfileConfirmPw("");
+      window.alert("Password updated.");
+    } catch (e) {
+      window.alert(e && e.message ? e.message : "Update failed");
+    }
+  }, [profileMe, profileCurPw, profileNewPw, profileConfirmPw]);
+
+  useEffect(() => {
+    if (!profileOpen) return;
+    let cancelled = false;
+    setProfileMeLoading(true);
+    setProfileMeErr(null);
+    (async () => {
+      try {
+        const r = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+        if (!r.ok) {
+          if (!cancelled) {
+            setProfileMe(null);
+            setProfileBilling(null);
+            setProfileMeErr(r.status === 401 ? "Sign in to load account." : `Could not load profile (${r.status})`);
+          }
+          return;
+        }
+        const j = await r.json();
+        const u = j.user;
+        if (cancelled) return;
+        setProfileMe(u);
+        setProfileName(u && u.name ? String(u.name) : "Trader");
+        try {
+          if (u) localStorage.setItem("talaria_current_user", JSON.stringify(u));
+        } catch (_) {}
+        const cust = u && String(u.stripe_customer_id || "").trim();
+        if (cust) {
+          try {
+            const br = await fetch("/api/auth/billing-snapshot?limit=12", { credentials: "include", cache: "no-store" });
+            const bj = br.ok ? await br.json() : { success: false, card: null, invoices: [] };
+            if (!cancelled) setProfileBilling(bj);
+          } catch {
+            if (!cancelled) setProfileBilling({ card: null, invoices: [] });
+          }
+        } else if (!cancelled) {
+          setProfileBilling({ card: null, invoices: [] });
+        }
+      } catch (e) {
+        if (!cancelled) setProfileMeErr(e && e.message ? String(e.message) : "Network error");
+      } finally {
+        if (!cancelled) setProfileMeLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profileOpen]);
+
   useEffect(() => {
     const onVis = (e) => {
       const open = !!(e.detail && e.detail.open);
@@ -6238,7 +7116,8 @@ const TalariaV8bLive = () => {
     if (!panel) return;
 
     const tid = window.setTimeout(() => {
-      try {
+      void (async () => {
+        try {
         const wantBuy = buySell === "buy";
         const buyActive = document.getElementById("buyTab")?.classList.contains("active");
         if (wantBuy !== !!buyActive) {
@@ -6274,6 +7153,30 @@ const TalariaV8bLive = () => {
         const om = window.chart?.orderManager;
         const skipPosSync = !!om?.isDraggingPreviewLine;
 
+        const fillLiveEntryFromFocusedMultichartTile = async () => {
+          const g = typeof window !== "undefined" ? window.__multichartGrid : null;
+          if (!g || typeof g.runCommand !== "function" || typeof g.getFocusedPanelId !== "function") {
+            om?.updateOrderPanelPrice?.();
+            return;
+          }
+          const fid = g.getFocusedPanelId();
+          const hid = g.hostPanelId != null ? g.hostPanelId : "A";
+          if (fid == null || String(fid) === String(hid)) {
+            om?.updateOrderPanelPrice?.();
+            return;
+          }
+          try {
+            const d = await g.runCommand("getOrderPanelPriceSnapshot", null, { panelId: fid });
+            if (d && Number.isFinite(Number(d.close)) && d.formatted != null && String(d.formatted) !== "") {
+              setIn("orderEntryPrice", d.formatted);
+            } else {
+              om?.updateOrderPanelPrice?.();
+            }
+          } catch (_e) {
+            om?.updateOrderPanelPrice?.();
+          }
+        };
+
         if (sizeMode === "$") setIn("riskAmountUSD", riskVal);
         else if (sizeMode === "%") {
           let pct = riskVal;
@@ -6289,7 +7192,34 @@ const TalariaV8bLive = () => {
           const wantBal = "current";
           const br = document.querySelector(`input[name="balanceType"][value="${wantBal}"]`);
           if (br && !br.checked) br.click();
-        } else setIn("lotSizeAmount", riskVal);
+        } else {
+          // Lot-size: do not push prior $/% `riskVal` into lots (e.g. "100" dollars → wrong 100 lots).
+          // After the tab switch, #orderQuantity already reflects the last risk-based size — use that.
+          const oqEl = document.getElementById("orderQuantity");
+          const oq = parseFloat(String(oqEl?.value ?? "").replace(/,/g, "") || "0");
+          let lotStr = riskVal;
+          if (Number.isFinite(oq) && oq > 0 && om && typeof om._formatQty === "function" && typeof om._roundQtyToStep === "function") {
+            lotStr = om._formatQty(om._roundQtyToStep(oq));
+          } else if (Number.isFinite(oq) && oq > 0) {
+            lotStr = String(oq);
+          }
+          setIn("lotSizeAmount", lotStr);
+          queueMicrotask(() => {
+            try {
+              setRiskVal((prev) => (prev === lotStr ? prev : lotStr));
+            } catch (_) {}
+          });
+        }
+
+        // Recompute size immediately after risk-mode + inputs sync (otherwise #orderQuantity / readouts
+        // can lag one tick when switching $ ↔ % ↔ #).
+        if (om && !skipPosSync) {
+          try {
+            om.calculatePositionFromRisk?.();
+            om.calculateAdvancedRiskReward?.();
+          } catch (_) {}
+        }
+
         // Multi-entry / multi-TP: chart preview uses orderManager.multiEntryLevels + tpTargets (see order-manager.js).
         const omHasMultiEntry = !!(om?.isMultiEntryMode && (om.multiEntryLevels?.length ?? 0) > 1);
         const mtpOn = !!document.getElementById("multipleTPToggle")?.checked;
@@ -6349,7 +7279,7 @@ const TalariaV8bLive = () => {
           if (entryPx > 0) {
             setIn("orderEntryPrice", String(entryPx));
           } else {
-            om?.updateOrderPanelPrice?.();
+            await fillLiveEntryFromFocusedMultichartTile();
           }
         } else if (!skipPosSync && !omHasMultiEntry) {
           // Preview lines require #orderEntryPrice > 0 (order-manager.js updatePreviewLines). The V8b
@@ -6358,12 +7288,32 @@ const TalariaV8bLive = () => {
           if (entryPx > 0) {
             setIn("orderEntryPrice", String(entryPx));
           } else {
-            om?.updateOrderPanelPrice?.();
+            await fillLiveEntryFromFocusedMultichartTile();
           }
         }
 
         // Multi-TP: mirror React rows into om.tpTargets + list DOM (avoid toggling checkbox every tick — it re-inits).
-        const tpActive = tpRows.filter((r) => r.enabled !== false);
+        // Futures: TP legs share whole contracts via v9TpNormalizeFuturesContractShares (multiple TPs on 1 contract OK).
+        let tpRowsForOm = tpRows;
+        if (!skipPosSync && om && currentSymbol.type === "futures") {
+          const activePre = tpRows.filter((r) => r.enabled !== false);
+          if (activePre.length > 1) {
+            try {
+              om.calculatePositionFromRisk?.();
+            } catch (_) {}
+          }
+        }
+        const tpActive = tpRowsForOm.filter((r) => r.enabled !== false);
+        if (!skipPosSync && currentSymbol.type === "futures" && om && tpActive.length <= 1) {
+          while (Array.isArray(om.tpTargets) && om.tpTargets.length > 1) {
+            const last = om.tpTargets[om.tpTargets.length - 1];
+            try {
+              om.removeTPTarget(last != null && last.id != null ? last.id : om.tpTargets.length - 1);
+            } catch (_) {
+              break;
+            }
+          }
+        }
         if (!skipPosSync && tpActive.length > 1 && om) {
           const mtpEl = document.getElementById("multipleTPToggle");
           if (mtpEl && !mtpEl.checked) {
@@ -6379,10 +7329,24 @@ const TalariaV8bLive = () => {
             if (tpSingleView) tpSingleView.classList.add("is-hidden");
             mtpEl.dispatchEvent(new Event("change", { bubbles: true }));
           }
+          const oqTpFloor = Math.floor(
+            Math.max(0, parseFloat(document.getElementById("orderQuantity")?.value || "0"))
+          );
+          const useFuturesContractTp =
+            sizeMode === "#" && currentSymbol.type === "futures" && oqTpFloor > 0;
+          const contractShares = useFuturesContractTp
+            ? v9TpNormalizeFuturesContractShares(
+                tpActive.map((r) => r.qty),
+                oqTpFloor
+              )
+            : null;
           const nextTgts = tpActive.map((r, idx) => ({
             id: typeof r.id === "number" && Number.isFinite(r.id) ? r.id : idx + 1,
             price: parseFloat(r.price) || 0,
-            percentage: parseFloat(r.qty) || 0,
+            percentage:
+              useFuturesContractTp && contractShares
+                ? (contractShares[idx] / oqTpFloor) * 100
+                : parseFloat(r.qty) || 0,
           }));
           const wantBuyTp = document.getElementById("buyTab")?.classList.contains("active");
           nextTgts.sort((a, b) =>
@@ -6393,7 +7357,11 @@ const TalariaV8bLive = () => {
             for (let i = 0; i < nextTgts.length; i++) {
               const a = om.tpTargets[i];
               const w = nextTgts[i];
-              if (!a || a.price !== w.price || a.percentage !== w.percentage) {
+              if (
+                !a ||
+                a.price !== w.price ||
+                Math.abs((a.percentage || 0) - (w.percentage || 0)) > 1e-4
+              ) {
                 tgDirty = true;
                 break;
               }
@@ -6403,13 +7371,29 @@ const TalariaV8bLive = () => {
             om.tpTargets = nextTgts.map((t) => ({ ...t }));
             om.renderTPTargets?.();
           }
+          if (useFuturesContractTp && contractShares) {
+            let uiDirty = false;
+            for (let i = 0; i < tpActive.length; i++) {
+              if (Math.round(parseFloat(tpActive[i].qty) || 0) !== contractShares[i]) uiDirty = true;
+            }
+            if (uiDirty) {
+              setTpRows((rows) =>
+                rows.map((row) => {
+                  if (row.enabled === false) return row;
+                  const ix = tpActive.findIndex((a) => a.id === row.id);
+                  if (ix < 0) return row;
+                  return { ...row, qty: String(contractShares[ix]) };
+                })
+              );
+            }
+          }
           const numEl = document.getElementById("numTPTargets");
           // Update display only — dispatching input/change runs calculateTPTargetsFromNumber() and
           // rebuilds ladder TPs, wiping manually added rows / prices from the React rail.
           if (numEl && String(numEl.value || "") !== String(nextTgts.length)) {
             numEl.value = String(nextTgts.length);
           }
-        } else if (!skipPosSync && om && omHasMultiTp && tpRows.length === 1) {
+        } else if (!skipPosSync && om && omHasMultiTp && tpRowsForOm.length === 1) {
           // React has one TP row but OM still lists multiple (bridge missed remove). Drop extras so preview math matches.
           while (Array.isArray(om.tpTargets) && om.tpTargets.length > 1) {
             const last = om.tpTargets[om.tpTargets.length - 1];
@@ -6436,7 +7420,7 @@ const TalariaV8bLive = () => {
           }
         }
 
-        const tp0 = tpRows[0];
+        const tp0 = tpRowsForOm[0] ?? tpRows[0];
         setChk("enableSL", slEnabled);
         setChk("enableTP", !!tp0?.enabled);
 
@@ -6463,12 +7447,104 @@ const TalariaV8bLive = () => {
               om?.updatePreviewLines?.();
             } catch (_) {}
           });
+
+          // Multichart: when an iframe panel is focused, the parent's #orderPanel
+          // form values + host updatePreviewLines only redraw the host chart. The
+          // focused iframe runs its own orderManager with its own #orderPanel and
+          // its own SVG, so the preview line never appears on Panel B unless we
+          // forward the draft snapshot via runCommand("setDraftPreview", …). The
+          // bridge (panel-cmd-bridge.js) writes the values into the iframe's hidden
+          // #orderPanel and calls its updatePreviewLines so the user can see and
+          // drag the entry/SL/TP on whichever panel they focused.
+          try {
+            const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+            if (grid && typeof grid.runCommand === "function" && typeof grid.getFocusedPanelId === "function") {
+              const fid = grid.getFocusedPanelId();
+              const hid = grid.hostPanelId != null ? grid.hostPanelId : "A";
+              if (fid != null && String(fid) !== String(hid)) {
+                if (multichartDraftDragBusyRef.current) {
+                  /* iframe chart drag in progress — do not overwrite SL/TP with stale host snapshot */
+                } else {
+                const numFromInput = (id) => {
+                  const el = document.getElementById(id);
+                  const v = el ? parseFloat(el.value) : NaN;
+                  return Number.isFinite(v) ? v : null;
+                };
+                const chkOf = (id) => !!document.getElementById(id)?.checked;
+                const sideFwd = (document.getElementById("buyTab")?.classList.contains("active"))
+                  ? "BUY" : "SELL";
+                const typeBtn = document.querySelector("#orderPanel .order-type-btn.active");
+                const typeFwd = (typeBtn && typeBtn.getAttribute("data-type")) || "market";
+                grid.runCommand("setDraftPreview", {
+                  side:       sideFwd,
+                  type:       typeFwd,
+                  entryPrice: numFromInput("orderEntryPrice"),
+                  slEnabled:  chkOf("enableSL"),
+                  slPrice:    numFromInput("slPrice"),
+                  tpEnabled:  chkOf("enableTP"),
+                  tpPrice:    numFromInput("tpPrice"),
+                }, { panelId: fid }).catch(() => {});
+                }
+              }
+            }
+          } catch (_) {}
         }
       } catch (_) {}
+      })();
     }, 80);
 
     return () => clearTimeout(tid);
-  }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, riskBasis, slEnabled, slRows, entryRows, tpRows]);
+  }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, riskBasis, slEnabled, slRows, entryRows, tpRows, currentSymbol.type, symbol]);
+
+  // Multichart focus change: when the user clicks a different panel, clear the
+  // draft preview on the previously focused surface (host or iframe) so stale
+  // "new order" lines do not stack on executed TP/SL. Then draw the current
+  // draft on the newly focused iframe when the rail is open.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let lastFocusedForDraft = null;
+    const onMultichartFocusChangedForDraft = (ev) => {
+      const grid = window.__multichartGrid;
+      if (!grid || typeof grid.runCommand !== "function") return;
+      const hid = grid.hostPanelId != null ? grid.hostPanelId : "A";
+      const fid    = ev?.detail?.panelId;
+      const prevId = lastFocusedForDraft;
+      lastFocusedForDraft = fid;
+      multichartDraftDragBusyRef.current = false;
+      // Always clear the *previous* panel when focus moves, including when the
+      // previous panel was the host (prevId === hid). Excluding hid left host
+      // preview lines visible after switching to an iframe tile.
+      if (prevId != null && String(prevId) !== String(fid)) {
+        try { grid.runCommand("clearDraftPreview", null, { panelId: prevId }).catch(() => {}); } catch (_) {}
+      }
+      if (!orderPanelOpen) return;
+      if (fid == null || String(fid) === String(hid)) return;
+      try {
+        const numFromInput = (id) => {
+          const el = document.getElementById(id);
+          const v = el ? parseFloat(el.value) : NaN;
+          return Number.isFinite(v) ? v : null;
+        };
+        const chkOf = (id) => !!document.getElementById(id)?.checked;
+        const sideFwd = (document.getElementById("buyTab")?.classList.contains("active")) ? "BUY" : "SELL";
+        const typeBtn = document.querySelector("#orderPanel .order-type-btn.active");
+        const typeFwd = (typeBtn && typeBtn.getAttribute("data-type")) || "market";
+        if (!multichartDraftDragBusyRef.current) {
+          grid.runCommand("setDraftPreview", {
+            side:       sideFwd,
+            type:       typeFwd,
+            entryPrice: numFromInput("orderEntryPrice"),
+            slEnabled:  chkOf("enableSL"),
+            slPrice:    numFromInput("slPrice"),
+            tpEnabled:  chkOf("enableTP"),
+            tpPrice:    numFromInput("tpPrice"),
+          }, { panelId: fid }).catch(() => {});
+        }
+      } catch (_) {}
+    };
+    window.addEventListener("multichartFocusChanged", onMultichartFocusChangedForDraft);
+    return () => window.removeEventListener("multichartFocusChanged", onMultichartFocusChangedForDraft);
+  }, [orderPanelOpen]);
 
   // Mirror hidden #orderPanel → V8b React state. Chart drags / OM logic update the native inputs only;
   // without this, the rail still shows 0 / Market while preview lines show Limit + real prices.
@@ -6478,11 +7554,83 @@ const TalariaV8bLive = () => {
       const panel = document.getElementById("orderPanel");
       // Mirror from OM + hidden inputs whenever the rail is open (class "visible" can lag toggleOrderPanel).
       if (!panel) return;
+      const om = window.chart?.orderManager;
+
+      /** Header + margin read from native OM (must run even when React leads the input bridge). */
+      const syncOmHeaderAndMargin = () => {
+        try {
+          if (isOmBridgeLead(omPanelBridgeRef.current.control) && om) {
+            const now = Date.now();
+            if (now - omHeaderRecalcRef.current > 50) {
+              omHeaderRecalcRef.current = now;
+              om.calculateAdvancedRiskReward?.();
+            }
+          }
+        } catch (_) {}
+        let spreadHdr = "—";
+        let commHdr = "—";
+        try {
+          om?._updateOrderPanelInstrumentCosts?.();
+        } catch (_) {}
+        const instCostsEl = document.getElementById("orderPanelInstrumentCosts");
+        const instRaw = instCostsEl?.style?.display !== "none" ? instCostsEl?.textContent?.replace(/\s+/g, " ").trim() : "";
+        if (instRaw) {
+          const sm = instRaw.match(/Spread:\s*([\d.]+)\s+(pips|pts)/i);
+          const cm = instRaw.match(/Comm:\s*(\$[\d.]+)/i);
+          if (sm) spreadHdr = `${sm[1]} ${(sm[2] || "pips").toLowerCase()}`;
+          if (cm) commHdr = cm[1];
+        } else if (om && typeof om._getActiveInstrumentSettings === "function") {
+          const inst = om._getActiveInstrumentSettings();
+          const mt = om.marketType;
+          if (mt === "futures") {
+            const spreadTicks = Number.parseFloat(
+              inst.spread_pips ??
+                inst.spreadPips ??
+                inst.spread_ticks ??
+                inst.spreadTicks ??
+                inst.spread ??
+                0
+            );
+            const commSide = Number.parseFloat(
+              inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? inst.commission_per_lot ?? 0
+            );
+            if (Number.isFinite(spreadTicks))
+              spreadHdr = `${Number.isInteger(spreadTicks) ? String(spreadTicks) : spreadTicks.toFixed(2)} ticks`;
+            if (Number.isFinite(commSide) && commSide > 0) commHdr = `$${(commSide * 2).toFixed(2)}`;
+          } else if (mt === "forex") {
+            const spread = Number.parseFloat(inst.spread_pips ?? inst.spreadPips ?? 0);
+            const comm = Number.parseFloat(inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? 0);
+            const cfg = typeof om.getMarketConfig === "function" ? om.getMarketConfig() : {};
+            const pipUnit = cfg?.showTicks ? "pts" : "pips";
+            if (Number.isFinite(spread))
+              spreadHdr = `${Math.abs(spread) >= 100 ? spread.toFixed(1) : spread.toFixed(2)} ${pipUnit}`;
+            if (Number.isFinite(comm)) commHdr = `$${comm.toFixed(2)}`;
+          } else {
+            const spread = Number.parseFloat(inst.spread_pips ?? inst.spreadPips ?? inst.spread ?? 0);
+            const comm = Number.parseFloat(inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? 0);
+            if (Number.isFinite(spread)) spreadHdr = String(spread);
+            if (Number.isFinite(comm)) commHdr = `$${comm.toFixed(2)}`;
+          }
+        }
+        setOmHeaderSpreadTxt((prev) => (prev === spreadHdr ? prev : spreadHdr));
+        setOmHeaderCommTxt((prev) => (prev === commHdr ? prev : commHdr));
+        try {
+          om?.updateMarginLevelBadge?.();
+        } catch (_) {}
+        const mrg = document.getElementById("marginLevelBadge")?.textContent?.replace(/\s+/g, " ").trim() || "—";
+        setOmMarginLevelTxt((prev) => (prev === mrg ? prev : mrg));
+        const rsk0 = document.getElementById("riskAmount")?.textContent?.trim() || "$0";
+        const rwd0 = document.getElementById("rewardAmount")?.textContent?.trim() || "$0";
+        setOmRiskSummaryTxt((prev) => (prev === rsk0 ? prev : rsk0));
+        setOmRewardSummaryTxt((prev) => (prev === rwd0 ? prev : rwd0));
+      };
+      syncOmHeaderAndMargin();
+
+      if (isOmBridgeLead(omPanelBridgeRef.current.control)) return;
 
       const ep = document.getElementById("orderEntryPrice")?.value ?? "";
       const slp = document.getElementById("slPrice")?.value ?? "";
       const tpp = document.getElementById("tpPrice")?.value ?? "";
-      const om = window.chart?.orderManager;
       const omMultiEntry =
         !!(om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length > 0);
       const omMultiTp =
@@ -6531,24 +7679,40 @@ const TalariaV8bLive = () => {
         });
       }
 
-      setSlRows((rows) => {
-        if (!rows.length) return rows;
-        const slpN = parseFloat(slp);
-        const cur = parseFloat(rows[0].price || "0");
-        if (Number.isFinite(slpN) && Number.isFinite(cur) && Math.abs(cur - slpN) < 1e-8) return rows;
-        const next = [...rows];
-        next[0] = { ...next[0], price: slp };
-        return next;
-      });
+      const rrLocked = rrPushLockRef.current && Date.now() < rrPushLockRef.current;
 
-      const slOn = !!document.getElementById("enableSL")?.checked;
-      setSlEnabled((prev) => (prev === slOn ? prev : slOn));
+      if (!rrLocked) {
+        setSlRows((rows) => {
+          if (!rows.length) return rows;
+          const slpN = parseFloat(slp);
+          const cur = parseFloat(rows[0].price || "0");
+          if (Number.isFinite(slpN) && Number.isFinite(cur) && Math.abs(cur - slpN) < 1e-8) return rows;
+          const next = [...rows];
+          next[0] = { ...next[0], price: slp };
+          return next;
+        });
 
-      if (omMultiTp && om.tpTargets.length >= 1) {
-        const nextTp = om.tpTargets.map((t) => ({
+        const slOn = !!document.getElementById("enableSL")?.checked;
+        setSlEnabled((prev) => (prev === slOn ? prev : slOn));
+      }
+
+      if (!rrLocked && omMultiTp && om.tpTargets.length >= 1) {
+        const pm = document.querySelector("#orderPanel .position-mode-tab.active")?.dataset?.mode;
+        const lotSizeMode = pm === "lot-size";
+        const wantFuturesContracts =
+          lotSizeMode && om.marketType === "futures";
+        const oqFloorMirror = Math.floor(
+          Math.max(0, parseFloat(document.getElementById("orderQuantity")?.value || "0"))
+        );
+        const pctsAll = om.tpTargets.map((t) => t.percentage);
+        const sharesAll =
+          wantFuturesContracts && oqFloorMirror > 0 && om.tpTargets.length > 0
+            ? v9TpFuturesContractsFromPercentages(pctsAll, oqFloorMirror)
+            : null;
+        const nextTp = om.tpTargets.map((t, ti) => ({
           id: t.id,
           price: String(t.price ?? "0"),
-          qty: String(t.percentage ?? "0"),
+          qty: sharesAll ? String(sharesAll[ti] ?? 0) : String(t.percentage ?? "0"),
           enabled: true,
         }));
         const tpSame = (a, b) =>
@@ -6567,11 +7731,10 @@ const TalariaV8bLive = () => {
           return nextTp;
         });
         if (nextTp.length > 1) setPanelMode("advanced");
-      } else {
+      } else if (!rrLocked) {
         setTpRows((rows) => {
           if (!rows.length) return rows;
           const tpOn = !!document.getElementById("enableTP")?.checked;
-          // Don't collapse while user just clicked "+" — OM is still single-TP until forward bridge enables multi.
           if (rows.length > 1 && !isOmBridgeLead(omPanelBridgeRef.current.tpAdd)) {
             const r0 = rows[0];
             return [{ ...r0, price: tpp, qty: r0.qty ?? "100", enabled: tpOn }];
@@ -6588,39 +7751,43 @@ const TalariaV8bLive = () => {
         });
       }
 
-      const buyOn = document.getElementById("buyTab")?.classList.contains("active");
-      const side = buyOn ? "buy" : "sell";
-      setBuySell((prev) => (prev === side ? prev : side));
+      if (!isOmBridgeLead(omPanelBridgeRef.current.control)) {
+        const buyOn = document.getElementById("buyTab")?.classList.contains("active");
+        const side = buyOn ? "buy" : "sell";
+        setBuySell((prev) => (prev === side ? prev : side));
 
-      const activeOt = document.querySelector("#orderPanel .order-type-btn.active");
-      const ot = activeOt?.dataset?.type;
-      if (ot && ["market", "limit", "stop"].includes(ot)) {
-        setOrderType((prev) => (prev === ot ? prev : ot));
-      }
-
-      const pm = document.querySelector("#orderPanel .position-mode-tab.active")?.dataset?.mode;
-      const sz = pm === "risk-percent" ? "%" : pm === "lot-size" ? "#" : "$";
-      setSizeMode((prev) => (prev === sz ? prev : sz));
-
-      const rid =
-        pm === "risk-percent" ? "riskAmountPercent" : pm === "lot-size" ? "lotSizeAmount" : "riskAmountUSD";
-      let rv = document.getElementById(rid)?.value;
-      if (rv != null && rv !== "" && pm === "risk-percent" && riskBasis === "equity") {
-        const omm = window.chart?.orderManager;
-        const b = Number(omm?.balance);
-        const eq = Number(omm?.equity);
-        if (b > 0 && Number.isFinite(eq)) {
-          rv = String((parseFloat(rv) * b) / eq);
+        const activeOt = document.querySelector("#orderPanel .order-type-btn.active");
+        const ot = activeOt?.dataset?.type;
+        if (ot && ["market", "limit", "stop"].includes(ot)) {
+          setOrderType((prev) => (prev === ot ? prev : ot));
         }
-      }
-      if (rv != null && rv !== "") {
-        setRiskVal((prev) => (prev === rv ? prev : rv));
+
+        const pm = document.querySelector("#orderPanel .position-mode-tab.active")?.dataset?.mode;
+        const sz = pm === "risk-percent" ? "%" : pm === "lot-size" ? "#" : "$";
+        setSizeMode((prev) => (prev === sz ? prev : sz));
+
+        const rid =
+          pm === "risk-percent" ? "riskAmountPercent" : pm === "lot-size" ? "lotSizeAmount" : "riskAmountUSD";
+        let rv = document.getElementById(rid)?.value;
+        if (rv != null && rv !== "" && pm === "risk-percent" && riskBasis === "equity") {
+          const omm = window.chart?.orderManager;
+          const b = Number(omm?.balance);
+          const eq = Number(omm?.equity);
+          if (b > 0 && Number.isFinite(eq)) {
+            rv = String((parseFloat(rv) * b) / eq);
+          }
+        }
+        if (rv != null && rv !== "") {
+          setRiskVal((prev) => (prev === rv ? prev : rv));
+        }
       }
 
       const rsk = document.getElementById("riskAmount")?.textContent?.trim() || "$0";
       const rwd = document.getElementById("rewardAmount")?.textContent?.trim() || "$0";
       setOmRiskSummaryTxt((prev) => (prev === rsk ? prev : rsk));
       setOmRewardSummaryTxt((prev) => (prev === rwd ? prev : rwd));
+      const pbt = document.getElementById("placeOrderButton")?.textContent?.replace(/\s+/g, " ").trim() || "";
+      setOmPlaceButtonTxt((prev) => (prev === pbt ? prev : pbt));
 
       const sd = document.getElementById("slPipsDisplay")?.textContent?.trim() || "—";
       let td = document.getElementById("tpDistanceDisplay")?.textContent?.trim() || "—";
@@ -6647,6 +7814,25 @@ const TalariaV8bLive = () => {
 
       const oqNum = parseFloat(document.getElementById("orderQuantity")?.value ?? "");
       const lotsStr = Number.isFinite(oqNum) ? oqNum.toFixed(2) : "";
+      const qtyStr = Number.isFinite(oqNum) ? String(oqNum) : "0";
+      setOmOrderQtyTxt((prev) => (prev === qtyStr ? prev : qtyStr));
+      let minRiskStr = "";
+      try {
+        const entryPx = parseFloat(document.getElementById("orderEntryPrice")?.value || "0");
+        const slPx = parseFloat(document.getElementById("slPrice")?.value || "0");
+        const slOn = !!document.getElementById("enableSL")?.checked;
+        if (om?.marketType === "futures" && slOn && entryPx > 0 && slPx > 0 && Math.abs(entryPx - slPx) > 0) {
+          let minRisk = NaN;
+          if (typeof om._engineRisk === "function") minRisk = om._engineRisk(entryPx, slPx, 1, entryPx);
+          if (!Number.isFinite(minRisk)) {
+            const pip = Number.isFinite(om.pipSize) && om.pipSize > 0 ? om.pipSize : 0.25;
+            const pv = Number.isFinite(om.pipValuePerLot) && om.pipValuePerLot > 0 ? om.pipValuePerLot : 12.5;
+            minRisk = (Math.abs(entryPx - slPx) / pip) * pv;
+          }
+          if (Number.isFinite(minRisk) && minRisk > 0) minRiskStr = `$${minRisk.toFixed(2)}`;
+        }
+      } catch (_) {}
+      setOmFuturesMinRiskTxt((prev) => (prev === minRiskStr ? prev : minRiskStr));
       setOmTpAvgLotsTxt((prev) => (prev === lotsStr ? prev : lotsStr));
       let wapStr = "";
       if (
@@ -7132,6 +8318,10 @@ const TalariaV8bLive = () => {
     else if(targetKey === "rr_lossColor")   setRrStyle(s=>({...s, lossColor:   colorVal}));
     else if(targetKey === "rr_entryColor")  setRrStyle(s=>({...s, entryColor:  colorVal}));
     else if(targetKey === "rr_labelColor")  setRrStyle(s=>({...s, labelColor:  colorVal}));
+    else if(typeof targetKey === "string" && targetKey.startsWith("ind-")) {
+      const pid = targetKey.slice(4);
+      setIndSettDraft(d => ({ ...d, [pid]: colorVal }));
+    }
     else updateSetting(targetKey, colorVal);
   };
   cpApplyRef.current = cpApply;
@@ -7340,6 +8530,9 @@ const TalariaV8bLive = () => {
       search:     "M784-120 532-372q-30 24-69 38t-83 14q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l252 252-56 56ZM380-400q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z",
       edit:       "M200-200h57l391-391-57-57-391 391v57Zm-80 80v-170l585-583 167 171-582 582H120Zm640-584-56-56 56 56Zm-141 85-28-29 57 57-29-28Z",
       filter:     "M400-240v-80h160v80H400ZM240-440v-80h480v80H240ZM120-640v-80h720v80H120Z",
+      chat:       "M240-400h320v-80H240v80Zm0-120h480v-80H240v80Zm0-120h480v-80H240v80ZM80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Zm126-240h594v-480H160v525l46-45Zm-46 0v-480 480Z",
+      send:       "M120-160v-640l760 320-760 320Zm80-120 474-200-474-200v140l240 60-240 60v140Zm0 0v-400 400Z",
+      attach:     "M720-330q0 104-73 177T470-80q-104 0-177-73t-73-177v-370q0-75 52.5-127.5T400-880q75 0 127.5 52.5T580-700v350q0 46-32 78t-78 32q-46 0-78-32t-32-78v-370h80v370q0 13 8.5 21.5T470-320q13 0 21.5-8.5T500-350v-350q0-42-29-71t-71-29q-42 0-71 29t-29 71v370q0 71 49.5 120.5T470-160q71 0 120.5-49.5T640-330v-390h80v390Z",
     };
     const d = P[n];
     return d ? F(d) : null;
@@ -7450,7 +8643,7 @@ const TalariaV8bLive = () => {
     // Group 7 - Text & Labels
     [{ id: "text", icon: "text", label: "Text & Labels", dd: [
       {h:"TEXT"},{icon:"text",label:"Text"},{icon:"note",label:"Note"},{icon:"priceNote",label:"Price Note"},{icon:"callout",label:"Callout"},{icon:"comment",label:"Comment"},
-      {h:"LABELS"},{icon:"pin",label:"Pin"},{icon:"priceLabel",label:"Price Label"},{icon:"signpost",label:"Signpost"},{icon:"flag",label:"Flag Mark"},{icon:"image",label:"Image"},
+      {h:"LABELS"},{icon:"pin",label:"Pin"},{icon:"signpost",label:"Signpost"},{icon:"flag",label:"Flag Mark"},{icon:"image",label:"Image"},
       {h:"EMOJIS"},{icon:"emoji",label:"Emojis & Stickers"}
     ]}],
     // Group 8 - Patterns & Waves
@@ -7601,7 +8794,7 @@ const TalariaV8bLive = () => {
     abcdPattern: 'abcd-pattern', triPattern: 'triangle-pattern',
     threeDrives: 'three-drives',
     // Projections
-    shortPos: 'short-position', longPos: 'long-position', measure: 'ruler',
+    shortPos: 'short-position', longPos: 'long-position', measure: 'date-price-range',
     // Volume
     vwap: 'anchored-vwap', volProfile: 'fixed-range-volume-profile',
     anchoredVol: 'anchored-volume-profile',
@@ -7617,6 +8810,7 @@ const TalariaV8bLive = () => {
       if (legacy && !m[legacy]) m[legacy] = v9;
     });
     if (!m["rotated-rectangle"]) m["rotated-rectangle"] = "rect";
+    if (!m["volume-profile"]) m["volume-profile"] = "volProfile";
     return m;
   }, []);
 
@@ -7720,7 +8914,7 @@ const TalariaV8bLive = () => {
   const V9_GROUP_DEFAULT = {
     crosshair: null, brush2: 'brush', trendline: 'trendline', rect: 'rectangle',
     channel: 'parallel-channel', fib: 'fibonacci-retracement', text: 'text',
-    pattern: 'elliott-impulse', measure: 'ruler', brush: 'anchored-vwap',
+    pattern: 'elliott-impulse', measure: 'date-price-range', brush: 'anchored-vwap',
     eye: null, magnet: null, lock: null,
   };
 
@@ -7754,6 +8948,7 @@ const TalariaV8bLive = () => {
   // only clear chart.js. If we dm.setTool(legacy), drawing-tools-manager.setTool calls deselectAll()
   // and wipes the selection the user just made — and leaves draw mode armed.
   const v9SelectionToolbarSyncRef = useRef(false);
+  const v9UserExplicitToolRef = useRef(false);
 
   const getSelectedDrawingForTemplate = useCallback(() => {
     try {
@@ -7788,6 +8983,11 @@ const TalariaV8bLive = () => {
   // Runs whenever V9's tool / groupSelected changes. Polls briefly because
   // chart.js / drawingManager may not be initialized yet on first mount.
   useEffect(() => {
+    // Close volume-tool settings/toolbars when switching away from their tool
+    const brushIcon = groupSelected.brush?.icon ?? "vwap";
+    if (tool !== "brush" || brushIcon !== "vwap") { if (vwapSettOpen) closeVwapSett(); }
+    if (tool !== "brush" || brushIcon !== "volProfile") { if (vpSettOpen) closeVpSett(); }
+    if (tool !== "brush" || brushIcon !== "anchoredVol") { if (avSettOpen) closeAvSett(); }
     let cancelled = false; let n = 0;
     /** Push tool into the in-process host chart (and poll until drawingManager exists). */
     const applyHostDm = () => {
@@ -7880,7 +9080,8 @@ const TalariaV8bLive = () => {
           // Refocusing host (A) after drawing on iframe B/C: multichart sync had cleared
           // the host's drawingManager while React still shows the last tool — do not push
           // that stale selection back onto A (bug: rail shows Trend Line on A but A is cursor).
-          if (fid != null && grid.hostPanelId != null && fid === grid.hostPanelId) {
+          // Skip this guard when the user explicitly picked a tool from the sidebar.
+          if (fid != null && grid.hostPanelId != null && fid === grid.hostPanelId && !v9UserExplicitToolRef.current) {
             const hdm = window.chart && window.chart.drawingManager;
             const ct = hdm && hdm.currentTool;
             if (!ct && legacyParam) legacyParam = null;
@@ -7906,7 +9107,7 @@ const TalariaV8bLive = () => {
               }
               return;
             }
-            if (fid != null && grid.hostPanelId != null && fid === grid.hostPanelId) {
+            if (fid != null && grid.hostPanelId != null && fid === grid.hostPanelId && !v9UserExplicitToolRef.current) {
               const hdm = window.chart && window.chart.drawingManager;
               const ct = hdm && hdm.currentTool;
               if (!ct) {
@@ -7918,6 +9119,7 @@ const TalariaV8bLive = () => {
                 return;
               }
             }
+            v9UserExplicitToolRef.current = false;
             applyHostDm();
           };
           void grid.syncDrawingToolAcrossPanels(legacyParam)
@@ -7959,6 +9161,7 @@ const TalariaV8bLive = () => {
         }
       }
 
+      v9UserExplicitToolRef.current = false;
       applyHostDm();
     };
     apply();
@@ -8160,6 +9363,10 @@ const TalariaV8bLive = () => {
   // so the forward bridge below skips that pass and we don't loop.
   const suppressForwardBridge = useRef(false);
   const suppressTxtForwardBridge = useRef(false);
+  const suppressRrForwardBridge = useRef(false);
+  const suppressVwapBridge = useRef(false);
+  const suppressVpBridge = useRef(false);
+  const suppressAvBridge = useRef(false);
 
   // Legacy chart.js saves drawings and updates `d.levels` / style directly; React `tlStyle` does not
   // hear those edits. The forward bridge below would then push *stale* `tlStyle.fibLevels` back onto
@@ -8259,6 +9466,11 @@ const TalariaV8bLive = () => {
           lineWidth: String(s.strokeWidth ?? prev.lineWidth),
           lineType: LEGACY_DASH_TO_V9[(s.dashArray ?? s.strokeDasharray ?? '')] || prev.lineType,
           bgColor: s.fill || s.backgroundColor || prev.bgColor,
+          showBg: typeof s.showBackground === 'boolean' ? s.showBackground : prev.showBg,
+          showBorder: typeof s.borderEnabled === 'boolean' ? s.borderEnabled : prev.showBorder,
+          borderColor: s.borderColor || prev.borderColor,
+          borderType: LEGACY_DASH_TO_V9[(s.borderDasharray || '')] || prev.borderType,
+          borderWidth: s.borderWidth != null ? String(s.borderWidth) : prev.borderWidth,
           ep1: s.startStyle || prev.ep1,
           ep2: s.endStyle || prev.ep2,
           extendLeft: !!s.extendLeft,
@@ -8271,9 +9483,12 @@ const TalariaV8bLive = () => {
           ...(() => {
             const info = s.infoSettings;
             const types = v9ShowInfoTypesFromChartInfoSettings(info);
-            const showInfo = info
-              ? (info.showInfo === true || (types.length > 0 && info.showInfo !== false))
-              : false;
+            // Range tool uses showLabel as master toggle; fall back to infoSettings.showInfo
+            const showInfo = typeof s.showLabel === 'boolean'
+              ? s.showLabel
+              : (info
+                ? (info.showInfo === true || (types.length > 0 && info.showInfo !== false))
+                : false);
             return {
               showInfo,
               showInfoTypes: types.length > 0 ? types : (prev.showInfoTypes || ['Price range']),
@@ -8281,7 +9496,7 @@ const TalariaV8bLive = () => {
           })(),
           labelColor: s.labelColor || prev.labelColor,
           labelFontSize: String(s.labelFontSize ?? prev.labelFontSize),
-          labelBg: !!s.labelBackground,
+          labelBg: typeof s.showLabelBackground === 'boolean' ? s.showLabelBackground : (typeof s.labelBackground === 'boolean' ? s.labelBackground : prev.labelBg),
           labelBgColor: s.labelBackgroundColor || prev.labelBgColor,
           textContent: typeof drawing.text === 'string' ? drawing.text : prev.textContent,
           textColor: s.textColor || prev.textColor,
@@ -8412,17 +9627,48 @@ const TalariaV8bLive = () => {
         // Force tool group → JSX conditional renders the panel.
         setTool(group);
 
+        if (dropdown) closeDropdown();
         if (group === 'text') {
-          // Text tools have their own dedicated settings panel (txtSettOpen).
-          // The generic tlSettOpen panel requires effectiveTlGroup which only
-          // covers line/shape groups — text is intentionally excluded from that
-          // set, so we open the text panel directly instead.
+          closeIndSett();
           setTxtSettPos({ x: px, y: py });
           setTxtSettOpen(true);
+        } else if (drawing.type === 'anchored-vwap') {
+          closeTlSett(); closeTxtSett(); closeVpSett(); closeAvSett(); closeIndSett();
+          suppressVwapBridge.current = true;
+          const ds = drawing.style || {};
+          const DASH_R2 = {'':'solid','5,5':'dashed','2,4':'dotted','7,4,2,4':'dashdot','2,2':'dotted'};
+          const SRC_R2 = {close:"Close",open:"Open",high:"High",low:"Low",hl2:"(H+L)/2",hlc3:"(H+L+C)/3",ohlc4:"(O+H+L+C)/4"};
+          const CALC_R2 = {standard_deviation:"Std Deviation",percentage:"Percentage"};
+          setVwapStyle(prev => ({...prev, vwapColor: ds.stroke||ds.color||prev.vwapColor, vwapLineWidth: String(ds.strokeWidth??prev.vwapLineWidth), vwapLineType: DASH_R2[ds.strokeDasharray||'']||prev.vwapLineType, source: SRC_R2[ds.source]||prev.source, bandsCalcMode: CALC_R2[ds.vwapBandsCalculationMode]||prev.bandsCalcMode, priceLabels: ds.showPriceLabel !== false, timeLabels: ds.showTimeLabel !== false, ...(() => { const p = {}; [1,2,3].forEach(n => { p[`band${n}On`] = ds[`vwapBand${n}Enabled`] !== false; p[`band${n}Color`] = ds[`vwapUpperBand${n}Color`]||prev[`band${n}Color`]; p[`band${n}LineType`] = DASH_R2[ds[`vwapUpperBand${n}Type`]||'']||prev[`band${n}LineType`]; p[`band${n}LineWidth`] = String(ds[`vwapUpperBand${n}Width`]??prev[`band${n}LineWidth`]); p[`bg${n}On`] = !!ds[`vwapBand${n}BackgroundEnabled`]; p[`bg${n}Color`] = ds[`vwapBand${n}BackgroundColor`]||prev[`bg${n}Color`]; p[`mult${n}On`] = ds[`vwapBand${n}Enabled`] !== false; p[`mult${n}Val`] = String(ds[`vwapBand${n}Multiplier`]??prev[`mult${n}Val`]); }); return p; })() }));
+          setVwapSettPos({ x: px, y: py });
+          setVwapSettOpen(true);
+          setVwapSettTab("style");
+        } else if (drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile') {
+          closeTlSett(); closeTxtSett(); closeVwapSett(); closeAvSett(); closeIndSett();
+          suppressVpBridge.current = true;
+          const ds = drawing.style || {};
+          const PLC_R2 = {left:"Left",right:"Right"};
+          const ROW_R2 = {numberOfRows:"Number of Rows",ticksPerRow:"Ticks per Row"};
+          const VOL_R2 = {upDown:"Up/Down",total:"Total",delta:"Delta"};
+          setVpStyle(prev => ({...prev, valuesOn: ds.showValues !== false, valuesColor: ds.valuesColor||prev.valuesColor, widthPct: String(Math.round((ds.profileWidthRatio??0.3)*100)), placement: PLC_R2[ds.profilePlacement]||prev.placement, zoneBgOn: ds.showBackground !== false, zoneBgColor: ds.fill||prev.zoneBgColor, zoneBgAlpha: Math.round((ds.backgroundOpacity??0.85)*100), upVolColor: ds.buyColor||prev.upVolColor, downVolColor: ds.sellColor||prev.downVolColor, valueAreaUpColor: ds.valueAreaBuyColor||prev.valueAreaUpColor, valueAreaDownColor: ds.valueAreaSellColor||prev.valueAreaDownColor, pocOn: ds.showPOC !== false, pocColor: ds.pocColor||prev.pocColor, vahOn: ds.showVAH !== false, vahColor: ds.VAHColor||prev.vahColor, valOn: ds.showVAL !== false, valColor: ds.VALColor||prev.valColor, devPocOn: !!ds.showDevelopingPOC, devPocColor: ds.developingPOCColor||prev.devPocColor, devVAOn: !!ds.showDevelopingVA, devVAColor: ds.developingVAColor||prev.devVAColor, rowsLayout: ROW_R2[ds.rowsLayout]||prev.rowsLayout, rowSize: String(ds.rowSize??prev.rowSize), volumeOn: ds.showVolume !== false, volumeType: VOL_R2[ds.volumeDisplay]||prev.volumeType, valueAreaVol: String(ds.valueAreaVolume??prev.valueAreaVol), extendRight: !!ds.extendRight }));
+          setVpSettPos({ x: px, y: py });
+          setVpSettOpen(true);
+          setVpSettTab("style");
+        } else if (drawing.type === 'anchored-volume-profile') {
+          closeTlSett(); closeTxtSett(); closeVwapSett(); closeVpSett(); closeIndSett();
+          suppressAvBridge.current = true;
+          const ds = drawing.style || {};
+          const PLC_R3 = {left:"Left",right:"Right"};
+          const ROW_R3 = {numberOfRows:"Number of Rows",ticksPerRow:"Ticks per Row"};
+          const VOL_R3 = {upDown:"Up/Down",total:"Total",delta:"Delta"};
+          setAvStyle(prev => ({...prev, valuesOn: ds.showValues !== false, valuesColor: ds.valuesColor||prev.valuesColor, widthPct: String(Math.round((ds.profileWidthRatio??0.3)*100)), placement: PLC_R3[ds.profilePlacement]||prev.placement, zoneBgOn: ds.showBackground !== false, zoneBgColor: ds.fill||prev.zoneBgColor, zoneBgAlpha: Math.round((ds.backgroundOpacity??0.85)*100), upVolColor: ds.buyColor||prev.upVolColor, downVolColor: ds.sellColor||prev.downVolColor, valueAreaUpColor: ds.valueAreaBuyColor||prev.valueAreaUpColor, valueAreaDownColor: ds.valueAreaSellColor||prev.valueAreaDownColor, pocOn: ds.showPOC !== false, pocColor: ds.pocColor||prev.pocColor, vahOn: ds.showVAH !== false, vahColor: ds.VAHColor||prev.vahColor, valOn: ds.showVAL !== false, valColor: ds.VALColor||prev.valColor, devPocOn: !!ds.showDevelopingPOC, devPocColor: ds.developingPOCColor||prev.devPocColor, devVAOn: !!ds.showDevelopingVA, devVAColor: ds.developingVAColor||prev.devVAColor, rowsLayout: ROW_R3[ds.rowsLayout]||prev.rowsLayout, rowSize: String(ds.rowSize??prev.rowSize), volumeOn: ds.showVolume !== false, volumeType: VOL_R3[ds.volumeDisplay]||prev.volumeType, valueAreaVol: String(ds.valueAreaVolume??prev.valueAreaVol), extendRight: !!ds.extendRight }));
+          setAvSettPos({ x: px, y: py });
+          setAvSettOpen(true);
+          setAvSettTab("style");
         } else {
+          closeIndSett();
           setTlSettPos({ x: px, y: py });
           setTlSettOpen(true);
-          // Match legacy index: level edits live on the Input tab — open there for Gann tools.
           if (drawing.type === "gann-box" || drawing.type === "gann-square-fixed" || drawing.type === "gann-fan") {
             setTlSettTab("input");
           }
@@ -8491,7 +9737,15 @@ const TalariaV8bLive = () => {
     LEGACY_TYPE_TO_V9_ICON,
     suppressForwardBridge,
     suppressTxtForwardBridge,
+    suppressRrForwardBridge,
     setTxtStyle,
+    setRrStyle,
+    setVwapStyle,
+    setVpStyle,
+    setAvStyle,
+    setVpBarPos,
+    setAvBarPos,
+    Z,
     v9SelectionToolbarSyncRef,
     drawingTypeToPanelGroupRef,
     editingDrawingRef,
@@ -8572,6 +9826,119 @@ const TalariaV8bLive = () => {
                 br.suppressTxtForwardBridge.current = true;
                 br.setTxtStyle((s) => ({ ...s, ...tp }));
               }
+            }
+            if (drawing.type === 'long-position' || drawing.type === 'short-position') {
+              const rs = drawing.style || {};
+              br.suppressRrForwardBridge.current = true;
+              br.setRrStyle(prev => ({
+                ...prev,
+                profitColor: rs.rewardColor || prev.profitColor,
+                lossColor: rs.riskColor || prev.lossColor,
+                entryColor: rs.entryColor || prev.entryColor,
+                labelFontSize: String(rs.labelFontSize ?? rs.fontSize ?? prev.labelFontSize),
+                labelColor: rs.labelTextColor || rs.textColor || prev.labelColor,
+                showPriceLabels: typeof rs.showPriceLabels === 'boolean' ? rs.showPriceLabels : prev.showPriceLabels,
+                showTimeLabels: typeof rs.showTimeLabels === 'boolean' ? rs.showTimeLabels : prev.showTimeLabels,
+              }));
+            }
+            // Volume tools hydration via tb.show
+            const dt = drawing.type;
+            const ds = drawing.style || {};
+            const DASH_R = {'':'solid','5,5':'dashed','2,4':'dotted','7,4,2,4':'dashdot','2,2':'dotted'};
+            const SRC_R = {close:"Close",open:"Open",high:"High",low:"Low",hl2:"(H+L)/2",hlc3:"(H+L+C)/3",ohlc4:"(O+H+L+C)/4"};
+            const CALC_R = {standard_deviation:"Std Deviation",percentage:"Percentage"};
+            const ROW_R = {numberOfRows:"Number of Rows",ticksPerRow:"Ticks per Row"};
+            const VOL_R = {upDown:"Up/Down",total:"Total",delta:"Delta"};
+            const PLC_R = {left:"Left",right:"Right"};
+            if (dt === 'anchored-vwap') {
+              suppressVwapBridge.current = true;
+              br.setVwapStyle(prev => ({
+                ...prev,
+                vwapColor: ds.stroke || ds.color || prev.vwapColor,
+                vwapLineWidth: String(ds.strokeWidth ?? prev.vwapLineWidth),
+                vwapLineType: DASH_R[ds.strokeDasharray || ''] || prev.vwapLineType,
+                source: SRC_R[ds.source] || prev.source,
+                bandsCalcMode: CALC_R[ds.vwapBandsCalculationMode] || prev.bandsCalcMode,
+                priceLabels: ds.showPriceLabel !== false,
+                timeLabels: ds.showTimeLabel !== false,
+                ...(() => { const p = {}; [1,2,3].forEach(n => {
+                  p[`band${n}On`] = ds[`vwapBand${n}Enabled`] !== false;
+                  p[`band${n}Color`] = ds[`vwapUpperBand${n}Color`] || prev[`band${n}Color`];
+                  p[`band${n}LineType`] = DASH_R[ds[`vwapUpperBand${n}Type`] || ''] || prev[`band${n}LineType`];
+                  p[`band${n}LineWidth`] = String(ds[`vwapUpperBand${n}Width`] ?? prev[`band${n}LineWidth`]);
+                  p[`bg${n}On`] = !!ds[`vwapBand${n}BackgroundEnabled`];
+                  p[`bg${n}Color`] = ds[`vwapBand${n}BackgroundColor`] || prev[`bg${n}Color`];
+                  p[`mult${n}On`] = ds[`vwapBand${n}Enabled`] !== false;
+                  p[`mult${n}Val`] = String(ds[`vwapBand${n}Multiplier`] ?? prev[`mult${n}Val`]);
+                }); return p; })(),
+              }));
+            }
+            if (dt === 'volume-profile' || dt === 'fixed-range-volume-profile') {
+              suppressVpBridge.current = true;
+              br.setVpStyle(prev => ({
+                ...prev, valuesOn: ds.showValues !== false, valuesColor: ds.valuesColor || prev.valuesColor,
+                widthPct: String(Math.round((ds.profileWidthRatio ?? 0.3) * 100)),
+                placement: PLC_R[ds.profilePlacement] || prev.placement,
+                zoneBgOn: ds.showBackground !== false, zoneBgColor: ds.fill || prev.zoneBgColor,
+                zoneBgAlpha: Math.round((ds.backgroundOpacity ?? 0.85) * 100),
+                upVolColor: ds.buyColor || prev.upVolColor, downVolColor: ds.sellColor || prev.downVolColor,
+                valueAreaUpColor: ds.valueAreaBuyColor || prev.valueAreaUpColor,
+                valueAreaDownColor: ds.valueAreaSellColor || prev.valueAreaDownColor,
+                pocOn: ds.showPOC !== false, pocColor: ds.pocColor || prev.pocColor,
+                vahOn: ds.showVAH !== false, vahColor: ds.VAHColor || prev.vahColor,
+                valOn: ds.showVAL !== false, valColor: ds.VALColor || prev.valColor,
+                devPocOn: !!ds.showDevelopingPOC, devPocColor: ds.developingPOCColor || prev.devPocColor,
+                devVAOn: !!ds.showDevelopingVA, devVAColor: ds.developingVAColor || prev.devVAColor,
+                rowsLayout: ROW_R[ds.rowsLayout] || prev.rowsLayout, rowSize: String(ds.rowSize ?? prev.rowSize),
+                volumeOn: ds.showVolume !== false, volumeType: VOL_R[ds.volumeDisplay] || prev.volumeType,
+                valueAreaVol: String(ds.valueAreaVolume ?? prev.valueAreaVol), extendRight: !!ds.extendRight,
+              }));
+            }
+            if (dt === 'anchored-volume-profile') {
+              suppressAvBridge.current = true;
+              br.setAvStyle(prev => ({
+                ...prev, valuesOn: ds.showValues !== false, valuesColor: ds.valuesColor || prev.valuesColor,
+                widthPct: String(Math.round((ds.profileWidthRatio ?? 0.3) * 100)),
+                placement: PLC_R[ds.profilePlacement] || prev.placement,
+                zoneBgOn: ds.showBackground !== false, zoneBgColor: ds.fill || prev.zoneBgColor,
+                zoneBgAlpha: Math.round((ds.backgroundOpacity ?? 0.85) * 100),
+                upVolColor: ds.buyColor || prev.upVolColor, downVolColor: ds.sellColor || prev.downVolColor,
+                valueAreaUpColor: ds.valueAreaBuyColor || prev.valueAreaUpColor,
+                valueAreaDownColor: ds.valueAreaSellColor || prev.valueAreaDownColor,
+                pocOn: ds.showPOC !== false, pocColor: ds.pocColor || prev.pocColor,
+                vahOn: ds.showVAH !== false, vahColor: ds.VAHColor || prev.vahColor,
+                valOn: ds.showVAL !== false, valColor: ds.VALColor || prev.valColor,
+                devPocOn: !!ds.showDevelopingPOC, devPocColor: ds.developingPOCColor || prev.devPocColor,
+                devVAOn: !!ds.showDevelopingVA, devVAColor: ds.developingVAColor || prev.devVAColor,
+                rowsLayout: ROW_R[ds.rowsLayout] || prev.rowsLayout, rowSize: String(ds.rowSize ?? prev.rowSize),
+                volumeOn: ds.showVolume !== false, volumeType: VOL_R[ds.volumeDisplay] || prev.volumeType,
+                valueAreaVol: String(ds.valueAreaVolume ?? prev.valueAreaVol), extendRight: !!ds.extendRight,
+              }));
+            }
+            // Position the dedicated VP/AV toolbar near the drawing
+            if (dt === 'volume-profile' || dt === 'fixed-range-volume-profile' || dt === 'anchored-volume-profile') {
+              try {
+                const gEl = drawing.group && drawing.group.node ? drawing.group.node() : null;
+                const ch2 = window.chart;
+                const cEl = ch2 && ch2.container;
+                if (gEl && cEl) {
+                  const bbox = gEl.getBBox();
+                  const svg = gEl.ownerSVGElement;
+                  const svgR = svg ? svg.getBoundingClientRect() : (cEl.getBoundingClientRect ? cEl.getBoundingClientRect() : {left:0,top:0});
+                  const zz = br.Z || 1;
+                  const bx = (svgR.left + bbox.x * (svgR.width / (svg ? (svg.viewBox.baseVal.width || svgR.width) : svgR.width))) / zz;
+                  const by2 = (svgR.top + bbox.y * (svgR.height / (svg ? (svg.viewBox.baseVal.height || svgR.height) : svgR.height))) / zz;
+                  const barW2 = 220;
+                  const vpW3 = window.innerWidth / zz;
+                  const nx = Math.max(8, Math.min(bx + (bbox.width / 2) / zz - barW2 / 2, vpW3 - barW2 - 8));
+                  const ny2 = Math.max(8, by2 - 44);
+                  if (dt === 'volume-profile' || dt === 'fixed-range-volume-profile') {
+                    br.setVpBarPos({ x: nx, y: ny2 });
+                  } else {
+                    br.setAvBarPos({ x: nx, y: ny2 });
+                  }
+                }
+              } catch (_) {}
             }
           }
         } catch (_) {}
@@ -8680,6 +10047,119 @@ const TalariaV8bLive = () => {
           if (tp && Object.keys(tp).length) {
             br.suppressTxtForwardBridge.current = true;
             br.setTxtStyle((s) => ({ ...s, ...tp }));
+          }
+        }
+        // Hydrate volume tool panels from selected drawing
+        if (drawing && drawing.style) {
+          const s = drawing.style;
+          const DASH_REV = {'':'solid','5,5':'dashed','2,4':'dotted','7,4,2,4':'dashdot','2,2':'dotted'};
+          const SRC_REV = {close:"Close",open:"Open",high:"High",low:"Low",hl2:"(H+L)/2",hlc3:"(H+L+C)/3",ohlc4:"(O+H+L+C)/4"};
+          const CALC_REV = {standard_deviation:"Std Deviation",percentage:"Percentage"};
+          const ROW_REV = {numberOfRows:"Number of Rows",ticksPerRow:"Ticks per Row"};
+          const VOL_REV = {upDown:"Up/Down",total:"Total",delta:"Delta"};
+          const PLC_REV = {left:"Left",right:"Right"};
+          if (t === 'anchored-vwap') {
+            suppressVwapBridge.current = true;
+            br.setVwapStyle(prev => ({
+              ...prev,
+              vwapColor: s.stroke || s.color || prev.vwapColor,
+              vwapLineWidth: String(s.strokeWidth ?? prev.vwapLineWidth),
+              vwapLineType: DASH_REV[s.strokeDasharray || ''] || prev.vwapLineType,
+              source: SRC_REV[s.source] || prev.source,
+              bandsCalcMode: CALC_REV[s.vwapBandsCalculationMode] || prev.bandsCalcMode,
+              priceLabels: s.showPriceLabel !== false,
+              timeLabels: s.showTimeLabel !== false,
+              ...(() => {
+                const p = {};
+                [1,2,3].forEach(n => {
+                  p[`band${n}On`] = s[`vwapBand${n}Enabled`] !== false;
+                  p[`band${n}Color`] = s[`vwapUpperBand${n}Color`] || prev[`band${n}Color`];
+                  p[`band${n}LineType`] = DASH_REV[s[`vwapUpperBand${n}Type`] || ''] || prev[`band${n}LineType`];
+                  p[`band${n}LineWidth`] = String(s[`vwapUpperBand${n}Width`] ?? prev[`band${n}LineWidth`]);
+                  p[`bg${n}On`] = !!s[`vwapBand${n}BackgroundEnabled`];
+                  p[`bg${n}Color`] = s[`vwapBand${n}BackgroundColor`] || prev[`bg${n}Color`];
+                  p[`mult${n}On`] = s[`vwapBand${n}Enabled`] !== false;
+                  p[`mult${n}Val`] = String(s[`vwapBand${n}Multiplier`] ?? prev[`mult${n}Val`]);
+                });
+                return p;
+              })(),
+            }));
+          }
+          if (t === 'volume-profile' || t === 'fixed-range-volume-profile') {
+            suppressVpBridge.current = true;
+            br.setVpStyle(prev => ({
+              ...prev,
+              valuesOn: s.showValues !== false, valuesColor: s.valuesColor || prev.valuesColor,
+              widthPct: String(Math.round((s.profileWidthRatio ?? 0.3) * 100)),
+              placement: PLC_REV[s.profilePlacement] || prev.placement,
+              zoneBgOn: s.showBackground !== false, zoneBgColor: s.fill || prev.zoneBgColor,
+              zoneBgAlpha: Math.round((s.backgroundOpacity ?? 0.85) * 100),
+              upVolColor: s.buyColor || prev.upVolColor,
+              downVolColor: s.sellColor || prev.downVolColor,
+              valueAreaUpColor: s.valueAreaBuyColor || prev.valueAreaUpColor,
+              valueAreaDownColor: s.valueAreaSellColor || prev.valueAreaDownColor,
+              pocOn: s.showPOC !== false, pocColor: s.pocColor || prev.pocColor,
+              vahOn: s.showVAH !== false, vahColor: s.VAHColor || prev.vahColor,
+              valOn: s.showVAL !== false, valColor: s.VALColor || prev.valColor,
+              devPocOn: !!s.showDevelopingPOC, devPocColor: s.developingPOCColor || prev.devPocColor,
+              devVAOn: !!s.showDevelopingVA, devVAColor: s.developingVAColor || prev.devVAColor,
+              rowsLayout: ROW_REV[s.rowsLayout] || prev.rowsLayout,
+              rowSize: String(s.rowSize ?? prev.rowSize),
+              volumeOn: s.showVolume !== false, volumeType: VOL_REV[s.volumeDisplay] || prev.volumeType,
+              valueAreaVol: String(s.valueAreaVolume ?? prev.valueAreaVol),
+              extendRight: !!s.extendRight,
+            }));
+          }
+          if (t === 'anchored-volume-profile') {
+            suppressAvBridge.current = true;
+            br.setAvStyle(prev => ({
+              ...prev,
+              valuesOn: s.showValues !== false, valuesColor: s.valuesColor || prev.valuesColor,
+              widthPct: String(Math.round((s.profileWidthRatio ?? 0.3) * 100)),
+              placement: PLC_REV[s.profilePlacement] || prev.placement,
+              zoneBgOn: s.showBackground !== false, zoneBgColor: s.fill || prev.zoneBgColor,
+              zoneBgAlpha: Math.round((s.backgroundOpacity ?? 0.85) * 100),
+              upVolColor: s.buyColor || prev.upVolColor,
+              downVolColor: s.sellColor || prev.downVolColor,
+              valueAreaUpColor: s.valueAreaBuyColor || prev.valueAreaUpColor,
+              valueAreaDownColor: s.valueAreaSellColor || prev.valueAreaDownColor,
+              pocOn: s.showPOC !== false, pocColor: s.pocColor || prev.pocColor,
+              vahOn: s.showVAH !== false, vahColor: s.VAHColor || prev.vahColor,
+              valOn: s.showVAL !== false, valColor: s.VALColor || prev.valColor,
+              devPocOn: !!s.showDevelopingPOC, devPocColor: s.developingPOCColor || prev.devPocColor,
+              devVAOn: !!s.showDevelopingVA, devVAColor: s.developingVAColor || prev.devVAColor,
+              rowsLayout: ROW_REV[s.rowsLayout] || prev.rowsLayout,
+              rowSize: String(s.rowSize ?? prev.rowSize),
+              volumeOn: s.showVolume !== false, volumeType: VOL_REV[s.volumeDisplay] || prev.volumeType,
+              valueAreaVol: String(s.valueAreaVolume ?? prev.valueAreaVol),
+              extendRight: !!s.extendRight,
+            }));
+          }
+          // Position dedicated VP/AV toolbar near the drawing
+          if (t === 'volume-profile' || t === 'fixed-range-volume-profile' || t === 'anchored-volume-profile') {
+            try {
+              const gEl = live && live.group && live.group.node ? live.group.node() : null;
+              if (gEl) {
+                const bbox = gEl.getBBox();
+                const svg = gEl.ownerSVGElement;
+                const svgR = svg ? svg.getBoundingClientRect() : {left:0,top:0,width:1,height:1};
+                const zz = br.Z || 1;
+                const scX = svgR.width / (svg && svg.viewBox.baseVal.width ? svg.viewBox.baseVal.width : svgR.width);
+                const scY = svgR.height / (svg && svg.viewBox.baseVal.height ? svg.viewBox.baseVal.height : svgR.height);
+                const bx = (svgR.left + bbox.x * scX) / zz;
+                const by2 = (svgR.top + bbox.y * scY) / zz;
+                const bw = bbox.width * scX / zz;
+                const barW2 = 220;
+                const vpW3 = window.innerWidth / zz;
+                const nx = Math.max(8, Math.min(bx + bw / 2 - barW2 / 2, vpW3 - barW2 - 8));
+                const ny2 = Math.max(8, by2 - 44);
+                if (t === 'volume-profile' || t === 'fixed-range-volume-profile') {
+                  br.setVpBarPos({ x: nx, y: ny2 });
+                } else {
+                  br.setAvBarPos({ x: nx, y: ny2 });
+                }
+              }
+            } catch (_) {}
           }
         }
       } catch (_) {}
@@ -8825,6 +10305,12 @@ const TalariaV8bLive = () => {
       // Fill (shapes, channels, range tool background, etc.)
       fill: tlStyle.bgColor,
       backgroundColor: tlStyle.bgColor,
+      showBackground: !!tlStyle.showBg,
+      // Border (range tool)
+      borderEnabled: !!tlStyle.showBorder,
+      borderColor: tlStyle.borderColor,
+      borderDasharray: V9_DASH_TO_LEGACY[tlStyle.borderType] ?? '',
+      borderWidth: parseInt(tlStyle.borderWidth, 10) || 1,
       // Endpoints (V9 uses 'normal' / 'arrow' / 'arrowFilled' etc; chart.js
       // drawing-tools-lines.js reads style.startStyle / style.endStyle).
       startStyle: tlStyle.ep1,
@@ -8840,10 +10326,13 @@ const TalariaV8bLive = () => {
                 : tlStyle.rangeType === 'Date and time' ? 'time'
                 : 'both',
       infoSettings: v9ChartInfoSettingsFromTlStyle(tlStyle),
+      // Range tool: master label toggle (controls whether the info label renders)
+      showLabel: !!tlStyle.showInfo,
       // Label sub-styling (used by range tool / fib labels)
       labelColor: tlStyle.labelColor,
       labelFontSize: parseInt(tlStyle.labelFontSize, 10) || 12,
       labelBackground: !!tlStyle.labelBg,
+      showLabelBackground: !!tlStyle.labelBg,
       labelBackgroundColor: tlStyle.labelBgColor,
       // Line/shape label text (Text tab — matches drawing-tools-lines renderTextLabel)
       textColor: tlStyle.textColor,
@@ -8952,6 +10441,14 @@ const TalariaV8bLive = () => {
         } else if (d.type === "gann-fan") {
           v9ApplyGannFanFromTlStyle(d, tlStyle);
         }
+        const patTypes = ["xabcd-pattern","cypher-pattern","head-shoulders","abcd-pattern","triangle-pattern","three-drives",
+          "elliott-impulse","elliott-correction","elliott-triangle","elliott-double-combo","elliott-triple-combo"];
+        if (patTypes.includes(d.type)) {
+          if (tlStyle.textColor) {
+            d.style.labelTextColor = tlStyle.textColor;
+            d.style.ratioTextColor = tlStyle.textColor;
+          }
+        }
         // Prefer onUpdate (history + render + persist + saveDrawings).
         if (tb && typeof tb.onUpdate === 'function') {
           try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
@@ -8966,7 +10463,8 @@ const TalariaV8bLive = () => {
       chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
     } catch (err) { console.warn('[V9 style bridge] failed:', err); }
   }, [
-    tlStyle.lineColor, tlStyle.lineWidth, tlStyle.lineType, tlStyle.bgColor,
+    tlStyle.lineColor, tlStyle.lineWidth, tlStyle.lineType, tlStyle.bgColor, tlStyle.showBg,
+    tlStyle.showBorder, tlStyle.borderColor, tlStyle.borderType, tlStyle.borderWidth,
     tlStyle.midLine, tlStyle.midLineColor, tlStyle.midLineType, tlStyle.midLineWidth,
     tlStyle.ep1, tlStyle.ep2, tlStyle.extendLeft, tlStyle.extendRight,
     tlStyle.priceLabels, tlStyle.timeLabels, tlStyle.rangeType,
@@ -9089,6 +10587,7 @@ const TalariaV8bLive = () => {
     txtStyle.wrapText,
     txtStyle.content,
     txtStyle.horizAlign,
+    txtStyle.pinLabelColor,
     txtStyle.pt1Price, txtStyle.pt1Bar, txtStyle.pt2Price, txtStyle.pt2Bar,
     txtStyle.visMinutes, txtStyle.visHours, txtStyle.visDays, txtStyle.visWeeks, txtStyle.visMonths,
     tool,
@@ -9113,6 +10612,227 @@ const TalariaV8bLive = () => {
     vpStyle.visMinutes, vpStyle.visHours, vpStyle.visDays, vpStyle.visWeeks, vpStyle.visMonths,
     avStyle.visMinutes, avStyle.visHours, avStyle.visDays, avStyle.visWeeks, avStyle.visMonths,
     vwapSettOpen, vpSettOpen, avSettOpen,
+  ]);
+
+  // V9 rrStyle → selected long/short-position drawings (risk-reward color/label bridge).
+  const rrStyleBridgeReady = useRef(false);
+  useLayoutEffect(() => {
+    if (!rrStyleBridgeReady.current) { rrStyleBridgeReady.current = true; return; }
+    if (suppressRrForwardBridge.current) { suppressRrForwardBridge.current = false; return; }
+    try {
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || !d.style) return;
+        if (d.type !== 'long-position' && d.type !== 'short-position') return;
+        const tb = dm.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+        d.style.rewardColor = rrStyle.profitColor;
+        d.style.riskColor = rrStyle.lossColor;
+        d.style.entryColor = rrStyle.entryColor;
+        const fs = parseInt(String(rrStyle.labelFontSize), 10);
+        if (Number.isFinite(fs) && fs > 0) {
+          d.style.fontSize = fs;
+          d.style.labelFontSize = fs;
+        }
+        d.style.textColor = rrStyle.labelColor;
+        d.style.labelTextColor = rrStyle.labelColor;
+        d.style.showPriceLabels = rrStyle.showPriceLabels;
+        d.style.showTimeLabels = rrStyle.showTimeLabels;
+        try { dm.renderDrawing?.(d); } catch (_) {}
+        try { dm.saveDrawings?.(); } catch (_) {}
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach(ch => ch.scheduleRender && ch.scheduleRender());
+    } catch (err) {
+      console.warn("[V9 rrStyle bridge] failed:", err);
+    }
+  }, [
+    rrStyle.profitColor, rrStyle.lossColor, rrStyle.entryColor,
+    rrStyle.labelFontSize, rrStyle.labelColor,
+    rrStyle.showPriceLabels, rrStyle.showTimeLabels,
+  ]);
+
+  // ─── V9 vwapStyle → selected anchored-vwap drawing ────────────────────
+  const vwapBridgeReady = useRef(false);
+  useLayoutEffect(() => {
+    if (!vwapBridgeReady.current) { vwapBridgeReady.current = true; return; }
+    if (suppressVwapBridge.current) { suppressVwapBridge.current = false; return; }
+    try {
+      const DASH = { solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' };
+      const SRC_MAP = { "Close":"close","Open":"open","High":"high","Low":"low","(H+L)/2":"hl2","(H+L+C)/3":"hlc3","(O+H+L+C)/4":"ohlc4" };
+      const CALC_MAP = { "Std Deviation":"standard_deviation","Percentage":"percentage" };
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || !d.style || d.type !== 'anchored-vwap') return;
+        const tb = dm.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+        d.style.stroke = vwapStyle.vwapColor;
+        d.style.color = vwapStyle.vwapColor;
+        d.style.strokeWidth = parseInt(vwapStyle.vwapLineWidth, 10) || 2;
+        d.style.strokeDasharray = DASH[vwapStyle.vwapLineType] ?? '';
+        d.style.source = SRC_MAP[vwapStyle.source] || 'hlc3';
+        d.style.vwapBandsCalculationMode = CALC_MAP[vwapStyle.bandsCalcMode] || 'standard_deviation';
+        d.style.showPriceLabel = !!vwapStyle.priceLabels;
+        d.style.showTimeLabel = !!vwapStyle.timeLabels;
+        [1,2,3].forEach(n => {
+          const on = vwapStyle[`band${n}On`];
+          const col = vwapStyle[`band${n}Color`];
+          const lt = DASH[vwapStyle[`band${n}LineType`]] ?? '2,2';
+          const lw = parseInt(vwapStyle[`band${n}LineWidth`], 10) || 1;
+          const bgOn = vwapStyle[`bg${n}On`];
+          const bgCol = vwapStyle[`bg${n}Color`];
+          const multOn = vwapStyle[`mult${n}On`];
+          const multVal = parseFloat(vwapStyle[`mult${n}Val`]) || n;
+          d.style[`vwapBand${n}Enabled`] = !!on;
+          d.style[`vwapUpperBand${n}Enabled`] = !!on;
+          d.style[`vwapLowerBand${n}Enabled`] = !!on;
+          d.style[`vwapUpperBand${n}Color`] = col;
+          d.style[`vwapLowerBand${n}Color`] = col;
+          d.style[`vwapUpperBand${n}Type`] = lt;
+          d.style[`vwapLowerBand${n}Type`] = lt;
+          d.style[`vwapUpperBand${n}Width`] = lw;
+          d.style[`vwapLowerBand${n}Width`] = lw;
+          d.style[`vwapBand${n}BackgroundEnabled`] = !!bgOn;
+          d.style[`vwapBand${n}BackgroundColor`] = bgCol;
+          d.style[`vwapBand${n}Multiplier`] = multVal;
+          if (multOn !== undefined) d.style[`vwapBand${n}Enabled`] = !!multOn && !!on;
+        });
+        d._cache = d._cache || {};
+        d._cache.vwapPoints = null;
+        d._cache.bands = null;
+        try { dm.renderDrawing?.(d); } catch (_) {}
+        try { dm.saveDrawings?.(); } catch (_) {}
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach(ch => ch.scheduleRender && ch.scheduleRender());
+    } catch (err) { console.warn("[V9 vwapStyle bridge] failed:", err); }
+  }, [
+    vwapStyle.vwapColor, vwapStyle.vwapLineType, vwapStyle.vwapLineWidth,
+    vwapStyle.band1On, vwapStyle.band1Color, vwapStyle.band1LineType, vwapStyle.band1LineWidth,
+    vwapStyle.bg1On, vwapStyle.bg1Color,
+    vwapStyle.band2On, vwapStyle.band2Color, vwapStyle.band2LineType, vwapStyle.band2LineWidth,
+    vwapStyle.bg2On, vwapStyle.bg2Color,
+    vwapStyle.band3On, vwapStyle.band3Color, vwapStyle.band3LineType, vwapStyle.band3LineWidth,
+    vwapStyle.bg3On, vwapStyle.bg3Color,
+    vwapStyle.priceLabels, vwapStyle.timeLabels,
+    vwapStyle.bandsCalcMode, vwapStyle.source,
+    vwapStyle.mult1On, vwapStyle.mult1Val,
+    vwapStyle.mult2On, vwapStyle.mult2Val,
+    vwapStyle.mult3On, vwapStyle.mult3Val,
+  ]);
+
+  // ─── V9 vpStyle → selected volume-profile / fixed-range-volume-profile drawing ─
+  const vpBridgeReady = useRef(false);
+  useLayoutEffect(() => {
+    if (!vpBridgeReady.current) { vpBridgeReady.current = true; return; }
+    if (suppressVpBridge.current) { suppressVpBridge.current = false; return; }
+    try {
+      const ROW_MAP = { "Number of Rows":"numberOfRows","Ticks per Row":"ticksPerRow" };
+      const VOL_MAP = { "Up/Down":"upDown","Total":"total","Delta":"delta" };
+      const PLC_MAP = { "Left":"left","Right":"right" };
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || !d.style || (d.type !== 'volume-profile' && d.type !== 'fixed-range-volume-profile')) return;
+        const tb = dm.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+        d.style.showValues = !!vpStyle.valuesOn;
+        d.style.valuesColor = vpStyle.valuesColor;
+        d.style.profileWidthRatio = Math.max(0.01, Math.min(1, (parseInt(vpStyle.widthPct,10)||30)/100));
+        d.style.profilePlacement = PLC_MAP[vpStyle.placement] || 'left';
+        d.style.showBackground = !!vpStyle.zoneBgOn;
+        d.style.fill = vpStyle.zoneBgColor;
+        d.style.backgroundOpacity = (vpStyle.zoneBgAlpha ?? 85) / 100;
+        d.style.buyColor = vpStyle.upVolColor;
+        d.style.sellColor = vpStyle.downVolColor;
+        d.style.valueAreaBuyColor = vpStyle.valueAreaUpColor;
+        d.style.valueAreaSellColor = vpStyle.valueAreaDownColor;
+        d.style.showPOC = !!vpStyle.pocOn;
+        d.style.pocColor = vpStyle.pocColor;
+        d.style.showVAH = !!vpStyle.vahOn;
+        d.style.VAHColor = vpStyle.vahColor;
+        d.style.showVAL = !!vpStyle.valOn;
+        d.style.VALColor = vpStyle.valColor;
+        d.style.showDevelopingPOC = !!vpStyle.devPocOn;
+        d.style.developingPOCColor = vpStyle.devPocColor;
+        d.style.showDevelopingVA = !!vpStyle.devVAOn;
+        d.style.developingVAColor = vpStyle.devVAColor;
+        d.style.rowsLayout = ROW_MAP[vpStyle.rowsLayout] || 'numberOfRows';
+        d.style.rowSize = parseInt(vpStyle.rowSize,10) || 24;
+        d.style.showVolume = !!vpStyle.volumeOn;
+        d.style.volumeDisplay = VOL_MAP[vpStyle.volumeType] || 'upDown';
+        d.style.valueAreaVolume = parseInt(vpStyle.valueAreaVol,10) || 70;
+        d.style.extendRight = !!vpStyle.extendRight;
+        try { dm.renderDrawing?.(d); } catch (_) {}
+        try { dm.saveDrawings?.(); } catch (_) {}
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach(ch => ch.scheduleRender && ch.scheduleRender());
+    } catch (err) { console.warn("[V9 vpStyle bridge] failed:", err); }
+  }, [
+    vpStyle.valuesOn, vpStyle.valuesColor, vpStyle.widthPct, vpStyle.placement,
+    vpStyle.zoneBgOn, vpStyle.zoneBgColor, vpStyle.zoneBgAlpha,
+    vpStyle.upVolColor, vpStyle.downVolColor, vpStyle.valueAreaUpColor, vpStyle.valueAreaDownColor,
+    vpStyle.pocOn, vpStyle.pocColor, vpStyle.vahOn, vpStyle.vahColor, vpStyle.valOn, vpStyle.valColor,
+    vpStyle.devPocOn, vpStyle.devPocColor, vpStyle.devVAOn, vpStyle.devVAColor,
+    vpStyle.rowsLayout, vpStyle.rowSize, vpStyle.volumeOn, vpStyle.volumeType, vpStyle.valueAreaVol,
+    vpStyle.extendRight,
+  ]);
+
+  // ─── V9 avStyle → selected anchored-volume-profile drawing ─────────────
+  const avBridgeReady = useRef(false);
+  useLayoutEffect(() => {
+    if (!avBridgeReady.current) { avBridgeReady.current = true; return; }
+    if (suppressAvBridge.current) { suppressAvBridge.current = false; return; }
+    try {
+      const ROW_MAP = { "Number of Rows":"numberOfRows","Ticks per Row":"ticksPerRow" };
+      const VOL_MAP = { "Up/Down":"upDown","Total":"total","Delta":"delta" };
+      const PLC_MAP = { "Left":"left","Right":"right" };
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || !d.style || d.type !== 'anchored-volume-profile') return;
+        const tb = dm.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+        d.style.showValues = !!avStyle.valuesOn;
+        d.style.valuesColor = avStyle.valuesColor;
+        d.style.profileWidthRatio = Math.max(0.01, Math.min(1, (parseInt(avStyle.widthPct,10)||30)/100));
+        d.style.profilePlacement = PLC_MAP[avStyle.placement] || 'left';
+        d.style.showBackground = !!avStyle.zoneBgOn;
+        d.style.fill = avStyle.zoneBgColor;
+        d.style.backgroundOpacity = (avStyle.zoneBgAlpha ?? 85) / 100;
+        d.style.buyColor = avStyle.upVolColor;
+        d.style.sellColor = avStyle.downVolColor;
+        d.style.valueAreaBuyColor = avStyle.valueAreaUpColor;
+        d.style.valueAreaSellColor = avStyle.valueAreaDownColor;
+        d.style.showPOC = !!avStyle.pocOn;
+        d.style.pocColor = avStyle.pocColor;
+        d.style.showVAH = !!avStyle.vahOn;
+        d.style.VAHColor = avStyle.vahColor;
+        d.style.showVAL = !!avStyle.valOn;
+        d.style.VALColor = avStyle.valColor;
+        d.style.showDevelopingPOC = !!avStyle.devPocOn;
+        d.style.developingPOCColor = avStyle.devPocColor;
+        d.style.showDevelopingVA = !!avStyle.devVAOn;
+        d.style.developingVAColor = avStyle.devVAColor;
+        d.style.rowsLayout = ROW_MAP[avStyle.rowsLayout] || 'numberOfRows';
+        d.style.rowSize = parseInt(avStyle.rowSize,10) || 24;
+        d.style.showVolume = !!avStyle.volumeOn;
+        d.style.volumeDisplay = VOL_MAP[avStyle.volumeType] || 'upDown';
+        d.style.valueAreaVolume = parseInt(avStyle.valueAreaVol,10) || 70;
+        d.style.extendRight = !!avStyle.extendRight;
+        try { dm.renderDrawing?.(d); } catch (_) {}
+        try { dm.saveDrawings?.(); } catch (_) {}
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach(ch => ch.scheduleRender && ch.scheduleRender());
+    } catch (err) { console.warn("[V9 avStyle bridge] failed:", err); }
+  }, [
+    avStyle.valuesOn, avStyle.valuesColor, avStyle.widthPct, avStyle.placement,
+    avStyle.zoneBgOn, avStyle.zoneBgColor, avStyle.zoneBgAlpha,
+    avStyle.upVolColor, avStyle.downVolColor, avStyle.valueAreaUpColor, avStyle.valueAreaDownColor,
+    avStyle.pocOn, avStyle.pocColor, avStyle.vahOn, avStyle.vahColor, avStyle.valOn, avStyle.valColor,
+    avStyle.devPocOn, avStyle.devPocColor, avStyle.devVAOn, avStyle.devVAColor,
+    avStyle.rowsLayout, avStyle.rowSize, avStyle.volumeOn, avStyle.volumeType, avStyle.valueAreaVol,
+    avStyle.extendRight,
   ]);
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelectedId(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
@@ -9212,27 +10932,76 @@ const TalariaV8bLive = () => {
   }, []);
 
   // Multichart iframe tiles → parent shell opens Settings so the modal is not
-  // clipped to the iframe's small viewport.
+  // clipped to the iframe's small viewport. Also: draft drag busy, field snapshot,
+  // close order rail from chart ✕ inside iframe.
   useEffect(() => {
     const onMsg = (ev) => {
       const d = ev && ev.data;
-      if (!d || typeof d !== "object" || d.type !== "v9-multichart-open-settings") return;
+      if (!d || typeof d !== "object") return;
       try {
         if (window.location.origin && ev.origin && ev.origin !== window.location.origin) return;
       } catch (_) {}
-      try {
-        closeWindowsRef.current?.();
-      } catch (_) {}
-      setSettingsOpen(true);
+      if (d.type === "v9-multichart-open-settings") {
+        try {
+          closeWindowsRef.current?.();
+        } catch (_) {}
+        setSettingsOpen(true);
+        return;
+      }
+      if (d.type === "multichart-draft-drag-busy") {
+        const grid = window.__multichartGrid;
+        const fid = grid && typeof grid.getFocusedPanelId === "function" ? grid.getFocusedPanelId() : null;
+        if (fid == null || String(d.source || "") !== String(fid)) return;
+        multichartDraftDragBusyRef.current = !!d.busy;
+        return;
+      }
+      if (d.type === "multichart-draft-field-snapshot") {
+        if (!orderPanelOpen) return;
+        const grid = window.__multichartGrid;
+        const fid = grid && typeof grid.getFocusedPanelId === "function" ? grid.getFocusedPanelId() : null;
+        if (fid == null || String(d.source || "") !== String(fid)) return;
+        markOrderControlBridge();
+        if (typeof d.orderEntryPrice === "number" && Number.isFinite(d.orderEntryPrice)) {
+          const ep = String(d.orderEntryPrice);
+          setEntryRows((rows) => {
+            if (!rows.length) return [{ id: 0, price: ep, risk: "100" }];
+            return [{ ...rows[0], price: ep }];
+          });
+        }
+        if (typeof d.slEnabled === "boolean") setSlEnabled(d.slEnabled);
+        // Mirror TP: iframe chart SL drags post slPrice — without this, slRows stays "0" and the host
+        // forwards setDraftPreview(slPrice: 0) into the iframe, snapping the SL badge back to entry.
+        if (typeof d.slPrice === "number" && Number.isFinite(d.slPrice)) {
+          setSlRows((rows) => {
+            const r0 = rows[0] || { id: 0, price: "0" };
+            const next = { ...r0, price: d.slPrice > 0 ? String(d.slPrice) : "0" };
+            return [next];
+          });
+        }
+        if (typeof d.tpEnabled === "boolean" || (typeof d.tpPrice === "number" && Number.isFinite(d.tpPrice))) {
+          setTpRows((rows) => {
+            const r0 = rows[0] || { id: 0, price: "0", qty: "100", enabled: true };
+            const next = { ...r0 };
+            if (typeof d.tpEnabled === "boolean") next.enabled = d.tpEnabled;
+            if (typeof d.tpPrice === "number" && Number.isFinite(d.tpPrice)) next.price = String(d.tpPrice);
+            return [next];
+          });
+        }
+        return;
+      }
+      if (d.type === "talaria-multichart-close-order-rail") {
+        setOrderPanelOpen(false);
+      }
     };
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, []);
+  }, [orderPanelOpen]);
 
   // Render a tool button
   const renderTB = (t, ref) => {
-    /** Reserve same right gutter as chevron column so every icon shares one vertical axis. */
+    /** Fixed right column: chevron OR spacer — keeps all tool icons on one vertical axis (TradingView-style). */
     const RAIL_TRAIL_W = 12;
+    /** Icons sit in (rail − trail); theme toggle is centered in full rail — nudge icons right by half the trail width. */
     const RAIL_ICON_CENTER_NUDGE = RAIL_TRAIL_W / 2;
     const railIcon = v9LeftRailIconForButton(t, groupSelected);
     const ddOpen = dropdown === t.id;
@@ -9253,128 +11022,176 @@ const TalariaV8bLive = () => {
     };
     const isPressed = t.action && btnPressed === t.id;
     const pressCol = isPressed ? c.acL : col;
+    // One row hover/selection for icon + chevron (TradingView-style); chevron still has its own click.
     const arrCol = act ? accentCol : h ? c.tx : c.tm;
-    /* Selection strip at left:0; idle = flush. Active/pressed: 4px past 2px bar. Hover dim line: 2px. */
-    const railAccentPad =
-      act || isPressed ? 4
-        : h && !act && !isPressed ? 2
-        : 0;
-    return (
-      <div
-        key={t.id}
-        style={{
-          position: "relative",
-          width: "100%",
-          display: "flex",
-          transform: isPressed ? "scale(0.88)" : "scale(1)",
-          transition: "transform 0.08s ease",
-          ...(t.dd
-            ? {
-                background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
-                borderRadius: 2,
-                transition: "transform 0.08s ease, background 0.12s",
-              }
-            : {}),
+    const mainBtnStyle = {
+      height: 32,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      background: t.dd ? "transparent" : act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
+      border: "none",
+      cursor: "default",
+      color: pressCol,
+      padding: 0,
+      boxSizing: "border-box",
+      touchAction: "manipulation",
+      transition: "color 0.15s ease, background 0.12s",
+      position: "relative",
+      fontFamily: F,
+      flex: "1 1 0",
+      minWidth: 0,
+      width: "auto",
+    };
+    const mainBtn = (
+      <button
+        type="button"
+        ref={ref}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          if (t.action) setBtnPressed(t.id);
         }}
-        onMouseEnter={t.dd ? () => setHov(t.id) : undefined}
-        onMouseLeave={t.dd ? () => { setHov(null); setBtnPressed(null); } : undefined}
-      >
-        {/* Left rail: match TalariaV8b.jsx dimensions (Live has no root zoom). */}
-        <button
-          type="button"
-          ref={ref}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            if (t.action) setBtnPressed(t.id);
-          }}
-          onPointerUp={t.action ? () => setBtnPressed(null) : undefined}
-          onMouseEnter={t.dd ? undefined : () => setHov(t.id)}
-          onMouseLeave={t.dd ? undefined : () => { setHov(null); setBtnPressed(null); }}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (t.id === "pinbar") { setPinnedBarOpen(v => !v); return; }
-            if (t.action) {
-              // Wire to legacy undo/redo (chart.drawingManager.history) so V9
-              // buttons drive the same stack as keyboard shortcuts and the
-              // legacy index. drawingManager.history is created in init when
-              // UndoRedoManager class is loaded.
-              const dm = window.chart && window.chart.drawingManager;
-              const hist = dm && dm.history;
-              try {
-                if (t.id === "undo" && hist && hist.undo) hist.undo();
-                else if (t.id === "redo" && hist && hist.redo) hist.redo();
-              } catch (err) { console.warn('[V9] undo/redo failed:', err); }
-              return;
-            }
-            if (t.id === "lock") {
-              const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-              const dm = ch && ch.drawingManager;
-              const tb = dm && dm.toolbar;
-              if (dm) {
-                const list = [];
-                if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
-                  dm.selectedDrawings.forEach(d => { if (d) list.push(d); });
-                } else if (dm.selectedDrawing) list.push(dm.selectedDrawing);
-                else if (tb && tb.currentDrawing) list.push(tb.currentDrawing);
-                if (list.length) {
-                  list.forEach(d => { try { dm.toggleLock(d); } catch (_) {} });
-                } else if (typeof tb?.showNotification === "function") {
-                  tb.showNotification("Select a drawing first");
-                } else if (typeof ch?.showNotification === "function") {
-                  ch.showNotification("Select a drawing first");
-                }
-              }
-              setDropdown(null);
-              return;
-            }
-            if (t.dd) {
-              // Main icon: activate tool only. Chevron is the only control that opens/toggles the menu.
-              if (!["eye", "magnet", "trash"].includes(t.id)) setTool(t.id);
-              if (dropdown) closeDropdown();
-            }
-            else { setTool(t.id); setDropdown(null); }
-          }}
-          style={{
-            width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "center",
-            background: t.dd ? "transparent" : act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
-            border: "none", cursor: "default", color: pressCol,
-            padding: 0, paddingLeft: railAccentPad, paddingRight: RAIL_TRAIL_W,
-            boxSizing: "border-box", touchAction: "manipulation",
-            transition: "color 0.15s ease, background 0.12s, padding-left 0.12s", position: "relative", fontFamily: F,
-          }}>
-          {/* pointer-events:none on icon so the whole <button type="button"> hit box counts — SVG paths alone miss gaps between strokes */}
-          {t.id === "pinbar"
-            ? <span style={{ display: "flex", pointerEvents: "none", transform: `${h && !act ? "rotate(-25deg) scale(1.15) " : ""}translateX(${RAIL_ICON_CENTER_NUDGE}px)`, transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
-            : <span style={{ display: "flex", pointerEvents: "none", transform: `translateX(${RAIL_ICON_CENTER_NUDGE}px)` }}><I n={railIcon} s={17} cl={pressCol}/></span>
+        onPointerUp={t.action ? () => setBtnPressed(null) : undefined}
+        onMouseEnter={t.dd ? undefined : () => setHov(t.id)}
+        onMouseLeave={t.dd ? undefined : () => { setHov(null); setBtnPressed(null); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+          if (t.id === "pinbar") { setPinnedBarOpen(v => !v); return; }
+          if (t.action) {
+            const dm = window.chart && window.chart.drawingManager;
+            const hist = dm && dm.history;
+            try {
+              if (t.id === "undo" && hist && hist.undo) hist.undo();
+              else if (t.id === "redo" && hist && hist.redo) hist.redo();
+            } catch (err) { console.warn('[V9] undo/redo failed:', err); }
+            return;
           }
-        </button>
+          if (t.id === "lock") {
+            const dm = ch && ch.drawingManager;
+            const tb = dm && dm.toolbar;
+            if (dm) {
+              const list = [];
+              if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+                dm.selectedDrawings.forEach(d => { if (d) list.push(d); });
+              } else if (dm.selectedDrawing) list.push(dm.selectedDrawing);
+              else if (tb && tb.currentDrawing) list.push(tb.currentDrawing);
+              if (list.length) {
+                list.forEach(d => { try { dm.toggleLock(d); } catch (_) {} });
+              } else if (typeof tb?.showNotification === "function") {
+                tb.showNotification("Select a drawing first");
+              } else if (typeof ch?.showNotification === "function") {
+                ch.showNotification("Select a drawing first");
+              }
+            }
+            setDropdown(null);
+            return;
+          }
+          if (t.dd) {
+            if (!["eye", "magnet", "trash"].includes(t.id)) {
+              editingDrawingRef.current = null;
+              if (tlBarSelected) {
+                setTlBarSelected(false); setTlBarSelectedType(null);
+                try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll(); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
+              }
+              if (tlSettOpen) closeTlSett(); if (txtSettOpen) closeTxtSett();
+              if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett(); if (indSettOpen) closeIndSett();
+              v9UserExplicitToolRef.current = true;
+              setTool(t.id);
+            }
+            if (dropdown) closeDropdown();
+          }
+          else {
+            editingDrawingRef.current = null;
+            if (tlBarSelected) {
+              setTlBarSelected(false); setTlBarSelectedType(null);
+              try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll(); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
+            }
+            if (tlSettOpen) closeTlSett(); if (txtSettOpen) closeTxtSett();
+            if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett(); if (indSettOpen) closeIndSett();
+            v9UserExplicitToolRef.current = true;
+            setTool(t.id); setDropdown(null);
+          }
+        }}
+        style={mainBtnStyle}
+      >
+        {t.id === "pinbar"
+          ? <span style={{ display: "flex", pointerEvents: "none", transform: h && !act ? `rotate(-25deg) scale(1.15) translateX(${RAIL_ICON_CENTER_NUDGE}px)` : `translateX(${RAIL_ICON_CENTER_NUDGE}px)`, transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
+          : <span style={{ display: "flex", pointerEvents: "none", transform: `translateX(${RAIL_ICON_CENTER_NUDGE}px)` }}><I n={railIcon} s={17} cl={pressCol}/></span>
+        }
+      </button>
+    );
+    return (
+      <div key={t.id} style={{ position: "relative", width: "100%", display: "block", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
+        <div
+          style={{
+            width: "100%",
+            height: 32,
+            display: "flex",
+            alignItems: "stretch",
+            justifyContent: "center",
+            gap: 0,
+            boxSizing: "border-box",
+            ...(t.dd
+              ? {
+                  background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
+                  borderRadius: 2,
+                  transition: "background 0.12s",
+                }
+              : {}),
+          }}
+          onMouseEnter={t.dd ? () => setHov(t.id) : undefined}
+          onMouseLeave={t.dd ? () => { setHov(null); setBtnPressed(null); } : undefined}
+        >
+          {mainBtn}
+          {t.dd ? (
+            <button
+              type="button"
+              aria-label="Open tool menu"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                openDd(e.currentTarget.parentElement);
+              }}
+              style={{
+                width: RAIL_TRAIL_W,
+                height: 32,
+                flex: `0 0 ${RAIL_TRAIL_W}px`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "transparent",
+                border: "none",
+                cursor: "default",
+                padding: 0,
+                margin: 0,
+                transition: "color 0.12s",
+                fontFamily: F,
+                touchAction: "manipulation",
+              }}
+            >
+              <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{ transition: "fill 0.12s", pointerEvents: "none", display: "block" }}>
+                <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
+              </svg>
+            </button>
+          ) : (
+            <div
+              key={`rail-trail-${t.id}`}
+              aria-hidden
+              style={{
+                width: RAIL_TRAIL_W,
+                height: 32,
+                flex: `0 0 ${RAIL_TRAIL_W}px`,
+                flexShrink: 0,
+                pointerEvents: "none",
+              }}
+            />
+          )}
+        </div>
         {act && <div style={{ position: "absolute", left: 0, top: "10%", bottom: "10%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 4px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
         {h && !act && !isPressed && <div style={{ position: "absolute", left: 0, top: "12%", bottom: "12%", width: 1, background: `linear-gradient(180deg, transparent, `+c.hvLn+`, transparent)`, pointerEvents: "none", zIndex: 2 }}/>}
         {isPressed && <div style={{ position: "absolute", left: 0, top: "10%", bottom: "10%", width: 2, background: `linear-gradient(180deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 4px ${c.acG}`, pointerEvents: "none", zIndex: 2 }}/>}
-        {t.dd && (
-          <button
-            type="button"
-            aria-label="Open tool menu"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              openDd(e.currentTarget.parentElement);
-            }}
-            style={{
-              position: "absolute", right: 0, top: 0,
-              width: RAIL_TRAIL_W, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
-              background: "transparent",
-              border: "none", cursor: "default",
-              padding: 0, flexShrink: 0,
-              transition: "color 0.12s", fontFamily: F,
-              zIndex: 3, touchAction: "manipulation",
-            }}>
-            <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{ transition: "fill 0.12s", pointerEvents: "none", display: "block" }}>
-              <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
-            </svg>
-          </button>
-        )}
         {h && !ddOpen && !t.dd && <div style={{ position: "absolute", left: "calc(100% + 10px)", top: "50%", transform: "translateY(-50%)", background: c.el, border: `1px solid ${c.brH}`, padding: "4px 10px", fontSize: 12, fontWeight: 600, fontFamily: F, color: c.tx, whiteSpace: "nowrap", zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.6)", borderLeft: `2px solid ${act ? accentCol : c.brH}`, pointerEvents: "none" }}>{t.label}</div>}
       </div>
     );
@@ -9448,8 +11265,9 @@ const TalariaV8bLive = () => {
               overflow: "visible",
               gap: replayOhlcBadgeVisible ? 2 : 0,
               paddingLeft: 4,
-              flex: "1 1 0%",
+              flex: "0 1 auto",
               minWidth: 0,
+              maxWidth: "100%",
               boxSizing: "border-box",
             }}
           >
@@ -9459,7 +11277,7 @@ const TalariaV8bLive = () => {
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                flex: "1 1 0%",
+                flex: "0 1 auto",
                 minWidth: 0,
                 flexWrap: "nowrap",
                 overflow: "hidden",
@@ -9484,7 +11302,7 @@ const TalariaV8bLive = () => {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
-                flex: "1 1 auto",
+                flex: "0 1 auto",
                 minWidth: 0,
                 overflow: "hidden",
                 boxSizing: "border-box",
@@ -9497,8 +11315,9 @@ const TalariaV8bLive = () => {
                 id="chartChange"
                 style={{
                   marginLeft: 0,
-                  minWidth: 0,
-                  flex: "1 1 auto",
+                  width: "14ch",
+                  minWidth: "14ch",
+                  flex: "0 0 14ch",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -9545,6 +11364,7 @@ const TalariaV8bLive = () => {
                 }}
               >
                 <div className="nav-badge-icon" style={{ width: 30, height: 30, border: "none", background: "transparent", padding: 0 }}>
+                  {/* Exact replay-bar rollback icon */}
                   <svg className="nav-badge-go-back" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ width: 22, height: 22, display: "block" }}>
                     <line x1="15" y1="4" x2="15" y2="7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                     <rect x="12" y="7" width="6" height="10" rx="0.5" fill="currentColor" />
@@ -9575,6 +11395,7 @@ const TalariaV8bLive = () => {
               maxWidth: "100%",
               fontSize: 10.5,
               lineHeight: 1.2,
+              /* Let drags reach the chart beside/narrow of each chip; rows opt back in below */
               pointerEvents: "none",
               position: "relative",
               zIndex: 100,
@@ -9658,6 +11479,7 @@ const TalariaV8bLive = () => {
         @keyframes tlrPanelIn { from{opacity:0;transform:translateX(8px)} to{opacity:1;transform:translateX(0)} }
         @keyframes tlrDotPulse { 0%,100% { opacity:0.35; transform:scale(0.85); } 50% { opacity:1; transform:scale(1.3); } }
         @keyframes tlrIdPulse { 0%,100% { color:rgba(0,212,161,0.55); } 50% { color:rgba(0,212,161,1); } }
+        @keyframes tlrReplayPlaySpin { to { transform: rotate(360deg); } }
         .tlr-gloss{position:relative}.tlr-gloss::after{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,rgba(255,255,255,0.13) 0%,rgba(255,255,255,0.04) 45%,transparent 100%);pointer-events:none;z-index:9999;border-radius:inherit}.tlr-nospinner::-webkit-outer-spin-button,.tlr-nospinner::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
         .tlr-nospinner{-moz-appearance:textfield}
         .tlr-unit-sel{background:transparent;border:1px solid rgba(140,160,255,0.2);color:rgba(255,255,255,0.7);font-size:10px;padding:2px 4px;outline:none;cursor:default;appearance:none;-webkit-appearance:none}
@@ -9674,7 +11496,7 @@ const TalariaV8bLive = () => {
         .ss-view-btn:hover{background:rgba(255,255,255,0.18)!important}
         .ss-del-btn:hover{background:rgba(255,80,80,0.25)!important}
         .tl-drag,.tl-drag *{cursor:move!important}
-        /* Legend collapse: narrow hit target + pass-through; expanded = ^ collapse, collapsed = v expand */
+        /* Legend collapse: narrow hit target + pass-through so chart pan works beside the chevron */
         .ohlc-legend-footer{display:flex;align-items:center;justify-content:flex-start;margin-top:3px;padding:0;width:fit-content;max-width:100%;pointer-events:none!important}
         .ohlc-legend-chevron{appearance:none;-webkit-appearance:none;border:none;margin:0;padding:2px 4px;background:transparent;color:#787b86;cursor:default;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;line-height:0;flex-shrink:0;pointer-events:auto!important;opacity:0.88;transition:color .12s,background .12s,opacity .12s}
         .ohlc-legend-chevron:hover{background:rgba(255,255,255,0.06);color:#b2b5be;opacity:1}
@@ -9686,15 +11508,15 @@ const TalariaV8bLive = () => {
         .ohlc-symbol-block{flex:0 0 auto !important;font-size:13px !important;line-height:1.25 !important;color:var(--ohlc-fg,#fff) !important}
         .ohlc-symbol-block #chartSymbol{color:var(--ohlc-fg,#fff) !important}
         .ohlc-symbol-block #chartTimeframe{color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important}
-        .ohlc-stats{display:flex !important;flex-direction:row !important;align-items:center !important;line-height:1.2 !important;flex-wrap:nowrap !important;flex:1 1 0% !important;min-width:0 !important;position:relative !important;box-sizing:border-box !important}
-        .ohlc-stats-flow{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important;flex-wrap:nowrap !important;flex:1 1 0% !important;min-width:0 !important;overflow:hidden !important;box-sizing:border-box !important}
+        .ohlc-stats{display:flex !important;flex-direction:row !important;align-items:center !important;line-height:1.2 !important;flex-wrap:nowrap !important;flex:0 1 auto !important;min-width:0 !important;max-width:100% !important;position:relative !important;box-sizing:border-box !important}
+        .ohlc-stats-flow{display:flex !important;align-items:center !important;gap:10px !important;line-height:1.2 !important;flex-wrap:nowrap !important;flex:0 1 auto !important;min-width:0 !important;overflow:hidden !important;box-sizing:border-box !important}
         .ohlc-item{display:inline-flex !important;align-items:center !important;gap:3px !important}
-        .ohlc-item-close-change{display:inline-flex !important;align-items:center !important;gap:6px !important;flex:1 1 auto !important;min-width:0 !important;overflow:hidden !important;box-sizing:border-box !important}
+        .ohlc-item-close-change{display:inline-flex !important;align-items:center !important;gap:6px !important;flex:0 1 auto !important;min-width:0 !important;overflow:hidden !important;box-sizing:border-box !important}
         .ohlc-label{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;opacity:1 !important}
         .ohlc-value{font-size:9px !important;font-weight:80 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
         .ohlc-change{font-size:9px !important;font-weight:500 !important;color:var(--ohlc-muted,rgba(255,255,255,0.82)) !important;margin-left:2px !important;white-space:nowrap !important;font-variant-numeric:tabular-nums lining-nums !important;box-sizing:border-box !important;vertical-align:baseline !important}
-        .ohlc-item-close-change .ohlc-change{margin-left:0 !important;min-width:0 !important;flex:1 1 auto !important;overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important;text-align:left !important}
-        .ohlc-nav-badge-slot{display:flex !important;align-items:center !important;justify-content:center !important;flex-shrink:0 !important;overflow:hidden !important;box-sizing:border-box !important}
+        .ohlc-item-close-change .ohlc-change{margin-left:0 !important;width:14ch !important;min-width:14ch !important;flex:0 0 14ch !important;overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important;text-align:left !important}
+        .ohlc-nav-badge-slot{display:flex !important;align-items:center !important;justify-content:center !important;flex-shrink:0 !important;overflow:visible !important;box-sizing:border-box !important}
         .ohlc-nav-badge-slot .nav-integrity-badge{position:relative !important;margin-left:0 !important;flex-shrink:0 !important}
         .ohlc-body{margin-top:1px !important;pointer-events:none !important}
         .ohlc-indicators{min-width:0;color:var(--ohlc-ind,rgba(255,255,255,0.72)) !important;pointer-events:none !important}
@@ -9942,7 +11764,8 @@ const TalariaV8bLive = () => {
                 const isRegCh = tlSubTool.icon === "regressionCh";
                 const isPitchfork = tlSubTool.icon === "pitchfork";
                 const isBrushTool = ["draw","brush"].includes(tlSubTool.icon);
-                const showStyle = !isBrushTool;
+                const noLineStyle = isBrushTool || isElliottTool || isPatternTool;
+                const showStyle = !noLineStyle;
                 /* ── RR Tool (Long/Short Position) style tab ── */
                 if (isRRTool) return (<>
                   {/* Zone Colors */}
@@ -10168,7 +11991,7 @@ const TalariaV8bLive = () => {
                   </div>
                 </>);
                 return (<>
-                  {showLine && <div style={{ display:"grid", gridTemplateColumns:`1fr auto auto auto ${(showEp||isBrushTool||(isPatternTool&&!isElliottTool))?"auto":""}`, columnGap:12, rowGap:0, alignItems:"start", marginRight:(isBrushTool&&!showEp)?65:0 }}>
+                  {showLine && <div style={{ display:"grid", gridTemplateColumns:`1fr auto auto auto ${(showEp||isBrushTool||isPatternTool)?"auto":""}`, columnGap:12, rowGap:0, alignItems:"start", marginRight:(isBrushTool&&!showEp)?65:0 }}>
                     {/* Column headers */}
                     <div/><div/>
                     {showStyle ? <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
@@ -10177,7 +12000,7 @@ const TalariaV8bLive = () => {
                     <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
                       <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span>
                     </div>
-                    {(showEp||isBrushTool||(isPatternTool&&!isElliottTool)) && (
+                    {(showEp||isBrushTool||isPatternTool) && (
                       showEp ? (
                         <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
                           <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>ENDPOINTS</span>
@@ -10264,7 +12087,7 @@ const TalariaV8bLive = () => {
                       )}
                     </div>}
                     {/* Endpoints / 5th-col filler for pattern tools */}
-                    {(isPatternTool&&!isElliottTool) && <div/>}
+                    {isPatternTool && <div/>}
                     {(showEp||isBrushTool) && (showEp ? <div style={{ display:"flex", gap:3, alignItems:"center", justifyContent:"center", padding:"8px 0" }}>
                         {[["ep1",false],["ep2",true]].map(([k,rightAlign])=>{
                           const dk=`ep-${k}`; const val=tlStyle[k]||"normal"; const isOpen=tlStyleDrop===dk;
@@ -10303,8 +12126,8 @@ const TalariaV8bLive = () => {
                           );
                         })}
                     </div> : <div/>)}
-                    {/* ── LABEL row (pure pattern tools only) ── */}
-                    {(isPatternTool&&!isElliottTool) && <>
+                    {/* ── LABEL row (pattern + Elliott tools) ── */}
+                    {isPatternTool && <>
                       <span style={{ fontSize:12, color:c.ts, padding:"8px 0", alignSelf:"center" }}>Label</span>
                       <div style={{ padding:"8px 0" }}>{colorSwatch("tlTextColor", tlStyle.textColor)}</div>
                       <div style={{ padding:"8px 0", position:"relative" }}>
@@ -10416,7 +12239,7 @@ const TalariaV8bLive = () => {
                     {hasBg && <>
                       <span style={{ fontSize:12, color:c.ts, padding:"8px 0", alignSelf:"center" }}>Background</span>
                       <div style={{ padding:"8px 0" }}>{colorSwatch("tlBgColor", tlStyle.bgColor)}</div>
-                      <div/><div/>{(showEp||(isPatternTool&&!isElliottTool)) && <div/>}
+                      <div/><div/>{(showEp||isPatternTool) && <div/>}
                     </>}
                   </div>}
                   {/* ── Channel / Regression lines rows ── */}
@@ -12443,7 +14266,7 @@ const TalariaV8bLive = () => {
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TxBtn>
           <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
-          <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
+          <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{if(dropdown)closeDropdown();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
             {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
           </TxBtn>
           {/* three dots — more options */}
@@ -13090,6 +14913,866 @@ const TalariaV8bLive = () => {
             style={{borderTop:`1px solid ${c.brH}`,display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"10px 14px 14px",gap:8}}>
             <B hk="txt-cancel" fireOnPointerDown onClick={closeTxtSett}>Cancel</B>
             <B primary hk="txt-ok" fireOnPointerDown onClick={closeTxtSett}>OK</B>
+          </div>
+        </div>
+        );
+      })(), document.body)}
+
+      {/* ── Indicator settings (V9 React — same shell as text / TL settings; chart calls window.__v9OpenIndicatorSettings) ── */}
+      {(indSettOpen || closing.has("indsett")) && typeof document !== "undefined" && createPortal((()=>{
+        const ctx = indSettCtxRef.current;
+        const def = typeof window !== "undefined" && window.INDICATOR_DEFINITIONS && ctx.indicatorType
+          ? window.INDICATOR_DEFINITIONS[ctx.indicatorType] : null;
+        if (!def || !ctx.indicator) return null;
+        const isIctEverything = ctx.indicatorType === "icteverything";
+        const tabFnBase = typeof window.indicatorSettingsTabForParam === "function"
+          ? window.indicatorSettingsTabForParam
+          : (p) => (p.type === "checkbox" ? "visibility" : p.type === "color" ? "style" : "input");
+        const tabFn = isIctEverything ? () => "input" : tabFnBase;
+        const isCustom = ctx.indicatorType === "custom";
+        const panelW = isCustom ? 520 : isIctEverything ? 520 : 400;
+        const title = (ctx.indicator && ctx.indicator.name) || def.name || "Indicator";
+        const tabOrder = [["style","Style"],["input","Input"],["visibility","Visibility"]];
+        const tabsShown = isIctEverything ? [["input","Settings"],["visibility","Visibility"]] : tabOrder;
+        const tabIdx = Math.max(0, tabsShown.findIndex(([id]) => id === indSettTab));
+        const openIndCP = (e, paramId, val) => {
+          const p0 = parseColor(val || "#ffffff");
+          const hsv = rgbToHsv(p0.r, p0.g, p0.b);
+          setCpH(hsv.h); setCpS(hsv.s); setCpV(hsv.v); setCpA(p0.a);
+          setCpHex(toHex2(p0.r) + toHex2(p0.g) + toHex2(p0.b));
+          setCpPos(posFromRect(e.currentTarget.getBoundingClientRect(), cpW));
+          cpBarAnchorRef.current = null;
+          setColorPicker("ind-" + paramId);
+        };
+        const dismissIndicatorMenus = () => {
+          try {
+            const indicatorMenu = document.getElementById("indicatorSelectionMenu");
+            if (indicatorMenu) {
+              indicatorMenu.classList.remove("visible");
+              indicatorMenu.style.visibility = "hidden";
+              indicatorMenu.style.opacity = "0";
+            }
+            const menuBackdrop = document.getElementById("indicatorMenuBackdrop");
+            if (menuBackdrop) {
+              menuBackdrop.style.visibility = "hidden";
+              menuBackdrop.style.opacity = "0";
+            }
+          } catch (_) {}
+        };
+        const applyInd = () => {
+          const c2 = indSettCtxRef.current;
+          if (!c2.chart || !c2.indicator) { closeIndSett(); return; }
+          const mergeFn = typeof window.__v9MergeIndicatorDraftForUpdate === "function"
+            ? window.__v9MergeIndicatorDraftForUpdate
+            : null;
+          const merged = mergeFn ? mergeFn(c2.indicatorType, c2.indicator, indSettDraft) : null;
+          if (!merged) { closeIndSett(); return; }
+          merged.visible = indSettDraft.visible !== false;
+          merged.visibility = v9IndicatorVisibilityFromDraft(indSettDraft);
+          const chart = c2.chart;
+          if (c2.indicatorType === "custom") {
+            const TC = typeof window !== "undefined" ? window.TalariaCustomIndicators : null;
+            if (TC && typeof TC.validateCustomScriptSource === "function") {
+              const check = TC.validateCustomScriptSource(merged.script);
+              if (!check.ok) { window.alert(check.error || "Invalid script"); return; }
+            }
+            if (typeof chart.updateIndicator === "function") {
+              const p = { ...merged };
+              p.customParams = { period: p.period };
+              delete p.period;
+              p.separatePanel = p.placement === "panel";
+              p.overlay = p.placement !== "panel";
+              delete p.placement;
+              chart.updateIndicator(c2.indicator.id, p);
+            }
+          } else if (typeof chart.updateIndicator === "function") {
+            chart.updateIndicator(c2.indicator.id, merged);
+          }
+          dismissIndicatorMenus();
+          closeIndSett();
+        };
+        const indSelectKeyV9 = (paramId) => `${ctx.indicator && ctx.indicator.id != null ? ctx.indicator.id : "na"}:${paramId}`;
+        const V9IndSettingDropdown = ({ paramId, options, value, onPick, widthStyle }) => {
+          const k = indSelectKeyV9(paramId);
+          const open = v9IndSelectMenu && v9IndSelectMenu.key === k;
+          const strVal = value != null ? String(value) : "";
+          const cur = Array.isArray(options) ? options.find((o) => String(o.value) === strVal) : null;
+          const disp = cur ? cur.label : (strVal || "—");
+          const wst = widthStyle || { width: "100%", minWidth: 0 };
+          return (
+            <div data-v9-ind-select-root="1" style={{ position: "relative", ...wst, touchAction: "manipulation" }}>
+              <button
+                type="button"
+                className="tlr-ind-select"
+                onWheel={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (open) {
+                    setV9IndSelectMenu(null);
+                    return;
+                  }
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setV9IndSelectMenu({
+                    key: k,
+                    top: r.bottom + 2,
+                    left: r.left,
+                    width: Math.max(r.width, 96),
+                  });
+                }}
+                style={{
+                  width: "100%",
+                  height: 26,
+                  fontSize: 12,
+                  fontFamily: F,
+                  color: c.tx,
+                  boxSizing: "border-box",
+                  backgroundColor: "rgba(140,160,255,0.05)",
+                  border: `1px solid rgba(140,160,255,0.2)`,
+                  padding: "0 8px",
+                  outline: "none",
+                  borderRadius: 4,
+                  cursor: "default",
+                  colorScheme: darkMode ? "dark" : "light",
+                  textAlign: "left",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 6,
+                }}
+              >
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{disp}</span>
+                <span style={{ flexShrink: 0, opacity: 0.75, fontSize: 9 }}>▾</span>
+              </button>
+              {open && v9IndSelectMenu && (
+                <div
+                  data-v9-ind-select-root="1"
+                  data-v9-ind-select-panel="1"
+                  className="tlr-scroll"
+                  tabIndex={-1}
+                  onClick={(e) => e.stopPropagation()}
+                  onWheel={(e) => {
+                    e.stopPropagation();
+                  }}
+                  style={{
+                    position: "fixed",
+                    top: v9IndSelectMenu.top,
+                    left: v9IndSelectMenu.left,
+                    minWidth: v9IndSelectMenu.width,
+                    zIndex: 12050,
+                    maxHeight: typeof window !== "undefined"
+                      ? Math.max(120, window.innerHeight - v9IndSelectMenu.top - 12)
+                      : 260,
+                    overflowY: "auto",
+                    overscrollBehavior: "contain",
+                    WebkitOverflowScrolling: "touch",
+                    touchAction: "pan-y",
+                    background: c.sf,
+                    border: `1px solid ${c.brH}`,
+                    boxShadow: "0 12px 40px rgba(0,0,0,0.75)",
+                    borderRadius: 4,
+                  }}
+                >
+                  {options.map((opt) => {
+                    const sel = String(opt.value) === strVal;
+                    return (
+                      <div
+                        key={String(opt.value)}
+                        role="option"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onPick(opt.value);
+                          setV9IndSelectMenu(null);
+                        }}
+                        style={{
+                          padding: "7px 10px",
+                          fontSize: 12,
+                          cursor: "default",
+                          color: sel ? c.acL : c.tx,
+                          background: sel ? "rgba(74,106,255,0.14)" : "transparent",
+                          fontFamily: F,
+                        }}
+                      >
+                        {opt.label}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        };
+        const renderParam = (p) => {
+          const raw = indSettDraft[p.id] !== undefined ? indSettDraft[p.id] : p.default;
+          const row = (right) => (
+            <div key={p.id} style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(100px, 38%) 1fr",
+              alignItems: "center",
+              columnGap: 12,
+              padding: "9px 12px",
+              borderBottom: `1px solid ${c.br}`,
+              width: "100%",
+              boxSizing: "border-box",
+            }}>
+              <span style={{
+                fontSize: 12,
+                color: c.ts,
+                textAlign: "left",
+                justifySelf: "start",
+                minWidth: 0,
+                lineHeight: 1.35,
+                paddingRight: 4,
+              }}>{p.label}</span>
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minWidth: 0,
+                width: "100%",
+              }}>{right}</div>
+            </div>
+          );
+          if (p.type === "heading") {
+            return (
+              <div key={p.id} style={{
+                width: "100%",
+                fontSize: 10,
+                fontWeight: 800,
+                color: c.tm,
+                letterSpacing: "0.08em",
+                margin: "14px 0 8px",
+                paddingTop: 6,
+                borderTop: `1px solid ${c.br}`,
+              }}>{p.label}</div>
+            );
+          }
+          if (p.type === "number") {
+            return row(
+              <input type="number" className="tlr-nospinner" value={raw == null ? "" : raw}
+                min={p.min} max={p.max} step={p.step}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                style={{ width: 56, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
+                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box", fontVariantNumeric: "tabular-nums", textAlign: "center" }} />
+            );
+          }
+          if (p.type === "color") {
+            const ck = "ind-" + p.id;
+            const isAct = colorPicker === ck;
+            const isH = hov === ck;
+            const colStr = String(raw || "#2962ff");
+            return row(
+              <div onMouseEnter={() => setHov(ck)} onMouseLeave={() => setHov(null)}
+                onClick={(e) => { e.stopPropagation(); openIndCP(e, p.id, colStr); }}
+                style={{ width: 26, height: 26, background: colStr, flexShrink: 0, cursor: "default",
+                  border: `1px solid ${isAct || isH ? "rgba(255,255,255,0.5)" : c.hvLn}`,
+                  outline: isAct ? "2px solid rgba(140,160,255,0.55)" : "none", outlineOffset: 1,
+                  boxShadow: isAct || isH ? `0 0 8px ${colStr}` : "inset 0 1px 3px rgba(0,0,0,0.5)",
+                  transition: "border-color 0.12s, box-shadow 0.12s" }} />
+            );
+          }
+          if (p.type === "checkbox") {
+            return row(
+              <input type="checkbox" checked={!!raw} onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.checked }))}
+                onClick={(e) => e.stopPropagation()}
+                style={{ width: 16, height: 16, accentColor: c.ac, cursor: "default" }} />
+            );
+          }
+          if (p.type === "select" && Array.isArray(p.options)) {
+            return row(
+              <V9IndSettingDropdown
+                paramId={p.id}
+                options={p.options}
+                value={raw}
+                onPick={(v) => setIndSettDraft((d) => ({ ...d, [p.id]: v }))}
+                widthStyle={{ width: 130, minWidth: 0 }}
+              />
+            );
+          }
+          if (p.type === "textarea") {
+            return (
+              <div key={p.id} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, color: c.ts, marginBottom: 6 }}>{p.label}</div>
+                <textarea value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                  rows={isCustom ? 14 : 8}
+                  style={{ width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: isCustom ? 200 : 100,
+                    fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 11, lineHeight: 1.35, padding: 10,
+                    background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`, color: c.tx, outline: "none" }} />
+              </div>
+            );
+          }
+          if (p.type === "time") {
+            return row(
+              <input type="time" value={raw || p.default || ""} onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                style={{ width: 118, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
+                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box" }} />
+            );
+          }
+          return row(
+            <input type="text" value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+              style={{ width: 160, maxWidth: "100%", height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
+                color: c.tx, fontSize: 12, fontFamily: F, padding: "0 8px", outline: "none", boxSizing: "border-box" }} />
+          );
+        };
+        const inTab = def.params.filter((p) => tabFn(p) === indSettTab);
+        const renderIctEverythingSettings = () => {
+          const def0 = (id) => def.params.find((x) => x.id === id);
+          const val = (id) => (indSettDraft[id] !== undefined ? indSettDraft[id] : def0(id)?.default);
+          const setv = (id, v) => setIndSettDraft((d) => ({ ...d, [id]: v }));
+          const flip = (id) => setIndSettDraft((d) => {
+            const p = def0(id);
+            const cur = d[id] !== undefined ? !!d[id] : !!p?.default;
+            return { ...d, [id]: !cur };
+          });
+          const inpBase = {
+            height: 26,
+            fontSize: 12,
+            fontFamily: F,
+            color: c.tx,
+            boxSizing: "border-box",
+            backgroundColor: "rgba(140,160,255,0.05)",
+            border: "1px solid rgba(140,160,255,0.2)",
+            borderRadius: 4,
+            outline: "none",
+            cursor: "default",
+          };
+          const ictSec = (label, first) => (
+            <div key={"ict-sec-" + label} style={{
+              fontSize: 10,
+              fontWeight: 800,
+              color: c.tm,
+              letterSpacing: "0.08em",
+              marginTop: first ? 0 : 14,
+              marginBottom: 8,
+              paddingTop: first ? 0 : 8,
+              borderTop: first ? "none" : `1px solid ${c.br}`,
+            }}>{label}</div>
+          );
+          const Info = ({ t }) => (
+            <span title={t} style={{
+              width: 15,
+              height: 15,
+              flexShrink: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 999,
+              border: `1px solid ${c.brL}`,
+              color: c.tm,
+              fontSize: 9,
+              fontWeight: 800,
+              cursor: "default",
+            }}>i</span>
+          );
+          const Swatch = ({ pid }) => {
+            const raw = val(pid);
+            const ck = "ind-" + pid;
+            const colStr = String(raw != null ? raw : "#787b86");
+            const isAct = colorPicker === ck;
+            const isH = hov === ck;
+            return (
+              <div
+                onMouseEnter={() => setHov(ck)}
+                onMouseLeave={() => setHov(null)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openIndCP(e, pid, colStr);
+                }}
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 4,
+                  background: colStr,
+                  flexShrink: 0,
+                  cursor: "default",
+                  border: `1px solid ${isAct || isH ? "rgba(255,255,255,0.5)" : c.hvLn}`,
+                  outline: isAct ? "2px solid rgba(140,160,255,0.55)" : "none",
+                  outlineOffset: 1,
+                  boxShadow: isAct || isH ? `0 0 8px ${colStr}` : "inset 0 1px 3px rgba(0,0,0,0.5)",
+                  transition: "border-color 0.12s, box-shadow 0.12s",
+                }}
+              />
+            );
+          };
+          const Sel = ({ pid, w }) => {
+            const p = def0(pid);
+            if (!p || p.type !== "select" || !p.options) return null;
+            const raw = val(pid);
+            return (
+              <V9IndSettingDropdown
+                paramId={pid}
+                options={p.options}
+                value={raw}
+                onPick={(v) => setv(pid, v)}
+                widthStyle={w != null ? { width: w, minWidth: 0 } : { width: "100%", minWidth: 0 }}
+              />
+            );
+          };
+          const chkCell = (children) => (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 26, minHeight: 26 }}>{children}</div>
+          );
+          const ictFlexRow = (key, children) => (
+            <div key={key} style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 0",
+              borderBottom: `1px solid ${c.br}`,
+              flexWrap: "wrap",
+            }}>{children}</div>
+          );
+          const pill = (pid, w) => (
+            <input
+              type="text"
+              value={val(pid) != null ? String(val(pid)) : ""}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setv(pid, e.target.value)}
+              style={{
+                ...inpBase,
+                width: w != null ? w : "100%",
+                minWidth: 0,
+                textAlign: "center",
+                fontWeight: 700,
+                fontSize: 11,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+              }}
+            />
+          );
+          const timeInp = (pid) => (
+            <input
+              type="time"
+              value={val(pid) || def0(pid)?.default || ""}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setv(pid, e.target.value)}
+              style={{ ...inpBase, width: "100%", minWidth: 0, maxWidth: 118, padding: "0 6px", fontVariantNumeric: "tabular-nums" }}
+            />
+          );
+          const sessRow = (rk, showId, txtId, tStart, tEnd, fillId, tip) => (
+            <div key={rk} style={{
+              display: "grid",
+              gridTemplateColumns: "26px minmax(72px,1fr) minmax(88px,1fr) 12px minmax(88px,1fr) 28px 20px",
+              alignItems: "center",
+              columnGap: 8,
+              padding: "8px 0",
+              borderBottom: `1px solid ${c.br}`,
+            }}>
+              {chkCell(TlChk(!!val(showId), `ict-${showId}`, null, () => flip(showId)))}
+              {pill(txtId, null)}
+              {timeInp(tStart)}
+              <span style={{ color: c.tm, fontSize: 12, textAlign: "center" }}>–</span>
+              {timeInp(tEnd)}
+              <div style={{ display: "flex", justifyContent: "center" }}><Swatch pid={fillId} /></div>
+              <Info t={tip} />
+            </div>
+          );
+          const vLineRow = (rk, showId, txtId, colId, lsId, lwId, tip) => (
+            <div key={rk} style={{
+              display: "grid",
+              gridTemplateColumns: "26px minmax(64px,1fr) 28px minmax(80px,1fr) minmax(64px,1fr) 20px",
+              alignItems: "center",
+              columnGap: 8,
+              padding: "8px 0",
+              borderBottom: `1px solid ${c.br}`,
+            }}>
+              {chkCell(TlChk(!!val(showId), `ict-v-${showId}`, null, () => flip(showId)))}
+              {pill(txtId, null)}
+              <div style={{ display: "flex", justifyContent: "center" }}><Swatch pid={colId} /></div>
+              <Sel pid={lsId} w={null} />
+              <Sel pid={lwId} w={null} />
+              <Info t={tip} />
+            </div>
+          );
+          const boxRow = (rk, showId, txtId, boxCol, showTxtId, txtColId, sdId, tip) => (
+            <div key={rk} style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 0",
+              borderBottom: `1px solid ${c.br}`,
+              flexWrap: "wrap",
+            }}>
+              {chkCell(TlChk(!!val(showId), `ict-bx-${showId}`, null, () => flip(showId)))}
+              <div style={{ width: 84, flexShrink: 0 }}>{pill(txtId, 82)}</div>
+              <div style={{ display: "flex", justifyContent: "center", flexShrink: 0 }}><Swatch pid={boxCol} /></div>
+              {TlChk(!!val(showTxtId), `ict-${showTxtId}`, "Text", () => flip(showTxtId))}
+              <div style={{ display: "flex", justifyContent: "center", flexShrink: 0 }}><Swatch pid={txtColId} /></div>
+              {TlChk(!!val(sdId), `ict-${sdId}`, "SD", () => flip(sdId))}
+              <div style={{ flex: 1, minWidth: 8 }} />
+              <Info t={tip} />
+            </div>
+          );
+          const sd3Row = (rk, chkId, txtId, colId, d1, d2, tip) => (
+            <div key={rk} style={{
+              display: "grid",
+              gridTemplateColumns: "26px minmax(56px,1fr) 28px minmax(100px,1fr) minmax(92px,1fr) 20px",
+              alignItems: "center",
+              columnGap: 8,
+              padding: "8px 0",
+              borderBottom: `1px solid ${c.br}`,
+            }}>
+              {chkCell(TlChk(!!val(chkId), `ict-sd-${chkId}`, null, () => flip(chkId)))}
+              {pill(txtId, null)}
+              <div style={{ display: "flex", justifyContent: "center" }}><Swatch pid={colId} /></div>
+              <Sel pid={d1} w={null} />
+              <Sel pid={d2} w={null} />
+              <Info t={tip} />
+            </div>
+          );
+          return (
+            <div style={{ width: "100%", boxSizing: "border-box" }}>
+              {ictSec("GLOBAL SETTINGS", true)}
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: "10px 12px", alignItems: "center", padding: "4px 0 10px", borderBottom: `1px solid ${c.br}` }}>
+                <span style={{ fontSize: 12, color: c.ts }}>Hide indicator above (bar minutes)</span>
+                <input type="number" className="tlr-nospinner" min={1} max={1440} value={val("inputMaxInterval") == null ? "" : val("inputMaxInterval")}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setv("inputMaxInterval", e.target.value)}
+                  style={{ ...inpBase, width: 56, textAlign: "center", fontVariantNumeric: "tabular-nums" }} />
+              </div>
+              {ictSec("SESSION OPTIONS", false)}
+              {[
+                ["ShowTSO", "Show today's session only"],
+                ["ShowTWO", "Show current week's sessions only"],
+                ["SL4W", "Show last 4 week sessions"],
+                ["ShowSFill", "Show session highlighting"],
+              ].map(([id, lbl]) => (
+                <div key={id} style={{ display: "grid", gridTemplateColumns: "26px 1fr", alignItems: "center", columnGap: 10, padding: "8px 0", borderBottom: `1px solid ${c.br}` }}>
+                  {chkCell(TlChk(!!val(id), `ict-${id}`, null, () => flip(id)))}
+                  <span style={{ fontSize: 12, color: c.ts }}>{lbl}</span>
+                </div>
+              ))}
+              {ictSec("HISTORICAL LINES", false)}
+              {[
+                ["ShowMOPL", "Midnight historical price lines"],
+                ["MOLHist", "Midnight historical vertical lines"],
+                ["ShowPrev", "Misc. historical price lines"],
+              ].map(([id, lbl]) => (
+                <div key={id} style={{ display: "grid", gridTemplateColumns: "26px 1fr", alignItems: "center", columnGap: 10, padding: "8px 0", borderBottom: `1px solid ${c.br}` }}>
+                  {chkCell(TlChk(!!val(id), `ict-${id}`, null, () => flip(id)))}
+                  <span style={{ fontSize: 12, color: c.ts }}>{lbl}</span>
+                </div>
+              ))}
+              {ictSec("SESSIONS", false)}
+              {sessRow("s-lon", "ShowLondon", "txt2", "LDNseshStart", "LDNseshEnd", "LSFC", def0("ShowLondon")?.label || "")}
+              {sessRow("s-ny", "ShowNY", "txt3", "NYseshStart", "NYseshEnd", "NYSFC", def0("ShowNY")?.label || "")}
+              {sessRow("s-lc", "ShowLC", "txt4", "LCseshStart", "LCseshEnd", "LCSFC", def0("ShowLC")?.label || "")}
+              {sessRow("s-pm", "ShowPM", "txt5", "PMseshStart", "PMseshEnd", "PMSFC", def0("ShowPM")?.label || "")}
+              {sessRow("s-asia", "ShowAsian", "txt6", "ASIA2seshStart", "ASIA2seshEnd", "ASFC", def0("ShowAsian")?.label || "")}
+              {sessRow("s-free", "ShowFreeSesh", "txt9", "FreeSeshStart", "FreeSeshEnd", "FSFC", def0("ShowFreeSesh")?.label || "")}
+              {ictSec("VERTICAL LINES", false)}
+              {vLineRow("vl-mn", "ShowMOP", "txt12", "MOPColor", "Midnight_Open_LS", "Midnight_Open_LW", def0("ShowMOP")?.label || "")}
+              {vLineRow("vl-lo", "ShowLOP", "txt14", "LOPColor", "london_Open_LS", "London_Open_LW", def0("ShowLOP")?.label || "")}
+              {vLineRow("vl-ny", "ShowNYOP", "txt15", "NYOPColor", "NY_Open_LS", "NY_Open_LW", def0("ShowNYOP")?.label || "")}
+              {vLineRow("vl-eq", "ShowEOP", "txt16", "EOPColor", "Equities_Open_LS", "Equities_Open_LW", def0("ShowEOP")?.label || "")}
+              {ictSec("OPENING PRICE LINES", false)}
+              {vLineRow("op-mo", "ShowMOPP", "txt13", "MOPColP", "MOPLS", "i_MOPLW", def0("ShowMOPP")?.label || "")}
+              {vLineRow("op-ny", "ShowNYOPP", "txt17", "NYOPColP", "NYOPLS", "i_NYOPLW", def0("ShowNYOPP")?.label || "")}
+              {vLineRow("op-eq", "ShowEOPP", "txt18", "EOPColP", "EOPLS", "i_EOPLW", def0("ShowEOPP")?.label || "")}
+              {vLineRow("op-aft", "ShowAFTPP", "txt1330", "AFTOPColP", "AFTOPLS", "i_AFTOPLW", def0("ShowAFTPP")?.label || "")}
+              {ictSec("HTF OPENING PRICE LINES", false)}
+              {vLineRow("htf-w", "ShowWeekOpen", "txt19", "i_WeekOpenCol", "WOLS", "i_WOPLW", def0("ShowWeekOpen")?.label || "")}
+              {vLineRow("htf-m", "showMonthOpen", "txt20", "i_MonthOpenCol", "MOLS", "i_MONPLW", def0("showMonthOpen")?.label || "")}
+              {ictSec("CBDR, ASIA & FLOUT", false)}
+              {boxRow("bx-cbdr", "ShowCBDR", "txt0", "CBDRBoxCol", "box_text_cbdr", "box_text_cbdr_col", "bool_cbdr_dev", def0("ShowCBDR")?.label || "")}
+              {boxRow("bx-asia", "ShowASIA", "txt1", "ASIABoxCol", "box_text_asia", "box_text_asia_col", "bool_asia_dev", def0("ShowASIA")?.label || "")}
+              {boxRow("bx-flout", "ShowFLOUT", "txt7", "FLOUTBoxCol", "box_text_flout", "box_text_flout_col", "bool_flout_dev", def0("ShowFLOUT")?.label || "")}
+              {ictSec("STANDARD DEVIATION", false)}
+              {sd3Row("sd1", "ShowDevLN", "DEVLNTXT", "DevLNCol", "DEVLS", "i_DEVLW", def0("ShowDevLN")?.label || "")}
+              {sd3Row("sd2", "ShowDev", "txt8", "SDCountCol", "DevInput", "DevDirection", def0("ShowDev")?.label || "")}
+              {sd3Row("sd3", "Auto_Select", "txtSD", "Tab1txtCol", "TabOptionShow", "TabOption1", def0("Auto_Select")?.label || "")}
+              {ictSec("DAY OF WEEK & LABELS", false)}
+              {ictFlexRow("dow-lab", <>
+                {chkCell(TlChk(!!val("ShowLabel"), "ict-ShowLabel", null, () => flip("ShowLabel")))}
+                <div style={{ width: 76, flexShrink: 0 }}>{pill("txt21", 74)}</div>
+                <Swatch pid="LabelColor" />
+                <Sel pid="LabelSizeInput" w={null} />
+                <Sel pid="Terminusinp" w={null} />
+                <Info t={def0("ShowLabel")?.label || ""} />
+              </>)}
+              {ictFlexRow("dow-lab2", <>
+                {chkCell(TlChk(!!val("ShowLabelText"), "ict-ShowLabelText", null, () => flip("ShowLabelText")))}
+                <div style={{ width: 76, flexShrink: 0 }}>{pill("txt22", 74)}</div>
+                <Swatch pid="LabelTextColor" />
+                <Sel pid="LabelTextOptioninput" w={null} />
+                <Sel pid="ShowPricesBool" w={null} />
+                <Info t={def0("ShowLabelText")?.label || ""} />
+              </>)}
+              {ictFlexRow("dow-mk", <>
+                {chkCell(TlChk(!!val("showDOW"), "ict-showDOW", null, () => flip("showDOW")))}
+                <div style={{ width: 76, flexShrink: 0 }}>{pill("txt24", 74)}</div>
+                <Swatch pid="i_DOWCol" />
+                <input type="number" className="tlr-nospinner" min={0} max={23} value={val("DOWTime") == null ? "" : val("DOWTime")}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setv("DOWTime", e.target.value)}
+                  style={{ ...inpBase, width: 44, flexShrink: 0, textAlign: "center", fontVariantNumeric: "tabular-nums" }} />
+                <Sel pid="DOWLoc_inpt" w={null} />
+                <Info t={def0("showDOW")?.label || ""} />
+              </>)}
+              {ictSec("BIAS & NOTES PRECONFIG", false)}
+              {ictFlexRow("bias-pre", <>
+                {chkCell(TlChk(!!val("BIAS_M_Bool"), "ict-BIAS_M_Bool", null, () => flip("BIAS_M_Bool")))}
+                <div style={{ width: 64, flexShrink: 0 }}>{pill("txt100", 62)}</div>
+                <Swatch pid="Tab2txtCol" />
+                <Sel pid="TabOption2" w={null} />
+                <Info t={def0("BIAS_M_Bool")?.label || ""} />
+              </>)}
+              {ictFlexRow("notes-pre", <>
+                {chkCell(TlChk(!!val("NOTES_M_Bool"), "ict-NOTES_M_Bool", null, () => flip("NOTES_M_Bool")))}
+                <div style={{ width: 64, flexShrink: 0 }}>{pill("txt101", 62)}</div>
+                <Swatch pid="Tab3txtCol" />
+                <Sel pid="TabOption3" w={null} />
+                <Info t={def0("NOTES_M_Bool")?.label || ""} />
+              </>)}
+              {ictSec("BIAS & NOTES", false)}
+              {[1, 2, 3, 4].map((n) => {
+                const b = `BIASbool${n}`;
+                const t = n === 1 ? "txt52" : n === 2 ? "txt53" : n === 3 ? "txt54" : "txt55";
+                const o = `BIASOption${n}`;
+                return (
+                  <div key={`bias-${n}`} style={{ display: "grid", gridTemplateColumns: "26px minmax(72px,1fr) minmax(120px,1fr) 20px", alignItems: "center", columnGap: 8, padding: "8px 0", borderBottom: `1px solid ${c.br}` }}>
+                    {chkCell(TlChk(!!val(b), `ict-${b}`, null, () => flip(b)))}
+                    {pill(t, null)}
+                    <Sel pid={o} w={null} />
+                    <Info t={def0(b)?.label || ""} />
+                  </div>
+                );
+              })}
+              <div key="ict-notes" style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${c.br}` }}>
+                <div style={{ fontSize: 11, color: c.ts, marginBottom: 6 }}>{def0("notes")?.label || "Notes"}</div>
+                <textarea value={val("notes") != null ? String(val("notes")) : ""} onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setv("notes", e.target.value)}
+                  rows={5}
+                  style={{ width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 90,
+                    fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 11, lineHeight: 1.35, padding: 10,
+                    background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)", color: c.tx, outline: "none", borderRadius: 4 }} />
+              </div>
+            </div>
+          );
+        };
+        const emptyLabel = indSettTab === "style" ? "style" : indSettTab === "input" ? "input" : "visibility";
+        return (
+        <div data-sdrop="1" data-v9-ind-sett="1" onClick={(e) => e.stopPropagation()}
+          style={{ position: "fixed", left: indSettPos.x, top: indSettPos.y, zIndex: 11000, width: panelW, maxHeight: "calc(100vh - 24px)", fontFamily: F,
+            background: c.sf, border: `1px solid ${c.brH}`, boxShadow: "0 24px 64px rgba(0,0,0,0.85)",
+            display: "flex", flexDirection: "column", minHeight: 0,
+            colorScheme: darkMode ? "dark" : "light",
+            animation: closing.has("indsett") ? "tlrPopOut 0.155s ease both" : "tlrPopIn 0.15s ease" }}>
+          <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`, flexShrink: 0 }} />
+          <div onPointerDown={(e) => {
+            e.preventDefault();
+            const sx = e.clientX; const sy = e.clientY; const px = indSettPos.x; const py = indSettPos.y;
+            const cpWasOpen = typeof colorPicker === "string" && colorPicker.startsWith("ind-");
+            const cpStart = { top: cpPos.top, left: cpPos.left };
+            const onMove = (ev) => {
+              const dx = (ev.clientX - sx) / Z; const dy = (ev.clientY - sy) / Z;
+              const nx = Math.max(0, Math.min(window.innerWidth - panelW - 8, px + dx));
+              const ny = Math.max(0, Math.min(window.innerHeight - 44 - 8, py + dy));
+              const adx = nx - px; const ady = ny - py;
+              setIndSettPos({ x: nx, y: ny });
+              if (cpWasOpen) setCpPos({ top: cpStart.top + ady, left: cpStart.left + adx });
+            };
+            const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
+            window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp);
+          }} style={{ display: "flex", alignItems: "center", padding: "9px 14px", cursor: "move", userSelect: "none", flexShrink: 0 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: c.tx, flex: 1 }}>{title} Settings</span>
+            <div {...modalPointerActivate(closeIndSett)} onMouseEnter={() => setHov("indx")} onMouseLeave={() => setHov(null)}
+              style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "default",
+                background: hov === "indx" ? "rgba(255,80,80,0.07)" : "transparent", transition: "background 0.12s" }}>
+              <I n="x" s={18} cl={hov === "indx" ? c.rd : c.ts} />
+            </div>
+          </div>
+          <div style={{ height: 1, background: c.br, flexShrink: 0 }} />
+          <div style={{ position: "relative", display: "flex", flexShrink: 0 }}>
+            {tabsShown.map(([id, lbl]) => {
+              const isAct = indSettTab === id;
+              return (
+                <button type="button" key={id}
+                  onPointerDown={(e) => { e.stopPropagation(); setIndSettTab(id); }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseEnter={() => setHov(`indTab-${id}`)} onMouseLeave={() => setHov(null)}
+                  style={{ flex: 1, padding: "10px 4px", border: "none", fontFamily: F, cursor: "default",
+                    color: isAct ? c.acL : hov === `indTab-${id}` ? c.tx : c.ts, fontSize: 12, fontWeight: isAct ? 700 : 500,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: isAct ? (hov === `indTab-${id}` ? "rgba(74,106,255,0.12)" : "rgba(74,106,255,0.05)")
+                      : hov === `indTab-${id}` ? "rgba(255,255,255,0.06)" : "transparent",
+                    transition: "color 0.15s, background 0.12s" }}>
+                  {lbl}
+                </button>
+              );
+            })}
+            <div style={{ position: "absolute", bottom: 0, height: 2,
+              width: `${100 / Math.max(1, tabsShown.length)}%`,
+              left: `${tabIdx * (100 / Math.max(1, tabsShown.length))}%`,
+              transition: "left 0.25s cubic-bezier(0.4,0,0.2,1)",
+              background: `linear-gradient(90deg,transparent,${c.acL},transparent)`,
+              boxShadow: `0 0 8px ${c.acG}` }} />
+          </div>
+          {isCustom && (
+            <div style={{ fontSize: 11, lineHeight: 1.45, color: c.tm, margin: "10px 14px 0", padding: "8px 10px",
+              background: "rgba(255,193,7,0.07)", border: "1px solid rgba(255,193,7,0.28)" }}>
+              Sandboxed JavaScript only (not Pine). Use the template: <code style={{ color: c.ts }}>compute(bars, params)</code> returning plots.
+            </div>
+          )}
+          <div
+            className="tlr-scroll"
+            style={{
+              padding: "14px 18px 12px",
+              overflowY: "auto",
+              overscrollBehavior: "contain",
+              flex: 1,
+              minHeight: 0,
+              maxHeight: "min(70vh, calc(100vh - 200px))",
+              WebkitOverflowScrolling: "touch",
+              touchAction: "pan-y",
+            }}
+          >
+            {indSettTab === "visibility" ? (() => {
+              const hardMax = { visMinutes: 60, visHours: 24, visDays: 366, visWeeks: 260, visMonths: 120 };
+              const gc = "24px 72px 44px 1fr 44px";
+              return (
+                <>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", marginBottom: 10 }}>TIMEFRAMES</div>
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: gc, gap: "0 8px", padding: "4px 12px 5px" }}>
+                      <div /><div />
+                      <div style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: c.tm, letterSpacing: "0.06em" }}>MIN</div>
+                      <div />
+                      <div style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: c.tm, letterSpacing: "0.06em" }}>MAX</div>
+                    </div>
+                    {[["visMinutes", "Minutes"], ["visHours", "Hours"], ["visDays", "Days"], ["visWeeks", "Weeks"], ["visMonths", "Months"]].map(([k, lbl]) => {
+                      const v = indSettDraft[k] || { checked: true, min: 1, max: hardMax[k] };
+                      const hm = hardMax[k];
+                      const pctMin = (v.min - 1) / Math.max(1, hm - 1) * 100;
+                      const pctMax = (v.max - 1) / Math.max(1, hm - 1) * 100;
+                      const hkMin = `ind-vis-min-${k}`;
+                      const hkMax = `ind-vis-max-${k}`;
+                      const mkDrag = (e, isMin, trackEl) => {
+                        e.stopPropagation();
+                        const rect = trackEl.getBoundingClientRect();
+                        const getVal = (cx) => Math.round(1 + Math.max(0, Math.min(1, (cx - rect.left) / rect.width)) * (hm - 1));
+                        setHov(isMin ? hkMin : hkMax);
+                        const onMove = (ev) => {
+                          const nv = getVal(ev.clientX);
+                          if (isMin) {
+                            setIndSettDraft((s) => ({
+                              ...s,
+                              [k]: { ...s[k], min: Math.max(1, Math.min(nv, s[k].max - 1)) },
+                            }));
+                          } else {
+                            setIndSettDraft((s) => ({
+                              ...s,
+                              [k]: { ...s[k], max: Math.max(s[k].min + 1, Math.min(nv, hm)) },
+                            }));
+                          }
+                        };
+                        const onUp = () => {
+                          setHov(null);
+                          window.removeEventListener("pointermove", onMove);
+                          window.removeEventListener("pointerup", onUp);
+                        };
+                        onMove(e);
+                        window.addEventListener("pointermove", onMove);
+                        window.addEventListener("pointerup", onUp);
+                      };
+                      return (
+                        <div key={k} style={{ display: "grid", gridTemplateColumns: gc, gap: "0 8px", alignItems: "center", padding: "6px 12px" }}>
+                          {TlChk(v.checked, `indchk-${k}`, null, () =>
+                            setIndSettDraft((s) => ({ ...s, [k]: { ...(s[k] || v), checked: !((s[k] || v).checked) } }))
+                          )}
+                          <span style={{ fontSize: 12, color: v.checked ? c.ts : c.tm }}>{lbl}</span>
+                          <div style={{ display: "flex", justifyContent: "center" }}>
+                            <input type="number" min={1} max={v.max - 1} value={v.min} onClick={(e) => e.stopPropagation()}
+                              onChange={(e) =>
+                                setIndSettDraft((s) => ({
+                                  ...s,
+                                  [k]: { ...s[k], min: Math.max(1, Math.min(parseInt(e.target.value, 10) || 1, s[k].max - 1)) },
+                                }))
+                              }
+                              className="tlr-nospinner"
+                              style={{ width: 38, height: 22, textAlign: "center", background: "rgba(140,160,255,0.06)",
+                                border: `1px solid ${c.brL}`, color: c.tx, fontSize: 11, fontFamily: F, outline: "none" }} />
+                          </div>
+                          <div onClick={(e) => e.stopPropagation()}
+                            style={{ position: "relative", height: 28, display: "flex", alignItems: "center", cursor: "default" }}>
+                            <div style={{ position: "absolute", left: 0, right: 0, height: 3, top: "50%", transform: "translateY(-50%)", borderRadius: 99, background: c.trk }}>
+                              <div style={{ position: "absolute", left: `${pctMin}%`, width: `${Math.max(0, pctMax - pctMin)}%`, height: "100%", borderRadius: 99,
+                                background: `linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`, boxShadow: `0 0 5px ${c.acG}` }} />
+                            </div>
+                            <div style={{ position: "absolute", left: `calc(${pctMin}% - 6px)`, top: "calc(50% + 2px)", width: 12, height: 9,
+                              clipPath: "polygon(50% 0%,0% 100%,100% 100%)",
+                              background: `linear-gradient(180deg,${c.acL},${c.ac})`,
+                              filter: hov === hkMin ? `drop-shadow(0 0 8px ${c.acG}) brightness(1.35)` : `drop-shadow(0 0 4px ${c.acG})`,
+                              transform: hov === hkMin ? "scale(1.18)" : "scale(1)", transition: "transform 0.08s ease,filter 0.08s ease",
+                              pointerEvents: "none" }} />
+                            <div style={{ position: "absolute", left: `calc(${pctMax}% - 6px)`, top: "calc(50% + 2px)", width: 12, height: 9,
+                              clipPath: "polygon(50% 0%,0% 100%,100% 100%)",
+                              background: `linear-gradient(180deg,${c.acL},${c.ac})`,
+                              filter: hov === hkMax ? `drop-shadow(0 0 8px ${c.acG}) brightness(1.35)` : `drop-shadow(0 0 4px ${c.acG})`,
+                              transform: hov === hkMax ? "scale(1.18)" : "scale(1)", transition: "transform 0.08s ease,filter 0.08s ease",
+                              pointerEvents: "none" }} />
+                            <div onPointerDown={(e) => {
+                              const t = e.currentTarget.parentElement;
+                              const r = t.getBoundingClientRect();
+                              const cv = Math.round(1 + Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (hm - 1));
+                              mkDrag(e, Math.abs(cv - v.min) <= Math.abs(cv - v.max), t);
+                            }}
+                              style={{ position: "absolute", inset: 0, cursor: "default" }} />
+                            <div onPointerDown={(e) => mkDrag(e, true, e.currentTarget.parentElement)}
+                              onMouseEnter={() => setHov(hkMin)} onMouseLeave={() => setHov(null)}
+                              style={{ position: "absolute", left: `calc(${pctMin}% - 14px)`, top: "calc(50% - 14px)",
+                                width: 28, height: 28, cursor: "default", zIndex: 2 }} />
+                            <div onPointerDown={(e) => mkDrag(e, false, e.currentTarget.parentElement)}
+                              onMouseEnter={() => setHov(hkMax)} onMouseLeave={() => setHov(null)}
+                              style={{ position: "absolute", left: `calc(${pctMax}% - 14px)`, top: "calc(50% - 14px)",
+                                width: 28, height: 28, cursor: "default", zIndex: 2 }} />
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "center" }}>
+                            <input type="number" min={v.min + 1} max={hm} value={v.max} onClick={(e) => e.stopPropagation()}
+                              onChange={(e) =>
+                                setIndSettDraft((s) => ({
+                                  ...s,
+                                  [k]: { ...s[k], max: Math.max(s[k].min + 1, Math.min(parseInt(e.target.value, 10) || 1, hm)) },
+                                }))
+                              }
+                              className="tlr-nospinner"
+                              style={{ width: 38, height: 22, textAlign: "center", background: "rgba(140,160,255,0.06)",
+                                border: `1px solid ${c.brL}`, color: c.tx, fontSize: 11, fontFamily: F, outline: "none" }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {inTab.length > 0 && (
+                    <>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", margin: "18px 0 10px" }}>OPTIONS</div>
+                      <div style={{ width: "100%", maxWidth: 340, margin: "0 auto", boxSizing: "border-box" }}>
+                        {inTab.map((p) => renderParam(p))}
+                      </div>
+                    </>
+                  )}
+                </>
+              );
+            })() : isIctEverything && indSettTab === "input" ? (
+              <div style={{ width: "100%", boxSizing: "border-box" }}>{renderIctEverythingSettings()}</div>
+            ) : inTab.length === 0 ? (
+              <div style={{ fontSize: 12, color: c.tm, fontStyle: "italic", padding: "8px 4px" }}>
+                {`No ${emptyLabel} options for this indicator.`}
+              </div>
+            ) : (
+              <div style={{ width: "100%", maxWidth: 340, margin: "0 auto", boxSizing: "border-box" }}>
+                {inTab.map((p) => renderParam(p))}
+              </div>
+            )}
+          </div>
+          <div onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
+            style={{ borderTop: `1px solid ${c.brH}`, display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "10px 14px 14px", gap: 8 }}>
+            <B hk="ind-cancel" fireOnPointerDown onClick={closeIndSett}>Cancel</B>
+            <B primary hk="ind-apply" fireOnPointerDown onClick={applyInd}>Apply Changes</B>
           </div>
         </div>
         );
@@ -14440,7 +17123,7 @@ const TalariaV8bLive = () => {
       {/* Visibility: chart selection AND drawing maps to a line/shape rail group.
           Text/label drawings map to group "text" (not in TL_LINE_SHAPE_GROUPS) — without
           this guard, effectiveTlGroup is null and tlSubTool defaulted to Trend Line. */}
-      {tlBarSelected && tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) && (()=>{
+      {tlBarSelected && tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) && tlBarDrawingGroupRaw !== "brush" && (()=>{
         const TlBtn = ({id, isAct, children, onClick, w, tip}) => {
           const isH = hov === id;
           const isDel = id === "tl-del";
@@ -14629,7 +17312,76 @@ const TalariaV8bLive = () => {
             <TlSep/>
             {/* RR tool: create order */}
             <TlBtn id="tl-rr-order" isAct={orderPanelOpen} tip="Place Order"
-              onClick={e=>{e.stopPropagation();setOrderPanelOpen(v=>!v);}}>
+              onClick={e=>{e.stopPropagation();
+                try {
+                  const om = window.chart?.orderManager;
+                  const sel = om ? getSelectedDrawingAcrossCharts(editingDrawingRef.current) : null;
+                  const isRR = sel && (sel.type === 'long-position' || sel.type === 'short-position');
+                  if (om && isRR) {
+                    const panel = document.getElementById('orderPanel');
+                    const alreadyOpen = panel && panel.classList.contains('visible');
+                    if (!alreadyOpen) {
+                      om.toggleOrderPanel();
+                      setOrderPanelOpen(true);
+                    }
+                    rrPushLockRef.current = Date.now() + 2000;
+                    const applyRRToPanel = () => {
+                      try {
+                        const isLong = sel.meta?.orientation === 'long' || sel.type === 'long-position';
+                        const prec = typeof om.getPricePrecision === 'function' ? om.getPricePrecision() : 5;
+                        const entry = sel.points[0].y;
+                        const sl = sel.points[1].y;
+                        const allT = typeof sel._allTargetPrices === 'function' ? sel._allTargetPrices() : [sel.points[2].y];
+                        const tp = isLong ? Math.max(...allT) : Math.min(...allT);
+                        const entryStr = entry.toFixed(prec);
+                        const slStr = sl.toFixed(prec);
+                        const tpStr = tp.toFixed(prec);
+
+                        om.pushRiskRewardToolToManager(sel);
+                        const slChk = document.getElementById('enableSL');
+                        if (slChk) { slChk.checked = true; slChk.dispatchEvent(new Event('change', {bubbles:true})); }
+                        const tpChk = document.getElementById('enableTP');
+                        if (tpChk) { tpChk.checked = true; tpChk.dispatchEvent(new Event('change', {bubbles:true})); }
+                        const buyTab = document.getElementById('buyTab');
+                        const sellTab = document.getElementById('sellTab');
+                        if (isLong && buyTab) { buyTab.classList.add('active'); if(sellTab) sellTab.classList.remove('active'); }
+                        if (!isLong && sellTab) { sellTab.classList.add('active'); if(buyTab) buyTab.classList.remove('active'); }
+
+                        om.slManuallyPositioned = true;
+                        om.tpManuallyPositioned = true;
+
+                        om._autoDetectOrderTypeFromEntry();
+                        om.calculatePositionFromRisk();
+                        om.calculateAdvancedRiskReward();
+                        om.updatePlaceButtonText?.();
+                        om._updateBreakevenSummary?.();
+                        om._updateTrailingSummary?.();
+                        om._applyPrecisionToInputs?.();
+
+                        setEntryRows([{ id: 0, price: entryStr, risk: "100" }]);
+                        setSlRows([{ id: 0, price: slStr }]);
+                        setSlEnabled(true);
+                        setTpRows([{ id: 0, price: tpStr, qty: "100", enabled: true }]);
+                        setBuySell(isLong ? "buy" : "sell");
+
+                        requestAnimationFrame(() => {
+                          om.updatePreviewLines();
+                          if (om.chart && typeof om.chart.updateSVGPointerEvents === 'function') {
+                            om.chart.updateSVGPointerEvents();
+                          }
+                        });
+                      } catch(err){ console.error('[V9 RR Set Order]', err); }
+                    };
+                    const delay = alreadyOpen ? 50 : 350;
+                    setTimeout(applyRRToPanel, delay);
+                    setTimeout(applyRRToPanel, delay + 300);
+                    setTimeout(() => { rrPushLockRef.current = 0; }, 2500);
+                    return;
+                  }
+                } catch(_){}
+                setOrderPanelOpen(v=>!v);
+              }}>
+
               {(_,isAct,col)=><svg width={18} height={18} viewBox="0 0 18 18" fill="none">
                 <circle cx="8" cy="9" r="6.5" stroke={col} strokeWidth="1.5"/>
                 <path d="M8 4.5v9M10.5 6.5C10 5.5 9.2 5 8 5 6.5 5 5.5 5.9 5.5 7c0 1 .8 1.6 2.5 1.6s2.5.8 2.5 2c0 1.2-1 2-2.5 2C6.8 12.6 6 12.1 5.5 11.5" stroke={col} strokeWidth="1.4" strokeLinecap="round"/>
@@ -14702,8 +17454,8 @@ const TalariaV8bLive = () => {
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
               {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={tlStyle.bgColor}/></svg>}
             </TlBtn>}
-            {/* btn 2b-pat-fcol: font color for pure pattern tools */}
-            {(isPatternTool&&!isElliottTool) && <TlBtn id="tl-pat-fcol" isAct={colorPicker==="tlTextColor"}
+            {/* btn 2b-pat-fcol: font/label color for pattern + Elliott tools */}
+            {isPatternTool && <TlBtn id="tl-pat-fcol" isAct={colorPicker==="tlTextColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlTextColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.textColor||"#ffffff");const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlTextColor");}}}>
               {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                 <span style={{fontSize:16,fontWeight:700,color:col,lineHeight:1,fontFamily:F}}>A</span>
@@ -14724,7 +17476,7 @@ const TalariaV8bLive = () => {
               {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={tlStyle.bgColor}/></svg>}
             </TlBtn>}
             {/* btn 3: line style */}
-            {(!tlSubTool.icon.startsWith("fib") || tlSubTool.icon === "fibFan") && !["arrowMarker","arrowUp","arrowDn","draw","brush"].includes(tlSubTool.icon) && <TlBtn id="tl-sty2" isAct={tlBarDrop==="style"} w="auto"
+            {(!tlSubTool.icon.startsWith("fib") || tlSubTool.icon === "fibFan") && !["arrowMarker","arrowUp","arrowDn","draw","brush","elliott5","elliottABC","elliottTri","elliottWXY","elliottWXYXZ","xabcd","headShoulders","abcdPattern","triPattern","threeDrives","regressionCh"].includes(tlSubTool.icon) && <TlBtn id="tl-sty2" isAct={tlBarDrop==="style"} w="auto"
               onClick={e=>{e.stopPropagation();if(tlBarDrop==="style"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("style");}}>
               {(_,isAct,col)=><div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
                 <svg width={20} height={8} viewBox="0 0 20 8">
@@ -14735,7 +17487,7 @@ const TalariaV8bLive = () => {
               </div>}
             </TlBtn>}
             {/* btn 4: line width */}
-            {!["arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <TlBtn id="tl-wid2" isAct={tlBarDrop==="width"} w="auto"
+            {!["arrowMarker","arrowUp","arrowDn","regressionCh"].includes(tlSubTool.icon) && <TlBtn id="tl-wid2" isAct={tlBarDrop==="width"} w="auto"
               onClick={e=>{e.stopPropagation();if(tlBarDrop==="width"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("width");}}>
               {(_,isAct,col)=> tlSubTool.icon === "brush"
                 ? <div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
@@ -14799,6 +17551,7 @@ const TalariaV8bLive = () => {
           {/* btn 7: settings */}
           <TlBtn id="tl-sett" isAct={tlSettOpen||closing.has("tlsett")}
             onClick={e=>{
+              if (dropdown) closeDropdown();
               if (tlBarDrop) closeTlBarDrop();
               setColorPicker(null);
               if (tlSettOpen || closing.has("tlsett")) { closeTlSett(); return; }
@@ -14806,6 +17559,7 @@ const TalariaV8bLive = () => {
               if (vwapSettOpen) closeVwapSett();
               if (vpSettOpen) closeVpSett();
               if (avSettOpen) closeAvSett();
+              if (indSettOpen) closeIndSett();
               const r = e.currentTarget.getBoundingClientRect();
               const vpW = window.innerWidth / Z;
               const xFallback = Math.max(8, Math.min(r.left / Z, vpW - 498));
@@ -14939,90 +17693,82 @@ const TalariaV8bLive = () => {
                 <div key={i}
                   onMouseEnter={() => setHov(`dd-${i}`)} onMouseLeave={() => { setHov(null); setBtnPressed(null); }}
                   onPointerDown={() => setBtnPressed(`dd-${i}`)} onPointerUp={() => setBtnPressed(null)}
+                  onClick={(e) => {
+                    if (e.target.closest && e.target.closest('[data-ddpin]')) return;
+                    const ch =
+                      typeof window.getActiveChart === "function"
+                        ? window.getActiveChart()
+                        : window.chart;
+                    if (activeKey === "eye" && ch && typeof ch.handleVisibilityMenuAction === "function") {
+                      if (item.icon === "eyeAll") ch.handleVisibilityMenuAction("drawings");
+                      else if (item.icon === "eyeInd") ch.handleVisibilityMenuAction("indicators");
+                      else if (item.icon === "eyePos") ch.handleVisibilityMenuAction("positions");
+                      else if (item.icon === "eyeHide") ch.handleVisibilityMenuAction("all");
+                      setGroupSelected(p => v9SanitizeGroupSelected({ ...p, eye: item }));
+                      closeDropdown();
+                      return;
+                    }
+                    if (activeKey === "magnet") {
+                      applyV9MagnetMode(item);
+                      setGroupSelected(p => v9SanitizeGroupSelected({ ...p, magnet: item }));
+                      closeDropdown();
+                      return;
+                    }
+                    if (activeKey === "trash") {
+                      if (item.icon === "trashDraw") ch?.clearOnlyDrawings?.({ confirmPrompt: false });
+                      else if (item.icon === "trashInd") ch?.clearOnlyIndicators?.({ confirmPrompt: false });
+                      else if (item.icon === "trash") ch?.clearDrawingsAndIndicators?.({ confirmPrompt: false });
+                      setGroupSelected(p => v9SanitizeGroupSelected({ ...p, trash: item }));
+                      closeDropdown();
+                      return;
+                    }
+                    if (tlBarSelected) {
+                      setTlBarSelected(false);
+                      setTlBarSelectedType(null);
+                      try {
+                        const dm = ch && ch.drawingManager;
+                        if (dm) {
+                          if (typeof dm.deselectAll === 'function') dm.deselectAll();
+                          else if (dm.selectedDrawing) { dm.selectedDrawing = null; if (dm.selectedDrawings) dm.selectedDrawings = []; }
+                          if (dm.toolbar && typeof dm.toolbar.hide === 'function') dm.toolbar.hide();
+                        }
+                      } catch (_) {}
+                    }
+                    editingDrawingRef.current = null;
+                    v9UserExplicitToolRef.current = true;
+                    if (tlSettOpen) closeTlSett();
+                    if (txtSettOpen) closeTxtSett();
+                    if (vwapSettOpen) closeVwapSett();
+                    if (vpSettOpen) closeVpSett();
+                    if (avSettOpen) closeAvSett();
+                    if (indSettOpen) closeIndSett();
+                    setTool(activeKey); setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [activeKey]: item })); closeDropdown();
+                    if (item.icon === "emoji") {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setEmojiPanelPos({ x: (r.right + 8) / Z, y: r.top / Z });
+                      setEmojiPanelOpen(true);
+                    }
+                  }}
                   style={{
                     display: "flex", alignItems: "center", padding: "4px 8px 4px 14px",
                     background: isSelected ? c.acD : rowHov ? "rgba(255,255,255,0.07)" : "transparent",
                     position: "relative", transition: "background 0.1s",
-                    transform: btnPressed===`dd-${i}` ? "scale(0.97)" : "scale(1)",
+                    cursor: "default",
                   }}>
                   {isSelected && <div style={{position:"absolute",left:0,top:"10%",bottom:"10%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 4px ${c.acG}`}}/>}
-                  <button type="button"
-                    onClick={(e) => {
-                      const ch =
-                        typeof window.getActiveChart === "function"
-                          ? window.getActiveChart()
-                          : window.chart;
-                      if (activeKey === "eye" && ch && typeof ch.handleVisibilityMenuAction === "function") {
-                        if (item.icon === "eyeAll") ch.handleVisibilityMenuAction("drawings");
-                        else if (item.icon === "eyeInd") ch.handleVisibilityMenuAction("indicators");
-                        else if (item.icon === "eyePos") ch.handleVisibilityMenuAction("positions");
-                        else if (item.icon === "eyeHide") ch.handleVisibilityMenuAction("all");
-                        setGroupSelected(p => v9SanitizeGroupSelected({ ...p, eye: item }));
-                        closeDropdown();
-                        return;
-                      }
-                      if (activeKey === "magnet") {
-                        applyV9MagnetMode(item);
-                        setGroupSelected(p => v9SanitizeGroupSelected({ ...p, magnet: item }));
-                        closeDropdown();
-                        return;
-                      }
-                      if (activeKey === "trash") {
-                        if (item.icon === "trashDraw") ch?.clearOnlyDrawings?.({ confirmPrompt: false });
-                        else if (item.icon === "trashInd") ch?.clearOnlyIndicators?.({ confirmPrompt: false });
-                        else if (item.icon === "trash") ch?.clearDrawingsAndIndicators?.({ confirmPrompt: false });
-                        setGroupSelected(p => v9SanitizeGroupSelected({ ...p, trash: item }));
-                        closeDropdown();
-                        return;
-                      }
-                      setTool(activeKey); setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [activeKey]: item })); closeDropdown();
-                      if (item.icon === "emoji") {
-                        const r = e.currentTarget.getBoundingClientRect();
-                        setEmojiPanelPos({ x: (r.right + 8) / Z, y: r.top / Z });
-                        setEmojiPanelOpen(true);
-                      }
-                      if (item.icon === "vwap") {
-                        const r = e.currentTarget.getBoundingClientRect();
-                        const vpW = window.innerWidth / Z;
-                        const x = Math.max(8, Math.min(r.right / Z + 8, vpW - 428));
-                        const y = Math.max(8, r.top / Z);
-                        setVwapSettPos({ x, y });
-                        if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vpSettOpen)closeVpSett();
-                        setVwapSettOpen(true);
-                        setVwapSettTab("style");
-                      }
-                      if (item.icon === "volProfile") {
-                        const r = e.currentTarget.getBoundingClientRect();
-                        const vpW = window.innerWidth / Z;
-                        const x = Math.max(8, Math.min(r.right / Z + 8, vpW - 428));
-                        const y = Math.max(8, r.top / Z);
-                        setVpSettPos({ x, y });
-                        if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(avSettOpen)closeAvSett();
-                        setVpSettOpen(true);
-                        setVpSettTab("style");
-                      }
-                      if (item.icon === "anchoredVol") {
-                        const r = e.currentTarget.getBoundingClientRect();
-                        const vpW = window.innerWidth / Z;
-                        const x = Math.max(8, Math.min(r.right / Z + 8, vpW - 428));
-                        const y = Math.max(8, r.top / Z);
-                        setAvSettPos({ x, y });
-                        if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();
-                        setAvSettOpen(true);
-                        setAvSettTab("style");
-                      }
-                    }}
+                  <div
                     style={{
                       flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "2px 0",
-                      background: "transparent", border: "none", cursor: "default",
                       color: isSelected ? c.acL : rowHov ? c.tx : c.ts,
                       fontSize: 12, fontWeight: isSelected ? 700 : 500, fontFamily: F,
+                      pointerEvents: "none",
                     }}>
                     <I n={item.icon} s={15} cl={isSelected ? c.acL : rowHov ? c.tx : c.ts}/>
                     {item.label}
-                  </button>
+                  </div>
                   
                   {!["eye","magnet","trash"].includes(activeKey) && <div
+                    data-ddpin="1"
                     onPointerDown={(e) => {
                       e.stopPropagation(); e.preventDefault();
                       setToolPinned(prev => prev.includes(item.label) ? prev.filter(x => x !== item.label) : prev.length >= 20 ? prev : [...prev, item.label]);
@@ -15049,7 +17795,7 @@ const TalariaV8bLive = () => {
 
 
       {/* ── Anchored VWAP floating toolbar ── */}
-      {tool === "brush" && (groupSelected.brush?.icon ?? "vwap") === "vwap" && (()=>{
+      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && (groupSelected.brush?.icon ?? "vwap") === "vwap" && (()=>{
         const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
         const VBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
@@ -15179,7 +17925,7 @@ const TalariaV8bLive = () => {
             <VSep/>
             {/* btn: settings */}
             <VBtn id="vb-sett" isAct={vwapSettOpen||closing.has("vwapsett")}
-              onClick={e=>{e.stopPropagation();setVwapBarDrop(null);setColorPicker(null);if(vwapSettOpen||closing.has("vwapsett")){closeVwapSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-428));const y=r.bottom/Z+8;setVwapSettPos({x,y});setVwapSettOpen(true);setVwapSettTab("style");}}}>
+              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setVwapBarDrop(null);setColorPicker(null);if(vwapSettOpen||closing.has("vwapsett")){closeVwapSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-428));const y=r.bottom/Z+8;setVwapSettPos({x,y});setVwapSettOpen(true);setVwapSettTab("style");}}}>
               {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
             </VBtn>
             {/* btn: more */}
@@ -15219,7 +17965,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Fixed Range Volume Profile floating toolbar ── */}
-      {tool === "brush" && (groupSelected.brush?.icon ?? "vwap") === "volProfile" && (()=>{
+      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && (groupSelected.brush?.icon ?? "vwap") === "volProfile" && (()=>{
         const VPBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "vpb-del";
@@ -15237,7 +17983,7 @@ const TalariaV8bLive = () => {
         };
         const VPSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
-          <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
+          <div data-sdrop="1" data-tlbar="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
             style={{ position:"fixed", top:vpBarPos.y, left:vpBarPos.x, zIndex:11000,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                      boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
@@ -15272,7 +18018,7 @@ const TalariaV8bLive = () => {
             <VPSep/>
             {/* btn: settings */}
             <VPBtn id="vpb-sett" isAct={vpSettOpen||closing.has("vpsett")}
-              onClick={e=>{e.stopPropagation();setVpBarDrop(null);setColorPicker(null);if(vpSettOpen||closing.has("vpsett")){closeVpSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW2=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW2-428));const y=r.bottom/Z+8;setVpSettPos({x,y});setVpSettOpen(true);setVpSettTab("style");}}}>
+              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setVpBarDrop(null);setColorPicker(null);if(vpSettOpen||closing.has("vpsett")){closeVpSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const vpW2=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW2-428));const y=r.bottom/Z+8;setVpSettPos({x,y});setVpSettOpen(true);setVpSettTab("style");}}}>
               {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
             </VPBtn>
             {/* btn: more */}
@@ -15312,7 +18058,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Anchored Volume Profile floating toolbar ── */}
-      {tool === "brush" && (groupSelected.brush?.icon ?? "vwap") === "anchoredVol" && (()=>{
+      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && (groupSelected.brush?.icon ?? "vwap") === "anchoredVol" && (()=>{
         const AVBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "avb-del";
@@ -15330,7 +18076,7 @@ const TalariaV8bLive = () => {
         };
         const AVSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
-          <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
+          <div data-sdrop="1" data-tlbar="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
             style={{ position:"fixed", top:avBarPos.y, left:avBarPos.x, zIndex:11000,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                      boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
@@ -15365,7 +18111,7 @@ const TalariaV8bLive = () => {
             <AVSep/>
             {/* btn: settings */}
             <AVBtn id="avb-sett" isAct={avSettOpen||closing.has("avsett")}
-              onClick={e=>{e.stopPropagation();setAvBarDrop(null);setColorPicker(null);if(avSettOpen||closing.has("avsett")){closeAvSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();const r=e.currentTarget.getBoundingClientRect();const avW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,avW-428));const y=r.bottom/Z+8;setAvSettPos({x,y});setAvSettOpen(true);setAvSettTab("style");}}}>
+              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setAvBarDrop(null);setColorPicker(null);if(avSettOpen||closing.has("avsett")){closeAvSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const avW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,avW-428));const y=r.bottom/Z+8;setAvSettPos({x,y});setAvSettOpen(true);setAvSettTab("style");}}}>
               {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
             </AVBtn>
             {/* btn: more */}
@@ -15539,7 +18285,7 @@ const TalariaV8bLive = () => {
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"4px 0"}}>
                     {[["Save current",()=>{setIndTplSaveMode(true);setIndTplName("");}],
-                      ["Clear all",()=>{setIndActive([]);setIndTplOpen(false);}]
+              ["Clear all",()=>{setIndActive([]);setIndTplOpen(false);}]
                     ].map(([lbl,action])=>{
                       const isH=swHov===`ind-tpl-act-${lbl}`, isAct=lbl==="Save current"&&indTplSaveMode;
                       return (
@@ -15578,7 +18324,7 @@ const TalariaV8bLive = () => {
                         onMouseEnter={()=>setSwHov(`ind-tpl-${idx}`)} onMouseLeave={()=>setSwHov(null)}
                         style={{display:"flex",alignItems:"center",padding:"4px 8px 4px 12px",cursor:"default",position:"relative",
                           background:swHov===`ind-tpl-${idx}`?c.hv2:"transparent",transition:"background 0.1s"}}>
-                        <span onClick={()=>{setIndActive([...tpl.ids]);setIndTplOpen(false);}}
+                        <span onClick={()=>{setIndActive(clampActiveIndicatorIds(tpl.ids));setIndTplOpen(false);}}
                           style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:12,color:swHov===`ind-tpl-${idx}`?c.tx:c.ts,fontWeight:500}}>{tpl.name}</span>
                         <div onClick={e=>{e.stopPropagation();setIndTemplates(ts=>ts.filter((_,i)=>i!==idx));}}
                           onMouseEnter={()=>setSwHov(`ind-tpl-del-${idx}`)} onMouseLeave={()=>setSwHov(`ind-tpl-${idx}`)}
@@ -15644,10 +18390,26 @@ const TalariaV8bLive = () => {
               const isAddHov=swHov===`add-${ind.id}`;
               const isAddDn=swHov===`add-${ind.id}_dn`;
               const indRowHov=isH||isPinHov||isAddHov||isAddDn;
-              const toggleIndActive=()=>setIndActive(prev=>isAct?prev.filter(x=>x!==ind.id):[...prev,ind.id]);
+              const showIndicatorLimitNotice=()=>{
+                try {
+                  const chart = typeof window !== "undefined"
+                    ? (typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart)
+                    : null;
+                  if (chart && typeof chart.showNotification === "function") chart.showNotification(`Maximum ${MAX_ACTIVE_INDICATORS} indicators allowed`);
+                } catch (_) {}
+              };
+              const addIndActive=(id)=>setIndActive(prev=>{
+                if (prev.includes(id)) return prev;
+                if (prev.length >= MAX_ACTIVE_INDICATORS) {
+                  showIndicatorLimitNotice();
+                  return prev;
+                }
+                return [...prev, id];
+              });
+              const toggleIndActive=()=>isAct?setIndActive(prev=>prev.filter(x=>x!==ind.id)):addIndActive(ind.id);
               const onIndicatorRowClick=()=>{
                 if (!isSel) { setIndSelectedId(ind.id); return; }
-                if (!isAct) setIndActive((prev)=>prev.includes(ind.id)?prev:[...prev,ind.id]);
+                if (!isAct) addIndActive(ind.id);
               };
               return (
                 <div key={ind.id}
@@ -15983,6 +18745,42 @@ const TalariaV8bLive = () => {
         const profTabIdx = profTabs.findIndex(([id])=>id===profileTab);
         const pwInputSx = { width:"100%", background:c.hv, border:"1px solid rgba(140,160,255,0.22)", color:c.tx, fontSize:13, fontFamily:F, padding:"6px 9px", outline:"none", boxSizing:"border-box", transition:"border-color 0.14s" };
         const langLabels = { english:"English", arabic:"العربية" };
+        const pm = profileMe;
+        const pSub = pm && pm.subscription;
+        const pmCard = profileBilling && profileBilling.card;
+        const pmInv = profileBilling && Array.isArray(profileBilling.invoices) ? profileBilling.invoices : [];
+        const tlrUid = pm ? `#TLR-${String(pm.id ?? 0).padStart(5, "0")}` : "—";
+        const pmEmail = pm && pm.email ? String(pm.email) : "—";
+        const fmtInvMoney = (total, cur) => {
+          const n = (Number(total) || 0) / 100;
+          try {
+            return new Intl.NumberFormat(undefined, { style: "currency", currency: String(cur || "usd").toUpperCase() }).format(n);
+          } catch {
+            return `$${n.toFixed(2)}`;
+          }
+        };
+        const sessUsed = pm && typeof pm.trading_sessions_count === "number" ? pm.trading_sessions_count : 0;
+        const showPro = !!(pm && (pm.has_journal_access || pSub));
+        let renewSub = "";
+        if (pSub && pSub.period_end) {
+          renewSub = `Renews ${new Date(pSub.period_end).toLocaleDateString(undefined, { dateStyle: "medium" })} · ${sessUsed} sessions used`;
+        } else {
+          renewSub = `${sessUsed} sessions used`;
+        }
+        if (pSub && pSub.cancel_at_period_end) renewSub += " · Renewal stops at period end";
+        const planTitle = pSub && pSub.plan_name ? String(pSub.plan_name) : pm ? "No active subscription" : "—";
+        const accessExpStr =
+          pm && pm.access_expires_at
+            ? new Date(pm.access_expires_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+            : "—";
+        const createdStr =
+          pm && pm.created_at
+            ? new Date(pm.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+            : "—";
+        const subSummary =
+          pSub && pSub.plan_name
+            ? `${pSub.plan_name} · ${pSub.status || ""}${pSub.period_end ? ` · renews ${new Date(pSub.period_end).toLocaleDateString()}` : ""}`
+            : "—";
         return (
         <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${profilePos.y}px)`,left:`calc(50% + ${profilePos.x}px)`,transform:"translate(-50%,-50%)",width:400,height:540,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("profile")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
@@ -16084,31 +18882,138 @@ const TalariaV8bLive = () => {
                   )}
                   <div style={{fontSize:10,color:c.tm}}>Click the camera icon to upload a photo</div>
                 </div>
-                <span style={{padding:"3px 8px",background:c.acD,border:`1px solid ${c.acB}`,fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.06em",alignSelf:"flex-start"}}>PRO</span>
+                {showPro ? (
+                  <span style={{padding:"3px 8px",background:c.acD,border:`1px solid ${c.acB}`,fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.06em",alignSelf:"flex-start"}}>PRO</span>
+                ) : null}
               </div>
               <div style={{height:1,background:c.br,margin:"4px 0 14px"}}/>
               {/* Account info */}
               <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:8}}>ACCOUNT</div>
               <div style={{background:c.bg,border:`1px solid ${c.br}`,marginBottom:14}}>
-                {[["User ID","#TLR-00471"],["Email","trader@talaria.io"],["Language",null]].map(([k,v],i,arr)=>(
-                  <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",borderBottom:i<arr.length-1?`1px solid ${c.br}`:"none"}}>
-                    <span style={{fontSize:13,color:c.ts,flexShrink:0,marginRight:10}}>{k}</span>
-                    {k==="Language"
-                      ? (()=>{const isAct=settDrop==="profLang"; const isH=swHov==="prof-lang-btn"; return(
-                          <div data-sett-drop-anchor="1" onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:100,rightAlign:true,w:r.width/Z}));setSettDrop(settDrop==="profLang"?null:"profLang");}}
-                            onMouseEnter={()=>setSwHov("prof-lang-btn")} onMouseLeave={()=>setSwHov(null)}
-                            style={{display:"flex",alignItems:"center",gap:5,padding:"4px 8px",cursor:"default",minWidth:90,justifyContent:"space-between",position:"relative",
-                              background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
-                              transition:"background 0.12s"}}>
-                            <span style={{fontSize:13,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,transition:"color 0.12s"}}>{langLabels[profileLang]||"English"}</span>
-                            <svg width={8} height={5} viewBox="0 0 8 5"><path d="M0.5,0.5 L4,4 L7.5,0.5" stroke={isAct?c.acL:c.ts} strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                            {isAct&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
-                            {!isAct&&isH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
+                {profileMeLoading && !pm ? (
+                  <div style={{ padding: "12px 14px", fontSize: 12, color: c.tm }}>Loading account…</div>
+                ) : profileMeErr ? (
+                  <div style={{ padding: "12px 14px", fontSize: 12, color: c.rd }}>{profileMeErr}</div>
+                ) : (
+                  <>
+                    {[
+                      ["User ID", tlrUid],
+                      ["Email", pmEmail],
+                      ["Access expires", accessExpStr],
+                      ["Date created", createdStr],
+                      ["Subscription", subSummary],
+                    ].map(([k, v], i, arr) => (
+                      <div
+                        key={k}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "7px 12px",
+                          borderBottom: i < arr.length - 1 ? `1px solid ${c.br}` : "none",
+                        }}
+                      >
+                        <span style={{ fontSize: 13, color: c.ts, flexShrink: 0, marginRight: 10 }}>{k}</span>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: k === "User ID" ? c.acL : c.tm,
+                            fontWeight: k === "User ID" ? 700 : 400,
+                            fontVariantNumeric: "tabular-nums",
+                            textAlign: "right",
+                            maxWidth: "62%",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {v}
+                        </span>
+                      </div>
+                    ))}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "7px 12px",
+                        borderBottom: "none",
+                      }}
+                    >
+                      <span style={{ fontSize: 13, color: c.ts, flexShrink: 0, marginRight: 10 }}>Language</span>
+                      {(() => {
+                        const isAct = settDrop === "profLang";
+                        const isH = swHov === "prof-lang-btn";
+                        return (
+                          <div
+                            data-sett-drop-anchor="1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const r = e.currentTarget.getBoundingClientRect();
+                              setSettDropPos(sdPos(r, { h: 100, rightAlign: true, w: r.width / Z }));
+                              setSettDrop(settDrop === "profLang" ? null : "profLang");
+                            }}
+                            onMouseEnter={() => setSwHov("prof-lang-btn")}
+                            onMouseLeave={() => setSwHov(null)}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 5,
+                              padding: "4px 8px",
+                              cursor: "default",
+                              minWidth: 90,
+                              justifyContent: "space-between",
+                              position: "relative",
+                              background: isAct ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent",
+                              transition: "background 0.12s",
+                            }}
+                          >
+                            <span style={{ fontSize: 13, color: isAct ? c.acL : isH ? c.tx : c.ts, fontFamily: F, transition: "color 0.12s" }}>
+                              {langLabels[profileLang] || "English"}
+                            </span>
+                            <svg width={8} height={5} viewBox="0 0 8 5">
+                              <path
+                                d="M0.5,0.5 L4,4 L7.5,0.5"
+                                stroke={isAct ? c.acL : c.ts}
+                                strokeWidth={1.5}
+                                fill="none"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                            {isAct && (
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  bottom: 0,
+                                  left: "50%",
+                                  transform: "translateX(-50%)",
+                                  width: "70%",
+                                  height: 2,
+                                  background: `linear-gradient(90deg,transparent,${c.acL},transparent)`,
+                                  boxShadow: `0 0 6px ${c.acG}`,
+                                  pointerEvents: "none",
+                                }}
+                              />
+                            )}
+                            {!isAct && isH && (
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  bottom: 0,
+                                  left: "50%",
+                                  transform: "translateX(-50%)",
+                                  width: "50%",
+                                  height: 1,
+                                  background: `linear-gradient(90deg,transparent,` + c.hvLn + `,transparent)`,
+                                  pointerEvents: "none",
+                                }}
+                              />
+                            )}
                           </div>
-                        );})()
-                      : <span style={{fontSize:11,color:k==="User ID"?c.acL:c.tm,fontWeight:k==="User ID"?700:400,fontVariantNumeric:"tabular-nums"}}>{v}</span>}
-                  </div>
-                ))}
+                        );
+                      })()}
+                    </div>
+                  </>
+                )}
               </div>
               <div style={{height:1,background:c.br,margin:"4px 0 14px"}}/>
               {/* Change password */}
@@ -16130,71 +19035,145 @@ const TalariaV8bLive = () => {
                       </div>
                     ))}
                     <div style={{display:"flex",justifyContent:"flex-end",marginTop:2}}>
-                      <B primary small hk="prof-pw-save">Update Password</B>
+                      <B primary small hk="prof-pw-save" onClick={() => void updateProfilePasswordOnly()}>
+                        Update Password
+                      </B>
                     </div>
                   </div>
                 )}
               </div>
             </>}
             {profileTab==="billing" && <>
-              {/* Current plan */}
               <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:8}}>CURRENT PLAN</div>
               <div style={{background:c.bg,border:`1px solid ${c.acB}`,marginBottom:14}}>
                 <div style={{padding:"10px 12px"}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                     <div>
-                      <div style={{fontSize:13,fontWeight:800,color:c.tx}}>Pro Monthly</div>
-                      <div style={{fontSize:13,color:c.ts,marginTop:2}}>Renews May 15, 2026 · 147 sessions used</div>
+                      <div style={{fontSize:13,fontWeight:800,color:c.tx}}>{planTitle}</div>
+                      <div style={{fontSize:13,color:c.ts,marginTop:2}}>{renewSub}</div>
                     </div>
-                    <span style={{padding:"3px 8px",background:c.acD,border:`1px solid ${c.acB}`,fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.06em"}}>PRO</span>
+                    {showPro ? (
+                      <span style={{padding:"3px 8px",background:c.acD,border:`1px solid ${c.acB}`,fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.06em"}}>PRO</span>
+                    ) : null}
                   </div>
-                  <div style={{display:"flex",gap:6}}>
-                    {(()=>{const isH=swHov==="prof-upgrade",isP=swHov==="prof-upgrade_dn";return(
-                      <div onClick={()=>{}} onMouseEnter={()=>setSwHov("prof-upgrade")} onMouseLeave={()=>setSwHov(null)} onMouseDown={()=>setSwHov("prof-upgrade_dn")} onMouseUp={()=>setSwHov("prof-upgrade")}
-                        style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"5px 12px",cursor:"default",flex:1,
-                          background:isP?c.ac:isH?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,
-                          border:`1px solid ${isH||isP?c.acL:"rgba(74,106,255,0.5)"}`,
-                          boxShadow:isH?`0 4px 14px ${c.acG}`:`0 2px 8px ${c.acG}`,
-                          transform:isP?"scale(0.98)":"scale(1)",transition:"all 0.12s"}}>
-                        <span style={{fontSize:13,fontWeight:700,color:"#fff",WebkitFontSmoothing:"antialiased"}}>Upgrade to Annual — Save 20%</span>
-                      </div>
-                    );})()}
-                  </div>
+                  {pSub && pSub.stripe_subscription_id && !pSub.is_manual ? (
+                    <div style={{display:"flex",gap:6}}>
+                      {(() => {
+                        const isH = swHov === "prof-upgrade";
+                        const isP = swHov === "prof-upgrade_dn";
+                        return (
+                          <div
+                            onClick={() => {
+                              window.location.href = "/dashboard/";
+                            }}
+                            onMouseEnter={() => setSwHov("prof-upgrade")}
+                            onMouseLeave={() => setSwHov(null)}
+                            onMouseDown={() => setSwHov("prof-upgrade_dn")}
+                            onMouseUp={() => setSwHov("prof-upgrade")}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 6,
+                              padding: "5px 12px",
+                              cursor: "default",
+                              flex: 1,
+                              background: isP ? c.ac : isH ? `linear-gradient(135deg,${c.acL},#6A8AFF)` : `linear-gradient(135deg,${c.ac},${c.acL})`,
+                              border: `1px solid ${isH || isP ? c.acL : "rgba(74,106,255,0.5)"}`,
+                              boxShadow: isH ? `0 4px 14px ${c.acG}` : `0 2px 8px ${c.acG}`,
+                              transform: isP ? "scale(0.98)" : "scale(1)",
+                              transition: "all 0.12s",
+                            }}
+                          >
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "#fff", WebkitFontSmoothing: "antialiased" }}>Upgrade to Annual — Save 20%</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <div style={{height:1,background:c.br,margin:"4px 0 14px"}}/>
-              {/* Payment method */}
               <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:8}}>PAYMENT METHOD</div>
               <div style={{padding:"10px 12px",background:c.bg,border:`1px solid ${c.br}`,display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
                 <div style={{width:38,height:24,background:"rgba(255,255,255,0.04)",border:`1px solid ${c.brH}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  <span style={{fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.06em"}}>VISA</span>
+                  <span style={{fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.06em"}}>{pmCard && pmCard.brand ? String(pmCard.brand).slice(0, 4) : "—"}</span>
                 </div>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:13,color:c.ts}}>•••• •••• •••• 4242</div>
-                  <div style={{fontSize:10,color:c.tm,marginTop:2}}>Expires 12/27</div>
+                  {pmCard && pmCard.last4 ? (
+                    <>
+                      <div style={{fontSize:13,color:c.ts}}>•••• •••• •••• {pmCard.last4}</div>
+                      <div style={{fontSize:10,color:c.tm,marginTop:2}}>
+                        Expires {String(pmCard.exp_month || "").padStart(2, "0")}/{String(pmCard.exp_year || "").slice(-2)}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 12, color: c.tm }}>No card on file. Use Update to add one in Stripe.</div>
+                  )}
                 </div>
-                <B small hk="update-card">Update</B>
+                <B small hk="update-card" onClick={() => void openProfileBillingPortal()}>
+                  Update
+                </B>
               </div>
               <div style={{height:1,background:c.br,margin:"4px 0 14px"}}/>
-              {/* Invoice history */}
               <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:8}}>INVOICE HISTORY</div>
               <div style={{background:c.bg,border:`1px solid ${c.br}`,marginBottom:4}}>
-                {[["Apr 2026","$29.00"],["Mar 2026","$29.00"],["Feb 2026","$29.00"]].map(([d,a],i,arr)=>{
-                  const hk=`pdf-${i}`; const isH=swHov===hk;
-                  return(
-                  <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 12px",borderBottom:i<arr.length-1?`1px solid ${c.br}`:"none"}}>
-                    <span style={{fontSize:13,color:c.ts}}>{d}</span>
-                    <span style={{fontSize:13,fontWeight:700,color:c.gn}}>{a}</span>
-                    <button type="button" onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
-                      style={{height:20,padding:"0 9px",cursor:"default",fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.04em",
-                        color:isH?"#fff":c.acL,
-                        background:isH?`linear-gradient(135deg,${c.ac},${c.acL})`:"transparent",
-                        border:`1px solid ${isH?"rgba(74,106,255,0.5)":c.acB}`,
-                        transition:"background 0.12s,color 0.12s,border-color 0.12s"}}>
-                      PDF
-                    </button>
-                  </div>
-                );})}
+                {pmInv.length ? (
+                  pmInv.map((inv, i) => {
+                    const hk = `pdf-${inv.id || i}`;
+                    const isH = swHov === hk;
+                    const ts = inv.created != null ? Number(inv.created) * 1000 : NaN;
+                    const dlab = Number.isFinite(ts) ? new Date(ts).toLocaleDateString(undefined, { dateStyle: "medium" }) : "—";
+                    return (
+                      <div
+                        key={inv.id || i}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: "7px 12px",
+                          borderBottom: i < pmInv.length - 1 ? `1px solid ${c.br}` : "none",
+                          gap: 8,
+                        }}
+                      >
+                        <span style={{ fontSize: 13, color: c.ts, flex: 1 }}>{dlab}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: c.gn }}>{fmtInvMoney(inv.total, inv.currency)}</span>
+                        {inv.invoice_pdf ? (
+                          <a
+                            href={inv.invoice_pdf}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onMouseEnter={() => setSwHov(hk)}
+                            onMouseLeave={() => setSwHov(null)}
+                            style={{
+                              height: 20,
+                              padding: "0 9px",
+                              cursor: "default",
+                              fontFamily: F,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              letterSpacing: "0.04em",
+                              textDecoration: "none",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: isH ? "#fff" : c.acL,
+                              background: isH ? `linear-gradient(135deg,${c.ac},${c.acL})` : "transparent",
+                              border: `1px solid ${isH ? "rgba(74,106,255,0.5)" : c.acB}`,
+                              transition: "background 0.12s,color 0.12s,border-color 0.12s",
+                            }}
+                          >
+                            PDF
+                          </a>
+                        ) : (
+                          <span style={{ fontSize: 11, color: c.tm }}>—</span>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div style={{ padding: "10px 12px", fontSize: 12, color: c.tm }}>No invoices yet.</div>
+                )}
               </div>
             </>}
           </div>
@@ -16202,6 +19181,15 @@ const TalariaV8bLive = () => {
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:4,flexShrink:0}}>
             {profileTab==="account" && <button type="button"
+              onClick={async () => {
+                try {
+                  await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+                } catch {
+                  /* ignore */
+                }
+                const next = `${window.location.pathname || "/dashboard/"}${window.location.search || ""}`;
+                window.location.href = `/login/?next=${encodeURIComponent(next)}`;
+              }}
               onMouseEnter={()=>setSwHov("prof-logout")} onMouseLeave={()=>setSwHov(null)}
               onMouseDown={()=>setSwHov("prof-logout_dn")} onMouseUp={()=>setSwHov("prof-logout")}
               style={{marginRight:"auto",height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,
@@ -16213,7 +19201,7 @@ const TalariaV8bLive = () => {
               Log Out
             </button>}
             <button type="button" {...modalPointerActivate(() => animClose(setProfileOpen, "profile"))} onMouseEnter={()=>setSwHov("profCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="profCancel"?c.tx:c.ts,background:swHov==="profCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="profCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button type="button" {...modalPointerActivate(() => animClose(setProfileOpen, "profile"))} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button type="button" {...modalPointerActivate(() => { void saveProfileAndClose(); })} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
         );
@@ -17170,6 +20158,17 @@ const TalariaV8bLive = () => {
           </div>
         </div>
         <div style={{ flex: 1 }}/>
+        {/* ── Support Chat button (left of Place Order) ── */}
+        <button type="button" ref={supportBtnRef}
+          onClick={(e) => { e.stopPropagation(); closeWindows(); setSettingsOpen(false); setLayoutDropdownOpen(false); setRightPanel(null); setOrderPanelOpen(false); setSupportChatOpen(prev => !prev); }}
+          onMouseEnter={e=>{setHov("u-support");showTip("Support",e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
+          style={{ width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", border:"none", cursor:"default", position:"relative", marginRight:12,
+            background: supportChatOpen ? "rgba(74,106,255,0.10)" : hov==="u-support" ? c.hv : "transparent", transition:"background 0.12s" }}>
+          <I n="chat" s={16} cl={supportChatOpen ? c.acL : hov==="u-support" ? c.tx : c.ts}/>
+          {supportUnread > 0 && <div style={{ position:"absolute", top:1, right:1, minWidth:14, height:14, borderRadius:7, background:"#e53935", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", lineHeight:1, pointerEvents:"none" }}>{supportUnread > 99 ? "99+" : supportUnread}</div>}
+          {supportChatOpen && <div style={{ position:"absolute", bottom:0, left:"15%", right:"15%", height:2, background:`linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow:`0 0 6px ${c.acG}` }}/>}
+          {hov==="u-support" && !supportChatOpen && <div style={{ position:"absolute", bottom:0, left:"25%", right:"25%", height:1, background:`linear-gradient(90deg, transparent, ${c.hvLn}, transparent)` }}/>}
+        </button>
         <button type="button" onClick={(e) => { e.stopPropagation(); setRightPanel(null); setOrderPanelOpen(prev => !prev); }}
           onMouseEnter={() => setHov("place-order")} onMouseLeave={() => setHov(null)}
           onMouseDown={() => setHov("place-order_dn")} onMouseUp={() => setHov("place-order")}
@@ -17189,20 +20188,16 @@ const TalariaV8bLive = () => {
           <span style={{ fontSize: 13, fontWeight: 700, color: "#fff", WebkitFontSmoothing: "antialiased" }}>Place Order</span>
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: c.br }}/>
-        {/* Phase 7.2.3: "layout" topbar entry restored. Click opens a
-             TradingView-style dropdown (LayoutDropdownPopover below) with
-             the same variants grid + sync toggles the right-panel layout
-             tab uses. Selecting a variant drives `layoutPanels` which
-             MultichartGrid (Phase 7.2.2) reacts to. */}
-        {[{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"layout",icon:"layout",label:"Layouts"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
+        {/* Phase 7.2.3: Panel layout first (right of Place Order), then objects / news / screenshot / fullscreen. */}
+        {[{id:"layout",icon:"layout",label:"Layouts"},{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
           <button type="button" key={id}
             ref={(el) => { if (id === "layout") layoutDropdownBtnRef.current = el; }}
             onClick={(e) => {
-              if(id==="layout"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setRightPanel(null); setOrderPanelOpen(false); setLayoutDropdownOpen(prev => !prev); return; }
-              if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); setLayoutDropdownOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} }
-              if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setLayoutDropdownOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); }
-              if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); setLayoutDropdownOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} }
-              if(id==="expand"){ e.stopPropagation(); setLayoutDropdownOpen(false); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }
+              if(id==="layout"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setRightPanel(null); setOrderPanelOpen(false); setLayoutDropdownOpen(prev => !prev); setSupportChatOpen(false); return; }
+              if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} }
+              if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); }
+              if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} }
+              if(id==="expand"){ e.stopPropagation(); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }
             }}
             onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
@@ -17330,9 +20325,153 @@ const TalariaV8bLive = () => {
           })(),
           document.body
         )}
+        {/* ─── Support Chat dropdown popover ─── */}
+        {supportChatOpen && supportBtnRef.current && createPortal(
+          (() => {
+            const btnR = supportBtnRef.current.getBoundingClientRect();
+            const POP_W = 360, POP_H = 500;
+            const right = Math.max(8, window.innerWidth - btnR.right - 4);
+            const top = Math.round(btnR.bottom + 6);
+            const catLabel = { bug: "Bug", error: "Error", other: "Other" };
+            const fmtTime = (iso) => { if (!iso) return ""; try { const d = new Date(iso); return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
+            return (
+              <div ref={supportPopRef} data-v9-chrome="1" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+                style={{ position:"fixed", top, right, width:POP_W, height:POP_H, maxHeight:"min(75vh,560px)", background:c.sf, border:`1px solid rgba(140,160,255,0.32)`, borderRadius:6, boxShadow:"0 10px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)", zIndex:9999, display:"flex", flexDirection:"column", fontFamily:F, overflow:"hidden", animation:"tlrWinIn 0.18s ease" }}>
+                {/* ── Header ── */}
+                <div style={{ padding:"10px 14px", borderBottom:`1px solid ${c.br}`, display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                  {supportSelThread && !supportNewThread ? (
+                    <>
+                      <div onClick={()=>{setSupportSelThread(null);setSupportMessages([]);setSupportError(null);}} style={{ cursor:"default", display:"flex", alignItems:"center", padding:"2px 4px", borderRadius:3, background:hov==="sup-back"?c.hv:"transparent" }} onMouseEnter={()=>setHov("sup-back")} onMouseLeave={()=>setHov(null)}>
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={c.ts} strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+                      </div>
+                      <span style={{ fontSize:13, fontWeight:700, color:c.tx, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{supportSelThread.subject}</span>
+                      {supportSelThread.status === "closed" && <span style={{ fontSize:10, color:"#e53935", fontWeight:700, background:"rgba(229,57,53,0.12)", padding:"1px 6px", borderRadius:3 }}>Closed</span>}
+                    </>
+                  ) : (
+                    <>
+                      <I n="chat" s={16} cl={c.acL}/>
+                      <span style={{ fontSize:14, fontWeight:700, color:c.tx, flex:1 }}>{supportNewThread ? "New Thread" : "Support"}</span>
+                      {!supportNewThread && <div onClick={()=>{setSupportNewThread(true);setSupportError(null);}} style={{ cursor:"default", padding:"3px 10px", borderRadius:4, background:c.acD, color:c.acL, fontSize:11, fontWeight:700 }} onMouseEnter={()=>setHov("sup-new")} onMouseLeave={()=>setHov(null)}>+ New</div>}
+                      {supportNewThread && <div onClick={()=>{setSupportNewThread(false);setSupportError(null);}} style={{ cursor:"default", padding:"3px 8px", borderRadius:4, background:hov==="sup-cancel"?c.hv:"transparent", color:c.ts, fontSize:11, fontWeight:600 }} onMouseEnter={()=>setHov("sup-cancel")} onMouseLeave={()=>setHov(null)}>Cancel</div>}
+                    </>
+                  )}
+                </div>
+                {/* ── Error bar ── */}
+                {supportError && <div style={{ padding:"6px 14px", background:"rgba(229,57,53,0.12)", color:"#e53935", fontSize:11, fontWeight:600, borderBottom:`1px solid ${c.br}` }}>{supportError}</div>}
+                {/* ── Body ── */}
+                {supportLoading ? (
+                  <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", color:c.ts, fontSize:13 }}>Loading…</div>
+                ) : supportNewThread ? (
+                  /* ── New Thread Form ── */
+                  <div style={{ flex:1, overflowY:"auto", padding:"12px 14px", display:"flex", flexDirection:"column", gap:10 }}>
+                    <div>
+                      <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:4 }}>Subject</label>
+                      <input type="text" value={supportNewSubject} onChange={e=>setSupportNewSubject(e.target.value)} placeholder="Brief description…" maxLength={200}
+                        style={{ width:"100%", boxSizing:"border-box", padding:"6px 10px", fontSize:12, background:c.bg, color:c.tx, border:`1px solid ${c.br}`, borderRadius:4, outline:"none", fontFamily:F }} onFocus={e=>e.target.style.borderColor=c.acL} onBlur={e=>e.target.style.borderColor=c.br}/>
+                    </div>
+                    <div>
+                      <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:4 }}>Category</label>
+                      <select value={supportNewCategory} onChange={e=>setSupportNewCategory(e.target.value)}
+                        style={{ width:"100%", padding:"6px 10px", fontSize:12, background:c.bg, color:c.tx, border:`1px solid ${c.br}`, borderRadius:4, outline:"none", fontFamily:F }}>
+                        <option value="bug">Bug</option><option value="error">Error</option><option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:4 }}>Message</label>
+                      <textarea value={supportNewBody} onChange={e=>setSupportNewBody(e.target.value)} placeholder="Describe your issue…" rows={4}
+                        style={{ width:"100%", boxSizing:"border-box", padding:"6px 10px", fontSize:12, background:c.bg, color:c.tx, border:`1px solid ${c.br}`, borderRadius:4, outline:"none", fontFamily:F, resize:"vertical" }} onFocus={e=>e.target.style.borderColor=c.acL} onBlur={e=>e.target.style.borderColor=c.br}/>
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <label style={{ cursor:"default", display:"flex", alignItems:"center", gap:4, fontSize:11, color:c.ts }}>
+                        <I n="attach" s={13} cl={c.ts}/>
+                        <span>{supportNewFile ? supportNewFile.name.slice(0,20) : "Attach image"}</span>
+                        <input ref={supportNewFileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{const f=e.target.files?.[0]; if(f) setSupportNewFile(f);}}/>
+                      </label>
+                      {supportNewFile && <span onClick={()=>{setSupportNewFile(null);if(supportNewFileRef.current)supportNewFileRef.current.value="";}} style={{ cursor:"default", fontSize:10, color:"#e53935" }}>✕</span>}
+                    </div>
+                    <button type="button" disabled={supportSending || (!supportNewSubject.trim() || (!supportNewBody.trim() && !supportNewFile))} onClick={supportCreateThread}
+                      style={{ padding:"8px 0", fontSize:13, fontWeight:700, borderRadius:4, border:"none", cursor:"default", background:c.acL, color:"#fff", opacity:supportSending?0.6:1, marginTop:4 }}>
+                      {supportSending ? "Sending…" : "Create Thread"}
+                    </button>
+                  </div>
+                ) : supportSelThread ? (
+                  /* ── Chat View ── */
+                  <>
+                    <div style={{ flex:1, overflowY:"auto", padding:"10px 14px", display:"flex", flexDirection:"column", gap:6 }}>
+                      {supportMessages.length === 0 && <div style={{ color:c.ts, fontSize:12, textAlign:"center", padding:20 }}>No messages yet.</div>}
+                      {supportMessages.map(msg => {
+                        const isOwn = msg.sender_user_id === supportSelThread.user_id;
+                        return (
+                          <div key={msg.id} style={{ display:"flex", flexDirection:"column", alignItems:isOwn?"flex-end":"flex-start", maxWidth:"85%" , alignSelf:isOwn?"flex-end":"flex-start" }}>
+                            <div style={{ padding:"7px 11px", borderRadius:isOwn?"12px 12px 2px 12px":"12px 12px 12px 2px", background:isOwn?c.acD:"rgba(255,255,255,0.06)", border:`1px solid ${isOwn?"rgba(74,106,255,0.25)":"rgba(255,255,255,0.08)"}`, maxWidth:"100%" }}>
+                              {msg.attachment && msg.attachment.url && (msg.attachment.mime_type||"").startsWith("image/") && (
+                                <img src={msg.attachment.url} alt="" style={{ maxWidth:"100%", maxHeight:160, borderRadius:4, marginBottom:msg.body?6:0, display:"block" }}/>
+                              )}
+                              {msg.body && <div style={{ fontSize:12, color:c.tx, wordBreak:"break-word", whiteSpace:"pre-wrap", lineHeight:1.45 }}>{msg.body}</div>}
+                            </div>
+                            <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:2 }}>
+                              <span style={{ fontSize:9, color:c.tm }}>{fmtTime(msg.created_at)}</span>
+                              {isOwn && <span style={{ fontSize:9, color:msg.read_by_counterparty?c.acL:c.tm }}>{msg.read_by_counterparty?"Read":"Sent"}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div ref={supportMsgEndRef}/>
+                    </div>
+                    {supportSelThread.status !== "closed" && (
+                      <div style={{ padding:"8px 10px", borderTop:`1px solid ${c.br}`, display:"flex", alignItems:"flex-end", gap:6, flexShrink:0 }}>
+                        <label style={{ cursor:"default", display:"flex", alignItems:"center", padding:4, borderRadius:4, background:hov==="sup-att"?c.hv:"transparent" }} onMouseEnter={()=>setHov("sup-att")} onMouseLeave={()=>setHov(null)}>
+                          <I n="attach" s={16} cl={supportReplyFile?c.acL:c.ts}/>
+                          <input ref={supportReplyFileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{const f=e.target.files?.[0]; if(f) setSupportReplyFile(f);}}/>
+                        </label>
+                        <div style={{ flex:1, display:"flex", flexDirection:"column", gap:2 }}>
+                          {supportReplyFile && (
+                            <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:c.ts }}>
+                              <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:180 }}>{supportReplyFile.name}</span>
+                              <span onClick={()=>{setSupportReplyFile(null);if(supportReplyFileRef.current)supportReplyFileRef.current.value="";}} style={{ cursor:"default", color:"#e53935" }}>✕</span>
+                            </div>
+                          )}
+                          <textarea value={supportReply} onChange={e=>setSupportReply(e.target.value)} placeholder="Type a message…" rows={1}
+                            onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();supportSendReply();}}}
+                            style={{ width:"100%", boxSizing:"border-box", padding:"6px 10px", fontSize:12, background:c.bg, color:c.tx, border:`1px solid ${c.br}`, borderRadius:6, outline:"none", fontFamily:F, resize:"none", maxHeight:80 }}
+                            onFocus={e=>e.target.style.borderColor=c.acL} onBlur={e=>e.target.style.borderColor=c.br}/>
+                        </div>
+                        <div onClick={()=>{ if(!supportSending) supportSendReply(); }} style={{ cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", width:30, height:30, borderRadius:6, background:c.acL, opacity:supportSending?0.5:1, flexShrink:0 }} onMouseEnter={()=>setHov("sup-send")} onMouseLeave={()=>setHov(null)}>
+                          <I n="send" s={14} cl="#fff"/>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* ── Thread List ── */
+                  <div style={{ flex:1, overflowY:"auto" }}>
+                    {supportThreads.length === 0 ? (
+                      <div style={{ padding:30, textAlign:"center", color:c.ts, fontSize:12 }}>No support threads yet.<br/>Click <b>+ New</b> to start one.</div>
+                    ) : supportThreads.map(t => (
+                      <div key={t.id} onClick={()=>{setSupportSelThread(t);setSupportError(null);}}
+                        onMouseEnter={()=>setHov(`sup-t-${t.id}`)} onMouseLeave={()=>setHov(null)}
+                        style={{ padding:"10px 14px", borderBottom:`1px solid ${c.br}`, cursor:"default", background:hov===`sup-t-${t.id}`?c.hv:"transparent", transition:"background 0.1s" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          <span style={{ fontSize:12, fontWeight:600, color:c.tx, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.subject}</span>
+                          <span style={{ fontSize:9, fontWeight:700, color:t.status==="open"?"#4caf50":"#e53935", background:t.status==="open"?"rgba(76,175,80,0.12)":"rgba(229,57,53,0.12)", padding:"1px 6px", borderRadius:3, flexShrink:0 }}>{t.status==="open"?"Open":"Closed"}</span>
+                        </div>
+                        <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:3 }}>
+                          <span style={{ fontSize:10, color:c.tm, background:"rgba(140,160,255,0.1)", padding:"0 5px", borderRadius:2, textTransform:"capitalize" }}>{catLabel[t.category]||t.category}</span>
+                          {t.last_message_preview && <span style={{ fontSize:10, color:c.tm, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.last_message_preview}</span>}
+                          {t.last_message_at && <span style={{ fontSize:9, color:c.tm, flexShrink:0 }}>{fmtTime(t.last_message_at)}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })(),
+          document.body
+        )}
       </div>
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
-        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 40, flexShrink: 0, boxSizing: "border-box", background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 1, paddingLeft:4, paddingRight: 2, overflowY: "auto", overflowX: "hidden" }}>
+        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 40, flexShrink: 0, boxSizing: "border-box", background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 1, paddingLeft:0, paddingRight: 0, overflowY: "auto", overflowX: "hidden" }}>
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%" }}>
               {gi === toolGroups.length - 1 && <div style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>}
@@ -17516,11 +20655,11 @@ const TalariaV8bLive = () => {
                 type="button"
                 id="replayFollow"
                 className="replay-follow-float-btn"
-                title="Follow replay — scroll with playback (click after panning to catch up)"
+                title=""
                 aria-label="Follow replay candle"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width={36} height={36} viewBox="0 0 24 24" fill="none">
-                  <rect x="1" y="1" width="22" height="22" rx="4" fill="#2962FF" />
+                  <rect x="1" y="1" width="22" height="22" rx="0" fill="#2962FF" />
                   <path d="M9.5 6.5 L17.5 12 L9.5 17.5 Z" fill="#fff" />
                 </svg>
               </button>
@@ -17637,22 +20776,31 @@ const TalariaV8bLive = () => {
                   setRollback(true);
                   return;
                 }
-                if (!rs) { setPlaying(p=>!p); return; }
+                if (!rs) { setPlaying(p=>!p); setReplayPlayStarting(false); return; }
                 if (rs.isPlaying) {
                   if (typeof rs.pause === 'function') rs.pause();
                 } else {
                   if (typeof rs.play === 'function') rs.play();
                 }
                 setPlaying(!!rs.isPlaying);
+                if (typeof rs.isPlayStarting === 'boolean') setReplayPlayStarting(!!rs.isPlayStarting);
               }}
-              onMouseEnter={e=>{setHov("rp-play");showTip(playing?"Pause":"Play",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
+              onMouseEnter={e=>{setHov("rp-play");showTip(replayPlayStarting?"Starting…":playing?"Pause":"Play",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
               style={{padding:"4px 5px",position:"relative",background:hov==="rp-play"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"background 0.12s"}}>
-              <I n={playing?"pause":"play"} s={18} cl={hov==="rp-play"?(playing?"#FFA060":c.gn):(playing?"#FF8C42":"rgba(0,212,161,0.7)")}/>
+              {replayPlayStarting?(
+                <svg width={18} height={18} viewBox="0 0 24 24" style={{color:hov==="rp-play"?c.gn:"rgba(0,212,161,0.75)",display:"block"}}>
+                  <g style={{transformBox:"fill-box",transformOrigin:"50% 50%",animation:"tlrReplayPlaySpin 0.7s linear infinite"}}>
+                    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeOpacity="0.22" strokeWidth="2.2"/>
+                    <path d="M 12 3 A 9 9 0 0 1 21 12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+                  </g>
+                </svg>
+              ):(
+              <I n={playing?"pause":"play"} s={18} cl={hov==="rp-play"?(playing?"#FFA060":c.gn):(playing?"#FF8C42":"rgba(0,212,161,0.7)")}/>)}
               <div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,
-                background:`linear-gradient(90deg,transparent,${playing?"#FF8C42":c.gn},transparent)`,
-                boxShadow:`0 0 6px ${playing?"rgba(255,140,66,0.5)":"rgba(0,212,161,0.4)"}`,
+                background:`linear-gradient(90deg,transparent,${replayPlayStarting?c.acL:playing?"#FF8C42":c.gn},transparent)`,
+                boxShadow:`0 0 6px ${replayPlayStarting?c.acG:playing?"rgba(255,140,66,0.5)":"rgba(0,212,161,0.4)"}`,
                 animation:undefined,
-                opacity:playing?(hov==="rp-play"?1:0.7):undefined}}/>
+                opacity:replayPlayStarting?0.95:(playing?(hov==="rp-play"?1:0.7):undefined)}}/>
             </button>
             {/* Speed */}
             {/* Speed — 15-step slide bar */}
@@ -19410,15 +22558,21 @@ const TalariaV8bLive = () => {
               {({forex:"Forex",futures:"Futures",commodity:"Commodities",stock:"Stocks",crypto:"Crypto"})[currentSymbol.type]||currentSymbol.type}
             </span>
             <div style={{ flex:1 }}/>
-            <span style={{ fontSize:9, color:c.tm }}>Spread <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>0.00</span></span>
-            <span style={{ fontSize:9, color:c.tm }}>Comm <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>$0.00</span></span>
-            <span style={{ fontSize:9, color:c.tm }}>Margin <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>—</span></span>
+            <span style={{ fontSize:9, color:c.tm }} title="Typical spread for this symbol (session instrument)">
+              Spread <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>{omHeaderSpreadTxt}</span>
+            </span>
+            <span style={{ fontSize:9, color:c.tm }} title="Commission basis from session instrument">
+              Comm <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>{omHeaderCommTxt}</span>
+            </span>
+            <span style={{ fontSize:9, color:c.tm }} title="Projected margin level % after this order (equity ÷ used margin)">
+              Margin <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>{omMarginLevelTxt}</span>
+            </span>
           </div>
 
           {/* 3 — BUY / SELL */}
           <div style={{ display:"flex", flexShrink:0, position:"relative" }}>
-            {["BUY","SELL"].map((s,i) => { const a=buySell===s.toLowerCase(); const col=s==="BUY"?c.gn:c.rd; const isH=swHov===`bs-${s}`; return (
-              <button type="button" key={s} onClick={()=>setBuySell(s.toLowerCase())}
+            {["BUY","SELL"].map((s,i) => { const side=s.toLowerCase(); const a=buySell===side; const col=s==="BUY"?c.gn:c.rd; const isH=swHov===`bs-${s}`; return (
+              <button type="button" key={s} onClick={()=>{ setBuySell(side); clickHiddenOrderSide(side); }}
                 onMouseEnter={()=>setSwHov(`bs-${s}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{ flex:1, height:34, border:"none", borderRight:i===0?"1px solid rgba(140,160,255,0.08)":"none", position:"relative",
                          background:a?(s==="BUY"?c.gnD:c.rdD):isH?(s==="BUY"?"rgba(0,212,161,0.06)":"rgba(255,80,104,0.06)"):"transparent",
@@ -19438,8 +22592,8 @@ const TalariaV8bLive = () => {
 
           {/* 4 — Order type */}
           <div style={{ borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", position:"relative", flexShrink:0 }}>
-            {["Market","Limit","Stop"].map((t) => { const a=orderType===t.toLowerCase(); const isH=swHov===`ot-${t}`; return (
-              <button type="button" key={t} onClick={()=>setOrderType(t.toLowerCase())}
+            {["Market","Limit","Stop"].map((t) => { const type=t.toLowerCase(); const a=orderType===type; const isH=swHov===`ot-${t}`; return (
+              <button type="button" key={t} onClick={()=>{ setOrderType(type); clickHiddenOrderType(type); }}
                 onMouseEnter={()=>setSwHov(`ot-${t}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{ flex:1, height:26, background:isH&&!a?c.hv2:"transparent", border:"none", color:a?c.acL:isH?c.tx:c.ts, fontSize:10, fontWeight:a?700:600, fontFamily:F, cursor:"default", transition:"color 0.12s, background 0.12s", letterSpacing:"0.01em" }}>
                 {t}
@@ -19452,6 +22606,25 @@ const TalariaV8bLive = () => {
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "contracts" : "lots";
             const basisAmt = riskBasis==="balance" ? accountBalance : accountEquity;
+            const qtyNum = parseFloat(omOrderQtyTxt || "0");
+            const qtyRv = Math.max(0, parseFloat(riskVal || "0"));
+            const qtyDisplayNum =
+              sizeMode === "#" && Number.isFinite(qtyRv) ? qtyRv : qtyNum;
+            const minLotsHint =
+              sizeMode === "#" && currentSymbol.type === "futures"
+                ? Math.floor(Math.max(0, qtyRv))
+                : qtyNum;
+            const minRiskHint =
+              currentSymbol.type === "futures" &&
+              omFuturesMinRiskTxt &&
+              (!Number.isFinite(minLotsHint) || minLotsHint < 1);
+            const qtyDisplay = Number.isFinite(qtyDisplayNum)
+              ? `${currentSymbol.type==="futures" ? Math.floor(Math.max(0, qtyDisplayNum)) : qtyDisplayNum.toFixed(2)} ${sizeUnit}`
+              : `0.00 ${sizeUnit}`;
+            const calcUsdRead =
+              typeof document !== "undefined"
+                ? document.getElementById("calculatedValue")?.textContent?.replace(/\s+/g, " ").trim() || ""
+                : "";
             return (
             <div style={{ padding:"6px 8px", borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
               {/* Left: SIZE label */}
@@ -19468,15 +22641,23 @@ const TalariaV8bLive = () => {
                     value={riskVal}
                     onChange={e => {
                       const v=e.target.value;
+                      if(sizeMode==="#" && currentSymbol.type==="futures" && !/^\d*$/.test(v)) return;
                       if((sizeMode==="#"||sizeMode==="$") && v.length>18) return;
                       if(/^-?\d*\.?\d*$/.test(v)) {
                         if(sizeMode==="%") { const n=parseFloat(v); if(!isNaN(n)&&n>100) return; }
+                        markOrderControlBridge();
                         setRiskVal(v);
                       }
                     }}
                     onBlur={e => {
                       const n=parseFloat(e.target.value);
-                      if(!isNaN(n)) setRiskVal(String(Math.max(0, sizeMode==="%"?Math.min(100,n):sizeMode==="$"?Math.min(accountEquity,n):n)));
+                      markOrderControlBridge();
+                      if(!isNaN(n)) {
+                        const next = sizeMode==="#" && currentSymbol.type==="futures"
+                          ? Math.floor(Math.max(0, n))
+                          : Math.max(0, sizeMode==="%"?Math.min(100,n):sizeMode==="$"?Math.min(accountEquity,n):n);
+                        setRiskVal(String(next));
+                      }
                       else setRiskVal("0");
                     }}
                     style={{ width:`${Math.max(2, riskVal.length+0.5)}ch`, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:12, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", textAlign:"left", padding:0 }}
@@ -19487,11 +22668,11 @@ const TalariaV8bLive = () => {
                       const step = sizeMode==="%"?0.5:sizeMode==="#"?1:10;
                       const isH = swHov===`rv-${key}`;
                       return (
-                        <div key={key} onClick={()=>setRiskVal(v => {
+                        <div key={key} onClick={()=>{ markOrderControlBridge(); setRiskVal(v => {
                           const next = Math.max(0, parseFloat(v||"0")+dir*step);
                           const capped = sizeMode==="%"?Math.min(100,next):sizeMode==="$"?Math.min(accountEquity,next):next;
                           return String(capped);
-                        })}
+                        }); }}
                           onMouseEnter={()=>setSwHov(`rv-${key}`)} onMouseLeave={()=>setSwHov(null)}
                           style={{ width:12, height:11, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", color:isH?c.tx:c.ts, transition:"color 0.1s" }}>
                           <svg width={8} height={5} viewBox="0 0 8 5" fill="none">
@@ -19510,13 +22691,14 @@ const TalariaV8bLive = () => {
                   <span style={{ fontSize:9, color:c.ts, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>
                     {sizeMode==="$"
                       ? `${(parseFloat(riskVal||"0")/basisAmt*100).toFixed(2)}%`
-                      : sizeMode==="%"
-                        ? `0.00 ${sizeUnit}`
-                        : `0.00%`
-                    }
+                      : qtyDisplay}
                   </span>
                   <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>
-                    {sizeMode==="$" ? `0.00 ${sizeUnit}` : `$0.00`}
+                    {minRiskHint
+                      ? `Need ${omFuturesMinRiskTxt}`
+                      : sizeMode==="$" || sizeMode==="%"
+                        ? qtyDisplay
+                        : (calcUsdRead && calcUsdRead !== "—" ? calcUsdRead : qtyDisplay)}
                   </span>
                 </div>
               </div>
@@ -19528,7 +22710,7 @@ const TalariaV8bLive = () => {
                       {[["balance","BAL"],["equity","EQ"]].map(([val,label]) => {
                         const a=riskBasis===val; const isH=swHov===`rb-${val}`;
                         return (
-                          <div key={val} onClick={()=>setRiskBasis(val)}
+                          <div key={val} onClick={()=>{ markOrderControlBridge(); setRiskBasis(val); }}
                             onMouseEnter={()=>setSwHov(`rb-${val}`)} onMouseLeave={()=>setSwHov(null)}
                             style={{ padding:"1px 6px", fontSize:8, fontWeight:800, cursor:"default",
                                      color:a?c.acL:isH?c.ts:c.tm, background:a?c.acD:"transparent",
@@ -19567,6 +22749,15 @@ const TalariaV8bLive = () => {
             };
             const sortedEntryRows = sortEntryRowsBySide(entryRows, buySell);
             const pricedEntryRows = entryRows.filter((r) => parseFloat(r.price) > 0);
+            const orderQtyNum = parseFloat(omOrderQtyTxt || "0");
+            const entryTotalLotsForHint =
+              sizeMode === "#" && currentSymbol.type === "futures"
+                ? Math.floor(Math.max(0, entryRows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0)))
+                : orderQtyNum;
+            const futuresMinRiskHint =
+              currentSymbol.type === "futures" &&
+              omFuturesMinRiskTxt &&
+              (!Number.isFinite(entryTotalLotsForHint) || entryTotalLotsForHint < 1);
             const omFmt = typeof window !== "undefined" ? window.chart?.orderManager : null;
             let entryAvgDisplay = "";
             if (entryRows.length > 1) {
@@ -19592,10 +22783,37 @@ const TalariaV8bLive = () => {
               }
               if (!entryAvgDisplay) entryAvgDisplay = "0.00";
             }
-            const updRow = (id, field, val) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
-            const stepRow = (id, field, dir, step=1) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
+            const updRow = (id, field, val) => {
+              markOrderControlBridge();
+              setEntryRows((rows) => rows.map((r) => (r.id === id ? { ...r, [field]: val } : r)));
+            };
+            const stepRow = (id, field, dir, step = 1) => {
+              markOrderControlBridge();
+              setEntryRows((rows) => {
+                const next = rows.map((r) => {
+                  if (r.id !== id) return r;
+                  if (field === "risk" && sizeMode === "#" && currentSymbol.type === "futures") {
+                    const base = Math.round(parseFloat(r[field] || "0") || 0);
+                    return { ...r, [field]: String(Math.max(0, base + dir)) };
+                  }
+                  return {
+                    ...r,
+                    [field]: String(Math.max(0, parseFloat(r[field] || "0") + dir * step)),
+                  };
+                });
+                if (field === "risk" && sizeMode === "#" && currentSymbol.type === "futures" && next.length === 1) {
+                  const r0 = next.find((x) => x.id === id) || next[0];
+                  queueMicrotask(() => {
+                    markOrderControlBridge();
+                    setRiskVal(String(r0.risk));
+                  });
+                }
+                return next;
+              });
+            };
             const delRow = (id) => {
               omPanelBridgeRef.current.entryDel = Date.now();
+              markOrderControlBridge();
               const om = window.chart?.orderManager;
               if (om && typeof om.removeMultiEntryLevel === "function" && Array.isArray(om.multiEntryLevels)) {
                 const row = entryRows.find((r) => r.id === id);
@@ -19619,6 +22837,7 @@ const TalariaV8bLive = () => {
             };
             const addRow = () => {
               omPanelBridgeRef.current.entryAdd = Date.now();
+              markOrderControlBridge();
               const om = window.chart?.orderManager;
               setEntryRows((rows) => {
                 if (!om || typeof om.addMultiEntryLevel !== "function") {
@@ -19680,8 +22899,9 @@ const TalariaV8bLive = () => {
                 } catch (_) {}
               });
             };
-            const clearRows = () => { setEntryRows([{id:Date.now(), price:"0", risk:"0"}]); };
+            const clearRows = () => { markOrderControlBridge(); setEntryRows([{id:Date.now(), price:"0", risk:"0"}]); };
             const equalizeRisk = () => {
+              markOrderControlBridge();
               setEntryRows((rows) => {
                 const n = rows.length;
                 if (n === 0) return rows;
@@ -19762,7 +22982,7 @@ const TalariaV8bLive = () => {
                         </svg>
                       </div>
                     </>)}
-                    {panelMode==="advanced" && (
+                    {v9EntryTpPlusVisible && (
                     <div onClick={addRow}
                       onMouseEnter={()=>setSwHov("ep-add")} onMouseLeave={()=>setSwHov(null)}
                       title="Add entry level"
@@ -19782,6 +23002,12 @@ const TalariaV8bLive = () => {
                   <div ref={entryScrollRef} className="tlr-scroll" style={{ padding:"3px 6px", maxHeight:52, overflowY:"auto" }}>
                     {sortedEntryRows.map((row, i) => {
                       const pct = totalRisk > 0 ? ((parseFloat(row.risk)||0)/totalRisk*100).toFixed(0) : "0";
+                      const rowContractsDisplay =
+                        sizeMode === "#"
+                          ? currentSymbol.type === "futures"
+                            ? Math.floor(Math.max(0, parseFloat(row.risk || "0")))
+                            : Math.max(0, parseFloat(row.risk || "0"))
+                          : orderQtyNum;
                       return (
                         <div key={row.id} style={{ display:"flex", alignItems:"center", gap:3, height:22, marginBottom:1 }}>
                           {/* Level number — only when 2+ rows */}
@@ -19802,8 +23028,29 @@ const TalariaV8bLive = () => {
                             {sizeMode==="$" && <span style={{ fontSize:10, fontWeight:600, color:c.ts, lineHeight:1, flexShrink:0 }}>$</span>}
                             {sizeMode==="%" && <span style={{ fontSize:9, fontWeight:700, color:c.ts, lineHeight:1, flexShrink:0 }}>%</span>}
                             <input type="text" value={row.risk}
-                              onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updRow(row.id,"risk",e.target.value); }}
-                              onBlur={e => { const n=parseFloat(e.target.value); updRow(row.id,"risk",isNaN(n)?"0":String(n)); }}
+                              onChange={e => {
+                                const v = e.target.value;
+                                if (sizeMode === "#" && currentSymbol.type === "futures") {
+                                  if (/^\d*$/.test(v)) updRow(row.id, "risk", v);
+                                  return;
+                                }
+                                if (/^\d*\.?\d*$/.test(v)) updRow(row.id, "risk", v);
+                              }}
+                              onBlur={e => {
+                                const n = parseFloat(e.target.value);
+                                if (sizeMode === "#" && currentSymbol.type === "futures") {
+                                  const v = String(Math.max(0, Math.round(isNaN(n) ? 0 : n)));
+                                  updRow(row.id, "risk", v);
+                                  if (entryRows.length === 1) {
+                                    queueMicrotask(() => {
+                                      markOrderControlBridge();
+                                      setRiskVal(v);
+                                    });
+                                  }
+                                  return;
+                                }
+                                updRow(row.id, "risk", isNaN(n) ? "0" : String(n));
+                              }}
                               style={{ width:26, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                             {sizeMode==="#" && <span style={{ fontSize:9, color:c.ts, flexShrink:0, lineHeight:1, whiteSpace:"nowrap" }}>{sizeUnit}</span>}
                             <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
@@ -19816,10 +23063,16 @@ const TalariaV8bLive = () => {
                             {omEntryRowStatLines[i]
                               ? omEntryRowStatLines[i]
                               : sizeMode==="$"
-                                ? <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
+                                ? futuresMinRiskHint
+                                  ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                                  : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Number.isFinite(orderQtyNum) ? orderQtyNum.toFixed(currentSymbol.type==="futures"?0:2) : "0.00"} {sizeUnit}</>
                                 : sizeMode==="%"
-                                  ? <><span style={{ color:c.ts }}>${(parseFloat(row.risk||"0")/100*(riskBasis==="balance"?accountBalance:accountEquity)).toFixed(0)}</span>{" · "}0.00 {sizeUnit}</>
-                                  : <>0.00 {sizeUnit}</>
+                                  ? futuresMinRiskHint
+                                    ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                                    : <><span style={{ color:c.ts }}>${(parseFloat(row.risk||"0")/100*(riskBasis==="balance"?accountBalance:accountEquity)).toFixed(0)}</span>{" · "}{Number.isFinite(orderQtyNum) ? orderQtyNum.toFixed(currentSymbol.type==="futures"?0:2) : "0.00"} {sizeUnit}</>
+                                  : futuresMinRiskHint
+                                    ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                                    : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Number.isFinite(rowContractsDisplay) ? rowContractsDisplay.toFixed(currentSymbol.type==="futures"?0:2) : "0.00"} {sizeUnit}</>
                             }
                           </span>
                           <div style={{ flex:1 }}/>
@@ -19856,8 +23109,8 @@ const TalariaV8bLive = () => {
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
             const slRow = slRows[0];
-            const updSl  = (val) => setSlRows([{...slRow, price:val}]);
-            const stepSl = (dir) => setSlRows([{...slRow, price:String(Math.max(0, parseFloat(slRow.price||"0")+dir))}]);
+            const updSl  = (val) => { markOrderControlBridge(); setSlRows([{...slRow, price:val}]); };
+            const stepSl = (dir) => { markOrderControlBridge(); setSlRows([{...slRow, price:String(Math.max(0, parseFloat(slRow.price||"0")+dir))}]); };
             const arw = (onClick, up, hk) => {
               const isH = swHov === hk;
               return (
@@ -19878,7 +23131,7 @@ const TalariaV8bLive = () => {
               const isH = swHov==="sl-chk";
               const col = slEnabled ? c.rd : isH ? c.rd : c.ts;
               return (
-                <div onClick={()=>setSlEnabled(v=>!v)}
+                <div onClick={()=>{ markOrderControlBridge(); setSlEnabled(v=>!v); }}
                   onMouseEnter={()=>setSwHov("sl-chk")} onMouseLeave={()=>setSwHov(null)}
                   style={{ width:12, height:12, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, cursor:"default" }}>
                   <svg width={10} height={10} style={{overflow:"visible"}}>
@@ -20203,10 +23456,44 @@ const TalariaV8bLive = () => {
               });
             };
             const sortedTpRows = sortTpRowsBySide(tpRows, buySell);
-            const updTp  = (id, field, val) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
-            const stepTp = (id, field, dir, step=1) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
+            const basisAmtTp = riskBasis === "balance" ? accountBalance : accountEquity;
+            const orderQtyNumTp = parseFloat(omOrderQtyTxt || "0");
+            const tpTotalLotsForHint =
+              sizeMode === "#" && currentSymbol.type === "futures"
+                ? Math.floor(Math.max(0, tpRows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0)))
+                : orderQtyNumTp;
+            const futuresMinRiskHintTp =
+              currentSymbol.type === "futures" &&
+              omFuturesMinRiskTxt &&
+              (!Number.isFinite(tpTotalLotsForHint) || tpTotalLotsForHint < 1);
+            const updTp  = (id, field, val) => { markOrderControlBridge(); setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r)); };
+            const stepTp = (id, field, dir, step = 1) => {
+              markOrderControlBridge();
+              setTpRows((rows) => {
+                const next = rows.map((r) => {
+                  if (r.id !== id) return r;
+                  if (field === "qty" && sizeMode === "#" && currentSymbol.type === "futures") {
+                    const base = Math.round(parseFloat(r[field] || "0") || 0);
+                    return { ...r, [field]: String(Math.max(0, base + dir)) };
+                  }
+                  return {
+                    ...r,
+                    [field]: String(Math.max(0, parseFloat(r[field] || "0") + dir * step)),
+                  };
+                });
+                if (field === "qty" && sizeMode === "#" && currentSymbol.type === "futures" && next.length === 1) {
+                  const r0 = next.find((x) => x.id === id) || next[0];
+                  queueMicrotask(() => {
+                    markOrderControlBridge();
+                    setRiskVal(String(r0.qty));
+                  });
+                }
+                return next;
+              });
+            };
             const delTp = (id) => {
               omPanelBridgeRef.current.tpDel = Date.now();
+              markOrderControlBridge();
               const om = window.chart?.orderManager;
               if (om && typeof om.removeTPTarget === "function" && Array.isArray(om.tpTargets) && om.tpTargets.length) {
                 const row = tpRows.find((r) => r.id === id);
@@ -20264,6 +23551,7 @@ const TalariaV8bLive = () => {
             };
             const addTp = () => {
               omPanelBridgeRef.current.tpAdd = Date.now();
+              markOrderControlBridge();
               setTpRows((rows) => {
                 const initPx = defaultPriceForNewTp(rows);
                 const n = rows.length + 1;
@@ -20271,6 +23559,15 @@ const TalariaV8bLive = () => {
                   ...rows,
                   { id: Date.now(), price: initPx || "0", qty: "0", enabled: true },
                 ];
+                if (sizeMode === "#" && currentSymbol.type === "futures") {
+                  const q = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
+                  const oq = q >= 1 ? q : 1;
+                  const shares = v9TpNormalizeFuturesContractShares(
+                    next.map((r) => r.qty),
+                    oq
+                  );
+                  return next.map((r, i) => ({ ...r, qty: String(shares[i] ?? 0) }));
+                }
                 const prevSum = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
                 if (sizeMode === "%") {
                   const base = Math.floor(100 / n);
@@ -20278,8 +23575,7 @@ const TalariaV8bLive = () => {
                   return next.map((r, i) => ({ ...r, qty: String(i < n - 1 ? base : last) }));
                 }
                 if (sizeMode === "$") {
-                  let total = prevSum;
-                  if (total <= 0) total = Math.max(1, parseFloat(riskVal) || 100);
+                  const total = Math.max(1, v9TpDollarBasisForSplit(entryRows, riskVal) || 100);
                   const share = Math.max(1, Math.round(total / n));
                   const lastAmt = Math.max(0, total - share * (n - 1));
                   return next.map((r, i) => ({ ...r, qty: String(i < n - 1 ? share : lastAmt) }));
@@ -20295,6 +23591,7 @@ const TalariaV8bLive = () => {
             };
             const clearTp = () => {
               omPanelBridgeRef.current.tpDel = Date.now();
+              markOrderControlBridge();
               const om = window.chart?.orderManager;
               if (om && typeof om.removeTPTarget === "function" && Array.isArray(om.tpTargets)) {
                 while (om.tpTargets.length > 0) {
@@ -20306,9 +23603,29 @@ const TalariaV8bLive = () => {
                   }
                 }
               }
-              setTpRows([{ id: Date.now(), price: "0", qty: "100", enabled: true }]);
+              setTpRows([
+                {
+                  id: Date.now(),
+                  price: "0",
+                  qty:
+                    currentSymbol.type === "futures" && sizeMode === "#"
+                      ? String(
+                          Math.max(
+                            1,
+                            (() => {
+                              const qRv = Math.floor(Math.max(0, parseFloat(riskVal || "0")));
+                              const qOm = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
+                              return qRv >= 1 ? qRv : qOm >= 1 ? qOm : 1;
+                            })()
+                          )
+                        )
+                      : "100",
+                  enabled: true,
+                },
+              ]);
             };
             const equalizeTp = () => {
+              markOrderControlBridge();
               setTpRows((rows) => {
                 const n = rows.length;
                 if (n === 0) return rows;
@@ -20318,11 +23635,20 @@ const TalariaV8bLive = () => {
                   return rows.map((r, i) => ({ ...r, qty: String(i < n - 1 ? base : last) }));
                 }
                 if (sizeMode === "$") {
-                  const total = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
-                  const t = total > 0 ? total : Math.max(1, parseFloat(riskVal) || 100);
+                  const t = Math.max(1, v9TpDollarBasisForSplit(entryRows, riskVal) || 100);
                   const share = Math.max(1, Math.round(t / n));
                   const lastAmt = Math.max(0, t - share * (n - 1));
                   return rows.map((r, i) => ({ ...r, qty: String(i < n - 1 ? share : lastAmt) }));
+                }
+                if (sizeMode === "#" && currentSymbol.type === "futures") {
+                  const qRv = Math.floor(Math.max(0, parseFloat(riskVal || "0")));
+                  const qOm = Math.floor(Math.max(0, parseFloat(omOrderQtyTxt || "0")));
+                  const q = qRv >= 1 ? qRv : qOm >= 1 ? qOm : 1;
+                  const shares = v9TpNormalizeFuturesContractShares(
+                    rows.map((r) => r.qty),
+                    q
+                  );
+                  return rows.map((r, i) => ({ ...r, qty: String(shares[i] ?? 0) }));
                 }
                 const total = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
                 const t = total > 0 ? total : Math.max(0.01, parseFloat(riskVal) || 1);
@@ -20386,7 +23712,7 @@ const TalariaV8bLive = () => {
                         </svg>
                       </div>
                     </>)}
-                    {panelMode==="advanced" && (
+                    {v9EntryTpPlusVisible && (
                     <div onClick={addTp}
                       onMouseEnter={()=>setSwHov("tp-add")} onMouseLeave={()=>setSwHov(null)}
                       title="Add target level"
@@ -20450,8 +23776,29 @@ const TalariaV8bLive = () => {
                             {sizeMode==="$" && <span style={{ fontSize:10, fontWeight:600, color:c.ts, lineHeight:1, flexShrink:0 }}>$</span>}
                             {sizeMode==="%" && <span style={{ fontSize:9, fontWeight:700, color:c.ts, lineHeight:1, flexShrink:0 }}>%</span>}
                             <input type="text" value={row.qty}
-                              onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updTp(row.id,"qty",e.target.value); }}
-                              onBlur={e => { const n=parseFloat(e.target.value); updTp(row.id,"qty",isNaN(n)?"0":String(n)); }}
+                              onChange={e => {
+                                const v = e.target.value;
+                                if (sizeMode === "#" && currentSymbol.type === "futures") {
+                                  if (/^\d*$/.test(v)) updTp(row.id,"qty",v);
+                                  return;
+                                }
+                                if(/^\d*\.?\d*$/.test(v)) updTp(row.id,"qty",v);
+                              }}
+                              onBlur={e => {
+                                const n = parseFloat(e.target.value);
+                                if (sizeMode === "#" && currentSymbol.type === "futures") {
+                                  const v = String(Math.max(0, Math.round(isNaN(n) ? 0 : n)));
+                                  updTp(row.id,"qty", v);
+                                  if (tpRows.length === 1) {
+                                    queueMicrotask(() => {
+                                      markOrderControlBridge();
+                                      setRiskVal(v);
+                                    });
+                                  }
+                                  return;
+                                }
+                                updTp(row.id,"qty", isNaN(n)?"0":String(n));
+                              }}
                               style={{ width:32, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                             {sizeMode==="#" && <span style={{ fontSize:9, color:c.ts, flexShrink:0, lineHeight:1, whiteSpace:"nowrap" }}>{sizeUnit}</span>}
                             <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
@@ -20463,10 +23810,17 @@ const TalariaV8bLive = () => {
                           <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", flexShrink:0 }}>
                             {omTpRowStatLines[i]
                               ? omTpRowStatLines[i]
-                              : sizeMode==="#"
-                                ? <>0.00 {sizeUnit}</>
-                                : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
-                            }
+                              : sizeMode==="$"
+                                ? futuresMinRiskHintTp
+                                  ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                                  : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Number.isFinite(orderQtyNumTp) ? orderQtyNumTp.toFixed(currentSymbol.type==="futures" ? 0 : 2) : "0.00"} {sizeUnit}</>
+                                : sizeMode==="%"
+                                  ? futuresMinRiskHintTp
+                                    ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                                    : <><span style={{ color:c.ts }}>${(parseFloat(row.qty || "0") / 100 * basisAmtTp).toFixed(0)}</span>{" · "}{Number.isFinite(orderQtyNumTp) ? orderQtyNumTp.toFixed(currentSymbol.type==="futures" ? 0 : 2) : "0.00"} {sizeUnit}</>
+                                  : futuresMinRiskHintTp
+                                    ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
+                                    : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Math.max(0, Math.round(parseFloat(row.qty) || 0))} {sizeUnit}</>}
                           </span>
                           <div style={{ flex:1 }}/>
                           {tpRows.length > 1 ? (
@@ -20726,25 +24080,70 @@ const TalariaV8bLive = () => {
           </div>{/* end grid */}
           </div>{/* end scrollable middle */}
 
+          {(() => {
+            const qty = parseFloat(omOrderQtyTxt || "0");
+            const hasSizingIntent =
+              (sizeMode === "#" && parseFloat(riskVal || "0") > 0) ||
+              (slEnabled && parseFloat(slRows[0]?.price || "0") > 0);
+            const show = currentSymbol.type === "futures" && hasSizingIntent && (!Number.isFinite(qty) || qty < 1);
+            return show ? (
+              <div style={{ margin:"5px 8px 0", padding:"5px 7px", flexShrink:0,
+                border:"1px solid rgba(255,190,80,0.28)", background:"rgba(255,190,80,0.08)",
+                color:"#FFD28A", fontSize:10, fontWeight:700, lineHeight:1.35 }}>
+                Futures require at least 1 whole contract.
+                {omFuturesMinRiskTxt ? ` Need at least ${omFuturesMinRiskTxt} risk for this stop.` : " Increase risk or reduce stop distance."}
+              </div>
+            ) : null;
+          })()}
+
+          {(() => {
+            const parseMoney = (txt) => {
+              if (!txt || /∞/u.test(String(txt))) return null;
+              const n = parseFloat(String(txt).replace(/[^0-9.-]/g, ""));
+              return Number.isFinite(n) ? Math.abs(n) : null;
+            };
+            const rsk = parseMoney(omRiskSummaryTxt);
+            const eq = accountEquity;
+            const show =
+              orderPanelOpen &&
+              rsk != null &&
+              eq > 0 &&
+              rsk > eq * 1.0001;
+            return show ? (
+              <div style={{ margin:"5px 8px 0", padding:"5px 7px", flexShrink:0,
+                border:"1px solid rgba(255,80,104,0.35)", background:"rgba(255,80,104,0.08)",
+                color:"#ffb8c8", fontSize:10, fontWeight:700, lineHeight:1.35 }}>
+                Stop loss risk ({omRiskSummaryTxt}) exceeds account equity ({formatV9AccountNum(eq)}). Margin level is buying-power coverage, not a cap on loss if price hits your stop.
+              </div>
+            ) : null;
+          })()}
+
           {/* 9 — R:R Bar */}
           {(() => {
-            const risk   = parseFloat(riskVal||"0");
-            const rr     = 2.0;
-            const reward = risk * rr;
+            const moneyNum = (txt) => {
+              const n = parseFloat(String(txt || "").replace(/[^0-9.-]/g, ""));
+              return Number.isFinite(n) ? Math.abs(n) : 0;
+            };
+            const risk = moneyNum(omRiskSummaryTxt);
+            const reward = moneyNum(omRewardSummaryTxt);
+            const rr = risk > 0 && reward > 0 ? reward / risk : 0;
+            const rrLabel = rr > 0 && Number.isFinite(rr) ? rr.toFixed(1) : "—";
+            const riskLabel = risk > 0 ? `-${omRiskSummaryTxt.replace(/^-/, "")}` : "$0.00";
+            const rewardLabel = reward > 0 ? `+${omRewardSummaryTxt.replace(/^\+/, "")}` : "$0.00";
             return (
               <div style={{ flexShrink:0, padding:"5px 8px 4px", borderTop:"1px solid rgba(140,160,255,0.12)" }}>
                 <div style={{ display:"flex", height:5, overflow:"hidden", gap:1 }}>
                   <div style={{ flex:1,   background:c.rd, opacity:0.55, boxShadow:`0 0 6px ${c.rd}` }}/>
-                  <div style={{ flex:Math.max(0.1,rr), background:c.gn, opacity:0.55, boxShadow:`0 0 6px ${c.gn}` }}/>
+                  <div style={{ flex:Math.max(0.1,rr || 0.1), background:c.gn, opacity:0.55, boxShadow:`0 0 6px ${c.gn}` }}/>
                 </div>
                 <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", paddingTop:4 }}>
-                  <span style={{ fontSize:9, fontWeight:700, color:c.rd, fontVariantNumeric:"tabular-nums" }}>-${risk.toFixed(2)}</span>
+                  <span style={{ fontSize:9, fontWeight:700, color:c.rd, fontVariantNumeric:"tabular-nums" }}>{riskLabel}</span>
                   <div style={{ display:"flex", alignItems:"baseline", gap:1 }}>
                     <span style={{ fontSize:11, fontWeight:800, color:c.rd, fontVariantNumeric:"tabular-nums" }}>1</span>
                     <span style={{ fontSize:10, fontWeight:600, color:c.ts }}>:</span>
-                    <span style={{ fontSize:11, fontWeight:800, color:c.gn, fontVariantNumeric:"tabular-nums" }}>{rr.toFixed(1)}</span>
+                    <span style={{ fontSize:11, fontWeight:800, color:c.gn, fontVariantNumeric:"tabular-nums" }}>{rrLabel}</span>
                   </div>
-                  <span style={{ fontSize:9, fontWeight:700, color:c.gn, fontVariantNumeric:"tabular-nums" }}>+${reward.toFixed(2)}</span>
+                  <span style={{ fontSize:9, fontWeight:700, color:c.gn, fontVariantNumeric:"tabular-nums" }}>{rewardLabel}</span>
                 </div>
               </div>
             );
@@ -20781,7 +24180,7 @@ const TalariaV8bLive = () => {
                            transition:"background 0.12s, border-color 0.12s, box-shadow 0.12s, transform 0.08s",
                            WebkitFontSmoothing:"antialiased" }}>
                   <span style={{ fontSize:12, fontWeight:800, color:"#fff", letterSpacing:"0.05em", fontFamily:F }}>
-                    {isBuy ? "BUY" : "SELL"} 0 Contracts · Set Position Size
+                    {(omPlaceButtonTxt || `${isBuy ? "Buy" : "Sell"} 0 ${currentSymbol.type==="futures" ? "Contracts" : "Lots"}`).replace(/\s+-\s+/g, " · ").toUpperCase()}
                   </span>
                 </div>
               </div>
@@ -20806,7 +24205,7 @@ const TalariaV8bLive = () => {
               const isAct = sizeMode === m;
               const isH = swHov === `sz-drop-${m}`;
               return (
-                <div key={m} onClick={() => { setSizeMode(m); setOpSizeOpen(false); }}
+                <div key={m} onClick={() => { setSizeMode(m); clickHiddenSizeMode(m); setOpSizeOpen(false); }}
                   onMouseEnter={()=>setSwHov(`sz-drop-${m}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{ display:"flex", alignItems:"center", padding:"6px 12px", cursor:"default", position:"relative",
                            background: isAct ? c.acD : isH ? c.hv2 : "transparent", transition:"background 0.1s" }}>
@@ -21271,11 +24670,11 @@ const TalariaV8bLive = () => {
           onSVChange={(ns,nv)=>{ setCpS(ns); setCpV(nv); cpApply(cpH,ns,nv,cpA); }}
           onHChange={(nh)=>{ setCpH(nh); cpApply(nh,cpS,cpV,cpA); }}
           onAChange={(na)=>{ setCpA(na); cpApply(cpH,cpS,cpV,na); }}
-          onHexChange={(hex)=>{ setCpHex(hex); if(hex.length===6){const p=parseColor('#'+hex);const hsv=rgbToHsv(p.r,p.g,p.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);const cv=cpBuildColor(p.r,p.g,p.b,cpA);if(colorPicker==="gotoNewColor")setGotoNewColor(cv);else if(colorPicker==="tlLineColor")setTlStyle(s=>({...s,lineColor:cv}));else if(colorPicker==="tlBgColor")setTlStyle(s=>({...s,bgColor:cv}));else if(colorPicker==="tlTextColor")setTlStyle(s=>({...s,textColor:cv}));else updateSetting(colorPicker,cv);}}}
+          onHexChange={(hex)=>{ setCpHex(hex); if(hex.length===6){const p=parseColor('#'+hex);const hsv=rgbToHsv(p.r,p.g,p.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);const cv=cpBuildColor(p.r,p.g,p.b,cpA);if(colorPicker==="gotoNewColor")setGotoNewColor(cv);else if(colorPicker==="tlLineColor")setTlStyle(s=>({...s,lineColor:cv}));else if(colorPicker==="tlBgColor")setTlStyle(s=>({...s,bgColor:cv}));else if(colorPicker==="tlTextColor")setTlStyle(s=>({...s,textColor:cv}));else if(typeof colorPicker==="string"&&colorPicker.startsWith("ind-"))setIndSettDraft(s=>({...s,[colorPicker.slice(4)]:cv}));else updateSetting(colorPicker,cv);}}}
           onClose={closeCP}
           onDragStart={(type,rect)=>{ setCpDragging(type); setCpDragRect(rect); }}
           dragging={cpDragging}
-          hideAlpha={colorPicker==="tlTextColor"||colorPicker==="tlLineColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"}
+          hideAlpha={colorPicker==="tlTextColor"||colorPicker==="tlLineColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"||colorPicker?.startsWith("ind-")}
           animation={closing.has("cp")?"tlrPopOut 0.15s ease both":"tlrPopIn 0.15s ease"}
         />
       , document.body)}

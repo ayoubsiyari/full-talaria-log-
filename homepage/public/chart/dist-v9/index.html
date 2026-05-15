@@ -783,7 +783,216 @@
         @keyframes tlrLoaderStars { 0%,100% { opacity: 0.58; } 50% { opacity: 0.9; } }
         @keyframes tlrLoadPulse { 0%,100% { transform: scale(0.985); filter: brightness(1); } 50% { transform: scale(1.02); filter: brightness(1.08); } }
 
-        /* Compare-on-chart (+) + modal — ported from legacy-index for V9 OHLC (chart.js CompareOverlay). */
+        /* Instrument list (chart symbol switcher + compare modal) — same tokens as chart.js dropdown */
+        .symbol-switcher-dropdown {
+            display: none;
+            flex-direction: column;
+            position: fixed;
+            background: var(--sp-ui-surface-bg, #111a35);
+            border: 1px solid var(--sp-ui-border, rgba(98, 116, 160, 0.35));
+            border-radius: 6px;
+            min-width: 280px;
+            max-height: 420px;
+            overflow: hidden;
+            z-index: 100000;
+            box-shadow: none;
+            font-family: inherit;
+        }
+        .symbol-switcher-dropdown.open { display: flex; }
+        .ssd-search-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(98, 116, 160, 0.18);
+            background: var(--sp-ui-chrome-bg, #0d142b);
+            flex-shrink: 0;
+        }
+        .ssd-search-icon {
+            width: 14px;
+            height: 14px;
+            color: #6b7280;
+            flex-shrink: 0;
+        }
+        .ssd-search-input {
+            flex: 1;
+            width: 100%;
+            min-width: 0;
+            background: none;
+            border: none;
+            outline: none;
+            color: #d1d5db;
+            font-size: 13px;
+            font-family: inherit;
+            padding: 0;
+            caret-color: var(--sp-accent, #2962ff);
+            direction: ltr;
+            unicode-bidi: embed;
+            text-align: left;
+            box-sizing: border-box;
+        }
+        .ssd-search-input::placeholder { color: #3d4b63; }
+        .ssd-header {
+            padding: 8px 12px 4px;
+            font-size: 10px;
+            font-weight: 600;
+            color: #3d4b63;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            flex-shrink: 0;
+        }
+        .ssd-list {
+            overflow-y: auto;
+            flex: 1;
+            min-height: 0;
+            padding: 4px 0;
+        }
+        .ssd-list::-webkit-scrollbar { width: 4px; }
+        .ssd-list::-webkit-scrollbar-track { background: transparent; }
+        .ssd-list::-webkit-scrollbar-thumb {
+            background: rgba(98, 116, 160, 0.25);
+            border-radius: 2px;
+        }
+        .ssd-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 12px;
+            transition: background 0.12s;
+            color: #d1d5db;
+            font-size: 13px;
+            min-height: 42px;
+            cursor: default;
+        }
+        .ssd-item:hover { background: rgba(41, 98, 255, 0.08); }
+        .ssd-item.active { background: rgba(41, 98, 255, 0.13); }
+        .ssd-item-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            background: rgba(98, 116, 160, 0.12);
+            border: 1px solid rgba(98, 116, 160, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+            color: #a0aec0;
+            flex-shrink: 0;
+            text-transform: uppercase;
+            letter-spacing: -0.5px;
+        }
+        .ssd-item.active .ssd-item-icon {
+            background: rgba(41, 98, 255, 0.2);
+            border-color: rgba(41, 98, 255, 0.4);
+            color: #6395f9;
+        }
+        .ssd-pair-flags {
+            position: relative;
+            width: 38px;
+            height: 28px;
+            flex-shrink: 0;
+        }
+        .ssd-flag {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid rgba(255,255,255,0.35);
+            background: #2a2e39;
+            box-shadow: 0 1.5px 4px rgba(0,0,0,0.5), 0 0 0 0.5px rgba(255,255,255,0.15) inset;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        }
+        .ssd-flag-base { left: 0; top: 2px; z-index: 2; }
+        .ssd-flag-quote { left: 14px; top: 2px; z-index: 1; }
+        .ssd-item:hover .ssd-flag {
+            border-color: rgba(255,255,255,0.5);
+            transform: scale(1.08);
+            box-shadow: 0 2px 7px rgba(0,0,0,0.55), 0 0 0 0.5px rgba(255,255,255,0.22) inset;
+        }
+        .ssd-item.active .ssd-flag { border-color: rgba(255,255,255,0.55); }
+        .ssd-item-body { flex: 1; min-width: 0; }
+        .ssd-item-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #d1d5db;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .ssd-item.active .ssd-item-name { color: #ffffff; }
+        .ssd-item-sub {
+            font-size: 11px;
+            color: #4b5874;
+            margin-top: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .ssd-item-check {
+            width: 13px;
+            height: 13px;
+            color: var(--sp-accent, #2962ff);
+            flex-shrink: 0;
+            opacity: 0;
+        }
+        .ssd-item.active .ssd-item-check { opacity: 1; }
+        .ssd-empty {
+            padding: 24px 16px;
+            text-align: center;
+            color: #3d4b63;
+            font-size: 12px;
+        }
+        .ssd-highlight {
+            color: var(--sp-accent, #2962ff);
+            font-weight: 700;
+            background: rgba(41, 98, 255, 0.12);
+            border-radius: 2px;
+            padding: 0 1px;
+        }
+        body.light-mode .symbol-switcher-dropdown {
+            background: var(--tv-panel-bg, #ffffff);
+            border-color: var(--sp-ui-border, #d7dde8);
+            box-shadow: none;
+        }
+        body.light-mode .ssd-search-wrapper {
+            background: var(--sp-ui-chrome-bg, #ffffff);
+            border-bottom-color: var(--sp-ui-border, #d7dde8);
+        }
+        body.light-mode .ssd-search-icon { color: #64748b; }
+        body.light-mode .ssd-search-input { color: var(--sp-text, #000000); }
+        body.light-mode .ssd-search-input::placeholder { color: #94a3b8; }
+        body.light-mode .ssd-header { color: #64748b; }
+        body.light-mode .ssd-list::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.35); }
+        body.light-mode .ssd-item { color: #000000; }
+        body.light-mode .ssd-item:hover { background: rgba(41, 98, 255, 0.08); }
+        body.light-mode .ssd-item.active { background: rgba(41, 98, 255, 0.14); }
+        body.light-mode .ssd-item-icon {
+            background: rgba(15, 23, 42, 0.04);
+            border-color: rgba(15, 23, 42, 0.12);
+            color: #64748b;
+        }
+        body.light-mode .ssd-item-name { color: var(--sp-text, #000000); }
+        body.light-mode .ssd-item.active .ssd-item-name { color: var(--sp-text-active, #000000); }
+        body.light-mode .ssd-item-sub { color: #64748b; }
+        body.light-mode .ssd-flag,
+        body.light-theme .ssd-flag {
+            border: 2px solid rgba(15,23,42,0.25) !important;
+            background: #e2e8f0;
+            box-shadow: 0 1.5px 5px rgba(15,23,42,0.35), 0 0.5px 2px rgba(15,23,42,0.2), 0 0 0 0.5px rgba(0,0,0,0.06) inset !important;
+        }
+        body.light-mode .ssd-item:hover .ssd-flag,
+        body.light-theme .ssd-item:hover .ssd-flag {
+            border-color: rgba(15,23,42,0.35) !important;
+            box-shadow: 0 3px 8px rgba(15,23,42,0.4), 0 1px 3px rgba(15,23,42,0.22), 0 0 0 0.5px rgba(0,0,0,0.1) inset !important;
+        }
+        body.light-mode .ssd-item.active .ssd-flag,
+        body.light-theme .ssd-item.active .ssd-flag {
+            border-color: rgba(15,23,42,0.4) !important;
+        }
+
+        /* Compare-on-chart (+) + modal — chart.js CompareOverlay; shell matches indicator-style overlay + instrument list */
         .add-symbol-btn {
             width: 22px; height: 22px; margin-left: 2px;
             display: inline-flex !important; align-items: center; justify-content: center;
@@ -804,78 +1013,90 @@
         }
         .add-symbol-btn svg { width: 12px; height: 12px; pointer-events: none; display: block; }
         .compare-modal-overlay {
-            position: fixed; inset: 0; z-index: 10000;
+            position: fixed; inset: 0; z-index: 100050;
             display: none; align-items: center; justify-content: center;
-            background: rgba(0, 0, 0, 0.72); backdrop-filter: blur(8px);
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(4px);
         }
         .compare-modal-overlay.open { display: flex; }
         .compare-modal {
-            background: #0d0f18; border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px; width: 520px; max-width: 95vw; max-height: 85vh;
-            display: flex; flex-direction: column; overflow: hidden;
-            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+            width: 520px;
+            max-width: 95vw;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-radius: 12px;
+            background: #0d0f18;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
         }
         .compare-modal-header {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 16px 20px; background: #080a12;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            flex-shrink: 0;
+            background: #0d0f18;
         }
-        .compare-modal-header h3 { margin: 0; font-size: 15px; font-weight: 600; color: #e1e3e8; }
+        .compare-modal-header h3 {
+            margin: 0;
+            font-size: 15px;
+            font-weight: 600;
+            color: #e8eaef;
+        }
         .compare-modal-close {
-            background: rgba(255, 255, 255, 0.06); border: none; color: #9ca3af;
-            cursor: default; padding: 8px; border-radius: 8px; display: flex;
-            align-items: center; justify-content: center;
+            background: transparent;
+            border: none;
+            color: #9ca3af;
+            cursor: default;
+            padding: 6px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .compare-modal-close:hover { background: rgba(255, 255, 255, 0.12); color: #f3f4f6; }
+        .compare-modal-close:hover {
+            color: #f3f4f6;
+            background: rgba(255, 255, 255, 0.06);
+        }
         .compare-modal-close svg { width: 16px; height: 16px; }
-        .compare-modal-body { padding: 0; overflow-y: auto; flex: 1; }
-        .compare-search-box { position: relative; padding: 14px 18px; background: rgba(0, 0, 0, 0.25); }
-        .compare-search-icon {
-            position: absolute; left: 32px; top: 50%; transform: translateY(-50%);
-            width: 18px; height: 18px; color: #6b7280; pointer-events: none;
+        #compareModalOverlay .compare-modal-body {
+            padding: 0;
+            overflow: hidden;
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            background: var(--sp-ui-surface-bg, #111a35);
         }
-        .compare-search-input {
-            width: 100%; padding: 11px 14px 11px 42px;
-            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px; color: #e8eaef; font-size: 14px; outline: none; box-sizing: border-box;
+        #compareModalOverlay .compare-modal-body > .ssd-list { flex: 1; }
+        .ssd-item.compare-ssd-item.added { background: rgba(41, 98, 255, 0.13); }
+        .compare-symbol-actions {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: 4px;
         }
-        .compare-search-input:focus {
-            border-color: rgba(122, 140, 255, 0.55);
-            box-shadow: 0 0 0 2px rgba(74, 106, 255, 0.15);
-        }
-        .compare-section-title {
-            font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase;
-            letter-spacing: 0.08em; padding: 12px 18px 6px;
-        }
-        .compare-section-list { padding: 0 8px 12px; }
-        .compare-symbol-row {
-            display: flex; align-items: center; padding: 10px 14px; margin: 4px 0;
-            border-radius: 8px; border: 1px solid transparent; cursor: default;
-            transition: background 0.12s ease, border-color 0.12s ease;
-        }
-        .compare-symbol-row:hover {
-            background: rgba(255, 255, 255, 0.04);
-            border-color: rgba(255, 255, 255, 0.06);
-        }
-        .compare-symbol-row.added {
-            background: rgba(74, 106, 255, 0.1);
-            border-color: rgba(122, 140, 255, 0.25);
-        }
-        .compare-symbol-icon {
-            width: 36px; height: 36px; border-radius: 8px; margin-right: 12px; flex-shrink: 0;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 10px; font-weight: 700; background: #0a0c14;
-            border: 1px solid rgba(96, 165, 250, 0.25); color: #93c5fd;
-        }
-        .compare-symbol-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-        .compare-symbol-name { font-size: 13px; font-weight: 600; color: #e5e7eb; }
-        .compare-symbol-desc { font-size: 11px; color: #6b7280; }
         .compare-action-btn {
-            padding: 6px 10px; border: none; border-radius: 6px; font-size: 11px; font-weight: 600;
-            background: rgba(74, 106, 255, 0.2); color: #93c5fd; cursor: default;
-            white-space: nowrap; transition: background 0.12s ease, color 0.12s ease;
+            padding: 5px 10px;
+            border: 1px solid rgba(41, 98, 255, 0.45);
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            background: rgba(41, 98, 255, 0.12);
+            color: #7aa2ff;
+            cursor: default;
+            white-space: nowrap;
+            transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
         }
-        .compare-action-btn:hover { background: rgba(74, 106, 255, 0.32); color: #bfdbfe; }
+        .compare-action-btn:hover {
+            background: rgba(41, 98, 255, 0.22);
+            border-color: rgba(90, 130, 255, 0.65);
+            color: #bcd0ff;
+        }
         .compare-added-pills {
             display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 18px;
             background: rgba(0, 0, 0, 0.2); border-bottom: 1px solid rgba(255, 255, 255, 0.05);
@@ -1029,11 +1250,11 @@
          ────────────────────────────────────────────────────────────── -->
 
     <!-- Tier A — preferences-sync MUST run before preferences-init (defines window.preferencesSync). -->
-    <script defer src="/chart/modules/preferences-sync.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/preferences-init.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/market-calculations.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/chart-env.defaults.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/chart-env.generated.js?v=bmp76ddii"></script>
+    <script defer src="/chart/modules/preferences-sync.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/preferences-init.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/market-calculations.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/chart-env.defaults.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/chart-env.generated.js?v=bmp7e6v5o"></script>
 
     <!-- Drawing tool base classes + individual tool registrations.
          Order matters within this block:
@@ -1041,70 +1262,69 @@
          - Each drawing-tools-*.js registers tools into the global registry.
          - drawing-tools-ui.js provides shared UI helpers used by tools.
          - drawing-tools-manager.js orchestrates everything (loaded later). -->
-    <script defer src="/chart/modules/drawing-tools-base.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/drawing-tools-lines.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/drawing-tools-shapes.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/drawing-tools-fibonacci.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/drawing-tools-text.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/drawing-tools-emoji.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/drawing-tools-image.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/emoji-picker.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/emoji-picker-simple.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/drawing-tools-advanced-volume.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/drawing-tools-advanced.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/drawing-tools-extended.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/drawing-tools-patterns.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/drawing-tools-fib-gann.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/drawing-tools-channels.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/drawing-tools-ui.js?v=bmp76ddii"></script>
+    <script defer src="/chart/modules/drawing-tools-base.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/drawing-tools-lines.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/drawing-tools-shapes.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/drawing-tools-fibonacci.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/drawing-tools-text.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/drawing-tools-emoji.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/drawing-tools-image.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/emoji-picker.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/emoji-picker-simple.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/drawing-tools-advanced-volume.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/drawing-tools-advanced.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/drawing-tools-extended.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/drawing-tools-patterns.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/drawing-tools-fib-gann.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/drawing-tools-channels.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/drawing-tools-ui.js?v=bmp7e6v5o"></script>
 
     <!-- Drawing-tool support (color picker, toolbar UI, undo/redo). -->
-    <script defer src="/chart/modules/color-picker.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/drawing-toolbar.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/undo-redo-manager.js?v=bmp76ddii"></script>
+    <script defer src="/chart/modules/color-picker.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/drawing-toolbar.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/undo-redo-manager.js?v=bmp7e6v5o"></script>
 
     <!-- Drawing-tools manager — orchestrator. Must load AFTER all individual
          drawing-tools-*.js so the registry is populated before init. -->
-    <script defer src="/chart/modules/drawing-tools-manager.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/favorites-manager.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/keyboard-shortcuts.js?v=bmp76ddii"></script>
+    <script defer src="/chart/modules/drawing-tools-manager.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/favorites-manager.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/keyboard-shortcuts.js?v=bmp7e6v5o"></script>
 
-    <script defer src="/chart/modules/timezone-manager.js?v=bmp76ddii"></script>
+    <script defer src="/chart/modules/timezone-manager.js?v=bmp7e6v5o"></script>
 
     <!-- Compare / multi-symbol overlay — must load before chart.js (defines window.CompareOverlay). -->
-    <script defer src="/chart/modules/compare-overlay.js?v=bmp76ddii"></script>
+    <script defer src="/chart/modules/compare-overlay.js?v=bmp7e6v5o"></script>
 
-    <!-- Bottom toast stack (shared notifications + path hint); must load before chart.js. -->
-    <script defer src="/chart/modules/talaria-toast-stack.js?v=bmp76ddii"></script>
-
+    <!-- Bottom toast stack (shared showNotification + path hint); must load before chart.js. -->
+    <script defer src="/chart/modules/talaria-toast-stack.js?v=bmp7e6v5o"></script>
     <!-- Chart engine.
          chart.js exposes window.Chart synchronously and window.initializeChart
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=bmp76ddii"></script>
+    <script defer src="/chart/chart.js?v=bmp7e6v5o"></script>
     <!-- V9 React theme panel → chart.chartSettings (shared with legacy-index.html). Must load after chart.js. -->
-    <script defer src="/chart/modules/v9-theme-bridge.js?v=bmp76ddii"></script>
+    <script defer src="/chart/modules/v9-theme-bridge.js?v=bmp7e6v5o"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
-    <script defer src="/chart/modules/replay-system.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/replay-dashboard-sync.js?v=bmp76ddii"></script>
+    <script defer src="/chart/modules/replay-system.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/replay-dashboard-sync.js?v=bmp7e6v5o"></script>
 
     <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->
-    <script defer src="/chart/modules/order-event-bus.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/order-service.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/order-manager.js?v=bmp76ddii"></script>
-    <script defer src="/chart/modules/screenshot-manager.js?v=bmp76ddii"></script>
+    <script defer src="/chart/modules/order-event-bus.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/order-service.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/order-manager.js?v=bmp7e6v5o"></script>
+    <script defer src="/chart/modules/screenshot-manager.js?v=bmp7e6v5o"></script>
 
     <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
-    <script defer src="/chart/modules/chart-indicators-full.js?v=bmp76ddii"></script>
+    <script defer src="/chart/modules/chart-indicators-full.js?v=bmp7e6v5o"></script>
     <!-- Catalog + settings panel (createIndicatorSettingsPanel, INDICATOR_DEFINITIONS). Required for V9 indicator settings — must follow chart-indicators-full.js. -->
-    <script defer src="/chart/modules/indicator-ui.js?v=bmp76ddii"></script>
+    <script defer src="/chart/modules/indicator-ui.js?v=bmp7e6v5o"></script>
 
     <!-- Multi-panel manager removed — single-chart mode only. -->
     <!-- Economic calendar: Finnhub via /api + chart time-axis markers (__economicCalendarForChart). -->
-    <script defer src="/chart/modules/economic-news-sidebar.js?v=bmp76ddii"></script>
-  <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js?v=bmp76ddii"></script>
+    <script defer src="/chart/modules/economic-news-sidebar.js?v=bmp7e6v5o"></script>
+  <script type="module" crossorigin src="/chart/dist-v9/assets/talaria-v9-live.js?v=bmp7e6v5o"></script>
 </head>
 <body>
     <div id="backtestingLoader" aria-live="polite" aria-busy="true">
@@ -1162,17 +1382,15 @@
             </div>
             <div class="compare-added-pills" id="compareAddedPills" style="display:none;"></div>
             <div class="compare-modal-body">
-                <div class="compare-search-box">
-                    <svg class="compare-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                <div class="ssd-search-wrapper">
+                    <svg class="ssd-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <circle cx="11" cy="11" r="8"></circle>
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        <path d="M21 21l-4.35-4.35"></path>
                     </svg>
-                    <input type="text" class="compare-search-input" id="compareSearchInput" placeholder="Search symbol…" autocomplete="off" />
+                    <input type="text" class="ssd-search-input" id="compareSearchInput" placeholder="Search symbol…" autocomplete="off" spellcheck="false" dir="ltr" />
                 </div>
-                <div class="compare-section">
-                    <div class="compare-section-title">Available symbols</div>
-                    <div class="compare-section-list" id="compareSymbolsList"></div>
-                </div>
+                <div class="ssd-header">Available symbols</div>
+                <div class="ssd-list" id="compareSymbolsList"></div>
             </div>
         </div>
     </div>
@@ -1285,7 +1503,7 @@
             <div class="news-items" id="newsItems"></div>
         </div>
     </div>
-    <!-- Module scripts are deferred too, so this runs AFTER all defers above. -->
+    <!-- Module scripts are deferred too, so this runs AFTER all defers above. -->
 
     <!-- ──────────────────────────────────────────────────────────────────
          PANEL MANAGER BOOTSTRAP — REMOVED
