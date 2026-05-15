@@ -24111,6 +24111,10 @@ class OrderManager {
      * playhead can differ from tile A (parent `window.chart`) by a wick or one step, so one panel shows a
      * stop-out while another still shows the trade open. When the parent chart is the same instrument,
      * use its replay bar as the single source of truth for guard evaluation in this iframe.
+     *
+     * If the iframe switched to a different interval than the host tile, the parent's aggregated OHLC
+     * is not comparable to this surface's bars — using it caused false TP/SL hits right after a TF change
+     * (same class of bug as pre-arming guards around resample on the main chart).
      * @returns {object|null}
      */
     _getMultichartParentGuardCandle() {
@@ -24126,6 +24130,11 @@ class OrderManager {
         }
         if (!pChart || !this.chart) return null;
         if (!this._sameChartInstrument(this.chart, pChart)) return null;
+        const tfLocal = String(this.chart.currentTimeframe || '').toLowerCase().trim();
+        const tfParent = String(pChart.currentTimeframe || '').toLowerCase().trim();
+        if (tfLocal && tfParent && tfLocal !== tfParent) {
+            return null;
+        }
         const pOm = pChart.orderManager;
         if (!pOm || typeof pOm.getCurrentCandle !== 'function') return null;
         try {

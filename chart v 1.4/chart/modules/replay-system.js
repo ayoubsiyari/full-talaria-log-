@@ -5453,6 +5453,21 @@ class ReplaySystem {
             try {
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
                 let appliedSlice = false;
+                const omPanel = pc.orderManager;
+                const replayTsNum = Number(replayTs);
+                const preArmPanelGuards = () => {
+                    if (!omPanel || typeof omPanel._refreshAllGuardsToTimestamp !== 'function') return;
+                    if (!Number.isFinite(replayTsNum)) return;
+                    try {
+                        omPanel._refreshAllGuardsToTimestamp(replayTsNum, -1);
+                    } catch (_ePre) { /* ignore */ }
+                };
+                const postArmPanelGuards = () => {
+                    if (!omPanel || typeof omPanel._refreshAllGuardsToCurrentCandle !== 'function') return;
+                    try {
+                        omPanel._refreshAllGuardsToCurrentCandle();
+                    } catch (_ePost) { /* ignore */ }
+                };
 
                 // Same instrument/file as main: always use main's currentIndex slice. If we prefer
                 // hasOwnData first, a refetched _panelFullRawData can have bar timestamps that still
@@ -5471,12 +5486,14 @@ class ReplaySystem {
                         pc.manualRange = null;
                         pc._chartViewRestored = false;
                     }
+                    preArmPanelGuards();
                     pc.rawData = slicedRawData;
                     pc.data = pc.resampleData(slicedRawData, pc.currentTimeframe);
                     appliedSlice = true;
                 } else if (hasOwnData) {
                     const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
                     const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
+                    preArmPanelGuards();
                     pc.rawData = panelSlice;
                     pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
                     appliedSlice = true;
@@ -5485,6 +5502,8 @@ class ReplaySystem {
                 if (!appliedSlice) {
                     return;
                 }
+
+                postArmPanelGuards();
 
                 if (typeof pc.bumpDataVersion === 'function') pc.bumpDataVersion();
                 
