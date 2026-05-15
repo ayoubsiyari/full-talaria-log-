@@ -16371,12 +16371,10 @@ class OrderManager {
             return;
         }
         
-        // Log current orderQuantity value before update
-        const currentQty = document.getElementById('orderQuantity')?.value;
-        console.log(`🔄 updatePreviewLines() called - current orderQuantity in DOM: ${currentQty}`);
-        
-        // Remove existing preview lines first
-        this.removePreviewLines();
+        // Tear down local SVG before redraw. Do NOT fan-out multichart-clear-preview —
+        // this runs on every SL/TP/entry tick; broadcasting would clear peer panels and
+        // race setDraftPreview (preview vanishes, SL drag feels broken).
+        this.removePreviewLines({ multichartSkipBroadcast: true });
 
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         const tpEnabled = document.getElementById('enableTP')?.checked;

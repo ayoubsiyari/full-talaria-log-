@@ -95,11 +95,43 @@
 
         this._onWindowMessage = this._onWindowMessage.bind(this);
         global.addEventListener('message', this._onWindowMessage);
+
+        /** Dedupe window for replay "at end" toasts coalesced from all panels (see replay-system _maybeNotifyReplayToast). */
+        this._lastGlobalReplayToastAt = 0;
+        this._lastGlobalReplayToastMsg = '';
+        this._boundDedupedReplayToast = this._showGlobalReplayToastOnce.bind(this);
+        global.__multichartDedupedReplayToast = this._boundDedupedReplayToast;
     }
 
     MultichartManager.prototype.dispose = function () {
         global.removeEventListener('message', this._onWindowMessage);
+        if (global.__multichartDedupedReplayToast === this._boundDedupedReplayToast) {
+            try { delete global.__multichartDedupedReplayToast; } catch (_) {
+                global.__multichartDedupedReplayToast = undefined;
+            }
+        }
         for (const id of Array.from(this.charts.keys())) this.removeChart(id);
+    };
+
+    /**
+     * Show a replay UX toast once on the host page (window.chart), not inside each iframe.
+     * Multiple panels can hit "play at end" in the same tick when sync is on — same 900ms key as replay-system.
+     */
+    MultichartManager.prototype._showGlobalReplayToastOnce = function (message) {
+        if (!message || typeof message !== 'string') return;
+        const now = Date.now();
+        if (message === this._lastGlobalReplayToastMsg
+                && now - this._lastGlobalReplayToastAt < 900) {
+            return;
+        }
+        this._lastGlobalReplayToastMsg = message;
+        this._lastGlobalReplayToastAt = now;
+        try {
+            const ch = global.chart;
+            if (ch && typeof ch.showNotification === 'function') {
+                ch.showNotification(message);
+            }
+        } catch (_) {}
     };
 
     MultichartManager.prototype.setSyncMode = function (mode) {
@@ -664,6 +696,13 @@
                     try { this.onContextMenu(sourceId, msg); } catch (e) {
                         this._log('warn', 'onContextMenu threw: ' + (e && e.message || e));
                     }
+                }
+                return;
+
+            case 'multichart-global-toast':
+                // replay-system: "already at end" / session-end toasts from iframe panels.
+                if (typeof msg.message === 'string' && msg.message.length) {
+                    this._showGlobalReplayToastOnce(msg.message);
                 }
                 return;
 

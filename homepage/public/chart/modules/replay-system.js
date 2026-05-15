@@ -2543,12 +2543,32 @@ class ReplaySystem {
      */
     _maybeNotifyReplayToast(message) {
         const ch = this.chart;
-        if (!ch || typeof ch.showNotification !== 'function' || !message) return;
+        if (!ch || !message) return;
         const now = Date.now();
         if (now - (this._replayToastAt || 0) < 900) return;
         this._replayToastAt = now;
+        const g = typeof globalThis !== 'undefined' ? globalThis
+            : (typeof window !== 'undefined' ? window : null);
+        const msgStr = String(message);
         try {
-            ch.showNotification(message);
+            const inMcIframe = !!(g && g.parent && g.parent !== g
+                && (g.__multichartBridge
+                    || /(?:^|[?&])multichart=1(?:&|$)/.test(String(g.location && g.location.search || ''))));
+            if (inMcIframe && typeof g.parent.postMessage === 'function') {
+                g.parent.postMessage({
+                    type:    'multichart-global-toast',
+                    message: msgStr,
+                    source:  (ch && ch.multichartPanelId) || undefined,
+                }, '*');
+                return;
+            }
+            if (g && typeof g.__multichartDedupedReplayToast === 'function') {
+                g.__multichartDedupedReplayToast(msgStr);
+                return;
+            }
+            if (typeof ch.showNotification === 'function') {
+                ch.showNotification(msgStr);
+            }
         } catch (_) {}
     }
 
