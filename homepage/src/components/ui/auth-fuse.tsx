@@ -274,6 +274,10 @@ function SignInForm({ prefillEmail, bannerMessage, nextPath, onForgotPassword }:
         return;
       }
 
+      if (body?.journal_token && typeof body.journal_token === "string") {
+        localStorage.setItem("token", body.journal_token);
+      }
+
       // Also log into journal backend so the journal app works without a separate login
       let hasAccess = false;
       try {

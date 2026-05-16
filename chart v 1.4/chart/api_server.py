@@ -59,6 +59,11 @@ try:
 except ImportError:
     psutil = None  # type: ignore
 
+try:
+    import jwt as pyjwt
+except ImportError:
+    pyjwt = None  # type: ignore
+
 # Chart directory — load .env next to api_server.py for local dev (Docker Compose also injects env).
 # Python does not read .env by itself; we merge KEY=value lines into os.environ if not already set.
 _CHART_DIR = Path(__file__).resolve().parent
@@ -7807,7 +7812,7 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
             db.commit()
         except Exception:
             db.rollback()
-        return {"success": True, "user": _user_public_dict(user, db=db)}
+        return {"success": True, **_auth_response_with_journal_token(user, db)}
     finally:
         db.close()
 
@@ -7939,6 +7944,42 @@ async def auth_billing_snapshot(request: Request, limit: int = 12):
     return {"success": True, "card": card, "invoices": inv_out, "stripe_configured": True}
 
 
+def _journal_jwt_secret() -> str | None:
+    secret = (os.environ.get("JWT_SECRET_KEY") or "").strip()
+    return secret if len(secret) >= 32 else None
+
+
+def _mint_journal_access_token(user: User) -> str | None:
+    """Flask-JWT-Extended compatible access token for /journal/api/* (shared JWT_SECRET_KEY)."""
+    secret = _journal_jwt_secret()
+    if not secret or pyjwt is None:
+        return None
+    is_admin = getattr(user, "role", None) == "admin" or bool(getattr(user, "is_admin", False))
+    now = datetime.utcnow()
+    payload = {
+        "sub": str(user.id),
+        "is_admin": is_admin,
+        "exp": now + timedelta(hours=24),
+        "iat": now,
+        "nbf": now,
+        "type": "access",
+        "fresh": False,
+        "jti": secrets.token_urlsafe(16),
+    }
+    try:
+        return pyjwt.encode(payload, secret, algorithm="HS256")
+    except Exception:
+        return None
+
+
+def _auth_response_with_journal_token(user: User, db) -> dict:
+    out: dict = {"user": _user_public_dict(user, db=db)}
+    tok = _mint_journal_access_token(user)
+    if tok:
+        out["journal_token"] = tok
+    return out
+
+
 @app.get("/api/auth/me")
 async def auth_me(request: Request):
     if not AUTH_ENABLED:
@@ -7948,7 +7989,7 @@ async def auth_me(request: Request):
         raise HTTPException(status_code=401, detail="Not authenticated")
     db = SessionLocal()
     try:
-        return {"user": _user_public_dict(user, db=db)}
+        return _auth_response_with_journal_token(user, db)
     finally:
         db.close()
 

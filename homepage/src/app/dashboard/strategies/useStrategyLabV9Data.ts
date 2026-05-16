@@ -1,14 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { JOURNAL_API_BASE } from "@/lib/journalApi";
+import {
+  JOURNAL_API_BASE,
+  journalAuthHeaders,
+  syncJournalTokenFromSession,
+} from "@/lib/journalApi";
 import {
   apiStrategyToBankRow,
   bankStrategyToApiBody,
   mapApiSessionToReviewRow,
   type ApiStrategyRecord,
 } from "./strategyLabV9Mappers";
-import { authHeaders, getToken } from "./strategyLabV9Auth";
+import { getToken } from "./strategyLabV9Auth";
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { credentials: "include", ...init });
@@ -32,17 +36,31 @@ export function useStrategyLabV9Data() {
   const [sessionsLoading, setSessionsLoading] = useState(true);
 
   const loadStrategies = useCallback(async () => {
+    await syncJournalTokenFromSession();
     const token = getToken();
     if (!token) {
       setMyStrategies([]);
       setStrategiesLoading(false);
-      setStrategiesError(null);
+      setStrategiesError(
+        "Could not connect to the strategy API. Sign out and sign in again, or ask an admin to enable Strategy lab on your account.",
+      );
       return;
     }
     setStrategiesLoading(true);
     setStrategiesError(null);
     try {
-      const res = await fetch(`${JOURNAL_API_BASE}/strategies`, { headers: authHeaders() });
+      const fetchList = () =>
+        fetch(`${JOURNAL_API_BASE}/strategies`, {
+          credentials: "include",
+          headers: journalAuthHeaders(),
+        });
+
+      let res = await fetchList();
+      if (res.status === 401) {
+        await syncJournalTokenFromSession({ forceRefresh: true });
+        if (getToken()) res = await fetchList();
+      }
+
       const data = (await res.json()) as {
         success?: boolean;
         strategies?: ApiStrategyRecord[];
@@ -135,10 +153,13 @@ export function useStrategyLabV9Data() {
       }
       persistInFlightRef.current = true;
 
+      await syncJournalTokenFromSession();
       const token = getToken();
       if (!token) {
         persistInFlightRef.current = false;
-        throw new Error("Not signed in");
+        throw new Error(
+          "Not signed in to the strategy API. Refresh the page or sign in again.",
+        );
       }
 
       const body = bankStrategyToApiBody(strat);
@@ -152,7 +173,8 @@ export function useStrategyLabV9Data() {
       try {
         res = await fetch(url, {
           method,
-          headers: authHeaders(),
+          credentials: "include",
+          headers: journalAuthHeaders(),
           body: JSON.stringify(body),
         });
       } catch (e) {
@@ -165,9 +187,18 @@ export function useStrategyLabV9Data() {
         }
         throw e;
       }
-      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        action?: string;
+      };
       if (!res.ok || data.success === false) {
         persistInFlightRef.current = false;
+        if (res.status === 403 && data.action === "subscription_required") {
+          throw new Error(
+            "Strategy lab requires access. Subscribe or ask an admin to enable the Strategies section.",
+          );
+        }
         throw new Error(data.error || `Save failed (${res.status})`);
       }
       persistInFlightRef.current = false;
@@ -181,7 +212,8 @@ export function useStrategyLabV9Data() {
     async (id: number): Promise<void> => {
       const res = await fetch(`${JOURNAL_API_BASE}/strategies/${id}`, {
         method: "DELETE",
-        headers: authHeaders(),
+        credentials: "include",
+        headers: journalAuthHeaders(),
       });
       const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!res.ok || data.success === false) {
@@ -196,7 +228,8 @@ export function useStrategyLabV9Data() {
     async (id: number): Promise<void> => {
       const res = await fetch(`${JOURNAL_API_BASE}/strategies/${id}/duplicate`, {
         method: "POST",
-        headers: authHeaders(),
+        credentials: "include",
+        headers: journalAuthHeaders(),
       });
       const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!res.ok || data.success === false) {

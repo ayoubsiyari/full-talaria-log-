@@ -79,6 +79,8 @@ services:
       TILE_CDN_BASE_URL: ${TILE_CDN_BASE_URL:-}
       TILE_CDN_REDIRECT: ${TILE_CDN_REDIRECT:-false}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      # Same secret as journal-backend — mints Bearer tokens for /journal/api/* from chart cookie sessions
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-docker-journal-jwt-secret-minimum-32-characters}
       # Billing portal return_url allowlist (api_server). Until DNS is live, use the origin you open in the browser (e.g. http://localhost:3000). Production: https://www.talaria-log.com
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       STRIPE_REDIRECT_ALLOWED_ORIGINS: ${STRIPE_REDIRECT_ALLOWED_ORIGINS:-}

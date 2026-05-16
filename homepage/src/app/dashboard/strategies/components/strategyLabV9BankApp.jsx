@@ -12,6 +12,7 @@ import {
 } from "./strategyBuilderModule.jsx";
 import { useStrategyLabV9Data } from "@/app/dashboard/strategies/useStrategyLabV9Data";
 import { getToken, loginUrlWithNext } from "@/app/dashboard/strategies/strategyLabV9Auth";
+import { syncJournalTokenFromSession } from "@/lib/journalApi";
 import { bankStrategyToApiBody } from "@/app/dashboard/strategies/strategyLabV9Mappers";
 import { collectStrategyImageStats } from "@/app/dashboard/strategies/strategyLabV9Images";
 import { useOptionalBacktestNewSession } from "@/app/dashboard/BacktestNewSessionContext";
@@ -587,8 +588,9 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   );
 
   /* ─── Builder modal open/close helper ─── */
-  const openBuilder = (editStrat=null) => {
-    if (!getToken()) {
+  const openBuilder = async (editStrat=null) => {
+    const token = (await syncJournalTokenFromSession()) || getToken();
+    if (!token) {
       window.location.href = loginUrlWithNext();
       return;
     }
@@ -641,9 +643,10 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
 
   stratOpenBuilderLatestRef.current = openBuilder;
 
-  const applyTemplateToBuilder = (tpl) => {
+  const applyTemplateToBuilder = async (tpl) => {
     if (!tpl) return;
-    if (!getToken()) {
+    const token = (await syncJournalTokenFromSession()) || getToken();
+    if (!token) {
       window.location.href = loginUrlWithNext();
       return;
     }

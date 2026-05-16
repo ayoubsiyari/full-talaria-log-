@@ -19,3 +19,4 @@ psutil==6.1.0
 numpy==1.26.4
 redis==5.0.8
 fakeredis==2.23.3
+PyJWT==2.10.1

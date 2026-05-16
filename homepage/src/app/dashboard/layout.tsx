@@ -11,6 +11,7 @@ import {
   userCanAccessDashboardPath,
   userHasDashboardModule,
 } from "@/lib/dashboardAccess";
+import { applyJournalTokenFromAuthResponse } from "@/lib/journalApi";
 import SubscriptionGateOverlay from "./SubscriptionGateOverlay";
 import DashboardAccessSkeleton from "./DashboardAccessSkeleton";
 import { StrategyLabV9BuilderProvider } from "./strategies/StrategyLabV9BuilderContext";
@@ -31,7 +32,8 @@ async function fetchMe(): Promise<User> {
     cache: "no-store",
   });
   if (!res.ok) throw new Error("not_authenticated");
-  const data = (await res.json()) as { user: User };
+  const data = (await res.json()) as { user: User; journal_token?: string };
+  applyJournalTokenFromAuthResponse(data);
   return data.user;
 }
 
