@@ -4817,6 +4817,8 @@ const TalariaV8bLive = () => {
   const [tlBarSelected, setTlBarSelected] = useState(false);
   const [tlBarSelectedType, setTlBarSelectedType] = useState(null);
   const [tlSettOpen, setTlSettOpen] = useState(false);
+  // Must be declared before render-time `settingsEditGroup` (line ~6980) — TDZ if defined later.
+  const editingDrawingRef = useRef(null);
   const [tlSettPos, setTlSettPos] = useState({ x: 200, y: 90 });
   const [tlName, setTlName] = useState("Trend Line");
   const [tlNameEditing, setTlNameEditing] = useState(false);
@@ -7044,7 +7046,7 @@ const TalariaV8bLive = () => {
       setTxtBarSizeOpen(false);
       setTxtBarDrop(null);
     }
-  }, [tool, tlBarSelected, tlBarDrawingGroup]);
+  }, [tool, tlBarSelected, tlBarDrawingGroup, tlSettOpen, txtSettOpen, lineShapeRailActive]);
 
   // Update name when switching between sub-tools; also reset to Style tab so the
   // tab indicator never lands off-screen when the previous tab doesn't exist on the new tool
@@ -9177,10 +9179,6 @@ const TalariaV8bLive = () => {
   //   2. Prevent the tool bridge below from arming chart.js's draw tool —
   //      otherwise clicking the chart while the panel is open would start
   //      drawing a new trendline. We zero out the legacy tool while editing.
-  // The ref also stores the drawing reference + the tool/groupSelected we
-  // had before the panel opened, so closing the panel restores them.
-  const editingDrawingRef = useRef(null);
-
   // `drawingManager.toolbar.show` (shape selected / floating bar): the next tool-bridge tick must
   // only clear chart.js. If we dm.setTool(legacy), drawing-tools-manager.setTool calls deselectAll()
   // and wipes the selection the user just made — and leaves draw mode armed.

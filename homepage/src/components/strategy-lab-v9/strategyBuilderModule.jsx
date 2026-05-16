@@ -2709,108 +2709,6 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups }
   );
 };
 
-const CanvasZoomSlider = ({ rfTransform, rfRef, canvasContainerRef, trackHeight }) => {
-  const zoom = rfTransform?.[2] ?? BASE_ZOOM;
-  const track = Math.max(48, trackHeight || 48);
-  const frac = Math.max(0, Math.min(1, (zoom - BOARD_ZOOM_MIN) / (BOARD_ZOOM_MAX - BOARD_ZOOM_MIN)));
-  const thumbH = Math.max(16, track * 0.14);
-  const thumbTop = (1 - frac) * Math.max(0, track - thumbH);
-
-  const applyZoom = (newZoom, animate = false) => {
-    const inst = rfRef.current;
-    const el = canvasContainerRef?.current;
-    if (!inst) return;
-    const z = Math.max(BOARD_ZOOM_MIN, Math.min(BOARD_ZOOM_MAX, newZoom));
-    const { x, y, zoom: curZ } = inst.getViewport();
-    if (!el) {
-      inst.setViewport({ x, y, zoom: z }, animate ? { duration: 180 } : undefined);
-      return;
-    }
-    const centerGraphY = (el.clientHeight / 2 - y) / curZ;
-    const boardCenterX = SEC_X + SEC_W / 2;
-    inst.setViewport({
-      x: el.clientWidth / 2 - boardCenterX * z,
-      y: el.clientHeight / 2 - centerGraphY * z,
-      zoom: z,
-    }, animate ? { duration: 180 } : undefined);
-  };
-
-  const zoomFromTrackY = (trackEl, clientY) => {
-    const rect = trackEl.getBoundingClientRect();
-    const usable = Math.max(1, rect.height - thumbH);
-    const fracFromY = 1 - (clientY - rect.top - thumbH / 2) / usable;
-    return BOARD_ZOOM_MIN + Math.max(0, Math.min(1, fracFromY)) * (BOARD_ZOOM_MAX - BOARD_ZOOM_MIN);
-  };
-
-  const onTrackDown = (e) => {
-    if (e.button !== 0) return;
-    e.stopPropagation();
-    applyZoom(zoomFromTrackY(e.currentTarget, e.clientY));
-    const trackEl = e.currentTarget;
-    const onMove = (ev) => applyZoom(zoomFromTrackY(trackEl, ev.clientY), false);
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-  };
-
-  const onThumbDown = (e) => {
-    if (e.button !== 0) return;
-    e.stopPropagation();
-    const trackEl = e.currentTarget.parentElement;
-    const rect = trackEl.getBoundingClientRect();
-    const startY = e.clientY;
-    const startTop = thumbTop;
-    const onMove = (ev) => {
-      const usable = Math.max(1, rect.height - thumbH);
-      const newTop = Math.max(0, Math.min(usable, startTop + (ev.clientY - startY)));
-      const newFrac = 1 - newTop / usable;
-      applyZoom(BOARD_ZOOM_MIN + newFrac * (BOARD_ZOOM_MAX - BOARD_ZOOM_MIN), false);
-    };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-  };
-
-  return (
-    <div
-      role="slider"
-      aria-label="Canvas zoom"
-      aria-valuemin={Math.round(BOARD_ZOOM_MIN * 100)}
-      aria-valuemax={Math.round(BOARD_ZOOM_MAX * 100)}
-      aria-valuenow={Math.round(zoom * 100)}
-      onPointerDown={onTrackDown}
-      onDoubleClick={e => { e.stopPropagation(); _cvCb.requestFitView?.(); }}
-      title="Drag to zoom · double-click to fit"
-      style={{
-        width: 4, height: track, borderRadius: 2, flexShrink: 0,
-        background: 'rgba(255,255,255,0.06)', position: 'relative',
-        pointerEvents: 'auto', cursor: 'default', touchAction: 'none',
-      }}
-    >
-      <div
-        onPointerDown={onThumbDown}
-        style={{
-          position: 'absolute', top: thumbTop, height: thumbH, width: '100%',
-          borderRadius: 2, background: 'rgba(255,255,255,0.28)',
-          transition: 'background 0.1s',
-        }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.45)'; }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.28)'; }}
-      />
-    </div>
-  );
-};
-
 const CanvasScrollbar = ({ rfTransform, contentBotGraph, canvasH, rfRef }) => {
   const zoom = rfTransform[2], vpY = rfTransform[1];
   const contentHScreen = contentBotGraph * zoom;
@@ -2844,6 +2742,60 @@ const CanvasScrollbar = ({ rfTransform, contentBotGraph, canvasH, rfRef }) => {
   );
 };
 
+const CanvasHScrollbar = ({ rfTransform, contentWidthGraph, canvasW, rfRef }) => {
+  const zoom = rfTransform[2];
+  const vpX = rfTransform[0];
+  const padX = 28;
+  const contentWScreen = contentWidthGraph * zoom;
+  if (!canvasW || contentWScreen <= canvasW) return null;
+  const maxVpX = padX - SEC_X * zoom;
+  const minVpX = canvasW - padX - contentWidthGraph * zoom;
+  const scrollRange = maxVpX - minVpX;
+  if (scrollRange <= 1) return null;
+  const scrollFrac = Math.min(1, Math.max(0, (maxVpX - vpX) / scrollRange));
+  const trackW = canvasW - 24;
+  const thumbFrac = Math.min(1, canvasW / contentWScreen);
+  const thumbW = Math.max(28, thumbFrac * trackW);
+  const thumbLeft = 6 + scrollFrac * (trackW - thumbW);
+  const onThumbDown = (e) => {
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startFrac = scrollFrac;
+    const onMove = (ev) => {
+      const newFrac = Math.max(0, Math.min(1, startFrac + (ev.clientX - startX) / (trackW - thumbW)));
+      rfRef.current?.setViewport({ x: maxVpX - newFrac * scrollRange, y: rfTransform[1], zoom });
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
+  return (
+    <div
+      style={{
+        position: 'absolute', left: 6, right: 18, bottom: 6, height: 4,
+        borderRadius: 2, background: 'rgba(255,255,255,0.06)',
+        pointerEvents: 'all', zIndex: 20,
+      }}
+    >
+      <div
+        onPointerDown={onThumbDown}
+        style={{
+          position: 'absolute', left: thumbLeft, width: thumbW, height: '100%',
+          borderRadius: 2, background: 'rgba(255,255,255,0.25)', cursor: 'default',
+          transition: 'background 0.1s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.45)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.25)'; }}
+      />
+    </div>
+  );
+};
+
 function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canvasEdges, setCanvasEdges, stratBName, setStratBName, stratBDesc, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags, stratEditId, onSave, onClose, canvasMiniMap, setCanvasMiniMap, canvasPaletteCollapsed, setCanvasPaletteCollapsed, canvasInspectorCollapsed, setCanvasInspectorCollapsed, step, goPrev, goNext, secondaryBtnStyle, primaryBtnStyle, onSecondaryEnter, onSecondaryLeave, onSecondaryDown, onSecondaryUp, onPrimaryEnter, onPrimaryLeave, onPrimaryDown, onPrimaryUp }) {
   const rfRef = useRef(null);
   const canvasContainerRef = useRef(null);
@@ -2857,11 +2809,12 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   const [outlineImagePreview, setOutlineImagePreview] = useState(null);
   const outlineTipTimerRef = useRef(null);
   const [canvasH, setCanvasH] = useState(0);
+  const [canvasW, setCanvasW] = useState(0);
   const [sliding, setSliding] = useState(false);
   const rfTransform = useStore(s => s.transform);
   const rfNodeInternals = useStore(s => s.nodeInternals);
   const [descPanelOpen, setDescPanelOpen] = useState(false);
-  const scrollValuesRef = useRef({ canvasH: 0, contentBotGraph: 0 });
+  const scrollValuesRef = useRef({ canvasH: 0, canvasW: 0, contentBotGraph: 0, contentWidthGraph: 0 });
   const dragStartRef = useRef(null);
   const liveOrderRef = useRef([]);
   const gapDataRef = useRef(null);
@@ -2975,7 +2928,9 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     const el = canvasContainerRef.current;
     if (!el) return;
     const ro = new ResizeObserver(entries => {
-      setCanvasH(entries[0].contentRect.height);
+      const rect = entries[0].contentRect;
+      setCanvasH(rect.height);
+      setCanvasW(rect.width);
       applySecSize();
       requestAnimationFrame(() => fitBoardViewport(false));
     });
@@ -3771,21 +3726,34 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
 
   canvasNodesRef.current = canvasNodes;
   // Keep scroll values ref current so the wheel handler never has stale closures
-  scrollValuesRef.current = { canvasH, contentBotGraph };
+  const contentWidthGraph = SEC_X + SEC_W;
+  scrollValuesRef.current = { canvasH, canvasW, contentBotGraph, contentWidthGraph };
 
-  // Non-passive wheel handler: intercepts all scroll, applies vertical clamp
+  // Non-passive wheel handler: vertical scroll; horizontal when trackpad shifts or deltaX dominates
   useEffect(() => {
     if (flowViewMode !== 'board') return;
     const el = canvasContainerRef.current;
     if (!el) return;
+    const padX = 28;
     const onWheel = (e) => {
       e.preventDefault();
       if (!rfRef.current) return;
-      const { canvasH: ch, contentBotGraph: cbg } = scrollValuesRef.current;
+      const { canvasH: ch, canvasW: cw, contentBotGraph: cbg, contentWidthGraph: cwg } = scrollValuesRef.current;
       const { x, y, zoom } = rfRef.current.getViewport();
+      const useHorizontal = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY);
+      if (useHorizontal && cw && cwg * zoom > cw) {
+        const maxVpX = padX - SEC_X * zoom;
+        const minVpX = cw - padX - cwg * zoom;
+        if (maxVpX - minVpX > 1) {
+          const delta = e.shiftKey ? e.deltaY : e.deltaX;
+          const newX = Math.min(maxVpX, Math.max(minVpX, x - delta * 0.8));
+          rfRef.current.setViewport({ x: newX, y, zoom });
+        }
+        return;
+      }
       const minY = ch - cbg * zoom;
       const maxY = SEC_GAP * zoom;
-      if (minY >= maxY) return; // all content fits, no scroll needed
+      if (minY >= maxY) return;
       const newY = Math.min(maxY, Math.max(minY, y - e.deltaY * 0.8));
       rfRef.current.setViewport({ x, y: newY, zoom });
     };
@@ -4095,12 +4063,12 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
 
       {/* Body */}
       <div style={{flex:1,minHeight:0,display:'flex',overflow:'hidden',position:'relative'}}>
-        <div style={{position:'absolute',right:8,top:36,bottom:18,zIndex:55,display:'flex',flexDirection:'column',alignItems:'center',gap:3,pointerEvents:'none'}}>
+        <div style={{position:'absolute',right:8,bottom:18,zIndex:55,display:'flex',flexDirection:'column',alignItems:'center',background:'transparent',border:'none',boxShadow:'none',padding:'2px 0'}}>
           <button
             type="button"
             aria-label="Zoom in"
             {...zoomButtonHandlers('flow-zoom-in', ()=>flowViewMode==='board'?setBoardZoom(1):setOutlineZoomBy(1))}
-            style={{...zoomButtonStyle('flow-zoom-in'), pointerEvents:'auto'}}
+            style={zoomButtonStyle('flow-zoom-in')}
           >
             <svg width={15} height={15} viewBox="0 0 24 24" fill="none">
               <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="2.2"/>
@@ -4108,29 +4076,14 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
               <path d="M10.5 7.5v6M7.5 10.5h6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
             </svg>
           </button>
-          {flowViewMode === 'board' && (
-            <CanvasZoomSlider
-              rfTransform={rfTransform}
-              rfRef={rfRef}
-              canvasContainerRef={canvasContainerRef}
-              trackHeight={Math.max(56, canvasH - 128)}
-            />
-          )}
-          <div
-            role="button"
-            tabIndex={0}
-            title={flowViewMode === 'board' ? 'Click to fit entire flow' : undefined}
-            onClick={() => { if (flowViewMode === 'board') doFit(); }}
-            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (flowViewMode === 'board') doFit(); } }}
-            style={{height:22,minWidth:40,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.72)',fontSize:10,fontWeight:900,fontFamily:F,fontVariantNumeric:'tabular-nums',letterSpacing:'0.02em',textShadow:'0 2px 8px rgba(0,0,0,0.7)',pointerEvents:flowViewMode==='board'?'auto':'none',cursor:'default'}}
-          >
+          <div style={{height:22,minWidth:40,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.72)',fontSize:10,fontWeight:900,fontFamily:F,fontVariantNumeric:'tabular-nums',letterSpacing:'0.02em',textShadow:'0 2px 8px rgba(0,0,0,0.7)'}}>
             {currentZoomPct}%
           </div>
           <button
             type="button"
             aria-label="Zoom out"
             {...zoomButtonHandlers('flow-zoom-out', ()=>flowViewMode==='board'?setBoardZoom(-1):setOutlineZoomBy(-1))}
-            style={{...zoomButtonStyle('flow-zoom-out'), pointerEvents:'auto'}}
+            style={zoomButtonStyle('flow-zoom-out')}
           >
             <svg width={15} height={15} viewBox="0 0 24 24" fill="none">
               <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="2.2"/>
@@ -4176,6 +4129,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
             style={{position:'absolute',inset:0,pointerEvents:'none',overflow:'hidden'}}
           >
             <CanvasScrollbar rfTransform={rfTransform} contentBotGraph={displayGapData.contentBotGraph} canvasH={canvasH} rfRef={rfRef} />
+            <CanvasHScrollbar rfTransform={rfTransform} contentWidthGraph={contentWidthGraph} canvasW={canvasW} rfRef={rfRef} />
           </div>
           {rfNodesEl && createPortal(
             <>
@@ -5936,15 +5890,23 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
       <span style={{fontSize:9,fontWeight:850,color:c.tm,fontFamily:F,letterSpacing:'0.08em',textTransform:'uppercase'}}>{label}</span>
     </div>
   );
-  const imageStrip = (images) => (images||[]).length ? (
+  const imageStrip = (images) => {
+    const urls = (images||[]).slice(0,6).map(item => {
+      if (!item) return '';
+      if (typeof item === 'string') return item;
+      if (typeof item === 'object' && item.src) return String(item.src);
+      return '';
+    }).filter(Boolean);
+    return urls.length ? (
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(112px,1fr))',gap:8,marginTop:10}}>
-      {images.slice(0,6).map((src,i)=>(
-        <div key={`${src}-${i}`} style={{height:72,border:`1px solid ${c.brH}`,background:c.el,overflow:'hidden'}}>
-          <img src={src} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+      {urls.map((url,i)=>(
+        <div key={`${i}-${url.slice(0,32)}`} style={{height:72,border:`1px solid ${c.brH}`,background:c.el,overflow:'hidden'}}>
+          <img src={url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
         </div>
       ))}
     </div>
   ) : null;
+  };
   const renderTradeTagRows = (items, accent) => (
     <div style={{display:'grid',gap:0}}>
       {items.length===0 ? <div style={emptyText}>No tags defined.</div> : items.map((v,i)=>{

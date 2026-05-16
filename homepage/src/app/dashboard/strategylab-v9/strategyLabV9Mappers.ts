@@ -3,6 +3,52 @@ import { definitionFromDraft, draftFromApi } from "@/strategyLab/defaults";
 /** Stored inside `strategy_definition` JSON; backend merges unknown keys. */
 export const TALARIA_V9_PANEL_KEY = "talaria_v9";
 
+/** Align with journal-backend `MAX_COVER_IMAGE_LEN` — drop oversize data URLs before save. */
+const MAX_IMAGE_DATA_LEN = 800_000;
+
+export type StrategyImageEntry = { src: string; name?: string };
+
+/** Resolve builder/review image entry (string data URL or `{ src, name }`) for `<img src>`. */
+export function strategyImageUrl(item: unknown): string {
+  if (!item) return "";
+  if (typeof item === "string") return item;
+  if (typeof item === "object" && item !== null && "src" in item) {
+    const src = (item as { src?: unknown }).src;
+    return typeof src === "string" ? src : "";
+  }
+  return "";
+}
+
+function sanitizeImageEntry(entry: unknown): StrategyImageEntry | null {
+  const src = strategyImageUrl(entry).trim();
+  if (!src.startsWith("data:image/") || src.length > MAX_IMAGE_DATA_LEN) return null;
+  const name =
+    typeof entry === "object" && entry !== null && "name" in entry
+      ? String((entry as { name?: unknown }).name || "").trim()
+      : "";
+  return name ? { src, name } : { src };
+}
+
+function sanitizeImageList(images: unknown, maxItems: number): StrategyImageEntry[] {
+  if (!Array.isArray(images)) return [];
+  return images.map(sanitizeImageEntry).filter((x): x is StrategyImageEntry => x !== null).slice(0, maxItems);
+}
+
+function sanitizeCanvasNodesForApi(nodes: unknown): unknown[] {
+  if (!Array.isArray(nodes)) return [];
+  return nodes.map((node) => {
+    if (!node || typeof node !== "object") return node;
+    const n = node as Record<string, unknown>;
+    const data = n.data;
+    if (!data || typeof data !== "object") return node;
+    const d = { ...(data as Record<string, unknown>) };
+    if (Array.isArray(d.images)) {
+      d.images = sanitizeImageList(d.images, 6);
+    }
+    return { ...n, data: d };
+  });
+}
+
 export type ApiStrategyRecord = {
   id: number;
   name: string;
@@ -92,6 +138,9 @@ export function bankStrategyToApiBody(strat: Record<string, unknown>): {
 } {
   const name = String(strat.name || "Untitled Strategy").trim() || "Untitled Strategy";
   const desc = String(strat.desc || "").trim();
+  const galleryImages = sanitizeImageList(strat.images, 6);
+  const coverFromGallery = galleryImages[0]?.src || "";
+
   const core = definitionFromDraft({
     name,
     description: desc,
@@ -102,7 +151,7 @@ export function bankStrategyToApiBody(strat: Record<string, unknown>): {
     timeframe: Array.isArray(strat.timeframes) && strat.timeframes.length ? strat.timeframes[0] : "",
     conditions: strat.conditions,
     variables: strat.variables,
-    cover_image: "",
+    cover_image: coverFromGallery,
   }) as Record<string, unknown>;
 
   const talaria_v9 = {
@@ -116,10 +165,10 @@ export function bankStrategyToApiBody(strat: Record<string, unknown>): {
     markets: strat.markets,
     conditions: strat.conditions,
     variables: strat.variables,
-    images: strat.images,
+    images: galleryImages.length ? galleryImages : undefined,
     supportInst: strat.supportInst,
-    canvasNodes: strat.canvasNodes,
-    canvasEdges: strat.canvasEdges,
+    canvasNodes: sanitizeCanvasNodesForApi(strat.canvasNodes),
+    canvasEdges: Array.isArray(strat.canvasEdges) ? strat.canvasEdges : [],
   };
 
   return {

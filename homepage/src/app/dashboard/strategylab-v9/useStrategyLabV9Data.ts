@@ -124,11 +124,22 @@ export function useStrategyLabV9Data() {
         : `${JOURNAL_API_BASE}/strategies`;
       const method = isUpdate ? "PUT" : "POST";
 
-      const res = await fetch(url, {
-        method,
-        headers: authHeaders(),
-        body: JSON.stringify(body),
-      });
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method,
+          headers: authHeaders(),
+          body: JSON.stringify(body),
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/failed to fetch|network|load failed|connection/i.test(msg)) {
+          throw new Error(
+            "Could not save strategy — the journal API connection was reset. This often happens when screenshots or images are very large. Remove some images and try again, or confirm the journal backend is running.",
+          );
+        }
+        throw e;
+      }
       const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!res.ok || data.success === false) {
         throw new Error(data.error || `Save failed (${res.status})`);
