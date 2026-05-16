@@ -6978,10 +6978,17 @@ const TalariaV8bLive = () => {
   const tlBarDrawingGroup =
     tlBarDrawingGroupRaw === "brush" ? "brush2" : tlBarDrawingGroupRaw;
   // Selected annotation must never inherit line/shape rail from `tool`, or tlSubTool defaults to Trend Line.
+  const settingsEditGroup =
+    (tlSettOpen || closing.has("tlsett")) &&
+    editingDrawingRef.current?.panelGroup &&
+    TL_LINE_SHAPE_GROUPS.has(editingDrawingRef.current.panelGroup)
+      ? editingDrawingRef.current.panelGroup
+      : null;
   const effectiveTlGroup =
     tlBarDrawingGroup === "text"
       ? null
       : (tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) ? tlBarDrawingGroup : null)
+      || settingsEditGroup
       || (TL_LINE_SHAPE_GROUPS.has(tool) ? tool : null);
 
   // Active line/shape sub-tool (icon + label)
@@ -7015,7 +7022,8 @@ const TalariaV8bLive = () => {
   const isRRTool = tlSubTool.icon === "longPos" || tlSubTool.icon === "shortPos";
 
   const lineShapeRailActive =
-    tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || tool === "pattern" || tool === "measure";
+    tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || tool === "pattern" || tool === "measure" ||
+    !!settingsEditGroup;
   const annotationSelectedOnChart = tlBarSelected && tlBarDrawingGroup === "text";
   const lineShapeUiContext =
     !annotationSelectedOnChart &&
@@ -7029,7 +7037,7 @@ const TalariaV8bLive = () => {
       setTlBarDrop(null);
     }
     const textUiActive =
-      tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text");
+      tool === "text" || txtSettOpen || (tlBarSelected && tlBarDrawingGroup === "text");
     if (!textUiActive) {
       setTxtSettOpen(false);
       setTxtSizeOpen(false);
@@ -7051,7 +7059,7 @@ const TalariaV8bLive = () => {
   // Update txtName when switching text sub-tools (Text → Note → Callout etc.), including when a placed annotation is selected.
   useEffect(() => {
     const textUiActive =
-      tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text");
+      tool === "text" || txtSettOpen || (tlBarSelected && tlBarDrawingGroup === "text");
     if (textUiActive && txtSubTool.label !== txtSubToolRef.current) {
       txtSubToolRef.current = txtSubTool.label;
       setTxtName(txtSubTool.label);
@@ -9674,7 +9682,7 @@ const TalariaV8bLive = () => {
         const s = drawing.style || {};
         // Stash the drawing so the tool bridge keeps chart.js in cursor mode
         // and so closeTlSett (Esc / outside-click) can clear this on close.
-        editingDrawingRef.current = { drawing, prevTool: tool, prevGroupSelected: groupSelected };
+        editingDrawingRef.current = { drawing, prevTool: tool, prevGroupSelected: groupSelected, panelGroup: group };
 
         // Match `toolbar.show`: map this drawing to the correct rail icon. Without this,
         // dblclick/gear opens the panel while `groupSelected` still reflects the last line
@@ -9870,8 +9878,9 @@ const TalariaV8bLive = () => {
         const px = Math.max(20, Number(x) / zForPos - 220);
         const py = Math.max(60, Number(y) / zForPos - 40);
 
-        // Force tool group → JSX conditional renders the panel.
-        setTool(group);
+        // Keep crosshair on the left rail while editing — panel group lives on editingDrawingRef.panelGroup.
+        suppressForwardBridge.current = true;
+        setTool("crosshair");
 
         if (dropdown) closeDropdown();
         if (group === 'text') {
@@ -11140,7 +11149,14 @@ const TalariaV8bLive = () => {
     const RAIL_ICON_CENTER_NUDGE = RAIL_TRAIL_W / 2;
     const railIcon = v9LeftRailIconForButton(t, groupSelected);
     const ddOpen = dropdown === t.id;
-    const act = t.id === "pinbar" ? pinnedBarOpen : tool === t.id;
+    const settingsPanelEditing =
+      editingDrawingRef.current &&
+      (tlSettOpen || txtSettOpen || vwapSettOpen || vpSettOpen || avSettOpen);
+    const act = t.id === "pinbar"
+      ? pinnedBarOpen
+      : settingsPanelEditing
+        ? t.id === "crosshair"
+        : tool === t.id;
     const h = hov === t.id;
     const accentCol = t.id === "pinbar" ? c.gold : c.acL;
     const accentGlow = t.id === "pinbar" ? "rgba(201,168,76,0.4)" : c.acG;

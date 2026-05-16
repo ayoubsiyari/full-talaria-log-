@@ -304,7 +304,8 @@ const EMOJI_CATS = [
 // ── Canvas Strategy Builder ─────────────────────────────────────────────────
 
 // Module-level callback ref so section node buttons can trigger state changes
-const _cvCb = { addCondition: null, deleteSection: null, insertSection: null, renameSection: null, resizeSection: null, updateDesc: null, setDescPanelOpen: null, startDrag: null, deleteCondition: null, updateCondition: null };
+const _cvCb = { addCondition: null, deleteSection: null, insertSection: null, renameSection: null, resizeSection: null, updateDesc: null, setDescPanelOpen: null, startDrag: null, deleteCondition: null, updateCondition: null, requestFitView: null };
+const requestCanvasFitView = () => { _cvCb.requestFitView?.(); };
 
 /* ── Node: Section Lane ── */
 const GOLD = 'rgba(201,168,76,0.9)';
@@ -446,6 +447,7 @@ const SectionNode = ({ id, data }) => {
         setNodes(nds => nds.map(node => node.id === id ? { ...node, data: { ...node.data, images:n } } : node));
         return n;
       });
+      requestCanvasFitView();
     };
     reader.readAsDataURL(file);
     e.target.value='';
@@ -467,6 +469,7 @@ const SectionNode = ({ id, data }) => {
     setDraft(data.label || 'Group');
     setTaH('auto');
     setEditing(true);
+    requestCanvasFitView();
   };
 
   React.useLayoutEffect(() => {
@@ -514,6 +517,7 @@ const SectionNode = ({ id, data }) => {
     const finalH = Math.max(naturalH(), sh + 130);
     _cvCb.renameSection && _cvCb.renameSection(data.sectionId, finalLabel, finalH);
     setEditing(false);
+    requestCanvasFitView();
   };
 
   const handleDescChange = (e) => {
@@ -564,7 +568,7 @@ const SectionNode = ({ id, data }) => {
           <div style={{display:'flex',alignItems:'center',gap:6}}>
             {/* Edit / confirm button */}
             <div
-              onClick={e=>{e.stopPropagation();setDescEditing(o=>!o);}}
+              onClick={e=>{e.stopPropagation();setDescEditing(o=>{ if(!o) requestCanvasFitView(); return !o; });}}
               onMouseEnter={()=>setHDescEdit(true)}
               onMouseLeave={()=>setHDescEdit(false)}
               style={{
@@ -746,7 +750,7 @@ const SectionNode = ({ id, data }) => {
             <div
               data-nodrag="1"
               ref={descBtnRef}
-              onClick={e=>{e.stopPropagation();setDescOpen(o=>!o);}}
+              onClick={e=>{e.stopPropagation();setDescOpen(o=>{ if(!o) requestCanvasFitView(); return !o; });}}
               onMouseEnter={()=>setHDesc(true)} onMouseLeave={()=>setHDesc(false)}
               style={{
                 position:'absolute',top:'50%',transform:'translateY(-50%)',right:50,
@@ -1272,6 +1276,7 @@ const ConditionCard = ({ id, data, selected }) => {
     const t = titleDraft.trim();
     if (t) _cvCb.updateCondition?.(id, { label: t });
     setEditingTitle(false);
+    requestCanvasFitView();
   };
 
   const handleScreenshotClick = (idx) => { setActiveSlot(idx); if(fileInputRef.current) fileInputRef.current.click(); };
@@ -1282,6 +1287,7 @@ const ConditionCard = ({ id, data, selected }) => {
     reader.onload = ev => {
       const img = {src:ev.target.result, name:file.name};
       setScreenshots(prev=>{ const n=[...prev]; n[activeSlot]=img; _cvCb.updateCondition?.(id,{images:n}); return n; });
+      requestCanvasFitView();
     };
     reader.readAsDataURL(file);
     e.target.value='';
@@ -1313,7 +1319,7 @@ const ConditionCard = ({ id, data, selected }) => {
         <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 14px 0 16px', height:54, flexShrink:0, borderBottom:'1px solid var(--tlc-brh)'}}>
           <span style={{fontSize:16, fontWeight:700, color:'var(--tlc-tx)', letterSpacing:0.5, textTransform:'uppercase', flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginRight:8}}>{data.label||'Condition'}</span>
           <div style={{display:'flex', alignItems:'center', gap:4}}>
-            <div onClick={e=>{e.stopPropagation();setDescEditing(o=>!o);}}
+            <div onClick={e=>{e.stopPropagation();setDescEditing(o=>{ if(!o) requestCanvasFitView(); return !o; });}}
               onMouseEnter={()=>setHDescEdit(true)} onMouseLeave={()=>setHDescEdit(false)}
               style={{display:'flex', alignItems:'center', justifyContent:'center', padding:9, borderRadius:7, cursor:'default',
                 background:descEditing?'rgba(38,67,247,0.20)':hDescEdit?'rgba(255,255,255,0.08)':'transparent', transition:'background 0.15s'}}>
@@ -1517,7 +1523,7 @@ const ConditionCard = ({ id, data, selected }) => {
         )}
         {/* Description button */}
         <div data-nodrag="1" ref={descBtnRef}
-          onClick={e=>{ e.stopPropagation(); setDescOpen(o=>!o); }}
+          onClick={e=>{ e.stopPropagation(); setDescOpen(o=>{ if(!o) requestCanvasFitView(); return !o; }); }}
           onMouseEnter={()=>setHDesc(true)} onMouseLeave={()=>setHDesc(false)}
           style={{width:36, height:36, borderRadius:4, display:'flex', alignItems:'center', justifyContent:'center', cursor:'default',
             background: descOpen ? 'rgba(255,255,255,0.22)' : hDesc ? 'rgba(255,255,255,0.14)' : 'transparent',
@@ -1560,7 +1566,7 @@ const ConditionCard = ({ id, data, selected }) => {
                 style={{width:'100%', height:taH, fontSize:22, fontWeight:700, background:'transparent', border:'none', borderBottom:'1px solid rgba(255,255,255,0.45)', outline:'none', color:'#fff', padding:'2px 0', fontFamily:'inherit', lineHeight:1.3, textAlign:'center', resize:'none', caretColor:'#fff', overflow:'hidden'}}
               />
             ) : (
-              <div data-nodrag="1" onDoubleClick={e=>{ e.stopPropagation(); setTitleDraft(data.label||''); setEditingTitle(true); }}
+              <div data-nodrag="1" onDoubleClick={e=>{ e.stopPropagation(); setTitleDraft(data.label||''); setEditingTitle(true); requestCanvasFitView(); }}
                 style={{fontSize:22, fontWeight:700, color:'rgba(255,255,255,0.95)', lineHeight:1.35, cursor:'default', wordBreak:'break-word', textAlign:'center', userSelect:'none', width:'100%'}}>
                 {data.label||'Condition'}
               </div>
@@ -1568,7 +1574,7 @@ const ConditionCard = ({ id, data, selected }) => {
             <div
               data-nodrag="1"
               onMouseDown={e=>{ e.preventDefault(); }}
-              onClick={e=>{ e.stopPropagation(); if(editingTitle){ commitTitle(); } else { setTitleDraft(data.label||''); setEditingTitle(true); } }}
+              onClick={e=>{ e.stopPropagation(); if(editingTitle){ commitTitle(); } else { setTitleDraft(data.label||''); setEditingTitle(true); requestCanvasFitView(); } }}
               style={{display:'flex', alignItems:'center', justifyContent:'center', width:36, height:36, borderRadius:4, cursor:'default', transition:'background 0.12s',
                 background: editingTitle ? 'rgba(255,255,255,0.18)' : hTitle ? 'rgba(255,255,255,0.14)' : 'transparent',
                 visibility: (editingTitle||hTitle) ? 'visible' : 'hidden'}}
@@ -2703,6 +2709,108 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups }
   );
 };
 
+const CanvasZoomSlider = ({ rfTransform, rfRef, canvasContainerRef, trackHeight }) => {
+  const zoom = rfTransform?.[2] ?? BASE_ZOOM;
+  const track = Math.max(48, trackHeight || 48);
+  const frac = Math.max(0, Math.min(1, (zoom - BOARD_ZOOM_MIN) / (BOARD_ZOOM_MAX - BOARD_ZOOM_MIN)));
+  const thumbH = Math.max(16, track * 0.14);
+  const thumbTop = (1 - frac) * Math.max(0, track - thumbH);
+
+  const applyZoom = (newZoom, animate = false) => {
+    const inst = rfRef.current;
+    const el = canvasContainerRef?.current;
+    if (!inst) return;
+    const z = Math.max(BOARD_ZOOM_MIN, Math.min(BOARD_ZOOM_MAX, newZoom));
+    const { x, y, zoom: curZ } = inst.getViewport();
+    if (!el) {
+      inst.setViewport({ x, y, zoom: z }, animate ? { duration: 180 } : undefined);
+      return;
+    }
+    const centerGraphY = (el.clientHeight / 2 - y) / curZ;
+    const boardCenterX = SEC_X + SEC_W / 2;
+    inst.setViewport({
+      x: el.clientWidth / 2 - boardCenterX * z,
+      y: el.clientHeight / 2 - centerGraphY * z,
+      zoom: z,
+    }, animate ? { duration: 180 } : undefined);
+  };
+
+  const zoomFromTrackY = (trackEl, clientY) => {
+    const rect = trackEl.getBoundingClientRect();
+    const usable = Math.max(1, rect.height - thumbH);
+    const fracFromY = 1 - (clientY - rect.top - thumbH / 2) / usable;
+    return BOARD_ZOOM_MIN + Math.max(0, Math.min(1, fracFromY)) * (BOARD_ZOOM_MAX - BOARD_ZOOM_MIN);
+  };
+
+  const onTrackDown = (e) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    applyZoom(zoomFromTrackY(e.currentTarget, e.clientY));
+    const trackEl = e.currentTarget;
+    const onMove = (ev) => applyZoom(zoomFromTrackY(trackEl, ev.clientY), false);
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
+
+  const onThumbDown = (e) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    const trackEl = e.currentTarget.parentElement;
+    const rect = trackEl.getBoundingClientRect();
+    const startY = e.clientY;
+    const startTop = thumbTop;
+    const onMove = (ev) => {
+      const usable = Math.max(1, rect.height - thumbH);
+      const newTop = Math.max(0, Math.min(usable, startTop + (ev.clientY - startY)));
+      const newFrac = 1 - newTop / usable;
+      applyZoom(BOARD_ZOOM_MIN + newFrac * (BOARD_ZOOM_MAX - BOARD_ZOOM_MIN), false);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
+
+  return (
+    <div
+      role="slider"
+      aria-label="Canvas zoom"
+      aria-valuemin={Math.round(BOARD_ZOOM_MIN * 100)}
+      aria-valuemax={Math.round(BOARD_ZOOM_MAX * 100)}
+      aria-valuenow={Math.round(zoom * 100)}
+      onPointerDown={onTrackDown}
+      onDoubleClick={e => { e.stopPropagation(); _cvCb.requestFitView?.(); }}
+      title="Drag to zoom · double-click to fit"
+      style={{
+        width: 4, height: track, borderRadius: 2, flexShrink: 0,
+        background: 'rgba(255,255,255,0.06)', position: 'relative',
+        pointerEvents: 'auto', cursor: 'default', touchAction: 'none',
+      }}
+    >
+      <div
+        onPointerDown={onThumbDown}
+        style={{
+          position: 'absolute', top: thumbTop, height: thumbH, width: '100%',
+          borderRadius: 2, background: 'rgba(255,255,255,0.28)',
+          transition: 'background 0.1s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.45)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.28)'; }}
+      />
+    </div>
+  );
+};
+
 const CanvasScrollbar = ({ rfTransform, contentBotGraph, canvasH, rfRef }) => {
   const zoom = rfTransform[2], vpY = rfTransform[1];
   const contentHScreen = contentBotGraph * zoom;
@@ -3160,23 +3268,38 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     fitBoardViewport(true);
   }, [fitBoardViewport]);
 
-  const setBoardZoom = useCallback((direction) => {
+  const fitViewTimerRef = useRef(null);
+  const requestFitView = useCallback(() => {
+    if (fitViewTimerRef.current) clearTimeout(fitViewTimerRef.current);
+    fitViewTimerRef.current = setTimeout(() => {
+      fitViewTimerRef.current = null;
+      fitBoardViewport(true);
+    }, 60);
+  }, [fitBoardViewport]);
+
+  const applyBoardZoom = useCallback((nextZoom, animate = true) => {
     if (!rfRef.current) return;
     const el = canvasContainerRef.current;
     const { x, y, zoom } = rfRef.current.getViewport();
-    const nextZoom = Math.max(BOARD_ZOOM_MIN, Math.min(BOARD_ZOOM_MAX, parseFloat((zoom + direction * 0.1).toFixed(2))));
+    const z = Math.max(BOARD_ZOOM_MIN, Math.min(BOARD_ZOOM_MAX, nextZoom));
     if (!el) {
-      rfRef.current.setViewport({ x, y, zoom: nextZoom }, { duration: 180 });
+      rfRef.current.setViewport({ x, y, zoom: z }, animate ? { duration: 180 } : undefined);
       return;
     }
     const centerGraphY = (el.clientHeight / 2 - y) / zoom;
     const boardCenterX = SEC_X + SEC_W / 2;
     rfRef.current.setViewport({
-      x: el.clientWidth / 2 - boardCenterX * nextZoom,
-      y: el.clientHeight / 2 - centerGraphY * nextZoom,
-      zoom: nextZoom,
-    }, { duration: 180 });
+      x: el.clientWidth / 2 - boardCenterX * z,
+      y: el.clientHeight / 2 - centerGraphY * z,
+      zoom: z,
+    }, animate ? { duration: 180 } : undefined);
   }, []);
+
+  const setBoardZoom = useCallback((direction) => {
+    if (!rfRef.current) return;
+    const { zoom } = rfRef.current.getViewport();
+    applyBoardZoom(parseFloat((zoom + direction * 0.1).toFixed(2)));
+  }, [applyBoardZoom]);
 
   const setOutlineZoomBy = useCallback((direction) => {
     setOutlineZoom(z => Math.max(0.75, Math.min(1.25, parseFloat((z + direction * 0.05).toFixed(2)))));
@@ -3570,6 +3693,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     _cvCb.updateDesc = updateSectionDesc;
     _cvCb.setDescPanelOpen = setDescPanelOpen;
     _cvCb.startDrag = prepareSectionDrag;
+    _cvCb.requestFitView = requestFitView;
     return () => {
       _cvCb.addCondition = null;
       _cvCb.deleteCondition = null;
@@ -3581,11 +3705,12 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       _cvCb.updateDesc = null;
       _cvCb.setDescPanelOpen = null;
       _cvCb.startDrag = null;
+      _cvCb.requestFitView = null;
     };
   }, [
     addConditionToSection, deleteCondition, updateConditionData, doDeleteSection,
     insertSectionAfter, renameSection, resizeSectionLive, updateSectionDesc,
-    setDescPanelOpen, prepareSectionDrag,
+    setDescPanelOpen, prepareSectionDrag, requestFitView,
   ]);
 
   const sections = useMemo(() => canvasNodes.filter(n => n.type === 'section'), [canvasNodes]);
@@ -3970,12 +4095,12 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
 
       {/* Body */}
       <div style={{flex:1,minHeight:0,display:'flex',overflow:'hidden',position:'relative'}}>
-        <div style={{position:'absolute',right:8,bottom:18,zIndex:55,display:'flex',flexDirection:'column',alignItems:'center',background:'transparent',border:'none',boxShadow:'none',padding:'2px 0'}}>
+        <div style={{position:'absolute',right:8,top:36,bottom:18,zIndex:55,display:'flex',flexDirection:'column',alignItems:'center',gap:3,pointerEvents:'none'}}>
           <button
             type="button"
             aria-label="Zoom in"
             {...zoomButtonHandlers('flow-zoom-in', ()=>flowViewMode==='board'?setBoardZoom(1):setOutlineZoomBy(1))}
-            style={zoomButtonStyle('flow-zoom-in')}
+            style={{...zoomButtonStyle('flow-zoom-in'), pointerEvents:'auto'}}
           >
             <svg width={15} height={15} viewBox="0 0 24 24" fill="none">
               <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="2.2"/>
@@ -3983,14 +4108,29 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
               <path d="M10.5 7.5v6M7.5 10.5h6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
             </svg>
           </button>
-          <div style={{height:22,minWidth:40,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.72)',fontSize:10,fontWeight:900,fontFamily:F,fontVariantNumeric:'tabular-nums',letterSpacing:'0.02em',textShadow:'0 2px 8px rgba(0,0,0,0.7)'}}>
+          {flowViewMode === 'board' && (
+            <CanvasZoomSlider
+              rfTransform={rfTransform}
+              rfRef={rfRef}
+              canvasContainerRef={canvasContainerRef}
+              trackHeight={Math.max(56, canvasH - 128)}
+            />
+          )}
+          <div
+            role="button"
+            tabIndex={0}
+            title={flowViewMode === 'board' ? 'Click to fit entire flow' : undefined}
+            onClick={() => { if (flowViewMode === 'board') doFit(); }}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (flowViewMode === 'board') doFit(); } }}
+            style={{height:22,minWidth:40,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.72)',fontSize:10,fontWeight:900,fontFamily:F,fontVariantNumeric:'tabular-nums',letterSpacing:'0.02em',textShadow:'0 2px 8px rgba(0,0,0,0.7)',pointerEvents:flowViewMode==='board'?'auto':'none',cursor:'default'}}
+          >
             {currentZoomPct}%
           </div>
           <button
             type="button"
             aria-label="Zoom out"
             {...zoomButtonHandlers('flow-zoom-out', ()=>flowViewMode==='board'?setBoardZoom(-1):setOutlineZoomBy(-1))}
-            style={zoomButtonStyle('flow-zoom-out')}
+            style={{...zoomButtonStyle('flow-zoom-out'), pointerEvents:'auto'}}
           >
             <svg width={15} height={15} viewBox="0 0 24 24" fill="none">
               <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="2.2"/>
