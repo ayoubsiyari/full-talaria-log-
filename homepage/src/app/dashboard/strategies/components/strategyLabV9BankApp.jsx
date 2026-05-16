@@ -15,6 +15,7 @@ import { useStrategyLabV9Data } from "@/app/dashboard/strategies/useStrategyLabV
 import { getToken, loginUrlWithNext } from "@/app/dashboard/strategies/strategyLabV9Auth";
 import { bankStrategyToApiBody } from "@/app/dashboard/strategies/strategyLabV9Mappers";
 import { collectStrategyImageStats } from "@/app/dashboard/strategies/strategyLabV9Images";
+import { useOptionalBacktestNewSession } from "@/app/dashboard/BacktestNewSessionContext";
 
 const Z = 1.05;
 const F = "'Exo 2',sans-serif";
@@ -99,6 +100,7 @@ function LabNavPanel({ pathname, hov, setHov }) {
 export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const router = useRouter();
   const pathname = usePathname() || "";
+  const backtestNewSession = useOptionalBacktestNewSession();
   const [hov, setHov] = useState(null);
 
   const {
@@ -1135,7 +1137,14 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
         const menuTop=Math.max(8,Math.min(stratActMenu.y+2,vpH-menuH-8));
         const closeMenu=()=>setStratActMenu(null);
         const run=fn=>e=>{e.stopPropagation();fn&&fn();closeMenu();};
-        const startStrategy=()=>{ router.push("/dashboard/backtest/"); };
+        const startStrategy=()=>{
+          const journalId=typeof ms.id==="number"&&ms.id>0&&!ms.templatePreview?ms.id:undefined;
+          if(backtestNewSession){
+            backtestNewSession.openNewSession({ strategyId:journalId, strategyName:ms.name||"" });
+            return;
+          }
+          router.push("/dashboard/backtest/");
+        };
         const duplicateStrategy=()=>copyStrategyIntoBank(ms);
         const deleteStrategy=()=>deleteStrategyFromBank(ms);
         const actions=[

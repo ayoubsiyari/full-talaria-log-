@@ -31,13 +31,19 @@ function IconI({ n, s = 18, cl = "currentColor" }: { n: string; s?: number; cl?:
   return null;
 }
 
+export type BacktestNewSessionInitialState = {
+  playbook?: string;
+  sessionName?: string;
+};
+
 export type BacktestNewSessionModalProps = {
   open: boolean;
   onClose: () => void;
   onSaved?: () => void | Promise<void>;
+  initialState?: BacktestNewSessionInitialState | null;
 };
 
-export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewSessionModalProps) {
+export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }: BacktestNewSessionModalProps) {
   const c = {
     ac: "#2643F7", acL: "#4A6AFF", acD: "rgba(38,67,247,0.08)", acB: "rgba(38,67,247,0.22)", acG: "rgba(74,106,255,0.35)",
     gold: "#C9A84C",
@@ -499,9 +505,15 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
 
   const prevOpen = useRef(false);
   useEffect(() => {
-    if (open && !prevOpen.current) resetFormToDefaults();
+    if (open && !prevOpen.current) {
+      resetFormToDefaults();
+      const playbook = (initialState?.playbook || "").trim();
+      const sessionName = (initialState?.sessionName || "").trim();
+      if (playbook) setNewSessPlaybook(playbook);
+      if (sessionName) setNewSessName(sessionName);
+    }
     prevOpen.current = open;
-  }, [open, resetFormToDefaults]);
+  }, [open, resetFormToDefaults, initialState]);
 
   const closeNewSess = () => {
     setNewSessFilePickerOpen(false);

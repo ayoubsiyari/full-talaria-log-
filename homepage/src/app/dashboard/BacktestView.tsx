@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { BacktestNewSessionModal } from "./BacktestNewSessionModal";
-import { useOptionalBacktestNewSessionRegister } from "./BacktestNewSessionContext";
+import { useBacktestNewSession } from "./BacktestNewSessionContext";
 import {
   sessionJournalLocalKey,
   flattenJournalApiTrade,
@@ -281,14 +280,9 @@ function durationLabelMonths(start?: string, end?: string): string | null {
   return `${durMo}mo`;
 }
 
-export type BacktestViewProps = {
-  /** Registers open-modal handler so the dashboard shell can show “New Session” in the top header */
-  onProvideOpenNewSession?: (fn: (() => void) | null) => void;
-};
-
 /* ── Main component ── */
-export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}) {
-  const registerFromContext = useOptionalBacktestNewSessionRegister();
+export function BacktestView() {
+  const { registerOnSaved } = useBacktestNewSession();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [kpis, setKpis] = useState<Record<number, Kpis>>({});
   const [loading, setLoading] = useState(true);
@@ -298,7 +292,6 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   const [sortBy, setSortBy] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [hov, setHov] = useState<string | null>(null);
-  const [newSessOpen, setNewSessOpen] = useState(false);
   const [cardSortOpen, setCardSortOpen] = useState(false);
   const cardSortRef = useRef<HTMLDivElement>(null);
   type TradeTip = { sess: Session; bx: number; by: number; col: string };
@@ -342,12 +335,10 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
   }, [cardSortOpen]);
 
   useEffect(() => {
-    const register = onProvideOpenNewSession ?? registerFromContext;
-    if (!register) return;
-    const open = () => setNewSessOpen(true);
-    register(open);
-    return () => register(null);
-  }, [onProvideOpenNewSession, registerFromContext]);
+    return registerOnSaved(() => {
+      void loadSessions();
+    });
+  }, [registerOnSaved, loadSessions]);
 
   useEffect(() => {
     if (!journalSession) {
@@ -1627,7 +1618,6 @@ export function BacktestView({ onProvideOpenNewSession }: BacktestViewProps = {}
         );
       })()}
 
-      <BacktestNewSessionModal open={newSessOpen} onClose={() => setNewSessOpen(false)} onSaved={loadSessions} />
     </div>
 
     {journalSession && (() => {
