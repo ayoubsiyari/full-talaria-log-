@@ -11,20 +11,8 @@ import {
   StrategyBuilderModal,
   MKT_CAT_OPTS,
 } from "./strategyBuilderModule.jsx";
-
-const TREND_PULLBACK_DEMO_SESSIONS = [
-  { id:"tp-demo-1", name:"Trend Pullback FX Majors", strategyName:"Trend Pullback", strategyDesc:"Higher-timeframe trend continuation using EMA pullbacks and confirmation candles on major FX pairs.", tickers:["EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","EURJPY"], timeframe:"1H", startDate:"2026-01-05", endDate:"2026-02-27", capital:50000, createdAt:"2026-03-01T09:20:00Z", trades:96, pnl:4280, winRate:58, avgRR:2.1, tradingMode:"standard", progress:100, rollbackAllowed:true, assetClasses:["Forex"], leverage:"1:30", riskVal:"1", riskMode:"pct", commission:"Spread", replayMode:"Candle", replaySpeed:35 },
-  { id:"tp-demo-2", name:"Trend Pullback Crypto 4H", strategyName:"Trend Pullback", strategyDesc:"Continuation pullbacks on BTC, ETH, and SOL after a 4H regime filter confirms directional momentum.", tickers:["BTCUSD","ETHUSD","SOLUSD","BNBUSD"], timeframe:"4H", startDate:"2026-02-03", endDate:"2026-03-31", capital:30000, createdAt:"2026-04-02T10:10:00Z", trades:52, pnl:3190, winRate:56, avgRR:2.4, tradingMode:"standard", progress:100, rollbackAllowed:true, assetClasses:["Crypto"], leverage:"1:5", riskVal:"1", riskMode:"pct", commission:"Per Lot", replayMode:"Candle", replaySpeed:25 },
-  { id:"tp-demo-3", name:"Trend Pullback US Stocks", strategyName:"Trend Pullback", strategyDesc:"Pullback entries on high-liquidity stocks after trend, value zone, and entry trigger align.", tickers:["AAPL","MSFT","NVDA","TSLA","AMD","META"], timeframe:"1H", startDate:"2026-03-04", endDate:"2026-04-30", capital:75000, createdAt:"2026-05-03T13:45:00Z", trades:74, pnl:1960, winRate:53, avgRR:1.9, tradingMode:"standard", progress:100, rollbackAllowed:false, assetClasses:["Stocks"], leverage:"1:2", riskVal:"1", riskMode:"pct", commission:"Per Lot", replayMode:"Candle", replaySpeed:20 },
-];
-
-const VWAP_RECLAIM_DEMO_SESSIONS = [
-  { id:"vwap-demo-1", name:"VWAP Reclaim ES Morning", strategyName:"VWAP Reclaim", strategyDesc:"Tests the first controlled reclaim of VWAP after an opening-drive deviation on ES and MES.", tickers:["ES","MES","SPY"], timeframe:"5m", startDate:"2026-01-06", endDate:"2026-02-13", capital:50000, createdAt:"2026-02-15T10:20:00Z", trades:68, pnl:2840, winRate:57, avgRR:1.8, tradingMode:"standard", progress:100, rollbackAllowed:true, assetClasses:["Futures","Stocks"], leverage:"1:10", riskVal:"0.75", riskMode:"pct", commission:"Per Lot", replayMode:"Tick", replaySpeed:45 },
-  { id:"vwap-demo-2", name:"VWAP Reclaim NQ Tech Session", strategyName:"VWAP Reclaim", strategyDesc:"Focuses on NQ reclaim setups after early liquidity sweeps, requiring buyers to hold above VWAP on retest.", tickers:["NQ","MNQ","QQQ"], timeframe:"5m", startDate:"2026-02-17", endDate:"2026-03-27", capital:60000, createdAt:"2026-03-29T09:35:00Z", trades:54, pnl:3660, winRate:61, avgRR:2.0, tradingMode:"standard", progress:100, rollbackAllowed:true, assetClasses:["Futures","Stocks"], leverage:"1:10", riskVal:"0.75", riskMode:"pct", commission:"Per Lot", replayMode:"Tick", replaySpeed:40 },
-  { id:"vwap-demo-3", name:"VWAP Reclaim Futures Mix", strategyName:"VWAP Reclaim", strategyDesc:"In-progress review of VWAP reclaim behavior across ES, NQ, and RTY during high-volume US sessions.", tickers:["ES","NQ","RTY","MES","MNQ","MRTY"], timeframe:"5m", startDate:"2026-04-01", endDate:"2026-05-08", capital:75000, createdAt:"2026-05-09T14:15:00Z", trades:37, pnl:1120, winRate:54, avgRR:1.6, tradingMode:"standard", progress:64, rollbackAllowed:true, assetClasses:["Futures"], leverage:"1:10", riskVal:"0.5", riskMode:"pct", commission:"Per Lot", replayMode:"Candle", replaySpeed:35 },
-  { id:"vwap-demo-4", name:"VWAP Reclaim Stocks Basket", strategyName:"VWAP Reclaim", strategyDesc:"In-progress basket test on liquid large-cap stocks after intraday VWAP loss and reclaim sequences.", tickers:["AAPL","MSFT","NVDA","TSLA","AMD","META"], timeframe:"15m", startDate:"2026-04-14", endDate:"2026-05-15", capital:40000, createdAt:"2026-05-15T11:45:00Z", trades:22, pnl:-460, winRate:45, avgRR:1.4, tradingMode:"standard", progress:38, rollbackAllowed:true, assetClasses:["Stocks"], leverage:"1:2", riskVal:"0.5", riskMode:"pct", commission:"Per Lot", replayMode:"Candle", replaySpeed:30 },
-];
-
+import { useStrategyLabV9Data } from "@/app/dashboard/strategylab-v9/useStrategyLabV9Data";
+import { getToken, loginUrlWithNext } from "@/app/dashboard/strategylab-v9/strategyLabV9Auth";
 
 const Z = 1.05;
 const F = "'Exo 2',sans-serif";
@@ -113,55 +101,20 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const pathname = usePathname() || "";
   const [hov, setHov] = useState(null);
 
-  const [sessions, setSessions] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("talaria_sessions") || "[]");
-      // only restore if sessions have strategyDesc (schema v3+)
-      if (saved.length > 0 && saved[0].strategyDesc !== undefined) return saved;
-    } catch {}
-    return [
-      { id:1,  name:"NQ Momentum — Q1 2024",    strategyName:"Momentum Breakout",    strategyDesc:"Trades NQ momentum breakouts on the 5m chart using volume confirmation and ATR-based stops. Enters on breakout candle close, targets 2R minimum.",                                              tickers:["EURUSD","GBPUSD","USDJPY","USDCHF","AUDUSD","NZDUSD","USDCAD","EURGBP","EURJPY","GBPJPY"],                          timeframe:"5m",  startDate:"2024-01-02", endDate:"2024-03-29", capital:50000,  createdAt:"2026-05-02T09:14:00Z", trades:214, pnl:8340,   winRate:58, avgRR:2.1, tradingMode:"standard", progress:100, rollbackAllowed:true,  assetClasses:["Futures"],  leverage:"1:10",  riskVal:"1",   riskMode:"pct",    commission:"Per Lot", replayMode:"Candle", replaySpeed:30 },
-      { id:2,  name:"ES Mean Reversion",         strategyName:"EMA Reversion",        strategyDesc:"Fades extended moves on ES/NQ/RTY using EMA distance bands. Entries on pullback candles after price stretches >1.5 ATR from the 20 EMA.",                                                           tickers:["ES","NQ","RTY","YM","MES","MNQ","MYM","MRTY","GC","SI"],               timeframe:"15m", startDate:"2023-06-01", endDate:"2023-12-31", capital:100000, createdAt:"2024-01-15T11:32:00Z", trades:87,  pnl:-1220,  winRate:44, avgRR:1.4, tradingMode:"standard", progress:42,  rollbackAllowed:false, assetClasses:["Futures"],  leverage:"1:5",   riskVal:"2",   riskMode:"pct",    commission:"None",    replayMode:"Tick",   replaySpeed:15 },
-      { id:3,  name:"FTMO Challenge — EUR/USD",  strategyName:"London Session Scalp", strategyDesc:"Scalps during the London open using key S/R levels. Targets 10–20 pips with tight 5-pip stops. Only trades the first 2 hours of the London session.",                                               tickers:["EURUSD","GBPUSD","USDJPY","USDCHF","AUDUSD","NZDUSD","USDCAD","EURGBP","EURJPY","GBPJPY"],   timeframe:"1H",  startDate:"2024-02-01", endDate:"2024-02-29", capital:100000, createdAt:"2024-03-02T08:05:00Z", trades:31,  pnl:6750,   winRate:65, avgRR:1.8, tradingMode:"prop",     progress:100, rollbackAllowed:false, assetClasses:["Forex"],    leverage:"1:100", riskVal:"0.5", riskMode:"pct",    commission:"Spread",  replayMode:"Tick",   replaySpeed:60, propFirm:"FTMO",       dailyLoss:"500",  totalDD:"1000", profitTarget:"10000", minDays:"10" },
-      { id:4,  name:"CL Breakout System",        strategyName:"Volume Breakout",      strategyDesc:"Trades range breakouts on crude oil and natural gas with volume confirmation. Requires 150% of average volume on the breakout candle to qualify.",                                                   tickers:["CL","NG","RB","HO","BZ","MCL","QM","XOP","USO","XLE"],                    timeframe:"1H",  startDate:"2023-09-01", endDate:"2024-01-31", capital:25000,  createdAt:"2024-02-10T14:20:00Z", trades:0,   pnl:null,   winRate:null, avgRR:null, tradingMode:"standard", progress:0,   rollbackAllowed:true,  assetClasses:["Futures"],  leverage:"1:10",  riskVal:"1.5", riskMode:"pct",    commission:"Per Lot", replayMode:"Candle", replaySpeed:50 },
-      { id:5,  name:"GC Trend Follow — 2023",   strategyName:"Golden Cross Trend",   strategyDesc:"Long-only trend strategy using the 50/200 EMA golden cross on gold and silver. Holds trades for days to weeks; adds on pullbacks to the 50 EMA.",                                                  tickers:["GC","SI","PL","PA","HG","MGC","ZG","ZI","XAUUSD","XAGUSD"],                    timeframe:"4H",  startDate:"2023-01-01", endDate:"2023-12-31", capital:75000,  createdAt:"2024-01-05T16:44:00Z", trades:52,  pnl:12480,  winRate:71, avgRR:2.6, tradingMode:"standard", progress:85,  rollbackAllowed:true,  assetClasses:["Futures"],  leverage:"1:1",   riskVal:"2",   riskMode:"pct",    commission:"None",    replayMode:"Candle", replaySpeed:20 },
-      { id:6,  name:"EUR/USD Grid 2023",         strategyName:"Grid Trading",         strategyDesc:"Places a grid of buy/sell orders every 20 pips around a central price level on EUR/USD. Profits from oscillating price action; no directional bias.",                                               tickers:["EURUSD","EURGBP","EURJPY","EURCHF","EURAUD","EURCAD","EURNZD","EURPLN","EURHUF","EURSEK"],                     timeframe:"1H",  startDate:"2023-03-01", endDate:"2023-08-31", capital:10000,  createdAt:"2023-09-10T07:30:00Z", trades:388, pnl:2210,   winRate:62, avgRR:1.2, tradingMode:"standard", progress:100, rollbackAllowed:false, assetClasses:["Forex"],    leverage:"1:50",  riskVal:"0.5", riskMode:"pct",    commission:"Spread",  replayMode:"Tick",   replaySpeed:100 },
-      { id:7,  name:"Crypto Scalp 2024",         strategyName:"RSI Scalp",            strategyDesc:"RSI-based scalp strategy on BTC and ETH. Enters on RSI oversold/overbought reversals confirmed by a bullish/bearish engulfing candle. 1% risk per trade.",                                         tickers:["BTCUSD","ETHUSD","BNBUSD","SOLUSD","ADAUSD","XRPUSD","DOTUSD","LINKUSD","MATICUSD","AVAXUSD"],            timeframe:"5m",  startDate:"2024-01-01", endDate:"2024-06-30", capital:20000,  createdAt:"2024-07-01T10:00:00Z", trades:142, pnl:-3180,  winRate:41, avgRR:1.1, tradingMode:"standard", progress:23,  rollbackAllowed:false, assetClasses:["Crypto"],   leverage:"1:5",   riskVal:"1",   riskMode:"pct",    commission:"Per Lot", replayMode:"Tick",   replaySpeed:30 },
-      { id:8,  name:"SPY Long Only",             strategyName:"Trend Following",      strategyDesc:"Long-only trend-following on major US ETFs using 20/50 SMA crossovers on the daily chart. Holds positions until crossover reversal; no shorts.",                                                    tickers:["SPY","QQQ","IWM","DIA","XLK","XLF","XLE","XLV","XLI","XLC"],            timeframe:"1D",  startDate:"2022-01-01", endDate:"2022-12-31", capital:50000,  createdAt:"2023-01-20T14:00:00Z", trades:24,  pnl:-5600,  winRate:37, avgRR:1.6, tradingMode:"standard", progress:100, rollbackAllowed:false, assetClasses:["Stocks"],   leverage:"1:1",   riskVal:"5",   riskMode:"pct",    commission:"Per Lot", replayMode:"Candle", replaySpeed:10 },
-      { id:9,  name:"The5ers Prop Run",          strategyName:"Asian Range Breakout", strategyDesc:"Breaks out of the Asian session range during the London open on GBP pairs. Minimum R:R of 1.8 required. Stops placed at the opposite edge of the Asian range.",                                     tickers:["GBPUSD","AUDUSD","EURUSD","USDJPY","USDCHF","NZDUSD","USDCAD","GBPJPY","EURAUD","AUDNZD"],            timeframe:"15m", startDate:"2024-04-01", endDate:"2024-04-30", capital:25000,  createdAt:"2024-05-05T09:20:00Z", trades:58,  pnl:1890,   winRate:55, avgRR:1.9, tradingMode:"prop",     progress:67,  rollbackAllowed:false, assetClasses:["Forex"],    leverage:"1:30",  riskVal:"0.5", riskMode:"pct",    commission:"Spread",  replayMode:"Tick",   replaySpeed:60, propFirm:"The5ers",    dailyLoss:"250",  totalDD:"500",  profitTarget:"2500",  minDays:"5"  },
-      { id:10, name:"BTC Trend 2023",            strategyName:"MA Cross",             strategyDesc:"50/200 MA crossover strategy on BTC 4H chart. Rides long-term trends with 2% account risk per trade; pyramids on strong trend continuation.",                                                       tickers:["BTCUSD","ETHUSD","BNBUSD","SOLUSD","ADAUSD","XRPUSD","LTCUSD","BCHUSD","DOTUSD","LINKUSD"],                     timeframe:"4H",  startDate:"2023-01-01", endDate:"2023-12-31", capital:30000,  createdAt:"2024-01-10T12:00:00Z", trades:38,  pnl:9450,   winRate:60, avgRR:3.1, tradingMode:"standard", progress:100, rollbackAllowed:true,  assetClasses:["Crypto"],   leverage:"1:2",   riskVal:"2",   riskMode:"pct",    commission:"None",    replayMode:"Candle", replaySpeed:40 },
-      { id:11, name:"YM Scalper",                strategyName:"VWAP Bounce",          strategyDesc:"Bounces off VWAP during regular trading hours on YM and MYM. Uses 1-min confirmation candles with a volume spike filter; targets 0.5× daily ATR.",                                                 tickers:["YM","MYM","ES","MES","NQ","MNQ","RTY","MRTY","GC","MGC"],                   timeframe:"2m",  startDate:"2024-03-01", endDate:"2024-05-31", capital:10000,  createdAt:"2024-06-01T08:00:00Z", trades:0,   pnl:null,   winRate:null, avgRR:null, tradingMode:"standard", progress:0,   rollbackAllowed:true,  assetClasses:["Futures"],  leverage:"1:10",  riskVal:"1",   riskMode:"dollar", commission:"Per Lot", replayMode:"Tick",   replaySpeed:80 },
-      { id:12, name:"FTMO 100K Phase 1",         strategyName:"News Trading",         strategyDesc:"Trades high-impact news events (NFP, CPI, FOMC) with breakout entries and wide initial stops. Only 3 trades per news event; no overnight holds.",                                                   tickers:["EURUSD","USDJPY","XAUUSD","GBPUSD","USDCHF","AUDUSD","NZDUSD","USDCAD","EURJPY","GBPJPY"],   timeframe:"1H",  startDate:"2024-03-01", endDate:"2024-03-31", capital:100000, createdAt:"2024-04-02T11:11:00Z", trades:22,  pnl:7200,   winRate:68, avgRR:2.0, tradingMode:"prop",     progress:88,  rollbackAllowed:false, assetClasses:["Forex"],    leverage:"1:100", riskVal:"0.5", riskMode:"pct",    commission:"Spread",  replayMode:"Tick",   replaySpeed:60, propFirm:"FTMO",       dailyLoss:"500",  totalDD:"1000", profitTarget:"10000", minDays:"10" },
-      { id:13, name:"Crude Oil Seasonal",        strategyName:"Seasonal Trend",       strategyDesc:"Exploits known seasonal patterns in crude oil futures. Enters at the start of historically bullish/bearish months; low-frequency with multi-week holds.",                                             tickers:["CL","NG","RB","HO","BZ","MCL","QM","ZC","ZS","ZW"],                         timeframe:"1D",  startDate:"2022-06-01", endDate:"2022-12-31", capital:40000,  createdAt:"2023-02-14T15:30:00Z", trades:18,  pnl:5640,   winRate:67, avgRR:2.3, tradingMode:"standard", progress:100, rollbackAllowed:false, assetClasses:["Futures"],  leverage:"1:10",  riskVal:"2",   riskMode:"pct",    commission:"Per Lot", replayMode:"Candle", replaySpeed:5  },
-      { id:14, name:"GBP/JPY Momentum",          strategyName:"Breakout Follow",      strategyDesc:"Momentum continuation breakouts on GBP/JPY and USD/JPY. Trend-aligned entries only; stops placed below the prior swing low. ATR trailing stop after 1R.",                                          tickers:["GBPJPY","USDJPY","EURJPY","AUDJPY","CADJPY","NZDJPY","CHFJPY","GBPUSD","EURUSD","EURGBP"],            timeframe:"30m", startDate:"2024-01-01", endDate:"2024-03-31", capital:15000,  createdAt:"2024-04-10T09:45:00Z", trades:103, pnl:2150,   winRate:51, avgRR:1.7, tradingMode:"standard", progress:51,  rollbackAllowed:true,  assetClasses:["Forex"],    leverage:"1:50",  riskVal:"1",   riskMode:"pct",    commission:"Spread",  replayMode:"Candle", replaySpeed:45 },
-      { id:15, name:"Topstep 50K Futures",       strategyName:"VWAP Strategy",        strategyDesc:"Uses VWAP as dynamic support/resistance on ES and NQ. Takes trades only in the direction of the VWAP slope; avoids choppy flat-VWAP conditions.",                                                  tickers:["ES","NQ","YM","RTY","MES","MNQ","MYM","MRTY","GC","CL"],                    timeframe:"5m",  startDate:"2024-05-01", endDate:"2024-05-31", capital:50000,  createdAt:"2024-06-03T14:00:00Z", trades:41,  pnl:1620,   winRate:54, avgRR:1.6, tradingMode:"prop",     progress:34,  rollbackAllowed:false, assetClasses:["Futures"],  leverage:"1:10",  riskVal:"0.5", riskMode:"pct",    commission:"Per Lot", replayMode:"Tick",   replaySpeed:50, propFirm:"Topstep",    dailyLoss:"1000", totalDD:"2000", profitTarget:"3000",  minDays:"5"  },
-      { id:16, name:"NVDA Earnings Plays",       strategyName:"Earnings Catalyst",    strategyDesc:"Trades post-earnings momentum on high-beta tech stocks. Enters on the open of the day after earnings; holds 3–5 days riding the earnings reaction move.",                                           tickers:["NVDA","AMD","INTC","QCOM","AVGO","MU","AMAT","LRCX","KLAC","TXN"],          timeframe:"1D",  startDate:"2023-01-01", endDate:"2023-12-31", capital:20000,  createdAt:"2024-01-18T10:00:00Z", trades:0,   pnl:null,   winRate:null, avgRR:null, tradingMode:"standard", progress:0,   rollbackAllowed:false, assetClasses:["Stocks"],   leverage:"1:1",   riskVal:"3",   riskMode:"pct",    commission:"Per Lot", replayMode:"Candle", replaySpeed:10 },
-      { id:17, name:"GBP/USD Asian Session",     strategyName:"Asian Breakout",       strategyDesc:"Fades the Asian session range on GBP/USD. Entries 30 minutes after the London open once price re-enters the Asian range. 1:2 R:R minimum.",                                                        tickers:["GBPUSD","EURUSD","AUDUSD","NZDUSD","USDCAD","USDCHF","USDJPY","GBPJPY","EURAUD","AUDNZD"],                     timeframe:"15m", startDate:"2023-07-01", endDate:"2023-12-31", capital:10000,  createdAt:"2024-01-08T08:30:00Z", trades:169, pnl:3470,   winRate:57, avgRR:1.5, tradingMode:"standard", progress:100, rollbackAllowed:false, assetClasses:["Forex"],    leverage:"1:30",  riskVal:"0.5", riskMode:"pct",    commission:"Spread",  replayMode:"Tick",   replaySpeed:70 },
-      { id:18, name:"Prop 50K — Supply & Demand",strategyName:"Supply & Demand",      strategyDesc:"Identifies major supply and demand zones on the 4H chart; takes precision entries on the 15m chart. Minimum 1:3 R:R. No trading during overlapping sessions.",                                    tickers:["EURUSD","GBPUSD","USDJPY","USDCHF","AUDUSD","NZDUSD","USDCAD","EURGBP","EURJPY","GBPJPY"],   timeframe:"4H",  startDate:"2023-10-01", endDate:"2024-01-31", capital:50000,  createdAt:"2024-02-05T12:00:00Z", trades:28,  pnl:4800,   winRate:61, avgRR:2.2, tradingMode:"prop",     progress:100, rollbackAllowed:false, assetClasses:["Forex"],    leverage:"1:100", riskVal:"1",   riskMode:"pct",    commission:"Spread",  replayMode:"Candle", replaySpeed:20, propFirm:"MyForexFunds",dailyLoss:"500",  totalDD:"1000", profitTarget:"5000",  minDays:"10" },
-      { id:19, name:"MNQ Micro Futures",         strategyName:"Order Flow",           strategyDesc:"Reads DOM and footprint charts to identify institutional order flow on micro futures. High-frequency 1-min scalps; max 10 trades per session.",                                                     tickers:["MNQ","MES","MYM","MRTY","MGC","MCL","M2K","NQ","ES","YM"],                  timeframe:"1m",  startDate:"2024-02-01", endDate:"2024-04-30", capital:5000,   createdAt:"2024-05-01T07:50:00Z", trades:312, pnl:1890,   winRate:55, avgRR:1.3, tradingMode:"standard", progress:75,  rollbackAllowed:true,  assetClasses:["Futures"],  leverage:"1:10",  riskVal:"50",  riskMode:"dollar", commission:"Per Lot", replayMode:"Tick",   replaySpeed:100},
-      { id:20, name:"XAU/USD Fibonacci Swing",   strategyName:"Fibonacci Swing",      strategyDesc:"Swing trades gold using key Fibonacci retracement levels on the 4H chart. Targets the 161.8% extension; trades typically last 2–5 days.",                                                         tickers:["XAUUSD","XAGUSD","EURUSD","GBPUSD","USDJPY","USDCHF","AUDUSD","USDCAD","NZDUSD","EURJPY"],                     timeframe:"4H",  startDate:"2023-04-01", endDate:"2023-09-30", capital:20000,  createdAt:"2023-10-12T11:00:00Z", trades:44,  pnl:6120,   winRate:64, avgRR:2.4, tradingMode:"standard", progress:100, rollbackAllowed:true,  assetClasses:["Forex"],    leverage:"1:20",  riskVal:"1.5", riskMode:"pct",    commission:"Spread",  replayMode:"Candle", replaySpeed:25 },
-      { id:21, name:"Nasdaq Gap & Go",           strategyName:"Gap & Go",             strategyDesc:"Trades opening gaps on NQ and QQQ. Enters after the first 5-min candle confirms the gap direction with above-average volume. Closes by end of session.",                                            tickers:["NQ","QQQ","NVDA","TSLA","AMZN","GOOGL","META","MSFT","AAPL","AMD"],                   timeframe:"5m",  startDate:"2023-09-01", endDate:"2024-01-31", capital:30000,  createdAt:"2024-02-20T09:00:00Z", trades:178, pnl:5940,   winRate:59, avgRR:1.9, tradingMode:"standard", progress:90,  rollbackAllowed:false, assetClasses:["Stocks","Futures"], leverage:"1:5", riskVal:"1", riskMode:"pct", commission:"Per Lot", replayMode:"Tick", replaySpeed:60 },
-      { id:22, name:"EUR/USD 2023 Full Year",    strategyName:"Seasonal Bias",        strategyDesc:"Trades EUR/USD seasonal bias with trend filters. Identifies monthly directional bias from historical data; daily chart with position reviews every Monday.",                                         tickers:["EURUSD","EURGBP","EURJPY","EURCHF","EURAUD","EURCAD","EURNZD","GBPUSD","USDJPY","USDCHF"],                     timeframe:"1D",  startDate:"2023-01-01", endDate:"2023-12-31", capital:25000,  createdAt:"2024-01-30T16:20:00Z", trades:61,  pnl:4280,   winRate:56, avgRR:1.8, tradingMode:"standard", progress:100, rollbackAllowed:false, assetClasses:["Forex"],    leverage:"1:30",  riskVal:"1",   riskMode:"pct",    commission:"Spread",  replayMode:"Candle", replaySpeed:15 },
-      { id:23, name:"E8 Funding Challenge",      strategyName:"ICT Concepts",         strategyDesc:"Applies ICT methodology: Order Blocks, Fair Value Gaps, and liquidity sweeps. Trades the 15m chart; only enters after a confirmed displacement from a key level.",                                  tickers:["EURUSD","GBPUSD","USDJPY","USDCHF","AUDUSD","NZDUSD","USDCAD","EURGBP","EURJPY","GBPJPY"],            timeframe:"15m", startDate:"2024-05-01", endDate:"2024-05-31", capital:25000,  createdAt:"2024-06-10T08:00:00Z", trades:9,   pnl:340,    winRate:56, avgRR:1.7, tradingMode:"prop",     progress:15,  rollbackAllowed:false, assetClasses:["Forex"],    leverage:"1:100", riskVal:"0.5", riskMode:"pct",    commission:"Spread",  replayMode:"Tick",   replaySpeed:60, propFirm:"E8 Funding", dailyLoss:"500",  totalDD:"1000", profitTarget:"2500",  minDays:"5"  },
-      { id:24, name:"RTY Small Cap Breakout",    strategyName:"Opening Range Break",  strategyDesc:"Trades the 9:30–10:00 opening range breakout on RTY and IWM. Targets 2× the opening range extension; stops at the opposite edge of the range.",                                                   tickers:["RTY","IWM","MRTY","ES","NQ","IJR","IJH","VBR","VTWO","SCHA"],                  timeframe:"5m",  startDate:"2024-03-01", endDate:"2024-05-31", capital:15000,  createdAt:"2024-06-15T10:30:00Z", trades:0,   pnl:null,   winRate:null, avgRR:null, tradingMode:"standard", progress:0,   rollbackAllowed:true,  assetClasses:["Futures","Stocks"], leverage:"1:5", riskVal:"1", riskMode:"pct", commission:"Per Lot", replayMode:"Candle", replaySpeed:40 },
-      { id:25, name:"Gold & Silver Pairs",       strategyName:"Pairs Trading",        strategyDesc:"Exploits mean-reversion between GC and SI using z-score divergence. Dollar-neutral positions; enters when z-score exceeds 2 SD, exits at reversion to mean.",                                      tickers:["GC","SI","PL","PA","HG","MGC","ZG","ZI","XAUUSD","XAGUSD"],                    timeframe:"1H",  startDate:"2022-07-01", endDate:"2022-12-31", capital:50000,  createdAt:"2023-01-25T13:45:00Z", trades:76,  pnl:8850,   winRate:66, avgRR:2.0, tradingMode:"standard", progress:100, rollbackAllowed:false, assetClasses:["Futures"],  leverage:"1:1",   riskVal:"2",   riskMode:"pct",    commission:"Per Lot", replayMode:"Candle", replaySpeed:20 },
-      { id:26, name:"AUD/USD Carry Trade",       strategyName:"Carry Trade",          strategyDesc:"Long AUD/USD and NZD/USD during risk-on environments. Holds multi-day to multi-week; exits on VIX spike or risk-off sentiment shift.",                                                              tickers:["AUDUSD","NZDUSD","USDCAD","USDCHF","USDJPY","AUDNZD","AUDCAD","AUDJPY","NZDJPY","CADCHF"],            timeframe:"1D",  startDate:"2023-05-01", endDate:"2023-10-31", capital:10000,  createdAt:"2023-11-14T09:10:00Z", trades:29,  pnl:-820,   winRate:45, avgRR:1.3, tradingMode:"standard", progress:62,  rollbackAllowed:false, assetClasses:["Forex"],    leverage:"1:30",  riskVal:"1",   riskMode:"pct",    commission:"Spread",  replayMode:"Candle", replaySpeed:10 },
-      { id:27, name:"Crypto DCA 2022 Bear",      strategyName:"Dollar Cost Average",  strategyDesc:"Fixed $200/month DCA into BTC, ETH, and SOL regardless of price. No stops, full position holds. Tests passive accumulation strategy through a bear market.",                                      tickers:["BTCUSD","ETHUSD","SOLUSD","ADAUSD","BNBUSD","XRPUSD","DOTUSD","AVAXUSD","LINKUSD","MATICUSD"],   timeframe:"1D",  startDate:"2022-01-01", endDate:"2022-12-31", capital:10000,  createdAt:"2023-03-05T11:00:00Z", trades:52,  pnl:-2100,  winRate:35, avgRR:0.9, tradingMode:"standard", progress:100, rollbackAllowed:false, assetClasses:["Crypto"],   leverage:"1:1",   riskVal:"200", riskMode:"dollar", commission:"None",    replayMode:"Candle", replaySpeed:5  },
-      { id:28, name:"FTMO Swing 200K",           strategyName:"Weekly Bias",          strategyDesc:"Identifies weekly directional bias using COT data and institutional order flow on the 4H chart. Max 2 trades per week; no counter-trend entries.",                                                  tickers:["EURUSD","GBPUSD","USDJPY","USDCHF","AUDUSD","NZDUSD","USDCAD","EURGBP","EURJPY","GBPJPY"],   timeframe:"4H",  startDate:"2024-06-01", endDate:"2024-08-31", capital:200000, createdAt:"2024-06-28T14:00:00Z", trades:0,   pnl:null,   winRate:null, avgRR:null, tradingMode:"prop",     progress:0,   rollbackAllowed:false, assetClasses:["Forex"],    leverage:"1:100", riskVal:"0.5", riskMode:"pct",    commission:"Spread",  replayMode:"Candle", replaySpeed:30, propFirm:"FTMO",       dailyLoss:"2000", totalDD:"4000", profitTarget:"20000", minDays:"10" },
-      { id:29, name:"ZB Treasury Bonds",         strategyName:"Yield Curve Trade",    strategyDesc:"Trades the yield curve by going long ZB and short ZN/ZF during inversion periods. Holds until curve normalizes; uses duration-weighted position sizing.",                                          tickers:["ZB","ZN","ZF","ZT","ZQ","UB","TLT","IEF","SHY","TIP"],               timeframe:"1H",  startDate:"2022-09-01", endDate:"2023-03-31", capital:100000, createdAt:"2023-04-08T10:00:00Z", trades:33,  pnl:7200,   winRate:61, avgRR:2.5, tradingMode:"standard", progress:100, rollbackAllowed:false, assetClasses:["Futures"],  leverage:"1:1",   riskVal:"1",   riskMode:"pct",    commission:"Per Lot", replayMode:"Candle", replaySpeed:15 },
-      { id:30, name:"Multi-Asset Diversified",   strategyName:"Diversified Trend",    strategyDesc:"Trend-follows across NQ, GC, EUR/USD, and CL simultaneously with 1% risk per instrument. Rebalances monthly; uses ATR trailing stops to ride extended moves.",                                    tickers:["NQ","ES","GC","SI","EURUSD","GBPUSD","CL","NG","BTCUSD","XAUUSD"],      timeframe:"1H",  startDate:"2024-01-01", endDate:"2024-04-30", capital:200000, createdAt:"2024-05-15T12:30:00Z", trades:89,  pnl:14200,  winRate:63, avgRR:2.3, tradingMode:"standard", progress:47,  rollbackAllowed:true,  assetClasses:["Futures","Forex"], leverage:"1:10", riskVal:"1", riskMode:"pct", commission:"Per Lot", replayMode:"Candle", replaySpeed:30 },
-    ];
-  });
-  const strategyReviewSessions = useMemo(() => {
-    const norm = value => String(value||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-    const existingTrend = (sessions||[]).some(sess=>norm(sess.strategyName)==='trend pullback');
-    const existingVwap = (sessions||[]).some(sess=>norm(sess.strategyName)==='vwap reclaim');
-    return [
-      ...(!existingVwap ? VWAP_RECLAIM_DEMO_SESSIONS : []),
-      ...(!existingTrend ? TREND_PULLBACK_DEMO_SESSIONS : []),
-      ...(sessions||[]),
-    ];
-  }, [sessions]);
+  const {
+    myStrategies,
+    setMyStrategies,
+    strategiesLoading,
+    strategiesError,
+    reviewSessions,
+    sessionsLoading,
+    reloadSessions,
+    persistStrategy,
+    deleteStrategyRemote,
+    duplicateStrategyRemote,
+  } = useStrategyLabV9Data();
+
+  const strategyReviewSessions = useMemo(() => reviewSessions || [], [reviewSessions]);
 
   /* ── Strategies page state ── */
   const [stratTab, setStratTab] = useState("mine");
@@ -176,7 +129,6 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const [stratEditId, setStratEditId] = useState(null);
   const [savedCommunityIds, setSavedCommunityIds] = useState(new Set());
   const [savedCommunityStrats, setSavedCommunityStrats] = useState([]);
-  const [myStrategies, setMyStrategies] = useState([]);
   const [hiddenTemplateIds, setHiddenTemplateIds] = useState(new Set());
   const [stratBName, setStratBName] = useState("");
   const [stratBStyle, setStratBStyle] = useState("Trend Following");
@@ -655,6 +607,10 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
 
   /* ─── Builder modal open/close helper ─── */
   const openBuilder = (editStrat=null) => {
+    if (!getToken()) {
+      window.location.href = loginUrlWithNext();
+      return;
+    }
     if(editStrat){
       setStratEditId(editStrat.id);
       setStratBName(editStrat.name);
@@ -704,6 +660,10 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
 
   const applyTemplateToBuilder = (tpl) => {
     if (!tpl) return;
+    if (!getToken()) {
+      window.location.href = loginUrlWithNext();
+      return;
+    }
     setStratEditId(null);
     setStratBName(`${tpl.name} (my version)`);
     setStratBStyle((tpl.tags||[]).find(t=>STYLES.includes(t)) || (tpl.tags||[])[0] || "Trend Following");
@@ -782,8 +742,8 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
     });
   };
   const saveTemplateReference = (preview) => copyStrategyIntoBank(preview);
-  const deleteStrategyFromBank = (source) => {
-    if (!source) return;
+  const deleteStrategyFromBank = async (source) => {
+    if (!source || source.id == null) return;
     if (source.templatePreview) {
       const templateId = source.template?.id || String(source.id||"").replace(/^tpl-preview-/,"");
       setHiddenTemplateIds(prev=>{
@@ -793,7 +753,20 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
       });
       return;
     }
-    setMyStrategies(prev=>prev.filter(s=>s.id!==source.id));
+    const sid = source.id;
+    const isServer = typeof sid === "number" && Number.isFinite(sid) && sid > 0;
+    if (isServer) {
+      if (!window.confirm("Delete this strategy from your account?")) return;
+      try {
+        await deleteStrategyRemote(sid);
+        void reloadSessions();
+      } catch (e) {
+        window.alert(e instanceof Error ? e.message : "Delete failed");
+        return;
+      }
+    } else {
+      setMyStrategies(prev=>prev.filter(s=>s.id!==sid));
+    }
     if (stratPerfStrat?.id === source.id) setStratPerfStrat(null);
     if (stratShareStrat?.id === source.id) setStratShareStrat(null);
     if (stratEditId === source.id) {
@@ -802,9 +775,8 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
     }
   };
 
-  const saveBuilder = () => {
+  const saveBuilder = async () => {
     const strat = {
-      id: stratEditId || `m${Date.now()}`,
       name: stratBName.trim()||"Untitled Strategy",
       icon: stratBLogoEmoji || "",
       style: stratBStyle,
@@ -824,12 +796,16 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
       canvasEdges: canvasEdges,
       createdAt: stratEditId ? (myStrategies.find(s=>s.id===stratEditId)?.createdAt||new Date().toISOString()) : new Date().toISOString(),
     };
-    if(stratEditId){
-      setMyStrategies(prev=>prev.map(s=>s.id===stratEditId?strat:s));
-    } else {
-      setMyStrategies(prev=>[strat,...prev]);
+    try {
+      await persistStrategy(strat, stratEditId);
+      void reloadSessions();
+      setStratBuilderOpen(false);
+      setStratEditId(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === "Not signed in") window.location.href = loginUrlWithNext();
+      else window.alert(msg);
     }
-    setStratBuilderOpen(false);
   };
 
   const saveCommunity = (strat) => {
@@ -876,6 +852,18 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
         <div className="tlr-scroll" style={{flex:1,display:"flex",flexDirection:"column",overflow:"auto",scrollbarGutter:"stable"}}>
         {/* ─ Filter/search bar ─ */}
         <div style={{flexShrink:0,background:c.bg,padding:"0 32px",position:"sticky",top:0,zIndex:3}}>
+          {(strategiesError || (strategiesLoading && getToken()) || sessionsLoading) && (
+            <div style={{width:1288,margin:"0 auto",padding:"8px 0 0",fontSize:9,fontFamily:F,color:strategiesError ? c.rd : c.tm}}>
+              {strategiesError
+                ? strategiesError
+                : [
+                    strategiesLoading && getToken() ? "Loading strategies…" : null,
+                    sessionsLoading ? "Loading backtest sessions…" : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+            </div>
+          )}
           <div style={{width:1288,margin:"0 auto",display:"flex",alignItems:"center",height:44,gap:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
             <div style={{display:"flex",alignItems:"flex-end",height:"100%",gap:5,flexShrink:0}}>
               {[{k:"mine",l:"My Strategies",ct:mineSource.length},{k:"community",l:"Community",ct:communityPool.length,disabled:true}].map(({k,l,ct,disabled})=>{
@@ -999,7 +987,16 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                 <StrategyRows items={filteredMine} isMine={!minePreviewMode}
                   onEdit={s=>openBuilder(s)}
                   onDelete={id=>deleteStrategyFromBank({id})}
-                  onDuplicate={s=>copyStrategyIntoBank(s)}
+                  onDuplicate={async (s)=>{
+                    if (typeof s.id === "number" && s.id > 0 && !s.templatePreview) {
+                      try {
+                        await duplicateStrategyRemote(s.id);
+                        void reloadSessions();
+                      } catch (e) {
+                        window.alert(e instanceof Error ? e.message : "Duplicate failed");
+                      }
+                    } else copyStrategyIntoBank(s);
+                  }}
                   onPerf={s=>setStratPerfStrat(s)}
                   onSave={s=>minePreviewMode?saveTemplateReference(s):undefined}
                   onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}/>
@@ -1009,7 +1006,16 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                     <StratCard key={strat.id} strat={strat} isMine={!minePreviewMode}
                       onEdit={s=>openBuilder(s)}
                       onDelete={id=>deleteStrategyFromBank({id})}
-                      onDuplicate={s=>copyStrategyIntoBank(s)}
+                      onDuplicate={async (s)=>{
+                        if (typeof s.id === "number" && s.id > 0 && !s.templatePreview) {
+                          try {
+                            await duplicateStrategyRemote(s.id);
+                            void reloadSessions();
+                          } catch (e) {
+                            window.alert(e instanceof Error ? e.message : "Duplicate failed");
+                          }
+                        } else copyStrategyIntoBank(s);
+                      }}
                       onPerf={s=>setStratPerfStrat(s)}
                       onSave={s=>minePreviewMode?saveTemplateReference(s):undefined}
                       onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}/>

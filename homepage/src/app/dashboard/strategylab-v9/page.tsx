@@ -1,5 +1,5 @@
-import StrategyLabV9View from "@/components/strategy-lab-v9/StrategyLabV9View";
+import StrategylabV9PageClient from "./StrategylabV9PageClient";
 
 export default function StrategylabV9Page() {
-  return <StrategyLabV9View />;
+  return <StrategylabV9PageClient />;
 }
