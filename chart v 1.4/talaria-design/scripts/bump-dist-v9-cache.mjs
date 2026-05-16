@@ -1,38 +1,105 @@
 /**
- * After `vite build`, rewrite every `<script src="/chart/...">` query string in
- * `chart/dist-v9/index.html` to `?v=<buildId>` so browsers and CDNs always
- * fetch fresh JS after each `npm run build:live` — no hand-editing ?v= in dist.
+ * Cache-bust chart module scripts in V9 HTML entrypoints.
  *
- * Override: BUILD_ID=mytag npm run build:live
+ * - `live/index.html` (source; copied into dist by Vite)
+ * - `chart/dist-v9/index.html` (production output)
+ *
+ * Usage (via npm run build:live):
+ *   node scripts/bump-dist-v9-cache.mjs --live
+ *   vite build ...
+ *   node scripts/bump-dist-v9-cache.mjs --dist
+ *
+ * Override build id: BUILD_ID=20260516a2 npm run build:live
  */
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const indexPath = path.resolve(__dirname, "../../chart/dist-v9/index.html");
+const liveIndexPath = path.resolve(__dirname, "../live/index.html");
+const distIndexPath = path.resolve(__dirname, "../../chart/dist-v9/index.html");
 
-const buildId =
-  process.env.BUILD_ID?.trim() ||
-  process.env.GITHUB_SHA?.slice(0, 10) ||
-  `b${Date.now().toString(36)}`;
+const SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
 
-if (!fs.existsSync(indexPath)) {
-  console.error("[bump-dist-v9-cache] Missing:", indexPath);
-  process.exit(1);
+function defaultBuildId() {
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+  return `${ymd}a1`;
 }
 
-let html = fs.readFileSync(indexPath, "utf8");
-const before = html;
+/** Bump `20260516a1` → `20260516a2` when rebuilding the same day. */
+function incrementBuildId(id) {
+  const m = /^(\d{8})a(\d+)$/i.exec(String(id || "").trim());
+  if (m) return `${m[1]}a${parseInt(m[2], 10) + 1}`;
+  return `${defaultBuildId()}2`;
+}
 
-html = html.replace(
-  /(<script\b[^>]*\ssrc=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g,
-  `$1$2?v=${buildId}$3`,
-);
+function readCurrentChartBuildId(html) {
+  const m = html.match(/\/chart\/[^"?]+\?v=([^"'#\s]+)/);
+  return m ? m[1] : null;
+}
 
-if (html === before) {
-  console.warn("[bump-dist-v9-cache] No /chart/ script src= matched — check index.html format.");
-} else {
-  fs.writeFileSync(indexPath, html, "utf8");
-  console.log("[bump-dist-v9-cache] Set ?v=" + buildId + " on chart scripts in", indexPath);
+function resolveBuildId(html) {
+  if (process.env.BUILD_ID?.trim()) return process.env.BUILD_ID.trim();
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 10);
+  const current = readCurrentChartBuildId(html);
+  if (current) return incrementBuildId(current);
+  return defaultBuildId();
+}
+
+function bumpChartScriptsInHtml(filePath, { required, buildId: buildIdOverride }) {
+  if (!fs.existsSync(filePath)) {
+    if (required) {
+      console.error("[bump-dist-v9-cache] Missing:", filePath);
+      process.exit(1);
+    }
+    return 0;
+  }
+
+  const before = fs.readFileSync(filePath, "utf8");
+  const buildId = buildIdOverride ?? resolveBuildId(before);
+  const after = before.replace(SCRIPT_SRC_RE, `$1$2?v=${buildId}$3`);
+
+  if (after === before) {
+    console.warn("[bump-dist-v9-cache] No /chart/ script src= matched in", filePath);
+    return 0;
+  }
+
+  fs.writeFileSync(filePath, after, "utf8");
+  console.log("[bump-dist-v9-cache] Set ?v=" + buildId + " on chart scripts in", filePath);
+  return 1;
+}
+
+const mode = process.argv.includes("--dist")
+  ? "dist"
+  : process.argv.includes("--live")
+    ? "live"
+    : "both";
+
+let touched = 0;
+let buildIdForDist = null;
+
+if (mode === "live" || mode === "both") {
+  if (fs.existsSync(liveIndexPath)) {
+    const liveBefore = fs.readFileSync(liveIndexPath, "utf8");
+    buildIdForDist = resolveBuildId(liveBefore);
+  }
+  touched += bumpChartScriptsInHtml(liveIndexPath, {
+    required: mode === "live",
+    buildId: buildIdForDist,
+  });
+}
+
+if (mode === "dist" || mode === "both") {
+  if (!buildIdForDist && fs.existsSync(liveIndexPath)) {
+    buildIdForDist = readCurrentChartBuildId(fs.readFileSync(liveIndexPath, "utf8"));
+  }
+  touched += bumpChartScriptsInHtml(distIndexPath, {
+    required: mode === "dist" || mode === "both",
+    buildId: buildIdForDist,
+  });
+}
+
+if (touched === 0 && (mode === "dist" || mode === "both")) {
+  process.exit(1);
 }

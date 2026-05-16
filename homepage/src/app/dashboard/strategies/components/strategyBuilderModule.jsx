@@ -6312,28 +6312,15 @@ function StrategyBuilderModal(props) {
               role="status"
               aria-live="polite"
               aria-busy={isSaving}
+              aria-label={isSaving ? 'Saving strategy' : isSaveSuccess ? 'Strategy saved' : undefined}
               style={{
-                position:'absolute',inset:0,zIndex:40,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:14,
+                position:'absolute',inset:0,zIndex:40,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:12,
                 background:isSaveSuccess?'rgba(4,8,20,0.88)':'rgba(4,8,20,0.72)',backdropFilter:'blur(2px)',
               }}>
               {isSaving ? (
                 <>
                   <BuilderSaveSpinner size={36} color={c.acL} />
-                  <div style={{fontSize:14,fontWeight:800,color:c.tx,fontFamily:F,letterSpacing:'0.04em'}}>Saving strategy…</div>
-                  {builderSaveProgress && builderSaveProgress.imageCount > 0 && (
-                    <div style={{fontSize:11,fontWeight:600,color:c.ts,fontFamily:F,textAlign:'center',lineHeight:1.5}}>
-                      {builderSaveProgress.imageCount} image{builderSaveProgress.imageCount === 1 ? '' : 's'} · {formatBytes(builderSaveProgress.imageBytes)} images
-                      {builderSaveProgress.payloadBytes > 0 && (
-                        <span> · {formatBytes(builderSaveProgress.payloadBytes)} payload</span>
-                      )}
-                    </div>
-                  )}
                   <ImageProgressBar pct={builderSaveProgress?.pct ?? 12} c={c} width={260} height={4} />
-                  <div style={{fontSize:10,fontWeight:600,color:c.tm,fontFamily:F,maxWidth:280,textAlign:'center',lineHeight:1.5}}>
-                    {builderSaveProgress?.pct != null && builderSaveProgress.pct >= 88
-                      ? 'Finishing upload…'
-                      : 'Validating and uploading — large strategies take longer.'}
-                  </div>
                 </>
               ) : (
                 <>
