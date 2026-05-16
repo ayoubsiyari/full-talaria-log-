@@ -4,7 +4,6 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  STRATEGY_TEMPLATES,
   buildNodesFromTemplate,
   buildInitialSections,
   TemplatePickerModal,
@@ -136,7 +135,6 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const [stratEditId, setStratEditId] = useState(null);
   const [savedCommunityIds, setSavedCommunityIds] = useState(new Set());
   const [savedCommunityStrats, setSavedCommunityStrats] = useState([]);
-  const [hiddenTemplateIds, setHiddenTemplateIds] = useState(new Set());
   const [stratBName, setStratBName] = useState("");
   const [stratBStyle, setStratBStyle] = useState("Trend Following");
   const [stratBDesc, setStratBDesc] = useState("");
@@ -231,32 +229,6 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
       .sort((a,b)=>new Date(b.createdAt||b.endDate||0)-new Date(a.createdAt||a.endDate||0));
   };
 
-  const templatePreviewStrategies = STRATEGY_TEMPLATES.filter(tpl=>!hiddenTemplateIds.has(tpl.id)).map((tpl, idx) => {
-    const conditions = (tpl.groups||[]).reduce((sum,g)=>sum+(g.conditions||[]).length,0);
-    const invalidators = (tpl.groups||[]).reduce((sum,g)=>sum+(g.conditions||[]).filter(x=>x.status==="invalidate").length,0);
-    const optional = (tpl.groups||[]).reduce((sum,g)=>sum+(g.conditions||[]).filter(x=>x.status==="optional").length,0);
-    const firstStyle = (tpl.tags||[]).find(t=>STYLES.includes(t)) || (tpl.tags||[])[0] || "Price Action";
-    return {
-      id:`tpl-preview-${tpl.id}`,
-      name:tpl.name,
-      icon:tpl.icon,
-      style:firstStyle,
-      instruments:(tpl.markets||[]).map(m=>(MKT_CAT_OPTS.find(x=>x.id===m)?.label||m)).slice(0,4),
-      timeframes:tpl.timeframes||[],
-      complexity:(tpl.tags||[]).some(t=>/advanced/i.test(t))?"Hard":(tpl.tags||[]).some(t=>/beginner/i.test(t))?"Easy":"Medium",
-      tags:tpl.tags||[],
-      desc:tpl.description,
-      groups:(tpl.groups||[]).length,
-      conditions,
-      invalidators,
-      optional,
-      template:tpl,
-      templatePreview:true,
-      backtestSessions:sessionsForStrategyName(tpl.name),
-      accent:idx%3===1?c.gold:idx%3===2?"#A78BFA":c.acL,
-    };
-  });
-
   /* ─── Filter + sort community ─── */
   const filteredCommunity = communityPool
     .filter(s => {
@@ -271,10 +243,11 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
       return 0;
     });
 
-  /* ─── Filter + sort my strategies ─── */
-  const minePreviewMode = myStrategies.length === 0;
-  const userStrategySource = myStrategies.map(s=>({...s,backtestSessions:(s.backtestSessions||sessionsForStrategyName(s.name))}));
-  const mineSource = [...userStrategySource, ...templatePreviewStrategies];
+  /* ─── Filter + sort my strategies (journal API only — no built-in template rows) ─── */
+  const userStrategySource = myStrategies
+    .filter(s => typeof s.id === "number" && Number.isFinite(s.id) && s.id > 0)
+    .map(s => ({ ...s, backtestSessions: s.backtestSessions || sessionsForStrategyName(s.name) }));
+  const mineSource = userStrategySource;
   const filteredMine = mineSource
     .filter(s=>{
       const q=stratSearch.toLowerCase();
@@ -752,7 +725,6 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
       },...prev];
     });
   };
-  const saveTemplateReference = (preview) => copyStrategyIntoBank(preview);
   const duplicateStrategy = async (source) => {
     if (!source) return;
     if (typeof source.id === "number" && source.id > 0 && !source.templatePreview) {
@@ -768,15 +740,6 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   };
   const deleteStrategyFromBank = async (source) => {
     if (!source || source.id == null) return;
-    if (source.templatePreview) {
-      const templateId = source.template?.id || String(source.id||"").replace(/^tpl-preview-/,"");
-      setHiddenTemplateIds(prev=>{
-        const next = new Set(prev);
-        next.add(templateId);
-        return next;
-      });
-      return;
-    }
     const sid = source.id;
     const isServer = typeof sid === "number" && Number.isFinite(sid) && sid > 0;
     if (isServer) {
@@ -1029,23 +992,19 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
               </div>
             ):(
               stratLayoutMode==="rows"?(
-                <StrategyRows items={filteredMine} isMine={!minePreviewMode}
+                <StrategyRows items={filteredMine} isMine
                   onEdit={s=>openBuilder(s)}
                   onDelete={id=>deleteStrategyFromBank({id})}
                   onDuplicate={duplicateStrategy}
-                  onPerf={s=>setStratPerfStrat(s)}
-                  onSave={s=>minePreviewMode?saveTemplateReference(s):undefined}
-                  onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}/>
+                  onPerf={s=>setStratPerfStrat(s)}/>
               ):(
                 <div style={{width:1288,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
                   {filteredMine.map(strat=>(
-                    <StratCard key={strat.id} strat={strat} isMine={!minePreviewMode}
+                    <StratCard key={strat.id} strat={strat} isMine
                       onEdit={s=>openBuilder(s)}
                       onDelete={id=>deleteStrategyFromBank({id})}
                       onDuplicate={duplicateStrategy}
-                      onPerf={s=>setStratPerfStrat(s)}
-                      onSave={s=>minePreviewMode?saveTemplateReference(s):undefined}
-                      onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}/>
+                      onPerf={s=>setStratPerfStrat(s)}/>
                   ))}
                 </div>
               )
