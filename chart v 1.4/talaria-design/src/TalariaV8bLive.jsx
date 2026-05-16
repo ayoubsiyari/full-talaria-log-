@@ -9058,23 +9058,23 @@ const TalariaV8bLive = () => {
   // every add / delete / load / undo / redo (see drawing-tools-manager.js
   // line ~6410). We also poll once on mount to catch already-loaded
   // drawings (e.g. session restore that fires before V9 mounts).
+  const layersItemsSigRef = useRef('');
+
   useEffect(() => {
-    const rebuild = () => {
+    let rebuildRaf = 0;
+
+    const rebuildNow = () => {
       try {
         const dm = window.chart && window.chart.drawingManager;
         if (!dm || !Array.isArray(dm.drawings)) {
-          setLayersItems([]);
+          if (layersItemsSigRef.current !== '') {
+            layersItemsSigRef.current = '';
+            setLayersItems([]);
+          }
           return;
         }
-        // Filter out orphaned / unfinalized drawings:
-        //  - missing type or id (not a real shape yet)
-        //  - SVG group destroyed or detached from the document
-        //  - no valid points (placement was cancelled mid-draw)
         const valid = dm.drawings.filter((d) => {
           if (!d || !d.type) return false;
-          // group is a d3 selection; .node() returns the underlying SVGElement.
-          // After destroy() group is null/undefined or its node is no longer
-          // in the document — treat as stale.
           try {
             const g = d.group;
             const node = g && (typeof g.node === 'function' ? g.node() : g);
@@ -9085,6 +9085,15 @@ const TalariaV8bLive = () => {
           if (!hasValidPoint) return false;
           return true;
         });
+        const sig = valid.map((d) => {
+          const name = (typeof dm.getDrawingDisplayTitle === 'function')
+            ? dm.getDrawingDisplayTitle(d)
+            : (d.type || 'Drawing');
+          return `${d.id}|${d.type}|${name}|${d.visible !== false ? 1 : 0}|${d.locked ? 1 : 0}`;
+        }).join('\n');
+        if (sig === layersItemsSigRef.current) return;
+        layersItemsSigRef.current = sig;
+
         const items = valid.map((d) => {
           const icon = LEGACY_TYPE_TO_V9_ICON[d.type] || 'trendline';
           const name = (typeof dm.getDrawingDisplayTitle === 'function')
@@ -9105,12 +9114,20 @@ const TalariaV8bLive = () => {
       }
     };
 
+    const rebuild = () => {
+      if (rebuildRaf) cancelAnimationFrame(rebuildRaf);
+      rebuildRaf = requestAnimationFrame(() => {
+        rebuildRaf = 0;
+        rebuildNow();
+      });
+    };
+
     let cancelled = false;
     let attempts = 0;
     const waitForChart = () => {
       if (cancelled) return;
       const dm = window.chart && window.chart.drawingManager;
-      if (dm && Array.isArray(dm.drawings)) { rebuild(); return; }
+      if (dm && Array.isArray(dm.drawings)) { rebuildNow(); return; }
       if (++attempts < 80) setTimeout(waitForChart, 100);
     };
     waitForChart();
@@ -9131,6 +9148,7 @@ const TalariaV8bLive = () => {
     window.__rebuildObjectsTree = rebuild;
     return () => {
       cancelled = true;
+      if (rebuildRaf) cancelAnimationFrame(rebuildRaf);
       window.removeEventListener('drawingsChanged', rebuild);
       window.removeEventListener('drawingStyleChanged', rebuild);
       window.removeEventListener('chartDataLoaded', rebuild);
@@ -9615,6 +9633,7 @@ const TalariaV8bLive = () => {
         || t === "gann-box" || t === "gann-square-fixed" || t === "gann-fan");
     const syncTlStyleFromSelectedDrawing = () => {
       try {
+        if (suppressForwardBridge.current || editingDrawingRef.current) return;
         const d = getSelectedDrawingAcrossCharts(
           editingDrawingRef.current ? editingDrawingRef.current.drawing : null,
         );
@@ -9622,7 +9641,17 @@ const TalariaV8bLive = () => {
         const patch = v9TlStylePatchFromDrawing(d);
         if (!patch || Object.keys(patch).length === 0) return;
         suppressForwardBridge.current = true;
-        setTlStyle((s) => ({ ...s, ...patch }));
+        setTlStyle((s) => {
+          let changed = false;
+          const next = { ...s };
+          for (const key of Object.keys(patch)) {
+            if (next[key] !== patch[key]) {
+              next[key] = patch[key];
+              changed = true;
+            }
+          }
+          return changed ? next : s;
+        });
       } catch (_) { /* ignore */ }
     };
     const onDrawingsChanged = () => {

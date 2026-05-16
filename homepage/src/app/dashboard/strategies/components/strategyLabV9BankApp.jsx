@@ -253,6 +253,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
       const q=stratSearch.toLowerCase();
       return !q||s.name.toLowerCase().includes(q)||(s.tags||[]).some(t=>t.toLowerCase().includes(q));
     });
+  const isLoadingMyStrategies = Boolean(getToken()) && strategiesLoading;
   const filteredSavedCommunity = savedCommunityStrats.filter(s=>{
     const q=stratSearch.toLowerCase();
     return !q||s.name.toLowerCase().includes(q)||(s.author||"").toLowerCase().includes(q)||(s.tags||[]).some(t=>t.toLowerCase().includes(q));
@@ -831,6 +832,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
 
   return (
     <div style={{position:"fixed",inset:0,zIndex:99998,background:c.bg,fontFamily:F,display:"flex",flexDirection:"column"}} onClick={()=>{}}>
+      <style>{`@keyframes tlrBankSpin{to{transform:rotate(360deg)}}.tlr-bank-spin{animation:tlrBankSpin .75s linear infinite}`}</style>
       {/* ─ Header ─ */}
       <div style={{height:64,flexShrink:0,display:"flex",alignItems:"center",gap:0,background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:2}}>
         <div style={{width:64,flexShrink:0,height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -860,18 +862,11 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
         <div className="tlr-scroll" style={{flex:1,display:"flex",flexDirection:"column",overflow:"auto",scrollbarGutter:"stable"}}>
         {/* ─ Filter/search bar ─ */}
         <div style={{flexShrink:0,background:c.bg,padding:"0 32px",position:"sticky",top:0,zIndex:3}}>
-          {(strategiesError || (strategiesLoading && getToken()) || sessionsLoading) && (
-            <div style={{width:1288,margin:"0 auto",padding:"8px 0 0",fontSize:9,fontFamily:F,color:strategiesError ? c.rd : c.tm}}>
-              {strategiesError
-                ? strategiesError
-                : [
-                    strategiesLoading && getToken() ? "Loading strategies…" : null,
-                    sessionsLoading ? "Loading backtest sessions…" : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
+          {strategiesError ? (
+            <div style={{width:1288,margin:"0 auto",padding:"8px 0 0",fontSize:9,fontFamily:F,color:c.rd}}>
+              {strategiesError}
             </div>
-          )}
+          ) : null}
           <div style={{width:1288,margin:"0 auto",display:"flex",alignItems:"center",height:44,gap:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
             <div style={{display:"flex",alignItems:"flex-end",height:"100%",gap:5,flexShrink:0}}>
               {[{k:"mine",l:"My Strategies",ct:mineSource.length},{k:"community",l:"Community",ct:communityPool.length,disabled:true}].map(({k,l,ct,disabled})=>{
@@ -969,16 +964,48 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
             )}
           </div>
         </div>
-        <div style={{flexShrink:0,padding:"24px 32px"}}>
+        <div style={{flex:1,display:"flex",flexDirection:"column",padding:"24px 32px",minHeight:0}}>
 
           {/* MY STRATEGIES */}
           {stratTab==="mine"&&(
-            filteredMine.length===0?(
-              <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,height:340}}>
+            isLoadingMyStrategies?(
+              <div
+                role="status"
+                aria-live="polite"
+                style={{
+                  flex:1,
+                  display:"flex",
+                  flexDirection:"column",
+                  alignItems:"center",
+                  justifyContent:"center",
+                  gap:14,
+                  width:"100%",
+                  minHeight:0,
+                }}
+              >
+                <div
+                  className="tlr-bank-spin"
+                  aria-hidden
+                  style={{
+                    width:36,
+                    height:36,
+                    border:`2px solid ${c.brH}`,
+                    borderTopColor:c.acL,
+                    borderRadius:"50%",
+                    flexShrink:0,
+                  }}
+                />
+                <div style={{fontSize:12,fontWeight:700,color:c.ts,fontFamily:F}}>Loading strategies…</div>
+                {sessionsLoading ? (
+                  <div style={{fontSize:9,fontWeight:600,color:c.tm,fontFamily:F}}>Loading backtest sessions…</div>
+                ) : null}
+              </div>
+            ):filteredMine.length===0?(
+              <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,minHeight:0}}>
                 <svg width={52} height={52} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><rect x="3" y="3" width="18" height="18" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M9 12h6M12 9v6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
                 <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>{stratSearch?"No strategies match":"No strategies yet"}</div>
                 <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:320}}>{stratSearch?"Try adjusting your search.":"Build your first strategy to keep track of your trading rules, instruments, and tags."}</div>
-                {!stratSearch&&(
+                {!stratSearch?(
                   <div role="button" tabIndex={0} aria-label="Build strategy" onClick={()=>openBuilder()}
                     style={{width:160,height:36,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontFamily:F,marginTop:4,transition:"filter 0.12s, transform 0.08s",boxSizing:"border-box"}}
                     onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
@@ -988,7 +1015,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                     <svg width={15} height={15} viewBox="0 0 24 24" fill="none"><line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
                     <span style={{fontSize:12.5,fontWeight:800,color:"rgba(255,255,255,0.95)",letterSpacing:"0.08em",whiteSpace:"nowrap"}}>Build Strategy</span>
                   </div>
-                )}
+                ):null}
               </div>
             ):(
               stratLayoutMode==="rows"?(

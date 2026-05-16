@@ -66,6 +66,10 @@ class DrawingToolsManager {
         /** Shared click/dblclick timing for select vs settings (ms). */
         this._doubleClickWindowMs = 400;
         this._doubleClickMinGapMs = 50;
+        /** Debounce persist + drawingsChanged (toolbar/style bridge can fire 60+/s). */
+        this._saveDrawingsDebounceTimer = null;
+        this._pendingSaveDrawingsFileId = undefined;
+        this._drawingsChangedRaf = null;
 
         /** Remote sync (session PATCH + cloud API) lags localStorage; drives toolbar save indicator */
         this._drawingsPendingTargets = { session: false, api: false };
@@ -751,7 +755,7 @@ class DrawingToolsManager {
         // Expose so the toolbar can call captureStyleBefore before applying a change
         this.toolbar.onBeforeUpdate = captureStyleBefore;
 
-        // Update callback
+        // Update callback — debounce persist; render stays immediate for responsive UI.
         this.toolbar.onUpdate = (drawing) => {
             commitStyleChange(drawing);
             self.renderDrawing(drawing);
@@ -761,7 +765,7 @@ class DrawingToolsManager {
                 self.saveToolStyle(drawing.type, drawing.style || {});
             }
 
-            self.saveDrawings();
+            self._scheduleSaveDrawings();
         };
         
         // Delete callback
@@ -6979,6 +6983,44 @@ class DrawingToolsManager {
     }
 
     /**
+     * Coalesce toolbar/style saves — avoids React #185 from drawingsChanged storms.
+     */
+    _scheduleSaveDrawings(fileIdOverride = null, delayMs = 220) {
+        this._pendingSaveDrawingsFileId = fileIdOverride;
+        if (this._saveDrawingsDebounceTimer) {
+            clearTimeout(this._saveDrawingsDebounceTimer);
+        }
+        this._saveDrawingsDebounceTimer = setTimeout(() => {
+            this._saveDrawingsDebounceTimer = null;
+            const pending = this._pendingSaveDrawingsFileId;
+            this._pendingSaveDrawingsFileId = undefined;
+            this.saveDrawings(pending == null ? null : pending);
+        }, delayMs);
+    }
+
+    /** Flush any pending debounced save immediately (finalize, delete, undo). */
+    _flushScheduledSaveDrawings(fileIdOverride = null) {
+        if (this._saveDrawingsDebounceTimer) {
+            clearTimeout(this._saveDrawingsDebounceTimer);
+            this._saveDrawingsDebounceTimer = null;
+        }
+        this._pendingSaveDrawingsFileId = undefined;
+        this.saveDrawings(fileIdOverride);
+    }
+
+    _scheduleDrawingsChangedEvent() {
+        if (this._drawingsChangedRaf != null) return;
+        this._drawingsChangedRaf = requestAnimationFrame(() => {
+            this._drawingsChangedRaf = null;
+            try {
+                window.dispatchEvent(new CustomEvent('drawingsChanged'));
+            } catch (error) {
+                console.warn('⚠️ Failed to dispatch drawingsChanged event:', error?.message || error);
+            }
+        });
+    }
+
+    /**
      * Save drawings to localStorage and API (hybrid approach)
      * @param {string|null} fileIdOverride — when set, persist under this dataset id (pair switch before chart.currentFileId updates).
      */
@@ -7053,11 +7095,7 @@ class DrawingToolsManager {
             this._syncDrawingsSaveUiFromTargets();
         }
 
-        try {
-            window.dispatchEvent(new CustomEvent('drawingsChanged'));
-        } catch (error) {
-            console.warn('⚠️ Failed to dispatch drawingsChanged event:', error?.message || error);
-        }
+        this._scheduleDrawingsChangedEvent();
     }
 
     /**
