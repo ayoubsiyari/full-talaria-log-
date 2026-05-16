@@ -1752,13 +1752,13 @@ const SECTION_COLOR_CYCLE = [
 ];
 const COND_W = 220, COND_H = 275, COND_COLS = 6;
 const STRIP_W = 200;
+const COND_COL_GAP = 96;
 /** Minimum graph width for one section row (strip + 6 condition slots). */
 const FLOW_ROW_GRAPH_W = STRIP_W + 32 + COND_COLS * COND_W + (COND_COLS - 1) * COND_COL_GAP;
 let SEC_W = 1400, SEC_X = 0; const SEC_H = 325, SEC_GAP = 72;
 const BASE_ZOOM = 0.64;
 const BOARD_ZOOM_MIN = 0.42;
 const BOARD_ZOOM_MAX = 1;
-const COND_COL_GAP = 96;
 const CONNECTOR_OPTIONS = ['AND', 'OR', 'OFF'];
 function getSectionHeight() {
   return SEC_H;

@@ -493,6 +493,79 @@ function v9ChartVertToUi(chartVert) {
   return v === "middle" ? "center" : v;
 }
 
+const V9_DASH_TO_LEGACY = { solid: "", dashed: "5,5", dotted: "2,4", dashdot: "7,4,2,4" };
+
+/** Maps V9 `tlStyle` → chart.js `drawing.style` patch (preview + new placements). */
+function v9BuildLegacyStylePatchFromTlStyle(tlStyle) {
+  if (!tlStyle) return {};
+  const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? "";
+  const midDashArr = tlStyle.midLineType === "bold" ? "" : (V9_DASH_TO_LEGACY[tlStyle.midLineType] ?? "");
+  const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
+  const midWidthNum = parseInt(tlStyle.midLineWidth, 10) || 1;
+  return {
+    stroke: tlStyle.lineColor,
+    color: tlStyle.lineColor,
+    strokeWidth: widthNum,
+    dashArray: dashArr,
+    strokeDasharray: dashArr,
+    fill: tlStyle.bgColor,
+    backgroundColor: tlStyle.bgColor,
+    showBackground: !!tlStyle.showBg,
+    borderEnabled: !!tlStyle.showBorder,
+    borderColor: tlStyle.borderColor,
+    borderDasharray: V9_DASH_TO_LEGACY[tlStyle.borderType] ?? "",
+    borderWidth: parseInt(tlStyle.borderWidth, 10) || 1,
+    startStyle: tlStyle.ep1,
+    endStyle: tlStyle.ep2,
+    extendLeft: !!tlStyle.extendLeft,
+    extendRight: !!tlStyle.extendRight,
+    showPriceLabel: !!tlStyle.priceLabels,
+    showTimeLabel: !!tlStyle.timeLabels,
+    rangeMode:
+      tlStyle.rangeType === "Price"
+        ? "price"
+        : tlStyle.rangeType === "Date and time"
+          ? "time"
+          : "both",
+    infoSettings: v9ChartInfoSettingsFromTlStyle(tlStyle),
+    showLabel: !!tlStyle.showInfo,
+    labelColor: tlStyle.labelColor,
+    labelFontSize: parseInt(tlStyle.labelFontSize, 10) || 12,
+    labelBackground: !!tlStyle.labelBg,
+    showLabelBackground: !!tlStyle.labelBg,
+    labelBackgroundColor: tlStyle.labelBgColor,
+    textColor: tlStyle.textColor,
+    fontSize: parseInt(String(tlStyle.textSize), 10) || 14,
+    fontWeight: tlStyle.textBold ? "bold" : "normal",
+    fontStyle: tlStyle.textItalic ? "italic" : "normal",
+    ...(() => {
+      const tv = v9UiVertToChartVert(tlStyle.vertAlign);
+      return { textVAlign: tv, textPosition: tv };
+    })(),
+    textHAlign: tlStyle.horizAlign || "center",
+    textAlign: tlStyle.horizAlign || "center",
+    showMiddleLine: !!tlStyle.midLine,
+    middleLineColor: tlStyle.midLineColor,
+    middleLineWidth: midWidthNum,
+    middleLineDash: midDashArr,
+  };
+}
+
+/** Keeps drawing-tools-manager preview/finalize in sync with the armed V9 toolbar. */
+function v9PushArmedDrawStyle(legacyTool, tlStyle) {
+  if (typeof window === "undefined") return;
+  if (!legacyTool || !tlStyle) {
+    window.__v9ArmedDrawStyle = null;
+    return;
+  }
+  window.__v9ArmedDrawStyle = {
+    tool: legacyTool,
+    patch: v9BuildLegacyStylePatchFromTlStyle(tlStyle),
+    tlStyle,
+    updatedAt: typeof performance !== "undefined" ? performance.now() : Date.now(),
+  };
+}
+
 /** Returns the number of decimal places used by the chart's price axis. */
 function v9GetPriceDecimals() {
   try {
@@ -1692,6 +1765,110 @@ function v9ApplyGannFanFromTlStyle(d, tlStyle) {
       ...(p && p.label != null ? { label: p.label } : {}),
     };
   });
+}
+
+/** Fib / channel / Gann extras after base style patch (new drawings + bridge). */
+function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
+  if (!d || !tlStyle) return;
+  const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
+  const nextText = tlStyle.textContent != null ? String(tlStyle.textContent) : "";
+  if (nextText) {
+    d.text = nextText;
+    if (typeof d.setText === "function") {
+      try {
+        d.setText(nextText);
+      } catch (_) {}
+    }
+  }
+  const isFib =
+    d.type &&
+    (d.type.startsWith("fibonacci-") || d.type.startsWith("fib-") || d.type.startsWith("trend-fib-"));
+  if (v9IsClassicFibRetracementType(d.type)) {
+    v9ApplyClassicFibFromTlStyle(d, tlStyle, widthNum);
+  } else if (v9IsFibSpeedFanType(d.type)) {
+    v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthNum);
+  } else if (v9IsTrendFibTimeType(d.type)) {
+    v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthNum);
+  } else if (v9IsFibCirclesType(d.type)) {
+    v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthNum);
+  } else if (v9IsFibArcsType(d.type)) {
+    v9ApplyFibArcsFromTlStyle(d, tlStyle, widthNum);
+  } else if (v9IsFibWedgeType(d.type)) {
+    v9ApplyFibWedgeFromTlStyle(d, tlStyle, widthNum);
+  } else if (isFib) {
+    d.style.trendLineColor = tlStyle.lineColor;
+    d.style.trendLineWidth = widthNum;
+  }
+  if (d.type === "parallel-channel" && Array.isArray(tlStyle.chLines)) {
+    d.levels = v9ChLinesToParallelLevels(tlStyle.chLines);
+  }
+  if (d.type === "regression-trend" && Array.isArray(tlStyle.regLines) && tlStyle.regLines.length >= 3) {
+    v9ApplyRegLinesToRegressionStyle(d.style, tlStyle.regLines);
+  }
+  if (d.type === "regression-trend") {
+    const sty = d.style;
+    sty.source = v9UiSourceToChartSource(tlStyle.source);
+    sty.showPearsonsR = !!tlStyle.regPearsonR;
+    const uv = tlStyle.regUpperDev;
+    const lv = tlStyle.regLowerDev;
+    if (uv && typeof uv === "object") {
+      const nu = parseFloat(uv.value);
+      if (Number.isFinite(nu)) sty.upperDeviation = Math.max(0, nu);
+    }
+    if (lv && typeof lv === "object") {
+      const nl = parseFloat(lv.value);
+      if (Number.isFinite(nl)) sty.lowerDeviation = -Math.abs(nl);
+    }
+  }
+  if (d.type === "pitchfork") {
+    if (Array.isArray(tlStyle.pfLevels)) {
+      d.levels = v9PfToPitchforkLevels(tlStyle.pfLevels);
+    }
+    d.style.pitchforkStyle = v9UiPitchforkStyleToChart(tlStyle.pitchforkStyle);
+    d.style.medianColor = tlStyle.lineColor;
+    d.style.backgroundEnabled = tlStyle.pfBackground !== false;
+    d.style.backgroundOpacity =
+      tlStyle.pfBgOpacity != null && !Number.isNaN(+tlStyle.pfBgOpacity) ? +tlStyle.pfBgOpacity : 0.2;
+  }
+  if (d.type === "gann-box") {
+    v9ApplyGannBoxFromTlStyle(d, tlStyle);
+  } else if (d.type === "gann-square-fixed") {
+    v9ApplyGannSquareFixedFromTlStyle(d, tlStyle);
+  } else if (d.type === "gann-fan") {
+    v9ApplyGannFanFromTlStyle(d, tlStyle);
+  }
+  const patTypes = [
+    "xabcd-pattern",
+    "cypher-pattern",
+    "head-shoulders",
+    "abcd-pattern",
+    "triangle-pattern",
+    "three-drives",
+    "elliott-impulse",
+    "elliott-correction",
+    "elliott-triangle",
+    "elliott-double-combo",
+    "elliott-triple-combo",
+  ];
+  if (patTypes.includes(d.type) && tlStyle.textColor) {
+    d.style.labelTextColor = tlStyle.textColor;
+    d.style.ratioTextColor = tlStyle.textColor;
+  }
+  if (dm && typeof dm.renderDrawing === "function") {
+    try {
+      dm.renderDrawing(d);
+    } catch (_) {}
+  }
+}
+
+if (typeof window !== "undefined" && !window.__v9PlacedDrawingHooksInstalled) {
+  window.__v9PlacedDrawingHooksInstalled = true;
+  window.__v9ApplyPlacedDrawingExtras = (drawing) => {
+    const armed = window.__v9ArmedDrawStyle;
+    if (!armed || !armed.tlStyle || !drawing) return;
+    if (armed.tool && drawing.type !== armed.tool) return;
+    v9ApplyTlStyleExtrasToDrawing(drawing, armed.tlStyle, null);
+  };
 }
 
 /** Full chart.js drawing → V9 `tlStyle` patch (toolbar selection + settings read-back). */
@@ -10227,9 +10404,6 @@ const TalariaV8bLive = () => {
   //   - subsequent NEW drawings of the active tool use it as the default
   //     (drawingManager.saveToolStyle persists per-tool defaults the same
   //      way the legacy toolbar does in chart/modules/drawing-toolbar.js).
-  // Maps V9 dash names to the dash-array strings the legacy code uses
-  // (chart/modules/drawing-toolbar.js line 1521-1525).
-  const V9_DASH_TO_LEGACY = { solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' };
   // Skip the first run so V9's default tlStyle doesn't overwrite the user's
   // previously-saved per-tool styles every time the page loads.
   const styleBridgeReady = useRef(false);
@@ -10315,8 +10489,23 @@ const TalariaV8bLive = () => {
       vertAlign: "top", horizAlign: "center",
       midLine: false, midLineColor: "#8C8C8C", midLineType: "dashed", midLineWidth: "1",
     };
+    let dm = null;
+    try {
+      const ch =
+        typeof window !== "undefined" && typeof window.getActiveChart === "function"
+          ? window.getActiveChart()
+          : typeof window !== "undefined"
+            ? window.chart
+            : null;
+      dm = ch && ch.drawingManager;
+    } catch (_) {}
+    const mergePatch = legacy && dm ? v9MergeHydratePatchFromLegacy(dm, legacy) : {};
     flushSync(() => {
-      setTlStyle((prev) => ({ ...prev, ...freshDefaults }));
+      setTlStyle((prev) => {
+        const next = { ...prev, ...freshDefaults, ...mergePatch };
+        v9PushArmedDrawStyle(legacy, next);
+        return next;
+      });
     });
   }, [tool, groupSelected, legacyHydrateNonce]);
 
@@ -10335,74 +10524,19 @@ const TalariaV8bLive = () => {
     }
     if (!dm) return;
     const legacyTool = resolveLegacyTool();
-    if (!styleBridgeReady.current) { styleBridgeReady.current = true; return; }
+    if (!styleBridgeReady.current) {
+      styleBridgeReady.current = true;
+      v9PushArmedDrawStyle(legacyTool, legacyTool ? tlStyle : null);
+      return;
+    }
     // Skip the pass triggered by reading a selected drawing's style into tlStyle.
     if (suppressForwardBridge.current) { suppressForwardBridge.current = false; return; }
     // We continue even when legacyTool is null so that edits made while a
     // drawing is selected (with the cursor / crosshair active in the left
     // rail) still propagate to the selected drawing.
 
-    const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? '';
-    // UI "bold" = thick solid (no dash); not a key in V9_DASH_TO_LEGACY.
-    const midDashArr = tlStyle.midLineType === 'bold' ? '' : (V9_DASH_TO_LEGACY[tlStyle.midLineType] ?? '');
-    const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
-    const midWidthNum = parseInt(tlStyle.midLineWidth, 10) || 1;
-    const stylePatch = {
-      // Stroke / line
-      stroke: tlStyle.lineColor,
-      color: tlStyle.lineColor,
-      strokeWidth: widthNum,
-      dashArray: dashArr,
-      strokeDasharray: dashArr,
-      // Fill (shapes, channels, range tool background, etc.)
-      fill: tlStyle.bgColor,
-      backgroundColor: tlStyle.bgColor,
-      showBackground: !!tlStyle.showBg,
-      // Border (range tool)
-      borderEnabled: !!tlStyle.showBorder,
-      borderColor: tlStyle.borderColor,
-      borderDasharray: V9_DASH_TO_LEGACY[tlStyle.borderType] ?? '',
-      borderWidth: parseInt(tlStyle.borderWidth, 10) || 1,
-      // Endpoints (V9 uses 'normal' / 'arrow' / 'arrowFilled' etc; chart.js
-      // drawing-tools-lines.js reads style.startStyle / style.endStyle).
-      startStyle: tlStyle.ep1,
-      endStyle: tlStyle.ep2,
-      // Extend left / right (trendline + ray)
-      extendLeft: !!tlStyle.extendLeft,
-      extendRight: !!tlStyle.extendRight,
-      // Price / time labels
-      showPriceLabel: !!tlStyle.priceLabels,
-      showTimeLabel: !!tlStyle.timeLabels,
-      // Range tool (Date & Price): which info rows to show + which mode
-      rangeMode: tlStyle.rangeType === 'Price' ? 'price'
-                : tlStyle.rangeType === 'Date and time' ? 'time'
-                : 'both',
-      infoSettings: v9ChartInfoSettingsFromTlStyle(tlStyle),
-      // Range tool: master label toggle (controls whether the info label renders)
-      showLabel: !!tlStyle.showInfo,
-      // Label sub-styling (used by range tool / fib labels)
-      labelColor: tlStyle.labelColor,
-      labelFontSize: parseInt(tlStyle.labelFontSize, 10) || 12,
-      labelBackground: !!tlStyle.labelBg,
-      showLabelBackground: !!tlStyle.labelBg,
-      labelBackgroundColor: tlStyle.labelBgColor,
-      // Line/shape label text (Text tab — matches drawing-tools-lines renderTextLabel)
-      textColor: tlStyle.textColor,
-      fontSize: parseInt(String(tlStyle.textSize), 10) || 14,
-      fontWeight: tlStyle.textBold ? "bold" : "normal",
-      fontStyle: tlStyle.textItalic ? "italic" : "normal",
-      ...(() => {
-        const tv = v9UiVertToChartVert(tlStyle.vertAlign);
-        return { textVAlign: tv, textPosition: tv };
-      })(),
-      textHAlign: tlStyle.horizAlign || "center",
-      textAlign: tlStyle.horizAlign || "center",
-      // Middle line (rectangle / ellipse / circle — drawing-tools-shapes.js)
-      showMiddleLine: !!tlStyle.midLine,
-      middleLineColor: tlStyle.midLineColor,
-      middleLineWidth: midWidthNum,
-      middleLineDash: midDashArr,
-    };
+    v9PushArmedDrawStyle(legacyTool, legacyTool ? tlStyle : null);
+    const stylePatch = v9BuildLegacyStylePatchFromTlStyle(tlStyle);
 
     // Do NOT persist style as default for this tool — each new drawing starts fresh.
 
@@ -10424,82 +10558,13 @@ const TalariaV8bLive = () => {
         // Capture before state for undo (mirror legacy onBeforeUpdate).
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
         Object.assign(d.style, stylePatch);
-        const nextText = tlStyle.textContent != null ? String(tlStyle.textContent) : "";
-        d.text = nextText;
-        if (typeof d.setText === "function") {
-          try { d.setText(nextText); } catch (_) {}
-        }
-        const isFib = d.type && (d.type.startsWith('fibonacci-') || d.type.startsWith('fib-') || d.type.startsWith('trend-fib-'));
-        if (v9IsClassicFibRetracementType(d.type)) {
-          v9ApplyClassicFibFromTlStyle(d, tlStyle, widthNum);
-        } else if (v9IsFibSpeedFanType(d.type)) {
-          v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthNum);
-        } else if (v9IsTrendFibTimeType(d.type)) {
-          v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthNum);
-        } else if (v9IsFibCirclesType(d.type)) {
-          v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthNum);
-        } else if (v9IsFibArcsType(d.type)) {
-          v9ApplyFibArcsFromTlStyle(d, tlStyle, widthNum);
-        } else if (v9IsFibWedgeType(d.type)) {
-          v9ApplyFibWedgeFromTlStyle(d, tlStyle, widthNum);
-        } else if (isFib) {
-          d.style.trendLineColor = tlStyle.lineColor;
-          d.style.trendLineWidth = widthNum;
-        }
+        v9ApplyTlStyleExtrasToDrawing(d, tlStyle, null);
         let pointsMoved = false;
         try { pointsMoved = v9ApplyPointsFromTlStyle(d, tlStyle); } catch (_) {}
         try { v9ApplyVisibilityFromTlStyle(d, tlStyle); } catch (_) {}
         if (pointsMoved) {
           try { dm.renderDrawing?.(d); } catch (_) {}
           try { dm.saveDrawings?.(); } catch (_) {}
-        }
-        if (d.type === "parallel-channel" && Array.isArray(tlStyle.chLines)) {
-          d.levels = v9ChLinesToParallelLevels(tlStyle.chLines);
-        }
-        if (d.type === "regression-trend" && Array.isArray(tlStyle.regLines) && tlStyle.regLines.length >= 3) {
-          v9ApplyRegLinesToRegressionStyle(d.style, tlStyle.regLines);
-        }
-        if (d.type === "regression-trend") {
-          const sty = d.style;
-          sty.source = v9UiSourceToChartSource(tlStyle.source);
-          sty.showPearsonsR = !!tlStyle.regPearsonR;
-          const uv = tlStyle.regUpperDev;
-          const lv = tlStyle.regLowerDev;
-          if (uv && typeof uv === "object") {
-            const nu = parseFloat(uv.value);
-            if (Number.isFinite(nu)) sty.upperDeviation = Math.max(0, nu);
-          }
-          if (lv && typeof lv === "object") {
-            const nl = parseFloat(lv.value);
-            if (Number.isFinite(nl)) sty.lowerDeviation = -Math.abs(nl);
-          }
-        }
-        if (d.type === "pitchfork") {
-          if (Array.isArray(tlStyle.pfLevels)) {
-            d.levels = v9PfToPitchforkLevels(tlStyle.pfLevels);
-          }
-          d.style.pitchforkStyle = v9UiPitchforkStyleToChart(tlStyle.pitchforkStyle);
-          d.style.medianColor = tlStyle.lineColor;
-          d.style.backgroundEnabled = tlStyle.pfBackground !== false;
-          d.style.backgroundOpacity =
-            tlStyle.pfBgOpacity != null && !Number.isNaN(+tlStyle.pfBgOpacity)
-              ? +tlStyle.pfBgOpacity
-              : 0.2;
-        }
-        if (d.type === "gann-box") {
-          v9ApplyGannBoxFromTlStyle(d, tlStyle);
-        } else if (d.type === "gann-square-fixed") {
-          v9ApplyGannSquareFixedFromTlStyle(d, tlStyle);
-        } else if (d.type === "gann-fan") {
-          v9ApplyGannFanFromTlStyle(d, tlStyle);
-        }
-        const patTypes = ["xabcd-pattern","cypher-pattern","head-shoulders","abcd-pattern","triangle-pattern","three-drives",
-          "elliott-impulse","elliott-correction","elliott-triangle","elliott-double-combo","elliott-triple-combo"];
-        if (patTypes.includes(d.type)) {
-          if (tlStyle.textColor) {
-            d.style.labelTextColor = tlStyle.textColor;
-            d.style.ratioTextColor = tlStyle.textColor;
-          }
         }
         // Prefer onUpdate (history + render + persist + saveDrawings).
         if (tb && typeof tb.onUpdate === 'function') {

@@ -1500,6 +1500,9 @@ class DrawingToolsManager {
         this.currentTool = null;
         this.drawingState.reset();
         this.svg.style('cursor', 'default');
+        try {
+            if (typeof window !== 'undefined') window.__v9ArmedDrawStyle = null;
+        } catch (_) {}
         
         // Clear any active drawing
         this.tempGroup.selectAll('*').remove();
@@ -3552,8 +3555,8 @@ class DrawingToolsManager {
         }
 
         if (this.currentTool === 'date-price-range') {
-            const savedStyle = this.getSavedToolStyle('date-price-range') || {};
-            return this.normalizeRangeMode(savedStyle.rangeMode);
+            const armedStyle = this.getArmedToolStyle('date-price-range') || {};
+            return this.normalizeRangeMode(armedStyle.rangeMode);
         }
 
         return 'both';
@@ -3617,20 +3620,15 @@ class DrawingToolsManager {
                 return;
             }
 
-            // Use saved style for preview to match final drawing
-            const savedStyle = this.getSavedToolStyle(this.currentTool) || {};
-            const styleOverrides = {
-                ...savedStyle,
-                opacity: 0.85
-            };
+            // Match V9 toolbar (or saved fallback) — same style as finalize, subtle preview cue only.
+            const armedStyle = this.getArmedToolStyle(this.currentTool) || {};
+            const styleOverrides = { ...armedStyle, opacity: 1 };
 
             if (this.currentTool === 'short-position') {
                 styleOverrides.orientation = 'short';
             }
 
             const tempDrawing = new toolInfo.class(previewPoints, styleOverrides);
-            
-            // Apply saved style to preview for consistent appearance
             this.applySavedStyle(tempDrawing);
             
             // Pass isPreview flag for regression trend to show simple line while dragging
@@ -3665,22 +3663,25 @@ class DrawingToolsManager {
         }
 
         // [debug removed]
-        // Create the actual drawing
-        const args = [this.drawingState.tempPoints];
+        // Create the actual drawing (armed V9 toolbar style when available)
+        let drawing;
         if (this.currentTool === 'emoji') {
             const options = this.currentEmojiOptions || this.pendingEmojiOptions || {};
-            args.push(options);
+            drawing = new toolInfo.class(this.drawingState.tempPoints, options);
+        } else {
+            const armedStyle = this.getArmedToolStyle(this.currentTool) || {};
+            drawing = new toolInfo.class(this.drawingState.tempPoints, { ...armedStyle });
         }
-
-        const drawing = new toolInfo.class(...args);
         if (this._liveSyncDrawingId) {
             drawing.id = this._liveSyncDrawingId;
         } else {
             this._ensureDrawingId(drawing);
         }
         
-        // Apply saved style for this tool type
         this.applySavedStyle(drawing);
+        if (this.currentTool !== 'emoji') {
+            this._applyArmedStyleExtras(drawing);
+        }
         // Drop any coalesced preview broadcast so it cannot fire after we promote/remove live ids in addDrawing.
         this._cancelScheduledLiveSyncPreview();
 
@@ -3752,13 +3753,13 @@ class DrawingToolsManager {
             const existingText = drawing.text && drawing.text !== defaultText ? drawing.text : '';
             const placeholder = isNoteBox ? 'Enter note text…' : 'Enter text…';
 
-            const savedStyle = this.getSavedToolStyle(this.currentTool) || {};
-            const fontSize = savedStyle.fontSize || (isNoteBox ? 12 : 14);
-            const fontFamily = savedStyle.fontFamily || 'Roboto, sans-serif';
-            const fontWeight = savedStyle.fontWeight || 'normal';
-            const fontStyle = savedStyle.fontStyle || 'normal';
-            const textColor = savedStyle.textColor || '#FFFFFF';
-            const textAlign = savedStyle.textAlign || 'left';
+            const armedStyle = this.getArmedToolStyle(this.currentTool) || {};
+            const fontSize = armedStyle.fontSize || (isNoteBox ? 12 : 14);
+            const fontFamily = armedStyle.fontFamily || 'Roboto, sans-serif';
+            const fontWeight = armedStyle.fontWeight || 'normal';
+            const fontStyle = armedStyle.fontStyle || 'normal';
+            const textColor = armedStyle.textColor || '#FFFFFF';
+            const textAlign = armedStyle.textAlign || 'left';
 
             // For text tool: adjust y up by ~fontSize so editor top aligns with SVG text top
             const editorY = isNoteBox ? editY : editY - fontSize;
@@ -9343,6 +9344,33 @@ class DrawingToolsManager {
 
         // Legacy format (style object only)
         return saved;
+    }
+
+    /**
+     * Style for in-progress preview + new placements. Prefer V9 armed toolbar (window.__v9ArmedDrawStyle).
+     */
+    getArmedToolStyle(toolType) {
+        const tool = toolType || this.currentTool;
+        if (!tool) return {};
+        try {
+            if (typeof window !== 'undefined' && window.__v9ArmedDrawStyle) {
+                const armed = window.__v9ArmedDrawStyle;
+                if (armed.tool === tool && armed.patch && typeof armed.patch === 'object') {
+                    return { ...armed.patch };
+                }
+            }
+        } catch (_) {}
+        const saved = this.getSavedToolStyle(tool);
+        return saved && typeof saved === 'object' ? { ...saved } : {};
+    }
+
+    _applyArmedStyleExtras(drawing) {
+        if (!drawing) return;
+        try {
+            if (typeof window !== 'undefined' && typeof window.__v9ApplyPlacedDrawingExtras === 'function') {
+                window.__v9ApplyPlacedDrawingExtras(drawing, this);
+            }
+        } catch (_) {}
     }
 
     /**
