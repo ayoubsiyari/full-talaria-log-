@@ -3,6 +3,13 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMe
 import { flushSync, createPortal } from "react-dom";
 import { ReactFlow, ReactFlowProvider, useReactFlow, useStore, Handle, Position, Background, BackgroundVariant, MiniMap, getBezierPath, BaseEdge, EdgeLabelRenderer, MarkerType, addEdge, applyNodeChanges, applyEdgeChanges, PanOnScrollMode } from 'reactflow';
 import 'reactflow/dist/style.css';
+import {
+  processStrategyImageFile,
+  collectStrategyImageStats,
+  dataUrlByteSize,
+  formatBytes,
+  strategyImageUrl,
+} from "@/app/dashboard/strategylab-v9/strategyLabV9Images";
 
 function parseColor(str) {
   if (!str) return { r:255, g:255, b:255, a:1 };
@@ -304,8 +311,33 @@ const EMOJI_CATS = [
 // ── Canvas Strategy Builder ─────────────────────────────────────────────────
 
 // Module-level callback ref so section node buttons can trigger state changes
-const _cvCb = { addCondition: null, deleteSection: null, insertSection: null, renameSection: null, resizeSection: null, updateDesc: null, setDescPanelOpen: null, startDrag: null, deleteCondition: null, updateCondition: null, requestFitView: null };
+const _cvCb = { addCondition: null, deleteSection: null, insertSection: null, renameSection: null, resizeSection: null, updateDesc: null, setDescPanelOpen: null, startDrag: null, deleteCondition: null, updateCondition: null, requestFitView: null, setImageUploadUi: null };
 const requestCanvasFitView = () => { _cvCb.requestFitView?.(); };
+
+async function runStrategyImageUpload(file, onProgress) {
+  const setUi = _cvCb.setImageUploadUi;
+  try {
+    setUi?.({ pct: 0, label: file?.name || "Image" });
+    const result = await processStrategyImageFile(file, {
+      onProgress: (pct) => setUi?.({ pct, label: file?.name || "Image" }),
+    });
+    if (typeof onProgress === "function") onProgress(100);
+    return result;
+  } finally {
+    setUi?.(null);
+  }
+}
+
+function ImageProgressBar({ pct = 0, c, width = 220, height = 4 }) {
+  const p = Math.max(0, Math.min(100, pct));
+  return (
+    <div style={{ width, marginTop: 6 }} role="progressbar" aria-valuenow={p} aria-valuemin={0} aria-valuemax={100}>
+      <div style={{ height, background: c.brH, borderRadius: 2, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${p}%`, background: `linear-gradient(90deg, ${c.ac}, ${c.gn})`, transition: "width 0.2s ease", borderRadius: 2 }} />
+      </div>
+    </div>
+  );
+}
 
 /* ── Node: Section Lane ── */
 const GOLD = 'rgba(201,168,76,0.9)';
@@ -435,22 +467,22 @@ const SectionNode = ({ id, data }) => {
   }, [descOpen]);
 
   const handleScreenshotClick = (idx) => { setActiveSlot(idx); if(fileInputRef.current) fileInputRef.current.click(); };
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
-    if(!file || activeSlot===null) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const img = {src:ev.target.result, name:file.name};
-      setScreenshots(prev=>{
-        const n=[...prev];
-        n[activeSlot]=img;
-        setNodes(nds => nds.map(node => node.id === id ? { ...node, data: { ...node.data, images:n } } : node));
+    e.target.value = '';
+    if (!file || activeSlot === null) return;
+    try {
+      const img = await runStrategyImageUpload(file);
+      setScreenshots(prev => {
+        const n = [...prev];
+        n[activeSlot] = { src: img.src, name: img.name };
+        setNodes(nds => nds.map(node => node.id === id ? { ...node, data: { ...node.data, images: n } } : node));
         return n;
       });
       requestCanvasFitView();
-    };
-    reader.readAsDataURL(file);
-    e.target.value='';
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not add image');
+    }
   };
 
   const cycleConnector = (idx) => {
@@ -688,7 +720,7 @@ const SectionNode = ({ id, data }) => {
             </div>
           );})}
         </div>
-        <input ref={fileInputRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleFileChange}/>
+        <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{display:'none'}} onChange={handleFileChange}/>
       </div>
 
       {/* Title strip */}
@@ -1280,17 +1312,22 @@ const ConditionCard = ({ id, data, selected }) => {
   };
 
   const handleScreenshotClick = (idx) => { setActiveSlot(idx); if(fileInputRef.current) fileInputRef.current.click(); };
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
-    if(!file || activeSlot===null) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const img = {src:ev.target.result, name:file.name};
-      setScreenshots(prev=>{ const n=[...prev]; n[activeSlot]=img; _cvCb.updateCondition?.(id,{images:n}); return n; });
+    e.target.value = '';
+    if (!file || activeSlot === null) return;
+    try {
+      const img = await runStrategyImageUpload(file);
+      setScreenshots(prev => {
+        const n = [...prev];
+        n[activeSlot] = { src: img.src, name: img.name };
+        _cvCb.updateCondition?.(id, { images: n });
+        return n;
+      });
       requestCanvasFitView();
-    };
-    reader.readAsDataURL(file);
-    e.target.value='';
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not add image');
+    }
   };
 
   const status = data.status || (data.mandatory === false ? 'optional' : 'mandatory');
@@ -1424,7 +1461,7 @@ const ConditionCard = ({ id, data, selected }) => {
             </div>
           );})}
         </div>
-        <input ref={fileInputRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleFileChange}/>
+        <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{display:'none'}} onChange={handleFileChange}/>
       </div>
 
       {/* Header strip — buttons */}
@@ -3850,15 +3887,16 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     }
     setOutlineTip(null);
   };
-  const handleOutlineImageFile = (nodeId, images, slot, file) => {
+  const handleOutlineImageFile = async (nodeId, images, slot, file) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
+    try {
+      const img = await runStrategyImageUpload(file);
       const next = Array.from({ length: 4 }, (_, i) => images?.[i] || null);
-      next[slot] = { src: ev.target.result, name: file.name };
+      next[slot] = { src: img.src, name: img.name };
       updateNodeImages(nodeId, next);
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not add image');
+    }
   };
   const clearOutlineImage = (nodeId, images, slot) => {
     const next = Array.from({ length: 4 }, (_, i) => images?.[i] || null);
@@ -3963,7 +4001,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
               )}
               <input
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp,image/gif"
                 style={{display:'none'}}
                 onChange={e=>{handleOutlineImageFile(nodeId, images, slot, e.target.files?.[0]); e.target.value='';}}
               />
@@ -4458,30 +4496,6 @@ const getInstFlags = id => {
   return null;
 };
 
-function compressCoverImage(file, maxW, maxH, quality) {
-  maxW = maxW||1200; maxH = maxH||630; quality = quality||0.82;
-  return new Promise(function(resolve, reject) {
-    if (!file.type.startsWith('image/')) { reject(new Error('Not an image')); return; }
-    if (file.size > 12*1024*1024) { reject(new Error('Image too large (max 12 MB)')); return; }
-    var reader = new FileReader();
-    reader.onerror = function() { reject(new Error('Failed to read file')); };
-    reader.onload = function(ev) {
-      var img = new Image();
-      img.onerror = function() { reject(new Error('Failed to decode image')); };
-      img.onload = function() {
-        var r = Math.min(1, maxW/img.naturalWidth, maxH/img.naturalHeight);
-        var w = Math.round(img.naturalWidth*r), h = Math.round(img.naturalHeight*r);
-        var cv = document.createElement('canvas'); cv.width=w; cv.height=h;
-        cv.getContext('2d').drawImage(img,0,0,w,h);
-        var out = cv.toDataURL('image/jpeg', quality);
-        resolve(out.length > 4*1024*1024 ? cv.toDataURL('image/jpeg', 0.6) : out);
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
 function InstrumentMultiSelect({ c, F, selectedIds, onToggle, marketCategories }) {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef(null);
@@ -4610,6 +4624,7 @@ function GeneralInfoStepContent({ c, F,
   const fileRef  = React.useRef(null);
   const emojiRef = React.useRef(null);
   const [imgBusy, setImgBusy]         = React.useState(false);
+  const [imgUploadPct, setImgUploadPct] = React.useState(null);
   const [imgHovIdx, setImgHovIdx]     = React.useState(null);
   const [imgPreview, setImgPreview]   = React.useState(null);
   const [mktDropOpen, setMktDropOpen] = React.useState(false);
@@ -4689,19 +4704,30 @@ function GeneralInfoStepContent({ c, F,
     boxShadow:active?'0 0 12px rgba(38,67,247,0.22)':undefined,
   });
 
+  const galleryImageStats = React.useMemo(() => {
+    let bytes = 0;
+    (stratBImages || []).forEach((im) => { bytes += dataUrlByteSize(strategyImageUrl(im)); });
+    return { count: (stratBImages || []).length, bytes };
+  }, [stratBImages]);
+
   const pickCover = async e => {
     const files = Array.from(e.target.files || []).slice(0, 1); e.target.value = '';
     if (!files.length) return;
     setImgBusy(true);
+    setImgUploadPct(0);
     try {
-      const results = await Promise.all(files.map(f => compressCoverImage(f).catch(() => null)));
-      setStratBImages(prev => {
-        const next = [...(prev||[]), ...results.filter(Boolean)];
-        return next.slice(0, 6);
+      const img = await processStrategyImageFile(files[0], {
+        maxW: 1200,
+        maxH: 630,
+        onProgress: setImgUploadPct,
       });
+      setStratBImages(prev => [...(prev || []), img.src].slice(0, 6));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not process image');
+    } finally {
+      setImgBusy(false);
+      setImgUploadPct(null);
     }
-    catch (err) { alert(err instanceof Error ? err.message : 'Could not process image'); }
-    finally { setImgBusy(false); }
   };
 
 
@@ -5347,17 +5373,31 @@ function GeneralInfoStepContent({ c, F,
         {/* ── Section: Strategy Image ── */}
         <div style={{marginBottom:14,background:c.sf,border:`1px solid ${c.brH}`,padding:'14px 16px'}}>
           <div style={lbl}>Strategy Image</div>
-          <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={pickCover}/>
+          <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{display:'none'}} onChange={pickCover}/>
+          <div style={{fontSize:10,fontWeight:600,color:c.tm,fontFamily:F,marginBottom:8}}>
+            JPG, PNG, WebP, or GIF · max 2 MB each
+            {galleryImageStats.count > 0 && (
+              <span style={{marginLeft:8,color:c.ts}}>
+                · {galleryImageStats.count} image{galleryImageStats.count === 1 ? '' : 's'} · {formatBytes(galleryImageStats.bytes)} total
+              </span>
+            )}
+          </div>
+          {imgBusy && imgUploadPct != null && (
+            <div style={{marginBottom:10,maxWidth:240}}>
+              <div style={{fontSize:10,fontWeight:600,color:c.acL,fontFamily:F,marginBottom:4}}>Processing image… {Math.round(imgUploadPct)}%</div>
+              <ImageProgressBar pct={imgUploadPct} c={c} width={240} height={3} />
+            </div>
+          )}
           <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
             {(stratBImages||[]).map((src,i)=>(
               <div key={i}
                 style={{position:'relative',width:100,height:70,flexShrink:0}}
                 onMouseEnter={()=>setImgHovIdx(i)}
                 onMouseLeave={()=>setImgHovIdx(null)}>
-                <img src={src} alt="" style={{width:'100%',height:'100%',objectFit:'cover',border:'1px solid '+c.brH}}/>
+                <img src={strategyImageUrl(src)} alt="" style={{width:'100%',height:'100%',objectFit:'cover',border:'1px solid '+c.brH}}/>
                 {imgHovIdx===i&&(
                   <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.45)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1}}>
-                    <div onClick={()=>setImgPreview(src)}
+                    <div onClick={()=>setImgPreview(strategyImageUrl(src))}
                       role="button" tabIndex={0} aria-label="Preview image" title="Preview image"
                       style={{display:'flex',alignItems:'center',justifyContent:'center',cursor:'default',color:'rgba(255,255,255,0.85)',transition:'color 0.15s'}}
                       onMouseEnter={e=>e.currentTarget.style.color='#F5C842'}
@@ -6164,12 +6204,18 @@ function BuilderSaveSpinner({ size = 14, color = '#fff' }) {
 }
 
 function StrategyBuilderModal(props) {
-  const { c, F, stratWizardStep, setStratWizardStep, stratBName, setStratBName, stratEditId, onSave, onClose, onOpenTemplates, builderSavePhase } = props;
+  const { c, F, stratWizardStep, setStratWizardStep, stratBName, setStratBName, stratEditId, onSave, onClose, onOpenTemplates, builderSavePhase, builderSaveProgress } = props;
   const isSaving = builderSavePhase === 'saving';
   const isSaveSuccess = builderSavePhase === 'success';
   const saveBusy = isSaving || isSaveSuccess;
   const [tplBtnHov, setTplBtnHov] = React.useState(false);
   const [showGeneralInfoRequired, setShowGeneralInfoRequired] = React.useState(false);
+  const [imageUploadUi, setImageUploadUi] = React.useState(null);
+
+  React.useEffect(() => {
+    _cvCb.setImageUploadUi = setImageUploadUi;
+    return () => { _cvCb.setImageUploadUi = null; };
+  }, []);
 
   const STEPS = [
     { id:1, label:'General Info', hint:'Name your strategy, choose markets and timeframes.' },
@@ -6274,8 +6320,19 @@ function StrategyBuilderModal(props) {
                 <>
                   <BuilderSaveSpinner size={36} color={c.acL} />
                   <div style={{fontSize:14,fontWeight:800,color:c.tx,fontFamily:F,letterSpacing:'0.04em'}}>Saving strategy…</div>
-                  <div style={{fontSize:11,fontWeight:600,color:c.tm,fontFamily:F,maxWidth:280,textAlign:'center',lineHeight:1.5}}>
-                    Uploading your strategy. Large images can take a moment — please wait.
+                  {builderSaveProgress && builderSaveProgress.imageCount > 0 && (
+                    <div style={{fontSize:11,fontWeight:600,color:c.ts,fontFamily:F,textAlign:'center',lineHeight:1.5}}>
+                      {builderSaveProgress.imageCount} image{builderSaveProgress.imageCount === 1 ? '' : 's'} · {formatBytes(builderSaveProgress.imageBytes)} images
+                      {builderSaveProgress.payloadBytes > 0 && (
+                        <span> · {formatBytes(builderSaveProgress.payloadBytes)} payload</span>
+                      )}
+                    </div>
+                  )}
+                  <ImageProgressBar pct={builderSaveProgress?.pct ?? 12} c={c} width={260} height={4} />
+                  <div style={{fontSize:10,fontWeight:600,color:c.tm,fontFamily:F,maxWidth:280,textAlign:'center',lineHeight:1.5}}>
+                    {builderSaveProgress?.pct != null && builderSaveProgress.pct >= 88
+                      ? 'Finishing upload…'
+                      : 'Validating and uploading — large strategies take longer.'}
                   </div>
                 </>
               ) : (
@@ -6444,6 +6501,28 @@ function StrategyBuilderModal(props) {
                   )}
                 </button>
               )}
+            </div>
+          )}
+
+          {imageUploadUi && !saveBusy && (
+            <div
+              style={{
+                position: 'absolute',
+                left: '50%',
+                bottom: 68,
+                transform: 'translateX(-50%)',
+                zIndex: 45,
+                width: 'min(320px, 90%)',
+                padding: '10px 14px',
+                background: c.el,
+                border: `1px solid ${c.brH}`,
+                boxShadow: '0 8px 28px rgba(0,0,0,0.55)',
+              }}
+            >
+              <div style={{ fontSize: 10, fontWeight: 700, color: c.ts, fontFamily: F, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Processing: {imageUploadUi.label}
+              </div>
+              <ImageProgressBar pct={imageUploadUi.pct} c={c} width="100%" height={3} />
             </div>
           )}
         </div>

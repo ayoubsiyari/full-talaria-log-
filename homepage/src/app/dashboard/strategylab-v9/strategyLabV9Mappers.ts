@@ -3,8 +3,8 @@ import { definitionFromDraft, draftFromApi } from "@/strategyLab/defaults";
 /** Stored inside `strategy_definition` JSON; backend merges unknown keys. */
 export const TALARIA_V9_PANEL_KEY = "talaria_v9";
 
-/** Align with journal-backend `MAX_COVER_IMAGE_LEN` — drop oversize data URLs before save. */
-const MAX_IMAGE_DATA_LEN = 800_000;
+/** Align with journal-backend — max ~2 MB per image as base64 data URL. */
+const MAX_IMAGE_DATA_LEN = 2_800_000;
 
 export type StrategyImageEntry = { src: string; name?: string };
 

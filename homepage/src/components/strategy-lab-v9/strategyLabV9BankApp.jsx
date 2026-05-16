@@ -13,6 +13,8 @@ import {
 } from "./strategyBuilderModule.jsx";
 import { useStrategyLabV9Data } from "@/app/dashboard/strategylab-v9/useStrategyLabV9Data";
 import { getToken, loginUrlWithNext } from "@/app/dashboard/strategylab-v9/strategyLabV9Auth";
+import { bankStrategyToApiBody } from "@/app/dashboard/strategylab-v9/strategyLabV9Mappers";
+import { collectStrategyImageStats } from "@/app/dashboard/strategylab-v9/strategyLabV9Images";
 
 const Z = 1.05;
 const F = "'Exo 2',sans-serif";
@@ -125,6 +127,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const [stratBuilderOpen, setStratBuilderOpen] = useState(false);
   /** null | 'saving' | 'success' — drives builder overlay + footer button while POST runs */
   const [stratBuilderSavePhase, setStratBuilderSavePhase] = useState(null);
+  const [stratBuilderSaveProgress, setStratBuilderSaveProgress] = useState(null);
   /** Sync guard — blocks double-clicks before React re-renders disabled state */
   const stratBuilderSaveInFlightRef = useRef(false);
   const [stratTemplatePickerOpen, setStratTemplatePickerOpen] = useState(false);
@@ -804,9 +807,19 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
       canvasEdges: canvasEdges,
       createdAt: stratEditId ? (myStrategies.find(s=>s.id===stratEditId)?.createdAt||new Date().toISOString()) : new Date().toISOString(),
     };
+    const imageStats = collectStrategyImageStats(canvasNodes, stratBImages);
     setStratBuilderSavePhase("saving");
+    setStratBuilderSaveProgress({ pct: 8, ...imageStats, payloadBytes: 0 });
+    let saveTick = null;
     try {
+      const body = bankStrategyToApiBody(strat);
+      const payloadBytes = new TextEncoder().encode(JSON.stringify(body)).length;
+      setStratBuilderSaveProgress((p) => (p ? { ...p, pct: 22, payloadBytes } : p));
+      saveTick = setInterval(() => {
+        setStratBuilderSaveProgress((p) => (p && p.pct < 88 ? { ...p, pct: p.pct + 4 } : p));
+      }, 400);
       await persistStrategy(strat, stratEditId);
+      setStratBuilderSaveProgress((p) => (p ? { ...p, pct: 100 } : p));
       setStratBuilderSavePhase("success");
       void reloadSessions();
       await new Promise((r) => setTimeout(r, 900));
@@ -818,8 +831,10 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
       if (msg === "Not signed in") window.location.href = loginUrlWithNext();
       else window.alert(msg);
     } finally {
+      if (saveTick) clearInterval(saveTick);
       stratBuilderSaveInFlightRef.current = false;
       setStratBuilderSavePhase(null);
+      setStratBuilderSaveProgress(null);
     }
   };
 
@@ -1210,6 +1225,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
           stratEditId={stratEditId}
           sessions={strategyReviewSessions}
           builderSavePhase={stratBuilderSavePhase}
+          builderSaveProgress={stratBuilderSaveProgress}
           onSave={saveBuilder}
           onClose={()=>{ if (!stratBuilderSaveInFlightRef.current) { setStratBuilderOpen(false); setStratEditId(null); } }}
           onOpenTemplates={()=>setStratTemplatePickerOpen(true)}

@@ -2,8 +2,8 @@
 
 MAX_NAME_LEN = 100
 MAX_DESC_LEN = 5000
-# Max length of data-URL string stored in JSON (client compresses before send).
-MAX_COVER_IMAGE_LEN = 800_000
+# Max length of data-URL string stored in JSON (client compresses to ≤2 MB per image).
+MAX_COVER_IMAGE_LEN = 2_800_000
 
 
 def _sanitize_cover_image(val):
