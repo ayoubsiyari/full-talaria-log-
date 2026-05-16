@@ -241,16 +241,90 @@ function sessionTickerRows(sess: Session): { sym: string; asset?: string }[] {
   return [];
 }
 
+function sessionDescription(sess: Session): string | undefined {
+  const cfg = sess.config as Record<string, unknown> | undefined;
+  if (!cfg) return undefined;
+  const d = cfg.description ?? cfg.session_description ?? cfg.sessionDescription;
+  if (typeof d !== "string") return undefined;
+  const t = d.trim();
+  return t || undefined;
+}
+
+/** Strategy playbook text — not the session notes field (`config.description`). */
 function strategyDescription(sess: Session): string | undefined {
   const cfg = sess.config as Record<string, unknown> | undefined;
   if (!cfg) return undefined;
-  const d = cfg.description ?? cfg.playbook ?? cfg.playbook_display;
-  if (typeof d !== "string") return undefined;
-  const t = d.trim();
-  if (!t) return undefined;
   const sn = typeof cfg.strategy_name === "string" ? cfg.strategy_name.trim() : "";
-  if (sn && t === sn) return undefined;
-  return t;
+
+  const candidates: unknown[] = [
+    cfg.strategy_description,
+    cfg.strategyDescription,
+  ];
+  if (typeof cfg.playbook === "string" && !cfg.playbook.startsWith("strategy:")) {
+    candidates.push(cfg.playbook);
+  }
+  const def = cfg.strategy_definition;
+  if (def && typeof def === "object" && !Array.isArray(def)) {
+    const rec = def as Record<string, unknown>;
+    const v9 = rec.talaria_v9 ?? rec.talaria_v9_panel;
+    if (v9 && typeof v9 === "object") {
+      candidates.push((v9 as Record<string, unknown>).desc);
+    }
+    candidates.push(rec.description);
+  }
+
+  for (const raw of candidates) {
+    if (typeof raw !== "string") continue;
+    const t = raw.trim();
+    if (!t) continue;
+    if (sn && t === sn) continue;
+    return t;
+  }
+  return undefined;
+}
+
+function SessionInfoButton({
+  active,
+  onEnter,
+  onLeave,
+  label,
+}: {
+  active: boolean;
+  onEnter: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onLeave: () => void;
+  label: string;
+}) {
+  return (
+    <div
+      onClick={e => e.stopPropagation()}
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+      title={label}
+      role="button"
+      tabIndex={0}
+      aria-label={label}
+      onKeyDown={e => {
+        if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+      }}
+      style={{
+        width: 14,
+        height: 14,
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "default",
+        color: active ? c.acL : c.ts,
+        transition: "color 0.12s",
+      }}
+    >
+      <svg width={12} height={12} viewBox="0 0 16 16" fill="none" aria-hidden>
+        <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.4" />
+        <line x1="8" y1="7" x2="8" y2="11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="8" cy="5" r="0.8" fill="currentColor" />
+      </svg>
+    </div>
+  );
 }
 
 function parseYmdParts(d?: string): { y: string; mo: string; day: number } | null {
@@ -301,8 +375,19 @@ export function BacktestView() {
   const [journalSession, setJournalSession] = useState<Session | null>(null);
   const [journalRows, setJournalRows] = useState<Record<string, unknown>[]>([]);
   const [journalLoading, setJournalLoading] = useState(false);
-  type StratPop = { id: number; x: number; y: number; name: string; desc: string };
-  const [stratPop, setStratPop] = useState<StratPop | null>(null);
+  type DescPop = { key: string; x: number; y: number; title: string; kind: string; desc: string };
+  const [descPop, setDescPop] = useState<DescPop | null>(null);
+
+  const showDescPop = (
+    e: React.MouseEvent<HTMLDivElement>,
+    key: string,
+    kind: string,
+    title: string,
+    desc: string,
+  ) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setDescPop({ key, x: r.right + 6, y: r.top, title, kind, desc });
+  };
   const contentFrameStyle: React.CSSProperties = { width: "fit-content", minWidth: 1288, margin: "0 auto" };
 
   const loadSessions = useCallback(async () => {
@@ -998,6 +1083,7 @@ export function BacktestView() {
                 const cfg = sess.config as Record<string, unknown> | undefined;
                 const cfgS = sess.config as Record<string, string> | undefined;
                 const stratDesc = strategyDescription(sess);
+                const sessDesc = sessionDescription(sess);
                 const tickerRows = sessionTickerRows(sess);
                 const costsOn = !!(cfgS?.commission && cfgS.commission !== "None")
                   || (cfg?.trading_costs != null && cfg.trading_costs !== "");
@@ -1008,6 +1094,8 @@ export function BacktestView() {
                 const stratName = cfgS?.strategy_name || "—";
                 const nm = sess.name || "";
                 const sn = stratName || "";
+                const stratPopKey = `s${sess.id}-strategy`;
+                const sessPopKey = `s${sess.id}-session`;
                 const brSide = isH ? (isProp ? "rgba(201,168,76,0.35)" : c.acB) : c.brH;
                 const progBarFill = progress >= 100 ? (isProp ? (hasPnl ? (pnlPos ? c.gn : c.rd) : c.acL) : c.gn) : c.acL;
                 const progLblCol = progress >= 100 ? (isProp ? (hasPnl ? (pnlPos ? c.gn : c.rd) : c.tm) : c.gn) : progress > 0 ? c.acL : c.tm;
@@ -1068,11 +1156,22 @@ export function BacktestView() {
                         </svg>
                       </div>
                       <div style={{ flex: 1, minWidth: 0, padding: "0 8px", display: "flex", flexDirection: "column", gap: 2 }}>
-                        <div style={{
-                          fontSize: nm.length > 22 ? 9 : nm.length > 15 ? 10 : 11,
-                          fontWeight: 700, color: c.ts, lineHeight: 1.3, fontFamily: F,
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                        }}>{sess.name || "—"}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: nm.length > 22 ? 9 : nm.length > 15 ? 10 : 11,
+                            fontWeight: 700, color: c.ts, lineHeight: 1.3, fontFamily: F,
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            flex: 1, minWidth: 0,
+                          }}>{sess.name || "—"}</div>
+                          {sessDesc && (
+                            <SessionInfoButton
+                              active={descPop?.key === sessPopKey}
+                              label="Session description"
+                              onEnter={e => showDescPop(e, sessPopKey, "Session", sess.name || "Session", sessDesc)}
+                              onLeave={() => setDescPop(null)}
+                            />
+                          )}
+                        </div>
                         <div style={{ fontSize: 8, fontWeight: 500, color: c.tm, fontFamily: F, whiteSpace: "nowrap" }}>{createdStr}</div>
                       </div>
                       <div
@@ -1099,19 +1198,12 @@ export function BacktestView() {
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}>{stratName}</div>
                       {stratDesc && (
-                        <div
-                          onClick={e => e.stopPropagation()}
-                          onMouseEnter={e => {
-                            const r = e.currentTarget.getBoundingClientRect();
-                            setStratPop({ id: sess.id, x: r.right + 6, y: r.top, name: stratName, desc: stratDesc });
-                          }}
-                          onMouseLeave={() => setStratPop(null)}
-                          style={{
-                            width: 14, height: 14, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                            cursor: "default", color: stratPop?.id === sess.id ? c.acL : c.ts, transition: "color 0.12s",
-                          }}>
-                          <svg width={12} height={12} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.4" /><line x1="8" y1="7" x2="8" y2="11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><circle cx="8" cy="5" r="0.8" fill="currentColor" /></svg>
-                        </div>
+                        <SessionInfoButton
+                          active={descPop?.key === stratPopKey}
+                          label="Strategy description"
+                          onEnter={e => showDescPop(e, stratPopKey, "Strategy", stratName, stratDesc)}
+                          onLeave={() => setDescPop(null)}
+                        />
                       )}
                     </div>
 
@@ -1267,6 +1359,9 @@ export function BacktestView() {
                 const cfg = sess.config as Record<string, unknown> | undefined;
                 const cfgS = sess.config as Record<string, string> | undefined;
                 const stratDesc = strategyDescription(sess);
+                const sessDesc = sessionDescription(sess);
+                const stratPopKey = `s${sess.id}-strategy`;
+                const sessPopKey = `s${sess.id}-session`;
                 const tickerRows = sessionTickerRows(sess);
                 const costsOn = !!(cfgS?.commission && cfgS.commission !== "None")
                   || (cfg?.trading_costs != null && cfg.trading_costs !== "");
@@ -1307,29 +1402,29 @@ export function BacktestView() {
                       </div>
                       {/* Session name + date */}
                       <div style={{ width: 110, flexShrink: 0, padding: "0 10px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
-                        <div style={{ fontSize: (sess.name || "").length > 24 ? 8 : (sess.name || "").length > 16 ? 9 : 10, fontWeight: 700, color: c.ts, wordBreak: "break-word" as const, lineHeight: 1.3 }}>{sess.name || "—"}</div>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 4, minWidth: 0 }}>
+                          <div style={{ fontSize: (sess.name || "").length > 24 ? 8 : (sess.name || "").length > 16 ? 9 : 10, fontWeight: 700, color: c.ts, wordBreak: "break-word" as const, lineHeight: 1.3, flex: 1, minWidth: 0 }}>{sess.name || "—"}</div>
+                          {sessDesc && (
+                            <SessionInfoButton
+                              active={descPop?.key === sessPopKey}
+                              label="Session description"
+                              onEnter={e => showDescPop(e, sessPopKey, "Session", sess.name || "Session", sessDesc)}
+                              onLeave={() => setDescPop(null)}
+                            />
+                          )}
+                        </div>
                         <div style={{ fontSize: 7, color: c.tm }}>{createdStr}</div>
                       </div>
                       {/* Strategy + info */}
                       <div style={{ width: 100, flexShrink: 0, padding: "0 8px 0 10px", display: "flex", alignItems: "center", gap: 4, overflow: "hidden" }}>
                         <div style={{ fontSize: (cfgS?.strategy_name || "").length > 20 ? 9 : (cfgS?.strategy_name || "").length > 13 ? 10 : 11, fontWeight: 600, color: c.ts, lineHeight: 1.35, wordBreak: "break-word" as const, flex: 1, minWidth: 0 }}>{cfgS?.strategy_name || "—"}</div>
                         {stratDesc && (
-                          <div
-                            onClick={e => e.stopPropagation()}
-                            onMouseEnter={e => {
-                              const r = e.currentTarget.getBoundingClientRect();
-                              setStratPop({
-                                id: sess.id,
-                                x: r.right + 6,
-                                y: r.top,
-                                name: cfgS?.strategy_name || sess.name || "Strategy",
-                                desc: stratDesc,
-                              });
-                            }}
-                            onMouseLeave={() => setStratPop(null)}
-                            style={{ width: 14, height: 14, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "default", color: stratPop?.id === sess.id ? c.acL : c.ts, transition: "color 0.12s" }}>
-                            <svg width={12} height={12} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.4" /><line x1="8" y1="7" x2="8" y2="11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><circle cx="8" cy="5" r="0.8" fill="currentColor" /></svg>
-                          </div>
+                          <SessionInfoButton
+                            active={descPop?.key === stratPopKey}
+                            label="Strategy description"
+                            onEnter={e => showDescPop(e, stratPopKey, "Strategy", cfgS?.strategy_name || "Strategy", stratDesc)}
+                            onLeave={() => setDescPop(null)}
+                          />
                         )}
                       </div>
                       {/* Mode */}
@@ -1505,12 +1600,12 @@ export function BacktestView() {
         </div>
       </div>
 
-      {stratPop && (
+      {descPop && (
         <div
           style={{
             position: "fixed",
-            left: stratPop.x,
-            top: stratPop.y,
+            left: descPop.x,
+            top: descPop.y,
             zIndex: 99999,
             maxWidth: 280,
             padding: "10px 12px",
@@ -1520,8 +1615,9 @@ export function BacktestView() {
             pointerEvents: "none",
             fontFamily: F,
           }}>
-          <div style={{ fontSize: 10, fontWeight: 800, color: c.tx, marginBottom: 6 }}>{stratPop.name}</div>
-          <div style={{ fontSize: 9, color: c.ts, lineHeight: 1.45 }}>{stratPop.desc}</div>
+          <div style={{ fontSize: 8, fontWeight: 700, color: c.tm, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{descPop.kind}</div>
+          <div style={{ fontSize: 10, fontWeight: 800, color: c.tx, marginBottom: 6 }}>{descPop.title}</div>
+          <div style={{ fontSize: 9, color: c.ts, lineHeight: 1.45 }}>{descPop.desc}</div>
         </div>
       )}
 
