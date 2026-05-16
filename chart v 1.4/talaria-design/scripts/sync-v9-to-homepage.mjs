@@ -52,6 +52,19 @@ if (fs.existsSync(compareOverlaySrc)) {
   console.warn("[sync-v9-to-homepage] compare-overlay.js not found, skip:", compareOverlaySrc);
 }
 
+const drawingManagerSrc = path.resolve(__dirname, "../../chart/modules/drawing-tools-manager.js");
+const drawingManagerDest = path.resolve(
+  __dirname,
+  "../../../homepage/public/chart/modules/drawing-tools-manager.js",
+);
+if (fs.existsSync(drawingManagerSrc)) {
+  fs.mkdirSync(path.dirname(drawingManagerDest), { recursive: true });
+  fs.copyFileSync(drawingManagerSrc, drawingManagerDest);
+  console.log("[sync-v9-to-homepage] Copied drawing-tools-manager", drawingManagerSrc, "→", drawingManagerDest);
+} else {
+  console.warn("[sync-v9-to-homepage] drawing-tools-manager.js not found, skip:", drawingManagerSrc);
+}
+
 // Phase 7.2.x multichart bridge scripts: dist-v9 shim loads these at runtime
 // from /chart/multichart-prod/ (sync-bridge.js, multichart-manager.js,
 // engine-api-guards.js, embed-bridge.js, panel-cmd-bridge.js). Copy the

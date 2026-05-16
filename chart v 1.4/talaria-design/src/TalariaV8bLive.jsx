@@ -9651,6 +9651,23 @@ const TalariaV8bLive = () => {
         const group = drawingTypeToPanelGroupRef.current(drawing.type);
         if (!group) return false; // Unknown type → legacy settings panel
 
+        // Sync: abort half-started placement + disarm draw tool before React effects run.
+        try {
+          const ch =
+            typeof window.getActiveChart === "function"
+              ? window.getActiveChart()
+              : window.chart;
+          const dm = ch && ch.drawingManager;
+          if (dm) {
+            dm._suppressDrawingStartUntil = Date.now() + 900;
+            if (typeof dm._abortInProgressPlacement === "function") {
+              dm._abortInProgressPlacement();
+            }
+            if (typeof dm.clearTool === "function") dm.clearTool();
+            else dm.currentTool = null;
+          }
+        } catch (_) {}
+
         // Drop stale close animation so reopening from the gear never plays PopOut first.
         setClosing(s => { const n = new Set(s); n.delete("tlsett"); return n; });
 
@@ -10523,6 +10540,7 @@ const TalariaV8bLive = () => {
       dm = ch && ch.drawingManager;
     }
     if (!dm) return;
+    if (editingDrawingRef.current) return;
     const legacyTool = resolveLegacyTool();
     if (!styleBridgeReady.current) {
       styleBridgeReady.current = true;

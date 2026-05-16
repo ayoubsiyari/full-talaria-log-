@@ -2415,6 +2415,8 @@ class DrawingToolsManager {
             return;
         }
         if (this._shouldIgnoreDrawStartOnExistingDrawing(event)) {
+            if (typeof event.preventDefault === 'function') event.preventDefault();
+            if (typeof event.stopPropagation === 'function') event.stopPropagation();
             return;
         }
 
@@ -2503,6 +2505,13 @@ class DrawingToolsManager {
             point = this.constrainDatePriceRangePoint(point, anchorPoint, rangeMode);
         }
         
+        if (this._shouldIgnoreDrawStartOnExistingDrawing(event, { allowWhileDrawing: true })) {
+            this._abortInProgressPlacement();
+            if (typeof event.preventDefault === 'function') event.preventDefault();
+            if (typeof event.stopPropagation === 'function') event.stopPropagation();
+            return;
+        }
+
         const isComplete = this.drawingState.addPoint(point);
         // [debug removed]
         
@@ -2843,9 +2852,13 @@ class DrawingToolsManager {
     /**
      * True when an armed draw tool should not start a new stroke (click landed on existing art).
      */
-    _shouldIgnoreDrawStartOnExistingDrawing(event) {
-        if (!this.currentTool || !event) return false;
-        if (this.drawingState && this.drawingState.isDrawing) return false;
+    _shouldIgnoreDrawStartOnExistingDrawing(event, options = {}) {
+        const allowWhileDrawing = !!options.allowWhileDrawing;
+        if (!event) return false;
+        const suppressDrawUntil = Number(this._suppressDrawingStartUntil || 0);
+        if (suppressDrawUntil > 0 && Date.now() <= suppressDrawUntil) return true;
+        if (!this.currentTool && !allowWhileDrawing) return false;
+        if (!allowWhileDrawing && this.drawingState && this.drawingState.isDrawing) return false;
 
         const rawTargetNode = event.target || null;
         if (rawTargetNode && rawTargetNode.closest) {
@@ -2855,6 +2868,12 @@ class DrawingToolsManager {
             );
             const isVpBoundary = rawTargetNode.closest('.volume-profile-boundary-hit');
             if (onHandle && !isVpBoundary) return false;
+
+            const drawingEl = rawTargetNode.closest('.drawing');
+            if (drawingEl) {
+                const domId = drawingEl.getAttribute('data-id');
+                if (domId && this.drawings.some((d) => d && d.id === domId)) return true;
+            }
         }
 
         try {
@@ -2865,6 +2884,23 @@ class DrawingToolsManager {
             return Array.isArray(drawingsAtPoint) && drawingsAtPoint.length > 0;
         } catch (_) {
             return false;
+        }
+    }
+
+    /** Drop an in-progress placement without deselecting finished drawings. */
+    _abortInProgressPlacement() {
+        this._cancelTempPreviewRaf();
+        this._cancelFreehandPreviewRaf();
+        this._clearLiveSyncPreview();
+        this.tempGroup.selectAll('*').remove();
+        this.riskRewardPreview = null;
+        this.hidePathTooltip();
+        this.isDrawingPath = false;
+        this.isDraggingFirstTwo = false;
+        this.dragFirstTwoStart = null;
+        this.dragFirstTwoStartScreen = null;
+        if (this.drawingState) {
+            this.drawingState.reset();
         }
     }
 
@@ -3096,6 +3132,12 @@ class DrawingToolsManager {
      * Handle mouse up event
      */
     handleMouseUp(event) {
+        const suppressDrawUntil = Number(this._suppressDrawingStartUntil || 0);
+        if (this.drawingState && this.drawingState.isDrawing && suppressDrawUntil > 0 && Date.now() <= suppressDrawUntil) {
+            this._abortInProgressPlacement();
+            return;
+        }
+
         // Handle rectangular selection completion
         if (this.isRectSelecting) {
             this.completeRectangularSelection();
@@ -6186,7 +6228,15 @@ class DrawingToolsManager {
      */
     editDrawing(drawing, x, y) {
         // Block the extra mousedown(s) in a double-click from starting a new stroke.
-        this._suppressDrawingStartUntil = Date.now() + 650;
+        this._suppressDrawingStartUntil = Date.now() + 900;
+        this._abortInProgressPlacement();
+        if (this.currentTool) {
+            try {
+                this.clearTool();
+            } catch (_) {
+                this.currentTool = null;
+            }
+        }
 
         // V9 hook: if TalariaV8bLive has registered an opener, use the V9
         // floating panel instead of the legacy tv-settings-modal. The hook

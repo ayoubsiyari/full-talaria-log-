@@ -1069,24 +1069,27 @@ const GraphSepLine = ({ topY, onInsert }) => {
   const [active, setActive] = React.useState(false);
   const lineStyle = {
     flex:1, height:2, alignSelf:'center',
-    background:'rgba(201,168,76,0.38)',
+    background: hov ? 'rgba(201,168,76,0.55)' : 'rgba(201,168,76,0.38)',
+    pointerEvents:'none',
+    transition:'background 0.15s ease',
   };
   return (
     <div
       style={{
         position:'absolute', left:SEC_X, top:topY, width:SEC_W, height:SEC_GAP,
-        zIndex:10, display:'flex', alignItems:'center', pointerEvents:'none',
+        zIndex: hov ? 12 : 10, display:'flex', alignItems:'center',
+        pointerEvents:'auto',
       }}
+      className="tlc-graph-sep nodrag nopan"
       onMouseEnter={()=>setHov(true)}
-      onMouseLeave={()=>setHov(false)}
+      onMouseLeave={()=>{ setHov(false); setActive(false); }}
     >
       <div
-        onMouseDown={()=>setActive(true)}
+        className="nodrag nopan"
+        onMouseDown={e=>{ e.stopPropagation(); setActive(true); }}
         onMouseUp={()=>setActive(false)}
-        onMouseLeave={()=>setActive(false)}
-        onClick={onInsert}
+        onClick={e=>{ e.stopPropagation(); onInsert(); }}
         style={{
-          pointerEvents:'auto',
           fontSize:20,color:GOLD,lineHeight:1,flexShrink:0,
           display:'flex',alignItems:'center',justifyContent:'center',
           padding:hov?'10px 28px':'0',height:hov?42:0,
@@ -2784,6 +2787,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       '.tlc-drag-grip,.tlc-drag-grip *{cursor:grab!important}',
       '.tlc-drag-grip:active{transform:translateY(-50%) scale(1.06)!important}',
       '.tlc-dragging,.tlc-dragging *{cursor:grabbing!important}',
+      '.tlc-dragging .tlc-graph-sep{pointer-events:none!important}',
       '.tlc-sec-dragging{transition:none!important;filter:drop-shadow(0 10px 28px rgba(0,0,0,0.45))}',
       '.tlc-sliding .react-flow__node-section:not(.tlc-sec-dragging),.tlc-sliding .react-flow__node-condition{transition:transform 0.38s cubic-bezier(0.22,1,0.36,1)!important}',
       '@keyframes tlcSecOut{from{opacity:1;transform:scaleY(1) translateY(0)}to{opacity:0;transform:scaleY(0.65) translateY(-14px)}}',
