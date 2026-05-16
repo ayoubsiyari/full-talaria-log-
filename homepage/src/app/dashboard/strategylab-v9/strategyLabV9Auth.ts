@@ -6,7 +6,7 @@ export function getToken(): string | null {
 }
 
 export function loginUrlWithNext(): string {
-  return `/login/?next=${encodeURIComponent("/dashboard/strategylab-v9/")}`;
+  return `/login/?next=${encodeURIComponent("/dashboard/strategies/")}`;
 }
 
 export function authHeaders(): Record<string, string> {

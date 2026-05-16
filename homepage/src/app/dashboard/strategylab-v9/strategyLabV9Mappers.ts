@@ -44,6 +44,11 @@ export function apiStrategyToBankRow(s: ApiStrategyRecord): Record<string, unkno
   const v9raw = def[TALARIA_V9_PANEL_KEY];
   const v9 = v9raw && typeof v9raw === "object" ? (v9raw as Record<string, unknown>) : {};
 
+  const tagList = Array.isArray(v9.tags)
+    ? (v9.tags as string[])
+    : Array.isArray(def.strategy_tags)
+      ? (def.strategy_tags as string[])
+      : [];
   const instruments = (v9.instruments as string[])?.length
     ? (v9.instruments as string[])
     : ((draft.instruments as string[]) || []);
@@ -64,7 +69,7 @@ export function apiStrategyToBankRow(s: ApiStrategyRecord): Record<string, unkno
     style: String(draft.style || "Trend Following"),
     instruments,
     timeframes,
-    tags: Array.isArray(v9.tags) ? (v9.tags as string[]) : [],
+    tags: tagList,
     complexity: typeof v9.complexity === "string" ? v9.complexity : "Medium",
     direction: String(draft.direction || "both"),
     markets,
@@ -122,6 +127,7 @@ export function bankStrategyToApiBody(strat: Record<string, unknown>): {
     description: desc,
     strategy_definition: {
       ...core,
+      strategy_tags: Array.isArray(strat.tags) ? strat.tags : [],
       [TALARIA_V9_PANEL_KEY]: talaria_v9,
     },
   };

@@ -1,5 +1,6 @@
-import StrategylabV9PageClient from "./StrategylabV9PageClient";
+import { redirect } from "next/navigation";
 
-export default function StrategylabV9Page() {
-  return <StrategylabV9PageClient />;
+/** Legacy URL — Strategy Lab lives at `/dashboard/strategies/`. */
+export default function StrategylabV9LegacyRedirectPage() {
+  redirect("/dashboard/strategies/");
 }

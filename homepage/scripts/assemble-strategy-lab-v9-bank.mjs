@@ -71,7 +71,6 @@ const NAV = [
   { id: "backtest", href: "/dashboard/backtest/", label: "Backtest", icon: "backtest" },
   { id: "cot", href: "/dashboard/cot/", label: "COT", icon: "cot" },
   { id: "strategies", href: "/dashboard/strategies/", label: "Strategies", icon: "stratlab" },
-  { id: "strategylabV9", href: "/dashboard/strategylab-v9/", label: "Lab V9", icon: "strat" },
   { id: "resources", href: "/bootcamp/", label: "Resources", icon: "resources" },
   { id: "support", href: "/dashboard/support/", label: "Support", icon: "support" },
 ];
@@ -108,7 +107,6 @@ function LabNavPanel({ pathname, hov, setHov }) {
       {NAV.map(({ id, href, label, icon: ic }) => {
         const active =
           pathname === href ||
-          (id === "strategylabV9" && pathname.startsWith("/dashboard/strategylab-v9")) ||
           (id === "strategies" && pathname.startsWith("/dashboard/strategies"));
         const isHn = hov === "snav_" + id;
         const rail = active ? { position: "absolute", left: 0, top: "20%", bottom: "20%", width: 2, background: "linear-gradient(180deg,transparent," + c.acL + ",transparent)", boxShadow: "0 0 6px " + c.acG } : null;
