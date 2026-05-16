@@ -527,7 +527,7 @@ const SectionNode = ({ id, data }) => {
   const GOLD = '#C9A84C';
 
   return (
-    <div className={`${data.deleting?' tlc-sec-deleting':''}`} style={{fontFamily:"'Exo 2',sans-serif",width:'100%',height:'100%',border:'none',boxShadow:'inset 0 0 0 1px var(--tlc-brh)',background:descOpen?'transparent':'var(--tlc-sf)',display:'flex',overflow:'visible',position:'relative'}}>
+    <div className={`${data.deleting?' tlc-sec-deleting':''}${data.dragging?' tlc-sec-dragging':''}`} style={{fontFamily:"'Exo 2',sans-serif",width:'100%',height:'100%',border:'none',boxShadow:'inset 0 0 0 1px var(--tlc-brh)',background:descOpen?'transparent':'var(--tlc-sf)',display:'flex',overflow:'visible',position:'relative'}}>
 
       {/* Left gold accent bar */}
       <div style={{position:'absolute',top:0,left:0,bottom:0,width:4,background:GOLD,zIndex:2,pointerEvents:'none'}}/>
@@ -702,15 +702,14 @@ const SectionNode = ({ id, data }) => {
               if(e.button!==0)return;
               e.stopPropagation();
               e.preventDefault();
-              e.currentTarget.setPointerCapture?.(e.pointerId);
-              _cvCb.startDrag&&_cvCb.startDrag(data.sectionId,e.clientY);
+              _cvCb.startDrag&&_cvCb.startDrag(data.sectionId,e.clientX,e.clientY,e.pointerId);
             }}
             className="tlc-drag-grip nodrag nopan"
             style={{
               position:'absolute',top:'50%',transform:'translateY(-50%)',left:9,zIndex:5,
               display:'flex',alignItems:'center',justifyContent:'center',
               padding:5,lineHeight:1,userSelect:'none',cursor:'grab',touchAction:'none',
-              pointerEvents:'auto',
+              pointerEvents:'auto',transition:'transform 0.15s ease, opacity 0.15s ease',
             }}
           >
             <svg width={21} height={21} viewBox="0 0 18 18" fill="none">
@@ -1764,6 +1763,8 @@ let SEC_W = 1400, SEC_X = 0; const SEC_H = 325, SEC_GAP = 72;
 const BASE_ZOOM = 0.64;
 const BOARD_ZOOM_MIN = 0.42;
 const BOARD_ZOOM_MAX = 1;
+/** Press-and-hold on the group grip before reorder drag starts (avoids click-to-drag). */
+const SECTION_DRAG_HOLD_MS = 200;
 const CONNECTOR_OPTIONS = ['AND', 'OR', 'OFF'];
 function getSectionHeight() {
   return SEC_H;
@@ -2781,8 +2782,10 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       '.react-flow__node-section{pointer-events:all!important;overflow:visible!important}',
       '.react-flow__node-condition{pointer-events:all!important}',
       '.tlc-drag-grip,.tlc-drag-grip *{cursor:grab!important}',
+      '.tlc-drag-grip:active{transform:translateY(-50%) scale(1.06)!important}',
       '.tlc-dragging,.tlc-dragging *{cursor:grabbing!important}',
-      '.tlc-sliding .react-flow__node-section,.tlc-sliding .react-flow__node-condition{transition:transform 0.3s cubic-bezier(0.25,0.46,0.45,0.94)!important}',
+      '.tlc-sec-dragging{transition:none!important;filter:drop-shadow(0 10px 28px rgba(0,0,0,0.45))}',
+      '.tlc-sliding .react-flow__node-section:not(.tlc-sec-dragging),.tlc-sliding .react-flow__node-condition{transition:transform 0.38s cubic-bezier(0.22,1,0.36,1)!important}',
       '@keyframes tlcSecOut{from{opacity:1;transform:scaleY(1) translateY(0)}to{opacity:0;transform:scaleY(0.65) translateY(-14px)}}',
       '.tlc-sec-deleting{animation:tlcSecOut 0.28s cubic-bezier(0.4,0,1,1) forwards;transform-origin:top center;pointer-events:none}',
     ].join('');
@@ -3234,7 +3237,55 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     ));
   }, [setCanvasNodes]);
 
-  const startSectionDrag = useCallback((sectionId, startClientY) => {
+  const applySectionDragY = useCallback((sectionId, startGraphY, startClientY, clientY, zoom) => {
+    const newGraphY = startGraphY + (clientY - startClientY) / (zoom * getAppZoom());
+    setCanvasNodes(nds => {
+      const secs = nds.filter(n => n.type === 'section');
+      const draggedH = secs.find(s => s.id === sectionId)?.style?.height ?? SEC_H;
+      const draggedCenter = newGraphY + draggedH / 2;
+      const otherOrder = liveOrderRef.current.filter(id => id !== sectionId);
+      let vY = 0;
+      const virtualY = {};
+      for (const id of otherOrder) {
+        virtualY[id] = vY;
+        vY += (secs.find(s => s.id === id)?.style?.height ?? SEC_H) + SEC_GAP;
+      }
+      let insertIdx = otherOrder.length;
+      for (let i = 0; i < otherOrder.length; i++) {
+        const h = secs.find(s => s.id === otherOrder[i])?.style?.height ?? SEC_H;
+        if (draggedCenter < virtualY[otherOrder[i]] + h / 2) { insertIdx = i; break; }
+      }
+      const newOrder = [...otherOrder];
+      newOrder.splice(insertIdx, 0, sectionId);
+      if (!newOrder.every((id, i) => id === liveOrderRef.current[i])) {
+        liveOrderRef.current = newOrder;
+      }
+      const targetY = {};
+      let ty = 0;
+      for (const id of liveOrderRef.current) {
+        targetY[id] = ty;
+        ty += (secs.find(s => s.id === id)?.style?.height ?? SEC_H) + SEC_GAP;
+      }
+      const draggedSec = secs.find(s => s.id === sectionId);
+      const draggedDeltaY = draggedSec ? (newGraphY - draggedSec.position.y) : 0;
+      return nds.map(n => {
+        if (n.id === sectionId) return { ...n, position: { x: SEC_X, y: newGraphY } };
+        if (n.type === 'section' && targetY[n.id] !== undefined)
+          return { ...n, position: { x: SEC_X, y: targetY[n.id] } };
+        if (n.type === 'condition' && n.data?.sectionId === sectionId) {
+          return { ...n, position: { x: n.position.x, y: n.position.y + draggedDeltaY } };
+        }
+        if (n.type === 'condition' && n.data?.sectionId !== sectionId) {
+          const par = secs.find(s => s.id === n.data?.sectionId);
+          if (!par || targetY[par.id] === undefined) return n;
+          return { ...n, position: { x: n.position.x, y: n.position.y + (targetY[par.id] - par.position.y) } };
+        }
+        return n;
+      });
+    });
+  }, [setCanvasNodes]);
+
+  const beginSectionDrag = useCallback((sectionId, startClientY) => {
     const zoom = rfRef.current?.getViewport()?.zoom ?? (rfTransform?.[2] || BASE_ZOOM);
     const sec = canvasNodesRef.current.find(n => n.id === sectionId);
     const startGraphY = sec?.position.y ?? 0;
@@ -3243,69 +3294,37 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     dragStartRef.current = { sectionId };
     isDraggingRef.current = true;
     setIsDragging(true);
+    setSliding(true);
     document.body.classList.add('tlc-dragging');
     setCanvasNodes(nds => nds.map(n => {
-      if (n.id === sectionId) return { ...n, zIndex: 9999 };
+      if (n.id === sectionId) {
+        return { ...n, zIndex: 9999, data: { ...n.data, dragging: true } };
+      }
       if (n.type === 'condition' && n.data?.sectionId === sectionId) return { ...n, zIndex: 10000 };
       return n;
     }));
 
-    const onMouseMove = (e) => {
-      const newGraphY = startGraphY + (e.clientY - startClientY) / (zoom * getAppZoom());
-      flushSync(() => setCanvasNodes(nds => {
-        const secs = nds.filter(n => n.type === 'section');
-        const draggedH = secs.find(s => s.id === sectionId)?.style?.height ?? SEC_H;
-        const draggedCenter = newGraphY + draggedH / 2;
-        const otherOrder = liveOrderRef.current.filter(id => id !== sectionId);
-        let vY = 0;
-        const virtualY = {};
-        for (const id of otherOrder) {
-          virtualY[id] = vY;
-          vY += (secs.find(s => s.id === id)?.style?.height ?? SEC_H) + SEC_GAP;
-        }
-        let insertIdx = otherOrder.length;
-        for (let i = 0; i < otherOrder.length; i++) {
-          const h = secs.find(s => s.id === otherOrder[i])?.style?.height ?? SEC_H;
-          if (draggedCenter < virtualY[otherOrder[i]] + h / 2) { insertIdx = i; break; }
-        }
-        const newOrder = [...otherOrder];
-        newOrder.splice(insertIdx, 0, sectionId);
-        if (!newOrder.every((id, i) => id === liveOrderRef.current[i])) {
-          liveOrderRef.current = newOrder;
-        }
-        const targetY = {};
-        let ty = 0;
-        for (const id of liveOrderRef.current) {
-          targetY[id] = ty;
-          ty += (secs.find(s => s.id === id)?.style?.height ?? SEC_H) + SEC_GAP;
-        }
-        const draggedSec = secs.find(s => s.id === sectionId);
-        const draggedDeltaY = draggedSec ? (newGraphY - draggedSec.position.y) : 0;
-        return nds.map(n => {
-          if (n.id === sectionId) return { ...n, position: { x: SEC_X, y: newGraphY } };
-          if (n.type === 'section' && targetY[n.id] !== undefined)
-            return { ...n, position: { x: SEC_X, y: targetY[n.id] } };
-          if (n.type === 'condition' && n.data?.sectionId === sectionId) {
-            return { ...n, position: { x: n.position.x, y: n.position.y + draggedDeltaY } };
-          }
-          if (n.type === 'condition' && n.data?.sectionId !== sectionId) {
-            const par = secs.find(s => s.id === n.data?.sectionId);
-            if (!par || targetY[par.id] === undefined) return n;
-            return { ...n, position: { x: n.position.x, y: n.position.y + (targetY[par.id] - par.position.y) } };
-          }
-          return n;
-        });
-      }));
+    let rafId = null;
+    let pendingClientY = startClientY;
+
+    const onPointerMove = (e) => {
+      pendingClientY = e.clientY;
+      if (rafId != null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        applySectionDragY(sectionId, startGraphY, startClientY, pendingClientY, zoom);
+      });
     };
 
-    const onMouseUp = () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
+    const endDrag = () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', endDrag);
+      window.removeEventListener('pointercancel', endDrag);
       document.body.classList.remove('tlc-dragging');
       isDraggingRef.current = false;
       setIsDragging(false);
       dragStartRef.current = null;
-      setSliding(true);
       setCanvasNodes(nds => {
         const secs = nds.filter(n => n.type === 'section');
         const snapY = {};
@@ -3315,7 +3334,15 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
           y += (secs.find(s => s.id === id)?.style?.height ?? SEC_H) + SEC_GAP;
         }
         return nds.map(n => {
-          if (n.type === 'section') return { ...n, position: { x: SEC_X, y: snapY[n.id] ?? n.position.y }, zIndex: -1 };
+          if (n.type === 'section') {
+            const dragging = n.id === sectionId;
+            return {
+              ...n,
+              position: { x: SEC_X, y: snapY[n.id] ?? n.position.y },
+              zIndex: -1,
+              data: dragging ? { ...n.data, dragging: false } : n.data,
+            };
+          }
           if (n.type === 'condition') {
             const par = secs.find(s => s.id === n.data?.sectionId);
             if (!par) return { ...n, zIndex: 0 };
@@ -3325,12 +3352,41 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
           return n;
         });
       });
-      setTimeout(() => setSliding(false), 350);
+      setTimeout(() => setSliding(false), 420);
     };
 
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  }, [setCanvasNodes, rfTransform]);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
+  }, [setCanvasNodes, rfTransform, applySectionDragY]);
+
+  /** Wait for press-and-hold on grip — a quick click does not reorder. */
+  const prepareSectionDrag = useCallback((sectionId, _startClientX, startClientY, pointerId) => {
+    let activated = false;
+    let holdTimer = null;
+
+    const cleanupWait = () => {
+      if (holdTimer != null) clearTimeout(holdTimer);
+      window.removeEventListener('pointerup', onWaitUp);
+      window.removeEventListener('pointercancel', onWaitUp);
+    };
+
+    const activate = () => {
+      if (activated) return;
+      activated = true;
+      cleanupWait();
+      beginSectionDrag(sectionId, startClientY);
+    };
+
+    const onWaitUp = (e) => {
+      if (e.pointerId !== pointerId) return;
+      cleanupWait();
+    };
+
+    holdTimer = setTimeout(activate, SECTION_DRAG_HOLD_MS);
+    window.addEventListener('pointerup', onWaitUp);
+    window.addEventListener('pointercancel', onWaitUp);
+  }, [beginSectionDrag]);
 
   // Keep module-level callbacks current
   const onNodeDragStart = useCallback((_, node) => {
@@ -3509,7 +3565,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     _cvCb.resizeSection = resizeSectionLive;
     _cvCb.updateDesc = updateSectionDesc;
     _cvCb.setDescPanelOpen = setDescPanelOpen;
-    _cvCb.startDrag = startSectionDrag;
+    _cvCb.startDrag = prepareSectionDrag;
     return () => {
       _cvCb.addCondition = null;
       _cvCb.deleteCondition = null;
@@ -3525,7 +3581,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   }, [
     addConditionToSection, deleteCondition, updateConditionData, doDeleteSection,
     insertSectionAfter, renameSection, resizeSectionLive, updateSectionDesc,
-    setDescPanelOpen, startSectionDrag,
+    setDescPanelOpen, prepareSectionDrag,
   ]);
 
   const sections = useMemo(() => canvasNodes.filter(n => n.type === 'section'), [canvasNodes]);

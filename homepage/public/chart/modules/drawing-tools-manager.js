@@ -922,8 +922,11 @@ class DrawingToolsManager {
         const svg = this.svg;
 
         const openDrawingSettingsFromDoubleClick = (event) => {
-            if (this.currentTool) return false;
             if (this.eraserMode) return false;
+            // Allow dblclick-to-edit on existing art even when a draw tool is still armed.
+            if (this.currentTool && !this._shouldIgnoreDrawStartOnExistingDrawing(event)) {
+                return false;
+            }
 
             const rawTargetNode = event?.target || null;
             const targetSel = rawTargetNode ? d3.select(rawTargetNode) : null;
@@ -2406,6 +2409,15 @@ class DrawingToolsManager {
         // If currently drawing polyline or path, just continue adding points
         // Right-click is used to finish the drawing (handled in handleContextMenu)
 
+        // Armed draw tool + click on an existing shape: do not start a new stroke (dblclick opens settings).
+        const suppressDrawUntil = Number(this._suppressDrawingStartUntil || 0);
+        if (suppressDrawUntil > 0 && Date.now() <= suppressDrawUntil) {
+            return;
+        }
+        if (this._shouldIgnoreDrawStartOnExistingDrawing(event)) {
+            return;
+        }
+
         let point = this.getDataPoint(event);
         
         const toolInfo = this.toolRegistry[this.currentTool];
@@ -2826,6 +2838,34 @@ class DrawingToolsManager {
             if (this.chart.drag && this.chart.drag.active && this.chart.drag.type === 'pan') return;
             this.chart.updateCrosshair(ev);
         });
+    }
+
+    /**
+     * True when an armed draw tool should not start a new stroke (click landed on existing art).
+     */
+    _shouldIgnoreDrawStartOnExistingDrawing(event) {
+        if (!this.currentTool || !event) return false;
+        if (this.drawingState && this.drawingState.isDrawing) return false;
+
+        const rawTargetNode = event.target || null;
+        if (rawTargetNode && rawTargetNode.closest) {
+            if (rawTargetNode.closest('.rr-plus-btn')) return false;
+            const onHandle = rawTargetNode.closest(
+                '.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'
+            );
+            const isVpBoundary = rawTargetNode.closest('.volume-profile-boundary-hit');
+            if (onHandle && !isVpBoundary) return false;
+        }
+
+        try {
+            const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
+            const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, {
+                includeVolumeProfileBodyHit: true
+            });
+            return Array.isArray(drawingsAtPoint) && drawingsAtPoint.length > 0;
+        } catch (_) {
+            return false;
+        }
     }
 
     /**
@@ -4579,6 +4619,7 @@ class DrawingToolsManager {
                 if (!drawing.locked) {
                     self.selectDrawing(drawing);
                     self.editDrawing(drawing, event.pageX, event.pageY);
+                    self._suppressNextDrawingDblClickUntil = Date.now() + 600;
                     // [debug removed]
                 }
                 self._drawingClickTimes[drawing.id] = 0; // Reset
@@ -4589,6 +4630,9 @@ class DrawingToolsManager {
             
             // Single click - select (with Shift for multi-select)
             if (!self.currentTool && !drawing.locked) {
+                self.selectDrawing(drawing, event.shiftKey);
+            } else if (self.currentTool && !drawing.locked) {
+                // Armed tool: select hit target without starting a new stroke (see handleMouseDown guard).
                 self.selectDrawing(drawing, event.shiftKey);
             }
         };
@@ -4622,6 +4666,7 @@ class DrawingToolsManager {
             if (!drawing.locked) {
                 self.selectDrawing(drawing);
                 self.editDrawing(drawing, event.pageX, event.pageY);
+                self._suppressNextDrawingDblClickUntil = Date.now() + 600;
                 // [debug removed]
             }
         };
@@ -6140,6 +6185,9 @@ class DrawingToolsManager {
      * Edit drawing settings
      */
     editDrawing(drawing, x, y) {
+        // Block the extra mousedown(s) in a double-click from starting a new stroke.
+        this._suppressDrawingStartUntil = Date.now() + 650;
+
         // V9 hook: if TalariaV8bLive has registered an opener, use the V9
         // floating panel instead of the legacy tv-settings-modal. The hook
         // returns true if it handled the drawing, false to fall through.
