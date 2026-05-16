@@ -67,6 +67,7 @@ export default function PricingClient() {
 
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
   const [plans, setPlans] = useState<PlanRow[]>([]);
+  const [plansError, setPlansError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<number | null>(null);
   const [currentSubscription, setCurrentSubscription] = useState<SubscriptionPayload | null>(null);
@@ -149,16 +150,31 @@ export default function PricingClient() {
   };
 
   const fetchPlans = async () => {
+    setPlansError(null);
     try {
-      const res = await fetch(`${JOURNAL_SUBSCRIPTIONS_API}/public/plans`);
-      if (res.ok) {
-        const data = (await res.json()) as { plans?: PlanRow[] };
-        if (data.plans?.length) {
-          setPlans(data.plans.map((p) => ({ ...p, features: parseFeatures(p.features) })));
-        }
+      const res = await fetch(`${JOURNAL_SUBSCRIPTIONS_API}/public/plans`, {
+        cache: "no-store",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        plans?: PlanRow[];
+        error?: string;
+        success?: boolean;
+      };
+      if (!res.ok) {
+        setPlansError(data.error || `Could not load plans (HTTP ${res.status}). Is journal-backend running?`);
+        return;
       }
-    } catch {
-      /* silent */
+      if (data.plans?.length) {
+        setPlans(data.plans.map((p) => ({ ...p, features: parseFeatures(p.features) })));
+      } else {
+        setPlansError("No active plans in the database. Add plans in admin or seed subscription_plans.");
+      }
+    } catch (e) {
+      setPlansError(
+        e instanceof Error
+          ? `Cannot reach billing API: ${e.message}`
+          : "Cannot reach billing API. Check journal-backend and /journal/api/subscriptions/public/plans"
+      );
     }
   };
 
@@ -457,8 +473,10 @@ export default function PricingClient() {
               <Loader2 className="h-6 w-6 animate-spin text-white/25" aria-hidden />
             </div>
           ) : plans.length === 0 ? (
-            <div className="py-20 text-center">
-              <p className="text-sm text-white/35">No plans available yet. Check back soon.</p>
+            <div className="py-20 text-center px-4">
+              <p className="text-sm text-white/50">
+                {plansError || "No plans available yet. Check back soon."}
+              </p>
             </div>
           ) : (
             <div

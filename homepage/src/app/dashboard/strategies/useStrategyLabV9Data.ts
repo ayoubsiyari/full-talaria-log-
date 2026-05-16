@@ -43,9 +43,22 @@ export function useStrategyLabV9Data() {
     setStrategiesError(null);
     try {
       const res = await fetch(`${JOURNAL_API_BASE}/strategies`, { headers: authHeaders() });
-      const data = (await res.json()) as { success?: boolean; strategies?: ApiStrategyRecord[]; error?: string };
+      const data = (await res.json()) as {
+        success?: boolean;
+        strategies?: ApiStrategyRecord[];
+        error?: string;
+        action?: string;
+      };
       if (!res.ok) {
-        setStrategiesError(data.error || `HTTP ${res.status}`);
+        if (res.status === 403 && data.action === "subscription_required") {
+          setStrategiesError(
+            "Strategy lab requires access. Open Pricing to subscribe, or ask an admin to enable the Strategies section on your account."
+          );
+        } else if (res.status === 401) {
+          setStrategiesError("Please log in again to load strategies.");
+        } else {
+          setStrategiesError(data.error || `Could not load strategies (HTTP ${res.status})`);
+        }
         setMyStrategies([]);
         return;
       }

@@ -1,6 +1,6 @@
 """Blueprint before_request: JWT + active journal entitlement (paid / manual / admin)."""
 
-from flask import jsonify, request
+from flask import current_app, jsonify, request
 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
 
 from models import User
@@ -30,7 +30,14 @@ def register_paid_journal_guard(blueprint, *, required_module=None, skip_endpoin
         except (TypeError, ValueError):
             pass
 
-        user = User.query.get(user_id)
+        try:
+            user = User.query.get(user_id)
+        except Exception as exc:
+            current_app.logger.exception("paid_access user load failed: %s", exc)
+            return jsonify(
+                {"error": "Database schema is updating; retry in a moment", "detail": str(exc)[:200]}
+            ), 503
+
         if not user:
             return jsonify({"error": "User not found"}), 404
 

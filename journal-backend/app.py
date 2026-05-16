@@ -21,6 +21,7 @@ from routes.feature_flags_routes import feature_flags_bp
 from routes.subscription_routes import subscription_bp
 from routes.chart_routes import chart_bp
 from routes.paid_access import register_paid_journal_guard
+from db_schema import ensure_users_schema
 
 import jwt as pyjwt
 
@@ -35,6 +36,7 @@ jwt = JWTManager(app)
 
 # DB setup
 db.init_app(app)
+ensure_users_schema(app)
 
 # Email setup
 init_mail(app)
