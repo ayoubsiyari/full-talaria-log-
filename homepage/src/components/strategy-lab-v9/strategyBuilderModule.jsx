@@ -1752,8 +1752,12 @@ const SECTION_COLOR_CYCLE = [
 ];
 const COND_W = 220, COND_H = 275, COND_COLS = 6;
 const STRIP_W = 200;
+/** Minimum graph width for one section row (strip + 6 condition slots). */
+const FLOW_ROW_GRAPH_W = STRIP_W + 32 + COND_COLS * COND_W + (COND_COLS - 1) * COND_COL_GAP;
 let SEC_W = 1400, SEC_X = 0; const SEC_H = 325, SEC_GAP = 72;
 const BASE_ZOOM = 0.64;
+const BOARD_ZOOM_MIN = 0.42;
+const BOARD_ZOOM_MAX = 1;
 const COND_COL_GAP = 96;
 const CONNECTOR_OPTIONS = ['AND', 'OR', 'OFF'];
 function getSectionHeight() {
@@ -2780,14 +2784,44 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     if (!el) return;
     const w = el.clientWidth;
     if (w === 0) return;
-    const newW = Math.max(480, w - 80) / BASE_ZOOM;
-    const newX = 32 / BASE_ZOOM;
+    const pad = 48;
+    const zoomForWidth = Math.max(BOARD_ZOOM_MIN, Math.min(BOARD_ZOOM_MAX, (w - pad) / FLOW_ROW_GRAPH_W));
+    const newW = Math.max(FLOW_ROW_GRAPH_W, (w - pad) / zoomForWidth);
+    const newX = Math.max(8, (newW - FLOW_ROW_GRAPH_W) * 0.5);
     if (newW !== SEC_W || newX !== SEC_X) {
       SEC_W = newW;
       SEC_X = newX;
       setCanvasNodes(nds => restackAll(nds));
     }
   }, [setCanvasNodes]);
+
+  const fitBoardViewport = useCallback((animate = false) => {
+    const inst = rfRef.current;
+    const el = canvasContainerRef.current;
+    if (!inst || !el) return;
+    const w = el.clientWidth;
+    const h = el.clientHeight;
+    if (w < 8 || h < 8) return;
+
+    const { contentBotGraph: graphH } = scrollValuesRef.current;
+    const graphW = SEC_X + SEC_W;
+    const graphHeight = Math.max(graphH || SEC_H + SEC_GAP, SEC_H + SEC_GAP);
+    const padX = 28;
+    const padY = 20;
+
+    const zoomX = (w - padX) / Math.max(graphW, FLOW_ROW_GRAPH_W);
+    const zoomY = (h - padY) / graphHeight;
+    const zoom = Math.max(BOARD_ZOOM_MIN, Math.min(BOARD_ZOOM_MAX, Math.min(zoomX, zoomY)));
+
+    const centerX = SEC_X + SEC_W / 2;
+    const x = w / 2 - centerX * zoom;
+    const scaledH = graphHeight * zoom;
+    const y = scaledH <= h - padY * 2
+      ? (h - scaledH) / 2
+      : padY;
+
+    inst.setViewport({ x, y, zoom }, animate ? { duration: 280 } : undefined);
+  }, []);
 
   useLayoutEffect(() => { applySecSize(); }, []);
 
@@ -2797,12 +2831,19 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     const ro = new ResizeObserver(entries => {
       setCanvasH(entries[0].contentRect.height);
       applySecSize();
+      requestAnimationFrame(() => fitBoardViewport(false));
     });
     ro.observe(el);
-    // Re-measure after modal animation settles
-    const t = setTimeout(applySecSize, 300);
-    return () => { ro.disconnect(); clearTimeout(t); };
-  }, [applySecSize]);
+    const t1 = setTimeout(() => { applySecSize(); fitBoardViewport(false); }, 120);
+    const t2 = setTimeout(() => fitBoardViewport(true), 320);
+    return () => { ro.disconnect(); clearTimeout(t1); clearTimeout(t2); };
+  }, [applySecSize, fitBoardViewport]);
+
+  useEffect(() => {
+    if (step !== 2 || flowViewMode !== 'board') return;
+    const t = setTimeout(() => fitBoardViewport(true), 80);
+    return () => clearTimeout(t);
+  }, [step, flowViewMode, canvasNodes.length, fitBoardViewport]);
 
   const { screenToFlowPosition } = useReactFlow();
 
@@ -2852,8 +2893,11 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     rfRef.current = instance;
     const el = canvasContainerRef.current?.querySelector('.react-flow__nodes');
     if (el) setRfNodesEl(el);
-    instance.setViewport({ x: 0, y: SEC_GAP * BASE_ZOOM, zoom: BASE_ZOOM });
-  }, []);
+    requestAnimationFrame(() => {
+      applySecSize();
+      fitBoardViewport(false);
+    });
+  }, [applySecSize, fitBoardViewport]);
 
   const addConditionToSection = useCallback((sectionId, targetSlot) => {
     setSliding(true);
@@ -3075,14 +3119,14 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   }, [history, histIdx, setCanvasNodes, setCanvasEdges]);
 
   const doFit = useCallback(() => {
-    if (rfRef.current) rfRef.current.setViewport({ x: 0, y: SEC_GAP * BASE_ZOOM, zoom: BASE_ZOOM }, { duration: 300 });
-  }, []);
+    fitBoardViewport(true);
+  }, [fitBoardViewport]);
 
   const setBoardZoom = useCallback((direction) => {
     if (!rfRef.current) return;
     const el = canvasContainerRef.current;
     const { x, y, zoom } = rfRef.current.getViewport();
-    const nextZoom = Math.max(0.55, Math.min(1.45, parseFloat((zoom + direction * 0.1).toFixed(2))));
+    const nextZoom = Math.max(BOARD_ZOOM_MIN, Math.min(BOARD_ZOOM_MAX, parseFloat((zoom + direction * 0.1).toFixed(2))));
     if (!el) {
       rfRef.current.setViewport({ x, y, zoom: nextZoom }, { duration: 180 });
       return;
@@ -5964,9 +6008,9 @@ function StrategyBuilderModal(props) {
     <ReactFlowProvider>
       {/* Backdrop — clicks on it are intentionally ignored; use the close button to dismiss */}
       <div style={{position:'fixed',inset:0,zIndex:100010,background:'rgba(4,5,15,0.80)',
-        display:'flex',alignItems:'center',justifyContent:'center'}}>
-        {/* Modal window — same dimensions as original strategyV8 extract */}
-        <div style={{width:'min(1400px,97vw)',height:'min(90vh,880px)',
+        display:'flex',alignItems:'center',justifyContent:'center',padding:'clamp(12px, 2vh, 24px) clamp(12px, 2vw, 28px)',boxSizing:'border-box'}}>
+        {/* Modal — responsive; flow canvas auto-fits inside */}
+        <div style={{width:'min(1120px, calc(100vw - 96px))',height:'min(82vh, 780px)',maxHeight:'calc(100vh - 24px)',
           display:'flex',flexDirection:'column',overflow:'hidden',
           background:c.bg,
           border:`1px solid ${c.brH}`,
