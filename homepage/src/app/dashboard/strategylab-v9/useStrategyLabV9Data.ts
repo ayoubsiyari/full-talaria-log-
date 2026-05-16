@@ -144,7 +144,8 @@ export function useStrategyLabV9Data() {
       if (!res.ok || data.success === false) {
         throw new Error(data.error || `Save failed (${res.status})`);
       }
-      await loadStrategies();
+      // Refresh bank list in background so save UI can show success immediately after POST.
+      void loadStrategies();
     },
     [loadStrategies],
   );

@@ -63,6 +63,9 @@ class DrawingToolsManager {
         /** Coalesce expensive findDrawingsAtPoint hover to one per rAF. */
         this._proximityCheckRaf = null;
         this._proximityPendingEvent = null;
+        /** Shared click/dblclick timing for select vs settings (ms). */
+        this._doubleClickWindowMs = 400;
+        this._doubleClickMinGapMs = 50;
 
         /** Remote sync (session PATCH + cloud API) lags localStorage; drives toolbar save indicator */
         this._drawingsPendingTargets = { session: false, api: false };
@@ -972,9 +975,9 @@ class DrawingToolsManager {
             const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
             if (!svgNode) return false;
 
-            const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
-            const valueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY);
-            const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
+            const resolved = this._resolvePointerOverDrawings(event, { includeLocked: true });
+            const { mouseX, mouseY, drawingsAtPoint } = resolved;
+            const valueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
 
             let fallbackVolumeProfileDrawing = null;
             if ((!drawingsAtPoint || drawingsAtPoint.length === 0) && rawTargetNode && rawTargetNode.closest) {
@@ -1072,8 +1075,9 @@ class DrawingToolsManager {
                 chartWrapper.removeEventListener('mousemove', prevProx);
             }
             const onChartWrapperMouseMove = (event) => {
-                if (this.currentTool || this.isRectSelecting) return;
+                if (this.isRectSelecting) return;
                 if (this.drawingState && this.drawingState.isDrawing) return;
+                if (this.isDragging || this.isResizing || this.isCustomHandleDrag) return;
                 this._proximityPendingEvent = event;
                 if (this._proximityCheckRaf != null) return;
                 this._proximityCheckRaf = requestAnimationFrame(() => {
@@ -1115,12 +1119,39 @@ class DrawingToolsManager {
 
                 // Make drag-start use the same geometric hover hit zone, even when the
                 // cursor is not exactly on an SVG stroke target.
-                if (event.button !== 0 || this.currentTool || this.isRectSelecting || event.shiftKey || event.altKey) {
+                if (event.button !== 0 || this.isRectSelecting || event.shiftKey || event.altKey) {
                     return;
                 }
 
                 const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
                 if (!svgNode) return;
+
+                // Armed draw tool: same geometric hit zone as hover — select on click, settings on dblclick.
+                if (this.currentTool) {
+                    if (this.drawingState && this.drawingState.isDrawing) return;
+                    const armedHit = this._resolvePointerOverDrawings(event);
+                    if (!armedHit.primary || armedHit.primary.locked) return;
+                    if (event.detail >= 2) {
+                        const opened = openDrawingSettingsFromDoubleClick(event);
+                        if (opened) {
+                            this._suppressNextDrawingDblClickUntil = Date.now() + 600;
+                            suppressNextCanvasClick = true;
+                        }
+                        return;
+                    }
+                    if (this._tryOpenSettingsOnSecondClick(armedHit.primary, event)) {
+                        suppressNextCanvasClick = true;
+                        return;
+                    }
+                    this.selectDrawing(armedHit.primary, event.shiftKey);
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    suppressNextCanvasClick = true;
+                    return;
+                }
 
                 // Let Anchored VWAP anchor points use their own element drag behavior.
                 // Avoid canvas-capture direct-drag hijacking (which can no-op for anchored-vwap).
@@ -1128,25 +1159,10 @@ class DrawingToolsManager {
                 const isAnchoredVwapAnchorTarget = !!(rawTarget && rawTarget.closest && rawTarget.closest('.anchored-vwap-anchor, .anchored-vwap-anchor-hit'));
                 if (isAnchoredVwapAnchorTarget) return;
 
-                const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
-                let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
-                const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
-                if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
-                    drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
-                }
+                const resolvedCanvas = this._resolvePointerOverDrawings(event, { includeLocked: true });
+                const { mouseX, mouseY, drawingsAtPoint } = resolvedCanvas;
 
-                // VP/AV body hits from the canvas (not on a handle/label SVG element) must
-                // not consume the event — let the chart's pan handler run instead.
-                {
-                    const rawTgt = event.target;
-                    const isExplicitVpTarget = !!(rawTgt && rawTgt.closest
-                        && rawTgt.closest('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group'));
-                    if (!isExplicitVpTarget && drawingsAtPoint.length > 0) {
-                        const onlyVp = drawingsAtPoint.every(d => d && (
-                            d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile'));
-                        if (onlyVp) return;
-                    }
-                }
+                if (!drawingsAtPoint || drawingsAtPoint.length === 0) return;
 
                 if ((!drawingsAtPoint || drawingsAtPoint.length === 0) && event.detail >= 2) {
                     const openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
@@ -1901,35 +1917,14 @@ class DrawingToolsManager {
                 }
             }
 
-            // Same layout space as Chart (wrapper + __v9Zoom); raw SVG rect alone can mismatch selection vs hit-test.
-            const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
-            
-            // Check for stacked lines (more than 3 lines at this point)
+            const resolvedSvg = this._resolvePointerOverDrawings(event, { includeLocked: true });
+            let drawingsAtPoint = resolvedSvg.drawingsAtPoint;
+            const mouseX = resolvedSvg.mouseX;
+            const mouseY = resolvedSvg.mouseY;
+
             const stackedLinesInfo = this.findStackedLines(mouseX, mouseY, 3);
             if (stackedLinesInfo.isStacked) {
-                // [debug removed]
-                // Store stacked lines info for potential UI display or selection
                 this.lastStackedLines = stackedLinesInfo;
-            }
-            
-            // Find all drawings at this point using geometric hit test
-            let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
-
-            // VP/AV body hits from SVG (not on a handle) must not block panning.
-            // Filter them out so the handler falls through to "empty space" → deselect + pointer-events none.
-            {
-                const tgt = event.target;
-                const isExplicitVpTarget = !!(tgt && tgt.closest
-                    && tgt.closest('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group'));
-                if (!isExplicitVpTarget) {
-                    drawingsAtPoint = drawingsAtPoint.filter(d => !(
-                        d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile'));
-                }
-            }
-
-            const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
-            if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
-                drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
             }
 
             if (!isVolumeProfileLevelLineTarget && drawingsAtPoint.length > 0) {
@@ -1945,25 +1940,9 @@ class DrawingToolsManager {
             }
 
             if (drawingsAtPoint.length > 0 && !event.shiftKey && !event.altKey) {
-                // Double-click detection: check if this is the second click within
-                // timing on the same drawing. The first click may have come from the
-                // canvas (before SVG had pointer-events), so we share _drawingClickTimes.
                 const best = drawingsAtPoint[0];
-                if (best && !best.locked) {
-                    if (!this._drawingClickTimes) this._drawingClickTimes = {};
-                    const lastTime = this._drawingClickTimes[best.id] || 0;
-                    const now = Date.now();
-                    const elapsed = now - lastTime;
-                    if (elapsed > 50 && elapsed < 700) {
-                        this._drawingClickTimes[best.id] = 0;
-                        event.preventDefault();
-                        event.stopPropagation();
-                        this.selectDrawing(best, false);
-                        this.editDrawing(best, event.pageX || event.clientX, event.pageY || event.clientY);
-                        this._suppressNextDrawingDblClickUntil = Date.now() + 600;
-                        return;
-                    }
-                    this._drawingClickTimes[best.id] = now;
+                if (best && !best.locked && this._tryOpenSettingsOnSecondClick(best, event)) {
+                    return;
                 }
 
                 const lineTypeSet = new Set([
@@ -2415,6 +2394,18 @@ class DrawingToolsManager {
             return;
         }
         if (this._shouldIgnoreDrawStartOnExistingDrawing(event)) {
+            const hit = this._resolvePointerOverDrawings(event);
+            const targetDrawing = hit.primary;
+            if (targetDrawing && !targetDrawing.locked) {
+                if (this._tryOpenSettingsOnSecondClick(targetDrawing, event)) {
+                    this._abortInProgressPlacement();
+                    if (typeof event.preventDefault === 'function') event.preventDefault();
+                    if (typeof event.stopPropagation === 'function') event.stopPropagation();
+                    return;
+                }
+                this.selectDrawing(targetDrawing, event.shiftKey);
+            }
+            this._abortInProgressPlacement();
             if (typeof event.preventDefault === 'function') event.preventDefault();
             if (typeof event.stopPropagation === 'function') event.stopPropagation();
             return;
@@ -2877,14 +2868,77 @@ class DrawingToolsManager {
         }
 
         try {
-            const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
-            const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, {
-                includeVolumeProfileBodyHit: true
-            });
-            return Array.isArray(drawingsAtPoint) && drawingsAtPoint.length > 0;
+            const resolved = this._resolvePointerOverDrawings(event);
+            return !!(resolved.primary);
         } catch (_) {
             return false;
         }
+    }
+
+    /**
+     * One geometric hit-test for hover, canvas click, SVG click, and settings open.
+     * @returns {{ mouseX: number, mouseY: number, drawingsAtPoint: Array, primary: object|null }}
+     */
+    _resolvePointerOverDrawings(event, options = {}) {
+        const includeLocked = !!options.includeLocked;
+        const filterVolumeProfileBody = options.filterVolumeProfileBody !== false;
+        const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
+        let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, {
+            includeVolumeProfileBodyHit: true
+        });
+
+        const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(
+            mouseX,
+            mouseY,
+            { includeLocked }
+        );
+        if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
+            drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
+        }
+
+        if (filterVolumeProfileBody) {
+            const rawTgt = event && event.target;
+            const isExplicitVpTarget = !!(rawTgt && rawTgt.closest
+                && rawTgt.closest('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group'));
+            if (!isExplicitVpTarget) {
+                drawingsAtPoint = drawingsAtPoint.filter((d) => !(
+                    d && (d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile')
+                ));
+            }
+        }
+
+        const primary = drawingsAtPoint.length > 0 ? drawingsAtPoint[0] : null;
+        return { mouseX, mouseY, drawingsAtPoint, primary };
+    }
+
+    /**
+     * Second click within the shared window opens settings; first click records time only.
+     * @returns {boolean} true when settings were opened
+     */
+    _tryOpenSettingsOnSecondClick(drawing, event) {
+        if (!drawing || drawing.locked) return false;
+        if (!this._drawingClickTimes) this._drawingClickTimes = {};
+        const now = Date.now();
+        const lastTime = this._drawingClickTimes[drawing.id] || 0;
+        const elapsed = now - lastTime;
+        const windowMs = this._doubleClickWindowMs || 400;
+        const minGap = this._doubleClickMinGapMs || 50;
+        if (elapsed <= minGap || elapsed >= windowMs) {
+            this._drawingClickTimes[drawing.id] = now;
+            return false;
+        }
+        this._drawingClickTimes[drawing.id] = 0;
+        if (event) {
+            if (typeof event.preventDefault === 'function') event.preventDefault();
+            if (typeof event.stopPropagation === 'function') event.stopPropagation();
+            if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+        }
+        this.selectDrawing(drawing, false);
+        const pageX = event && (event.pageX ?? event.clientX);
+        const pageY = event && (event.pageY ?? event.clientY);
+        this.editDrawing(drawing, pageX, pageY);
+        this._suppressNextDrawingDblClickUntil = Date.now() + 600;
+        return true;
     }
 
     /** Drop an in-progress placement without deselecting finished drawings. */
@@ -4534,9 +4588,6 @@ class DrawingToolsManager {
             drawing.group.style('opacity', '0.7');
         }
         
-        // Double-click detection - store on drawing object to persist across re-renders
-        const DOUBLE_CLICK_DELAY = 400; // ms
-        
         // Select interactive elements (borders, lines, handles) - NOT fills or hit areas
         // STROKE-ONLY: Only lines/borders are clickable, NOT filled areas
         // Exclude .inline-editable-text elements - they handle their own click/dblclick events
@@ -4609,8 +4660,8 @@ class DrawingToolsManager {
             if (shapeTypes.includes(drawing.type)) {
                 const isShapeBorderHit = targetSel.classed('shape-border-hit');
                 // Use the same geometric hit-test as hover/direct-drag so the hover zone matches selection.
-                const drawingsAtPoint = self.findDrawingsAtPoint(mouseX, mouseY);
-                const clickedOnStroke = isShapeBorderHit || drawingsAtPoint.some(d => d && d.id === drawing.id);
+                const shapeHit = self._resolvePointerOverDrawings(event);
+                const clickedOnStroke = isShapeBorderHit || (shapeHit.primary && shapeHit.primary.id === drawing.id);
                 
                 if (!clickedOnStroke) {
                     // [debug removed]
@@ -4632,49 +4683,12 @@ class DrawingToolsManager {
             
             event.stopPropagation();
             
-            const now = Date.now();
-            // Store click time on manager instead of drawing to persist across re-renders
-            if (!self._drawingClickTimes) {
-                self._drawingClickTimes = {};
-            }
-            const lastClickTime = self._drawingClickTimes[drawing.id] || 0;
-            const timeSinceLastClick = now - lastClickTime;
-            
-            // [debug removed]
-            
-            // Double-click detection (within 400ms)
-            if (timeSinceLastClick < DOUBLE_CLICK_DELAY && timeSinceLastClick > 50) {
-                // Skip if clicking on inline-editable text (let element's dblclick handler work)
-                const targetSel = d3.select(event.target);
-                if (targetSel.classed('inline-editable-text')) {
-                    self._drawingClickTimes[drawing.id] = 0;
-                    return; // Let the element's own dblclick handler handle it
-                }
-
-                if (handleEmptyImageUploadInteraction(event)) {
-                    self._drawingClickTimes[drawing.id] = 0;
-                    return;
-                }
-                
-                // [debug removed]
-                
-                if (!drawing.locked) {
-                    self.selectDrawing(drawing);
-                    self.editDrawing(drawing, event.pageX, event.pageY);
-                    self._suppressNextDrawingDblClickUntil = Date.now() + 600;
-                    // [debug removed]
-                }
-                self._drawingClickTimes[drawing.id] = 0; // Reset
+            if (self._tryOpenSettingsOnSecondClick(drawing, event)) {
                 return;
             }
-            
-            self._drawingClickTimes[drawing.id] = now;
-            
+
             // Single click - select (with Shift for multi-select)
-            if (!self.currentTool && !drawing.locked) {
-                self.selectDrawing(drawing, event.shiftKey);
-            } else if (self.currentTool && !drawing.locked) {
-                // Armed tool: select hit target without starting a new stroke (see handleMouseDown guard).
+            if (!drawing.locked) {
                 self.selectDrawing(drawing, event.shiftKey);
             }
         };
@@ -4684,32 +4698,35 @@ class DrawingToolsManager {
             if (event.target && event.target.closest && event.target.closest('.rr-plus-btn')) {
                 return;
             }
-            // Skip if clicking on inline-editable text (let element's own handler work)
             const target = d3.select(event.target);
             if (target.classed('inline-editable-text')) {
-                return; // Let the element's own dblclick handler handle it
+                return;
             }
 
             if (handleEmptyImageUploadInteraction(event)) {
-                if (!self._drawingClickTimes) {
-                    self._drawingClickTimes = {};
-                }
+                if (!self._drawingClickTimes) self._drawingClickTimes = {};
                 self._drawingClickTimes[drawing.id] = 0;
                 return;
             }
-            
+
+            const suppressUntil = Number(self._suppressNextDrawingDblClickUntil || 0);
+            if (suppressUntil > 0 && Date.now() <= suppressUntil) {
+                event.stopPropagation();
+                event.preventDefault();
+                return;
+            }
+
             event.stopPropagation();
             event.preventDefault();
-            
+
             if (self.eraserMode) return;
-            
-            // [debug removed]
-            
+
             if (!drawing.locked) {
+                if (!self._drawingClickTimes) self._drawingClickTimes = {};
+                self._drawingClickTimes[drawing.id] = 0;
                 self.selectDrawing(drawing);
                 self.editDrawing(drawing, event.pageX, event.pageY);
                 self._suppressNextDrawingDblClickUntil = Date.now() + 600;
-                // [debug removed]
             }
         };
         
@@ -9138,8 +9155,6 @@ class DrawingToolsManager {
      * Check proximity to drawings and change cursor when over a line
      */
     checkDrawingProximity(event) {
-        const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
-        
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (!canvas) return;
 
@@ -9186,23 +9201,8 @@ class DrawingToolsManager {
             this._cursorOverInlineText = false;
         }
         
-        // Check if cursor is over any drawing (use same geometric hit-test as selection)
-        let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
-        const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
-        if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
-            drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
-        }
-
-        // VP/AV body hover should not show move cursor or lift SVG — only handle/label hover should.
-        {
-            const hoverTgt = event.target;
-            const isExplicitVpHover = !!(hoverTgt && hoverTgt.closest
-                && hoverTgt.closest('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .volume-profile-level-line, .resize-handle, .resize-handle-hit, .resize-handle-group'));
-            if (!isExplicitVpHover) {
-                drawingsAtPoint = drawingsAtPoint.filter(d => !(
-                    d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile'));
-            }
-        }
+        const hoverHit = this._resolvePointerOverDrawings(event, { includeLocked: true });
+        const drawingsAtPoint = hoverHit.drawingsAtPoint;
 
         if (drawingsAtPoint.length > 0) {
             const cursorStyle = 'move';

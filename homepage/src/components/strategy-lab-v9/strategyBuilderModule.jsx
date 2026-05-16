@@ -6145,8 +6145,29 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
   );
 }
 
+function BuilderSaveSpinner({ size = 14, color = '#fff' }) {
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: size,
+        height: size,
+        borderRadius: '50%',
+        border: `2px solid ${color}44`,
+        borderTopColor: color,
+        display: 'inline-block',
+        flexShrink: 0,
+        animation: 'tlrBuilderSpin 0.65s linear infinite',
+      }}
+    />
+  );
+}
+
 function StrategyBuilderModal(props) {
-  const { c, F, stratWizardStep, setStratWizardStep, stratBName, setStratBName, stratEditId, onSave, onClose, onOpenTemplates } = props;
+  const { c, F, stratWizardStep, setStratWizardStep, stratBName, setStratBName, stratEditId, onSave, onClose, onOpenTemplates, builderSavePhase } = props;
+  const isSaving = builderSavePhase === 'saving';
+  const isSaveSuccess = builderSavePhase === 'success';
+  const saveBusy = isSaving || isSaveSuccess;
   const [tplBtnHov, setTplBtnHov] = React.useState(false);
   const [showGeneralInfoRequired, setShowGeneralInfoRequired] = React.useState(false);
 
@@ -6214,18 +6235,52 @@ function StrategyBuilderModal(props) {
   const onPrimaryDown = (e, enabled=true) => { if(enabled){ e.currentTarget.style.filter='brightness(0.9)'; e.currentTarget.style.transform='scale(0.97)'; } };
   const onPrimaryUp = (e, enabled=true) => { if(enabled){ e.currentTarget.style.filter='brightness(1)'; e.currentTarget.style.transform='scale(1)'; } };
 
+  const handleSaveClick = () => {
+    if (!stratBName.trim() || saveBusy) return;
+    void Promise.resolve(onSave?.());
+  };
+
   return (
     <ReactFlowProvider>
+      <style>{'@keyframes tlrBuilderSpin{to{transform:rotate(360deg)}}'}</style>
       {/* Backdrop — clicks on it are intentionally ignored; use the close button to dismiss */}
       <div style={{position:'fixed',inset:0,zIndex:100010,background:'rgba(4,5,15,0.80)',
         display:'flex',alignItems:'center',justifyContent:'center',padding:'clamp(12px, 2vh, 24px) clamp(12px, 2vw, 28px)',boxSizing:'border-box'}}>
         {/* Modal — responsive; flow canvas auto-fits inside */}
         <div style={{width:'min(1120px, calc(100vw - 96px))',height:'min(82vh, 780px)',maxHeight:'calc(100vh - 24px)',
-          display:'flex',flexDirection:'column',overflow:'hidden',
+          display:'flex',flexDirection:'column',overflow:'hidden',position:'relative',
           background:c.bg,
           border:`1px solid ${c.brH}`,
           boxShadow:'0 32px 96px rgba(0,0,0,0.9), 0 0 0 1px rgba(140,160,255,0.13)'}}
           onClick={e=>e.stopPropagation()}>
+
+          {saveBusy && (
+            <div
+              role="status"
+              aria-live="polite"
+              aria-busy={isSaving}
+              style={{
+                position:'absolute',inset:0,zIndex:40,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:14,
+                background:isSaveSuccess?'rgba(4,8,20,0.88)':'rgba(4,8,20,0.72)',backdropFilter:'blur(2px)',
+              }}>
+              {isSaving ? (
+                <>
+                  <BuilderSaveSpinner size={36} color={c.acL} />
+                  <div style={{fontSize:14,fontWeight:800,color:c.tx,fontFamily:F,letterSpacing:'0.04em'}}>Saving strategy…</div>
+                  <div style={{fontSize:11,fontWeight:600,color:c.tm,fontFamily:F,maxWidth:280,textAlign:'center',lineHeight:1.5}}>
+                    Uploading your strategy. Large images can take a moment — please wait.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{width:52,height:52,borderRadius:'50%',background:`linear-gradient(135deg,#00A882,${c.gn})`,display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 24px rgba(0,212,161,0.35)'}}>
+                    <svg width={28} height={28} viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L19 7" stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/></svg>
+                  </div>
+                  <div style={{fontSize:15,fontWeight:800,color:c.gn,fontFamily:F,letterSpacing:'0.04em'}}>Strategy saved</div>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Top accent */}
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
@@ -6262,9 +6317,9 @@ function StrategyBuilderModal(props) {
                 </button>
               )}
               {/* Close button */}
-              <div onClick={onClose}
+              <div onClick={()=>{ if (!isSaving) onClose?.(); }}
                 style={{width:28,height:28,display:'flex',alignItems:'center',justifyContent:'center',
-                  cursor:'default',color:c.tm,borderRadius:0,transition:'color 0.12s, background 0.12s, transform 0.08s'}}
+                  cursor:isSaving?'not-allowed':'default',color:c.tm,borderRadius:0,transition:'color 0.12s, background 0.12s, transform 0.08s',opacity:isSaving?0.35:1}}
                 onMouseEnter={e=>{e.currentTarget.style.color=c.rd;e.currentTarget.style.background='rgba(255,80,104,0.08)';}}
                 onMouseLeave={e=>{e.currentTarget.style.color=c.tm;e.currentTarget.style.background='transparent';e.currentTarget.style.transform='scale(1)';}}
                 onMouseDown={e=>{e.currentTarget.style.transform='scale(0.92)';}}
@@ -6324,8 +6379,8 @@ function StrategyBuilderModal(props) {
           {stratWizardStep!==2&&(
             <div data-strategy-builder-footer="1" style={{flexShrink:0,height:56,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px',borderTop:`1px solid ${c.brH}`,background:c.el}}>
               {/* Cancel / Back */}
-              <button onClick={stratWizardStep===1?onClose:goPrev}
-                style={secondaryBtnStyle}
+              <button onClick={isSaving?undefined:(stratWizardStep===1?onClose:goPrev)} disabled={isSaving}
+                style={{...secondaryBtnStyle,opacity:isSaving?0.45:1,cursor:isSaving?'not-allowed':'default'}}
                 onMouseEnter={onSecondaryEnter}
                 onMouseLeave={onSecondaryLeave}
                 onMouseDown={onSecondaryDown}
@@ -6351,21 +6406,35 @@ function StrategyBuilderModal(props) {
                   <svg width={11} height={11} viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                 </button>
               ):(
-                <button onClick={stratBName.trim()?onSave:undefined} disabled={!stratBName.trim()}
-                  style={{height:30,padding:'0 14px',minWidth:120,display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6,
+                <button onClick={handleSaveClick} disabled={!stratBName.trim()||saveBusy} aria-busy={isSaving}
+                  style={{height:30,padding:'0 14px',minWidth:148,display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6,
                     fontSize:12,fontWeight:700,letterSpacing:'0.02em',fontFamily:F,borderRadius:0,
-                    color:stratBName.trim()?'#fff':c.tm,
-                    background:stratBName.trim()?`linear-gradient(135deg,#00A882,${c.gn})`:'rgba(140,160,255,0.10)',
-                    border:`1px solid ${stratBName.trim()?'rgba(0,212,161,0.5)':'rgba(140,160,255,0.18)'}`,
-                    boxShadow:stratBName.trim()?'0 2px 8px rgba(0,212,161,0.25)':'none',
-                    cursor:'default',opacity:stratBName.trim()?1:0.55,
+                    color:stratBName.trim()&&!saveBusy?'#fff':c.tm,
+                    background:stratBName.trim()&&!saveBusy?`linear-gradient(135deg,#00A882,${c.gn})`:'rgba(140,160,255,0.10)',
+                    border:`1px solid ${stratBName.trim()&&!saveBusy?'rgba(0,212,161,0.5)':'rgba(140,160,255,0.18)'}`,
+                    boxShadow:stratBName.trim()&&!saveBusy?'0 2px 8px rgba(0,212,161,0.25)':'none',
+                    cursor:saveBusy?'wait':'default',opacity:stratBName.trim()?saveBusy?0.85:1:0.55,
                     transition:'background 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease, transform 0.08s ease'}}
-                  onMouseEnter={e=>{if(stratBName.trim()){e.currentTarget.style.background=`linear-gradient(135deg,#00C499,#11E4B5)`;e.currentTarget.style.boxShadow='0 2px 14px rgba(0,212,161,0.5)';}}}
-                  onMouseLeave={e=>{if(stratBName.trim()){e.currentTarget.style.background=`linear-gradient(135deg,#00A882,${c.gn})`;e.currentTarget.style.boxShadow='0 2px 8px rgba(0,212,161,0.25)';e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}
-                  onMouseDown={e=>{if(stratBName.trim()){e.currentTarget.style.filter='brightness(0.9)';e.currentTarget.style.transform='scale(0.97)';}}}
-                  onMouseUp={e=>{if(stratBName.trim()){e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}>
-                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L19 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
-                  {stratEditId?'Save Changes':'Create Strategy'}
+                  onMouseEnter={e=>{if(stratBName.trim()&&!saveBusy){e.currentTarget.style.background=`linear-gradient(135deg,#00C499,#11E4B5)`;e.currentTarget.style.boxShadow='0 2px 14px rgba(0,212,161,0.5)';}}}
+                  onMouseLeave={e=>{if(stratBName.trim()&&!saveBusy){e.currentTarget.style.background=`linear-gradient(135deg,#00A882,${c.gn})`;e.currentTarget.style.boxShadow='0 2px 8px rgba(0,212,161,0.25)';e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}
+                  onMouseDown={e=>{if(stratBName.trim()&&!saveBusy){e.currentTarget.style.filter='brightness(0.9)';e.currentTarget.style.transform='scale(0.97)';}}}
+                  onMouseUp={e=>{if(stratBName.trim()&&!saveBusy){e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}>
+                  {isSaving ? (
+                    <>
+                      <BuilderSaveSpinner size={13} />
+                      Saving…
+                    </>
+                  ) : isSaveSuccess ? (
+                    <>
+                      <svg width={12} height={12} viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L19 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+                      Saved
+                    </>
+                  ) : (
+                    <>
+                      <svg width={12} height={12} viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L19 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+                      {stratEditId?'Save Changes':'Create Strategy'}
+                    </>
+                  )}
                 </button>
               )}
             </div>

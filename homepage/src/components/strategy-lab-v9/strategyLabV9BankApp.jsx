@@ -123,6 +123,8 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const [stratStyleFilter, setStratStyleFilter] = useState("All");
   const [stratLayoutMode, setStratLayoutMode] = useState("rows");
   const [stratBuilderOpen, setStratBuilderOpen] = useState(false);
+  /** null | 'saving' | 'success' — drives builder overlay + footer button while POST runs */
+  const [stratBuilderSavePhase, setStratBuilderSavePhase] = useState(null);
   const [stratTemplatePickerOpen, setStratTemplatePickerOpen] = useState(false);
   const [stratEditId, setStratEditId] = useState(null);
   const [savedCommunityIds, setSavedCommunityIds] = useState(new Set());
@@ -774,6 +776,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   };
 
   const saveBuilder = async () => {
+    if (stratBuilderSavePhase === "saving") return;
     const strat = {
       name: stratBName.trim()||"Untitled Strategy",
       icon: stratBLogoEmoji || "",
@@ -794,15 +797,20 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
       canvasEdges: canvasEdges,
       createdAt: stratEditId ? (myStrategies.find(s=>s.id===stratEditId)?.createdAt||new Date().toISOString()) : new Date().toISOString(),
     };
+    setStratBuilderSavePhase("saving");
     try {
       await persistStrategy(strat, stratEditId);
+      setStratBuilderSavePhase("success");
       void reloadSessions();
+      await new Promise((r) => setTimeout(r, 900));
       setStratBuilderOpen(false);
       setStratEditId(null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg === "Not signed in") window.location.href = loginUrlWithNext();
       else window.alert(msg);
+    } finally {
+      setStratBuilderSavePhase(null);
     }
   };
 
@@ -1192,8 +1200,9 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
           canvasInspectorCollapsed={canvasInspectorCollapsed} setCanvasInspectorCollapsed={setCanvasInspectorCollapsed}
           stratEditId={stratEditId}
           sessions={strategyReviewSessions}
+          builderSavePhase={stratBuilderSavePhase}
           onSave={saveBuilder}
-          onClose={()=>setStratBuilderOpen(false)}
+          onClose={()=>{ if (stratBuilderSavePhase !== "saving") { setStratBuilderOpen(false); setStratEditId(null); } }}
           onOpenTemplates={()=>setStratTemplatePickerOpen(true)}
         />
       )}
