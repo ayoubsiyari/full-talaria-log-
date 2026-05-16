@@ -64,19 +64,7 @@ else:
          allow_headers=['Content-Type', 'Authorization', 'X-Requested-With'],
          methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'])
 
-# Register routes
-app.register_blueprint(auth_bp,    url_prefix='/api/auth')
-app.register_blueprint(journal_bp, url_prefix='/api/journal')
-app.register_blueprint(profile_bp, url_prefix='/api/profile')
-app.register_blueprint(admin_bp,   url_prefix='/api/admin')   # ← register admin
-app.register_blueprint(strategy_bp, url_prefix='/api')
-app.register_blueprint(feed_bp, url_prefix='/api')
-app.register_blueprint(template_bp, url_prefix='/api')
-app.register_blueprint(feature_flags_bp, url_prefix='/api') # Strategy routes
-app.register_blueprint(subscription_bp, url_prefix='/api/subscriptions')  # Subscription management
-app.register_blueprint(chart_bp, url_prefix='/api/chart')  # Chart drawings
-
-# Paid journal features (auth + subscription); public browse endpoints are skipped.
+# Paid journal guards MUST be attached before register_blueprint (Flask 3.x).
 register_paid_journal_guard(strategy_bp, required_module="strategies")
 register_paid_journal_guard(profile_bp, required_module="journal")
 register_paid_journal_guard(chart_bp, required_module="chart")
@@ -94,6 +82,18 @@ register_paid_journal_guard(
     feature_flags_bp,
     skip_endpoints=frozenset({"feature_flags.get_public_feature_flags"}),
 )
+
+# Register routes
+app.register_blueprint(auth_bp,    url_prefix='/api/auth')
+app.register_blueprint(journal_bp, url_prefix='/api/journal')
+app.register_blueprint(profile_bp, url_prefix='/api/profile')
+app.register_blueprint(admin_bp,   url_prefix='/api/admin')   # ← register admin
+app.register_blueprint(strategy_bp, url_prefix='/api')
+app.register_blueprint(feed_bp, url_prefix='/api')
+app.register_blueprint(template_bp, url_prefix='/api')
+app.register_blueprint(feature_flags_bp, url_prefix='/api') # Strategy routes
+app.register_blueprint(subscription_bp, url_prefix='/api/subscriptions')  # Subscription management
+app.register_blueprint(chart_bp, url_prefix='/api/chart')  # Chart drawings
 
 @app.route('/api/admin/dashboard-modules', methods=['GET'])
 @jwt_required()
