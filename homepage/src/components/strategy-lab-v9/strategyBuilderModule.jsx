@@ -5964,9 +5964,9 @@ function StrategyBuilderModal(props) {
     <ReactFlowProvider>
       {/* Backdrop — clicks on it are intentionally ignored; use the close button to dismiss */}
       <div style={{position:'fixed',inset:0,zIndex:100010,background:'rgba(4,5,15,0.80)',
-        display:'flex',alignItems:'center',justifyContent:'center',padding:24,boxSizing:'border-box'}}>
-        {/* Modal window — narrower than full dashboard rail so it reads as a focused panel */}
-        <div style={{width:'min(1040px, calc(100vw - 48px))',height:'min(78vh, 720px)',maxHeight:'calc(100vh - 48px)',
+        display:'flex',alignItems:'center',justifyContent:'center'}}>
+        {/* Modal window — same dimensions as original strategyV8 extract */}
+        <div style={{width:'min(1400px,97vw)',height:'min(90vh,880px)',
           display:'flex',flexDirection:'column',overflow:'hidden',
           background:c.bg,
           border:`1px solid ${c.brH}`,
