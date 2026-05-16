@@ -342,7 +342,6 @@ function SessionInfoButton({
       onClick={e => e.stopPropagation()}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
-      title={label}
       role="button"
       tabIndex={0}
       aria-label={label}
