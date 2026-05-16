@@ -7680,6 +7680,7 @@ def _user_public_dict(user: User, db=None):
     mod_map = effective_dashboard_modules(
         user, fully_entitled=fully_entitled, grants_override=grants
     )
+    has_dashboard_access = fully_entitled or any(mod_map.values())
     return {
         "id": user.id,
         "name": user.name,
@@ -7689,6 +7690,7 @@ def _user_public_dict(user: User, db=None):
         "base_currency": getattr(user, 'base_currency', 'USD'),
         "is_active": bool(user.is_active),
         "has_journal_access": fully_entitled,
+        "has_dashboard_access": has_dashboard_access,
         "dashboard_modules": mod_map,
         "access_expires_at": expires.isoformat() if expires else None,
         "max_sessions": getattr(user, 'max_sessions', 1) or 1,
@@ -7794,7 +7796,10 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
             last_active_at=datetime.utcnow(),
         )
         db.add(sess)
+        if _user_entitles_journal_db(db, user):
+            user.has_journal_access = True
         db.commit()
+        db.refresh(user)
 
         _set_session_cookie(response, session_id, request=request)
         try:
@@ -7802,7 +7807,7 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
             db.commit()
         except Exception:
             db.rollback()
-        return {"success": True, "user": _user_public_dict(user)}
+        return {"success": True, "user": _user_public_dict(user, db=db)}
     finally:
         db.close()
 
@@ -9546,8 +9551,12 @@ async def admin_update_user(user_id: int, payload: _UpdateUserIn, request: Reque
                 user.access_expires_at = datetime.utcnow() + timedelta(days=payload.access_days)
         if payload.has_journal_access is not None:
             user.has_journal_access = bool(payload.has_journal_access)
+            if user.has_journal_access:
+                user.dashboard_module_grants = None
         if payload.dashboard_module_grants is not None:
             _set_user_module_grants(user, payload.dashboard_module_grants)
+            if normalize_module_grants(payload.dashboard_module_grants):
+                user.has_journal_access = False
         db.commit()
         db.refresh(user)
         return {"user": _user_public_dict(user, db=db)}
@@ -11421,7 +11430,7 @@ def _user_entitles_journal_db(db, user: User) -> bool:
         .first()
     ):
         return True
-    if user.has_journal_access and not (user.stripe_customer_id or ""):
+    if user.has_journal_access:
         return True
     return False
 

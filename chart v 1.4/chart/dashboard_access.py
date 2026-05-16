@@ -54,5 +54,14 @@ def user_has_dashboard_module(
     )
 
 
+def user_has_any_dashboard_access(user, *, fully_entitled: bool, grants_override=None) -> bool:
+    if not user:
+        return False
+    if fully_entitled:
+        return True
+    mods = effective_dashboard_modules(user, fully_entitled=False, grants_override=grants_override)
+    return any(mods.values())
+
+
 def modules_catalog() -> list[dict[str, str]]:
     return [{"key": k, "label": label} for k, label in DASHBOARD_MODULES]

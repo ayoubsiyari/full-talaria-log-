@@ -438,7 +438,11 @@ def update_user(user_id):
         return jsonify({"error": "Only admins can update users"}), 403
 
     try:
-        from dashboard_access import effective_dashboard_modules, normalize_module_grants
+        from dashboard_access import (
+            effective_dashboard_modules,
+            normalize_module_grants,
+            user_has_any_dashboard_access,
+        )
         from subscription_access import user_entitles_journal
 
         user = User.query.get_or_404(user_id)
@@ -464,17 +468,22 @@ def update_user(user_id):
             user.is_active = bool(data['is_active'])
         if 'has_journal_access' in data:
             user.has_journal_access = bool(data['has_journal_access'])
+            if user.has_journal_access:
+                user.dashboard_module_grants = None
         if 'dashboard_module_grants' in data:
             grants = normalize_module_grants(data.get('dashboard_module_grants'))
             user.dashboard_module_grants = (
                 json.dumps(grants, separators=(",", ":")) if grants else None
             )
+            if grants:
+                user.has_journal_access = False
         
         db.session.commit()
         
         log_admin_action("UPDATE_USER", f"Updated user {user_id}")
         
         entitled = user_entitles_journal(user)
+        mods = effective_dashboard_modules(user)
         return jsonify({
             "message": "User updated successfully",
             "user": {
@@ -483,7 +492,8 @@ def update_user(user_id):
                 "is_admin": user.is_admin,
                 "is_active": user.is_active,
                 "has_journal_access": entitled,
-                "dashboard_modules": effective_dashboard_modules(user),
+                "has_dashboard_access": user_has_any_dashboard_access(user),
+                "dashboard_modules": mods,
             }
         }), 200
         

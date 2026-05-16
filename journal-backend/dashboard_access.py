@@ -71,5 +71,14 @@ def user_has_dashboard_module(user, module: str) -> bool:
     return bool(effective_dashboard_modules(user).get(key))
 
 
+def user_has_any_dashboard_access(user) -> bool:
+    if not user:
+        return False
+    if user_entitles_journal(user):
+        return True
+    grants = normalize_module_grants(_raw_grants_dict(getattr(user, "dashboard_module_grants", None)))
+    return any(grants.values())
+
+
 def modules_catalog() -> list[dict[str, str]]:
     return [{"key": k, "label": label} for k, label in DASHBOARD_MODULES]

@@ -220,15 +220,18 @@ def login_user():
         record_failed_login(client_ip, email)
         return jsonify({"error": "Incorrect password. Please try again or reset your password if you've forgotten it."}), 401
 
-    # Journal entitlement (Stripe, admin extension, legacy comps)
-    has_journal_access = user_entitles_journal(user)
+    # Sync full-access flag when subscription/extension entitles; never wipe admin grants on login.
+    from dashboard_access import effective_dashboard_modules, user_has_any_dashboard_access
 
-    if user.has_journal_access != has_journal_access:
-        user.has_journal_access = has_journal_access
+    if user_entitles_journal(user):
+        user.has_journal_access = True
         try:
             db.session.commit()
         except Exception:
             db.session.rollback()
+
+    has_journal_access = user_entitles_journal(user)
+    dashboard_modules = effective_dashboard_modules(user)
     
     # Successful login - clear failed attempts for this IP
     clear_failed_attempts(client_ip)
@@ -256,7 +259,9 @@ def login_user():
             "email_verified": True,
             "is_admin": user.is_admin,
             "has_active_profile": has_active_profile,
-            "has_journal_access": has_journal_access
+            "has_journal_access": has_journal_access,
+            "has_dashboard_access": user_has_any_dashboard_access(user),
+            "dashboard_modules": dashboard_modules,
         }
     }), 200
 
@@ -520,8 +525,11 @@ def validate_token():
         if not user:
             return jsonify({"error": "User not found"}), 404
 
+        from dashboard_access import effective_dashboard_modules, user_has_any_dashboard_access
+
         has_journal_access = user_entitles_journal(user)
-            
+        dashboard_modules = effective_dashboard_modules(user)
+
         return jsonify({
             "valid": True,
             "user": {
@@ -529,7 +537,9 @@ def validate_token():
                 "email": user.email,
                 "is_admin": user.is_admin,
                 "email_verified": True,
-                "has_journal_access": has_journal_access
+                "has_journal_access": has_journal_access,
+                "has_dashboard_access": user_has_any_dashboard_access(user),
+                "dashboard_modules": dashboard_modules,
             }
         }), 200
     except Exception as e:

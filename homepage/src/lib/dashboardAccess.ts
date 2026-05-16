@@ -15,13 +15,24 @@ export const DASHBOARD_MODULE_LABELS: Record<string, string> = {
 export type DashboardUser = {
   role?: string;
   has_journal_access?: boolean;
+  /** True when full subscription/manual access OR any admin-granted section. */
+  has_dashboard_access?: boolean;
   dashboard_modules?: Record<string, boolean>;
 };
 
+/** Full subscription, manual full access, admin extension, or admin role. */
 export function userHasJournalEntitlement(user: DashboardUser | null): boolean {
   if (!user) return false;
   if (user.role === "admin") return true;
   return !!user.has_journal_access;
+}
+
+export function userHasAnyDashboardAccess(user: DashboardUser | null): boolean {
+  if (!user) return false;
+  if (userHasJournalEntitlement(user)) return true;
+  if (user.has_dashboard_access) return true;
+  const mods = user.dashboard_modules;
+  return !!(mods && Object.values(mods).some(Boolean));
 }
 
 export function userHasDashboardModule(

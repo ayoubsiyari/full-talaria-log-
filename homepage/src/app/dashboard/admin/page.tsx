@@ -136,7 +136,7 @@ export default function AdminDashboard() {
       is_active:eActive,
       dashboard_module_grants: grants,
     })});
-    if(r.ok){msg("Saved");setEditing(null);load();}else msg("Failed",false);
+    if(r.ok){msg("Saved — user should refresh the dashboard or log in again.");setEditing(null);load();}else msg("Failed",false);
   }
   async function deleteUser(id:number){
     if(!confirm("Delete this user permanently?"))return;

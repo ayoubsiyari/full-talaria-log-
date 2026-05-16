@@ -21,6 +21,7 @@ type User = {
   email: string;
   role: string;
   has_journal_access?: boolean;
+  has_dashboard_access?: boolean;
   dashboard_modules?: Record<string, boolean>;
 };
 
@@ -332,7 +333,7 @@ export default function DashboardLayout({
       });
   }, []);
 
-  /** Re-sync after checkout in another tab or Stripe return (keeps gate accurate). */
+  /** Re-sync after checkout, admin access change, or tab focus (keeps gate accurate). */
   React.useEffect(() => {
     const onVis = () => {
       if (document.visibilityState !== "visible" || !authReady) return;
@@ -340,8 +341,18 @@ export default function DashboardLayout({
         .then((u) => setUser(u))
         .catch(() => {});
     };
+    const onFocus = () => {
+      if (!authReady) return;
+      fetchMe()
+        .then((u) => setUser(u))
+        .catch(() => {});
+    };
     document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [authReady]);
 
   const gatedPath = dashboardPathRequiresPaidJournal(pathname);

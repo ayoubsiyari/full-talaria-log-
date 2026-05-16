@@ -4475,7 +4475,8 @@ function openEditModal(userId) {
     setEditAccessMode('unlimited');
   }
   const mods = user.dashboard_modules || {};
-  const fullAccess = !!user.has_journal_access;
+  const modVals = Object.values(mods);
+  const fullAccess = !!user.has_journal_access || (modVals.length > 0 && modVals.every(Boolean));
   if ($('editFullJournalAccess')) $('editFullJournalAccess').checked = fullAccess;
   renderEditModuleGrantInputs(mods);
   $('editModalTitle').textContent = `Edit: ${user.name}`;
@@ -4511,18 +4512,21 @@ async function saveUser() {
     if (d > 0) body.access_days = d;
   }
   const fullJournal = $('editFullJournalAccess') && $('editFullJournalAccess').checked;
-  body.has_journal_access = !!fullJournal;
   const grants = {};
   if (!fullJournal) {
     document.querySelectorAll('.edit-mod-cb').forEach(function (el) {
       const k = el.getAttribute('data-mod');
       if (k && el.checked) grants[k] = true;
     });
+    body.has_journal_access = false;
+    body.dashboard_module_grants = grants;
+  } else {
+    body.has_journal_access = true;
+    body.dashboard_module_grants = null;
   }
-  body.dashboard_module_grants = grants;
   try {
     await api(`/api/admin/users/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    toast('User updated', 'ok');
+    toast('User updated — they should refresh the dashboard (or log in again) to apply access.', 'ok');
     closeEditModal();
     await loadUsers();
   } catch (e) { toast(e.message, 'err'); }

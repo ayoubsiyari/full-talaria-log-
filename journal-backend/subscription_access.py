@@ -2,8 +2,8 @@
 Single source of truth for journal API access with Stripe subscriptions.
 
 Stripe customers must have status active or trialing on a Subscription row.
-The legacy User.has_journal_access flag is still used for manual / non-Stripe
-comp access (no stripe_customer_id).
+User.has_journal_access is the admin "full access" flag (all sections).
+Per-section grants use User.dashboard_module_grants (see dashboard_access).
 
 Admin-granted login extensions use User.access_expires_at (UTC): access until
 that time even if Stripe is past_due (temporary goodwill access).
@@ -34,7 +34,8 @@ def user_entitles_journal(user):
     Whether journal APIs should allow this user.
     Admins: always. Admin extension window: until access_expires_at.
     Stripe subscribers: only active/trialing subscription.
-    Manual grants: has_journal_access when there is no Stripe customer id.
+    Manual full access: admin sets User.has_journal_access (any Stripe status).
+    Partial sections: dashboard_module_grants (not full journal entitlement).
     """
     if getattr(user, "role", None) == "admin":
         return True
@@ -42,8 +43,6 @@ def user_entitles_journal(user):
         return True
     if subscription_entitles_journal(user.id):
         return True
-    if getattr(user, "has_journal_access", False) and not getattr(
-        user, "stripe_customer_id", None
-    ):
+    if getattr(user, "has_journal_access", False):
         return True
     return False
