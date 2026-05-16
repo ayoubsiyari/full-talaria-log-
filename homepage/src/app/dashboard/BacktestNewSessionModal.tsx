@@ -5,7 +5,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { SymbolBadge } from "./backtestModal/SymbolBadge";
 import { normalizeBadgeAsset } from "./backtestModal/symbolIcons";
-import { JOURNAL_API_BASE } from "@/lib/journalApi";
+import { JOURNAL_API_BASE, journalAuthHeaders, syncJournalTokenFromSession } from "@/lib/journalApi";
 
 const F = "'Exo 2', sans-serif";
 
@@ -212,6 +212,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   type StrategyOption = {
     value: string;
     label: string;
+    description: string;
     variables: unknown[];
   };
 
@@ -369,11 +370,9 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     if (!open) return;
 
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    const strategyHeaders: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) strategyHeaders.Authorization = `Bearer ${token}`;
     const journalInit: RequestInit = {
       credentials: "include",
-      headers: strategyHeaders,
+      headers: journalAuthHeaders(),
     };
 
     const payloadToOptions = (payload: any): StrategyOption[] => {
@@ -388,7 +387,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
           const name = String(s?.name || "").trim();
           if (!id || !name) return null;
           const vars = Array.isArray(s?.strategy_definition?.variables) ? s.strategy_definition.variables : [];
-          return { value: `strategy:${id}`, label: name, variables: vars } as StrategyOption;
+          const desc = String(s?.description || "").trim();
+          return { value: `strategy:${id}`, label: name, description: desc, variables: vars } as StrategyOption;
         })
         .filter((x: StrategyOption | null): x is StrategyOption => !!x);
     };
@@ -396,6 +396,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     let cancelled = false;
 
     void (async () => {
+      await syncJournalTokenFromSession();
       /** Prefer journal first: FastAPI `/api/strategies` returns 200 + `{ strategies: [] }` as a shim and often wins Promise.any(), hiding real journal data. */
       try {
         const rj = await fetch(`${JOURNAL_API_BASE}/strategies`, journalInit);
@@ -590,6 +591,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
         : null;
     const strategy_variables = selectedStrategy?.variables || [];
     const strategy_name = selectedStrategy?.label || (newSessPlaybook || "General");
+    const strategy_description = selectedStrategy?.description || "";
     const playbook_display = strategy_name;
     const startBalance = String(newSessCapital || "10000");
     const accountCurrency = newSessCurrency || "USD";
@@ -667,6 +669,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       strategy_id,
       strategy_variables,
       strategy_name,
+      strategy_description,
       fileId,
       fileName,
       files: selectedFilesArray,

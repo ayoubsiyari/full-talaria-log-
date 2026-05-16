@@ -13,6 +13,11 @@ import {
   formatJournalCellRawTitle,
   type JournalApiTradeItem,
 } from "./sessionJournalUtils";
+import {
+  JOURNAL_API_BASE,
+  journalAuthHeaders,
+  syncJournalTokenFromSession,
+} from "@/lib/journalApi";
 
 /* ── Design system tokens (dark mode) ── */
 const c = {
@@ -241,6 +246,24 @@ function sessionTickerRows(sess: Session): { sym: string; asset?: string }[] {
   return [];
 }
 
+const EMPTY_SESSION_DESC =
+  "No session notes. Add notes in the new-session form (Description) or when editing a session.";
+const EMPTY_STRATEGY_DESC =
+  "No strategy description. Add one in Strategy lab, or pick a linked strategy when creating the session.";
+
+function strategyIdFromConfig(cfg: Record<string, unknown> | undefined): number | null {
+  if (!cfg) return null;
+  const raw = cfg.strategy_id;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return raw;
+  if (typeof raw === "string" && /^\d+$/.test(raw.trim())) return parseInt(raw.trim(), 10);
+  const pb = cfg.playbook;
+  if (typeof pb === "string" && pb.startsWith("strategy:")) {
+    const n = parseInt(pb.split(":")[1] || "", 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  return null;
+}
+
 function sessionDescription(sess: Session): string | undefined {
   const cfg = sess.config as Record<string, unknown> | undefined;
   if (!cfg) return undefined;
@@ -250,8 +273,15 @@ function sessionDescription(sess: Session): string | undefined {
   return t || undefined;
 }
 
+function sessionDescriptionText(sess: Session): string {
+  return sessionDescription(sess) ?? EMPTY_SESSION_DESC;
+}
+
 /** Strategy playbook text — not the session notes field (`config.description`). */
-function strategyDescription(sess: Session): string | undefined {
+function strategyDescription(
+  sess: Session,
+  strategyDescById?: Record<number, string>,
+): string | undefined {
   const cfg = sess.config as Record<string, unknown> | undefined;
   if (!cfg) return undefined;
   const sn = typeof cfg.strategy_name === "string" ? cfg.strategy_name.trim() : "";
@@ -280,7 +310,20 @@ function strategyDescription(sess: Session): string | undefined {
     if (sn && t === sn) continue;
     return t;
   }
+
+  const sid = strategyIdFromConfig(cfg);
+  if (sid && strategyDescById?.[sid]) {
+    const t = strategyDescById[sid].trim();
+    if (t && (!sn || t !== sn)) return t;
+  }
   return undefined;
+}
+
+function strategyDescriptionText(
+  sess: Session,
+  strategyDescById?: Record<number, string>,
+): string {
+  return strategyDescription(sess, strategyDescById) ?? EMPTY_STRATEGY_DESC;
 }
 
 function SessionInfoButton({
@@ -377,6 +420,36 @@ export function BacktestView() {
   const [journalLoading, setJournalLoading] = useState(false);
   type DescPop = { key: string; x: number; y: number; title: string; kind: string; desc: string };
   const [descPop, setDescPop] = useState<DescPop | null>(null);
+  const [strategyDescById, setStrategyDescById] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      await syncJournalTokenFromSession();
+      try {
+        const res = await fetch(`${JOURNAL_API_BASE}/strategies`, {
+          credentials: "include",
+          headers: journalAuthHeaders(),
+        });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          strategies?: { id?: number; description?: string }[];
+        };
+        const map: Record<number, string> = {};
+        for (const s of data.strategies || []) {
+          if (typeof s.id !== "number" || !s.description) continue;
+          const t = String(s.description).trim();
+          if (t) map[s.id] = t;
+        }
+        if (!cancelled) setStrategyDescById(map);
+      } catch {
+        /* journal optional */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const showDescPop = (
     e: React.MouseEvent<HTMLDivElement>,
@@ -1082,8 +1155,8 @@ export function BacktestView() {
                 const createdStr = sess.created_at ? new Date(sess.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
                 const cfg = sess.config as Record<string, unknown> | undefined;
                 const cfgS = sess.config as Record<string, string> | undefined;
-                const stratDesc = strategyDescription(sess);
-                const sessDesc = sessionDescription(sess);
+                const stratDesc = strategyDescriptionText(sess, strategyDescById);
+                const sessDesc = sessionDescriptionText(sess);
                 const tickerRows = sessionTickerRows(sess);
                 const costsOn = !!(cfgS?.commission && cfgS.commission !== "None")
                   || (cfg?.trading_costs != null && cfg.trading_costs !== "");
@@ -1163,14 +1236,12 @@ export function BacktestView() {
                             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                             flex: 1, minWidth: 0,
                           }}>{sess.name || "—"}</div>
-                          {sessDesc && (
-                            <SessionInfoButton
-                              active={descPop?.key === sessPopKey}
-                              label="Session description"
-                              onEnter={e => showDescPop(e, sessPopKey, "Session", sess.name || "Session", sessDesc)}
-                              onLeave={() => setDescPop(null)}
-                            />
-                          )}
+                          <SessionInfoButton
+                            active={descPop?.key === sessPopKey}
+                            label="Session description"
+                            onEnter={e => showDescPop(e, sessPopKey, "Session", sess.name || "Session", sessDesc)}
+                            onLeave={() => setDescPop(null)}
+                          />
                         </div>
                         <div style={{ fontSize: 8, fontWeight: 500, color: c.tm, fontFamily: F, whiteSpace: "nowrap" }}>{createdStr}</div>
                       </div>
@@ -1197,14 +1268,12 @@ export function BacktestView() {
                         fontWeight: 600, color: c.ts, lineHeight: 1.3, fontFamily: F, flex: 1,
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}>{stratName}</div>
-                      {stratDesc && (
-                        <SessionInfoButton
-                          active={descPop?.key === stratPopKey}
-                          label="Strategy description"
-                          onEnter={e => showDescPop(e, stratPopKey, "Strategy", stratName, stratDesc)}
-                          onLeave={() => setDescPop(null)}
-                        />
-                      )}
+                      <SessionInfoButton
+                        active={descPop?.key === stratPopKey}
+                        label="Strategy description"
+                        onEnter={e => showDescPop(e, stratPopKey, "Strategy", stratName, stratDesc)}
+                        onLeave={() => setDescPop(null)}
+                      />
                     </div>
 
                     {/* Row 3: Mode | Asset | Symbols (symbols top-aligned, full text — not centered) */}
@@ -1358,8 +1427,8 @@ export function BacktestView() {
                 const createdStr = sess.created_at ? new Date(sess.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
                 const cfg = sess.config as Record<string, unknown> | undefined;
                 const cfgS = sess.config as Record<string, string> | undefined;
-                const stratDesc = strategyDescription(sess);
-                const sessDesc = sessionDescription(sess);
+                const stratDesc = strategyDescriptionText(sess, strategyDescById);
+                const sessDesc = sessionDescriptionText(sess);
                 const stratPopKey = `s${sess.id}-strategy`;
                 const sessPopKey = `s${sess.id}-session`;
                 const tickerRows = sessionTickerRows(sess);
@@ -1404,28 +1473,24 @@ export function BacktestView() {
                       <div style={{ width: 110, flexShrink: 0, padding: "0 10px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
                         <div style={{ display: "flex", alignItems: "flex-start", gap: 4, minWidth: 0 }}>
                           <div style={{ fontSize: (sess.name || "").length > 24 ? 8 : (sess.name || "").length > 16 ? 9 : 10, fontWeight: 700, color: c.ts, wordBreak: "break-word" as const, lineHeight: 1.3, flex: 1, minWidth: 0 }}>{sess.name || "—"}</div>
-                          {sessDesc && (
-                            <SessionInfoButton
-                              active={descPop?.key === sessPopKey}
-                              label="Session description"
-                              onEnter={e => showDescPop(e, sessPopKey, "Session", sess.name || "Session", sessDesc)}
-                              onLeave={() => setDescPop(null)}
-                            />
-                          )}
+                          <SessionInfoButton
+                            active={descPop?.key === sessPopKey}
+                            label="Session description"
+                            onEnter={e => showDescPop(e, sessPopKey, "Session", sess.name || "Session", sessDesc)}
+                            onLeave={() => setDescPop(null)}
+                          />
                         </div>
                         <div style={{ fontSize: 7, color: c.tm }}>{createdStr}</div>
                       </div>
                       {/* Strategy + info */}
                       <div style={{ width: 100, flexShrink: 0, padding: "0 8px 0 10px", display: "flex", alignItems: "center", gap: 4, overflow: "hidden" }}>
                         <div style={{ fontSize: (cfgS?.strategy_name || "").length > 20 ? 9 : (cfgS?.strategy_name || "").length > 13 ? 10 : 11, fontWeight: 600, color: c.ts, lineHeight: 1.35, wordBreak: "break-word" as const, flex: 1, minWidth: 0 }}>{cfgS?.strategy_name || "—"}</div>
-                        {stratDesc && (
-                          <SessionInfoButton
-                            active={descPop?.key === stratPopKey}
-                            label="Strategy description"
-                            onEnter={e => showDescPop(e, stratPopKey, "Strategy", cfgS?.strategy_name || "Strategy", stratDesc)}
-                            onLeave={() => setDescPop(null)}
-                          />
-                        )}
+                        <SessionInfoButton
+                          active={descPop?.key === stratPopKey}
+                          label="Strategy description"
+                          onEnter={e => showDescPop(e, stratPopKey, "Strategy", cfgS?.strategy_name || "Strategy", stratDesc)}
+                          onLeave={() => setDescPop(null)}
+                        />
                       </div>
                       {/* Mode */}
                       {colCell(isProp ? "Prop Firm" : "Standard", 74, isProp ? c.gold : c.acL)}
