@@ -1403,6 +1403,7 @@ class BacktestWhatIfRequest(BaseModel):
     session_id: int
     pair_filter: str = "ALL"
     playbook_filter: str = "ALL"
+    strategy_filter: str = "ALL"
     outcome_filter: str = "ALL"
     heatmap_pair: str = "ALL"
     tp_r: float = 1.5
@@ -1424,11 +1425,65 @@ def _trade_setup_label(trade: dict) -> str:
     return "General"
 
 
+def _parse_strategy_filter(strategy_filter: str) -> tuple[int | None, str | None]:
+    sf = str(strategy_filter or "ALL").strip()
+    if not sf or sf.upper() == "ALL":
+        return None, None
+    if sf.startswith("strategy:"):
+        try:
+            return int(sf.split(":", 1)[1]), None
+        except Exception:
+            return None, None
+    if sf.isdigit():
+        try:
+            return int(sf), None
+        except Exception:
+            return None, None
+    return None, sf
+
+
+def _passes_strategy_filter(
+    trade: dict,
+    strategy_filter: str,
+    *,
+    session_strategy_id: int | None = None,
+) -> bool:
+    target_id, target_name = _parse_strategy_filter(strategy_filter)
+    if target_id is None and not target_name:
+        return True
+    if (
+        target_id is not None
+        and session_strategy_id is not None
+        and int(session_strategy_id) == int(target_id)
+    ):
+        return True
+    for k in ("strategy_id", "strategyId"):
+        v = trade.get(k)
+        if v is not None and target_id is not None:
+            try:
+                if int(v) == int(target_id):
+                    return True
+            except Exception:
+                pass
+    setup = _trade_setup_label(trade).lower()
+    if target_name and setup == str(target_name).strip().lower():
+        return True
+    tags = (trade.get("preTradeNotes") or {}).get("tags") if isinstance(trade.get("preTradeNotes"), dict) else None
+    if target_name and isinstance(tags, str):
+        parts = [p.strip().lower() for p in tags.split(",") if p.strip()]
+        tn = str(target_name).strip().lower()
+        if tn in parts or any(tn in p for p in parts):
+            return True
+    return False
+
+
 def _filter_journal_raw_trades(
     journal: list,
     pair_filter: str,
     playbook_filter: str,
     outcome_filter: str,
+    strategy_filter: str = "ALL",
+    session_strategy_id: int | None = None,
 ) -> list[dict]:
     pair_f = str(pair_filter or "ALL").strip().upper().replace("/", "")
     playbook_f = str(playbook_filter or "ALL").strip()
@@ -1442,13 +1497,16 @@ def _filter_journal_raw_trades(
         setup = _trade_setup_label(t)
         pass_pair = pair_f == "ALL" or ticker == pair_f
         pass_playbook = playbook_f == "ALL" or setup == playbook_f
+        pass_strategy = _passes_strategy_filter(
+            t, strategy_filter, session_strategy_id=session_strategy_id
+        )
         pass_outcome = (
             outcome_f == "ALL"
             or (outcome_f == "WINNERS" and pnl > 0)
             or (outcome_f == "LOSERS" and pnl < 0)
             or (outcome_f == "BREAKEVEN" and pnl == 0)
         )
-        if pass_pair and pass_playbook and pass_outcome:
+        if pass_pair and pass_playbook and pass_strategy and pass_outcome:
             out.append(t)
     return out
 
@@ -1468,11 +1526,32 @@ async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
         state = _parse_json_dict(st.state_json)
         journal = state.get("journal") if isinstance(state.get("journal"), list) else []
 
+        cfg = {}
+        try:
+            cfg = json.loads(s.config_json) if s.config_json else {}
+        except Exception:
+            cfg = {}
+        sess_strategy_id = None
+        try:
+            raw_sid = cfg.get("strategy_id") or cfg.get("strategyId")
+            if raw_sid is not None:
+                sess_strategy_id = int(raw_sid)
+        except Exception:
+            sess_strategy_id = None
+
         pair_filter = str(payload.pair_filter or "ALL").strip().upper().replace("/", "")
         playbook_filter = str(payload.playbook_filter or "ALL").strip()
+        strategy_filter = str(payload.strategy_filter or "ALL").strip()
         outcome_filter = str(payload.outcome_filter or "ALL").strip().upper()
 
-        filtered_raw = _filter_journal_raw_trades(journal, pair_filter, playbook_filter, outcome_filter)
+        filtered_raw = _filter_journal_raw_trades(
+            journal,
+            pair_filter,
+            playbook_filter,
+            outcome_filter,
+            strategy_filter,
+            session_strategy_id=sess_strategy_id,
+        )
 
         normalized = normalize_trades(filtered_raw)
         tp_r = max(0.1, float(payload.tp_r))
@@ -1499,6 +1578,7 @@ async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
                 "session_id": payload.session_id,
                 "pair_filter": pair_filter,
                 "playbook_filter": playbook_filter,
+                "strategy_filter": strategy_filter,
                 "outcome_filter": outcome_filter,
                 "heatmap_pair": heatmap_scope,
                 "tp_r": tp_r,

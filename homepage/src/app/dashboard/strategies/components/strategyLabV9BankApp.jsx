@@ -753,6 +753,19 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
     });
   };
   const saveTemplateReference = (preview) => copyStrategyIntoBank(preview);
+  const duplicateStrategy = async (source) => {
+    if (!source) return;
+    if (typeof source.id === "number" && source.id > 0 && !source.templatePreview) {
+      try {
+        await duplicateStrategyRemote(source.id);
+        void reloadSessions();
+      } catch (e) {
+        window.alert(e instanceof Error ? e.message : "Duplicate failed");
+      }
+      return;
+    }
+    copyStrategyIntoBank(source);
+  };
   const deleteStrategyFromBank = async (source) => {
     if (!source || source.id == null) return;
     if (source.templatePreview) {
@@ -1019,16 +1032,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                 <StrategyRows items={filteredMine} isMine={!minePreviewMode}
                   onEdit={s=>openBuilder(s)}
                   onDelete={id=>deleteStrategyFromBank({id})}
-                  onDuplicate={async (s)=>{
-                    if (typeof s.id === "number" && s.id > 0 && !s.templatePreview) {
-                      try {
-                        await duplicateStrategyRemote(s.id);
-                        void reloadSessions();
-                      } catch (e) {
-                        window.alert(e instanceof Error ? e.message : "Duplicate failed");
-                      }
-                    } else copyStrategyIntoBank(s);
-                  }}
+                  onDuplicate={duplicateStrategy}
                   onPerf={s=>setStratPerfStrat(s)}
                   onSave={s=>minePreviewMode?saveTemplateReference(s):undefined}
                   onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}/>
@@ -1038,16 +1042,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                     <StratCard key={strat.id} strat={strat} isMine={!minePreviewMode}
                       onEdit={s=>openBuilder(s)}
                       onDelete={id=>deleteStrategyFromBank({id})}
-                      onDuplicate={async (s)=>{
-                        if (typeof s.id === "number" && s.id > 0 && !s.templatePreview) {
-                          try {
-                            await duplicateStrategyRemote(s.id);
-                            void reloadSessions();
-                          } catch (e) {
-                            window.alert(e instanceof Error ? e.message : "Duplicate failed");
-                          }
-                        } else copyStrategyIntoBank(s);
-                      }}
+                      onDuplicate={duplicateStrategy}
                       onPerf={s=>setStratPerfStrat(s)}
                       onSave={s=>minePreviewMode?saveTemplateReference(s):undefined}
                       onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}/>
@@ -1145,19 +1140,31 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
           }
           router.push("/dashboard/backtest/");
         };
-        const duplicateStrategy=()=>copyStrategyIntoBank(ms);
+        const openStrategyDashboard=()=>{
+          const journalId=typeof ms.id==="number"&&ms.id>0&&!ms.templatePreview?ms.id:null;
+          if(journalId){
+            router.push(`/dashboard/?strategy=strategy:${encodeURIComponent(String(journalId))}`);
+            return;
+          }
+          if(ms.name){
+            router.push(`/dashboard/?strategy=${encodeURIComponent(ms.name)}`);
+            return;
+          }
+          router.push("/dashboard/");
+        };
+        const runDuplicateStrategy=()=>{ void duplicateStrategy(ms); };
         const deleteStrategy=()=>deleteStrategyFromBank(ms);
         const actions=[
           {label:"New Session",handler:startStrategy,col:c.acL,icon:<svg width={14} height={14} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>},
-          {label:"Dashboard",handler:()=>setStratPerfStrat(ms),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill="currentColor"/><rect x="11" y="1" width="8" height="8" fill="currentColor"/><rect x="1" y="11" width="8" height="8" fill="currentColor"/><rect x="11" y="11" width="8" height="8" fill="currentColor"/></svg>},
+          {label:"Dashboard",handler:openStrategyDashboard,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill="currentColor"/><rect x="11" y="1" width="8" height="8" fill="currentColor"/><rect x="1" y="11" width="8" height="8" fill="currentColor"/><rect x="11" y="11" width="8" height="8" fill="currentColor"/></svg>},
           {label:"divider"},
           ...(isTemplate?[
             {label:"Edit",handler:()=>applyTemplateToBuilder(ms.template),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
-            {label:"Copy",handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
+            {label:"Copy",handler:runDuplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
             {label:"Delete",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
           ]:isMineMenu?[
             {label:"Edit",handler:()=>openBuilder(ms),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
-            {label:"Copy",handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
+            {label:"Copy",handler:runDuplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
             {label:"Delete",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
           ]:isSavedMenu?[
             {label:"Remove",handler:()=>saveCommunity(ms),col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},

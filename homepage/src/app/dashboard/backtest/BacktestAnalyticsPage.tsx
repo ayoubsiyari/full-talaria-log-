@@ -7,9 +7,10 @@ import "./backtest-os-dashboard.css";
 import {
   SessionAnalyticsPanel,
   fetchJson,
-  readActiveTradingSessionIdFromBrowser,
   type Session,
 } from "./SessionAnalyticsPanel";
+import { resolveSessionIdForUser } from "./sessionSelection";
+import { useFreshDashboardSessions } from "./useFreshDashboardSessions";
 
 const spaceMono = Space_Mono({
   subsets: ["latin"],
@@ -203,9 +204,17 @@ function CompareResultStrip({
 }
 
 export default function BacktestAnalyticsPage() {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [listError, setListError] = useState<string | null>(null);
-  const [selectedSessionId, setSelectedSessionId] = useState("");
+  const {
+    sessions,
+    strategies,
+    selectedSessionId,
+    setSelectedSessionId,
+    strategyFilter,
+    setStrategyFilter,
+    listError,
+    dataReloadKey,
+  } = useFreshDashboardSessions();
+
   const [compareMode, setCompareMode] = useState(false);
   const [compareLeft, setCompareLeft] = useState("");
   const [compareRight, setCompareRight] = useState("");
@@ -213,59 +222,11 @@ export default function BacktestAnalyticsPage() {
   const [compareKpisLoading, setCompareKpisLoading] = useState(false);
   const [compareKpisError, setCompareKpisError] = useState<string | null>(null);
 
-  useEffect(() => {
-    try {
-      const search = typeof window !== "undefined" ? window.location.search : "";
-      const sid = new URLSearchParams(search).get("sessionId") || "";
-      if (sid) {
-        setSelectedSessionId(sid);
-        return;
-      }
-      const active = readActiveTradingSessionIdFromBrowser();
-      if (active) setSelectedSessionId(active);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const data = await fetchJson<{ sessions: Session[] }>("/api/sessions");
-        if (!mounted) return;
-        const list = data.sessions ?? [];
-        setSessions(list);
-        setSelectedSessionId((prev) => {
-          if (prev) return prev;
-          try {
-            const sid = new URLSearchParams(window.location.search).get("sessionId");
-            if (sid) return sid;
-          } catch {
-            /* ignore */
-          }
-          const active = readActiveTradingSessionIdFromBrowser();
-          if (active) {
-            const match = list.find((s) => String(s.id) === String(active));
-            if (match) return String(match.id);
-            return String(active);
-          }
-          if (list.length > 0) return String(list[0].id);
-          return prev;
-        });
-        setListError(null);
-      } catch (e) {
-        if (!mounted) return;
-        setListError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
   const startCompare = useCallback(() => {
-    const base = selectedSessionId || (sessions[0] ? String(sessions[0].id) : "");
+    const base = resolveSessionIdForUser(sessions, {
+      preferred: selectedSessionId,
+      useChartStorage: false,
+    });
     setCompareLeft(base);
     const other = sessions.find((s) => String(s.id) !== String(base));
     setCompareRight(other ? String(other.id) : base);
@@ -275,7 +236,7 @@ export default function BacktestAnalyticsPage() {
   const exitCompare = useCallback(() => {
     setCompareMode(false);
     if (compareLeft) setSelectedSessionId(compareLeft);
-  }, [compareLeft]);
+  }, [compareLeft, setSelectedSessionId]);
 
   useEffect(() => {
     if (!compareMode || !compareLeft || !compareRight) return;
@@ -303,7 +264,7 @@ export default function BacktestAnalyticsPage() {
       cancelled = true;
       ac.abort();
     };
-  }, [compareMode, compareLeft, compareRight]);
+  }, [compareMode, compareLeft, compareRight, dataReloadKey]);
 
   if (listError) {
     return (
@@ -331,8 +292,12 @@ export default function BacktestAnalyticsPage() {
               sessions={sessions}
               sessionId={compareLeft}
               onSessionIdChange={setCompareLeft}
+              strategies={strategies}
+              strategyFilter={strategyFilter}
+              onStrategyFilterChange={setStrategyFilter}
               variant="compact"
               panelTitle="A"
+              dataReloadKey={dataReloadKey}
             />
             <CompareResultStrip
               sessions={sessions}
@@ -346,8 +311,12 @@ export default function BacktestAnalyticsPage() {
               sessions={sessions}
               sessionId={compareRight}
               onSessionIdChange={setCompareRight}
+              strategies={strategies}
+              strategyFilter={strategyFilter}
+              onStrategyFilterChange={setStrategyFilter}
               variant="compact"
               panelTitle="B"
+              dataReloadKey={dataReloadKey}
             />
           </div>
         </>
@@ -356,7 +325,11 @@ export default function BacktestAnalyticsPage() {
           sessions={sessions}
           sessionId={selectedSessionId}
           onSessionIdChange={setSelectedSessionId}
+          strategies={strategies}
+          strategyFilter={strategyFilter}
+          onStrategyFilterChange={setStrategyFilter}
           variant="full"
+          dataReloadKey={dataReloadKey}
           toolbarEnd={
             <button
               type="button"

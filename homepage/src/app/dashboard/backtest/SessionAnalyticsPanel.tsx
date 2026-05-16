@@ -19,18 +19,22 @@ import {
   skewness,
   varCvar95,
 } from "./backtestOsCompute";
+import {
+  resolveSessionIdForUser,
+  sessionMatchesStrategyFilter,
+  tradeMatchesStrategyFilter,
+  type DashboardStrategy,
+  type Session,
+} from "./sessionSelection";
+
+export type { Session, DashboardStrategy };
+export { readActiveTradingSessionIdFromBrowser, resolveSessionIdForUser } from "./sessionSelection";
 
 const spaceMono = Space_Mono({
   subsets: ["latin"],
   weight: ["400", "700"],
   variable: "--font-space-mono",
 });
-
-export type Session = {
-  id: number;
-  name: string;
-  session_type?: string;
-};
 
 /** Use when the static site and chart API are on different origins (set at build time). */
 function chartApiUrl(path: string): string {
@@ -40,28 +44,6 @@ function chartApiUrl(path: string): string {
     return `${base.replace(/\/$/, "")}${p}`;
   }
   return path;
-}
-
-/**
- * Chart (`index.html`) stores `active_trading_session_id` via scoped userStorage: `u{uid}_active_trading_session_id`.
- * The backtest dashboard also sets the legacy unprefixed key. Read both so analytics defaults to the session you traded.
- */
-export function readActiveTradingSessionIdFromBrowser(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const uid = localStorage.getItem("_uid");
-    if (uid) {
-      const scoped = localStorage.getItem(`u${uid}_active_trading_session_id`);
-      if (scoped) return scoped;
-    }
-  } catch {
-    /* ignore */
-  }
-  try {
-    return localStorage.getItem("active_trading_session_id");
-  } catch {
-    return null;
-  }
 }
 
 type Trade = {
@@ -212,7 +194,12 @@ export type SessionAnalyticsPanelProps = {
   sessions: Session[];
   sessionId: string;
   onSessionIdChange: (id: string) => void;
+  strategies?: DashboardStrategy[];
+  strategyFilter?: string;
+  onStrategyFilterChange?: (filter: string) => void;
   variant: "full" | "compact";
+  /** Bumps when route/URL refresh — clears cached journal/analytics */
+  dataReloadKey?: string;
   /** Shown in compact / compare column header */
   panelTitle?: string;
   /** Extra controls on the right of the toolbar (e.g. Compare button) */
@@ -223,7 +210,11 @@ export function SessionAnalyticsPanel({
   sessions,
   sessionId,
   onSessionIdChange,
+  strategies = [],
+  strategyFilter = "ALL",
+  onStrategyFilterChange,
   variant,
+  dataReloadKey = "",
   panelTitle,
   toolbarEnd,
 }: SessionAnalyticsPanelProps) {
@@ -237,6 +228,21 @@ export function SessionAnalyticsPanel({
   const [simTpR, setSimTpR] = useState(1.5);
   const [simSlR, setSimSlR] = useState(1.0);
   const [heatmapPair, setHeatmapPair] = useState("ALL");
+
+  useEffect(() => {
+    if (!sessions.length) return;
+    const valid = resolveSessionIdForUser(sessions, { preferred: sessionId, useChartStorage: false });
+    if (valid && valid !== sessionId) onSessionIdChange(valid);
+  }, [sessions, sessionId, onSessionIdChange]);
+
+  useEffect(() => {
+    setJournalFetched(false);
+    setAllTrades([]);
+    setJournalError(null);
+    setWhatIfApi(null);
+    setWhatIfError(null);
+    setLoading(true);
+  }, [dataReloadKey]);
   const [heatmapMetric, setHeatmapMetric] = useState<"USD" | "R">("USD");
   const [whatIfApi, setWhatIfApi] = useState<any>(null);
   const [whatIfError, setWhatIfError] = useState<string | null>(null);
@@ -282,7 +288,7 @@ export function SessionAnalyticsPanel({
     return () => {
       mounted = false;
     };
-  }, [sessionId, journalReloadToken]);
+  }, [sessionId, journalReloadToken, dataReloadKey]);
 
   const runCsvImport = useCallback(
     async (file: File) => {
@@ -384,6 +390,15 @@ export function SessionAnalyticsPanel({
     [normalizedTrades]
   );
 
+  const activeSession = useMemo(
+    () => sessions.find((s) => String(s.id) === String(sessionId)),
+    [sessions, sessionId]
+  );
+  const sessionBoundToStrategy = useMemo(
+    () => Boolean(activeSession && sessionMatchesStrategyFilter(activeSession, strategyFilter)),
+    [activeSession, strategyFilter]
+  );
+
   const filteredTrades = useMemo(
     () =>
       normalizedTrades.filter((t) => {
@@ -394,9 +409,21 @@ export function SessionAnalyticsPanel({
           (outcomeFilter === "WINNERS" && t.pnl > 0) ||
           (outcomeFilter === "LOSERS" && t.pnl < 0) ||
           (outcomeFilter === "BREAKEVEN" && t.pnl === 0);
-        return passPair && passPlaybook && passOutcome;
+        const passStrategy =
+          strategyFilter === "ALL" ||
+          sessionBoundToStrategy ||
+          tradeMatchesStrategyFilter(t, strategyFilter, strategies);
+        return passPair && passPlaybook && passOutcome && passStrategy;
       }),
-    [normalizedTrades, pairFilter, playbookFilter, outcomeFilter]
+    [
+      normalizedTrades,
+      pairFilter,
+      playbookFilter,
+      outcomeFilter,
+      strategyFilter,
+      strategies,
+      sessionBoundToStrategy,
+    ]
   );
 
   const statsLocal = useMemo(() => {
@@ -612,6 +639,7 @@ export function SessionAnalyticsPanel({
             session_id: Number(sessionId),
             pair_filter: pairFilter,
             playbook_filter: playbookFilter,
+            strategy_filter: strategyFilter,
             outcome_filter: outcomeFilter,
             heatmap_pair: heatmapPair,
             tp_r: simTpR,
@@ -629,7 +657,7 @@ export function SessionAnalyticsPanel({
     return () => {
       mounted = false;
     };
-  }, [sessionId, pairFilter, playbookFilter, outcomeFilter, heatmapPair, simTpR, simSlR, journalReloadToken]);
+  }, [sessionId, pairFilter, playbookFilter, strategyFilter, outcomeFilter, heatmapPair, simTpR, simSlR, journalReloadToken, dataReloadKey]);
 
   const whatIfEquityCurve = useMemo(
     () =>
@@ -1190,6 +1218,20 @@ export function SessionAnalyticsPanel({
             <option key={s.id} value={String(s.id)}>{s.name} (#{s.id})</option>
           ))}
         </select>
+        {onStrategyFilterChange ? (
+          <select
+            value={strategyFilter}
+            onChange={(e) => onStrategyFilterChange(e.target.value)}
+            title="Filter trades linked to a Strategies Lab playbook"
+          >
+            <option value="ALL">All strategies</option>
+            {strategies.map((s) => (
+              <option key={s.id} value={`strategy:${s.id}`}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <select value={pairFilter} onChange={(e) => setPairFilter(e.target.value)}>
           <option value="ALL">All instruments</option>
           {pairOptions.map((p: string) => (<option key={p} value={p}>{p}</option>))}
