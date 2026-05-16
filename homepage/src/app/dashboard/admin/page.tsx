@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Shield, Users, Zap, Server, RefreshCw, Plus, Trash2, Edit, X, CheckCircle, AlertTriangle, Download, Database, BarChart3, Activity } from "lucide-react";
 import { LanguageToggle } from "@/components/LanguageToggle";
+import { DASHBOARD_MODULE_LABELS } from "@/lib/dashboardAccess";
 
 // helpers
 const jwt=()=>typeof window!=="undefined"?localStorage.getItem("token")??"":"";
@@ -29,7 +30,8 @@ type URow={
   role?:string;
   is_admin?:boolean;
   has_journal_access?:boolean;
-  has_active_subscription?:boolean;
+  dashboard_modules?: Record<string, boolean>;
+  has_active_subscription?: boolean;
   subscription_status?:string|null;
   is_active?:boolean;
   created_at?:string;
@@ -73,6 +75,7 @@ export default function AdminDashboard() {
   const [cEmail,setCEmail]=useState(""); const [cName,setCName]=useState(""); const [cPwd,setCPwd]=useState(""); const [cAdmin,setCAdmin]=useState(false);
   const [editing, setEditing]=useState<URow|null>(null);
   const [eAdmin,  setEAdmin] =useState(false); const [eJournal,setEJournal]=useState(false); const [eActive,setEActive]=useState(true);
+  const [eModules, setEModules] = useState<Record<string, boolean>>({});
 
   const msg=(text:string,ok=true)=>{setFlash({text,ok});setTimeout(()=>setFlash(null),3000);};
   const isAdm=(u:URow)=>!!(u.is_admin||u.role==="admin");
@@ -121,7 +124,18 @@ export default function AdminDashboard() {
   }
   async function saveUser(){
     if(!editing)return;
-    const r=await fetch(`/journal/api/admin/users/${editing.id}`,{method:"PUT",headers:jh(),body:JSON.stringify({is_admin:eAdmin,has_journal_access:eJournal,is_active:eActive})});
+    const grants: Record<string, boolean> = {};
+    if (!eJournal) {
+      for (const [k, v] of Object.entries(eModules)) {
+        if (v) grants[k] = true;
+      }
+    }
+    const r=await fetch(`/journal/api/admin/users/${editing.id}`,{method:"PUT",headers:jh(),body:JSON.stringify({
+      is_admin:eAdmin,
+      has_journal_access:eJournal,
+      is_active:eActive,
+      dashboard_module_grants: grants,
+    })});
     if(r.ok){msg("Saved");setEditing(null);load();}else msg("Failed",false);
   }
   async function deleteUser(id:number){
@@ -228,9 +242,22 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between"><h3 className="font-semibold text-sm truncate">Edit — {editing.email}</h3><button onClick={()=>setEditing(null)}><X className="h-4 w-4 text-white/40 hover:text-white"/></button></div>
               <div className="flex flex-wrap gap-5 text-sm text-white/70">
                 <label className="flex items-center gap-2"><input type="checkbox" checked={eAdmin}   onChange={e=>setEAdmin(e.target.checked)}/> Admin</label>
-                <label className="flex items-center gap-2"><input type="checkbox" checked={eJournal} onChange={e=>setEJournal(e.target.checked)}/> Journal Access</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={eJournal} onChange={e=>{setEJournal(e.target.checked); if(e.target.checked){const all:Record<string,boolean>={};Object.keys(DASHBOARD_MODULE_LABELS).forEach(k=>{all[k]=true});setEModules(all);}}}/> Full access (all sections)</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={eActive}  onChange={e=>setEActive(e.target.checked)}/> Active</label>
               </div>
+              {!eJournal && (
+                <div className="mt-3 pt-3 border-t border-white/10">
+                  <p className="text-xs text-white/40 mb-2">Partial access — enable only the sections this user should see:</p>
+                  <div className="flex flex-wrap gap-3">
+                    {Object.entries(DASHBOARD_MODULE_LABELS).map(([key, label]) => (
+                      <label key={key} className="flex items-center gap-2 text-xs text-white/70">
+                        <input type="checkbox" checked={!!eModules[key]} onChange={ev=>setEModules(p=>({...p,[key]:ev.target.checked}))}/>
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
               <button onClick={saveUser} className="rounded-xl bg-blue-600 px-6 py-2 text-sm font-medium hover:bg-blue-500 transition">Save Changes</button>
             </div>
           )}
@@ -251,7 +278,7 @@ export default function AdminDashboard() {
                     <td className="px-4 py-2.5 text-white/30 text-xs">{u.created_at?new Date(u.created_at).toLocaleDateString():"—"}</td>
                     <td className="px-4 py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={()=>{setEditing(u);setEAdmin(isAdm(u));setEJournal(!!u.has_journal_access);setEActive(u.is_active??true);}} className="p-1.5 rounded-lg hover:bg-white/10 transition text-white/40 hover:text-white"><Edit className="h-3.5 w-3.5"/></button>
+                        <button onClick={()=>{setEditing(u);setEAdmin(isAdm(u));setEJournal(!!u.has_journal_access);setEActive(u.is_active??true);setEModules(u.dashboard_modules??{});}} className="p-1.5 rounded-lg hover:bg-white/10 transition text-white/40 hover:text-white"><Edit className="h-3.5 w-3.5"/></button>
                         <button onClick={()=>deleteUser(u.id)} className="p-1.5 rounded-lg hover:bg-red-500/20 transition text-white/40 hover:text-red-400"><Trash2 className="h-3.5 w-3.5"/></button>
                       </div>
                     </td>

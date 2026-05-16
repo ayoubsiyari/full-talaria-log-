@@ -119,6 +119,12 @@ from analytics_engine import (
     compute_session_dashboard_extras,
 )
 from analytics_core.csv_journal import parse_trades_csv_bytes
+from dashboard_access import (
+    effective_dashboard_modules,
+    modules_catalog,
+    normalize_module_grants,
+    user_has_dashboard_module,
+)
 
 from firstrate_ingest import (
     MAX_TICKER_LISTING_RETURN,
@@ -625,6 +631,7 @@ class User(Base):
     access_expires_at = Column(DateTime, nullable=True)
     max_sessions = Column(Integer, default=1, nullable=False, server_default="1")
     has_journal_access = Column(Boolean, default=False)
+    dashboard_module_grants = Column(Text, nullable=True)  # JSON: {"journal": true, ...}
     stripe_customer_id = Column(String, nullable=True)
     country = Column(String(100), nullable=True)
     phone = Column(String(50), nullable=True)
@@ -906,6 +913,7 @@ try:
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS access_expires_at TIMESTAMP"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS max_sessions INTEGER NOT NULL DEFAULT 1"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_journal_access BOOLEAN DEFAULT FALSE"))
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS dashboard_module_grants TEXT"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(100)"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS country VARCHAR(100)"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)"))
@@ -1380,7 +1388,7 @@ async def _push_inbox_notification_pings(recipient_ids: list[int], thread_id: in
 
 @app.get("/api/sessions/{session_id}/analytics")
 async def get_trading_session_analytics(session_id: int, request: Request):
-    user = _require_user(request)
+    user = _require_paid_journal_user(request)
     db = SessionLocal()
     try:
         s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
@@ -1513,7 +1521,7 @@ def _filter_journal_raw_trades(
 
 @app.post("/api/analytics/backtest/whatif")
 async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
-    user = _require_user(request)
+    user = _require_paid_journal_user(request)
     db = SessionLocal()
     try:
         s = db.query(TradingSession).filter(TradingSession.id == payload.session_id).first()
@@ -1605,7 +1613,7 @@ async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
 
 @app.get("/api/sessions/{session_id}/trades/{trade_id}/screenshot")
 async def get_trading_session_trade_screenshot(session_id: int, trade_id: str, kind: str = "entry", request: Request = None):
-    user = _require_user(request)
+    user = _require_paid_journal_user(request)
     db = SessionLocal()
     try:
         s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
@@ -1766,8 +1774,14 @@ async def auth_middleware(request: Request, call_next):
     if user is not None:
         # Gate backtest / replay UI (including ?mode=backtest on main chart) behind subscription
         if _request_requires_journal_for_backtest(path, request):
-            if not _user_has_chart_journal_access(user):
-                return RedirectResponse(url="/journal/subscription-status")
+            if not _chart_user_has_module(user, "backtest"):
+                return RedirectResponse(url="/pricing/?browse=1")
+        # Historical tiles / conversion status are paid chart data (auth already required above).
+        if path.startswith("/api/file/") and not _chart_user_has_module(user, "chart"):
+            return JSONResponse(
+                {"detail": "Active subscription required to use chart market data"},
+                status_code=403,
+            )
         return await call_next(request)
 
     if path.startswith("/api/"):
@@ -6905,6 +6919,33 @@ def _require_user(request: Request):
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
 
+
+def _require_paid_journal_user(request: Request, module: str = "backtest"):
+    """Full subscription or admin-granted access to a specific dashboard module."""
+    user = _require_user(request)
+    if not AUTH_ENABLED:
+        return user
+    if _user_has_chart_journal_access(user):
+        return user
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.id == user.id).first()
+        if not u:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        entitled = _user_entitles_journal_db(db, u)
+        grants = _parse_user_module_grants(u)
+        if user_has_dashboard_module(
+            u, module, fully_entitled=entitled, grants_override=grants
+        ):
+            return user
+    finally:
+        db.close()
+    raise HTTPException(
+        status_code=403,
+        detail=f"Access to {module} is not enabled for this account",
+    )
+
+
 def _require_admin(request: Request):
     if not AUTH_ENABLED:
         # Stamp the synthetic anon-admin for the audit middleware anyway.
@@ -7576,6 +7617,28 @@ def _append_bootcamp_registration_to_google_sheet(payload: BootcampRegistrationI
         body={"values": [row]},
     ).execute()
 
+def _parse_user_module_grants(user: User):
+    raw = getattr(user, "dashboard_module_grants", None)
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else None
+        except Exception:
+            return None
+    return None
+
+
+def _set_user_module_grants(user: User, grants) -> None:
+    normalized = normalize_module_grants(grants)
+    user.dashboard_module_grants = (
+        json.dumps(normalized, separators=(",", ":")) if normalized else None
+    )
+
+
 def _user_public_dict(user: User, db=None):
     created = getattr(user, 'created_at', None)
     updated = getattr(user, 'updated_at', created)
@@ -7608,6 +7671,15 @@ def _user_public_dict(user: User, db=None):
                 }
         except Exception:
             pass
+    fully_entitled = (
+        _user_entitles_journal_db(db, user)
+        if db is not None
+        else bool(getattr(user, "has_journal_access", False))
+    )
+    grants = _parse_user_module_grants(user)
+    mod_map = effective_dashboard_modules(
+        user, fully_entitled=fully_entitled, grants_override=grants
+    )
     return {
         "id": user.id,
         "name": user.name,
@@ -7616,11 +7688,8 @@ def _user_public_dict(user: User, db=None):
         "timezone": getattr(user, 'timezone', 'UTC'),
         "base_currency": getattr(user, 'base_currency', 'USD'),
         "is_active": bool(user.is_active),
-        "has_journal_access": (
-            _user_entitles_journal_db(db, user)
-            if db is not None
-            else bool(getattr(user, "has_journal_access", False))
-        ),
+        "has_journal_access": fully_entitled,
+        "dashboard_modules": mod_map,
         "access_expires_at": expires.isoformat() if expires else None,
         "max_sessions": getattr(user, 'max_sessions', 1) or 1,
         "trading_sessions_count": trading_sessions_count,
@@ -9429,6 +9498,8 @@ class _UpdateUserIn(BaseModel):
     email: str | None = None
     role: str | None = None
     is_active: bool | None = None
+    has_journal_access: bool | None = None
+    dashboard_module_grants: dict | None = None
     access_expires_at: str | None = None
     access_days: int | None = None
     password: str | None = None
@@ -9473,11 +9544,21 @@ async def admin_update_user(user_id: int, payload: _UpdateUserIn, request: Reque
                 user.access_expires_at = None
             else:
                 user.access_expires_at = datetime.utcnow() + timedelta(days=payload.access_days)
+        if payload.has_journal_access is not None:
+            user.has_journal_access = bool(payload.has_journal_access)
+        if payload.dashboard_module_grants is not None:
+            _set_user_module_grants(user, payload.dashboard_module_grants)
         db.commit()
         db.refresh(user)
-        return {"user": _user_public_dict(user)}
+        return {"user": _user_public_dict(user, db=db)}
     finally:
         db.close()
+
+
+@app.get("/api/admin/dashboard-modules")
+async def admin_dashboard_modules_catalog(request: Request):
+    _require_admin(request)
+    return {"modules": modules_catalog()}
 
 
 @app.delete("/api/admin/users/{user_id}")
@@ -11343,6 +11424,26 @@ def _user_entitles_journal_db(db, user: User) -> bool:
     if user.has_journal_access and not (user.stripe_customer_id or ""):
         return True
     return False
+
+
+def _chart_user_has_module(user: User, module: str) -> bool:
+    """Full entitlement or per-module admin grant."""
+    if not user:
+        return False
+    if _user_has_chart_journal_access(user):
+        return True
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.id == user.id).first()
+        if not u:
+            return False
+        entitled = _user_entitles_journal_db(db, u)
+        grants = _parse_user_module_grants(u)
+        return user_has_dashboard_module(
+            u, module, fully_entitled=entitled, grants_override=grants
+        )
+    finally:
+        db.close()
 
 
 def _user_has_chart_journal_access(user: User) -> bool:
@@ -13800,7 +13901,7 @@ async def admin_audit_log_prune(payload: AdminAuditLogPruneIn, request: Request)
 
 @app.get("/api/sessions")
 async def list_trading_sessions(request: Request):
-    user = _require_user(request)
+    user = _require_paid_journal_user(request)
     db = SessionLocal()
     try:
         q = db.query(TradingSession).filter(TradingSession.user_id == user.id)
@@ -13836,7 +13937,7 @@ async def list_trading_sessions(request: Request):
 @app.get("/api/sessions/kpis")
 async def list_all_sessions_kpis(request: Request):
     """Dashboard batch: one request instead of N× GET /api/sessions/{id}/analytics."""
-    user = _require_user(request)
+    user = _require_paid_journal_user(request)
     db = SessionLocal()
     try:
         sessions = (
@@ -13870,9 +13971,7 @@ async def list_strategies_chart_shim(request: Request):
 
 @app.post("/api/sessions")
 async def create_trading_session(payload: TradingSessionCreateIn, request: Request):
-    user = _require_user(request)
-    if not _user_has_chart_journal_access(user):
-        raise HTTPException(status_code=403, detail="Active subscription required to create backtest sessions")
+    user = _require_paid_journal_user(request)
     name = (payload.name or "").strip()
     session_type = (payload.session_type or "").strip().lower()
     if not name:
@@ -13897,7 +13996,7 @@ async def create_trading_session(payload: TradingSessionCreateIn, request: Reque
 
 @app.get("/api/sessions/{session_id}")
 async def get_trading_session(session_id: int, request: Request):
-    user = _require_user(request)
+    user = _require_paid_journal_user(request)
     db = SessionLocal()
     try:
         s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
@@ -13911,7 +14010,7 @@ async def get_trading_session(session_id: int, request: Request):
 
 @app.get("/api/sessions/{session_id}/state")
 async def get_trading_session_state(session_id: int, request: Request):
-    user = _require_user(request)
+    user = _require_paid_journal_user(request)
     db = SessionLocal()
     try:
         s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
@@ -13958,7 +14057,7 @@ async def import_trading_session_journal_csv(
     file: UploadFile = File(...),
 ):
     """Replace or append `state.journal` from a UTF-8 CSV (see `analytics_core.csv_journal`)."""
-    user = _require_user(request)
+    user = _require_paid_journal_user(request)
     mode_clean = (mode or "replace").strip().lower()
     if mode_clean not in {"replace", "append"}:
         raise HTTPException(status_code=400, detail="mode must be replace or append")
@@ -14043,7 +14142,7 @@ async def import_trading_session_journal_csv(
 @app.get("/api/sessions/{session_id}/journal-trades")
 async def list_trading_session_journal_trades(session_id: int, request: Request):
     """Queryable copy of chart journal trades (one row per trade); same data as state.journal, scoped per user."""
-    user = _require_user(request)
+    user = _require_paid_journal_user(request)
     db = SessionLocal()
     try:
         s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
@@ -14110,7 +14209,7 @@ async def patch_trading_session_state(session_id: int, request: Request):
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc}")
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    user = _require_user(request)
+    user = _require_paid_journal_user(request)
     db = SessionLocal()
     try:
         s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
@@ -14206,7 +14305,7 @@ async def patch_trading_session_state(session_id: int, request: Request):
 
 @app.patch("/api/sessions/{session_id}")
 async def update_trading_session(session_id: int, payload: TradingSessionUpdateIn, request: Request):
-    user = _require_user(request)
+    user = _require_paid_journal_user(request)
     db = SessionLocal()
     try:
         s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
@@ -14235,7 +14334,7 @@ async def update_trading_session(session_id: int, payload: TradingSessionUpdateI
 
 @app.delete("/api/sessions/{session_id}")
 async def delete_trading_session(session_id: int, request: Request):
-    user = _require_user(request)
+    user = _require_paid_journal_user(request)
     db = SessionLocal()
     try:
         s = db.query(TradingSession).filter(TradingSession.id == session_id).first()

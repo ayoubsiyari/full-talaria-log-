@@ -13502,9 +13502,7 @@ class Chart {
             const latestCandle = this.data[this.data.length - 1];
             this.drawPriceLine([latestCandle]);
             this.drawAxes();
-            if (!chartViewPanning) {
-                this.drawEconomicCalendarAxisMarkers();
-            }
+            this.drawEconomicCalendarAxisMarkers({ panFast: chartViewPanning });
             
             this.drawCurrentPriceLabel([latestCandle]);
             
@@ -13536,13 +13534,14 @@ class Chart {
             this.hasRenderedData = true;
         }
 
-        // Fast path while dragging chart: candles + axes only (skip indicators / overlays / calendar).
+        // Fast path while dragging chart: candles + axes + news markers (lite).
         if (chartViewPanning) {
             this.drawGrid();
             this.drawVolume(visible);
             this.drawCandles(visible);
             this.drawPriceLine(visible);
             this.drawAxes();
+            this.drawEconomicCalendarAxisMarkers({ panFast: true });
             this.drawCurrentPriceLabel(visible);
             if (this._isChartPanDragging()) {
                 this._applyPanDrawingsLayerTransform();
@@ -16435,6 +16434,7 @@ class Chart {
         }
         this._econCalFlagRedrawTimer = setTimeout(() => {
             this._econCalFlagRedrawTimer = null;
+            if (this._isChartPanDragging()) return;
             if (typeof this.scheduleRender === 'function') this.scheduleRender();
         }, 110);
     }
@@ -16447,6 +16447,7 @@ class Chart {
         const img = new Image();
         entry = { img, failed: false, url };
         const bump = () => {
+            if (this._isChartPanDragging()) return;
             if (typeof this._scheduleEconomicCalendarFlagRedraw === 'function') {
                 this._scheduleEconomicCalendarFlagRedraw();
             } else if (typeof this.scheduleRender === 'function') {
@@ -16472,9 +16473,16 @@ class Chart {
 
     /**
      * Economic calendar: circular TV-style markers on the time-axis row; hover regions on this._economicCalendarHitRegions.
+     * @param {Object} [options]
+     * @param {boolean} [options.panFast] - draw visible flags only; skip hit regions and new image loads
      */
-    drawEconomicCalendarAxisMarkers() {
-        this._economicCalendarHitRegions = [];
+    drawEconomicCalendarAxisMarkers(options = {}) {
+        const panFast = !!options.panFast;
+        if (!panFast) {
+            this._economicCalendarHitRegions = [];
+        } else if (!this._economicCalendarHitRegions) {
+            this._economicCalendarHitRegions = [];
+        }
         const api = typeof window !== 'undefined' ? window.__economicCalendarForChart : null;
         if (!api || typeof api.getEvents !== 'function' || !this.data || this.data.length === 0) return;
 
@@ -16543,7 +16551,7 @@ class Chart {
         placements.sort((a, b) => a.x - b.x);
 
         const prefetchMargin = Math.max(80, badgeD * 4);
-        if (typeof api.getFlagImageUrl === 'function') {
+        if (!panFast && typeof api.getFlagImageUrl === 'function') {
             for (let pi = 0; pi < placements.length; pi++) {
                 const px = placements[pi].x;
                 if (px + halfBadgeR < plotClipL - prefetchMargin || px - halfBadgeR > plotClipR + prefetchMargin) {
@@ -16569,9 +16577,11 @@ class Chart {
                 ? api.getFlagImageUrl(e.country || e.currency || '') : null;
             let drew = false;
             if (flagUrl) {
-                const entry = this._ensureEconomicCalendarFlagImage(flagUrl);
+                const entry = panFast
+                    ? (this._econCalFlagImgCache && this._econCalFlagImgCache.get(flagUrl))
+                    : this._ensureEconomicCalendarFlagImage(flagUrl);
                 const { img } = entry || {};
-                if (img && !entry.failed && img.complete && img.naturalWidth) {
+                if (img && entry && !entry.failed && img.complete && img.naturalWidth) {
                     drew = this._drawEconomicCalendarFlagBadge(this.ctx, xi, flagCy, badgeD, img);
                 }
             }
@@ -16620,14 +16630,16 @@ class Chart {
                     _drawSingleFlag(cluster[s].e, clusterCenterX, scy);
                 }
 
-                for (let k = 0; k < n; k++) {
-                    this._economicCalendarHitRegions.push({
-                        left: clusterCenterX - halfBadgeR - 4,
-                        right: clusterCenterX + halfBadgeR + 4,
-                        top: cy - badgeD - 4,
-                        bottom: cy + halfBadgeR + 2,
-                        event: cluster[k].e
-                    });
+                if (!panFast) {
+                    for (let k = 0; k < n; k++) {
+                        this._economicCalendarHitRegions.push({
+                            left: clusterCenterX - halfBadgeR - 4,
+                            right: clusterCenterX + halfBadgeR + 4,
+                            top: cy - badgeD - 4,
+                            bottom: cy + halfBadgeR + 2,
+                            event: cluster[k].e
+                        });
+                    }
                 }
             } else {
                 // Expanded: show individual flags side by side
@@ -16636,7 +16648,7 @@ class Chart {
                     const offset = (k - (n - 1) / 2) * clusterGap;
                     const xi = x + offset;
                     _drawSingleFlag(e, xi, cy);
-                    if (Number.isFinite(xi)) {
+                    if (!panFast && Number.isFinite(xi)) {
                         this._economicCalendarHitRegions.push({
                             left: xi - halfBadgeR - 2,
                             right: xi + halfBadgeR + 2,

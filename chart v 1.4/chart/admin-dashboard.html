@@ -1606,6 +1606,18 @@ select { cursor:default; }
           </div>
         </div>
       </div>
+      <div class="field fg-full" style="margin-top:4px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="editFullJournalAccess" />
+          <span><strong>Full access</strong> — all dashboard sections (manual grant)</span>
+        </label>
+        <p style="font-size:11px;color:var(--text-muted);margin:6px 0 10px">Or enable individual sections (enforced server-side on APIs).</p>
+        <div id="editModuleGrants" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px"></div>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn sm" onclick="setAllEditModules(true)">Enable all sections</button>
+          <button type="button" class="btn sm" onclick="setAllEditModules(false)">Clear sections</button>
+        </div>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn" onclick="closeEditModal()">Cancel</button>
@@ -3868,6 +3880,7 @@ let sortField = 'name';
 let sortDir = 1;
 let createAccessModeVal = 'unlimited';
 let currentEditMode = 'unlimited';
+let dashboardModuleCatalog = [];
 let selectedDsId = null;
 let dsPollTimer = null;
 let datasetRegistrySnapshot = null;
@@ -3901,6 +3914,7 @@ let insightsOverviewCache = null;
     }
 
     await Promise.all([
+      loadDashboardModuleCatalog().catch(function (e) { console.error('loadDashboardModuleCatalog', e); }),
       loadUsers().catch(function (e) { console.error('loadUsers', e); }),
       loadSessions().catch(function (e) { console.error('loadSessions', e); }),
       loadDatasets().catch(function (e) { console.error('loadDatasets', e); }),
@@ -4399,6 +4413,51 @@ function closeUserMonitor() {
   if (modal) modal.classList.remove('open');
 }
 
+async function loadDashboardModuleCatalog() {
+  try {
+    const data = await api('/api/admin/dashboard-modules');
+    dashboardModuleCatalog = data.modules || [];
+    renderEditModuleGrantInputs({});
+  } catch (e) {
+    dashboardModuleCatalog = [
+      { key: 'journal', label: 'Journal' },
+      { key: 'backtest', label: 'Backtest & sessions' },
+      { key: 'strategies', label: 'Strategy lab' },
+      { key: 'cot', label: 'COT analysis' },
+      { key: 'community', label: 'Community feed' },
+      { key: 'chart', label: 'Chart data & drawings' },
+    ];
+  }
+}
+
+function renderEditModuleGrantInputs(modulesMap) {
+  const host = $('editModuleGrants');
+  if (!host) return;
+  const full = $('editFullJournalAccess');
+  const fullOn = full && full.checked;
+  host.innerHTML = dashboardModuleCatalog.map(function (m) {
+    const on = !!(modulesMap && modulesMap[m.key]);
+    return '<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary)">' +
+      '<input type="checkbox" class="edit-mod-cb" data-mod="' + esc(m.key) + '"' + (on ? ' checked' : '') + (fullOn ? ' disabled' : '') + ' />' +
+      '<span>' + esc(m.label) + '</span></label>';
+  }).join('');
+}
+
+function setAllEditModules(on) {
+  document.querySelectorAll('.edit-mod-cb').forEach(function (el) {
+    if (!el.disabled) el.checked = !!on;
+  });
+}
+
+document.addEventListener('change', function (e) {
+  if (e.target && e.target.id === 'editFullJournalAccess') {
+    document.querySelectorAll('.edit-mod-cb').forEach(function (el) {
+      el.disabled = e.target.checked;
+      if (e.target.checked) el.checked = true;
+    });
+  }
+});
+
 // Edit modal
 function openEditModal(userId) {
   const user = allUsers.find(u => u.id === userId);
@@ -4415,6 +4474,10 @@ function openEditModal(userId) {
   } else {
     setEditAccessMode('unlimited');
   }
+  const mods = user.dashboard_modules || {};
+  const fullAccess = !!user.has_journal_access;
+  if ($('editFullJournalAccess')) $('editFullJournalAccess').checked = fullAccess;
+  renderEditModuleGrantInputs(mods);
   $('editModalTitle').textContent = `Edit: ${user.name}`;
   $('editUserModal').classList.add('open');
 }
@@ -4447,6 +4510,16 @@ async function saveUser() {
     const d = parseInt($('editAccessDays').value);
     if (d > 0) body.access_days = d;
   }
+  const fullJournal = $('editFullJournalAccess') && $('editFullJournalAccess').checked;
+  body.has_journal_access = !!fullJournal;
+  const grants = {};
+  if (!fullJournal) {
+    document.querySelectorAll('.edit-mod-cb').forEach(function (el) {
+      const k = el.getAttribute('data-mod');
+      if (k && el.checked) grants[k] = true;
+    });
+  }
+  body.dashboard_module_grants = grants;
   try {
     await api(`/api/admin/users/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     toast('User updated', 'ok');

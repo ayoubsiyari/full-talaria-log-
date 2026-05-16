@@ -17,6 +17,7 @@ except ImportError:
     PSUTIL_AVAILABLE = False
     print("Warning: psutil not available. System metrics will be disabled.")
 import os
+import json
 import csv
 import io
 import subprocess
@@ -228,6 +229,8 @@ def list_users():
         return jsonify({"error": "Only admins can view users"}), 403
 
     try:
+        from dashboard_access import effective_dashboard_modules
+
         page = request.args.get('page', 1, type=int)
         per_page = min(request.args.get('per_page', 20, type=int), 10000)  # Max 10000 per page
         search = request.args.get('search', '').strip()
@@ -258,6 +261,7 @@ def list_users():
                 "is_admin": user.is_admin,
                 "email_verified": user.email_verified,
                 "has_journal_access": user.has_journal_access,
+                "dashboard_modules": effective_dashboard_modules(user),
                 "has_active_subscription": sub is not None,
                 "subscription_status": sub.status if sub else None,
                 "created_at": user.created_at.isoformat() if user.created_at else None,
@@ -428,12 +432,15 @@ def create_user():
 def update_user(user_id):
     """
     Admin-only: Update user information.
-    Expect JSON: { email (optional), is_admin (optional) }
+    Expect JSON: email, is_admin, is_active, has_journal_access, dashboard_module_grants, ...
     """
     if not is_admin_user():
         return jsonify({"error": "Only admins can update users"}), 403
 
     try:
+        from dashboard_access import effective_dashboard_modules, normalize_module_grants
+        from subscription_access import user_entitles_journal
+
         user = User.query.get_or_404(user_id)
         data = request.get_json() or {}
         
@@ -453,17 +460,30 @@ def update_user(user_id):
             user.is_admin = bool(data['is_admin'])
         if 'email_verified' in data:
             user.email_verified = bool(data['email_verified'])
+        if 'is_active' in data:
+            user.is_active = bool(data['is_active'])
+        if 'has_journal_access' in data:
+            user.has_journal_access = bool(data['has_journal_access'])
+        if 'dashboard_module_grants' in data:
+            grants = normalize_module_grants(data.get('dashboard_module_grants'))
+            user.dashboard_module_grants = (
+                json.dumps(grants, separators=(",", ":")) if grants else None
+            )
         
         db.session.commit()
         
         log_admin_action("UPDATE_USER", f"Updated user {user_id}")
         
+        entitled = user_entitles_journal(user)
         return jsonify({
             "message": "User updated successfully",
             "user": {
                 "id": user.id,
                 "email": user.email,
-                "is_admin": user.is_admin
+                "is_admin": user.is_admin,
+                "is_active": user.is_active,
+                "has_journal_access": entitled,
+                "dashboard_modules": effective_dashboard_modules(user),
             }
         }), 200
         

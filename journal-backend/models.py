@@ -71,6 +71,8 @@ class User(db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     has_journal_access = db.Column(db.Boolean, default=False)
+    # Admin partial grants when user lacks full subscription (JSON object string).
+    dashboard_module_grants = db.Column(db.Text, nullable=True)
     group_id = db.Column(db.Integer, db.ForeignKey('journal_groups.id'), nullable=True)
     country = db.Column(db.String(100), nullable=True)
     phone = db.Column(db.String(50), nullable=True)

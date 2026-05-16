@@ -8,7 +8,8 @@ import { BacktestNewSessionProvider } from "./BacktestNewSessionContext";
 import "./dashboard-shell.css";
 import {
   dashboardPathRequiresPaidJournal,
-  userHasJournalEntitlement,
+  userCanAccessDashboardPath,
+  userHasDashboardModule,
 } from "@/lib/dashboardAccess";
 import SubscriptionGateOverlay from "./SubscriptionGateOverlay";
 import DashboardAccessSkeleton from "./DashboardAccessSkeleton";
@@ -20,6 +21,7 @@ type User = {
   email: string;
   role: string;
   has_journal_access?: boolean;
+  dashboard_modules?: Record<string, boolean>;
 };
 
 async function fetchMe(): Promise<User> {
@@ -342,11 +344,10 @@ export default function DashboardLayout({
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [authReady]);
 
-  const entitled = userHasJournalEntitlement(user);
-
   const gatedPath = dashboardPathRequiresPaidJournal(pathname);
+  const pathAllowed = userCanAccessDashboardPath(user, pathname);
   const subscriptionWall =
-    authReady && !!user && !entitled && gatedPath;
+    authReady && !!user && gatedPath && !pathAllowed;
   const gatedAuthLoading = gatedPath && !authReady;
 
   const goPricing = React.useCallback(() => {
@@ -382,9 +383,18 @@ export default function DashboardLayout({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [profilePanelOpen]);
 
+  const navModuleForId = (id: string): string | null => {
+    if (id === "journal") return "journal";
+    if (id === "backtest") return "backtest";
+    if (id === "strategies") return "strategies";
+    if (id === "cot") return "cot";
+    if (id === "dashboard") return null;
+    return null;
+  };
+
   const handleNavClick = (id: string) => {
-    const paidNavIds = ["dashboard", "journal", "backtest", "cot", "strategies"];
-    if (paidNavIds.includes(id) && user && !userHasJournalEntitlement(user)) {
+    const mod = navModuleForId(id);
+    if (mod && user && !userHasDashboardModule(user, mod)) {
       goPricing();
       return;
     }
@@ -542,10 +552,9 @@ export default function DashboardLayout({
             const bg = active ? DASH_C.acD : hovered ? DASH_C.hv : "transparent";
             const color = active ? DASH_C.acL : hovered ? DASH_C.tx : DASH_C.ts;
             const railSide = isArabic ? "right" : "left";
+            const navMod = navModuleForId(id);
             const navLocked =
-              !!user &&
-              !userHasJournalEntitlement(user) &&
-              (id === "dashboard" || id === "journal" || id === "backtest" || id === "cot" || id === "strategies");
+              !!user && !!navMod && !userHasDashboardModule(user, navMod);
             return (
               <div
                 key={id}

@@ -15,6 +15,7 @@ from flask import Blueprint, jsonify, request
 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
 from models import User
 from subscription_access import user_entitles_journal
+from dashboard_access import user_has_dashboard_module
 
 # Create the main journal blueprint
 journal_bp = Blueprint('journal', __name__)
@@ -49,6 +50,9 @@ def enforce_journal_access():
         return jsonify({'error': 'User not found'}), 404
 
     if user_entitles_journal(user):
+        return None
+
+    if user_has_dashboard_module(user, "journal"):
         return None
 
     return jsonify({
