@@ -125,6 +125,8 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const [stratBuilderOpen, setStratBuilderOpen] = useState(false);
   /** null | 'saving' | 'success' — drives builder overlay + footer button while POST runs */
   const [stratBuilderSavePhase, setStratBuilderSavePhase] = useState(null);
+  /** Sync guard — blocks double-clicks before React re-renders disabled state */
+  const stratBuilderSaveInFlightRef = useRef(false);
   const [stratTemplatePickerOpen, setStratTemplatePickerOpen] = useState(false);
   const [stratEditId, setStratEditId] = useState(null);
   const [savedCommunityIds, setSavedCommunityIds] = useState(new Set());
@@ -641,6 +643,8 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
     setStratBCustomTfs([]); setStratBCustomTfVal(""); setStratBCustomTfUnit("m"); setStratBTfUnitOpen(false);
     setStratBMktDropOpen(false);
     setStratWizardStep(1);
+    stratBuilderSaveInFlightRef.current = false;
+    setStratBuilderSavePhase(null);
     setCanvasNodes(editStrat ? (editStrat.canvasNodes||[]) : []);
     setCanvasEdges(editStrat ? (editStrat.canvasEdges||[]) : []);
     if (editStrat) {
@@ -682,6 +686,8 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
     setCanvasNodes(buildNodesFromTemplate(tpl));
     setCanvasEdges([]);
     setStratWizardStep(1);
+    stratBuilderSaveInFlightRef.current = false;
+    setStratBuilderSavePhase(null);
     setStratBuilderOpen(true);
   };
 
@@ -776,7 +782,8 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   };
 
   const saveBuilder = async () => {
-    if (stratBuilderSavePhase === "saving") return;
+    if (stratBuilderSaveInFlightRef.current) return;
+    stratBuilderSaveInFlightRef.current = true;
     const strat = {
       name: stratBName.trim()||"Untitled Strategy",
       icon: stratBLogoEmoji || "",
@@ -807,9 +814,11 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
       setStratEditId(null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      if (msg === "DUPLICATE_SAVE") return;
       if (msg === "Not signed in") window.location.href = loginUrlWithNext();
       else window.alert(msg);
     } finally {
+      stratBuilderSaveInFlightRef.current = false;
       setStratBuilderSavePhase(null);
     }
   };
@@ -1202,7 +1211,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
           sessions={strategyReviewSessions}
           builderSavePhase={stratBuilderSavePhase}
           onSave={saveBuilder}
-          onClose={()=>{ if (stratBuilderSavePhase !== "saving") { setStratBuilderOpen(false); setStratEditId(null); } }}
+          onClose={()=>{ if (!stratBuilderSaveInFlightRef.current) { setStratBuilderOpen(false); setStratEditId(null); } }}
           onOpenTemplates={()=>setStratTemplatePickerOpen(true)}
         />
       )}

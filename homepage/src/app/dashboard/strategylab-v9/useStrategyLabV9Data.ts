@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { JOURNAL_API_BASE } from "@/lib/journalApi";
 import {
   apiStrategyToBankRow,
@@ -20,7 +20,10 @@ function isServerStrategyId(id: unknown): id is number {
   return typeof id === "number" && Number.isFinite(id) && id > 0;
 }
 
+const DUPLICATE_SAVE_MSG = "DUPLICATE_SAVE";
+
 export function useStrategyLabV9Data() {
+  const persistInFlightRef = useRef(false);
   const [myStrategies, setMyStrategies] = useState<Record<string, unknown>[]>([]);
   const [strategiesLoading, setStrategiesLoading] = useState(true);
   const [strategiesError, setStrategiesError] = useState<string | null>(null);
@@ -114,8 +117,16 @@ export function useStrategyLabV9Data() {
 
   const persistStrategy = useCallback(
     async (strat: Record<string, unknown>, editingId: unknown): Promise<void> => {
+      if (persistInFlightRef.current) {
+        throw new Error(DUPLICATE_SAVE_MSG);
+      }
+      persistInFlightRef.current = true;
+
       const token = getToken();
-      if (!token) throw new Error("Not signed in");
+      if (!token) {
+        persistInFlightRef.current = false;
+        throw new Error("Not signed in");
+      }
 
       const body = bankStrategyToApiBody(strat);
       const isUpdate = isServerStrategyId(editingId);
@@ -132,6 +143,7 @@ export function useStrategyLabV9Data() {
           body: JSON.stringify(body),
         });
       } catch (e) {
+        persistInFlightRef.current = false;
         const msg = e instanceof Error ? e.message : String(e);
         if (/failed to fetch|network|load failed|connection/i.test(msg)) {
           throw new Error(
@@ -142,8 +154,10 @@ export function useStrategyLabV9Data() {
       }
       const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!res.ok || data.success === false) {
+        persistInFlightRef.current = false;
         throw new Error(data.error || `Save failed (${res.status})`);
       }
+      persistInFlightRef.current = false;
       // Refresh bank list in background so save UI can show success immediately after POST.
       void loadStrategies();
     },

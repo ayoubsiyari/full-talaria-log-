@@ -6235,10 +6235,17 @@ function StrategyBuilderModal(props) {
   const onPrimaryDown = (e, enabled=true) => { if(enabled){ e.currentTarget.style.filter='brightness(0.9)'; e.currentTarget.style.transform='scale(0.97)'; } };
   const onPrimaryUp = (e, enabled=true) => { if(enabled){ e.currentTarget.style.filter='brightness(1)'; e.currentTarget.style.transform='scale(1)'; } };
 
-  const handleSaveClick = () => {
-    if (!stratBName.trim() || saveBusy) return;
+  const saveClickLockRef = React.useRef(false);
+  const handleSaveClick = (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    if (!stratBName.trim() || saveBusy || saveClickLockRef.current) return;
+    saveClickLockRef.current = true;
     void Promise.resolve(onSave?.());
   };
+  React.useEffect(() => {
+    if (!builderSavePhase) saveClickLockRef.current = false;
+  }, [builderSavePhase]);
 
   return (
     <ReactFlowProvider>
@@ -6317,9 +6324,9 @@ function StrategyBuilderModal(props) {
                 </button>
               )}
               {/* Close button */}
-              <div onClick={()=>{ if (!isSaving) onClose?.(); }}
+              <div onClick={()=>{ if (!saveBusy) onClose?.(); }}
                 style={{width:28,height:28,display:'flex',alignItems:'center',justifyContent:'center',
-                  cursor:isSaving?'not-allowed':'default',color:c.tm,borderRadius:0,transition:'color 0.12s, background 0.12s, transform 0.08s',opacity:isSaving?0.35:1}}
+                  cursor:saveBusy?'not-allowed':'default',color:c.tm,borderRadius:0,transition:'color 0.12s, background 0.12s, transform 0.08s',opacity:saveBusy?0.35:1}}
                 onMouseEnter={e=>{e.currentTarget.style.color=c.rd;e.currentTarget.style.background='rgba(255,80,104,0.08)';}}
                 onMouseLeave={e=>{e.currentTarget.style.color=c.tm;e.currentTarget.style.background='transparent';e.currentTarget.style.transform='scale(1)';}}
                 onMouseDown={e=>{e.currentTarget.style.transform='scale(0.92)';}}
@@ -6377,10 +6384,10 @@ function StrategyBuilderModal(props) {
 
           {/* ── Footer (only for steps 1, 3, 4 — step 2 has its own canvas footer) ── */}
           {stratWizardStep!==2&&(
-            <div data-strategy-builder-footer="1" style={{flexShrink:0,height:56,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px',borderTop:`1px solid ${c.brH}`,background:c.el}}>
+            <div data-strategy-builder-footer="1" style={{flexShrink:0,height:56,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px',borderTop:`1px solid ${c.brH}`,background:c.el,pointerEvents:saveBusy?'none':'auto'}}>
               {/* Cancel / Back */}
-              <button onClick={isSaving?undefined:(stratWizardStep===1?onClose:goPrev)} disabled={isSaving}
-                style={{...secondaryBtnStyle,opacity:isSaving?0.45:1,cursor:isSaving?'not-allowed':'default'}}
+              <button onClick={saveBusy?undefined:(stratWizardStep===1?onClose:goPrev)} disabled={saveBusy}
+                style={{...secondaryBtnStyle,opacity:saveBusy?0.45:1,cursor:saveBusy?'not-allowed':'default'}}
                 onMouseEnter={onSecondaryEnter}
                 onMouseLeave={onSecondaryLeave}
                 onMouseDown={onSecondaryDown}
@@ -6406,7 +6413,7 @@ function StrategyBuilderModal(props) {
                   <svg width={11} height={11} viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                 </button>
               ):(
-                <button onClick={handleSaveClick} disabled={!stratBName.trim()||saveBusy} aria-busy={isSaving}
+                <button type="button" onClick={handleSaveClick} disabled={!stratBName.trim()||saveBusy} aria-busy={isSaving} aria-disabled={!stratBName.trim()||saveBusy}
                   style={{height:30,padding:'0 14px',minWidth:148,display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6,
                     fontSize:12,fontWeight:700,letterSpacing:'0.02em',fontFamily:F,borderRadius:0,
                     color:stratBName.trim()&&!saveBusy?'#fff':c.tm,
