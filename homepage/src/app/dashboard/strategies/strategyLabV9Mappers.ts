@@ -1,4 +1,4 @@
-import { definitionFromDraft, draftFromApi } from "@/strategyLab/defaults";
+import { definitionFromDraft, draftFromApi } from "@/app/dashboard/strategies/lib/defaults";
 
 /** Stored inside `strategy_definition` JSON; backend merges unknown keys. */
 export const TALARIA_V9_PANEL_KEY = "talaria_v9";
@@ -32,6 +32,14 @@ function sanitizeImageEntry(entry: unknown): StrategyImageEntry | null {
 function sanitizeImageList(images: unknown, maxItems: number): StrategyImageEntry[] {
   if (!Array.isArray(images)) return [];
   return images.map(sanitizeImageEntry).filter((x): x is StrategyImageEntry => x !== null).slice(0, maxItems);
+}
+
+/** Gallery images for bank UI — prefer `talaria_v9.images`, else legacy `cover_image`. */
+function bankGalleryImages(v9Images: unknown, coverFallback: unknown): StrategyImageEntry[] {
+  const fromV9 = sanitizeImageList(v9Images, 6);
+  if (fromV9.length) return fromV9;
+  const cover = sanitizeImageEntry(coverFallback);
+  return cover ? [cover] : [];
 }
 
 function sanitizeCanvasNodesForApi(nodes: unknown): unknown[] {
@@ -121,10 +129,10 @@ export function apiStrategyToBankRow(s: ApiStrategyRecord): Record<string, unkno
     markets,
     conditions: Array.isArray(v9.conditions) ? v9.conditions : (draft.conditions as unknown[]) || [],
     variables: Array.isArray(v9.variables) ? v9.variables : (draft.variables as unknown[]) || [{ type: "divider", id: "div0" }],
-    images: Array.isArray(v9.images) ? v9.images : [],
+    images: bankGalleryImages(v9.images, def.cover_image),
     supportInst: Array.isArray(v9.supportInst) ? v9.supportInst : [],
     tree: v9.tree,
-    canvasNodes: Array.isArray(v9.canvasNodes) ? v9.canvasNodes : [],
+    canvasNodes: Array.isArray(v9.canvasNodes) ? sanitizeCanvasNodesForApi(v9.canvasNodes) : [],
     canvasEdges: Array.isArray(v9.canvasEdges) ? v9.canvasEdges : [],
     createdAt: s.created_at || s.updated_at || new Date().toISOString(),
   };

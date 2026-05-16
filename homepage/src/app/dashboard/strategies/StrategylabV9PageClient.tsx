@@ -1,7 +1,7 @@
 "use client";
 
-import { useOptionalStrategyLabV9OpenBuilderRegister } from "@/app/dashboard/StrategyLabV9BuilderContext";
-import StrategyLabV9BankApp from "@/components/strategy-lab-v9/strategyLabV9BankApp.jsx";
+import { useOptionalStrategyLabV9OpenBuilderRegister } from "@/app/dashboard/strategies/StrategyLabV9BuilderContext";
+import StrategyLabV9BankApp from "@/app/dashboard/strategies/components/strategyLabV9BankApp.jsx";
 
 /**
  * Dashboard route client for Lab V9: wires shell context and delegates UI to `StrategyLabV9BankApp`.

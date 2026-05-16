@@ -78,7 +78,48 @@ def merge_definition_from_legacy(strategy_row):
                     'options': [],
                 })
     out['cover_image'] = _sanitize_cover_image(out.get('cover_image'))
+    _sanitize_talaria_v9_panel(out)
     return out
+
+
+def _sanitize_image_entry(entry):
+    """Normalize one gallery/canvas image entry to a safe data-URL object."""
+    if isinstance(entry, str):
+        src = _sanitize_cover_image(entry)
+        return {'src': src} if src else None
+    if isinstance(entry, dict):
+        src = _sanitize_cover_image(entry.get('src'))
+        if not src:
+            return None
+        name = str(entry.get('name') or '')[:120].strip()
+        out = {'src': src}
+        if name:
+            out['name'] = name
+        return out
+    return None
+
+
+def _sanitize_talaria_v9_panel(defn):
+    """Strip unsafe/oversize images inside Strategy Lab V9 panel JSON."""
+    if not isinstance(defn, dict):
+        return
+    v9 = defn.get('talaria_v9')
+    if not isinstance(v9, dict):
+        return
+    imgs = v9.get('images')
+    if isinstance(imgs, list):
+        v9['images'] = [x for x in (_sanitize_image_entry(i) for i in imgs[:6]) if x]
+    nodes = v9.get('canvasNodes')
+    if isinstance(nodes, list):
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            data = node.get('data')
+            if isinstance(data, dict) and isinstance(data.get('images'), list):
+                data['images'] = [
+                    x for x in (_sanitize_image_entry(i) for i in data['images'][:6]) if x
+                ]
+    defn['talaria_v9'] = v9
 
 
 def normalize_strategy_payload(data):
@@ -123,6 +164,7 @@ def normalize_strategy_payload(data):
     base = default_strategy_definition()
     base.update(defn)
     base['cover_image'] = _sanitize_cover_image(base.get('cover_image'))
+    _sanitize_talaria_v9_panel(base)
 
     return {
         'name': name,

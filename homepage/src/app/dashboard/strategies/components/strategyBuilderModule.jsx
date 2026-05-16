@@ -9,7 +9,7 @@ import {
   dataUrlByteSize,
   formatBytes,
   strategyImageUrl,
-} from "@/app/dashboard/strategylab-v9/strategyLabV9Images";
+} from "@/app/dashboard/strategies/strategyLabV9Images";
 
 function parseColor(str) {
   if (!str) return { r:255, g:255, b:255, a:1 };

@@ -28,6 +28,16 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  async redirects() {
+    return [
+      { source: "/strategies-lab", destination: "/dashboard/strategies/", permanent: true },
+      { source: "/strategies-lab/", destination: "/dashboard/strategies/", permanent: true },
+      { source: "/strategy-v8-lab-preview", destination: "/dashboard/strategies/", permanent: true },
+      { source: "/strategy-v8-lab-preview/", destination: "/dashboard/strategies/", permanent: true },
+      { source: "/dashboard/strategylab-v9", destination: "/dashboard/strategies/", permanent: true },
+      { source: "/dashboard/strategylab-v9/", destination: "/dashboard/strategies/", permanent: true },
+    ];
+  },
   async rewrites() {
     if (process.env.NEXT_DISABLE_CHART_REWRITES === "1") {
       return [];

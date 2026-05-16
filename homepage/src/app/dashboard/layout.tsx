@@ -12,7 +12,7 @@ import {
 } from "@/lib/dashboardAccess";
 import SubscriptionGateOverlay from "./SubscriptionGateOverlay";
 import DashboardAccessSkeleton from "./DashboardAccessSkeleton";
-import { StrategyLabV9BuilderProvider } from "./StrategyLabV9BuilderContext";
+import { StrategyLabV9BuilderProvider } from "./strategies/StrategyLabV9BuilderContext";
 
 type User = {
   id: number;
@@ -361,7 +361,7 @@ export default function DashboardLayout({
   React.useEffect(() => {
     if (pathname.startsWith("/dashboard/journal")) setActiveView("journal");
     else if (pathname.startsWith("/dashboard/backtest")) setActiveView("backtest");
-    else if (pathname.startsWith("/dashboard/strategies") || pathname.startsWith("/dashboard/strategylab-v9"))
+    else if (pathname.startsWith("/dashboard/strategies"))
       setActiveView("strategies");
     else if (pathname.startsWith("/dashboard/cot")) setActiveView("cot");
     else if (pathname.startsWith("/dashboard/support")) setActiveView("support");
