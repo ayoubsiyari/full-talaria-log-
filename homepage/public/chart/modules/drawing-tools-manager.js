@@ -1082,6 +1082,10 @@ class DrawingToolsManager {
                 if (this.isRectSelecting) return;
                 if (this.drawingState && this.drawingState.isDrawing) return;
                 if (this.isDragging || this.isResizing || this.isCustomHandleDrag) return;
+                if (this._isChartViewPanning()) {
+                    this._clearHoverDrawingState();
+                    return;
+                }
                 this._proximityPendingEvent = event;
                 if (this._proximityCheckRaf != null) return;
                 this._proximityCheckRaf = requestAnimationFrame(() => {
@@ -6787,18 +6791,76 @@ class DrawingToolsManager {
         }
     }
 
+    /** True while the user is panning chart data (or inertia scrolling). */
+    _isChartViewPanning() {
+        const ch = this.chart;
+        if (!ch) return false;
+        if (ch.drag && ch.drag.active && ch.drag.type === 'pan') return true;
+        if (ch.inertia && ch.inertia.active) return true;
+        return false;
+    }
+
+    /** Drop hover handles/cursor when pan starts so pan mousemove stays cheap. */
+    _clearHoverDrawingState() {
+        const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
+        if (this._hoveredDrawing && this._hoveredDrawing.group) {
+            SVGHelpers.applyHoverEffect(this._hoveredDrawing.group, false);
+            if (!this._hoveredDrawing.selected) {
+                this._hoveredDrawing.group.selectAll('.resize-handle, .custom-handle').style('opacity', 0);
+                this._hoveredDrawing.group.selectAll('.resize-handle, .resize-handle-hit, .custom-handle')
+                    .style('pointer-events', 'none');
+            }
+        }
+        this._hoveredDrawing = null;
+        this._hoverHandleBoundDrawingId = null;
+        this._hoverHandleBoundGroupNode = null;
+        this._cursorOverLine = false;
+        if (canvas) canvas.style.cursor = '';
+        if (this.svg) this.svg.style('cursor', '');
+    }
+
     /**
      * Redraw all drawings (called on zoom/pan)
+     * @param {Object} [options]
+     * @param {boolean} [options.forceFull] - full teardown + interaction setup (after pan ends)
+     * @param {boolean} [options.panFast] - update geometry only, no group clear
      */
-    redrawAll() {
+    redrawAll(options = {}) {
         // Check if scales are available
         if (!this.chart.xScale || !this.chart.yScale) {
             console.warn('⚠️ Scales not ready for drawing');
             return;
         }
-        
+
+        const forceFull = !!options.forceFull;
+        const panFast = !forceFull && (options.panFast || this._isChartViewPanning());
+
         // Update clip path dimensions in case chart was resized
         this.updateClipPath();
+
+        if (panFast) {
+            const scales = {
+                xScale: this.chart.xScale,
+                yScale: this.chart.yScale,
+                chart: this.chart,
+                labelsGroup: this.labelsGroup
+            };
+            this.drawings.forEach((drawing) => {
+                if (!drawing || drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) {
+                    return;
+                }
+                if (drawing.group && !drawing.group.empty()) {
+                    drawing.render(this.drawingsGroup, scales);
+                    if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+                        try { drawing.showAxisHighlights(); } catch (_) {}
+                    }
+                } else {
+                    this.renderDrawing(drawing, { skipInteraction: true });
+                }
+            });
+            this.raiseDrawingLayersAboveOrderPreviews();
+            return;
+        }
         
         // Set re-entry guard so hideAxisHighlights → scheduleRender doesn't re-enter
         // during the render cycle (would cause stack overflow when scheduleRender is synchronous)
@@ -9299,27 +9361,8 @@ class DrawingToolsManager {
                 this._hoveredDrawing = hoveredDrawing;
             }
         } else if (this._cursorOverLine) {
-            // Was over a drawing, now moved away - reset cursor
-            canvas.style.cursor = '';
-            this.svg.style('cursor', '');
+            this._clearHoverDrawingState();
             this.svg.selectAll('.shape-fill').style('cursor', 'default');
-            this._cursorOverLine = false;
-
-            // Clear hover effect/handles from hovered drawing (if not selected)
-            if (this._hoveredDrawing) {
-                if (this._hoveredDrawing.group) {
-                    SVGHelpers.applyHoverEffect(this._hoveredDrawing.group, false);
-                    if (!this._hoveredDrawing.selected) {
-                        this._hoveredDrawing.group.selectAll('.resize-handle, .custom-handle').style('opacity', 0);
-                        this._hoveredDrawing.group.selectAll('.resize-handle, .resize-handle-hit, .custom-handle')
-                            .style('pointer-events', 'none');
-                    }
-                }
-                this._hoveredDrawing = null;
-            }
-
-            this._hoverHandleBoundDrawingId = null;
-            this._hoverHandleBoundGroupNode = null;
         }
         
         // Handle axis cursor modes (inline cursor: checkDrawingProximity may clear style above)

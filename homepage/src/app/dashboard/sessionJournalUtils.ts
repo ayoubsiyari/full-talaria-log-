@@ -1,4 +1,4 @@
-/** Shared helpers for session trades journal (BacktestView + dashboardV8). */
+/** Shared helpers for session trades journal (BacktestView). */
 
 export function sessionJournalLocalKey(sessionId: number | string): string {
   return `talaria_v8_session_journal_${sessionId}`;

@@ -543,7 +543,7 @@ export function BacktestView() {
     .slice(0, SESSION_LIST_DISPLAY_MAX);
   const trMax = Math.max(1, ...trBars.map(s => kpis[s.id]?.trades || 0));
 
-  /* ── Dot grid (Days Tested tile): matches dashboardV8.jsx ── */
+  /* ── Dot grid (Days Tested tile) ── */
   const dotsN = Math.min(Math.ceil(totalDays / 30), 56);
 
   if (loading) {
@@ -743,7 +743,7 @@ export function BacktestView() {
               </div>
             </div>
 
-            {/* Tile 4: Total Days Tested dot grid — parity with dashboardV8.jsx */}
+            {/* Tile 4: Total Days Tested dot grid */}
             <div style={{ background: c.sf, border: `1px solid ${c.brH}`, overflow: "hidden", position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)`, pointerEvents: "none" }} />
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
@@ -768,7 +768,7 @@ export function BacktestView() {
               <div style={{ fontSize: 8, color: c.tm, fontFamily: F, marginTop: 4 }}>each square ≈ 1 month of replay elapsed (summed sessions)</div>
             </div>
 
-            {/* Tile 5: Tickers Tested — parity with dashboardV8.jsx */}
+            {/* Tile 5: Tickers Tested */}
             <div style={{ background: c.sf, border: `1px solid ${c.brH}`, overflow: "hidden", position: "relative", padding: "10px 12px", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)`, pointerEvents: "none" }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
@@ -982,7 +982,7 @@ export function BacktestView() {
               <div style={{ fontSize: 13, color: c.tm, marginBottom: 24 }}>Create your first backtesting session to get started</div>
             </div>
           ) : layoutMode === "cards" ? (
-            /* ── Cards layout (parity with dashboardV8.jsx sessions cards) ── */
+            /* ── Cards layout ── */
             <div style={{ width: "min(1288px, 100%)", margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, padding: "4px 0 24px" }}>
               {filteredSessions.map(sess => {
                 const isProp = sess.session_type === "propfirm";

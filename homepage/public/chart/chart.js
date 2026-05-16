@@ -9253,7 +9253,8 @@ class Chart {
         // once, so any genuinely-needed historical fetch still fires.
         const wheelActive = typeof this._wheelBurstUntil === 'number'
             && performance.now() < this._wheelBurstUntil;
-        if (!wheelActive) {
+        const panActive = this._isChartViewPanning();
+        if (!wheelActive && !panActive) {
             const isReplayActive = this.replaySystem && this.replaySystem.isActive;
             const nearEdgeThreshold = 500 * candleSpacing;
             if (isReplayActive) {
@@ -13120,6 +13121,38 @@ class Chart {
      * Immediate render only when overlays must stay glued: time-axis zoom drag, replay playback,
      * inertia, and wheel bursts. Chart pan is coalesced to one paint per frame to avoid jank.
      */
+    _isChartViewPanning() {
+        return !!(
+            (this.drag && this.drag.active && this.drag.type === 'pan') ||
+            (this.inertia && this.inertia.active)
+        );
+    }
+
+    /** Finger-down chart drag — use 1:1 movement (no rubber-band damping). */
+    _isChartPanDragging() {
+        return !!(this.drag && this.drag.active && this.drag.type === 'pan');
+    }
+
+    /**
+     * Cheap bounds clamp while dragging — no history fetch, no elastic resistance.
+     * Keeps pan feeling 1:1 with the mouse (TradingView-style).
+     */
+    _constrainOffsetDuringDrag() {
+        if (!this.data || this.data.length === 0) return;
+        const m = this.margin;
+        const cw = this.w - m.l - m.r;
+        const candleSpacing = this.getCandleSpacing();
+        const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
+            ? this.timeScale.rightOffsetCandles
+            : 5;
+        const rightMargin = Math.max(0, rightMarginCandles) * candleSpacing;
+        const maxOffset = cw - rightMargin;
+        const lastCandleX = Math.max(0, (this.data.length - 1) * candleSpacing);
+        const minOffset = -lastCandleX;
+        if (this.offsetX > maxOffset) this.offsetX = maxOffset;
+        else if (this.offsetX < minOffset) this.offsetX = minOffset;
+    }
+
     scheduleRender() {
         const replayPlaying = this.replaySystem && this.replaySystem.isPlaying;
         const timeAxisZoomDrag =
@@ -13127,11 +13160,12 @@ class Chart {
             this.drag.active &&
             this.drag.type === 'timeAxis';
         const inertialPan = this.inertia && this.inertia.active;
+        const chartPan = this.drag && this.drag.active && this.drag.type === 'pan';
         const wheelBurst =
             typeof this._wheelBurstUntil === 'number' &&
             performance.now() < this._wheelBurstUntil;
 
-        if (replayPlaying || timeAxisZoomDrag || inertialPan || wheelBurst) {
+        if (replayPlaying || timeAxisZoomDrag || inertialPan || chartPan || wheelBurst) {
             this.renderPending = false;
             this.render();
             return;
@@ -13317,6 +13351,8 @@ class Chart {
         // Clear canvas
         this.ctx.clearRect(0, 0, this.w, this.h);
         
+        const chartViewPanning = this._isChartViewPanning();
+
         // If no data, show message
         if (!this.data || this.data.length === 0) {
             this.ctx.fillStyle = '#787b86';
@@ -13364,7 +13400,9 @@ class Chart {
             const latestCandle = this.data[this.data.length - 1];
             this.drawPriceLine([latestCandle]);
             this.drawAxes();
-            this.drawEconomicCalendarAxisMarkers();
+            if (!chartViewPanning) {
+                this.drawEconomicCalendarAxisMarkers();
+            }
             
             this.drawCurrentPriceLabel([latestCandle]);
             
@@ -13376,14 +13414,16 @@ class Chart {
                 if (typeof this.orderManager.updateOrderLines === 'function') {
                     this.orderManager.updateOrderLines(this);
                 }
-                if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
-                    this.orderManager.updatePreviewLinePositions();
-                }
-                if (typeof this.orderManager._scheduleDraftPreviewRedrawIfNeeded === 'function') {
-                    this.orderManager._scheduleDraftPreviewRedrawIfNeeded(this);
-                }
-                if (typeof this.orderManager.updateMfeMaeMarkers === 'function') {
-                    this.orderManager.updateMfeMaeMarkers(this);
+                if (!chartViewPanning) {
+                    if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
+                        this.orderManager.updatePreviewLinePositions();
+                    }
+                    if (typeof this.orderManager._scheduleDraftPreviewRedrawIfNeeded === 'function') {
+                        this.orderManager._scheduleDraftPreviewRedrawIfNeeded(this);
+                    }
+                    if (typeof this.orderManager.updateMfeMaeMarkers === 'function') {
+                        this.orderManager.updateMfeMaeMarkers(this);
+                    }
                 }
             }
             return;
@@ -13392,6 +13432,24 @@ class Chart {
         // Log first render with data
         if (!this.hasRenderedData) {
             this.hasRenderedData = true;
+        }
+
+        // Fast path while dragging chart: candles + axes only (skip indicators / overlays / calendar).
+        if (chartViewPanning) {
+            this.drawGrid();
+            this.drawVolume(visible);
+            this.drawCandles(visible);
+            this.drawPriceLine(visible);
+            this.drawAxes();
+            this.drawCurrentPriceLabel(visible);
+            this.redrawDrawings();
+            if (this.orderManager && typeof this.orderManager.updateOrderLines === 'function') {
+                this.orderManager.updateOrderLines(this);
+            }
+            if (this.boxZoom && this.boxZoom.active) {
+                this.drawBoxZoom();
+            }
+            return;
         }
 
         // Update left margin for overlay Y-axes BEFORE drawing
@@ -13447,14 +13505,16 @@ class Chart {
             if (typeof this.orderManager.updateOrderLines === 'function') {
                 this.orderManager.updateOrderLines(this);
             }
-            if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
-                this.orderManager.updatePreviewLinePositions();
-            }
-            if (typeof this.orderManager._scheduleDraftPreviewRedrawIfNeeded === 'function') {
-                this.orderManager._scheduleDraftPreviewRedrawIfNeeded(this);
-            }
-            if (typeof this.orderManager.updateMfeMaeMarkers === 'function') {
-                this.orderManager.updateMfeMaeMarkers(this);
+            if (!chartViewPanning) {
+                if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
+                    this.orderManager.updatePreviewLinePositions();
+                }
+                if (typeof this.orderManager._scheduleDraftPreviewRedrawIfNeeded === 'function') {
+                    this.orderManager._scheduleDraftPreviewRedrawIfNeeded(this);
+                }
+                if (typeof this.orderManager.updateMfeMaeMarkers === 'function') {
+                    this.orderManager.updateMfeMaeMarkers(this);
+                }
             }
         }
 
@@ -13468,7 +13528,9 @@ class Chart {
         this.drawAxes();
 
         // Economic calendar markers (Finnhub) on the time-axis row — after axes so they sit above the axis line.
-        this.drawEconomicCalendarAxisMarkers();
+        if (!chartViewPanning) {
+            this.drawEconomicCalendarAxisMarkers();
+        }
 
         // Draw current price label AFTER axes so it isn't covered by the axis background fill
         this.drawCurrentPriceLabel(visible);
@@ -16745,6 +16807,7 @@ class Chart {
             } else {
                 this.inertia.active = false;
                 this.dispatchScrollSync();
+                this._finishPanDrawingRedraw();
             }
         };
         
@@ -17105,24 +17168,27 @@ class Chart {
                     let effectiveDx = this.timeScale.locked ? 0 : dx;
                     // When price scale is locked, block vertical pan entirely
                     let effectiveDy = this.priceScale.locked ? 0 : dy;
-                    
-                    // Apply rubber band resistance
-                    const resisted = applyRubberBandResistance(effectiveDx, effectiveDy);
-                    
-                    this.offsetX += resisted.dx;
-                    
+
+                    // 1:1 with pointer while dragging — rubber-band only after release / inertia.
+                    this.offsetX += effectiveDx;
+
                     // Vertical pan (only when NOT locked)
                     if (this.yScale && effectiveDy !== 0) {
                         this.autoScale = false;
                         this.priceScale.autoScale = false;
                         const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
                         const pricePerPixel = priceRange / (this.h - this.margin.t - this.margin.b);
-                        this.priceOffset += resisted.dy * pricePerPixel;
+                        this.priceOffset += effectiveDy * pricePerPixel;
                     }
-                    
-                    this.constrainOffset();
+
+                    this._constrainOffsetDuringDrag();
                     this.scheduleRender();
-                    this.dispatchScrollSync();
+                    if (!this._panScrollSyncRaf) {
+                        this._panScrollSyncRaf = requestAnimationFrame(() => {
+                            this._panScrollSyncRaf = null;
+                            this.dispatchScrollSync(true);
+                        });
+                    }
                     
                     // Update follow button visibility after panning
                     if (this.replaySystem && this.replaySystem.isActive) {
@@ -17335,10 +17401,19 @@ class Chart {
                 const isChartClick = e.button === 0 && Math.hypot(panDx, panDy) < panClickThresholdPx;
                 // Real pan → sync scroll to other panels. Tiny movement (click) → skip so Time-sync
                 // click handler can align by bar time without fighting right-edge sync.
+                if (this._panScrollSyncRaf) {
+                    cancelAnimationFrame(this._panScrollSyncRaf);
+                    this._panScrollSyncRaf = null;
+                }
                 if (!isChartClick) {
-                    this.dispatchScrollSync();
+                    this.dispatchScrollSync(true);
+                    this.constrainOffset();
                 }
                 this.scheduleChartViewSave();
+                if (!isChartClick) {
+                    this._finishPanDrawingRedraw();
+                    this.scheduleRender();
+                }
 
                 // Re-check replay follow indicator after the pan settles.
                 // This prevents needing an extra click for the jump-to-latest button to appear.
@@ -18548,10 +18623,20 @@ class Chart {
         }
     }
 
+    _finishPanDrawingRedraw() {
+        if (this.drawingManager && this.xScale && this.yScale) {
+            this.drawingManager.redrawAll({ forceFull: true });
+        }
+    }
+
     redrawDrawings() {
         // Use new Drawing Tools Manager if available
         if (this.drawingManager && this.xScale && this.yScale) {
-            this.drawingManager.redrawAll();
+            if (this._isChartViewPanning()) {
+                this.drawingManager.redrawAll({ panFast: true });
+            } else {
+                this.drawingManager.redrawAll();
+            }
             return;
         }
         

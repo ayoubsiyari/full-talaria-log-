@@ -4,7 +4,8 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..");
-const sessionsView = path.join(repoRoot, "chart v 1.4", "Design", "src", "pages", "session", "SessionsView.jsx");
+/** Design mockup source archived when `chart v 1.4/Design/` was retired — regen modal only via this script. */
+const sessionsView = path.join(__dirname, "design-source", "SessionsView.jsx");
 const headPath = path.join(__dirname, "backtest-modal-head.tsx");
 const tailPath = path.join(__dirname, "backtest-modal-tail.tsx");
 const outPath = path.join(repoRoot, "homepage", "src", "app", "dashboard", "BacktestNewSessionModal.tsx");

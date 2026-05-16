@@ -256,7 +256,7 @@ function DashboardNotificationBell({
 
 const F = "'Exo 2', sans-serif";
 
-/** Dark chrome tokens — parity with `chart v 1.4/Design` (`TalariaV8b` `c` map). */
+/** Dark chrome tokens — parity with `talaria-design` / `TalariaV8b` `c` map. */
 const DASH_C = {
   el: "#0F1119",
   bg: "#07080E",

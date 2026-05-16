@@ -82,3 +82,14 @@ if (fs.existsSync(mcpSrc)) {
 } else {
   console.warn("[sync-v9-to-homepage] multichart-prod not found, skip:", mcpSrc);
 }
+
+// Drop stale partial copies under public/chart/modules (nginx/dev proxy serves modules from chart API).
+const modulesDir = path.resolve(__dirname, "../../../homepage/public/chart/modules");
+const modulesKeep = new Set(["compare-overlay.js", "drawing-tools-manager.js"]);
+if (fs.existsSync(modulesDir)) {
+  for (const name of fs.readdirSync(modulesDir)) {
+    if (!name.endsWith(".js") || modulesKeep.has(name)) continue;
+    fs.rmSync(path.join(modulesDir, name), { force: true });
+    console.log("[sync-v9-to-homepage] Removed stale module mirror:", name);
+  }
+}

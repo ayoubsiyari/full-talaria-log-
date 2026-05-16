@@ -1,8 +1,8 @@
 services:
   trading-chart:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: chart v 1.4/chart/Dockerfile.local
     container_name: trading-chart-app
     ports:
       - "${HOST_PORT:-8000}:8000"
@@ -48,8 +48,8 @@ services:
 
   trading-chart-worker:
     build:
-      context: .
-      dockerfile: Dockerfile.local
+      context: ../..
+      dockerfile: chart v 1.4/chart/Dockerfile.local
     container_name: trading-chart-worker
     command:
       [
