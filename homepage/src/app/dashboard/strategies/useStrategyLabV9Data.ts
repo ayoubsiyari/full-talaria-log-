@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   JOURNAL_API_BASE,
   journalAuthHeaders,
+  parseJournalJsonResponse,
   syncJournalTokenFromSession,
 } from "@/lib/journalApi";
 import {
@@ -61,13 +62,20 @@ export function useStrategyLabV9Data() {
         if (getToken()) res = await fetchList();
       }
 
-      const data = (await res.json()) as {
+      const data = await parseJournalJsonResponse<{
         success?: boolean;
         strategies?: ApiStrategyRecord[];
         error?: string;
         action?: string;
-      };
+      }>(res);
       if (!res.ok) {
+        if (res.status === 502 || res.status === 503 || res.status === 504) {
+          setStrategiesError(
+            "Strategy API is unavailable (502). On the server run: docker compose up -d --build journal-backend",
+          );
+          setMyStrategies([]);
+          return;
+        }
         if (res.status === 403 && data.action === "subscription_required") {
           setStrategiesError(
             "Strategy lab requires access. Open Pricing to subscribe, or ask an admin to enable the Strategies section on your account."
@@ -187,13 +195,18 @@ export function useStrategyLabV9Data() {
         }
         throw e;
       }
-      const data = (await res.json().catch(() => ({}))) as {
+      const data = await parseJournalJsonResponse<{
         success?: boolean;
         error?: string;
         action?: string;
-      };
+      }>(res).catch(() => ({} as { success?: boolean; error?: string; action?: string }));
       if (!res.ok || data.success === false) {
         persistInFlightRef.current = false;
+        if (res.status === 502 || res.status === 503 || res.status === 504) {
+          throw new Error(
+            "Strategy API is unavailable. Restart journal-backend on the server and try again.",
+          );
+        }
         if (res.status === 403 && data.action === "subscription_required") {
           throw new Error(
             "Strategy lab requires access. Subscribe or ask an admin to enable the Strategies section.",

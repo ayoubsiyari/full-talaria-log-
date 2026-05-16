@@ -2,7 +2,7 @@
 
 from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import JWTManager, jwt_required
 from models import db
 from config import Config, init_prod_config
 from email_service import init_mail

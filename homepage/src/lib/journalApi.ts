@@ -38,6 +38,30 @@ export async function syncJournalTokenFromSession(
   }
 }
 
+/** Parse JSON body; return clear error when nginx serves HTML (502 maintenance page). */
+export async function parseJournalJsonResponse<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  const trimmed = text.trim();
+  if (!trimmed) return {} as T;
+  if (trimmed.startsWith("<")) {
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      throw new Error(
+        "Strategy API is temporarily unavailable (server maintenance). Restart journal-backend or try again in a minute.",
+      );
+    }
+    throw new Error(
+      `Strategy API returned an unexpected page instead of JSON (HTTP ${res.status}).`,
+    );
+  }
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    throw new Error(
+      `Strategy API returned invalid JSON (HTTP ${res.status}).`,
+    );
+  }
+}
+
 export function journalAuthHeaders(): Record<string, string> {
   const token =
     typeof window !== "undefined" ? localStorage.getItem("token") : null;
