@@ -27,18 +27,6 @@ services:
     build:
       context: ./journal-backend
     restart: unless-stopped
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=8)",
-        ]
-      interval: 20s
-      timeout: 12s
-      retries: 8
-      start_period: 60s
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-talaria}:${POSTGRES_PASSWORD:-talaria}@db:5432/${POSTGRES_DB:-talaria}
       FLASK_ENV: production

@@ -10,8 +10,16 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . /app/
 
-RUN chmod +x /app/docker-entrypoint.sh
+# Verify app imports at build time (sqlite + dev env — no Postgres required during docker build).
+RUN FLASK_ENV=development FLASK_DEBUG=True \
+    DATABASE_URL=sqlite:////tmp/journal-build-check.db \
+    SECRET_KEY=local-docker-journal-secret-minimum-32-characters-long \
+    JWT_SECRET_KEY=local-docker-journal-jwt-secret-minimum-32-characters \
+    python -c "from app import app; print('journal-backend import OK')"
+
+RUN sed -i 's/\r$//' /app/docker-entrypoint.sh 2>/dev/null || true \
+    && chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 5000
 
-CMD ["/app/docker-entrypoint.sh"]
+CMD ["/bin/sh", "/app/docker-entrypoint.sh"]
