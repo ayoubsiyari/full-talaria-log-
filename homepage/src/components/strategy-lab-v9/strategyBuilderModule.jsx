@@ -696,17 +696,21 @@ const SectionNode = ({ id, data }) => {
         <div style={{height:54,flexShrink:0,position:'relative',borderBottom:'1px solid var(--tlc-brh)'}}>
           {/* Drag handle */}
           <div
-            onMouseDown={e=>{
+            role="button"
+            aria-label="Drag to reorder group"
+            onPointerDown={e=>{
               if(e.button!==0)return;
               e.stopPropagation();
               e.preventDefault();
+              e.currentTarget.setPointerCapture?.(e.pointerId);
               _cvCb.startDrag&&_cvCb.startDrag(data.sectionId,e.clientY);
             }}
-            className="tlc-drag-grip"
+            className="tlc-drag-grip nodrag nopan"
             style={{
-              position:'absolute',top:'50%',transform:'translateY(-50%)',left:9,
+              position:'absolute',top:'50%',transform:'translateY(-50%)',left:9,zIndex:5,
               display:'flex',alignItems:'center',justifyContent:'center',
-              padding:5,lineHeight:1,userSelect:'none',
+              padding:5,lineHeight:1,userSelect:'none',cursor:'grab',touchAction:'none',
+              pointerEvents:'auto',
             }}
           >
             <svg width={21} height={21} viewBox="0 0 18 18" fill="none">
@@ -1072,7 +1076,7 @@ const GraphSepLine = ({ topY, onInsert }) => {
     <div
       style={{
         position:'absolute', left:SEC_X, top:topY, width:SEC_W, height:SEC_GAP,
-        zIndex:10, display:'flex', alignItems:'center', pointerEvents:'all',
+        zIndex:10, display:'flex', alignItems:'center', pointerEvents:'none',
       }}
       onMouseEnter={()=>setHov(true)}
       onMouseLeave={()=>setHov(false)}
@@ -1083,6 +1087,7 @@ const GraphSepLine = ({ topY, onInsert }) => {
         onMouseLeave={()=>setActive(false)}
         onClick={onInsert}
         style={{
+          pointerEvents:'auto',
           fontSize:20,color:GOLD,lineHeight:1,flexShrink:0,
           display:'flex',alignItems:'center',justifyContent:'center',
           padding:hov?'10px 28px':'0',height:hov?42:0,
@@ -2757,6 +2762,32 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   const [flowViewMode, setFlowViewMode] = useState('board');
   const [outlineZoom, setOutlineZoom] = useState(1);
 
+  useLayoutEffect(() => {
+    if (!document.querySelector('link[href*="Exo+2"]')) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700;800;900&display=swap';
+      document.head.appendChild(link);
+    }
+    let style = document.getElementById('tlc-canvas-css');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'tlc-canvas-css';
+      document.head.appendChild(style);
+    }
+    style.textContent = [
+      '.react-flow__pane{cursor:default!important}',
+      '.react-flow__node{cursor:default!important}',
+      '.react-flow__node-section{pointer-events:all!important;overflow:visible!important}',
+      '.react-flow__node-condition{pointer-events:all!important}',
+      '.tlc-drag-grip,.tlc-drag-grip *{cursor:grab!important}',
+      '.tlc-dragging,.tlc-dragging *{cursor:grabbing!important}',
+      '.tlc-sliding .react-flow__node-section,.tlc-sliding .react-flow__node-condition{transition:transform 0.3s cubic-bezier(0.25,0.46,0.45,0.94)!important}',
+      '@keyframes tlcSecOut{from{opacity:1;transform:scaleY(1) translateY(0)}to{opacity:0;transform:scaleY(0.65) translateY(-14px)}}',
+      '.tlc-sec-deleting{animation:tlcSecOut 0.28s cubic-bezier(0.4,0,1,1) forwards;transform-origin:top center;pointer-events:none}',
+    ].join('');
+  }, []);
+
   const hasExistingGroups = canvasNodes.some(n => n.type === 'condition');
 
   const loadTemplate = useCallback((tpl) => {
@@ -3204,8 +3235,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   }, [setCanvasNodes]);
 
   const startSectionDrag = useCallback((sectionId, startClientY) => {
-    if (!rfRef.current) return;
-    const { zoom } = rfRef.current.getViewport();
+    const zoom = rfRef.current?.getViewport()?.zoom ?? (rfTransform?.[2] || BASE_ZOOM);
     const sec = canvasNodesRef.current.find(n => n.id === sectionId);
     const startGraphY = sec?.position.y ?? 0;
     const sorted = canvasNodesRef.current.filter(n => n.type === 'section').sort((a,b) => a.position.y - b.position.y);
@@ -3300,7 +3330,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, [setCanvasNodes]);
+  }, [setCanvasNodes, rfTransform]);
 
   // Keep module-level callbacks current
   const onNodeDragStart = useCallback((_, node) => {
@@ -3469,16 +3499,34 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   }, [setCanvasNodes]);
 
   shortcutsRef.current = { undo: doUndo, redo: doRedo, del: deleteSelected, hasSel: selectedIds.length > 0 };
-  _cvCb.addCondition = addConditionToSection;
-  _cvCb.deleteCondition = deleteCondition;
-  _cvCb.updateCondition = updateConditionData;
-  _cvCb.deleteSection = doDeleteSection;
-  _cvCb.insertSection = insertSectionAfter;
-  _cvCb.renameSection = renameSection;
-  _cvCb.resizeSection = resizeSectionLive;
-  _cvCb.updateDesc = updateSectionDesc;
-  _cvCb.setDescPanelOpen = setDescPanelOpen;
-  _cvCb.startDrag = startSectionDrag;
+  useLayoutEffect(() => {
+    _cvCb.addCondition = addConditionToSection;
+    _cvCb.deleteCondition = deleteCondition;
+    _cvCb.updateCondition = updateConditionData;
+    _cvCb.deleteSection = doDeleteSection;
+    _cvCb.insertSection = insertSectionAfter;
+    _cvCb.renameSection = renameSection;
+    _cvCb.resizeSection = resizeSectionLive;
+    _cvCb.updateDesc = updateSectionDesc;
+    _cvCb.setDescPanelOpen = setDescPanelOpen;
+    _cvCb.startDrag = startSectionDrag;
+    return () => {
+      _cvCb.addCondition = null;
+      _cvCb.deleteCondition = null;
+      _cvCb.updateCondition = null;
+      _cvCb.deleteSection = null;
+      _cvCb.insertSection = null;
+      _cvCb.renameSection = null;
+      _cvCb.resizeSection = null;
+      _cvCb.updateDesc = null;
+      _cvCb.setDescPanelOpen = null;
+      _cvCb.startDrag = null;
+    };
+  }, [
+    addConditionToSection, deleteCondition, updateConditionData, doDeleteSection,
+    insertSectionAfter, renameSection, resizeSectionLive, updateSectionDesc,
+    setDescPanelOpen, startSectionDrag,
+  ]);
 
   const sections = useMemo(() => canvasNodes.filter(n => n.type === 'section'), [canvasNodes]);
   const conditions = useMemo(() => canvasNodes.filter(n => n.type === 'condition'), [canvasNodes]);
