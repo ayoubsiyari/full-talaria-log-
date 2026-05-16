@@ -38,7 +38,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: journal-frontend, dir: journal-frontend }
           - { name: homepage, dir: homepage }
           - { name: chart, dir: "chart v 1.4/chart" }
           - { name: root, dir: "." }

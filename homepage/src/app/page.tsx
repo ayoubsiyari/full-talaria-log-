@@ -94,8 +94,8 @@ export default function HomePage() {
 
   /** Same gating as /dashboard/backtest/: logged-in users without journal access go to pricing, not the app. */
   const journalTabHref = React.useMemo(() => {
-    if (!user) return "/login/?next=/journal/dashboard";
-    if (user.role === "admin" || user.has_journal_access) return "/journal/dashboard";
+    if (!user) return "/login/?next=/dashboard/journal/";
+    if (user.role === "admin" || user.has_journal_access) return "/dashboard/journal/";
     return "/pricing/";
   }, [user]);
 

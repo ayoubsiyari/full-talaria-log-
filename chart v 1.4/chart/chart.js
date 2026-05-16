@@ -13153,6 +13153,109 @@ class Chart {
         else if (this.offsetX < minOffset) this.offsetX = minOffset;
     }
 
+    _snapshotPanDrawingsLayer() {
+        this._panSnapOffsetX = this.offsetX;
+        this._panSnapPriceOffset = this.priceOffset;
+    }
+
+    _clearPanDrawingsLayerTransform() {
+        const dm = this.drawingManager;
+        if (dm) {
+            if (dm.drawingsGroup && !dm.drawingsGroup.empty()) {
+                dm.drawingsGroup.attr('transform', null);
+            }
+            if (dm.labelsGroup && !dm.labelsGroup.empty()) {
+                dm.labelsGroup.attr('transform', null);
+            }
+        }
+        this._panSnapOffsetX = null;
+        this._panSnapPriceOffset = null;
+    }
+
+    _applyPanDrawingsLayerTransform() {
+        const dm = this.drawingManager;
+        if (!dm || this._panSnapOffsetX == null) return;
+        const dx = this.offsetX - this._panSnapOffsetX;
+        let ty = 0;
+        if (this.yScale && this._panSnapPriceOffset != null && this.priceOffset !== this._panSnapPriceOffset) {
+            const m = this.margin;
+            const priceAreaHeight = this.h - m.t - m.b;
+            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+            if (priceRange > 0) {
+                ty = ((this.priceOffset - this._panSnapPriceOffset) / priceRange) * priceAreaHeight;
+            }
+        }
+        const transform = ty ? `translate(${dx},${ty})` : `translate(${dx},0)`;
+        if (dm.drawingsGroup && !dm.drawingsGroup.empty()) {
+            dm.drawingsGroup.attr('transform', transform);
+        }
+        if (dm.labelsGroup && !dm.labelsGroup.empty()) {
+            dm.labelsGroup.attr('transform', transform);
+        }
+    }
+
+    _runChartPanFrame() {
+        if (!this._isChartPanDragging()) return;
+        const cx = this._panPendingClientX;
+        const cy = this._panPendingClientY;
+        if (cx == null || cy == null) return;
+
+        const zPan = this._v9LayoutZoom();
+        const effectiveDx = this.timeScale.locked ? 0 : (cx - this.drag.lastX) / zPan;
+        const effectiveDy = this.priceScale.locked ? 0 : (cy - this.drag.lastY) / zPan;
+
+        this.offsetX += effectiveDx;
+        if (this.yScale && effectiveDy !== 0) {
+            this.autoScale = false;
+            this.priceScale.autoScale = false;
+            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+            const pricePerPixel = priceRange / (this.h - this.margin.t - this.margin.b);
+            this.priceOffset += effectiveDy * pricePerPixel;
+        }
+
+        this.drag.lastX = cx;
+        this.drag.lastY = cy;
+        this._constrainOffsetDuringDrag();
+        this.renderPending = false;
+        this.render();
+
+        if (!this._panScrollSyncRaf) {
+            this._panScrollSyncRaf = requestAnimationFrame(() => {
+                this._panScrollSyncRaf = null;
+                this.dispatchScrollSync(true);
+            });
+        }
+    }
+
+    _scheduleChartPanFrame(clientX, clientY) {
+        this._panPendingClientX = clientX;
+        this._panPendingClientY = clientY;
+        if (this._chartPanFrameRaf != null) return;
+        this._chartPanFrameRaf = requestAnimationFrame(() => {
+            this._chartPanFrameRaf = null;
+            this._runChartPanFrame();
+        });
+    }
+
+    _flushChartPanFrame() {
+        if (this._chartPanFrameRaf != null) {
+            cancelAnimationFrame(this._chartPanFrameRaf);
+            this._chartPanFrameRaf = null;
+        }
+        if (this._isChartPanDragging()) {
+            this._runChartPanFrame();
+        }
+    }
+
+    _cancelChartPanFrame() {
+        if (this._chartPanFrameRaf != null) {
+            cancelAnimationFrame(this._chartPanFrameRaf);
+            this._chartPanFrameRaf = null;
+        }
+        this._panPendingClientX = null;
+        this._panPendingClientY = null;
+    }
+
     scheduleRender() {
         const replayPlaying = this.replaySystem && this.replaySystem.isPlaying;
         const timeAxisZoomDrag =
@@ -13160,12 +13263,11 @@ class Chart {
             this.drag.active &&
             this.drag.type === 'timeAxis';
         const inertialPan = this.inertia && this.inertia.active;
-        const chartPan = this.drag && this.drag.active && this.drag.type === 'pan';
         const wheelBurst =
             typeof this._wheelBurstUntil === 'number' &&
             performance.now() < this._wheelBurstUntil;
 
-        if (replayPlaying || timeAxisZoomDrag || inertialPan || chartPan || wheelBurst) {
+        if (replayPlaying || timeAxisZoomDrag || inertialPan || wheelBurst) {
             this.renderPending = false;
             this.render();
             return;
@@ -13442,8 +13544,14 @@ class Chart {
             this.drawPriceLine(visible);
             this.drawAxes();
             this.drawCurrentPriceLabel(visible);
-            this.redrawDrawings();
-            if (this.orderManager && typeof this.orderManager.updateOrderLines === 'function') {
+            if (this._isChartPanDragging()) {
+                this._applyPanDrawingsLayerTransform();
+            } else {
+                this.redrawDrawings();
+            }
+            if (!this._isChartPanDragging()
+                && this.orderManager
+                && typeof this.orderManager.updateOrderLines === 'function') {
                 this.orderManager.updateOrderLines(this);
             }
             if (this.boxZoom && this.boxZoom.active) {
@@ -17088,6 +17196,7 @@ class Chart {
                 this.isZooming = true;
             } else if (mode === 'chart') {
                 this.drag.type = 'pan';
+                this._snapshotPanDrawingsLayer();
                 // DON'T change autoScale here - preserve lock state from double-click
                 // Update cursor to move during pan (unless in dot mode)
                 const panCursor = this.cursorType === 'dot' ? 'none' : 'move';
@@ -17160,36 +17269,10 @@ class Chart {
                     }
                 }
                 
-                // ─── Chart Pan ───
+                // ─── Chart Pan ─── (one paint per animation frame — avoids stuck-then-jump jank)
                 if (this.drag.type === 'pan') {
-                    // Apply axis locking via modifier keys - DISABLED to prevent interference
-                    // Shift = horizontal only, Ctrl/Meta = vertical only, default = both
-                    // When time scale is locked, block horizontal pan entirely
-                    let effectiveDx = this.timeScale.locked ? 0 : dx;
-                    // When price scale is locked, block vertical pan entirely
-                    let effectiveDy = this.priceScale.locked ? 0 : dy;
+                    this._scheduleChartPanFrame(e.clientX, e.clientY);
 
-                    // 1:1 with pointer while dragging — rubber-band only after release / inertia.
-                    this.offsetX += effectiveDx;
-
-                    // Vertical pan (only when NOT locked)
-                    if (this.yScale && effectiveDy !== 0) {
-                        this.autoScale = false;
-                        this.priceScale.autoScale = false;
-                        const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-                        const pricePerPixel = priceRange / (this.h - this.margin.t - this.margin.b);
-                        this.priceOffset += effectiveDy * pricePerPixel;
-                    }
-
-                    this._constrainOffsetDuringDrag();
-                    this.scheduleRender();
-                    if (!this._panScrollSyncRaf) {
-                        this._panScrollSyncRaf = requestAnimationFrame(() => {
-                            this._panScrollSyncRaf = null;
-                            this.dispatchScrollSync(true);
-                        });
-                    }
-                    
                     // Update follow button visibility after panning
                     if (this.replaySystem && this.replaySystem.isActive) {
                         this.replaySystem.updateAutoScrollIndicator();
@@ -17273,8 +17356,10 @@ class Chart {
                     }
                 }
                 
-                this.drag.lastX = e.clientX;
-                this.drag.lastY = e.clientY;
+                if (this.drag.type !== 'pan') {
+                    this.drag.lastX = e.clientX;
+                    this.drag.lastY = e.clientY;
+                }
             } else {
                 if (typeof this.getSeparatePanelResizeHandleAt === 'function') {
                     const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my);
@@ -17394,6 +17479,8 @@ class Chart {
             }
             // Handle pan end - no inertia, stop immediately
             else if (dragType === 'pan' && wasDragging) {
+                this._flushChartPanFrame();
+                this._cancelChartPanFrame();
                 const panClickThresholdPx = 5;
                 const zc = this._v9LayoutZoom();
                 const panDx = ((e.clientX - (this.drag.startX ?? e.clientX)) / zc);
@@ -17405,6 +17492,7 @@ class Chart {
                     cancelAnimationFrame(this._panScrollSyncRaf);
                     this._panScrollSyncRaf = null;
                 }
+                this._clearPanDrawingsLayerTransform();
                 if (!isChartClick) {
                     this.dispatchScrollSync(true);
                     this.constrainOffset();
@@ -17526,6 +17614,12 @@ class Chart {
                 return;
             }
 
+            const wasPanDrag = this.drag.type === 'pan';
+            this._cancelChartPanFrame();
+            if (wasPanDrag) {
+                this._clearPanDrawingsLayerTransform();
+                this._finishPanDrawingRedraw();
+            }
             this.drag.active = false;
             this.drag.type = null;
             this._separatePanelHoverHandle = null;

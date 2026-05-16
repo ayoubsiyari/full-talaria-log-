@@ -771,8 +771,8 @@ export default function JournalPage() {
       <div className="sd-modal-panel" style={{ textAlign: "center", maxWidth: 420 }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>🔑</div>
         <h2 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: 8, color: S.text }}>Journal login required</h2>
-        <p style={{ color: S.textMuted, fontSize: "0.85rem", marginBottom: 24 }}>No journal token in localStorage. Please log in at <code style={{ color: S.blueLight }}>/journal</code> first.</p>
-        <a href="/journal" className="sd-btn-primary" style={{ textDecoration: "none", display: "inline-flex" }}>Go to /journal →</a>
+        <p style={{ color: S.textMuted, fontSize: "0.85rem", marginBottom: 24 }}>Sign in to load your journal data and broker connections.</p>
+        <a href="/login/?next=/dashboard/journal/" className="sd-btn-primary" style={{ textDecoration: "none", display: "inline-flex" }}>Sign in →</a>
       </div>
     </div>
   );
