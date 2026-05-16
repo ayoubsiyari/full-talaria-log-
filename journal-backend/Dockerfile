@@ -10,6 +10,8 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . /app/
 
+RUN chmod +x /app/docker-entrypoint.sh
+
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "app:app"]
+CMD ["/app/docker-entrypoint.sh"]

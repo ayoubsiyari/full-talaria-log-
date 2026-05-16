@@ -108,6 +108,12 @@ def dashboard_modules_catalog():
     return jsonify({"modules": modules_catalog()}), 200
 
 
+@app.route('/api/health', methods=['GET'])
+def api_health():
+    """Docker / load-balancer probe — no auth, no DB."""
+    return jsonify({"ok": True, "service": "journal-backend"}), 200
+
+
 @app.route('/', methods=['GET'])
 def home():
     return {

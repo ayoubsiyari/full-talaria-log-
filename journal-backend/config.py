@@ -12,10 +12,18 @@ _WEAK_SECRET_MARKERS = frozenset({
     'jwt-secret-change-me',
 })
 
+# docker-compose.yml defaults (32+ chars) — allowed so fresh deploys boot without a custom .env
+_DOCKER_COMPOSE_SAFE_SECRETS = frozenset({
+    'local-docker-journal-secret-minimum-32-characters-long',
+    'local-docker-journal-jwt-secret-minimum-32-characters',
+})
+
 
 def _is_weak_secret(value: str) -> bool:
     if not value:
         return True
+    if value in _DOCKER_COMPOSE_SAFE_SECRETS:
+        return False
     if value in _WEAK_SECRET_MARKERS:
         return True
     return len(value) < 32
