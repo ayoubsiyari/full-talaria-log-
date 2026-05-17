@@ -2782,6 +2782,9 @@ def _default_firstrate_schedule() -> dict:
         "timeframe": (os.getenv("FIrstrate_SCHEDULE_TIMEFRAME", "1min").strip() or "1min"),
         "adaptive_period": os.getenv("FIrstrate_SCHEDULE_ADAPTIVE_PERIOD", "true").strip().lower()
         in {"1", "true", "yes", "on"},
+        # 24/7: queue week/month imports for stale/missing tickers without opening admin UI.
+        "auto_repair": os.getenv("FIrstrate_SCHEDULE_AUTO_REPAIR", "true").strip().lower()
+        in {"1", "true", "yes", "on"},
         "upsert_existing": os.getenv("FIrstrate_SCHEDULE_UPSERT", "true").strip().lower() in {"1", "true", "yes", "on"},
         "delete_existing_first": False,
         "purge_confirmation": None,
@@ -2871,9 +2874,15 @@ def _firstrate_has_active_import_job() -> bool:
 
 
 def _firstrate_mark_scheduled_type_complete(instrument_type: str) -> None:
-    """Mark an asset class as successfully synced for the current UTC day."""
+    """
+    Mark an asset class as successfully synced for the current UTC day.
+    Only when every ticker in that class is fresh (no stale / missing left).
+    """
     it = (instrument_type or "").strip().lower()
     if not it:
+        return
+    stats = _firstrate_class_health_stats(it)
+    if int(stats.get("stale_count") or 0) > 0 or int(stats.get("missing_count") or 0) > 0:
         return
     today_str = datetime.utcnow().strftime("%Y-%m-%d")
     cfg = _load_firstrate_schedule()
@@ -3034,6 +3043,85 @@ def _firstrate_class_health_stats(instrument_type: str) -> dict:
     return stats
 
 
+def _firstrate_tickers_needing_repair(instrument_type: str) -> list[str]:
+    """Canonical tickers in this class that are stale or missing (for targeted merge)."""
+    want = (instrument_type or "").strip().lower()
+    if not want:
+        return []
+    now_ms = datetime.utcnow().timestamp() * 1000.0
+    out: list[str] = []
+    db = SessionLocal()
+    try:
+        files = db.query(CSVFile).all()
+        aggs = (
+            db.query(CSVAggregate)
+            .filter(CSVAggregate.timeframe == "1m")
+            .all()
+        )
+    finally:
+        db.close()
+    agg_by_file = {int(a.file_id): a for a in aggs}
+    seen: set[str] = set()
+    for f in files:
+        ticker = _firstrate_extract_ticker_from_filename(f.original_name or "")
+        asset_class = _firstrate_classify_ticker(ticker) if ticker else None
+        if asset_class != want or not ticker:
+            continue
+        canon = ticker.upper()
+        if canon in seen:
+            continue
+        last_ts = None
+        agg = agg_by_file.get(int(f.id))
+        if agg is not None and agg.end_ts is not None:
+            try:
+                last_ts = float(agg.end_ts)
+            except (TypeError, ValueError):
+                last_ts = None
+        staleness_hours: float | None = None
+        if last_ts is not None:
+            staleness_hours = max(0.0, (now_ms - last_ts) / 3_600_000.0)
+        if _firstrate_freshness_bucket(staleness_hours) in {"stale", "missing"}:
+            seen.add(canon)
+            out.append(canon)
+    return sorted(out)
+
+
+def _firstrate_repair_candidates(cfg: dict) -> list[tuple[int, str, list[str], dict]]:
+    """
+    Asset classes with stale/missing datasets, highest priority first.
+    Returns [(score, instrument_type, pair_list, health_stats), ...].
+    """
+    if not bool(cfg.get("auto_repair", True)):
+        return []
+    excluded = set(
+        str(x).strip().lower() for x in (cfg.get("excluded_types") or []) if x
+    )
+    buckets = _firstrate_classify_existing_datasets()
+    candidates: list[tuple[int, str, list[str], dict]] = []
+    for it, all_pairs in buckets.items():
+        if it in excluded:
+            continue
+        stats = _firstrate_class_health_stats(it)
+        stale_n = int(stats.get("stale_count") or 0)
+        missing_n = int(stats.get("missing_count") or 0)
+        if stale_n < 1 and missing_n < 1:
+            continue
+        repair_pairs = _firstrate_tickers_needing_repair(it)
+        pair_list = repair_pairs if repair_pairs else list(all_pairs)
+        score = missing_n * 1000 + stale_n * 10
+        candidates.append((score, it, pair_list, stats))
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return candidates
+
+
+def _firstrate_period_for_repair_stats(stats: dict) -> str:
+    if int(stats.get("missing_count") or 0) > 0:
+        return "month"
+    if int(stats.get("stale_count") or 0) > 0:
+        return "week"
+    return "week"
+
+
 def _firstrate_pick_schedule_period(cfg: dict, instrument_type: str) -> tuple[str, dict]:
     """
     Choose FirstRate `period` for a scheduled pull.
@@ -3071,6 +3159,9 @@ def _firstrate_queue_scheduled_import_for_type(
     next_type: str,
     pair_list: list[str],
     adjustment: str | None,
+    period_override: str | None = None,
+    trigger: str = "schedule",
+    force_download: bool = False,
 ) -> None:
     """
     Queue one scheduled FirstRate import with merge enabled.
@@ -3079,11 +3170,15 @@ def _firstrate_queue_scheduled_import_for_type(
     (not day-only). Skips download when vendor `last_update` is unchanged AND
     every ticker in the class is already fresh. Marks complete only after success.
     """
-    period, health = _firstrate_pick_schedule_period(cfg, next_type)
+    health = _firstrate_class_health_stats(next_type)
+    if period_override:
+        period = str(period_override).strip().lower()
+    else:
+        period, health = _firstrate_pick_schedule_period(cfg, next_type)
     timeframe = str(cfg.get("timeframe") or "1min")
-    needs_catchup = period in {"week", "month"} or int(health.get("stale_count") or 0) > 0 or int(
-        health.get("missing_count") or 0
-    ) > 0
+    needs_catchup = force_download or period in {"week", "month"} or int(
+        health.get("stale_count") or 0
+    ) > 0 or int(health.get("missing_count") or 0) > 0
 
     if not needs_catchup and not _firstrate_vendor_has_new_incremental_data(next_type, cfg):
         _firstrate_mark_scheduled_type_complete(next_type)
@@ -3109,7 +3204,7 @@ def _firstrate_queue_scheduled_import_for_type(
         ticker_range=None,
         download_timeout_sec=float(cfg.get("download_timeout_sec") or 7200),
         upsert_existing=True,
-        trigger="schedule",
+        trigger=trigger,
         pairs=pair_list,
     )
     cfg2 = _load_firstrate_schedule()
@@ -3117,17 +3212,43 @@ def _firstrate_queue_scheduled_import_for_type(
     cfg2["last_error"] = None
     hc = health
     cfg2["last_message"] = (
-        f"Queued {next_type} import period={period} ({timeframe}) — "
-        f"fresh={hc.get('fresh_count', 0)} stale={hc.get('stale_count', 0)} "
-        f"missing={hc.get('missing_count', 0)}"
+        f"Queued {next_type} ({trigger}) period={period} ({timeframe}) "
+        f"pairs={len(pair_list)} — fresh={hc.get('fresh_count', 0)} "
+        f"stale={hc.get('stale_count', 0)} missing={hc.get('missing_count', 0)}"
     )
     _save_firstrate_schedule(cfg2)
+
+
+def _firstrate_try_queue_auto_repair(cfg: dict) -> bool:
+    """
+    24/7 background repair: queue the worst stale/missing asset class.
+    Returns True if a job was queued or skipped-as-complete.
+    """
+    candidates = _firstrate_repair_candidates(cfg)
+    if not candidates:
+        return False
+    for _score, next_type, pair_list, stats in candidates:
+        if _firstrate_type_in_failure_cooldown(next_type, cfg):
+            continue
+        period = _firstrate_period_for_repair_stats(stats)
+        adjustment = _firstrate_default_adjustment_for(next_type)
+        _firstrate_queue_scheduled_import_for_type(
+            cfg=cfg,
+            next_type=next_type,
+            pair_list=pair_list,
+            adjustment=adjustment,
+            period_override=period,
+            trigger="repair",
+            force_download=True,
+        )
+        return True
+    return False
 
 
 def _firstrate_schedule_after_job(job_id: str, success: bool, error_message: str | None) -> None:
     try:
         st = _firstrate_read_job(job_id)
-        if not st or st.get("trigger") != "schedule":
+        if not st or st.get("trigger") not in ("schedule", "repair"):
             return
         it = str(st.get("instrument_type") or "").strip().lower()
         cfg = _load_firstrate_schedule()
@@ -3196,6 +3317,10 @@ def _firstrate_scheduler_tick() -> None:
         # Only one FirstRate import can run at a time; wait for the current one
         # to finish before queueing the next asset class.
         if _firstrate_has_active_import_job():
+            return
+
+        # --- 24/7 auto-repair (stale / missing) — no admin clicks required. ----
+        if _firstrate_try_queue_auto_repair(cfg):
             return
 
         mode = str(cfg.get("mode") or "nightly").strip().lower()
@@ -3320,7 +3445,14 @@ def _firstrate_scheduler_loop() -> None:
             _firstrate_scheduler_tick()
         except Exception:
             pass
-        time.sleep(60)
+        try:
+            cfg = _load_firstrate_schedule()
+            repair_pending = bool(_firstrate_repair_candidates(cfg))
+        except Exception:
+            repair_pending = False
+        default_sleep = 30.0 if repair_pending else 60.0
+        sleep_sec = float(os.getenv("FIrstrate_SCHEDULE_TICK_SEC", str(default_sleep)))
+        time.sleep(max(15.0, sleep_sec))
 
 
 def _start_firstrate_scheduler_thread() -> None:
@@ -7304,6 +7436,7 @@ class AdminFirstrateScheduleIn(BaseModel):
     period: str | None = None
     timeframe: str | None = None
     adaptive_period: bool | None = None
+    auto_repair: bool | None = None
     upsert_existing: bool | None = None
     delete_existing_first: bool | None = None
     purge_confirmation: str | None = None
@@ -11018,6 +11151,8 @@ async def admin_firstrate_fx_schedule_put(payload: AdminFirstrateScheduleIn, req
         cur["timeframe"] = tf
     if p.adaptive_period is not None:
         cur["adaptive_period"] = bool(p.adaptive_period)
+    if p.auto_repair is not None:
+        cur["auto_repair"] = bool(p.auto_repair)
     if p.instrument_type is not None:
         il = p.instrument_type.strip().lower()
         if il not in VALID_INSTRUMENT_TYPES:

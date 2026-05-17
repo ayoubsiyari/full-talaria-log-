@@ -2408,6 +2408,10 @@ select { cursor:default; }
                       </div>
                     </div>
                     <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;font-size:12px">
+                      <input type="checkbox" id="fr_sched_auto_repair" checked>
+                      24/7 background repair — auto-fix stale/missing (no admin clicks)
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;font-size:12px">
                       <input type="checkbox" id="fr_sched_adaptive" checked>
                       Auto week/month when data is stale or missing (recommended)
                     </label>
@@ -6690,6 +6694,7 @@ async function loadFirstrateSchedule() {
     if ($('fr_type')) $('fr_type').value = (s.instrument_type || 'fx');
     if ($('fr_adjustment')) $('fr_adjustment').value = (s.adjustment || '');
     updateFirstrateInstrumentUi();
+    if ($('fr_sched_auto_repair')) $('fr_sched_auto_repair').checked = s.auto_repair !== false;
     if ($('fr_sched_adaptive')) $('fr_sched_adaptive').checked = s.adaptive_period !== false;
     if ($('fr_sched_upsert')) $('fr_sched_upsert').checked = s.upsert_existing !== false;
     if ($('fr_pairs') && Array.isArray(s.pairs) && s.pairs.length) {
@@ -6708,6 +6713,7 @@ async function loadFirstrateSchedule() {
     const uidOk = data.has_firstrate_userid !== false;
     const bits = [];
     bits.push(s.enabled ? 'Auto-sync ON' : 'Auto-sync OFF');
+    if (s.auto_repair !== false) bits.push('24/7 repair ON');
     if (!uidOk) bits.push('set FIrstrate_USERID on server');
     if (s.last_run_finished_at) bits.push('last finished: ' + s.last_run_finished_at);
     if (s.last_status) bits.push('last: ' + s.last_status);
@@ -6750,6 +6756,7 @@ async function saveFirstrateSchedule() {
       instrument_type: st,
       period: $('fr_period').value,
       timeframe: $('fr_tf').value,
+      auto_repair: !!($('fr_sched_auto_repair') && $('fr_sched_auto_repair').checked),
       adaptive_period: !!($('fr_sched_adaptive') && $('fr_sched_adaptive').checked),
       upsert_existing: !!($('fr_sched_upsert') && $('fr_sched_upsert').checked),
       pairs: parsePairsFromTextarea('fr_pairs'),
