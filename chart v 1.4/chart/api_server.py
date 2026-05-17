@@ -129,6 +129,7 @@ from dashboard_access import (
     modules_catalog,
     normalize_module_grants,
     user_has_dashboard_module,
+    user_has_full_dashboard_modules,
 )
 
 from firstrate_ingest import (
@@ -6937,10 +6938,21 @@ def _require_paid_journal_user(request: Request, module: str = "backtest"):
         u = db.query(User).filter(User.id == user.id).first()
         if not u:
             raise HTTPException(status_code=403, detail="Forbidden")
-        entitled = _user_entitles_journal_db(db, u)
         grants = _parse_user_module_grants(u)
+        subscription_entitled = (
+            db.query(Subscription)
+            .filter(
+                Subscription.user_id == u.id,
+                Subscription.status.in_(["active", "trialing"]),
+            )
+            .first()
+            is not None
+        )
+        full_modules = user_has_full_dashboard_modules(
+            u, subscription_entitled=subscription_entitled, grants_override=grants
+        )
         if user_has_dashboard_module(
-            u, module, fully_entitled=entitled, grants_override=grants
+            u, module, fully_entitled=full_modules, grants_override=grants
         ):
             return user
     finally:
@@ -7676,16 +7688,33 @@ def _user_public_dict(user: User, db=None):
                 }
         except Exception:
             pass
-    fully_entitled = (
+    journal_entitled = (
         _user_entitles_journal_db(db, user)
         if db is not None
         else bool(getattr(user, "has_journal_access", False))
     )
     grants = _parse_user_module_grants(user)
-    mod_map = effective_dashboard_modules(
-        user, fully_entitled=fully_entitled, grants_override=grants
+    subscription_entitled = False
+    if db is not None:
+        try:
+            subscription_entitled = (
+                db.query(Subscription)
+                .filter(
+                    Subscription.user_id == user.id,
+                    Subscription.status.in_(["active", "trialing"]),
+                )
+                .first()
+                is not None
+            )
+        except Exception:
+            subscription_entitled = False
+    full_modules = user_has_full_dashboard_modules(
+        user, subscription_entitled=subscription_entitled, grants_override=grants
     )
-    has_dashboard_access = fully_entitled or any(mod_map.values())
+    mod_map = effective_dashboard_modules(
+        user, fully_entitled=full_modules, grants_override=grants
+    )
+    has_dashboard_access = full_modules or any(mod_map.values())
     return {
         "id": user.id,
         "name": user.name,
@@ -7694,7 +7723,8 @@ def _user_public_dict(user: User, db=None):
         "timezone": getattr(user, 'timezone', 'UTC'),
         "base_currency": getattr(user, 'base_currency', 'USD'),
         "is_active": bool(user.is_active),
-        "has_journal_access": fully_entitled,
+        "manual_full_access": bool(getattr(user, "has_journal_access", False)),
+        "has_journal_access": journal_entitled,
         "has_dashboard_access": has_dashboard_access,
         "dashboard_modules": mod_map,
         "access_expires_at": expires.isoformat() if expires else None,
@@ -7801,8 +7831,6 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
             last_active_at=datetime.utcnow(),
         )
         db.add(sess)
-        if _user_entitles_journal_db(db, user):
-            user.has_journal_access = True
         db.commit()
         db.refresh(user)
 
@@ -11487,10 +11515,21 @@ def _chart_user_has_module(user: User, module: str) -> bool:
         u = db.query(User).filter(User.id == user.id).first()
         if not u:
             return False
-        entitled = _user_entitles_journal_db(db, u)
         grants = _parse_user_module_grants(u)
+        subscription_entitled = (
+            db.query(Subscription)
+            .filter(
+                Subscription.user_id == u.id,
+                Subscription.status.in_(["active", "trialing"]),
+            )
+            .first()
+            is not None
+        )
+        full_modules = user_has_full_dashboard_modules(
+            u, subscription_entitled=subscription_entitled, grants_override=grants
+        )
         return user_has_dashboard_module(
-            u, module, fully_entitled=entitled, grants_override=grants
+            u, module, fully_entitled=full_modules, grants_override=grants
         )
     finally:
         db.close()

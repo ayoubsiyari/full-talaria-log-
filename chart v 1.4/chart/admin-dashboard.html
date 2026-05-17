@@ -4475,8 +4475,9 @@ function openEditModal(userId) {
     setEditAccessMode('unlimited');
   }
   const mods = user.dashboard_modules || {};
-  const modVals = Object.values(mods);
-  const fullAccess = !!user.has_journal_access || (modVals.length > 0 && modVals.every(Boolean));
+  const fullAccess = user.manual_full_access != null
+    ? !!user.manual_full_access
+    : !!user.has_journal_access;
   if ($('editFullJournalAccess')) $('editFullJournalAccess').checked = fullAccess;
   renderEditModuleGrantInputs(mods);
   $('editModalTitle').textContent = `Edit: ${user.name}`;

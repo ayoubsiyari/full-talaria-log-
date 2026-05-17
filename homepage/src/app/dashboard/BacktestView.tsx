@@ -460,7 +460,7 @@ export function BacktestView() {
     const r = e.currentTarget.getBoundingClientRect();
     setDescPop({ key, x: r.right + 6, y: r.top, title, kind, desc });
   };
-  const contentFrameStyle: React.CSSProperties = { width: "fit-content", minWidth: 1288, margin: "0 auto" };
+  const contentFrameStyle: React.CSSProperties = { width: "fit-content", minWidth: 1350, margin: "0 auto" };
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -1094,7 +1094,7 @@ export function BacktestView() {
             <div style={{ position: "absolute", bottom: 0, left: 32, right: 32, height: 1, background: c.brH, pointerEvents: "none" }} />
             <div style={{ width: 96, flexShrink: 0 }} />
             {([
-              ["Session", 110, "name"], ["Strategy", 100, "strategy"], ["Mode", 74, "mode"], ["Asset", 90, "asset"],
+              ["Session", 172, "name"], ["Strategy", 100, "strategy"], ["Mode", 74, "mode"], ["Asset", 90, "asset"],
               ["Symbols", 120, "symbol"], ["Date Range", 134, "date"], ["Options", 102, null],
               ["Starting Bal.", 88, "capital"], ["Net P&L", 80, "pnl"], ["Win %", 60, "winRate"],
               ["Avg R:R", 62, "avgRR"], ["Trades", 56, "trades"], ["Progress", 66, "progress"], ["", 50, null],
@@ -1227,22 +1227,20 @@ export function BacktestView() {
                           <rect x="11" y="11" width="8" height="8" fill={hov === `cdb_${sess.id}` ? c.tx : c.ts} />
                         </svg>
                       </div>
-                      <div style={{ flex: 1, minWidth: 0, padding: "0 8px", display: "flex", flexDirection: "column", gap: 2 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
-                          <div style={{
-                            fontSize: nm.length > 22 ? 9 : nm.length > 15 ? 10 : 11,
-                            fontWeight: 700, color: c.ts, lineHeight: 1.3, fontFamily: F,
-                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                            flex: 1, minWidth: 0,
-                          }}>{sess.name || "—"}</div>
-                          <SessionInfoButton
-                            active={descPop?.key === sessPopKey}
-                            label="Session description"
-                            onEnter={e => showDescPop(e, sessPopKey, "Session", sess.name || "Session", sessDesc)}
-                            onLeave={() => setDescPop(null)}
-                          />
-                        </div>
-                        <div style={{ fontSize: 8, fontWeight: 500, color: c.tm, fontFamily: F, whiteSpace: "nowrap" }}>{createdStr}</div>
+                      <div style={{ flex: 1, minWidth: 0, padding: "0 8px", display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
+                        <div style={{
+                          fontSize: nm.length > 22 ? 9 : nm.length > 15 ? 10 : 11,
+                          fontWeight: 700, color: c.ts, lineHeight: 1.3, fontFamily: F,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          flex: 1, minWidth: 0,
+                        }}>{sess.name || "—"}</div>
+                        <div style={{ fontSize: 8, fontWeight: 500, color: c.tm, fontFamily: F, whiteSpace: "nowrap", flexShrink: 0 }}>{createdStr}</div>
+                        <SessionInfoButton
+                          active={descPop?.key === sessPopKey}
+                          label="Session description"
+                          onEnter={e => showDescPop(e, sessPopKey, "Session", sess.name || "Session", sessDesc)}
+                          onLeave={() => setDescPop(null)}
+                        />
                       </div>
                       <div
                         className="sess-act-btn"
@@ -1469,17 +1467,19 @@ export function BacktestView() {
                         </div>
                       </div>
                       {/* Session name + date */}
-                      <div style={{ width: 110, flexShrink: 0, padding: "0 10px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: 4, minWidth: 0 }}>
-                          <div style={{ fontSize: (sess.name || "").length > 24 ? 8 : (sess.name || "").length > 16 ? 9 : 10, fontWeight: 700, color: c.ts, wordBreak: "break-word" as const, lineHeight: 1.3, flex: 1, minWidth: 0 }}>{sess.name || "—"}</div>
-                          <SessionInfoButton
-                            active={descPop?.key === sessPopKey}
-                            label="Session description"
-                            onEnter={e => showDescPop(e, sessPopKey, "Session", sess.name || "Session", sessDesc)}
-                            onLeave={() => setDescPop(null)}
-                          />
-                        </div>
-                        <div style={{ fontSize: 7, color: c.tm }}>{createdStr}</div>
+                      <div style={{ width: 172, flexShrink: 0, padding: "0 10px", display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
+                        <div style={{
+                          fontSize: (sess.name || "").length > 24 ? 8 : (sess.name || "").length > 16 ? 9 : 10,
+                          fontWeight: 700, color: c.ts, lineHeight: 1.3, flex: 1, minWidth: 0,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>{sess.name || "—"}</div>
+                        <div style={{ fontSize: 7, color: c.tm, whiteSpace: "nowrap", flexShrink: 0 }}>{createdStr}</div>
+                        <SessionInfoButton
+                          active={descPop?.key === sessPopKey}
+                          label="Session description"
+                          onEnter={e => showDescPop(e, sessPopKey, "Session", sess.name || "Session", sessDesc)}
+                          onLeave={() => setDescPop(null)}
+                        />
                       </div>
                       {/* Strategy + info */}
                       <div style={{ width: 100, flexShrink: 0, padding: "0 8px 0 10px", display: "flex", alignItems: "center", gap: 4, overflow: "hidden" }}>

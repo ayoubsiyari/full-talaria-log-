@@ -9,8 +9,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from subscription_access import user_entitles_journal
-
 # Canonical module keys (API + Next dashboard paths).
 DASHBOARD_MODULES: tuple[tuple[str, str], ...] = (
     ("journal", "Journal"),
@@ -50,13 +48,32 @@ def normalize_module_grants(raw: Any) -> dict[str, bool]:
     return out
 
 
+def user_has_full_dashboard_modules(user) -> bool:
+    """All dashboard sections (not per-module grants)."""
+    if not user:
+        return False
+    if getattr(user, "role", None) == "admin":
+        return True
+    if getattr(user, "has_journal_access", False):
+        return True
+    from subscription_access import admin_extension_entitles, subscription_entitles_journal
+
+    if subscription_entitles_journal(user.id):
+        return True
+    if admin_extension_entitles(user):
+        grants = normalize_module_grants(
+            _raw_grants_dict(getattr(user, "dashboard_module_grants", None))
+        )
+        if not grants:
+            return True
+    return False
+
+
 def effective_dashboard_modules(user) -> dict[str, bool]:
     """Resolved access per module for UI and enforcement."""
     if not user:
         return {k: False for k in ALLOWED_MODULE_KEYS}
-    if getattr(user, "role", None) == "admin":
-        return {k: True for k in ALLOWED_MODULE_KEYS}
-    if user_entitles_journal(user):
+    if user_has_full_dashboard_modules(user):
         return {k: True for k in ALLOWED_MODULE_KEYS}
     grants = normalize_module_grants(_raw_grants_dict(getattr(user, "dashboard_module_grants", None)))
     return {k: bool(grants.get(k)) for k in ALLOWED_MODULE_KEYS}
@@ -74,7 +91,7 @@ def user_has_dashboard_module(user, module: str) -> bool:
 def user_has_any_dashboard_access(user) -> bool:
     if not user:
         return False
-    if user_entitles_journal(user):
+    if user_has_full_dashboard_modules(user):
         return True
     grants = normalize_module_grants(_raw_grants_dict(getattr(user, "dashboard_module_grants", None)))
     return any(grants.values())

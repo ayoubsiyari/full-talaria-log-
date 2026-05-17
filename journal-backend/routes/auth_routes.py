@@ -220,15 +220,8 @@ def login_user():
         record_failed_login(client_ip, email)
         return jsonify({"error": "Incorrect password. Please try again or reset your password if you've forgotten it."}), 401
 
-    # Sync full-access flag when subscription/extension entitles; never wipe admin grants on login.
+    # has_journal_access is the admin manual full-access flag; do not overwrite on login.
     from dashboard_access import effective_dashboard_modules, user_has_any_dashboard_access
-
-    if user_entitles_journal(user):
-        user.has_journal_access = True
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
 
     has_journal_access = user_entitles_journal(user)
     dashboard_modules = effective_dashboard_modules(user)
