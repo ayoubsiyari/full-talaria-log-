@@ -159,7 +159,7 @@ export function lockedModuleNavTitle(
   isArabic: boolean
 ): string | undefined {
   const reason = lockedModuleGateReason(user, module);
-  if (reason === "none") return undefined;
+  if (reason === "none" || !user) return undefined;
   if (reason === "admin_restricted") {
     return isArabic
       ? "هذا القسم غير مفعّل لحسابك — تواصل مع الدعم"
