@@ -267,6 +267,177 @@ export type SessionJournalPlaceholderInput = {
   symbol?: string;
 };
 
+/** Normalize trade field access across chart / import column names. */
+export function tradeRowSymbol(row: Record<string, unknown>): string {
+  const direct = ["symbol", "Symbol", "ticker", "instrument", "sym", "asset"];
+  for (const k of direct) {
+    const v = row[k];
+    if (v != null && String(v).trim()) return String(v).trim();
+  }
+  for (const [k, v] of Object.entries(row)) {
+    if (/^symbol$|^ticker$|^instrument$/i.test(k) && v != null && String(v).trim()) {
+      return String(v).trim();
+    }
+  }
+  return "";
+}
+
+export function tradeRowSide(row: Record<string, unknown>): "long" | "short" | "" {
+  const direct = ["side", "Side", "direction", "Direction", "type_side"];
+  for (const k of direct) {
+    const n = normalizeTradeSide(String(row[k] ?? ""));
+    if (n) return n;
+  }
+  for (const [k, v] of Object.entries(row)) {
+    if (/^side$|^direction$/i.test(k)) {
+      const n = normalizeTradeSide(String(v ?? ""));
+      if (n) return n;
+    }
+  }
+  return "";
+}
+
+function normalizeTradeSide(raw: string): "long" | "short" | "" {
+  const t = raw.trim().toLowerCase();
+  if (!t) return "";
+  if (t === "long" || t === "buy" || t.startsWith("long")) return "long";
+  if (t === "short" || t === "sell" || t.startsWith("short")) return "short";
+  return "";
+}
+
+export function tradeRowPnl(row: Record<string, unknown>): number | null {
+  const direct = [
+    "pnl",
+    "PnL",
+    "finalClosePnl",
+    "FINALCLOSEPNL",
+    "finalclosepnl",
+    "net_pnl",
+    "netPnl",
+    "profit",
+    "realizedPnl",
+    "realized_pnl",
+  ];
+  for (const k of direct) {
+    if (row[k] != null && row[k] !== "") {
+      const n = Number(row[k]);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  for (const [k, v] of Object.entries(row)) {
+    if (/pnl|profit|finalclose/i.test(k) && v != null && v !== "") {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
+}
+
+export function tradeRowStatus(row: Record<string, unknown>): "open" | "closed" | "" {
+  const direct = ["status", "Status", "tradeStatus", "state"];
+  for (const k of direct) {
+    const s = String(row[k] ?? "")
+      .trim()
+      .toLowerCase();
+    if (s.includes("open")) return "open";
+    if (s.includes("closed") || s === "close") return "closed";
+  }
+  const exitKeys = [
+    "exitDate",
+    "exitdate",
+    "EXITDATE",
+    "exitPrice",
+    "exitprice",
+    "EXITPRICE",
+    "exit",
+    "finalClosePnl",
+    "FINALCLOSEPNL",
+  ];
+  for (const k of exitKeys) {
+    const v = row[k];
+    if (v != null && v !== "" && String(v).trim() !== "—") return "closed";
+  }
+  return "";
+}
+
+export function tradeRowTimestamp(row: Record<string, unknown>): number {
+  const candidates = [
+    "time",
+    "updated_at",
+    "exitDate",
+    "exitdate",
+    "EXITDATE",
+    "entryDate",
+    "entrydate",
+    "ENTRYDATE",
+    "exitTime",
+    "exittime",
+    "EXITTIME",
+    "entryTime",
+    "entrytime",
+    "close_time",
+    "open_time",
+  ];
+  for (const k of candidates) {
+    const v = row[k];
+    if (v == null || v === "") continue;
+    if (typeof v === "number" && Number.isFinite(v)) {
+      return v > 1e12 ? v : v * 1000;
+    }
+    const s = String(v).trim();
+    if (!s) continue;
+    if (/^\d+$/.test(s)) {
+      const n = Number(s);
+      return n > 1e12 ? n : n * 1000;
+    }
+    const d = Date.parse(s);
+    if (Number.isFinite(d)) return d;
+  }
+  return 0;
+}
+
+export type TradeSortPreset = "date" | "pnl" | "symbol" | "session";
+
+export function compareTradeRows(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+  sortKey: string,
+  sortDir: "asc" | "desc"
+): number {
+  let cmp = 0;
+  const preset = sortKey as TradeSortPreset;
+  if (preset === "pnl" || /pnl|profit|finalclose/i.test(sortKey)) {
+    cmp = (tradeRowPnl(a) ?? 0) - (tradeRowPnl(b) ?? 0);
+  } else if (preset === "date" || /date|time/i.test(sortKey)) {
+    cmp = tradeRowTimestamp(a) - tradeRowTimestamp(b);
+  } else if (preset === "symbol") {
+    cmp = tradeRowSymbol(a).localeCompare(tradeRowSymbol(b), undefined, { sensitivity: "base" });
+  } else if (preset === "session") {
+    cmp = String(a.session_name ?? a.session_id ?? "").localeCompare(
+      String(b.session_name ?? b.session_id ?? ""),
+      undefined,
+      { sensitivity: "base" }
+    );
+  } else {
+    const av = a[sortKey];
+    const bv = b[sortKey];
+    if (av == null && bv == null) cmp = 0;
+    else if (av == null) cmp = -1;
+    else if (bv == null) cmp = 1;
+    else if (typeof av === "number" && typeof bv === "number") cmp = av - bv;
+    else {
+      const an = Number(av);
+      const bn = Number(bv);
+      if (Number.isFinite(an) && Number.isFinite(bn) && String(av).trim() !== "" && String(bv).trim() !== "") {
+        cmp = an - bn;
+      } else {
+        cmp = String(av).localeCompare(String(bv), undefined, { sensitivity: "base" });
+      }
+    }
+  }
+  return sortDir === "asc" ? cmp : -cmp;
+}
+
 export function generateSessionJournalPlaceholders(
   session: SessionJournalPlaceholderInput,
   maxN = 500,

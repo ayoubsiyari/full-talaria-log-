@@ -23,12 +23,18 @@ type Props = {
   rows: Record<string, unknown>[];
   loading?: boolean;
   emptyMessage?: string;
+  sortColumn?: string | null;
+  sortDirection?: "asc" | "desc";
+  onSortColumn?: (column: string) => void;
 };
 
 export default function SessionJournalTable({
   rows,
   loading = false,
   emptyMessage = "No trades yet.",
+  sortColumn = null,
+  sortDirection = "desc",
+  onSortColumn,
 }: Props) {
   const cols = buildSessionJournalColumns(rows);
 
@@ -67,23 +73,40 @@ export default function SessionJournalTable({
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, fontFamily: F }}>
             <thead>
               <tr style={{ position: "sticky", top: 0, zIndex: 1, background: c.el, boxShadow: `0 1px 0 ${c.brH}` }}>
-                {cols.map((col) => (
-                  <th
-                    key={col}
-                    style={{
-                      textAlign: "left",
-                      padding: "10px 12px",
-                      fontWeight: 800,
-                      color: c.tm,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.06em",
-                      whiteSpace: "nowrap",
-                      borderBottom: `1px solid ${c.brH}`,
-                    }}
-                  >
-                    {col.replace(/_/g, " ")}
-                  </th>
-                ))}
+                {cols.map((col) => {
+                  const active = sortColumn === col;
+                  const sortable = !!onSortColumn && !loading;
+                  return (
+                    <th
+                      key={col}
+                      onClick={sortable ? () => onSortColumn(col) : undefined}
+                      style={{
+                        textAlign: "left",
+                        padding: "10px 12px",
+                        fontWeight: 800,
+                        color: active ? c.acL : c.tm,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                        whiteSpace: "nowrap",
+                        borderBottom: `1px solid ${c.brH}`,
+                        cursor: sortable ? "pointer" : "default",
+                        userSelect: "none",
+                      }}
+                      title={sortable ? "Click to sort" : undefined}
+                    >
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        {col.replace(/_/g, " ")}
+                        {active ? (
+                          <span style={{ fontSize: 8, color: c.acL }}>
+                            {sortDirection === "asc" ? "▲" : "▼"}
+                          </span>
+                        ) : sortable ? (
+                          <span style={{ fontSize: 8, opacity: 0.35 }}>↕</span>
+                        ) : null}
+                      </span>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>

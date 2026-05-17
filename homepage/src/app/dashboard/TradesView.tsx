@@ -6,9 +6,15 @@ import SessionJournalTable from "./SessionJournalTable";
 import {
   buildSessionJournalColumns,
   buildSessionJournalCsvText,
+  compareTradeRows,
   downloadUtf8Csv,
   flattenJournalApiTrade,
+  tradeRowPnl,
+  tradeRowSide,
+  tradeRowStatus,
+  tradeRowSymbol,
   type JournalApiTradeItem,
+  type TradeSortPreset,
 } from "./sessionJournalUtils";
 
 const c = {
@@ -20,8 +26,27 @@ const c = {
   ts: "rgba(255,255,255,0.70)",
   tm: "rgba(255,255,255,0.50)",
   sf: "#0A0C14",
+  gn: "#00D4A1",
+  rd: "#FF5068",
 };
 const F = "'Exo 2', sans-serif";
+
+const selectStyle: React.CSSProperties = {
+  height: 28,
+  minWidth: 120,
+  background: c.el,
+  border: `1px solid ${c.brH}`,
+  color: c.ts,
+  fontSize: 10,
+  fontWeight: 700,
+  fontFamily: F,
+  padding: "0 8px",
+  letterSpacing: "0.04em",
+};
+
+type ResultFilter = "all" | "win" | "loss" | "breakeven";
+type SideFilter = "all" | "long" | "short";
+type StatusFilter = "all" | "open" | "closed";
 
 function rowMatchesSearch(row: Record<string, unknown>, q: string): boolean {
   const needle = q.trim().toLowerCase();
@@ -39,6 +64,35 @@ function rowMatchesSearch(row: Record<string, unknown>, q: string): boolean {
   });
 }
 
+function FilterSelect({
+  value,
+  onChange,
+  options,
+  minWidth = 120,
+  ariaLabel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  minWidth?: number;
+  ariaLabel?: string;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label={ariaLabel}
+      style={{ ...selectStyle, minWidth }}
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function TradesView() {
   const { isArabic } = useLanguage();
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
@@ -46,7 +100,14 @@ export function TradesView() {
   const [truncated, setTruncated] = useState(false);
   const [total, setTotal] = useState(0);
   const [searchQ, setSearchQ] = useState("");
-  const [sessionFilter, setSessionFilter] = useState<string>("all");
+  const [sessionFilter, setSessionFilter] = useState("all");
+  const [symbolFilter, setSymbolFilter] = useState("all");
+  const [sideFilter, setSideFilter] = useState<SideFilter>("all");
+  const [resultFilter, setResultFilter] = useState<ResultFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [sortPreset, setSortPreset] = useState<TradeSortPreset>("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
 
   const loadTrades = useCallback(async () => {
     setLoading(true);
@@ -85,14 +146,91 @@ export function TradesView() {
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [rows]);
 
+  const symbolOptions = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach((r) => {
+      const sym = tradeRowSymbol(r);
+      if (sym) set.add(sym);
+    });
+    return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }, [rows]);
+
+  const activeSortKey = sortColumn ?? sortPreset;
+
   const filteredRows = useMemo(() => {
-    return rows.filter((r) => {
-      if (sessionFilter !== "all") {
-        if (String(r.session_id ?? "") !== sessionFilter) return false;
+    const filtered = rows.filter((r) => {
+      if (sessionFilter !== "all" && String(r.session_id ?? "") !== sessionFilter) return false;
+      if (symbolFilter !== "all" && tradeRowSymbol(r) !== symbolFilter) return false;
+      if (sideFilter !== "all") {
+        const side = tradeRowSide(r);
+        if (side !== sideFilter) return false;
+      }
+      if (statusFilter !== "all") {
+        const st = tradeRowStatus(r);
+        if (statusFilter === "closed" && st !== "closed") return false;
+        if (statusFilter === "open" && st === "closed") return false;
+      }
+      if (resultFilter !== "all") {
+        const pnl = tradeRowPnl(r);
+        if (pnl == null) return false;
+        if (resultFilter === "win" && pnl <= 0) return false;
+        if (resultFilter === "loss" && pnl >= 0) return false;
+        if (resultFilter === "breakeven" && Math.abs(pnl) > 0.005) return false;
       }
       return rowMatchesSearch(r, searchQ);
     });
-  }, [rows, searchQ, sessionFilter]);
+    return [...filtered].sort((a, b) => compareTradeRows(a, b, activeSortKey, sortDir));
+  }, [
+    rows,
+    searchQ,
+    sessionFilter,
+    symbolFilter,
+    sideFilter,
+    resultFilter,
+    statusFilter,
+    activeSortKey,
+    sortDir,
+  ]);
+
+  const hasActiveFilters =
+    sessionFilter !== "all" ||
+    symbolFilter !== "all" ||
+    sideFilter !== "all" ||
+    resultFilter !== "all" ||
+    statusFilter !== "all" ||
+    !!searchQ.trim() ||
+    sortColumn != null;
+
+  const resetFilters = () => {
+    setSearchQ("");
+    setSessionFilter("all");
+    setSymbolFilter("all");
+    setSideFilter("all");
+    setResultFilter("all");
+    setStatusFilter("all");
+    setSortPreset("date");
+    setSortDir("desc");
+    setSortColumn(null);
+  };
+
+  const handleSortColumn = (col: string) => {
+    setSortColumn((prev) => {
+      if (prev === col) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+        return col;
+      }
+      setSortDir(/pnl|profit/i.test(col) ? "desc" : "asc");
+      return col;
+    });
+  };
+
+  const handleSortPresetChange = (preset: TradeSortPreset) => {
+    setSortColumn(null);
+    setSortPreset(preset);
+    if (preset === "pnl") setSortDir("desc");
+    else if (preset === "date") setSortDir("desc");
+    else setSortDir("asc");
+  };
 
   const exportCsv = () => {
     const cols = buildSessionJournalColumns(filteredRows);
@@ -100,6 +238,13 @@ export function TradesView() {
     const stamp = new Date().toISOString().slice(0, 10);
     downloadUtf8Csv(`talaria-all-trades-${stamp}.csv`, csv);
   };
+
+  const sortPresetOptions: { value: TradeSortPreset; label: string }[] = [
+    { value: "date", label: isArabic ? "التاريخ" : "Date" },
+    { value: "pnl", label: isArabic ? "الربح/الخسارة" : "P&L" },
+    { value: "symbol", label: isArabic ? "الرمز" : "Symbol" },
+    { value: "session", label: isArabic ? "الجلسة" : "Session" },
+  ];
 
   return (
     <div
@@ -120,9 +265,9 @@ export function TradesView() {
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 12,
+          gap: 10,
           flexWrap: "wrap",
-          marginBottom: 12,
+          marginBottom: 8,
           flexShrink: 0,
         }}
       >
@@ -134,7 +279,7 @@ export function TradesView() {
             background: c.el,
             border: `1px solid ${c.brH}`,
             padding: "0 10px",
-            width: 220,
+            width: 200,
             height: 28,
             boxSizing: "border-box",
           }}
@@ -183,32 +328,66 @@ export function TradesView() {
         </div>
 
         {sessionOptions.length > 0 ? (
-          <select
+          <FilterSelect
             value={sessionFilter}
-            onChange={(e) => setSessionFilter(e.target.value)}
-            style={{
-              height: 28,
-              minWidth: 160,
-              background: c.el,
-              border: `1px solid ${c.brH}`,
-              color: c.ts,
-              fontSize: 10,
-              fontWeight: 700,
-              fontFamily: F,
-              padding: "0 8px",
-              letterSpacing: "0.04em",
-            }}
-          >
-            <option value="all">{isArabic ? "كل الجلسات" : "All sessions"}</option>
-            {sessionOptions.map(([id, name]) => (
-              <option key={id} value={id}>
-                {name}
-              </option>
-            ))}
-          </select>
+            onChange={setSessionFilter}
+            minWidth={150}
+            ariaLabel={isArabic ? "تصفية الجلسة" : "Filter by session"}
+            options={[
+              { value: "all", label: isArabic ? "كل الجلسات" : "All sessions" },
+              ...sessionOptions.map(([id, name]) => ({ value: id, label: name })),
+            ]}
+          />
         ) : null}
 
-        <div style={{ flex: 1 }} />
+        {symbolOptions.length > 0 ? (
+          <FilterSelect
+            value={symbolFilter}
+            onChange={setSymbolFilter}
+            minWidth={120}
+            ariaLabel={isArabic ? "تصفية الرمز" : "Filter by symbol"}
+            options={[
+              { value: "all", label: isArabic ? "كل الرموز" : "All symbols" },
+              ...symbolOptions.map((sym) => ({ value: sym, label: sym })),
+            ]}
+          />
+        ) : null}
+
+        <FilterSelect
+          value={sideFilter}
+          onChange={(v) => setSideFilter(v as SideFilter)}
+          ariaLabel={isArabic ? "تصفية الاتجاه" : "Filter by side"}
+          options={[
+            { value: "all", label: isArabic ? "كل الاتجاهات" : "All sides" },
+            { value: "long", label: isArabic ? "شراء / Long" : "Long" },
+            { value: "short", label: isArabic ? "بيع / Short" : "Short" },
+          ]}
+        />
+
+        <FilterSelect
+          value={resultFilter}
+          onChange={(v) => setResultFilter(v as ResultFilter)}
+          ariaLabel={isArabic ? "تصفية النتيجة" : "Filter by result"}
+          options={[
+            { value: "all", label: isArabic ? "كل النتائج" : "All results" },
+            { value: "win", label: isArabic ? "رابحة" : "Winners" },
+            { value: "loss", label: isArabic ? "خاسرة" : "Losers" },
+            { value: "breakeven", label: isArabic ? "تعادل" : "Breakeven" },
+          ]}
+        />
+
+        <FilterSelect
+          value={statusFilter}
+          onChange={(v) => setStatusFilter(v as StatusFilter)}
+          ariaLabel={isArabic ? "تصفية الحالة" : "Filter by status"}
+          options={[
+            { value: "all", label: isArabic ? "كل الحالات" : "All status" },
+            { value: "open", label: isArabic ? "مفتوحة" : "Open" },
+            { value: "closed", label: isArabic ? "مغلقة" : "Closed" },
+          ]}
+        />
+
+        <div style={{ flex: 1, minWidth: 8 }} />
 
         <button
           type="button"
@@ -216,10 +395,10 @@ export function TradesView() {
           disabled={loading || filteredRows.length === 0}
           style={{
             height: 28,
-            padding: "0 16px",
+            padding: "0 14px",
             display: "flex",
             alignItems: "center",
-            gap: 8,
+            gap: 6,
             background: c.sf,
             border: `1px solid ${c.brH}`,
             cursor: filteredRows.length === 0 ? "not-allowed" : "pointer",
@@ -231,7 +410,7 @@ export function TradesView() {
             opacity: filteredRows.length === 0 ? 0.5 : 1,
           }}
         >
-          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" aria-hidden>
+          <svg width={13} height={13} viewBox="0 0 24 24" fill="none" aria-hidden>
             <path
               d="M12 3v12M8 11l4 4 4-4"
               stroke="currentColor"
@@ -245,23 +424,98 @@ export function TradesView() {
         </button>
       </div>
 
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+          marginBottom: 10,
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ fontSize: 9, fontWeight: 800, color: c.tm, letterSpacing: "0.08em" }}>
+          {isArabic ? "ترتيب حسب" : "SORT BY"}
+        </span>
+        <FilterSelect
+          value={sortColumn ?? sortPreset}
+          onChange={(v) => {
+            const preset = sortPresetOptions.find((o) => o.value === v);
+            if (preset) handleSortPresetChange(preset.value);
+            else handleSortColumn(v);
+          }}
+          minWidth={130}
+          options={[
+            ...sortPresetOptions.map((o) => ({ value: o.value, label: o.label })),
+            ...(sortColumn && !sortPresetOptions.some((o) => o.value === sortColumn)
+              ? [{ value: sortColumn, label: sortColumn.replace(/_/g, " ") }]
+              : []),
+          ]}
+        />
+        <FilterSelect
+          value={sortDir}
+          onChange={(v) => setSortDir(v as "asc" | "desc")}
+          minWidth={110}
+          options={[
+            {
+              value: "desc",
+              label: isArabic ? "تنازلي ▼" : "Descending ▼",
+            },
+            {
+              value: "asc",
+              label: isArabic ? "تصاعدي ▲" : "Ascending ▲",
+            },
+          ]}
+        />
+        {hasActiveFilters ? (
+          <button
+            type="button"
+            onClick={resetFilters}
+            style={{
+              height: 28,
+              padding: "0 12px",
+              background: "rgba(255,80,104,0.08)",
+              border: "1px solid rgba(255,80,104,0.25)",
+              color: c.rd,
+              fontSize: 10,
+              fontWeight: 800,
+              fontFamily: F,
+              cursor: "pointer",
+              letterSpacing: "0.05em",
+            }}
+          >
+            {isArabic ? "إعادة تعيين" : "Reset filters"}
+          </button>
+        ) : null}
+        <span style={{ fontSize: 9, fontWeight: 600, color: c.tm, marginInlineStart: "auto" }}>
+          {isArabic ? "انقر على عنوان العمود للترتيب" : "Click column headers to sort"}
+        </span>
+      </div>
+
       <div style={{ fontSize: 10, fontWeight: 700, color: c.tm, marginBottom: 10, flexShrink: 0 }}>
         {loading
           ? isArabic
             ? "جارٍ تحميل الصفقات…"
             : "Loading trades…"
           : isArabic
-            ? `${filteredRows.length} صفقة معروضة${total ? ` · ${total} إجمالي` : ""}${truncated ? " · أحدث 5000" : ""}`
-            : `${filteredRows.length} trade${filteredRows.length === 1 ? "" : "s"} shown${total ? ` · ${total} total` : ""}${truncated ? " · latest 5000 loaded" : ""}`}
+            ? `${filteredRows.length} صفقة معروضة${rows.length !== filteredRows.length ? ` (من ${rows.length})` : ""}${total ? ` · ${total} إجمالي` : ""}${truncated ? " · أحدث 5000" : ""}`
+            : `${filteredRows.length} trade${filteredRows.length === 1 ? "" : "s"} shown${rows.length !== filteredRows.length ? ` (of ${rows.length})` : ""}${total ? ` · ${total} total` : ""}${truncated ? " · latest 5000 loaded" : ""}`}
       </div>
 
       <SessionJournalTable
         rows={filteredRows}
         loading={loading}
+        sortColumn={sortColumn}
+        sortDirection={sortDir}
+        onSortColumn={handleSortColumn}
         emptyMessage={
-          isArabic
-            ? "لا توجد صفقات بعد. سجّل صفقات في جلسة backtest لفتحها هنا."
-            : "No trades yet. Log trades in a backtest session to see them here."
+          hasActiveFilters
+            ? isArabic
+              ? "لا توجد صفقات تطابق الفلاتر. جرّب توسيع البحث أو إعادة التعيين."
+              : "No trades match your filters. Try widening filters or reset."
+            : isArabic
+              ? "لا توجد صفقات بعد. سجّل صفقات في جلسة backtest لفتحها هنا."
+              : "No trades yet. Log trades in a backtest session to see them here."
         }
       />
     </div>
