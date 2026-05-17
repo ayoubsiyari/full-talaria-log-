@@ -1094,13 +1094,14 @@ export function BacktestView() {
             <div style={{ position: "absolute", bottom: 0, left: 32, right: 32, height: 1, background: c.brH, pointerEvents: "none" }} />
             <div style={{ width: 96, flexShrink: 0 }} />
             {([
-              ["Session", 172, "name"], ["Strategy", 100, "strategy"], ["Mode", 74, "mode"], ["Asset", 90, "asset"],
-              ["Symbols", 120, "symbol"], ["Date Range", 134, "date"], ["Options", 102, null],
-              ["Starting Bal.", 88, "capital"], ["Net P&L", 80, "pnl"], ["Win %", 60, "winRate"],
-              ["Avg R:R", 62, "avgRR"], ["Trades", 56, "trades"], ["Progress", 66, "progress"], ["", 50, null],
-            ] as [string, number, string | null][]).map(([label, w, sk]) => {
+              ["Session", 172, "name", "0 10px"], ["Strategy", 100, "strategy", "0 8px 0 10px"], ["Mode", 74, "mode", null], ["Asset", 90, "asset", null],
+              ["Symbols", 120, "symbol", null], ["Date Range", 134, "date", null], ["Options", 102, null, null],
+              ["Starting Bal.", 88, "capital", null], ["Net P&L", 80, "pnl", null], ["Win %", 60, "winRate", null],
+              ["Avg R:R", 62, "avgRR", null], ["Trades", 56, "trades", null], ["Progress", 66, "progress", null], ["", 50, null, null],
+            ] as [string, number, string | null, string | null][]).map(([label, w, sk, cellPad]) => {
               const isActive = !!(sk && sortBy === sk);
               const isHov = sk && hov === `ch_${label}`;
+              const leftAlign = !!cellPad;
               return (
                 <div key={label || "_act"}
                   onClick={sk ? () => toggleSort(sk) : undefined}
@@ -1110,8 +1111,11 @@ export function BacktestView() {
                     width: w, flexShrink: 0, fontSize: 8, fontWeight: 800,
                     color: isActive ? c.acL : isHov ? c.ts : c.tm,
                     textTransform: "uppercase" as const, letterSpacing: "0.08em", whiteSpace: "nowrap" as const, fontFamily: F,
-                    textAlign: "center" as const, cursor: sk ? "pointer" : "default",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 3, userSelect: "none" as const,
+                    textAlign: leftAlign ? ("left" as const) : ("center" as const), cursor: sk ? "pointer" : "default",
+                    display: "flex", alignItems: "center",
+                    justifyContent: leftAlign ? "flex-start" : "center",
+                    padding: cellPad || undefined,
+                    gap: 3, userSelect: "none" as const, boxSizing: "border-box" as const,
                     transition: "color 0.12s", background: isHov && !isActive ? "rgba(255,255,255,0.04)" : "transparent",
                   }}>
                   {label}
@@ -1232,8 +1236,9 @@ export function BacktestView() {
                           fontSize: nm.length > 20 ? 9 : nm.length > 15 ? 10 : 11,
                           fontWeight: 600, color: c.ts, lineHeight: 1.35,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                          flex: 1, minWidth: 0,
+                          flex: "0 1 auto", minWidth: 0, maxWidth: "48%",
                         }}>{sess.name || "—"}</div>
+                        <div style={{ flex: 1, minWidth: 4 }} aria-hidden />
                         <div style={{ fontSize: 9, fontWeight: 500, color: c.tm, lineHeight: 1.35, whiteSpace: "nowrap", flexShrink: 0 }}>{createdStr}</div>
                         <SessionInfoButton
                           active={descPop?.key === sessPopKey}
@@ -1470,9 +1475,10 @@ export function BacktestView() {
                       <div style={{ width: 172, flexShrink: 0, padding: "0 10px", display: "flex", alignItems: "center", gap: 6, overflow: "hidden", fontFamily: F }}>
                         <div style={{
                           fontSize: (sess.name || "").length > 20 ? 9 : (sess.name || "").length > 13 ? 10 : 11,
-                          fontWeight: 600, color: c.ts, lineHeight: 1.35, flex: 1, minWidth: 0,
+                          fontWeight: 600, color: c.ts, lineHeight: 1.35, flex: "0 1 auto", minWidth: 0, maxWidth: "48%",
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>{sess.name || "—"}</div>
+                        <div style={{ flex: 1, minWidth: 4 }} aria-hidden />
                         <div style={{ fontSize: 9, fontWeight: 500, color: c.tm, lineHeight: 1.35, whiteSpace: "nowrap", flexShrink: 0 }}>{createdStr}</div>
                         <SessionInfoButton
                           active={descPop?.key === sessPopKey}
