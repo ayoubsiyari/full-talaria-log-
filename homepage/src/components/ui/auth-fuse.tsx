@@ -8,6 +8,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { Eye, EyeOff } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { GoogleAuthButton } from "./GoogleAuthButton";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -73,6 +74,69 @@ export function getPostAuthRedirectUrl(opts: {
     return safeNext;
   }
   return "/dashboard/";
+}
+
+type AuthSuccessBody = {
+  journal_token?: string;
+  user?: {
+    role?: string;
+    has_journal_access?: boolean;
+    [key: string]: unknown;
+  };
+} | null;
+
+/** After chart (or Google) auth — set tokens and redirect like password sign-in. */
+export async function completeAuthLogin(
+  body: AuthSuccessBody,
+  opts: { email?: string; password?: string; nextPath?: string },
+) {
+  if (body?.journal_token && typeof body.journal_token === "string") {
+    localStorage.setItem("token", body.journal_token);
+  }
+
+  let hasAccess = !!body?.user?.has_journal_access;
+  const chartUser = body?.user;
+
+  if (opts.email && opts.password) {
+    try {
+      const journalRes = await fetch("/journal/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: opts.email, password: opts.password }),
+      });
+      if (journalRes.ok) {
+        const journalData = await journalRes.json().catch(() => null);
+        if (journalData?.token) {
+          localStorage.setItem("token", journalData.token);
+          if (journalData.refresh_token) {
+            localStorage.setItem("refresh_token", journalData.refresh_token);
+          }
+        }
+        if (journalData?.user) {
+          localStorage.setItem("talaria_current_user", JSON.stringify(journalData.user));
+          hasAccess = !!journalData.user.has_journal_access;
+        }
+      }
+    } catch {
+      /* journal login is best-effort */
+    }
+  } else if (chartUser) {
+    localStorage.setItem("talaria_current_user", JSON.stringify(chartUser));
+    hasAccess = !!chartUser.has_journal_access;
+  }
+
+  const safeNext =
+    opts.nextPath && opts.nextPath.startsWith("/") && !opts.nextPath.startsWith("//")
+      ? opts.nextPath
+      : null;
+  const url = getPostAuthRedirectUrl({
+    user: {
+      role: chartUser?.role,
+      has_journal_access: !!(hasAccess || chartUser?.has_journal_access),
+    },
+    nextPath: safeNext,
+  });
+  window.location.href = url;
 }
 
 export interface TypewriterProps {
@@ -274,40 +338,7 @@ function SignInForm({ prefillEmail, bannerMessage, nextPath, onForgotPassword }:
         return;
       }
 
-      if (body?.journal_token && typeof body.journal_token === "string") {
-        localStorage.setItem("token", body.journal_token);
-      }
-
-      // Also log into journal backend so the journal app works without a separate login
-      let hasAccess = false;
-      try {
-        const journalRes = await fetch("/journal/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        });
-        if (journalRes.ok) {
-          const journalData = await journalRes.json().catch(() => null);
-          if (journalData?.token) {
-            localStorage.setItem("token", journalData.token);
-            if (journalData.refresh_token) localStorage.setItem("refresh_token", journalData.refresh_token);
-          }
-          if (journalData?.user) {
-            localStorage.setItem("talaria_current_user", JSON.stringify(journalData.user));
-            hasAccess = !!journalData.user.has_journal_access;
-          }
-        }
-      } catch (e) { /* journal login is best-effort */ }
-
-      const safeNext = nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : null;
-      const url = getPostAuthRedirectUrl({
-        user: {
-          role: body?.user?.role,
-          has_journal_access: !!(hasAccess || body?.user?.has_journal_access),
-        },
-        nextPath: safeNext,
-      });
-      window.location.href = url;
+      await completeAuthLogin(body, { email, password, nextPath });
     } finally {
       setLoading(false);
     }
@@ -701,7 +732,37 @@ function SignUpForm({ onSignedUp, onNeedsVerification, nextPath }: { onSignedUp:
 
 function AuthFormContainer({ isSignIn, onToggle, onSignedUp, onNeedsVerification, verificationEmail, onBackFromVerification, prefillEmail, bannerMessage, nextPath, forgotPasswordMode, resetPasswordEmail, onForgotPassword, onBackFromForgot, onResetCodeSent, onPasswordReset }: { isSignIn: boolean; onToggle: () => void; onSignedUp: (email: string) => void; onNeedsVerification: (email: string) => void; verificationEmail: string | null; onBackFromVerification: () => void; prefillEmail?: string; bannerMessage?: string | null; nextPath?: string; forgotPasswordMode: boolean; resetPasswordEmail: string | null; onForgotPassword: () => void; onBackFromForgot: () => void; onResetCodeSent: (email: string) => void; onPasswordReset: () => void }) {
     const showExtraOptions = !verificationEmail && !forgotPasswordMode && !resetPasswordEmail;
-    
+    const [googleError, setGoogleError] = React.useState<string | null>(null);
+    const [googleLoading, setGoogleLoading] = React.useState(false);
+
+    const handleGoogleCredential = React.useCallback(
+      async (credential: string) => {
+        setGoogleError(null);
+        setGoogleLoading(true);
+        try {
+          const res = await fetch("/api/auth/google", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ credential }),
+          });
+          const body = await res.json().catch(() => null);
+          if (!res.ok) {
+            const msg =
+              body && (body.detail || body.error)
+                ? String(body.detail || body.error)
+                : "Google sign-in failed";
+            setGoogleError(msg);
+            return;
+          }
+          await completeAuthLogin(body, { nextPath });
+        } finally {
+          setGoogleLoading(false);
+        }
+      },
+      [nextPath],
+    );
+
     return (
         <div className="mx-auto grid w-[350px] gap-4">
             <div className="flex flex-col items-center gap-2 mb-4">
@@ -733,6 +794,15 @@ function AuthFormContainer({ isSignIn, onToggle, onSignedUp, onNeedsVerification
             )}
             {showExtraOptions && (
               <>
+                <div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
+                  <span className="relative z-10 bg-background px-2 text-muted-foreground">or</span>
+                </div>
+                <GoogleAuthButton
+                  mode={isSignIn ? "signin" : "signup"}
+                  disabled={googleLoading}
+                  onCredential={handleGoogleCredential}
+                />
+                {googleError && <div className="text-sm text-red-500 text-center">{googleError}</div>}
                 <div className="text-center text-sm">
                     {isSignIn ? "Don't have an account?" : "Already have an account?"}{" "}
                     <AuthButton variant="link" className="pl-1 text-foreground" onClick={onToggle}>

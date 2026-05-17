@@ -44,7 +44,9 @@ from email.mime.text import MIMEText
 from collections import deque
 from pydantic import BaseModel, Field
 from passlib.context import CryptContext
+from google.oauth2 import id_token as google_id_token
 from google.oauth2.service_account import Credentials
+from google.auth.transport import requests as google_auth_requests
 from googleapiclient.discovery import build
 from urllib.parse import quote, urlparse, parse_qs
 import urllib.error
@@ -7352,6 +7354,13 @@ class LoginIn(BaseModel):
     password: str
     affiliate_code: str | None = None
 
+
+class GoogleAuthIn(BaseModel):
+    """Google Identity Services ID token (JWT credential)."""
+    credential: str
+    affiliate_code: str | None = None
+
+
 class BootcampRegistrationIn(BaseModel):
     full_name: str
     email: str
@@ -8431,28 +8440,7 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
         if not _verify_password(payload.password, user.password_hash):
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
-        max_sess = user.max_sessions if user.max_sessions and user.max_sessions > 0 else 1
-        if user.role != "admin":
-            existing = (
-                db.query(UserSession)
-                .filter(UserSession.user_id == user.id)
-                .order_by(UserSession.last_active_at.desc())
-                .all()
-            )
-            if len(existing) >= max_sess:
-                for old in existing[max_sess - 1:]:
-                    db.delete(old)
-
-        session_id = secrets.token_urlsafe(32)
-        sess = UserSession(
-            id=session_id,
-            user_id=user.id,
-            ip_address=request.client.host if request.client else None,
-            device=request.headers.get("user-agent"),
-            last_active_at=datetime.utcnow(),
-        )
-        db.add(sess)
-        db.commit()
+        session_id = _enforce_session_limit_and_create(db, user, request)
         db.refresh(user)
 
         _set_session_cookie(response, session_id, request=request)
@@ -8462,6 +8450,58 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
         except Exception:
             db.rollback()
         return {"success": True, **_auth_response_with_journal_token(user, db)}
+    finally:
+        db.close()
+
+
+@app.post("/api/auth/google")
+async def auth_google(payload: GoogleAuthIn, request: Request, response: Response):
+    """Sign in or sign up with Google Identity Services (ID token)."""
+    ip = _client_ip_for_rate_limit(request)
+    if not _auth_ip_rate_allow(_auth_login_ip_times, ip, AUTH_LOGIN_MAX_PER_MINUTE):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many sign-in attempts. Please try again later.",
+        )
+    claims = _verify_google_id_token(payload.credential)
+    email = claims["email"]
+    name = claims["name"]
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        is_new = False
+        if not user:
+            user = User(
+                name=name,
+                email=email,
+                password_hash=_hash_password(secrets.token_urlsafe(48)),
+                role="user",
+                is_active=True,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            is_new = True
+        elif not user.is_active:
+            raise HTTPException(status_code=403, detail="Your account is disabled. Please contact support.")
+
+        session_id = _enforce_session_limit_and_create(db, user, request)
+        db.refresh(user)
+        _set_session_cookie(response, session_id, request=request)
+        try:
+            _affiliate_post_auth(
+                db,
+                user,
+                request,
+                payload.affiliate_code,
+                is_signup=is_new,
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+        out = {"success": True, "is_new_user": is_new, **_auth_response_with_journal_token(user, db)}
+        return out
     finally:
         db.close()
 
@@ -8627,6 +8667,74 @@ def _auth_response_with_journal_token(user: User, db) -> dict:
     if tok:
         out["journal_token"] = tok
     return out
+
+
+def _google_client_id() -> str:
+    return (os.environ.get("GOOGLE_CLIENT_ID") or "").strip()
+
+
+def _verify_google_id_token(credential: str) -> dict:
+    """Validate GIS credential and return { email, name }."""
+    client_id = _google_client_id()
+    if not client_id:
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured")
+    token = (credential or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Missing Google credential")
+    try:
+        idinfo = google_id_token.verify_oauth2_token(
+            token,
+            google_auth_requests.Request(),
+            client_id,
+        )
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid Google sign-in token")
+    iss = idinfo.get("iss")
+    if iss not in ("accounts.google.com", "https://accounts.google.com"):
+        raise HTTPException(status_code=401, detail="Invalid Google sign-in issuer")
+    email = (idinfo.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Google account has no email address")
+    if idinfo.get("email_verified") is False:
+        raise HTTPException(status_code=400, detail="Google email is not verified")
+    name = (idinfo.get("name") or email.split("@", 1)[0] or "User").strip()[:120]
+    return {"email": email, "name": name}
+
+
+def _enforce_session_limit_and_create(
+    db,
+    user: User,
+    request: Request,
+) -> str:
+    max_sess = user.max_sessions if user.max_sessions and user.max_sessions > 0 else 1
+    if user.role != "admin":
+        existing = (
+            db.query(UserSession)
+            .filter(UserSession.user_id == user.id)
+            .order_by(UserSession.last_active_at.desc())
+            .all()
+        )
+        if len(existing) >= max_sess:
+            for old in existing[max_sess - 1 :]:
+                db.delete(old)
+    session_id = secrets.token_urlsafe(32)
+    sess = UserSession(
+        id=session_id,
+        user_id=user.id,
+        ip_address=request.client.host if request.client else None,
+        device=request.headers.get("user-agent"),
+        last_active_at=datetime.utcnow(),
+    )
+    db.add(sess)
+    db.commit()
+    return session_id
+
+
+@app.get("/api/auth/config")
+async def auth_config():
+    """Public auth UI config (e.g. Google client id for Sign in with Google)."""
+    cid = _google_client_id()
+    return {"google_client_id": cid if cid else None}
 
 
 @app.get("/api/auth/me")
