@@ -96,6 +96,90 @@ export async function fetchJson<T = unknown>(url: string, options?: RequestInit)
   return body as T;
 }
 
+type WhatIfJobResponse = {
+  job_id?: string;
+  status?: string;
+  result?: Record<string, unknown>;
+  error?: string;
+};
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const t = window.setTimeout(resolve, ms);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        window.clearTimeout(t);
+        reject(new DOMException("Aborted", "AbortError"));
+      },
+      { once: true }
+    );
+  });
+}
+
+/** POST what-if (sync, cache hit, or 202 job); polls until done when async. */
+export async function fetchBacktestWhatIf(
+  payload: Record<string, unknown>,
+  signal?: AbortSignal
+): Promise<Record<string, unknown>> {
+  const resolved = chartApiUrl("/api/analytics/backtest/whatif");
+  const res = await fetch(resolved, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    cache: "no-store",
+    signal,
+    body: JSON.stringify(payload),
+  });
+  const text = await res.text();
+  let body: unknown = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    if (!res.ok) {
+      throw new Error(`Request failed: ${res.status} (${resolved}) — response was not JSON`);
+    }
+    throw new Error(`Invalid JSON from ${resolved}: ${text.slice(0, 160)}`);
+  }
+  if (res.status === 202) {
+    const queued = body as WhatIfJobResponse;
+    const jobId = queued?.job_id;
+    if (!jobId) {
+      throw new Error("What-if job missing job_id");
+    }
+    const delays = [280, 400, 500, 650, 800, 1000];
+    for (let attempt = 0; attempt < 90; attempt++) {
+      if (signal?.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      await sleep(delays[Math.min(attempt, delays.length - 1)], signal);
+      const job = await fetchJson<WhatIfJobResponse>(
+        `/api/analytics/backtest/whatif/jobs/${encodeURIComponent(jobId)}`,
+        { signal }
+      );
+      if (job.status === "done" && job.result && typeof job.result === "object") {
+        return job.result;
+      }
+      if (job.status === "failed") {
+        throw new Error(job.error || "What-if analysis failed");
+      }
+    }
+    throw new Error("What-if analysis timed out");
+  }
+  if (!res.ok) {
+    const detail = (body as { detail?: string })?.detail;
+    throw new Error(detail ?? `Request failed: ${res.status} (${resolved})`);
+  }
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    return body as Record<string, unknown>;
+  }
+  throw new Error("Invalid what-if response");
+}
+
 function n(v: unknown): number {
   const x = Number.parseFloat(String(v ?? 0));
   return Number.isFinite(x) ? x : 0;
@@ -633,11 +717,8 @@ export function SessionAnalyticsPanel({
       void (async () => {
         try {
           setWhatIfError(null);
-          const payload = await fetchJson<any>("/api/analytics/backtest/whatif", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            signal: ac.signal,
-            body: JSON.stringify({
+          const payload = await fetchBacktestWhatIf(
+            {
               session_id: Number(sessionId),
               pair_filter: pairFilter,
               playbook_filter: playbookFilter,
@@ -646,8 +727,9 @@ export function SessionAnalyticsPanel({
               heatmap_pair: heatmapPair,
               tp_r: simTpR,
               sl_r: simSlR,
-            }),
-          });
+            },
+            ac.signal
+          );
           if (ac.signal.aborted) return;
           setWhatIfApi(payload || null);
         } catch (e) {

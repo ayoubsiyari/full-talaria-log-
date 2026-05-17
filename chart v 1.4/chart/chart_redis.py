@@ -6,6 +6,7 @@ If REDIS_URL is unset or Redis is unreachable, api_server falls back to in-memor
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import threading
@@ -18,6 +19,10 @@ if TYPE_CHECKING:
 KEY_PREFIX = "chart:"
 
 _BINARY_WAKE_LIST = f"{KEY_PREFIX}binary_wake"
+_WHATIF_QUEUE_LIST = f"{KEY_PREFIX}whatif:queue"
+_WHATIF_WAKE_LIST = f"{KEY_PREFIX}whatif:wake"
+_WHATIF_JOB_PREFIX = f"{KEY_PREFIX}whatif:job:"
+_WHATIF_CACHE_PREFIX = f"{KEY_PREFIX}whatif:cache:"
 
 _pool = None
 _client: Redis | None = None
@@ -112,5 +117,132 @@ def brpop_wake(timeout_sec: float) -> bool:
     t = max(1, min(int(timeout_sec), 60))
     try:
         return c.brpop(_BINARY_WAKE_LIST, timeout=t) is not None
+    except Exception:
+        return False
+
+
+def _json_load(raw: str | None) -> dict | None:
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def whatif_enqueue_job(job: dict) -> bool:
+    c = get_client()
+    if c is None:
+        return False
+    job_id = str(job.get("job_id") or "").strip()
+    if not job_id:
+        return False
+    try:
+        payload = json.dumps(job, separators=(",", ":"))
+        pipe = c.pipeline()
+        pipe.setex(f"{_WHATIF_JOB_PREFIX}{job_id}", 900, payload)
+        pipe.lpush(_WHATIF_QUEUE_LIST, job_id)
+        pipe.ltrim(_WHATIF_QUEUE_LIST, 0, 512)
+        pipe.lpush(_WHATIF_WAKE_LIST, job_id)
+        pipe.ltrim(_WHATIF_WAKE_LIST, 0, 64)
+        pipe.execute()
+        return True
+    except Exception:
+        return False
+
+
+def whatif_pop_job_nonblocking() -> str | None:
+    c = get_client()
+    if c is None:
+        return None
+    try:
+        job_id = c.lpop(_WHATIF_QUEUE_LIST)
+        return str(job_id).strip() if job_id else None
+    except Exception:
+        return None
+
+
+def whatif_brpop_job(timeout_sec: float) -> str | None:
+    c = get_client()
+    if c is None:
+        return None
+    t = max(1, min(int(timeout_sec), 60))
+    try:
+        item = c.brpop(_WHATIF_QUEUE_LIST, timeout=t)
+        if not item:
+            return None
+        _, job_id = item
+        return str(job_id).strip() or None
+    except Exception:
+        return None
+
+
+def whatif_signal_wake() -> None:
+    c = get_client()
+    if c is None:
+        return
+    try:
+        c.lpush(_WHATIF_WAKE_LIST, "1")
+        c.ltrim(_WHATIF_WAKE_LIST, 0, 64)
+    except Exception:
+        pass
+
+
+def whatif_get_job(job_id: str) -> dict | None:
+    c = get_client()
+    if c is None or not job_id:
+        return None
+    try:
+        return _json_load(c.get(f"{_WHATIF_JOB_PREFIX}{job_id}"))
+    except Exception:
+        return None
+
+
+def whatif_set_job(job_id: str, data: dict, ttl_sec: int) -> None:
+    c = get_client()
+    if c is None or not job_id:
+        return
+    try:
+        c.setex(f"{_WHATIF_JOB_PREFIX}{job_id}", max(60, int(ttl_sec)), json.dumps(data, separators=(",", ":")))
+    except Exception:
+        pass
+
+
+def whatif_get_cache(cache_key: str) -> dict | None:
+    c = get_client()
+    if c is None or not cache_key:
+        return None
+    try:
+        raw = c.get(f"{_WHATIF_CACHE_PREFIX}{cache_key}")
+        data = _json_load(raw)
+        if data and isinstance(data.get("result"), dict):
+            return data["result"]
+        return None
+    except Exception:
+        return None
+
+
+def whatif_set_cache(cache_key: str, result: dict, ttl_sec: int) -> None:
+    c = get_client()
+    if c is None or not cache_key:
+        return
+    try:
+        body = json.dumps({"result": result}, separators=(",", ":"))
+        if len(body) > 8_000_000:
+            return
+        c.setex(f"{_WHATIF_CACHE_PREFIX}{cache_key}", max(60, int(ttl_sec)), body)
+    except Exception:
+        pass
+
+
+def brpop_background_wake(timeout_sec: float) -> bool:
+    """Block until binary or what-if worker has work."""
+    c = get_client()
+    if c is None:
+        return False
+    t = max(1, min(int(timeout_sec), 60))
+    try:
+        return c.brpop([_WHATIF_WAKE_LIST, _BINARY_WAKE_LIST], timeout=t) is not None
     except Exception:
         return False

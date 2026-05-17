@@ -76,50 +76,51 @@ Plan to support many concurrent backtest users: stable chart loads, reliable ses
 
 ### B1 — Design & API contract
 
-- [ ] Decide job model: `job_id`, statuses `queued | running | done | failed`
-- [ ] Define `POST /api/analytics/backtest/whatif` → `{ job_id }` (202 Accepted)
-- [ ] Define `GET /api/analytics/backtest/whatif/jobs/{job_id}`
-- [ ] Keep sync endpoint behind flag OR remove after migration (`WHATIF_ASYNC_ONLY=true`)
-- [ ] Define cache key: hash(`session_id`, filters, `tp_r`, `sl_r`, journal version / `updated_at`)
-- [ ] Set cache TTL (e.g. 5–15 minutes)
+- [x] Job model: `job_id`, statuses `queued | running | done | failed`
+- [x] `POST /api/analytics/backtest/whatif` → **202** `{ job_id, status }` when async; **200** sync/cache hit
+- [x] `GET /api/analytics/backtest/whatif/jobs/{job_id}`
+- [x] Sync fallback when `BACKTEST_WHATIF_ASYNC=false` or Redis unavailable
+- [x] Cache key: SHA256 of session + filters + `tp_r`/`sl_r` + `journal_version` (`state.updated_at`)
+- [x] Cache TTL **900s** (`BACKTEST_WHATIF_CACHE_TTL_SEC`)
 
 ### B2 — Backend: job queue
 
-- [ ] Add Redis list or stream for what-if jobs (mirror `binary_wake` pattern in `chart_redis.py`)
-- [ ] Serialize job payload (session_id, filters, user_id, cache key)
-- [ ] Worker consumes jobs: `APP_ROLE=analytics` or extend `trading-chart-worker`
-- [ ] Run existing what-if logic inside worker; store result in Redis (`SET` + TTL) or Postgres JSON column
-- [ ] Handle failures: store error message, mark `failed`, don’t poison queue
-- [ ] Job timeout (e.g. 60–120s) for huge journals
+- [x] Redis lists `chart:whatif:queue` + wake (`chart_redis.py`)
+- [x] Job payload in `chart:whatif:job:{id}`
+- [x] Worker + API drain (`trading-chart-worker` + `BACKTEST_WHATIF_DRAIN_ON_API`)
+- [x] Compute in `backtest_whatif.py` / `_execute_whatif_job_record`
+- [x] Failures → `status: failed` + `error` on job record
+- [ ] Job timeout for huge journals (optional hard limit)
 
 ### B3 — Backend: cache layer
 
-- [ ] On job submit: check Redis cache → if hit, return `done` + payload immediately (no queue)
-- [ ] On job complete: write cache before marking `done`
-- [ ] Invalidate cache on session journal PATCH (or bump journal `updated_at` in key)
-- [ ] Cap cached payload size; skip cache if result &gt; N MB
+- [x] Cache check on POST before enqueue
+- [x] Cache write on job complete
+- [x] Invalidate via `journal_version` in cache key (PATCH updates `updated_at`)
+- [x] Skip cache when result &gt; `BACKTEST_WHATIF_MAX_RESULT_BYTES`
 
 ### B4 — Frontend: async client
 
-- [ ] Update `SessionAnalyticsPanel` to POST job → poll `GET .../jobs/{id}` every 500ms–1s (with backoff)
-- [ ] Show loading skeleton while `queued | running`
-- [ ] Surface job `failed` error in UI
-- [ ] Cancel polling on unmount / filter change (keep debounce from Track A)
-- [ ] Optional: reuse WebSocket for job completion instead of polling
+- [x] `fetchBacktestWhatIf()` polls job endpoint with backoff
+- [ ] Dedicated loading skeleton for `queued | running`
+- [x] Job `failed` → error message in panel
+- [x] Abort on unmount / filter change (Track A debounce + `AbortController`)
+- [ ] Optional: WebSocket completion
 
 ### B5 — Ops & scale
 
-- [ ] Add `trading-chart-analytics` worker replica count in `docker-compose.yml` (or scale existing worker)
+- [x] Worker processes what-if (same `trading-chart-worker` loop)
+- [x] Env vars in `docker-compose.yml`
 - [ ] Monitor queue depth + job duration
-- [ ] Load test: 50 concurrent what-if jobs; API workers should stay responsive
-- [ ] Document rollback: flip flag to sync what-if if queue breaks
+- [ ] Load test: 50 concurrent what-if jobs
+- [x] Rollback: `BACKTEST_WHATIF_ASYNC=false`
 
 ### B6 — Track B verification
 
-- [ ] p95 what-if perceived latency acceptable (poll interval + compute time)
+- [ ] p95 what-if perceived latency acceptable (poll + compute)
 - [ ] API CPU drops under what-if-heavy load vs baseline
-- [ ] Cache hit rate logged (optional metric)
-- [ ] Staging + production deploy checklist complete
+- [ ] Cache hit rate logged (optional)
+- [ ] Staging smoke test
 
 ---
 
@@ -209,7 +210,8 @@ Plan to support many concurrent backtest users: stable chart loads, reliable ses
 | Area | Path |
 |------|------|
 | Chart API, sessions, what-if, tiles | `chart v 1.4/chart/api_server.py` |
-| Redis rate limits + binary wake | `chart v 1.4/chart/chart_redis.py` |
+| What-if compute + cache keys | `chart v 1.4/chart/backtest_whatif.py` |
+| Redis rate limits + binary/whatif queues | `chart v 1.4/chart/chart_redis.py` |
 | What-if UI | `homepage/src/app/dashboard/backtest/SessionAnalyticsPanel.tsx` |
 | Backtest chart load | `homepage/public/chart/chart.js` (`autoLoadBacktestingData`, `_fetchSmartWindow`) |
 | Docker / workers | `docker-compose.yml`, `chart v 1.4/chart/Dockerfile.local` |
@@ -223,7 +225,7 @@ Plan to support many concurrent backtest users: stable chart loads, reliable ses
 |---------------|--------|
 | Phase 0 — Baseline | ⬜ Not started |
 | Track A | 🟡 In progress (A1–A4 coded; A5 verify pending) |
-| Track B | ⬜ Not started |
+| Track B | 🟡 In progress (B1–B5 coded; B6 verify pending) |
 | Track C | ⬜ Not started |
 | Optional Phase 2 | ⬜ Not started |
 | Production readiness | ⬜ Not started |

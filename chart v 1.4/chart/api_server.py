@@ -109,6 +109,7 @@ def _load_dotenv_files_from_chart_dir() -> None:
 _load_dotenv_files_from_chart_dir()
 
 import chart_redis
+import backtest_whatif as bw
 
 from analytics_engine import (
     normalize_trades,
@@ -1574,6 +1575,104 @@ def _filter_journal_raw_trades(
     return out
 
 
+def _compute_backtest_whatif_for_session(
+    db,
+    *,
+    session_id: int,
+    pair_filter: str,
+    playbook_filter: str,
+    strategy_filter: str,
+    outcome_filter: str,
+    heatmap_pair: str,
+    tp_r: float,
+    sl_r: float,
+) -> dict:
+    s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
+    state = _parse_json_dict(st.state_json)
+    journal = state.get("journal") if isinstance(state.get("journal"), list) else []
+
+    cfg: dict = {}
+    try:
+        cfg = json.loads(s.config_json) if s.config_json else {}
+    except Exception:
+        cfg = {}
+    sess_strategy_id = bw.session_strategy_id_from_config(cfg)
+    session_pub = _session_public_dict(s)
+    start_bal = _to_float(session_pub.get("start_balance"))
+
+    result = bw.compute_backtest_whatif_payload(
+        session_id=int(session_id),
+        journal=journal,
+        session_public=session_pub,
+        sess_strategy_id=sess_strategy_id,
+        pair_filter=pair_filter,
+        playbook_filter=playbook_filter,
+        strategy_filter=strategy_filter,
+        outcome_filter=outcome_filter,
+        heatmap_pair=heatmap_pair,
+        tp_r=tp_r,
+        sl_r=sl_r,
+        start_balance=start_bal,
+    )
+    result["session_analytics"] = _sanitize_for_json(result.get("session_analytics"))
+    return result
+
+
+def _execute_whatif_job_record(job: dict) -> dict:
+    session_id = int(job["session_id"])
+    db = SessionLocal()
+    try:
+        return _compute_backtest_whatif_for_session(
+            db,
+            session_id=session_id,
+            pair_filter=str(job.get("pair_filter") or "ALL"),
+            playbook_filter=str(job.get("playbook_filter") or "ALL"),
+            strategy_filter=str(job.get("strategy_filter") or "ALL"),
+            outcome_filter=str(job.get("outcome_filter") or "ALL"),
+            heatmap_pair=str(job.get("heatmap_pair") or "ALL"),
+            tp_r=float(job.get("tp_r") or 1.5),
+            sl_r=float(job.get("sl_r") or 1.0),
+        )
+    finally:
+        db.close()
+
+
+def _process_next_whatif_job() -> bool:
+    job_id = chart_redis.whatif_pop_job_nonblocking()
+    if not job_id:
+        return False
+    job = chart_redis.whatif_get_job(job_id)
+    if not job:
+        return True
+    job["status"] = "running"
+    chart_redis.whatif_set_job(job_id, job, bw.WHATIF_JOB_TTL_SEC)
+    cache_key = str(job.get("cache_key") or "")
+    try:
+        result = _execute_whatif_job_record(job)
+        body = json.dumps(result, separators=(",", ":"))
+        if len(body) <= bw.WHATIF_MAX_RESULT_BYTES:
+            if cache_key:
+                bw.set_cached_whatif(cache_key, result)
+            job["status"] = "done"
+            job["result"] = result
+            job.pop("error", None)
+        else:
+            job["status"] = "failed"
+            job["error"] = "What-if result too large to cache"
+    except HTTPException as exc:
+        job["status"] = "failed"
+        job["error"] = str(exc.detail) if exc.detail else "Session not found"
+    except Exception as exc:
+        job["status"] = "failed"
+        job["error"] = str(exc)[:500]
+    chart_redis.whatif_set_job(job_id, job, bw.WHATIF_JOB_TTL_SEC)
+    return True
+
+
 @app.post("/api/analytics/backtest/whatif")
 async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
     user = _require_paid_journal_user(request)
@@ -1587,84 +1686,96 @@ async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
             raise HTTPException(status_code=403, detail="Forbidden")
 
         st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
-        state = _parse_json_dict(st.state_json)
-        journal = state.get("journal") if isinstance(state.get("journal"), list) else []
-
-        cfg = {}
-        try:
-            cfg = json.loads(s.config_json) if s.config_json else {}
-        except Exception:
-            cfg = {}
-        sess_strategy_id = None
-        try:
-            raw_sid = cfg.get("strategy_id") or cfg.get("strategyId")
-            if raw_sid is not None:
-                sess_strategy_id = int(raw_sid)
-        except Exception:
-            sess_strategy_id = None
-
-        pair_filter = str(payload.pair_filter or "ALL").strip().upper().replace("/", "")
-        playbook_filter = str(payload.playbook_filter or "ALL").strip()
-        strategy_filter = str(payload.strategy_filter or "ALL").strip()
-        outcome_filter = str(payload.outcome_filter or "ALL").strip().upper()
-
-        filtered_raw = _filter_journal_raw_trades(
-            journal,
-            pair_filter,
-            playbook_filter,
-            outcome_filter,
-            strategy_filter,
-            session_strategy_id=sess_strategy_id,
+        jver = bw.journal_version_token(st.updated_at)
+        cache_key = bw.build_whatif_cache_key(
+            session_id=int(payload.session_id),
+            pair_filter=str(payload.pair_filter or "ALL"),
+            playbook_filter=str(payload.playbook_filter or "ALL"),
+            strategy_filter=str(payload.strategy_filter or "ALL"),
+            outcome_filter=str(payload.outcome_filter or "ALL"),
+            heatmap_pair=str(payload.heatmap_pair or "ALL"),
+            tp_r=float(payload.tp_r),
+            sl_r=float(payload.sl_r),
+            journal_version=jver,
         )
 
-        normalized = normalize_trades(filtered_raw)
-        tp_r = max(0.1, float(payload.tp_r))
-        sl_r = max(0.1, float(payload.sl_r))
+        cached = bw.get_cached_whatif(cache_key)
+        if cached is not None:
+            return cached
 
-        equity_curve = simulate_equity_curve(normalized, tp_r=tp_r, sl_r=sl_r)
-        heatmap_scope = str(payload.heatmap_pair or "ALL").strip().upper().replace("/", "")
-        heatmap_trades = filter_by_instrument(normalized, heatmap_scope)
-        heatmap = build_expectancy_heatmap(heatmap_trades)
-        per_instrument = compute_per_instrument_summary(normalized)
-        mae_distribution = build_histogram([t.mae_r for t in normalized], bucket_size=0.5)
-        mfe_distribution = build_histogram([t.mfe_r for t in normalized], bucket_size=0.5)
-        stats = compute_stats(normalized)
-        playbook_breakdown = compute_playbook_breakdown(normalized)
-        recent_trades = compute_recent_trades(normalized, limit=15)
-        equity_summary = compute_equity_summary(equity_curve)
+        if not bw.whatif_async_available():
+            return _compute_backtest_whatif_for_session(
+                db,
+                session_id=int(payload.session_id),
+                pair_filter=str(payload.pair_filter or "ALL"),
+                playbook_filter=str(payload.playbook_filter or "ALL"),
+                strategy_filter=str(payload.strategy_filter or "ALL"),
+                outcome_filter=str(payload.outcome_filter or "ALL"),
+                heatmap_pair=str(payload.heatmap_pair or "ALL"),
+                tp_r=float(payload.tp_r),
+                sl_r=float(payload.sl_r),
+            )
 
-        session_pub = _session_public_dict(s)
-        start_bal = _to_float(session_pub.get("start_balance"))
-        session_analytics = compute_session_dashboard_extras(normalized, start_bal)
-
-        return {
-            "meta": {
-                "session_id": payload.session_id,
-                "pair_filter": pair_filter,
-                "playbook_filter": playbook_filter,
-                "strategy_filter": strategy_filter,
-                "outcome_filter": outcome_filter,
-                "heatmap_pair": heatmap_scope,
-                "tp_r": tp_r,
-                "sl_r": sl_r,
-                "trades_in_scope": len(normalized),
-                "heatmap_trades_in_scope": len(heatmap_trades),
-            },
-            "equity_curve": equity_curve,
-            "heatmap": heatmap,
-            "per_instrument": per_instrument,
-            "mae_distribution": mae_distribution,
-            "mfe_distribution": mfe_distribution,
-            "stats": stats,
-            "playbook_breakdown": playbook_breakdown,
-            "recent_trades": recent_trades,
-            "equity_summary": equity_summary,
-            "session_analytics": _sanitize_for_json(session_analytics),
+        job_id = bw.new_job_id()
+        job = {
+            "job_id": job_id,
+            "user_id": int(user.id),
+            "status": "queued",
+            "cache_key": cache_key,
+            "session_id": int(payload.session_id),
+            "pair_filter": str(payload.pair_filter or "ALL"),
+            "playbook_filter": str(payload.playbook_filter or "ALL"),
+            "strategy_filter": str(payload.strategy_filter or "ALL"),
+            "outcome_filter": str(payload.outcome_filter or "ALL"),
+            "heatmap_pair": str(payload.heatmap_pair or "ALL"),
+            "tp_r": float(payload.tp_r),
+            "sl_r": float(payload.sl_r),
+            "journal_version": jver,
         }
+        if not bw.enqueue_whatif_job(job):
+            return _compute_backtest_whatif_for_session(
+                db,
+                session_id=int(payload.session_id),
+                pair_filter=job["pair_filter"],
+                playbook_filter=job["playbook_filter"],
+                strategy_filter=job["strategy_filter"],
+                outcome_filter=job["outcome_filter"],
+                heatmap_pair=job["heatmap_pair"],
+                tp_r=job["tp_r"],
+                sl_r=job["sl_r"],
+            )
+
+        return JSONResponse(
+            status_code=202,
+            content={"job_id": job_id, "status": "queued"},
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         db.close()
+
+
+@app.get("/api/analytics/backtest/whatif/jobs/{job_id}")
+async def get_backtest_whatif_job(job_id: str, request: Request):
+    user = _require_paid_journal_user(request)
+    job = bw.get_whatif_job(job_id.strip())
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if int(job.get("user_id", -1)) != int(user.id) and getattr(user, "role", None) != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    status = str(job.get("status") or "queued")
+    out: dict = {"job_id": job_id, "status": status}
+    if status == "done":
+        result = job.get("result")
+        if not isinstance(result, dict):
+            ck = str(job.get("cache_key") or "")
+            result = bw.get_cached_whatif(ck) if ck else None
+        if isinstance(result, dict):
+            out["result"] = result
+    elif status == "failed":
+        out["error"] = str(job.get("error") or "What-if job failed")
+    return out
 
 
 @app.get("/api/sessions/{session_id}/trades/{trade_id}/screenshot")
@@ -6603,23 +6714,50 @@ def _process_next_binary_build_job() -> bool:
     return True
 
 
-def _run_binary_build_worker():
-    """Long-running poll loop for queued binary build jobs."""
+def _run_chart_background_worker():
+    """Binary build queue + backtest what-if job queue."""
     poll_seconds = max(0.2, float(BINARY_QUEUE_POLL_SECONDS))
-    print(f"👷 Binary build worker started (poll={poll_seconds:.1f}s)")
+    print(
+        f"👷 Chart background worker started (poll={poll_seconds:.1f}s, "
+        f"whatif_async={bw.whatif_async_available()})"
+    )
     while True:
         did_work = _process_next_binary_build_job()
         if not did_work:
+            did_work = _process_next_whatif_job()
+        if not did_work:
             if chart_redis.get_client() is not None:
-                chart_redis.brpop_wake(poll_seconds)
+                chart_redis.brpop_background_wake(poll_seconds)
             else:
                 time.sleep(poll_seconds)
 
+
+def _run_binary_build_worker():
+    _run_chart_background_worker()
+
 # Startup background behavior
 if APP_ROLE == "worker" and BINARY_BUILD_MODE == "queue":
-    threading.Thread(target=_run_binary_build_worker, daemon=True).start()
+    threading.Thread(target=_run_chart_background_worker, daemon=True).start()
 elif APP_ROLE == "api":
     _backfill_binaries()
+    if bw.whatif_async_available() and os.getenv("BACKTEST_WHATIF_DRAIN_ON_API", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+
+        def _run_whatif_drain_on_api():
+            poll_seconds = max(0.2, float(BINARY_QUEUE_POLL_SECONDS))
+            print(f"📊 What-if drain on API started (poll={poll_seconds:.1f}s)")
+            while True:
+                if not _process_next_whatif_job():
+                    if chart_redis.get_client() is not None:
+                        chart_redis.whatif_brpop_job(poll_seconds)
+                    else:
+                        time.sleep(poll_seconds)
+
+        threading.Thread(target=_run_whatif_drain_on_api, daemon=True).start()
 
 # API Endpoints
 
