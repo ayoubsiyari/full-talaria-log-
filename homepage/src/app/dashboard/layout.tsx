@@ -293,6 +293,7 @@ const DASH_C = {
 const VIEW_TITLES: Record<string, string> = {
   dashboard: "Dashboard",
   journal: "Journal",
+  trades: "Trades",
   backtest: "Backtesting Sessions",
   strategies: "Strategies",
   resources: "Resources",
@@ -309,6 +310,7 @@ const EXTERNAL_VIEWS: Record<string, string> = {
 const INTERNAL_NAV: Record<string, string> = {
   dashboard: "/dashboard/",
   journal:   "/dashboard/journal/",
+  trades:    "/dashboard/trades/",
   backtest:  "/dashboard/backtest/",
   strategies: "/dashboard/strategies/",
   cot:       "/dashboard/cot/",
@@ -418,6 +420,7 @@ export default function DashboardLayout({
 
   React.useEffect(() => {
     if (pathname.startsWith("/dashboard/journal")) setActiveView("journal");
+    else if (pathname.startsWith("/dashboard/trades")) setActiveView("trades");
     else if (pathname.startsWith("/dashboard/backtest")) setActiveView("backtest");
     else if (pathname.startsWith("/dashboard/strategies"))
       setActiveView("strategies");
@@ -442,6 +445,7 @@ export default function DashboardLayout({
 
   const navModuleForId = (id: string): string | null => {
     if (id === "journal") return "journal";
+    if (id === "trades") return "backtest";
     if (id === "backtest") return "backtest";
     if (id === "strategies") return "strategies";
     if (id === "cot") return "cot";
@@ -483,6 +487,7 @@ export default function DashboardLayout({
   const NAV_ITEMS: { id: string; label: string; icon: React.ReactNode }[] = [
     { id: "dashboard", label: "Dashboard", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="3" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/></svg> },
     { id: "journal",   label: "Journal",   icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="15" height="18" rx="1" stroke="currentColor" strokeWidth="1.5"/><line x1="7" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="7" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="7" y1="16" x2="11" y2="16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
+    { id: "trades",    label: "Trades",    icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="1" stroke="currentColor" strokeWidth="1.5"/><line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" strokeWidth="1.5"/><line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="8" y1="17" x2="13" y2="17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
     { id: "backtest",  label: "Backtest",  icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><polyline points="3,20 3,4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="3,15 8,11 12,14 18,7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><polygon points="20,10 23,13 20,16" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg> },
     { id: "cot",       label: "COT",       icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="12" width="3" height="8" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><rect x="8" y="8" width="3" height="12" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><rect x="13" y="5" width="3" height="15" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><rect x="18" y="9" width="3" height="11" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="3" y1="3" x2="21" y2="3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeDasharray="2 2"/></svg> },
     { id: "strategies",label: "Strategies",icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="2" width="14" height="20" rx="1" stroke="currentColor" strokeWidth="1.4"/><rect x="8" y="1" width="4" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.3"/><circle cx="7" cy="9" r="1.2" fill="currentColor" opacity="0.8"/><circle cx="13" cy="9" r="1.2" fill="currentColor" opacity="0.8"/><circle cx="10" cy="14" r="1.2" fill="currentColor" opacity="0.8"/><path d="M7 9c0 3 3 3 3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><path d="M13 9c-1 2-1 3-3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="8.5" y1="19" x2="11.5" y2="19" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },

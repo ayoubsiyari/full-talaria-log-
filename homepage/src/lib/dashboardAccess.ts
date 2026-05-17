@@ -107,6 +107,7 @@ export function dashboardPathToModule(path: string): string | null {
   }
   if (p === "/dashboard" || p === "/dashboard/") return null;
   if (p.startsWith("/dashboard/journal")) return "journal";
+  if (p.startsWith("/dashboard/trades")) return "backtest";
   if (p.startsWith("/dashboard/backtest") || p.startsWith("/dashboard/sessions"))
     return "backtest";
   if (p.startsWith("/dashboard/strategies")) return "strategies";

@@ -8,6 +8,8 @@ export type JournalApiTradeItem = {
   client_trade_id?: string;
   updated_at?: string | null;
   payload?: Record<string, unknown>;
+  session_id?: number;
+  session_name?: string;
 };
 
 export function flattenJournalApiTrade(item: JournalApiTradeItem): Record<string, unknown> {
@@ -19,6 +21,8 @@ export function flattenJournalApiTrade(item: JournalApiTradeItem): Record<string
     ...p,
     client_trade_id: item.client_trade_id ?? p.client_trade_id,
     updated_at: item.updated_at ?? p.updated_at,
+    session_id: item.session_id ?? p.session_id,
+    session_name: item.session_name ?? p.session_name,
   };
 }
 
@@ -150,6 +154,8 @@ export function buildSessionJournalColumns(rows: Record<string, unknown>[]): str
   });
   const fixedOrder = [
     "client_trade_id",
+    "session_name",
+    "session_id",
     "updated_at",
     "id",
     "time",
@@ -191,6 +197,8 @@ export function buildSessionJournalColumns(rows: Record<string, unknown>[]): str
   if (ordered.length === 0) {
     return [
       "client_trade_id",
+      "session_name",
+      "session_id",
       "updated_at",
       "id",
       "time",

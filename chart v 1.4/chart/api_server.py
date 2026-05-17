@@ -14271,6 +14271,75 @@ async def import_trading_session_journal_csv(
         db.close()
 
 
+_LIST_USER_JOURNAL_TRADES_MAX = 5000
+
+
+@app.get("/api/journal-trades")
+async def list_user_journal_trades(
+    request: Request,
+    session_id: int | None = Query(None),
+    limit: int = Query(3000, ge=1, le=_LIST_USER_JOURNAL_TRADES_MAX),
+    offset: int = Query(0, ge=0),
+):
+    """All backtest session journal trades for the signed-in user (same fields as per-session journal)."""
+    user = _require_paid_journal_user(request, module="backtest")
+    db = SessionLocal()
+    try:
+        q = db.query(TradingSessionJournalTrade).filter(
+            TradingSessionJournalTrade.user_id == user.id
+        )
+        if session_id is not None:
+            s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
+            if not s:
+                raise HTTPException(status_code=404, detail="Session not found")
+            if not _can_access_trading_session(user, s):
+                raise HTTPException(status_code=403, detail="Forbidden")
+            q = q.filter(TradingSessionJournalTrade.session_id == session_id)
+        total = q.count()
+        rows = (
+            q.order_by(TradingSessionJournalTrade.updated_at.desc())
+            .offset(offset)
+            .limit(min(limit, _LIST_USER_JOURNAL_TRADES_MAX))
+            .all()
+        )
+        session_names: dict[int, str] = {}
+        sid_set = {int(r.session_id) for r in rows if r.session_id is not None}
+        if sid_set:
+            for sid, name in (
+                db.query(TradingSession.id, TradingSession.name)
+                .filter(TradingSession.id.in_(sid_set))
+                .all()
+            ):
+                session_names[int(sid)] = name or ""
+        out = []
+        for r in rows:
+            try:
+                payload = json.loads(r.payload_json) if r.payload_json else {}
+            except Exception:
+                payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
+            out.append(
+                {
+                    "session_id": r.session_id,
+                    "session_name": session_names.get(int(r.session_id), ""),
+                    "client_trade_id": r.client_trade_id,
+                    "payload": payload,
+                    "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+                }
+            )
+        return {
+            "trades": out,
+            "count": len(out),
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "truncated": (offset + len(out)) < total,
+        }
+    finally:
+        db.close()
+
+
 @app.get("/api/sessions/{session_id}/journal-trades")
 async def list_trading_session_journal_trades(session_id: int, request: Request):
     """Queryable copy of chart journal trades (one row per trade); same data as state.journal, scoped per user."""

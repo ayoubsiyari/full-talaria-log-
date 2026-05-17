@@ -449,7 +449,8 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
     );
   };
 
-  const STRAT_ROW_COLS = "44px 190px 330px 285px 135px 110px 150px 44px";
+  /** Icon + name share first column (same total width as old 44+190) — tight gap like sessions row. */
+  const STRAT_ROW_COLS = "234px 330px 285px 135px 110px 150px 44px";
   const stratMarkets = strat => (strat.markets||[]).length
     ? (strat.markets||[]).map(m=>(MKT_CAT_OPTS.find(x=>x.id===m)?.label||m))
     : (strat.instruments||[]);
@@ -520,8 +521,8 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const StrategyRows = ({items,isMine=false,inSavedTab=false,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onPerf,onUseTemplate}) => (
     <div style={{width:1288,margin:"0 auto",display:"flex",flexDirection:"column",padding:"4px 0 24px"}}>
       <div style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"center",height:26,borderBottom:`1px solid ${c.brH}`}}>
-        {["","Strategy","Description","Strategy Tags","Markets","Time Frames","Backtesting Results",""].map((label,i)=>{
-          const pad = i === 0 || i === 7 ? "0 8px" : i >= 3 ? "8px 10px" : "0 10px";
+        {["Strategy","Description","Strategy Tags","Markets","Time Frames","Backtesting Results",""].map((label,i)=>{
+          const pad = i === 6 ? "0 8px" : i >= 2 ? "8px 10px" : "0 10px";
           return (
           <div key={label||"_icon"} style={{fontSize:8,fontWeight:850,color:c.tm,textTransform:"uppercase",letterSpacing:"0.08em",whiteSpace:"nowrap",fontFamily:F,textAlign:label?"left":"center",padding:pad,display:"flex",alignItems:"center",justifyContent:label?"flex-start":"center",boxSizing:"border-box",minWidth:0}}>
             {label}
@@ -546,13 +547,11 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
             onMouseLeave={()=>setStratCardHov(null)}
             onDoubleClick={openEditableStrategy}
             style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"stretch",height:80,minHeight:80,maxHeight:80,borderTop:`1px solid ${isH?c.acB:c.brH}`,borderRight:`1px solid ${isH?c.acB:c.brH}`,borderBottom:`1px solid ${isH?c.acB:c.brH}`,borderLeft:`3px solid ${c.acL}`,background:isH?"rgba(140,160,255,0.045)":c.sf,cursor:"default",transition:"box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease",boxShadow:isH?`0 0 0 1px ${c.acB}, 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(38,67,247,0.15)`:"0 3px 12px rgba(0,0,0,0.5)",marginTop:idx===0?0:6,overflow:"hidden",boxSizing:"border-box"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 8px"}}>
-              <div style={{width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",background:c.hv2,border:`1px solid ${isH?c.acB:c.brH}`,boxSizing:"border-box"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,padding:"0 10px",overflow:"hidden",boxSizing:"border-box"}}>
+              <div style={{width:24,height:24,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:c.hv2,border:`1px solid ${isH?c.acB:c.brH}`,boxSizing:"border-box"}}>
                 <span style={{fontSize:17,lineHeight:1,filter:"saturate(1.08)"}}>{icon}</span>
               </div>
-            </div>
-            <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"0 10px"}}>
-              <div style={{fontSize:12,fontWeight:850,color:c.tx,lineHeight:1.25,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{strat.name}</div>
+              <div style={{fontSize:12,fontWeight:850,color:c.tx,lineHeight:1.25,fontFamily:F,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{strat.name}</div>
             </div>
             <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"0 10px"}}>
               <div style={{fontSize:10.5,fontWeight:560,color:c.ts,fontFamily:F,lineHeight:1.35,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>
