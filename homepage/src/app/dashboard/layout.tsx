@@ -12,6 +12,7 @@ import {
   defaultDashboardPathForUser,
   lockedModuleGateReason,
   lockedModuleNavTitle,
+  resolveDashboardGateVariant,
   userCanAccessDashboardPath,
   userHasDashboardModule,
   userHasPartialDashboardAccess,
@@ -30,6 +31,14 @@ type User = {
   has_active_subscription?: boolean;
   manual_full_access?: boolean;
   has_dashboard_access?: boolean;
+  access_denial_reason?: string;
+  billing_issue?: boolean;
+  lapsed_subscription?: {
+    plan_name?: string;
+    status?: string;
+    current_period_end?: string;
+    cancel_at_period_end?: boolean;
+  };
   dashboard_modules?: Record<string, boolean>;
   subscription?: { status?: string };
 };
@@ -395,8 +404,7 @@ export default function DashboardLayout({
       : "none";
   const subscriptionWall =
     authReady && !!user && gatedPath && !pathAllowed;
-  const gateVariant =
-    gateReason === "admin_restricted" ? "admin_restricted" : "subscription";
+  const gateVariant = resolveDashboardGateVariant(user);
   const gatedAuthLoading = gatedPath && !authReady;
 
   const goPricing = React.useCallback(() => {

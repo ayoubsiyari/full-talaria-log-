@@ -12,12 +12,27 @@ export const DASHBOARD_MODULE_LABELS: Record<string, string> = {
   chart: "Chart data & drawings",
 };
 
+export type DashboardGateVariant =
+  | "subscription"
+  | "subscription_ended"
+  | "payment_required"
+  | "admin_restricted";
+
 export type DashboardUser = {
   role?: string;
   /** Journal API / billing entitlement (subscription, extension window, manual full). */
   has_journal_access?: boolean;
   /** Active Stripe subscription (active/trialing) — always unlocks all dashboard sections. */
   has_active_subscription?: boolean;
+  access_denial_reason?: string;
+  billing_issue?: boolean;
+  lapsed_subscription?: {
+    plan_id?: number;
+    plan_name?: string;
+    status?: string;
+    current_period_end?: string;
+    cancel_at_period_end?: boolean;
+  };
   /** Admin manual "all sections" flag (raw DB column). */
   manual_full_access?: boolean;
   /** True when full subscription/manual access OR any admin-granted section. */
@@ -128,6 +143,16 @@ export function lockedModuleGateReason(
   return "subscription";
 }
 
+/** Full-screen gate copy when user cannot open a paid dashboard section. */
+export function resolveDashboardGateVariant(user: DashboardUser | null): DashboardGateVariant {
+  if (!user) return "subscription";
+  if (userHasPartialDashboardAccess(user)) return "admin_restricted";
+  const reason = user.access_denial_reason;
+  if (reason === "subscription_ended") return "subscription_ended";
+  if (reason === "payment_required" || user.billing_issue) return "payment_required";
+  return "subscription";
+}
+
 export function lockedModuleNavTitle(
   user: DashboardUser | null,
   module: string,
@@ -139,6 +164,16 @@ export function lockedModuleNavTitle(
     return isArabic
       ? "هذا القسم غير مفعّل لحسابك — تواصل مع الدعم"
       : "This section is not enabled on your account — contact support";
+  }
+  if (user.access_denial_reason === "subscription_ended") {
+    return isArabic
+      ? "انتهى اشتراكك — تجديد من صفحة الأسعار"
+      : "Your subscription ended — renew on pricing";
+  }
+  if (user.access_denial_reason === "payment_required" || user.billing_issue) {
+    return isArabic
+      ? "مطلوب تحديث الدفع — إعدادات الحساب أو الأسعار"
+      : "Payment update required — account settings or pricing";
   }
   return isArabic
     ? "يتطلب اشتراكاً نشطاً — عرض الخطط والأسعار"

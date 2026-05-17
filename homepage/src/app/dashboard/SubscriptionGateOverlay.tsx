@@ -4,7 +4,11 @@ import React from "react";
 
 const F = "'Exo 2', sans-serif";
 
-export type GateVariant = "subscription" | "admin_restricted";
+export type GateVariant =
+  | "subscription"
+  | "subscription_ended"
+  | "payment_required"
+  | "admin_restricted";
 
 type Props = {
   isArabic: boolean;
@@ -29,6 +33,9 @@ export default function SubscriptionGateOverlay({
   active,
 }: Props) {
   const isAdminRestricted = variant === "admin_restricted";
+  const isPlanEnded = variant === "subscription_ended";
+  const isPaymentIssue = variant === "payment_required";
+  const skipCountdown = isAdminRestricted || isPlanEnded || isPaymentIssue;
   const [seconds, setSeconds] = React.useState(8);
   const redirectedRef = React.useRef(false);
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
@@ -53,7 +60,7 @@ export default function SubscriptionGateOverlay({
       redirectedRef.current = false;
       return;
     }
-    if (isAdminRestricted) {
+    if (skipCountdown) {
       setSeconds(0);
       redirectedRef.current = false;
       return;
@@ -79,7 +86,7 @@ export default function SubscriptionGateOverlay({
         intervalRef.current = null;
       }
     };
-  }, [active, isAdminRestricted, onContinueToPlans]);
+  }, [active, skipCountdown, onContinueToPlans]);
 
   if (!active) return null;
 
@@ -87,25 +94,49 @@ export default function SubscriptionGateOverlay({
     ? isArabic
       ? "هذا القسم غير متاح"
       : "This section is not available"
-    : isArabic
-      ? "يتطلب اشتراكاً نشطاً"
-      : "Subscription required";
+    : isPlanEnded
+      ? isArabic
+        ? "انتهى اشتراكك"
+        : "Your subscription has ended"
+      : isPaymentIssue
+        ? isArabic
+          ? "مطلوب تحديث الدفع"
+          : "Payment update required"
+        : isArabic
+          ? "يتطلب اشتراكاً نشطاً"
+          : "Subscription required";
 
   const body = isAdminRestricted
     ? isArabic
       ? "تم تقييد وصولك إلى هذا القسم من قبل الإدارة. إذا كنت تعتقد أن هذا خطأ، تواصل مع الدعم."
       : "Your access to this area was limited by an administrator. Contact support if you believe this is a mistake or need it enabled."
-    : isArabic
-      ? "جلسة التداول والتحليلات والأدوات المتقدمة متاحة مع الخطة المدفوعة. اختر خطةً للمتابعة."
-      : "Journal, analytics, backtesting, and pro tools are included with an active plan. Choose a plan to continue.";
+    : isPlanEnded
+      ? isArabic
+        ? "انتهت فترة اشتراكك. يمكنك تجديد نفس الخطة من صفحة الأسعار للعودة إلى Journal والـ Backtest وأدوات Pro."
+        : "Your billing period has ended. Renew your plan on the pricing page to restore journal, backtest, and pro tools."
+      : isPaymentIssue
+        ? isArabic
+          ? "لم نتمكن من تحصيل آخر دفعة. حدّث طريقة الدفع أو جدّد اشتراكك من صفحة الأسعار."
+          : "We could not collect your last payment. Update your card or renew from the pricing page."
+        : isArabic
+          ? "جلسة التداول والتحليلات والأدوات المتقدمة متاحة مع الخطة المدفوعة. اختر خطةً للمتابعة."
+          : "Journal, analytics, backtesting, and pro tools are included with an active plan. Choose a plan to continue.";
 
   const primaryCta = isAdminRestricted
     ? isArabic
       ? "تواصل مع الدعم"
       : "Contact support"
-    : isArabic
-      ? "عرض الخطط والأسعار"
-      : "View plans & pricing";
+    : isPlanEnded
+      ? isArabic
+        ? "تجديد الاشتراك"
+        : "Renew subscription"
+      : isPaymentIssue
+        ? isArabic
+          ? "تحديث الدفع"
+          : "Update payment"
+        : isArabic
+          ? "عرض الخطط والأسعار"
+          : "View plans & pricing";
 
   const secondaryCta = isAdminRestricted
     ? isArabic
@@ -116,26 +147,38 @@ export default function SubscriptionGateOverlay({
       : "Account settings";
 
   const countdownLabel =
-    !isAdminRestricted && seconds > 0
+    !skipCountdown && seconds > 0
       ? isArabic
         ? `سيتم فتح صفحة الخطط خلال ${seconds} ث…`
         : `Opening plans in ${seconds}s…`
-      : !isAdminRestricted
+      : !skipCountdown
         ? isArabic
           ? "جارٍ التوجيه…"
           : "Redirecting…"
         : null;
 
-  const onPrimary = isAdminRestricted ? onContactSupport : goPlans;
+  const onPrimary = isAdminRestricted
+    ? onContactSupport
+    : isPaymentIssue
+      ? onAccountSettings
+      : goPlans;
   const onSecondary = isAdminRestricted ? onGoToAllowed : onAccountSettings;
 
   const footerNote = isAdminRestricted
     ? isArabic
       ? "لا يلزم الاشتراك لهذا القسم — يجب تفعيله من الإدارة."
       : "A subscription is not required for this section — an admin must enable it for your account."
-    : isArabic
-      ? "لن يُفرض عليك دفع حتى تختار خطة وتُكمل الدفع."
-      : "You are not charged until you pick a plan and complete checkout.";
+    : isPlanEnded
+      ? isArabic
+        ? "بياناتك محفوظة — التجديد يعيد الوصول فوراً بعد الدفع."
+        : "Your data is saved — renewing restores access right after checkout."
+      : isPaymentIssue
+        ? isArabic
+          ? "يمكنك إدارة الفوترة من إعدادات الحساب."
+          : "You can manage billing from account settings."
+        : isArabic
+          ? "لن يُفرض عليك دفع حتى تختار خطة وتُكمل الدفع."
+          : "You are not charged until you pick a plan and complete checkout.";
 
   return (
     <div
@@ -166,7 +209,7 @@ export default function SubscriptionGateOverlay({
         onPrimary={onPrimary}
         onSecondary={onSecondary}
         footerNote={footerNote}
-        lockIcon={isAdminRestricted}
+        lockIcon={isAdminRestricted || isPlanEnded || isPaymentIssue}
       />
     </div>
   );

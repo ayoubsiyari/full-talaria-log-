@@ -7656,6 +7656,58 @@ def _set_user_module_grants(user: User, grants) -> None:
     )
 
 
+def _subscription_access_context(db, user: User) -> dict:
+    """Why billing access may be denied — for dashboard/pricing UI after plan ends."""
+    if not db or not user:
+        return {}
+    latest = (
+        db.query(Subscription)
+        .filter(Subscription.user_id == user.id)
+        .order_by(Subscription.id.desc())
+        .first()
+    )
+    st = (latest.status or "").lower() if latest else ""
+    has_stripe = bool(getattr(user, "stripe_customer_id", None))
+    lapsed = None
+    if latest:
+        plan = (
+            db.query(SubscriptionPlan).filter(SubscriptionPlan.id == latest.plan_id).first()
+            if latest.plan_id
+            else None
+        )
+        period_end = latest.current_period_end or latest.ends_at
+        lapsed = {
+            "plan_id": latest.plan_id,
+            "plan_name": plan.name if plan else ("Manual" if latest.is_manual else None),
+            "status": latest.status,
+            "current_period_end": period_end.isoformat() if period_end else None,
+            "cancel_at_period_end": bool(latest.cancel_at_period_end),
+        }
+    if st in ("past_due", "unpaid"):
+        return {
+            "billing_issue": True,
+            "access_denial_reason": "payment_required",
+            "lapsed_subscription": lapsed,
+        }
+    if latest and has_stripe and st in ("canceled", "cancelled"):
+        return {
+            "billing_issue": False,
+            "access_denial_reason": "subscription_ended",
+            "lapsed_subscription": lapsed,
+        }
+    if latest and has_stripe:
+        return {
+            "billing_issue": False,
+            "access_denial_reason": "subscription_inactive",
+            "lapsed_subscription": lapsed,
+        }
+    return {
+        "billing_issue": False,
+        "access_denial_reason": "no_plan",
+        "lapsed_subscription": lapsed,
+    }
+
+
 def _user_public_dict(user: User, db=None):
     created = getattr(user, 'created_at', None)
     updated = getattr(user, 'updated_at', created)
@@ -7715,7 +7767,7 @@ def _user_public_dict(user: User, db=None):
         user, fully_entitled=full_modules, grants_override=grants
     )
     has_dashboard_access = full_modules or any(mod_map.values())
-    return {
+    out = {
         "id": user.id,
         "name": user.name,
         "email": user.email,
@@ -7740,6 +7792,9 @@ def _user_public_dict(user: User, db=None):
         "birth_date": getattr(user, "birth_date", None).isoformat() if getattr(user, "birth_date", None) else None,
         "stripe_customer_id": getattr(user, "stripe_customer_id", None),
     }
+    if db is not None and not subscription_entitled:
+        out.update(_subscription_access_context(db, user))
+    return out
 
 def _dataset_settings_public_dict(settings: DatasetSettings | None, file_obj: CSVFile):
     delimiter = settings.csv_delimiter if settings and settings.csv_delimiter else ","
