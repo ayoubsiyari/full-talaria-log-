@@ -74,6 +74,11 @@ services:
       SESSION_COOKIE_SAMESITE: "lax"
       WEB_CONCURRENCY: "4"
       APP_ROLE: "api"
+      # FirstRate nightly delta sync (admin can override via uploads/firstrate_schedule.json)
+      FIrstrate_SCHEDULE_ENABLED: ${FIrstrate_SCHEDULE_ENABLED:-true}
+      FIrstrate_SCHEDULE_NIGHTLY_UTC_HOUR: ${FIrstrate_SCHEDULE_NIGHTLY_UTC_HOUR:-2}
+      FIrstrate_SCHEDULE_PERIOD: ${FIrstrate_SCHEDULE_PERIOD:-week}
+      FIrstrate_SCHEDULE_ADAPTIVE_PERIOD: ${FIrstrate_SCHEDULE_ADAPTIVE_PERIOD:-true}
       BINARY_BUILD_MODE: ${BINARY_BUILD_MODE:-queue}
       BINARY_QUEUE_POLL_SECONDS: ${BINARY_QUEUE_POLL_SECONDS:-2.0}
       BINARY_ONLY_RUNTIME: ${BINARY_ONLY_RUNTIME:-false}

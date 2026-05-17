@@ -76,6 +76,58 @@ export type SupportInboxProps = {
   initialThreadId?: string | null;
 };
 
+function SupportFileUpload({
+  inputRef,
+  file,
+  disabled,
+  onPick,
+  onClear,
+  id,
+}: {
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  file: File | null;
+  disabled?: boolean;
+  onPick: (file: File | null) => void;
+  onClear: () => void;
+  id: string;
+}) {
+  return (
+    <div className="db-file-upload">
+      <input
+        ref={inputRef}
+        id={id}
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        disabled={disabled}
+        className="db-file-upload__input"
+        onChange={(e) => onPick(e.target.files?.[0] ?? null)}
+      />
+      <button
+        type="button"
+        className="db-btn-sm"
+        disabled={disabled}
+        onClick={() => inputRef.current?.click()}
+      >
+        Choose file
+      </button>
+      <span className="db-file-upload__name">{file ? file.name : "No file chosen"}</span>
+      {file ? (
+        <button
+          type="button"
+          className="db-btn-sm db-file-upload__clear"
+          disabled={disabled}
+          onClick={() => {
+            if (inputRef.current) inputRef.current.value = "";
+            onClear();
+          }}
+        >
+          Clear
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function SupportInbox({ embedded = false, initialThreadId }: SupportInboxProps = {}) {
   const [user, setUser] = useState<User | null>(null);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -396,15 +448,19 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
                 placeholder="Describe the issue… (optional if you attach a screenshot)"
                 style={{ marginBottom: 10, resize: "vertical" }}
               />
-              <label className="db-field-label">Screenshot (optional, max 2 MB)</label>
-              <input
-                ref={newThreadFileRef}
-                type="file"
-                accept="image/jpeg,image/png,image/gif,image/webp"
-                className="db-field-input"
-                style={{ marginBottom: 10, fontSize: 12 }}
-                onChange={(e) => {
-                  setNewThreadFile(e.target.files?.[0] ?? null);
+              <label className="db-field-label" htmlFor="support-new-screenshot">
+                Screenshot (optional, max 2 MB)
+              </label>
+              <SupportFileUpload
+                id="support-new-screenshot"
+                inputRef={newThreadFileRef}
+                file={newThreadFile}
+                onPick={(f) => {
+                  setNewThreadFile(f);
+                  setUploadErr(null);
+                }}
+                onClear={() => {
+                  setNewThreadFile(null);
                   setUploadErr(null);
                 }}
               />
@@ -567,20 +623,23 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
                 Send
               </button>
             </div>
-            <label style={{ fontSize: 11, color: "#4a4850", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <label className="db-field-label" htmlFor="support-reply-screenshot">
               Screenshot (optional, max 2 MB)
-              <input
-                ref={replyFileRef}
-                type="file"
-                accept="image/jpeg,image/png,image/gif,image/webp"
-                disabled={!selected || isClosed}
-                style={{ fontSize: 12, maxWidth: "100%" }}
-                onChange={(e) => {
-                  setReplyFile(e.target.files?.[0] ?? null);
-                  setUploadErr(null);
-                }}
-              />
             </label>
+            <SupportFileUpload
+              id="support-reply-screenshot"
+              inputRef={replyFileRef}
+              file={replyFile}
+              disabled={!selected || isClosed}
+              onPick={(f) => {
+                setReplyFile(f);
+                setUploadErr(null);
+              }}
+              onClear={() => {
+                setReplyFile(null);
+                setUploadErr(null);
+              }}
+            />
           </div>
         </div>
       </div>

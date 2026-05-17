@@ -2370,7 +2370,7 @@ select { cursor:default; }
                     </label>
                     <div style="height:1px;background:var(--border);margin:10px 0"></div>
                     <p style="font-size:11px;color:var(--text-muted);margin:0 0 10px;line-height:1.55">
-                      <strong>Nightly auto-sync</strong> pulls the <em>day</em> update bundle from FirstRate once per UTC day, <strong>for every asset class present in the registry</strong> (fx, crypto, futures, stocks), and merges new candles into each existing dataset (historical bars are preserved). No manual action required.
+                      <strong>Nightly auto-sync</strong> merges FirstRate update bundles into your existing datasets (history is preserved). It uses <em>week</em> or <em>month</em> bundles when tickers are stale or missing — not only <em>day</em> (which updates the latest session only). One ZIP per asset class covers all registered tickers in that class.
                     </p>
                     <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:10px;font-size:12px">
                       <input type="checkbox" id="fr_sched_enabled">
@@ -2407,6 +2407,10 @@ select { cursor:default; }
                         <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_fx" value="fx"> Forex</label>
                       </div>
                     </div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;font-size:12px">
+                      <input type="checkbox" id="fr_sched_adaptive" checked>
+                      Auto week/month when data is stale or missing (recommended)
+                    </label>
                     <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:10px;font-size:12px">
                       <input type="checkbox" id="fr_sched_upsert" checked>
                       Merge into existing datasets (recommended — preserves history)
@@ -6686,6 +6690,7 @@ async function loadFirstrateSchedule() {
     if ($('fr_type')) $('fr_type').value = (s.instrument_type || 'fx');
     if ($('fr_adjustment')) $('fr_adjustment').value = (s.adjustment || '');
     updateFirstrateInstrumentUi();
+    if ($('fr_sched_adaptive')) $('fr_sched_adaptive').checked = s.adaptive_period !== false;
     if ($('fr_sched_upsert')) $('fr_sched_upsert').checked = s.upsert_existing !== false;
     if ($('fr_pairs') && Array.isArray(s.pairs) && s.pairs.length) {
       $('fr_pairs').value = s.pairs.join(', ');
@@ -6706,7 +6711,13 @@ async function loadFirstrateSchedule() {
     if (!uidOk) bits.push('set FIrstrate_USERID on server');
     if (s.last_run_finished_at) bits.push('last finished: ' + s.last_run_finished_at);
     if (s.last_status) bits.push('last: ' + s.last_status);
+    if (s.last_message) bits.push(String(s.last_message).slice(0, 100));
     if (s.last_error) bits.push('error: ' + String(s.last_error).slice(0, 120));
+    var vlu = s.vendor_last_update_by_type;
+    if (vlu && typeof vlu === 'object') {
+      var vparts = Object.keys(vlu).sort().map(function (k) { return k + '=' + vlu[k]; });
+      if (vparts.length) bits.push('FirstRate last_update: ' + vparts.join(', '));
+    }
     if (hint) hint.textContent = bits.join(' · ');
   } catch (e) {
     if (hint) hint.textContent = 'Could not load schedule';
@@ -6739,6 +6750,7 @@ async function saveFirstrateSchedule() {
       instrument_type: st,
       period: $('fr_period').value,
       timeframe: $('fr_tf').value,
+      adaptive_period: !!($('fr_sched_adaptive') && $('fr_sched_adaptive').checked),
       upsert_existing: !!($('fr_sched_upsert') && $('fr_sched_upsert').checked),
       pairs: parsePairsFromTextarea('fr_pairs'),
       adjustment: (st === 'stock' || st === 'etf')

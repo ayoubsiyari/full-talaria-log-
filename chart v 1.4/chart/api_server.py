@@ -138,6 +138,7 @@ from firstrate_ingest import (
     MAX_TICKER_LISTING_RETURN,
     VALID_FUTURES_ADJUSTMENTS,
     VALID_INSTRUMENT_TYPES,
+    VALID_LAST_UPDATE_TYPES,
     VALID_STOCK_ADJUSTMENTS,
     download_firstrate_bundle,
     extract_zip,
@@ -2776,8 +2777,11 @@ def _default_firstrate_schedule() -> dict:
         "auto_all_types": os.getenv("FIrstrate_SCHEDULE_AUTO_ALL_TYPES", "true").strip().lower() in {"1", "true", "yes", "on"},
         "excluded_types": [x.strip().lower() for x in os.getenv("FIrstrate_SCHEDULE_EXCLUDED_TYPES", "").split(",") if x.strip()],
         "interval_minutes": int(os.getenv("FIrstrate_SCHEDULE_INTERVAL_MINUTES", "1440")),
-        "period": (os.getenv("FIrstrate_SCHEDULE_PERIOD", "day").strip() or "day"),
+        # Default `week` (not `day`) so scheduled sync backfills recent holes, not only the last session.
+        "period": (os.getenv("FIrstrate_SCHEDULE_PERIOD", "week").strip() or "week"),
         "timeframe": (os.getenv("FIrstrate_SCHEDULE_TIMEFRAME", "1min").strip() or "1min"),
+        "adaptive_period": os.getenv("FIrstrate_SCHEDULE_ADAPTIVE_PERIOD", "true").strip().lower()
+        in {"1", "true", "yes", "on"},
         "upsert_existing": os.getenv("FIrstrate_SCHEDULE_UPSERT", "true").strip().lower() in {"1", "true", "yes", "on"},
         "delete_existing_first": False,
         "purge_confirmation": None,
@@ -2791,7 +2795,9 @@ def _default_firstrate_schedule() -> dict:
         "last_status": None,
         "last_error": None,
         "last_run_date": None,            # YYYY-MM-DD UTC; resets per-day completion list
-        "last_run_types_today": [],       # list of instrument_types already queued tonight
+        "last_run_types_today": [],       # instrument_types successfully synced today (scheduled)
+        "vendor_last_update_by_type": {},  # last seen FirstRate last_update per type (incremental)
+        "type_failure_cooldown_until": {},  # ISO UTC — backoff after a failed scheduled job
         "pairs": [],
     }
 
@@ -2864,16 +2870,277 @@ def _firstrate_has_active_import_job() -> bool:
     return False
 
 
+def _firstrate_mark_scheduled_type_complete(instrument_type: str) -> None:
+    """Mark an asset class as successfully synced for the current UTC day."""
+    it = (instrument_type or "").strip().lower()
+    if not it:
+        return
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    cfg = _load_firstrate_schedule()
+    if str(cfg.get("last_run_date") or "") != today_str:
+        cfg["last_run_date"] = today_str
+        cfg["last_run_types_today"] = []
+    done = list(cfg.get("last_run_types_today") or [])
+    if it not in done:
+        done.append(it)
+    cfg["last_run_types_today"] = done
+    _save_firstrate_schedule(cfg)
+
+
+def _firstrate_type_in_failure_cooldown(instrument_type: str, cfg: dict) -> bool:
+    cooldowns = cfg.get("type_failure_cooldown_until") or {}
+    until_raw = cooldowns.get((instrument_type or "").strip().lower())
+    if not until_raw:
+        return False
+    try:
+        until = datetime.fromisoformat(str(until_raw).replace("Z", ""))
+        return datetime.utcnow() < until
+    except Exception:
+        return False
+
+
+def _firstrate_set_type_failure_cooldown(instrument_type: str, minutes: int = 30) -> None:
+    it = (instrument_type or "").strip().lower()
+    if not it:
+        return
+    cfg = _load_firstrate_schedule()
+    cooldowns = dict(cfg.get("type_failure_cooldown_until") or {})
+    until = datetime.utcnow() + timedelta(minutes=max(5, int(minutes)))
+    cooldowns[it] = until.isoformat() + "Z"
+    cfg["type_failure_cooldown_until"] = cooldowns
+    _save_firstrate_schedule(cfg)
+
+
+def _firstrate_clear_type_failure_cooldown(instrument_type: str) -> None:
+    it = (instrument_type or "").strip().lower()
+    if not it:
+        return
+    cfg = _load_firstrate_schedule()
+    cooldowns = dict(cfg.get("type_failure_cooldown_until") or {})
+    if it in cooldowns:
+        cooldowns.pop(it, None)
+        cfg["type_failure_cooldown_until"] = cooldowns
+        _save_firstrate_schedule(cfg)
+
+
+def _firstrate_fetch_vendor_last_update_date(instrument_type: str) -> str | None:
+    """FirstRate `last_update` for incremental (day/week/month) bundles."""
+    uid = get_firstrate_userid()
+    it = (instrument_type or "").strip().lower()
+    if not uid or it not in VALID_LAST_UPDATE_TYPES:
+        return None
+    try:
+        info = fetch_firstrate_last_update(
+            userid=uid, instrument_type=it, is_full_update=False
+        )
+        return str(info.get("last_update_iso") or info.get("last_update") or "").strip() or None
+    except Exception:
+        return None
+
+
+def _firstrate_vendor_has_new_incremental_data(instrument_type: str, cfg: dict) -> bool:
+    """
+    True when FirstRate reports a newer incremental `last_update` than we recorded
+    after the last successful scheduled merge for this type.
+    """
+    it = (instrument_type or "").strip().lower()
+    if it not in VALID_LAST_UPDATE_TYPES:
+        return True
+    cur = _firstrate_fetch_vendor_last_update_date(it)
+    if not cur:
+        return True
+    prev = (cfg.get("vendor_last_update_by_type") or {}).get(it)
+    if not prev:
+        return True
+    return str(cur) != str(prev)
+
+
+def _firstrate_record_vendor_last_update(instrument_type: str) -> None:
+    it = (instrument_type or "").strip().lower()
+    cur = _firstrate_fetch_vendor_last_update_date(it)
+    if not cur:
+        return
+    cfg = _load_firstrate_schedule()
+    by_type = dict(cfg.get("vendor_last_update_by_type") or {})
+    by_type[it] = cur
+    cfg["vendor_last_update_by_type"] = by_type
+    _save_firstrate_schedule(cfg)
+
+
+def _firstrate_filter_actionable_pending(pending: list[str], cfg: dict) -> list[str]:
+    """Drop types in failure cooldown so the scheduler can advance to the next class."""
+    return [t for t in pending if not _firstrate_type_in_failure_cooldown(t, cfg)]
+
+
+def _firstrate_freshness_bucket(staleness_hours: float | None) -> str:
+    """Same buckets as nightly-health UI (fresh / stale / missing)."""
+    if staleness_hours is None or staleness_hours > 24 * 7:
+        return "missing"
+    if staleness_hours > 48:
+        return "stale"
+    return "fresh"
+
+
+def _firstrate_class_health_stats(instrument_type: str) -> dict:
+    """
+    Per asset-class rollup of dataset freshness (1m aggregate end_ts vs now).
+    Used to pick week/month catch-up bundles instead of day-only deltas.
+    """
+    want = (instrument_type or "").strip().lower()
+    now_ms = datetime.utcnow().timestamp() * 1000.0
+    stats = {
+        "asset_class": want,
+        "ticker_count": 0,
+        "fresh_count": 0,
+        "stale_count": 0,
+        "missing_count": 0,
+        "max_staleness_hours": None,
+    }
+    if not want:
+        return stats
+    db = SessionLocal()
+    try:
+        files = db.query(CSVFile).all()
+        aggs = (
+            db.query(CSVAggregate)
+            .filter(CSVAggregate.timeframe == "1m")
+            .all()
+        )
+    finally:
+        db.close()
+    agg_by_file = {int(a.file_id): a for a in aggs}
+    max_stale: float | None = None
+    for f in files:
+        ticker = _firstrate_extract_ticker_from_filename(f.original_name or "")
+        asset_class = _firstrate_classify_ticker(ticker) if ticker else None
+        if asset_class != want:
+            continue
+        stats["ticker_count"] += 1
+        last_ts = None
+        agg = agg_by_file.get(int(f.id))
+        if agg is not None and agg.end_ts is not None:
+            try:
+                last_ts = float(agg.end_ts)
+            except (TypeError, ValueError):
+                last_ts = None
+        staleness_hours: float | None = None
+        if last_ts is not None:
+            staleness_hours = max(0.0, (now_ms - last_ts) / 3_600_000.0)
+            if max_stale is None or staleness_hours > max_stale:
+                max_stale = staleness_hours
+        bucket = _firstrate_freshness_bucket(staleness_hours)
+        stats[f"{bucket}_count"] += 1
+    stats["max_staleness_hours"] = round(max_stale, 2) if max_stale is not None else None
+    return stats
+
+
+def _firstrate_pick_schedule_period(cfg: dict, instrument_type: str) -> tuple[str, dict]:
+    """
+    Choose FirstRate `period` for a scheduled pull.
+
+    - `day`  — last session only (routine maintenance when everything is fresh)
+    - `week` — last ~7 days (fills recent gaps / stale tickers)
+    - `month` — last ~30 days (very stale or missing last bar)
+
+    FirstRate does not expose per-ticker date ranges; one ZIP per asset class is
+    downloaded and merged for every registered ticker in that class.
+    """
+    stats = _firstrate_class_health_stats(instrument_type)
+    base = str(cfg.get("period") or "week").strip().lower()
+    if base not in {"full", "month", "week", "day"}:
+        base = "week"
+    adaptive = cfg.get("adaptive_period")
+    if adaptive is None:
+        adaptive = True
+    if not adaptive:
+        return base, stats
+
+    max_h = stats.get("max_staleness_hours")
+    if stats["missing_count"] > 0 or (max_h is not None and max_h > 24 * 7):
+        return "month", stats
+    if stats["stale_count"] > 0 or (max_h is not None and max_h > 48):
+        return "week", stats
+    if base == "day":
+        return "day", stats
+    return base, stats
+
+
+def _firstrate_queue_scheduled_import_for_type(
+    *,
+    cfg: dict,
+    next_type: str,
+    pair_list: list[str],
+    adjustment: str | None,
+) -> None:
+    """
+    Queue one scheduled FirstRate import with merge enabled.
+
+    Picks `week` / `month` when this asset class has stale or missing datasets
+    (not day-only). Skips download when vendor `last_update` is unchanged AND
+    every ticker in the class is already fresh. Marks complete only after success.
+    """
+    period, health = _firstrate_pick_schedule_period(cfg, next_type)
+    timeframe = str(cfg.get("timeframe") or "1min")
+    needs_catchup = period in {"week", "month"} or int(health.get("stale_count") or 0) > 0 or int(
+        health.get("missing_count") or 0
+    ) > 0
+
+    if not needs_catchup and not _firstrate_vendor_has_new_incremental_data(next_type, cfg):
+        _firstrate_mark_scheduled_type_complete(next_type)
+        cfg2 = _load_firstrate_schedule()
+        vendor_dt = (cfg2.get("vendor_last_update_by_type") or {}).get(next_type)
+        cfg2["last_run_started_at"] = datetime.utcnow().isoformat() + "Z"
+        cfg2["last_status"] = "skipped"
+        cfg2["last_error"] = None
+        cfg2["last_message"] = (
+            f"No new FirstRate {next_type} incremental bundle "
+            f"(last_update still {vendor_dt or 'unknown'}; all tickers fresh)"
+        )
+        _save_firstrate_schedule(cfg2)
+        return
+
+    _queue_firstrate_fx_import_job(
+        period=period,
+        timeframe=timeframe,
+        instrument_type=next_type,
+        adjustment=adjustment,
+        delete_existing_first=False,
+        purge_confirmation=None,
+        ticker_range=None,
+        download_timeout_sec=float(cfg.get("download_timeout_sec") or 7200),
+        upsert_existing=True,
+        trigger="schedule",
+        pairs=pair_list,
+    )
+    cfg2 = _load_firstrate_schedule()
+    cfg2["last_run_started_at"] = datetime.utcnow().isoformat() + "Z"
+    cfg2["last_error"] = None
+    hc = health
+    cfg2["last_message"] = (
+        f"Queued {next_type} import period={period} ({timeframe}) — "
+        f"fresh={hc.get('fresh_count', 0)} stale={hc.get('stale_count', 0)} "
+        f"missing={hc.get('missing_count', 0)}"
+    )
+    _save_firstrate_schedule(cfg2)
+
+
 def _firstrate_schedule_after_job(job_id: str, success: bool, error_message: str | None) -> None:
     try:
         st = _firstrate_read_job(job_id)
         if not st or st.get("trigger") != "schedule":
             return
+        it = str(st.get("instrument_type") or "").strip().lower()
         cfg = _load_firstrate_schedule()
         cfg["last_run_finished_at"] = datetime.utcnow().isoformat() + "Z"
         cfg["last_job_id"] = job_id
         cfg["last_status"] = "done" if success else "failed"
         cfg["last_error"] = None if success else ((error_message or "")[:2000])
+        if success and it:
+            _firstrate_mark_scheduled_type_complete(it)
+            _firstrate_record_vendor_last_update(it)
+            _firstrate_clear_type_failure_cooldown(it)
+        elif not success and it:
+            _firstrate_set_type_failure_cooldown(it, 30)
         _save_firstrate_schedule(cfg)
     except Exception:
         pass
@@ -2951,40 +3218,21 @@ def _firstrate_scheduler_tick() -> None:
                 _save_firstrate_schedule(cfg)
 
             buckets, done_today = _firstrate_pending_types_for_nightly(cfg)
-            pending = [t for t in buckets if t not in done_today]
+            pending = _firstrate_filter_actionable_pending(
+                [t for t in buckets if t not in done_today], cfg
+            )
             if not pending:
                 return
 
             next_type = pending[0]
             pair_list = list(buckets[next_type])
             adjustment = _firstrate_default_adjustment_for(next_type)
-
-            _queue_firstrate_fx_import_job(
-                period=str(cfg.get("period") or "day"),
-                timeframe=str(cfg.get("timeframe") or "1min"),
-                instrument_type=next_type,
+            _firstrate_queue_scheduled_import_for_type(
+                cfg=cfg,
+                next_type=next_type,
+                pair_list=pair_list,
                 adjustment=adjustment,
-                delete_existing_first=False,
-                purge_confirmation=None,
-                ticker_range=None,
-                download_timeout_sec=float(cfg.get("download_timeout_sec") or 7200),
-                upsert_existing=True,  # always merge in nightly mode
-                trigger="schedule",
-                pairs=pair_list,
             )
-
-            # Mark this type as attempted tonight — whether or not the job
-            # eventually succeeds, we don't retry it on the same UTC day so a
-            # vendor-side outage can't cause runaway retries.
-            cfg2 = _load_firstrate_schedule()
-            done = list(cfg2.get("last_run_types_today") or [])
-            if next_type not in done:
-                done.append(next_type)
-            cfg2["last_run_types_today"] = done
-            cfg2["last_run_date"] = today_str
-            cfg2["last_run_started_at"] = datetime.utcnow().isoformat() + "Z"
-            cfg2["last_error"] = None
-            _save_firstrate_schedule(cfg2)
             return
 
         # --- Interval mode --------------------------------------------------
@@ -3025,32 +3273,19 @@ def _firstrate_scheduler_tick() -> None:
                 if not pending:
                     return
 
+            pending = _firstrate_filter_actionable_pending(pending, cfg)
+            if not pending:
+                return
+
             next_type = pending[0]
             pair_list = list(buckets[next_type])
             adjustment = _firstrate_default_adjustment_for(next_type)
-
-            _queue_firstrate_fx_import_job(
-                period=str(cfg.get("period") or "day"),
-                timeframe=str(cfg.get("timeframe") or "1min"),
-                instrument_type=next_type,
+            _firstrate_queue_scheduled_import_for_type(
+                cfg=cfg,
+                next_type=next_type,
+                pair_list=pair_list,
                 adjustment=adjustment,
-                delete_existing_first=False,
-                purge_confirmation=None,
-                ticker_range=None,
-                download_timeout_sec=float(cfg.get("download_timeout_sec") or 7200),
-                upsert_existing=True,
-                trigger="schedule",
-                pairs=pair_list,
             )
-
-            cfg2 = _load_firstrate_schedule()
-            done = list(cfg2.get("last_run_types_today") or [])
-            if next_type not in done:
-                done.append(next_type)
-            cfg2["last_run_types_today"] = done
-            cfg2["last_run_started_at"] = datetime.utcnow().isoformat() + "Z"
-            cfg2["last_error"] = None
-            _save_firstrate_schedule(cfg2)
             return
 
         # Single-instrument back-compat path (auto_all_types is off).
@@ -3059,23 +3294,15 @@ def _firstrate_scheduler_tick() -> None:
 
         sched_pairs = cfg.get("pairs")
         pair_list = sched_pairs if isinstance(sched_pairs, list) else []
-        _queue_firstrate_fx_import_job(
-            period=str(cfg.get("period") or "day"),
-            timeframe=str(cfg.get("timeframe") or "1min"),
-            instrument_type=str(cfg.get("instrument_type") or "fx"),
+        single_type = str(cfg.get("instrument_type") or "fx").strip().lower()
+        if _firstrate_type_in_failure_cooldown(single_type, cfg):
+            return
+        _firstrate_queue_scheduled_import_for_type(
+            cfg=cfg,
+            next_type=single_type,
+            pair_list=pair_list,
             adjustment=cfg.get("adjustment"),
-            delete_existing_first=bool(cfg.get("delete_existing_first", False)),
-            purge_confirmation=cfg.get("purge_confirmation"),
-            ticker_range=cfg.get("ticker_range"),
-            download_timeout_sec=float(cfg.get("download_timeout_sec") or 7200),
-            upsert_existing=bool(cfg.get("upsert_existing", True)),
-            trigger="schedule",
-            pairs=pair_list,
         )
-        cfg2 = _load_firstrate_schedule()
-        cfg2["last_run_started_at"] = datetime.utcnow().isoformat() + "Z"
-        cfg2["last_error"] = None
-        _save_firstrate_schedule(cfg2)
     except ValueError as e:
         try:
             cfg2 = _load_firstrate_schedule()
@@ -7076,6 +7303,7 @@ class AdminFirstrateScheduleIn(BaseModel):
     adjustment: str | None = None
     period: str | None = None
     timeframe: str | None = None
+    adaptive_period: bool | None = None
     upsert_existing: bool | None = None
     delete_existing_first: bool | None = None
     purge_confirmation: str | None = None
@@ -10788,6 +11016,8 @@ async def admin_firstrate_fx_schedule_put(payload: AdminFirstrateScheduleIn, req
         if tf not in valid_tf:
             raise HTTPException(status_code=400, detail=f"timeframe must be one of {sorted(valid_tf)}")
         cur["timeframe"] = tf
+    if p.adaptive_period is not None:
+        cur["adaptive_period"] = bool(p.adaptive_period)
     if p.instrument_type is not None:
         il = p.instrument_type.strip().lower()
         if il not in VALID_INSTRUMENT_TYPES:
