@@ -1,11 +1,20 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useLanguage } from "../../LanguageProvider";
+import { SupportInbox } from "../support/SupportInbox";
 import "./profile-page.css";
 
-type SettingsTab = "profile" | "security" | "subscription";
+type SettingsTab = "profile" | "security" | "subscription" | "support";
+
+const VALID_TABS: SettingsTab[] = ["profile", "security", "subscription", "support"];
+
+function parseTab(raw: string | null): SettingsTab {
+  if (raw && VALID_TABS.includes(raw as SettingsTab)) return raw as SettingsTab;
+  return "profile";
+}
 
 type SubscriptionInfo = {
   id: number;
@@ -65,9 +74,25 @@ function formatLocalTime(tz?: string) {
   }
 }
 
-export default function ProfilePage() {
+function ProfilePageInner() {
   const { isArabic } = useLanguage();
-  const [tab, setTab] = React.useState<SettingsTab>("profile");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab = parseTab(searchParams.get("tab"));
+  const threadId = searchParams.get("thread");
+
+  const setTab = React.useCallback(
+    (next: SettingsTab) => {
+      const q = new URLSearchParams(searchParams.toString());
+      q.set("tab", next);
+      if (next !== "support") {
+        q.delete("thread");
+        q.delete("topic");
+      }
+      router.replace(`/dashboard/profile/?${q.toString()}`);
+    },
+    [router, searchParams],
+  );
   const [user, setUser] = React.useState<MeUser | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [saveMsg, setSaveMsg] = React.useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -285,6 +310,7 @@ export default function ProfilePage() {
     { id: "profile", label: isArabic ? "الملف الشخصي" : "Profile" },
     { id: "security", label: isArabic ? "الأمان" : "Security" },
     { id: "subscription", label: isArabic ? "الاشتراك" : "Subscription" },
+    { id: "support", label: isArabic ? "الدعم" : "Support" },
   ];
 
   return (
@@ -333,9 +359,6 @@ export default function ProfilePage() {
             </div>
             <Link href="/pricing/?browse=1" className="prof-settings__nav-item" style={{ textDecoration: "none" }}>
               {isArabic ? "الخطط والأسعار" : "Plans & pricing"}
-            </Link>
-            <Link href="/dashboard/support/" className="prof-settings__nav-item" style={{ textDecoration: "none" }}>
-              {isArabic ? "الدعم" : "Support"}
             </Link>
           </div>
         </aside>
@@ -642,8 +665,34 @@ export default function ProfilePage() {
               </div>
             </>
           )}
+
+          {tab === "support" && (
+            <>
+              <h1 className="prof-settings__title">{isArabic ? "الدعم" : "Support"}</h1>
+              <p className="prof-settings__subtitle">
+                {isArabic
+                  ? "أبلغ عن مشكلة أو اطلب المساعدة. يمكنك إرفاق لقطة شاشة (حتى 2 ميجابايت)."
+                  : "Report a bug or ask for help. You can attach a screenshot (up to 2 MB)."}
+              </p>
+              <SupportInbox embedded initialThreadId={threadId} />
+            </>
+          )}
         </main>
       </div>
     </div>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="prof-settings">
+          <div className="prof-loading">Loading…</div>
+        </div>
+      }
+    >
+      <ProfilePageInner />
+    </Suspense>
   );
 }

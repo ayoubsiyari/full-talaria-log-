@@ -265,7 +265,7 @@ function DashboardNotificationBell({
             items.map((n) => (
               <a
                 key={n.id}
-                href={n.thread_id ? `/dashboard/support/?thread=${n.thread_id}` : "#"}
+                href={n.thread_id ? `/dashboard/profile/?tab=support&thread=${n.thread_id}` : "#"}
                 onClick={async (e) => {
                   if (n.thread_id) {
                     e.preventDefault();
@@ -275,7 +275,7 @@ function DashboardNotificationBell({
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ ids: [n.id] }),
                     });
-                    window.location.href = `/dashboard/support/?thread=${n.thread_id}`;
+                    window.location.href = `/dashboard/profile/?tab=support&thread=${n.thread_id}`;
                   }
                 }}
                 style={{
@@ -306,7 +306,6 @@ const VIEW_TITLES: Record<string, string> = {
   backtest: "Backtesting Sessions",
   strategies: "Strategies",
   resources: "Resources",
-  support: "Support",
   cot: "COT Analysis",
   admin: "Admin",
   profile: "Account",
@@ -323,7 +322,6 @@ const INTERNAL_NAV: Record<string, string> = {
   backtest:  "/dashboard/backtest/",
   strategies: "/dashboard/strategies/",
   cot:       "/dashboard/cot/",
-  support:   "/dashboard/support/",
 };
 
 export default function DashboardLayout({
@@ -434,7 +432,7 @@ export default function DashboardLayout({
     else if (pathname.startsWith("/dashboard/strategies"))
       setActiveView("strategies");
     else if (pathname.startsWith("/dashboard/cot")) setActiveView("cot");
-    else if (pathname.startsWith("/dashboard/support")) setActiveView("support");
+    else if (pathname.startsWith("/dashboard/support")) setActiveView("profile");
     else if (pathname.startsWith("/dashboard/admin")) setActiveView("admin");
     else if (pathname.startsWith("/dashboard/profile")) setActiveView("profile");
     else if (pathname === "/dashboard" || pathname === "/dashboard/") setActiveView("dashboard");
@@ -466,7 +464,7 @@ export default function DashboardLayout({
     const mod = navModuleForId(id);
     if (mod && user && !userHasDashboardModule(user, mod)) {
       if (userHasPartialDashboardAccess(user)) {
-        router.push("/dashboard/support/?topic=access");
+        router.push("/dashboard/profile/?tab=support&topic=access");
       } else {
         goPricing();
       }
@@ -501,7 +499,6 @@ export default function DashboardLayout({
     { id: "cot",       label: "COT",       icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="12" width="3" height="8" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><rect x="8" y="8" width="3" height="12" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><rect x="13" y="5" width="3" height="15" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><rect x="18" y="9" width="3" height="11" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="3" y1="3" x2="21" y2="3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeDasharray="2 2"/></svg> },
     { id: "strategies",label: "Strategies",icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="2" width="14" height="20" rx="1" stroke="currentColor" strokeWidth="1.4"/><rect x="8" y="1" width="4" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.3"/><circle cx="7" cy="9" r="1.2" fill="currentColor" opacity="0.8"/><circle cx="13" cy="9" r="1.2" fill="currentColor" opacity="0.8"/><circle cx="10" cy="14" r="1.2" fill="currentColor" opacity="0.8"/><path d="M7 9c0 3 3 3 3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><path d="M13 9c-1 2-1 3-3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="8.5" y1="19" x2="11.5" y2="19" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
     { id: "resources", label: "Resources", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="2" y="16.5" width="20" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="5.5" y1="16.5" x2="5.5" y2="20" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="3.5" y="12" width="17" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="7" y1="12" x2="7" y2="15.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="5" y="7.5" width="14" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="8.5" y1="7.5" x2="8.5" y2="11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg> },
-    { id: "support",   label: "Support",   icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="currentColor" strokeWidth="1"/></svg> },
   ];
 
   return (
@@ -896,7 +893,7 @@ export default function DashboardLayout({
                       router.push("/dashboard/profile/");
                     }}
                     onContactSupport={() => {
-                      router.push("/dashboard/support/?topic=access");
+                      router.push("/dashboard/profile/?tab=support&topic=access");
                     }}
                     onGoToAllowed={() => {
                       router.replace(defaultDashboardPathForUser(user));

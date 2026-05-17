@@ -39,7 +39,7 @@ const NAV = [
   { id: "cot", href: "/dashboard/cot/", label: "COT", icon: "cot" },
   { id: "strategies", href: "/dashboard/strategies/", label: "Strategies", icon: "stratlab" },
   { id: "resources", href: "/bootcamp/", label: "Resources", icon: "resources" },
-  { id: "support", href: "/dashboard/support/", label: "Support", icon: "support" },
+  { id: "support", href: "/dashboard/profile/?tab=support", label: "Support", icon: "support" },
 ];
 
 function LabNavPanel({ pathname, hov, setHov }) {

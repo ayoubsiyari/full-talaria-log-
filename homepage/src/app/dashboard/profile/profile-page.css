@@ -545,3 +545,20 @@
   color: var(--prof-ts);
   font-size: 14px;
 }
+
+/* Support inbox embedded in Settings */
+.prof-settings__support-embed.db-page {
+  padding: 0;
+  max-width: none;
+  margin: 0;
+}
+
+.prof-settings__support-embed .db-support-grid {
+  min-height: 420px;
+  height: min(62vh, 640px);
+}
+
+.prof-settings__main:has(.prof-settings__support-embed) {
+  display: flex;
+  flex-direction: column;
+}
