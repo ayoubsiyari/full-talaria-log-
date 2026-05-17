@@ -14,6 +14,20 @@ import {
 } from "lucide-react";
 import { JOURNAL_SUBSCRIPTIONS_API } from "@/lib/subscriptionApi";
 
+const F = "'Exo 2', sans-serif";
+const C = {
+  bg: "#07080E",
+  el: "#0F1119",
+  card: "#111318",
+  border: "rgba(140,160,255,0.12)",
+  borderHi: "rgba(74,106,255,0.35)",
+  tx: "rgba(255,255,255,0.92)",
+  ts: "rgba(255,255,255,0.55)",
+  tm: "rgba(255,255,255,0.38)",
+  ac: "#4A6AFF",
+  acGlow: "rgba(38,67,247,0.22)",
+} as const;
+
 function parseFeatures(raw: unknown): string[] {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw.map(String);
@@ -321,16 +335,35 @@ export default function PricingClient() {
   ];
 
   return (
-    <div className="relative min-h-screen bg-[#02040a] text-white antialiased">
+    <div className="relative min-h-screen antialiased" style={{ fontFamily: F, background: C.bg, color: C.tx }}>
       <div className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute left-1/2 top-0 h-[min(480px,55vh)] w-[min(880px,100vw)] -translate-x-1/2 rounded-full bg-cyan-500/[0.09] blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-0 h-[40vh] w-[55vw] max-w-xl rounded-full bg-violet-600/[0.06] blur-[100px]" />
+        <div
+          className="absolute inset-0 opacity-40"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(140,160,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(140,160,255,0.035) 1px, transparent 1px)",
+            backgroundSize: "56px 56px",
+          }}
+        />
+        <div
+          className="absolute left-1/2 top-[-18%] h-[min(520px,58vh)] w-[min(1100px,96vw)] -translate-x-1/2 rounded-full blur-[130px]"
+          style={{ background: "rgba(38,67,247,0.16)" }}
+        />
       </div>
 
-      <nav className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#02040a]/75 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-5 sm:px-8">
-          <Link href="/" className="text-[15px] font-semibold tracking-tight text-white">
-            Talaria
+      <nav
+        className="sticky top-0 z-50 border-b backdrop-blur-xl"
+        style={{ borderColor: C.border, background: "rgba(7,8,14,0.9)" }}
+      >
+        <div className="mx-auto flex h-[60px] max-w-[1280px] items-center justify-between px-5 sm:px-8 lg:px-10">
+          <Link href="/" className="flex items-center gap-2.5">
+            <span
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-[11px] font-black"
+              style={{ background: C.acGlow, color: C.ac, border: `1px solid ${C.borderHi}` }}
+            >
+              T
+            </span>
+            <span className="text-[16px] font-extrabold tracking-tight">Talaria</span>
           </Link>
           {isLoggedIn ? (
             showDashboardNav ? (
@@ -351,7 +384,12 @@ export default function PricingClient() {
               </Link>
               <Link
                 href="/login/?mode=signup"
-                className="rounded-lg border border-cyan-500/25 bg-cyan-500/[0.08] px-3.5 py-1.5 text-[13px] font-medium text-cyan-100 transition hover:bg-cyan-500/[0.12]"
+                className="rounded-lg px-4 py-2 text-[13px] font-bold transition hover:brightness-110"
+                style={{
+                  background: `linear-gradient(135deg, #1e38e8, ${C.ac})`,
+                  color: "rgba(255,255,255,0.96)",
+                  boxShadow: "0 4px 16px rgba(38,67,247,0.35)",
+                }}
               >
                 Sign up
               </Link>
@@ -361,7 +399,7 @@ export default function PricingClient() {
       </nav>
 
       {showResumeBanner && (
-        <div className="relative z-10 mx-auto mt-6 max-w-2xl rounded-xl border border-amber-500/35 bg-amber-500/[0.07] px-4 py-3.5 text-left">
+        <div className="relative z-10 mx-auto mt-6 max-w-[1280px] rounded-xl border border-amber-500/35 bg-amber-500/[0.07] px-5 py-3.5 text-left sm:px-8 lg:px-10">
           <p className="text-[13px] leading-relaxed text-amber-100/95">
             <span className="font-semibold text-white">Your plan</span>
             {lapsedInfo?.plan_name ? (
@@ -381,30 +419,39 @@ export default function PricingClient() {
         </div>
       )}
 
-      <div className="relative z-10 px-5 pb-10 pt-14 text-center sm:pt-20">
-        <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.2em] text-cyan-300/85">Pricing</p>
-        <h1 className="mx-auto mb-4 max-w-xl text-3xl font-bold leading-[1.12] tracking-tight text-white sm:text-4xl md:text-[44px]">
-          Simple plans,
-          <br className="hidden sm:block" /> powerful tools
-        </h1>
-        <p className="mx-auto max-w-md text-[15px] leading-relaxed text-white/40">
-          Everything you need to analyze, journal, and backtest your trades. No hidden fees.
-        </p>
-      </div>
-
-      <div className="relative z-10 mx-auto mb-10 max-w-sm space-y-4 px-5">
-        <div className="flex items-center justify-center">
-          <div className="inline-flex items-center rounded-xl border border-white/[0.07] bg-white/[0.03] p-0.5">
+      <main className="relative z-10 mx-auto max-w-[1280px] px-5 pb-16 pt-10 sm:px-8 sm:pt-14 lg:px-10">
+        <div className="mb-10 flex flex-col gap-8 lg:mb-12 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl text-left">
+            <p className="mb-3 text-[11px] font-extrabold uppercase tracking-[0.22em]" style={{ color: C.ac }}>
+              Pricing
+            </p>
+            <h1 className="mb-4 text-[32px] font-extrabold leading-[1.08] tracking-tight sm:text-[40px] lg:text-[46px]">
+              Simple plans,
+              <br />
+              powerful tools
+            </h1>
+            <p className="max-w-lg text-[15px] leading-relaxed" style={{ color: C.ts }}>
+              Everything you need to analyze, journal, and backtest your trades. No hidden fees.
+            </p>
+          </div>
+          <div className="flex w-full flex-col gap-3 sm:max-w-md lg:max-w-[380px] lg:shrink-0">
+            <div
+              className="inline-flex w-full items-center rounded-xl border p-1"
+              style={{ borderColor: C.border, background: C.el }}
+            >
             {(["monthly", "yearly"] as const).map((cycle) => (
               <button
                 key={cycle}
                 type="button"
                 onClick={() => setBillingCycle(cycle)}
-                className={`rounded-lg px-4 py-1.5 text-[13px] font-medium transition-all ${
-                  billingCycle === cycle
-                    ? "bg-white/[0.08] text-white shadow-sm"
-                    : "text-white/35 hover:text-white/55"
+                className={`flex-1 rounded-lg px-5 py-2 text-[13px] font-bold transition-all sm:flex-none ${
+                  billingCycle === cycle ? "text-white shadow-sm" : ""
                 }`}
+                style={
+                  billingCycle === cycle
+                    ? { background: C.acGlow, color: C.tx, boxShadow: `0 0 0 1px ${C.borderHi}` }
+                    : { color: C.tm }
+                }
               >
                 {cycle === "monthly" ? "Monthly" : "Yearly"}
                 {cycle === "yearly" && (
@@ -412,8 +459,7 @@ export default function PricingClient() {
                 )}
               </button>
             ))}
-          </div>
-        </div>
+            </div>
 
         {couponResult?.valid ? (
           <div className="flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3.5 py-2.5">
@@ -443,7 +489,8 @@ export default function PricingClient() {
               onKeyDown={(e) => e.key === "Enter" && handleValidateCoupon()}
               placeholder="Coupon code"
               maxLength={50}
-              className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-[13px] text-white placeholder:text-white/20 focus:border-cyan-500/35 focus:outline-none focus:ring-1 focus:ring-cyan-500/20"
+              className="w-full rounded-xl border px-3.5 py-2.5 text-[13px] placeholder:opacity-40 focus:outline-none"
+              style={{ borderColor: C.border, background: C.el, color: C.tx }}
             />
             <button
               type="button"
@@ -464,10 +511,10 @@ export default function PricingClient() {
             )}
           </p>
         )}
-      </div>
+          </div>
+        </div>
 
-      <section className="relative z-10 px-5 pb-20 sm:pb-28">
-        <div className="mx-auto max-w-4xl">
+        <section className="pb-12 sm:pb-16">
           {loading ? (
             <div className="flex justify-center py-20">
               <Loader2 className="h-6 w-6 animate-spin text-white/25" aria-hidden />
@@ -480,11 +527,11 @@ export default function PricingClient() {
             </div>
           ) : (
             <div
-              className={`grid gap-4 ${
+              className={`grid w-full gap-5 ${
                 plans.length === 1
-                  ? "mx-auto max-w-sm"
+                  ? ""
                   : plans.length === 2
-                    ? "mx-auto max-w-2xl sm:grid-cols-2"
+                    ? "sm:grid-cols-2"
                     : "sm:grid-cols-2 lg:grid-cols-3"
               }`}
             >
@@ -502,25 +549,42 @@ export default function PricingClient() {
                 const savings = getSavings(plan);
                 const features = Array.isArray(plan.features) ? (plan.features as string[]) : [];
 
+                const isSingle = plans.length === 1;
                 return (
                   <div
                     key={plan.id ?? index}
-                    className={`relative flex flex-col rounded-2xl transition-all duration-300 ${
-                      isYourLapsedPlan
-                        ? "bg-[#0a1020] shadow-[0_0_36px_-10px_rgba(245,158,11,0.22)] ring-2 ring-amber-500/40"
-                        : isPro
-                          ? "bg-[#0a1020] shadow-[0_0_40px_-12px_rgba(34,211,238,0.12)] ring-1 ring-cyan-500/25"
-                          : "bg-white/[0.02] ring-1 ring-white/[0.07] hover:ring-cyan-500/15"
+                    className={`relative flex flex-col overflow-hidden rounded-2xl border transition-all duration-300 ${
+                      isSingle ? "lg:flex-row lg:items-stretch" : ""
                     }`}
+                    style={{
+                      background: C.card,
+                      borderColor: isYourLapsedPlan
+                        ? "rgba(245,158,11,0.45)"
+                        : isPro
+                          ? C.borderHi
+                          : C.border,
+                      boxShadow: isPro
+                        ? "0 0 48px -16px rgba(38,67,247,0.35)"
+                        : "0 12px 40px rgba(0,0,0,0.35)",
+                    }}
                   >
                     {isPro && (
-                      <div className="absolute -top-px left-8 right-8 h-px bg-gradient-to-r from-transparent via-cyan-400/45 to-transparent" />
+                      <div
+                        className="absolute left-8 right-8 top-0 h-px"
+                        style={{
+                          background: `linear-gradient(90deg, transparent, ${C.ac}, transparent)`,
+                        }}
+                      />
                     )}
 
-                    <div className="flex flex-1 flex-col p-6 sm:p-7">
+                    <div
+                      className={`flex flex-col p-6 sm:p-8 ${isSingle ? "lg:max-w-[400px] lg:shrink-0 lg:border-r" : "flex-1"}`}
+                      style={isSingle ? { borderColor: C.border } : undefined}
+                    >
                       <div className="mb-5 flex items-center justify-between">
                         <span
-                          className={`text-[13px] font-semibold uppercase tracking-wide ${isPro ? "text-cyan-200/90" : "text-white/35"}`}
+                          className="text-[12px] font-extrabold uppercase tracking-[0.14em]"
+                          style={{ color: isPro ? C.ac : C.tm }}
                         >
                           {plan.name}
                         </span>
@@ -531,7 +595,10 @@ export default function PricingClient() {
                             </span>
                           )}
                           {isPro && !isYourLapsedPlan && (
-                            <span className="rounded bg-cyan-500/12 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-200">
+                            <span
+                              className="rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                              style={{ background: C.acGlow, color: C.ac }}
+                            >
                               Popular
                             </span>
                           )}
@@ -539,10 +606,14 @@ export default function PricingClient() {
                       </div>
 
                       <div className="mb-1">
-                        <span className="text-4xl font-bold tabular-nums tracking-tight text-white">
+                        <span className="text-5xl font-extrabold tabular-nums tracking-tight sm:text-[52px]">
                           {price === 0 ? "Free" : `$${price}`}
                         </span>
-                        {price > 0 && <span className="ml-1 text-sm text-white/25">/mo</span>}
+                        {price > 0 && (
+                          <span className="ml-1 text-base font-semibold" style={{ color: C.tm }}>
+                            /mo
+                          </span>
+                        )}
                       </div>
                       {billingCycle === "yearly" && price > 0 ? (
                         <p className="mb-6 text-[12px] text-white/25">
@@ -568,11 +639,20 @@ export default function PricingClient() {
                           type="button"
                           onClick={() => handleSubscribe(plan.id)}
                           disabled={checkoutLoading === plan.id}
-                          className={`mb-6 flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-[13px] font-medium transition-all disabled:opacity-40 ${
-                            isYourLapsedPlan || isPro
-                              ? "bg-gradient-to-r from-cyan-500 to-cyan-600 text-[#041018] shadow-lg shadow-cyan-500/15 hover:brightness-110"
-                              : "bg-white/[0.06] text-white/75 hover:bg-white/[0.1] hover:text-white"
-                          }`}
+                          className="mb-6 flex w-full items-center justify-center gap-1.5 rounded-xl py-3 text-[13px] font-bold transition-all disabled:opacity-40"
+                          style={
+                            isYourLapsedPlan || isPro || isSingle
+                              ? {
+                                  background: `linear-gradient(135deg, #1e38e8, ${C.ac})`,
+                                  color: "rgba(255,255,255,0.96)",
+                                  boxShadow: "0 6px 24px rgba(38,67,247,0.35)",
+                                }
+                              : {
+                                  background: "rgba(255,255,255,0.06)",
+                                  color: C.ts,
+                                  border: `1px solid ${C.border}`,
+                                }
+                          }
                         >
                           {checkoutLoading === plan.id ? (
                             <>
@@ -598,19 +678,22 @@ export default function PricingClient() {
                         </p>
                       )}
 
-                      <div className="border-t border-white/[0.06] pt-5">
-                        <ul className="space-y-2.5">
-                          {features.map((feature, idx) => (
-                            <li key={idx} className="flex items-start gap-2.5">
-                              <Check
-                                className={`mt-0.5 h-3.5 w-3.5 flex-shrink-0 ${isPro ? "text-cyan-300/70" : "text-white/22"}`}
-                                aria-hidden
-                              />
-                              <span className="text-[13px] leading-snug text-white/45">{feature}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
+                    </div>
+
+                    <div className={`flex flex-1 flex-col p-6 sm:p-8 ${isSingle ? "lg:justify-center" : "border-t"}`} style={{ borderColor: C.border }}>
+                      <p className="mb-4 text-[11px] font-extrabold uppercase tracking-[0.14em]" style={{ color: C.tm }}>
+                        What&apos;s included
+                      </p>
+                      <ul className={`space-y-3 ${isSingle ? "sm:grid sm:grid-cols-2 sm:gap-x-6 sm:gap-y-3 sm:space-y-0" : ""}`}>
+                        {features.map((feature, idx) => (
+                          <li key={idx} className="flex items-start gap-2.5">
+                            <Check className="mt-0.5 h-4 w-4 flex-shrink-0" style={{ color: C.ac }} aria-hidden />
+                            <span className="text-[14px] leading-snug" style={{ color: C.ts }}>
+                              {feature}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   </div>
                 );
@@ -641,22 +724,23 @@ export default function PricingClient() {
               </Link>
             </div>
           )}
-        </div>
-      </section>
+        </section>
 
-      <section className="relative z-10 px-5 pb-20 sm:pb-28">
-        <div className="mx-auto max-w-xl">
-          <div className="mb-10 text-center">
-            <h2 className="mb-2 text-xl font-bold tracking-tight text-white sm:text-2xl">Questions</h2>
-            <p className="text-[13px] text-white/30">Everything you need to know before subscribing.</p>
+        <section className="border-t pt-12 sm:pt-16" style={{ borderColor: C.border }}>
+          <div className="mb-8 max-w-xl">
+            <h2 className="mb-2 text-2xl font-extrabold tracking-tight sm:text-3xl">Questions</h2>
+            <p className="text-[14px]" style={{ color: C.tm }}>
+              Everything you need to know before subscribing.
+            </p>
           </div>
-          <div className="space-y-1">
+          <div className="grid gap-2 lg:grid-cols-2">
             {faqs.map((faq, index) => (
               <button
                 key={faq.q}
                 type="button"
                 onClick={() => setOpenFaq(openFaq === index ? null : index)}
-                className="group w-full rounded-xl px-4 py-3.5 text-left transition hover:bg-white/[0.03]"
+                className="group w-full rounded-xl border px-4 py-3.5 text-left transition hover:bg-white/[0.03]"
+                style={{ borderColor: C.border, background: C.el }}
               >
                 <div className="flex items-center justify-between gap-4">
                   <h3 className="text-[13px] font-medium text-white/55 transition group-hover:text-white/80">
@@ -673,11 +757,11 @@ export default function PricingClient() {
               </button>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
-      <footer className="relative z-10 border-t border-white/[0.06] px-5 py-6">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
+      <footer className="relative z-10 border-t px-5 py-8 sm:px-8 lg:px-10" style={{ borderColor: C.border }}>
+        <div className="mx-auto flex max-w-[1280px] items-center justify-between">
           <span className="text-[11px] text-white/25">Talaria</span>
           <div className="flex items-center gap-4">
             <Link href="/terms/" className="text-[11px] text-white/25 transition hover:text-white/45">
