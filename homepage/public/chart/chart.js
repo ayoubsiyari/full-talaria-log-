@@ -359,7 +359,9 @@ class Chart {
         // Performance optimizations for large datasets
         this.totalCandles = 0; // Total number of candles in dataset
         this.loadedRanges = new Map(); // Cache loaded data ranges
-        this._smartPrefetchCache = new Map(); // LRU-ish cache for other symbols' /smart payloads
+        this._smartPrefetchCache = new Map(); // LRU-ish cache for /smart payloads (prefetch + repeat loads)
+        this._smartCacheTtlMs = 120000;
+        this._sessionStateSaveDebounceMs = 1500;
         /** Incremented on each symbol switch; stale async responses must not overwrite the chart. */
         this._symbolLoadSeq = 0;
         /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
@@ -1401,7 +1403,7 @@ class Chart {
         return `${fileId}|${params.toString()}`;
     }
 
-    _tryTakeSmartPrefetch(fileId, params) {
+    _getSmartCachedPayload(fileId, params, consume) {
         const key = this._smartCacheKeyFromParams(fileId, params);
         const entry = this._smartPrefetchCache && this._smartPrefetchCache.get(key);
         if (!entry || !entry.payload) return null;
@@ -1409,12 +1411,35 @@ class Chart {
             this._smartPrefetchCache.delete(key);
             return null;
         }
-        if (Date.now() - entry.at > 180000) {
+        const ttl = Number(this._smartCacheTtlMs) > 0 ? Number(this._smartCacheTtlMs) : 120000;
+        if (Date.now() - entry.at > ttl) {
             this._smartPrefetchCache.delete(key);
             return null;
         }
-        this._smartPrefetchCache.delete(key);
+        if (consume) this._smartPrefetchCache.delete(key);
         return entry.payload;
+    }
+
+    _setSmartCachedPayload(fileId, params, payload) {
+        if (!payload || typeof payload !== 'object') return;
+        const ok =
+            (Array.isArray(payload.candles) && payload.candles.length) || payload.data;
+        if (!ok) return;
+        if (!this._smartPrefetchCache) this._smartPrefetchCache = new Map();
+        const key = this._smartCacheKeyFromParams(fileId, params);
+        this._smartPrefetchCache.set(key, {
+            at: Date.now(),
+            payload,
+            fileId: String(fileId),
+        });
+        while (this._smartPrefetchCache.size > 8) {
+            const first = this._smartPrefetchCache.keys().next().value;
+            this._smartPrefetchCache.delete(first);
+        }
+    }
+
+    _tryTakeSmartPrefetch(fileId, params) {
+        return this._getSmartCachedPayload(fileId, params, true);
     }
 
     _scheduleSmartPrefetchOthers(activeFileId, timeframe, session) {
@@ -1477,6 +1502,9 @@ class Chart {
     }
 
     async _fetchSmartWindowWithParams(fileId, params) {
+        const cached = this._getSmartCachedPayload(fileId, params, false);
+        if (cached) return cached;
+
         const response = await fetch(`${this.apiUrl}/file/${fileId}/smart?${params.toString()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const ct = (response.headers.get('content-type') || '').toLowerCase();
@@ -1490,6 +1518,7 @@ class Chart {
         if (!result || typeof result !== 'object') {
             throw new Error('Invalid JSON body from /file/smart');
         }
+        this._setSmartCachedPayload(fileId, params, result);
         return result;
     }
 
@@ -3155,10 +3184,12 @@ class Chart {
 
         if (this._sessionStateSaveTimer) return;
 
+        const debounceMs =
+            Number(this._sessionStateSaveDebounceMs) > 0 ? Number(this._sessionStateSaveDebounceMs) : 1500;
         this._sessionStateSaveTimer = setTimeout(() => {
             this._sessionStateSaveTimer = null;
             this.flushSessionStateSave();
-        }, 800);
+        }, debounceMs);
     }
 
     queueCriticalSessionStateSave(patch) {
@@ -3201,7 +3232,14 @@ class Chart {
             });
             if (!res.ok) {
                 const errText = await res.text().catch(() => '');
-                if (res.status === 503 || res.status === 502 || res.status === 504) {
+                if (res.status === 429) {
+                    this._bumpSessionPatchBackoff(429);
+                    this._pendingCriticalSessionStatePatch = Object.assign(
+                        {},
+                        patch,
+                        this._pendingCriticalSessionStatePatch || {}
+                    );
+                } else if (res.status === 503 || res.status === 502 || res.status === 504) {
                     this._bumpSessionPatchBackoff(res.status);
                     this._logUpstreamSessionPatchOnce(res.status, errText, 'critical');
                     this._pendingCriticalSessionStatePatch = Object.assign(
@@ -3312,7 +3350,10 @@ class Chart {
             });
             if (!res.ok) {
                 const errText = await res.text().catch(() => '');
-                if (res.status === 503 || res.status === 502 || res.status === 504) {
+                if (res.status === 429) {
+                    this._bumpSessionPatchBackoff(429);
+                    this._pendingSessionStatePatch = Object.assign({}, patch, this._pendingSessionStatePatch || {});
+                } else if (res.status === 503 || res.status === 502 || res.status === 504) {
                     this._bumpSessionPatchBackoff(res.status);
                     this._logUpstreamSessionPatchOnce(res.status, errText, 'deferred');
                     this._pendingSessionStatePatch = Object.assign({}, patch, this._pendingSessionStatePatch || {});
@@ -3403,12 +3444,20 @@ class Chart {
 
                 if (!this._sessionStateUnloadHookInstalled) {
                     this._sessionStateUnloadHookInstalled = true;
-                    window.addEventListener('pagehide', () => {
+                    const flushPendingSessionState = () => {
                         try {
                             this._flushReplayDashboardCoverageNow();
+                            if (this._sessionStateSaveTimer) {
+                                clearTimeout(this._sessionStateSaveTimer);
+                                this._sessionStateSaveTimer = null;
+                            }
                             void this.flushSessionStateSave();
                             void this.flushCriticalSessionStateSave();
                         } catch (e) {}
+                    };
+                    window.addEventListener('pagehide', flushPendingSessionState);
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.visibilityState === 'hidden') flushPendingSessionState();
                     });
                 }
             } else {

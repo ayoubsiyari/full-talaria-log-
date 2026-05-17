@@ -1311,6 +1311,55 @@ def _auth_ip_rate_allow(
     )
 
 
+# Backtest / chart hot paths — per-user limits (Redis when configured, else in-memory per worker).
+BACKTEST_SMART_RATE_PER_MINUTE = max(10, int(os.getenv("BACKTEST_SMART_RATE_PER_MINUTE", "90")))
+BACKTEST_WHATIF_RATE_PER_MINUTE = max(5, int(os.getenv("BACKTEST_WHATIF_RATE_PER_MINUTE", "30")))
+BACKTEST_SESSION_PATCH_RATE_PER_MINUTE = max(
+    5, int(os.getenv("BACKTEST_SESSION_PATCH_RATE_PER_MINUTE", "25"))
+)
+_backtest_rate_lock = threading.Lock()
+_backtest_smart_user_times: dict[int, deque] = {}
+_backtest_whatif_user_times: dict[int, deque] = {}
+_backtest_session_patch_user_times: dict[int, deque] = {}
+
+
+def _backtest_rate_exempt(user: User) -> bool:
+    return getattr(user, "role", None) == "admin"
+
+
+def _backtest_user_rate_allow(user: User, scope: str) -> bool:
+    """scope: smart | whatif | session_patch"""
+    if _backtest_rate_exempt(user):
+        return True
+    uid = int(user.id)
+    scopes: dict[str, tuple[dict[int, deque], int]] = {
+        "smart": (_backtest_smart_user_times, BACKTEST_SMART_RATE_PER_MINUTE),
+        "whatif": (_backtest_whatif_user_times, BACKTEST_WHATIF_RATE_PER_MINUTE),
+        "session_patch": (_backtest_session_patch_user_times, BACKTEST_SESSION_PATCH_RATE_PER_MINUTE),
+    }
+    bucket, max_n = scopes.get(scope, (_backtest_smart_user_times, BACKTEST_SMART_RATE_PER_MINUTE))
+    rk = f"{chart_redis.KEY_PREFIX}rl:backtest:{scope}:{uid}"
+    return _redis_sliding_allow_or_local(
+        rk,
+        bucket,
+        uid,
+        _backtest_rate_lock,
+        max_n,
+        60.0,
+        f"backtest_{scope}",
+    )
+
+
+def _enforce_backtest_user_rate(user: User, scope: str) -> None:
+    if _backtest_user_rate_allow(user, scope):
+        return
+    raise HTTPException(
+        status_code=429,
+        detail="Too many requests. Please try again in a minute.",
+        headers={"Retry-After": "60"},
+    )
+
+
 def _support_user_can_access_thread(user: User, thread: SupportThread) -> bool:
     if user.role == "admin":
         return True
@@ -1528,6 +1577,7 @@ def _filter_journal_raw_trades(
 @app.post("/api/analytics/backtest/whatif")
 async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
     user = _require_paid_journal_user(request)
+    _enforce_backtest_user_rate(user, "whatif")
     db = SessionLocal()
     try:
         s = db.query(TradingSession).filter(TradingSession.id == payload.session_id).first()
@@ -14411,6 +14461,7 @@ async def patch_trading_session_state(session_id: int, request: Request):
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     user = _require_paid_journal_user(request)
+    _enforce_backtest_user_rate(user, "session_patch")
     db = SessionLocal()
     try:
         s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
@@ -14742,6 +14793,7 @@ async def get_file(file_id: int, offset: int = 0, limit: int = 10000):
 @app.get("/api/file/{file_id}/smart")
 async def get_file_smart(
     file_id: int,
+    request: Request,
     timeframe: str = "1m",
     limit: int = 5000,
     start_ts: int = None,
@@ -14759,6 +14811,10 @@ async def get_file_smart(
     t0 = _time.monotonic()
 
     limit = min(limit, 100000)
+
+    user = _get_user_from_request(request)
+    if user is not None:
+        _enforce_backtest_user_rate(user, "smart")
 
     db = next(get_db())
     try:

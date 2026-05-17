@@ -624,38 +624,42 @@ export function SessionAnalyticsPanel({
   }, [filteredTrades, tickerColor]);
 
   useEffect(() => {
-    let mounted = true;
     if (!sessionId) {
       setWhatIfApi(null);
       return;
     }
-    (async () => {
-      try {
-        setWhatIfError(null);
-        const payload = await fetchJson<any>("/api/analytics/backtest/whatif", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            session_id: Number(sessionId),
-            pair_filter: pairFilter,
-            playbook_filter: playbookFilter,
-            strategy_filter: strategyFilter,
-            outcome_filter: outcomeFilter,
-            heatmap_pair: heatmapPair,
-            tp_r: simTpR,
-            sl_r: simSlR,
-          }),
-        });
-        if (!mounted) return;
-        setWhatIfApi(payload || null);
-      } catch (e) {
-        if (!mounted) return;
-        setWhatIfApi(null);
-        setWhatIfError(e instanceof Error ? e.message : String(e));
-      }
-    })();
+    const ac = new AbortController();
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          setWhatIfError(null);
+          const payload = await fetchJson<any>("/api/analytics/backtest/whatif", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: ac.signal,
+            body: JSON.stringify({
+              session_id: Number(sessionId),
+              pair_filter: pairFilter,
+              playbook_filter: playbookFilter,
+              strategy_filter: strategyFilter,
+              outcome_filter: outcomeFilter,
+              heatmap_pair: heatmapPair,
+              tp_r: simTpR,
+              sl_r: simSlR,
+            }),
+          });
+          if (ac.signal.aborted) return;
+          setWhatIfApi(payload || null);
+        } catch (e) {
+          if (ac.signal.aborted) return;
+          setWhatIfApi(null);
+          setWhatIfError(e instanceof Error ? e.message : String(e));
+        }
+      })();
+    }, 450);
     return () => {
-      mounted = false;
+      window.clearTimeout(timer);
+      ac.abort();
     };
   }, [sessionId, pairFilter, playbookFilter, strategyFilter, outcomeFilter, heatmapPair, simTpR, simSlR, journalReloadToken, dataReloadKey]);
 
