@@ -57,6 +57,7 @@ def user_has_full_dashboard_modules(
         return False
     if getattr(user, "role", None) == "admin":
         return True
+    # DB column: admin "full access" manual grant only (never auto-synced from expiry/sub).
     if getattr(user, "has_journal_access", False):
         return True
     if subscription_entitled:

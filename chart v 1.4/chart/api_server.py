@@ -7724,6 +7724,7 @@ def _user_public_dict(user: User, db=None):
         "base_currency": getattr(user, 'base_currency', 'USD'),
         "is_active": bool(user.is_active),
         "manual_full_access": bool(getattr(user, "has_journal_access", False)),
+        "module_grants": grants or {},
         "has_journal_access": journal_entitled,
         "has_active_subscription": subscription_entitled,
         "has_dashboard_access": has_dashboard_access,
@@ -8214,9 +8215,6 @@ async def auth_subscription_cancel_at_period_end(request: Request):
             raise HTTPException(status_code=400, detail=str(e)[:500]) from e
         patch = _stripe_subscription_fields_from_object(ss)
         _apply_stripe_subscription_fields(sub, patch)
-        u = db.query(User).filter(User.id == user.id).first()
-        if u:
-            u.has_journal_access = _user_entitles_journal_db(db, u)
         db.commit()
         db.refresh(sub)
         return {"success": True, "subscription": _sub_public_dict(sub, db)}
@@ -8266,9 +8264,6 @@ async def auth_subscription_reactivate(request: Request):
             raise HTTPException(status_code=400, detail=str(e)[:500]) from e
         patch = _stripe_subscription_fields_from_object(ss)
         _apply_stripe_subscription_fields(sub, patch)
-        u = db.query(User).filter(User.id == user.id).first()
-        if u:
-            u.has_journal_access = _user_entitles_journal_db(db, u)
         db.commit()
         db.refresh(sub)
         return {"success": True, "subscription": _sub_public_dict(sub, db)}
@@ -11624,7 +11619,6 @@ async def admin_assign_subscription(user_id: int, payload: _ManualSubIn, request
 
         if ends:
             user.access_expires_at = ends
-        user.has_journal_access = _user_entitles_journal_db(db, user)
 
         db.commit()
         db.refresh(sub)
@@ -11841,9 +11835,6 @@ async def admin_cancel_subscription(sub_id: int, request: Request):
             sub.cancel_at_period_end = False
 
         user = db.query(User).filter(User.id == sub.user_id).first()
-        if user:
-            user.has_journal_access = _user_entitles_journal_db(db, user)
-
         if payload.notify_user and user:
             title = (payload.notify_title or "Your subscription was updated").strip()[:300]
             body = (
@@ -11909,9 +11900,6 @@ async def admin_sync_subscription_from_stripe(sub_id: int, request: Request):
             raise HTTPException(status_code=400, detail=str(e)[:500])
         patch = _stripe_subscription_fields_from_object(ss)
         _apply_stripe_subscription_fields(sub, patch)
-        user = db.query(User).filter(User.id == sub.user_id).first()
-        if user:
-            user.has_journal_access = _user_entitles_journal_db(db, user)
         db.commit()
         db.refresh(sub)
         _record_admin_action(
@@ -11957,9 +11945,6 @@ async def admin_reactivate_stripe_subscription(sub_id: int, request: Request):
             raise HTTPException(status_code=400, detail=str(e)[:500])
         patch = _stripe_subscription_fields_from_object(ss)
         _apply_stripe_subscription_fields(sub, patch)
-        user = db.query(User).filter(User.id == sub.user_id).first()
-        if user:
-            user.has_journal_access = _user_entitles_journal_db(db, user)
         db.commit()
         db.refresh(sub)
         _record_admin_action(
@@ -12257,12 +12242,11 @@ async def admin_grant_access_extension(user_id: int, request: Request):
         if user.access_expires_at and user.access_expires_at > base:
             base = user.access_expires_at
         user.access_expires_at = base + timedelta(days=days)
-        user.has_journal_access = _user_entitles_journal_db(db, user)
         db.commit()
         return {
             "success": True,
             "access_expires_at": user.access_expires_at.isoformat(),
-            "has_journal_access": user.has_journal_access,
+            "has_journal_access": _user_entitles_journal_db(db, user),
         }
     except HTTPException:
         raise
@@ -12282,9 +12266,12 @@ async def admin_clear_access_extension(user_id: int, request: Request):
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         user.access_expires_at = None
-        user.has_journal_access = _user_entitles_journal_db(db, user)
         db.commit()
-        return {"success": True, "access_expires_at": None, "has_journal_access": user.has_journal_access}
+        return {
+            "success": True,
+            "access_expires_at": None,
+            "has_journal_access": _user_entitles_journal_db(db, user),
+        }
     except HTTPException:
         raise
     except Exception as e:

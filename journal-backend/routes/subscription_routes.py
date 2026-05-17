@@ -374,13 +374,12 @@ def grant_access_extension(user_id):
         if user.access_expires_at and user.access_expires_at > base:
             base = user.access_expires_at
         user.access_expires_at = base + timedelta(days=days)
-        user.has_journal_access = user_entitles_journal(user)
         db.session.commit()
 
         return jsonify({
             'success': True,
             'access_expires_at': user.access_expires_at.isoformat(),
-            'has_journal_access': user.has_journal_access,
+            'has_journal_access': user_entitles_journal(user),
         }), 200
     except Exception as e:
         db.session.rollback()
@@ -398,12 +397,11 @@ def clear_access_extension(user_id):
         if not user:
             return jsonify({'error': 'User not found'}), 404
         user.access_expires_at = None
-        user.has_journal_access = user_entitles_journal(user)
         db.session.commit()
         return jsonify({
             'success': True,
             'access_expires_at': None,
-            'has_journal_access': user.has_journal_access,
+            'has_journal_access': user_entitles_journal(user),
         }), 200
     except Exception as e:
         db.session.rollback()
@@ -1020,10 +1018,6 @@ def handle_subscription_updated(sub_data):
             subscription.current_period_end = period_end
             subscription.cancel_at_period_end = sub_data.get('cancel_at_period_end', False)
 
-            user = User.query.get(subscription.user_id)
-            if user:
-                user.has_journal_access = user_entitles_journal(user)
-
     except Exception as e:
         current_app.logger.error(f"Error handling subscription updated: {e}")
 
@@ -1038,11 +1032,6 @@ def handle_subscription_deleted(sub_data):
         if subscription:
             subscription.status = 'cancelled'
             subscription.cancelled_at = datetime.utcnow()
-            
-            # Optionally revoke journal access
-            user = User.query.get(subscription.user_id)
-            if user:
-                user.has_journal_access = user_entitles_journal(user)
             
     except Exception as e:
         current_app.logger.error(f"Error handling subscription deleted: {e}")
@@ -1099,9 +1088,6 @@ def handle_payment_failed(invoice_data):
             description=f"Failed: Invoice {invoice_data.get('number', 'N/A')}"
         )
         db.session.add(payment)
-
-        if user:
-            user.has_journal_access = user_entitles_journal(user)
 
     except Exception as e:
         current_app.logger.error(f"Error handling payment failed: {e}")
@@ -1388,9 +1374,6 @@ def _reconcile_user_stripe_subscriptions_from_stripe(user_id, user):
                 getattr(sub, 'stripe_subscription_id', None),
                 e,
             )
-    u = User.query.get(user_id)
-    if u:
-        u.has_journal_access = user_entitles_journal(u)
     try:
         db.session.commit()
     except Exception as e:

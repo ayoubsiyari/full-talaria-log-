@@ -4454,6 +4454,7 @@ document.addEventListener('change', function (e) {
     document.querySelectorAll('.edit-mod-cb').forEach(function (el) {
       el.disabled = e.target.checked;
       if (e.target.checked) el.checked = true;
+      else el.checked = false;
     });
   }
 });
@@ -4474,10 +4475,8 @@ function openEditModal(userId) {
   } else {
     setEditAccessMode('unlimited');
   }
-  const mods = user.dashboard_modules || {};
-  const fullAccess = user.manual_full_access != null
-    ? !!user.manual_full_access
-    : !!user.has_journal_access;
+  const mods = user.module_grants || user.dashboard_modules || {};
+  const fullAccess = !!user.manual_full_access;
   if ($('editFullJournalAccess')) $('editFullJournalAccess').checked = fullAccess;
   renderEditModuleGrantInputs(mods);
   $('editModalTitle').textContent = `Edit: ${user.name}`;
