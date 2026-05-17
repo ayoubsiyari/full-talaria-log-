@@ -13221,6 +13221,30 @@ class Chart {
         this._panSnapPriceOffset = null;
     }
 
+    /** Keep SL/TP lines and entry/exit trade markers glued while panning (same scales as candles). */
+    _syncOrderOverlaysDuringPan(panActive) {
+        const om = this.orderManager;
+        if (!om) return;
+        if (typeof om.updateOrderLines === 'function') {
+            om.updateOrderLines(this);
+        }
+        if (panActive) {
+            if (typeof om.updateMfeMaeMarkers === 'function') {
+                om.updateMfeMaeMarkers(this);
+            }
+            return;
+        }
+        if (typeof om.updatePreviewLinePositions === 'function') {
+            om.updatePreviewLinePositions();
+        }
+        if (typeof om._scheduleDraftPreviewRedrawIfNeeded === 'function') {
+            om._scheduleDraftPreviewRedrawIfNeeded(this);
+        }
+        if (typeof om.updateMfeMaeMarkers === 'function') {
+            om.updateMfeMaeMarkers(this);
+        }
+    }
+
     _applyPanDrawingsLayerTransform() {
         const dm = this.drawingManager;
         if (!dm || this._panSnapOffsetX == null) return;
@@ -13557,24 +13581,7 @@ class Chart {
             
             // Redraw drawings even when no candles are visible
             this.redrawDrawings();
-            
-            // Update order lines if order manager is active
-            if (this.orderManager) {
-                if (typeof this.orderManager.updateOrderLines === 'function') {
-                    this.orderManager.updateOrderLines(this);
-                }
-                if (!chartViewPanning) {
-                    if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
-                        this.orderManager.updatePreviewLinePositions();
-                    }
-                    if (typeof this.orderManager._scheduleDraftPreviewRedrawIfNeeded === 'function') {
-                        this.orderManager._scheduleDraftPreviewRedrawIfNeeded(this);
-                    }
-                    if (typeof this.orderManager.updateMfeMaeMarkers === 'function') {
-                        this.orderManager.updateMfeMaeMarkers(this);
-                    }
-                }
-            }
+            this._syncOrderOverlaysDuringPan(chartViewPanning);
             return;
         }
         
@@ -13592,16 +13599,11 @@ class Chart {
             this.drawAxes();
             this.drawEconomicCalendarAxisMarkers({ panFast: true });
             this.drawCurrentPriceLabel(visible);
-            if (this._isChartPanDragging()) {
-                this._applyPanDrawingsLayerTransform();
-            } else {
-                this.redrawDrawings();
-            }
-            if (!this._isChartPanDragging()
-                && this.orderManager
-                && typeof this.orderManager.updateOrderLines === 'function') {
-                this.orderManager.updateOrderLines(this);
-            }
+            // Re-project drawings + trade markers each frame (panFast). CSS translate on the
+            // drawings layer drifts from candles because xScale domain slides with offsetX.
+            this._clearPanDrawingsLayerTransform();
+            this.redrawDrawings();
+            this._syncOrderOverlaysDuringPan(true);
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
             }
