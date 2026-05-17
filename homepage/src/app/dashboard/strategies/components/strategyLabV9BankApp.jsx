@@ -872,7 +872,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
               {strategiesError}
             </div>
           ) : null}
-          <div style={{width:1288,margin:"0 auto",display:"flex",alignItems:"center",height:44,gap:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
+          <div style={{width:1288,margin:"0 auto",display:"flex",alignItems:"flex-end",height:40,gap:5,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
             <div style={{display:"flex",alignItems:"flex-end",height:"100%",gap:5,flexShrink:0}}>
               {[{k:"mine",l:"My Strategies",ct:mineSource.length},{k:"community",l:"Community",ct:communityPool.length,disabled:true}].map(({k,l,ct,disabled})=>{
                 const isA=stratTab===k&&!disabled;
@@ -881,19 +881,21 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                 const badgeBg=isA?"rgba(74,106,255,0.2)":"rgba(255,255,255,0.07)";
                 return(
                   <div key={k} role="button" tabIndex={disabled?-1:0} aria-disabled={disabled?"true":"false"} onClick={()=>{if(!disabled)setStratTab(k);}}
-                    style={{height:26,padding:"0 12px",display:"flex",alignItems:"center",gap:5,cursor:"default",position:"relative",transition:"color 0.12s, background 0.12s, opacity 0.12s, transform 0.08s",background:tabBg,color:tabCol,opacity:disabled?0.42:1,fontSize:9,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,flexShrink:0}}
+                    style={{height:26,display:"flex",alignItems:"flex-end",padding:"0 12px",cursor:"default",transition:"color 0.12s, background 0.12s, opacity 0.12s, transform 0.08s",background:tabBg,color:tabCol,opacity:disabled?0.42:1,flexShrink:0,userSelect:"none"}}
                     onMouseEnter={e=>{if(!disabled&&!isA){e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.color=c.tx;}}}
                     onMouseLeave={e=>{if(!disabled&&!isA){e.currentTarget.style.background="transparent";e.currentTarget.style.color=c.ts;}e.currentTarget.style.transform="scale(1)";}}
                     onMouseDown={e=>{if(!disabled)e.currentTarget.style.transform="scale(0.98)";}}
                     onMouseUp={e=>{e.currentTarget.style.transform="scale(1)";}}>
-                    {l}
-                    <span style={{fontSize:8,fontWeight:700,background:badgeBg,color:tabCol,padding:"1px 5px",fontVariantNumeric:"tabular-nums",lineHeight:1,transition:"all 0.12s"}}>{ct}</span>
-                    {isA&&<div style={{position:"absolute",bottom:0,left:"10%",right:"10%",height:1.5,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`}}/>}
+                    <div style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:9,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,paddingBottom:4,borderBottom:isA?`3px solid ${c.acL}`:"3px solid transparent",boxSizing:"border-box"}}>
+                      {l}
+                      <span style={{fontSize:8,fontWeight:700,background:badgeBg,color:isA?c.ts:tabCol,padding:"2px 6px",minWidth:18,textAlign:"center",fontVariantNumeric:"tabular-nums"}}>{ct}</span>
+                    </div>
                   </div>
                 );
               })}
             </div>
             <div style={{flex:1}}/>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,alignSelf:"center"}}>
             <div style={{display:"flex",gap:4,flexShrink:0}}>
               {[
                 {mode:"cards",label:"Cards",icon:(
@@ -967,6 +969,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                 )}
               </div>
             )}
+            </div>
           </div>
         </div>
         <div style={{flex:1,display:"flex",flexDirection:"column",padding:"24px 32px",minHeight:0}}>
