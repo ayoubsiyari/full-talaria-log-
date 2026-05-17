@@ -460,7 +460,7 @@ export function BacktestView() {
     const r = e.currentTarget.getBoundingClientRect();
     setDescPop({ key, x: r.right + 6, y: r.top, title, kind, desc });
   };
-  const contentFrameStyle: React.CSSProperties = { width: "fit-content", minWidth: 1350, margin: "0 auto" };
+  const contentFrameStyle: React.CSSProperties = { width: "fit-content", minWidth: 1390, margin: "0 auto" };
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -1094,7 +1094,7 @@ export function BacktestView() {
             <div style={{ position: "absolute", bottom: 0, left: 32, right: 32, height: 1, background: c.brH, pointerEvents: "none" }} />
             <div style={{ width: 96, flexShrink: 0 }} />
             {([
-              ["Session", 172, "name", "0 10px"], ["Strategy", 100, "strategy", "0 8px 0 10px"], ["Mode", 74, "mode", null], ["Asset", 90, "asset", null],
+              ["Session", 172, "name", "0 10px"], ["Strategy", 140, "strategy", "0 10px"], ["Mode", 74, "mode", null], ["Asset", 90, "asset", null],
               ["Symbols", 120, "symbol", null], ["Date Range", 134, "date", null], ["Options", 102, null, null],
               ["Starting Bal.", 88, "capital", null], ["Net P&L", 80, "pnl", null], ["Win %", 60, "winRate", null],
               ["Avg R:R", 62, "avgRR", null], ["Trades", 56, "trades", null], ["Progress", 66, "progress", null], ["", 50, null, null],
@@ -1488,8 +1488,8 @@ export function BacktestView() {
                         />
                       </div>
                       {/* Strategy + info */}
-                      <div style={{ width: 100, flexShrink: 0, padding: "0 8px 0 10px", display: "flex", alignItems: "center", gap: 4, overflow: "hidden", fontFamily: F }}>
-                        <div style={{ fontSize: (cfgS?.strategy_name || "").length > 20 ? 9 : (cfgS?.strategy_name || "").length > 13 ? 10 : 11, fontWeight: 600, color: c.ts, lineHeight: 1.35, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cfgS?.strategy_name || "—"}</div>
+                      <div style={{ width: 140, flexShrink: 0, padding: "0 10px", display: "flex", alignItems: "center", gap: 6, overflow: "hidden", fontFamily: F, boxSizing: "border-box" }}>
+                        <div style={{ fontSize: (cfgS?.strategy_name || "").length > 20 ? 9 : (cfgS?.strategy_name || "").length > 13 ? 10 : 11, fontWeight: 600, color: c.ts, lineHeight: 1.35, flex: "0 1 auto", minWidth: 0, maxWidth: "calc(100% - 20px)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cfgS?.strategy_name || "—"}</div>
                         <SessionInfoButton
                           active={descPop?.key === stratPopKey}
                           label="Strategy description"

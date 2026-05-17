@@ -520,11 +520,13 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const StrategyRows = ({items,isMine=false,inSavedTab=false,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onPerf,onUseTemplate}) => (
     <div style={{width:1288,margin:"0 auto",display:"flex",flexDirection:"column",padding:"4px 0 24px"}}>
       <div style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"center",height:26,borderBottom:`1px solid ${c.brH}`}}>
-        {["","Strategy","Description","Strategy Tags","Markets","Time Frames","Backtesting Results",""].map(label=>(
-          <div key={label||"_icon"} style={{fontSize:8,fontWeight:850,color:c.tm,textTransform:"uppercase",letterSpacing:"0.08em",whiteSpace:"nowrap",fontFamily:F,textAlign:label?"left":"center",padding:"0 10px"}}>
+        {["","Strategy","Description","Strategy Tags","Markets","Time Frames","Backtesting Results",""].map((label,i)=>{
+          const pad = i === 0 || i === 7 ? "0 8px" : i >= 3 ? "8px 10px" : "0 10px";
+          return (
+          <div key={label||"_icon"} style={{fontSize:8,fontWeight:850,color:c.tm,textTransform:"uppercase",letterSpacing:"0.08em",whiteSpace:"nowrap",fontFamily:F,textAlign:label?"left":"center",padding:pad,display:"flex",alignItems:"center",justifyContent:label?"flex-start":"center",boxSizing:"border-box",minWidth:0}}>
             {label}
           </div>
-        ))}
+        );})}
       </div>
       {items.map((strat,idx)=>{
         const isH=stratCardHov===strat.id;
