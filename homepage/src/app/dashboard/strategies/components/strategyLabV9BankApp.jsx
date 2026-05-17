@@ -519,7 +519,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
     );
   };
   const StrategyRows = ({items,isMine=false,inSavedTab=false,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onPerf,onUseTemplate}) => (
-    <div style={{width:1288,margin:"0 auto",display:"flex",flexDirection:"column",padding:"4px 0 24px"}}>
+    <div style={{width:1288,margin:"0 auto",display:"flex",flexDirection:"column",padding:"0 0 24px"}}>
       <div style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"center",height:26,borderBottom:`1px solid ${c.brH}`}}>
         {["Strategy","Description","Strategy Tags","Markets","Time Frames","Backtesting Results",""].map((label,i)=>{
           const pad = i === 6 ? "0 8px" : i >= 2 ? "8px 10px" : "0 10px";
@@ -971,7 +971,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
             </div>
           </div>
         </div>
-        <div style={{flex:1,display:"flex",flexDirection:"column",padding:"24px 32px",minHeight:0}}>
+        <div style={{flex:1,display:"flex",flexDirection:"column",padding:"0 32px 24px",minHeight:0}}>
 
           {/* MY STRATEGIES */}
           {stratTab==="mine"&&(
