@@ -62,15 +62,36 @@ type NotifRow = {
   read_at?: string | null;
 };
 
+const F = "'Exo 2', sans-serif";
+
+/** Dark chrome tokens — parity with `talaria-design` / `TalariaV8b` `c` map. */
+const DASH_C = {
+  el: "#0F1119",
+  bg: "#07080E",
+  tx: "rgba(255,255,255,0.92)",
+  ts: "rgba(255,255,255,0.55)",
+  acL: "#4A6AFF",
+  acD: "rgba(38,67,247,0.08)",
+  acG: "rgba(38,67,247,0.12)",
+  hv: "rgba(255,255,255,0.07)",
+} as const;
+
+const PROFILE_PANEL_W = 300;
+
 function DashboardNotificationBell({
   isArabic,
   dropdownAnchorStart,
   fullWidthButton,
+  openUpward,
+  panelWidth,
 }: {
   isArabic: boolean;
   /** When true, align dropdown to the button’s start edge (for Profile flyout). */
   dropdownAnchorStart?: boolean;
   fullWidthButton?: boolean;
+  /** Profile flyout: open list above the button so it is not clipped at the viewport bottom. */
+  openUpward?: boolean;
+  panelWidth?: number;
 }) {
   const [open, setOpen] = React.useState(false);
   const [count, setCount] = React.useState(0);
@@ -195,16 +216,18 @@ function DashboardNotificationBell({
           onClick={(e) => e.stopPropagation()}
           style={{
             position: "absolute",
-            top: "calc(100% + 8px)",
+            ...(openUpward
+              ? { bottom: "calc(100% + 10px)", top: "auto" }
+              : { top: "calc(100% + 8px)" }),
             ...(dropdownAnchorStart ? { left: 0 } : isArabic ? { left: 0 } : { right: 0 }),
-            width: 340,
-            maxHeight: 380,
+            width: panelWidth ?? 340,
+            maxHeight: openUpward ? "min(52vh, 360px)" : 380,
             overflowY: "auto",
-            background: "#111318",
-            border: "1px solid rgba(255,255,255,0.08)",
+            background: DASH_C.el,
+            border: "1px solid rgba(140,160,255,0.16)",
             borderRadius: 10,
-            boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
-            zIndex: 200,
+            boxShadow: "0 16px 48px rgba(0,0,0,0.55)",
+            zIndex: openUpward ? 11002 : 200,
           }}
         >
           <div
@@ -262,7 +285,7 @@ function DashboardNotificationBell({
                   textDecoration: "none",
                   color: "#e8e4dc",
                   fontSize: 12,
-                  borderLeft: n.read_at ? undefined : "3px solid #c8f060",
+                  borderLeft: n.read_at ? undefined : `3px solid ${DASH_C.acL}`,
                 }}
               >
                 <div style={{ fontWeight: 600, marginBottom: 4 }}>{n.title}</div>
@@ -275,20 +298,6 @@ function DashboardNotificationBell({
     </div>
   );
 }
-
-const F = "'Exo 2', sans-serif";
-
-/** Dark chrome tokens — parity with `talaria-design` / `TalariaV8b` `c` map. */
-const DASH_C = {
-  el: "#0F1119",
-  bg: "#07080E",
-  tx: "rgba(255,255,255,0.92)",
-  ts: "rgba(255,255,255,0.55)",
-  acL: "#4A6AFF",
-  acD: "rgba(38,67,247,0.08)",
-  acG: "rgba(38,67,247,0.12)",
-  hv: "rgba(255,255,255,0.07)",
-} as const;
 
 const VIEW_TITLES: Record<string, string> = {
   dashboard: "Dashboard",
@@ -676,7 +685,7 @@ export default function DashboardLayout({
           })}
           <div style={{ flex: 1 }} />
           {/* Profile — flyout: Alerts, email, Logout */}
-          <div ref={profileWrapRef} style={{ width: "100%", position: "relative", zIndex: profilePanelOpen ? 20 : 1 }}>
+          <div ref={profileWrapRef} style={{ width: "100%", position: "relative", zIndex: profilePanelOpen ? 11000 : 1 }}>
             <div
               onClick={(e) => {
                 e.stopPropagation();
@@ -692,37 +701,119 @@ export default function DashboardLayout({
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 4,
-                cursor:"default",
-                color: profilePanelOpen || profileNavHov ? DASH_C.tx : DASH_C.ts,
-                background: profilePanelOpen || profileNavHov ? DASH_C.hv : "transparent",
+                cursor: "default",
+                position: "relative",
+                color: profilePanelOpen ? DASH_C.acL : profileNavHov ? DASH_C.tx : DASH_C.ts,
+                background: profilePanelOpen ? DASH_C.acD : profileNavHov ? DASH_C.hv : "transparent",
                 transition: "color 0.12s, background 0.12s",
               }}>
-              <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+              {profilePanelOpen ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    [isArabic ? "right" : "left"]: 0,
+                    top: "20%",
+                    bottom: "20%",
+                    width: 2,
+                    background: `linear-gradient(180deg,transparent,${DASH_C.acL},transparent)`,
+                    boxShadow: `0 0 6px ${DASH_C.acG}`,
+                  }}
+                />
+              ) : null}
+              <svg width={21} height={21} viewBox="0 0 24 24" fill="none" aria-hidden><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
               <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase" as const, fontFamily: F }}>Profile</span>
             </div>
             {profilePanelOpen ? (
               <div
+                role="dialog"
+                aria-label={isArabic ? "الحساب" : "Account"}
                 onClick={(e) => e.stopPropagation()}
                 style={{
                   position: "fixed",
-                  ...(isArabic ? { right: 64 } : { left: 64 }),
-                  bottom: 8,
-                  width: 288,
-                  padding: "14px 14px 12px",
-                  background: "#111318",
-                  border: "1px solid rgba(140,160,255,0.14)",
-                  borderRadius: 10,
-                  boxShadow: "0 12px 40px rgba(0,0,0,0.55)",
+                  ...(isArabic ? { right: 72 } : { left: 72 }),
+                  bottom: 16,
+                  width: PROFILE_PANEL_W,
+                  padding: 0,
+                  background: DASH_C.el,
+                  border: "1px solid rgba(140,160,255,0.18)",
+                  borderRadius: 12,
+                  boxShadow: "0 20px 56px rgba(0,0,0,0.65)",
                   fontFamily: F,
-                }}>
-                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", marginBottom: 10 }}>
-                  {isArabic ? "الحساب" : "Account"}
-                </div>
-                {user ? (
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.72)", wordBreak: "break-all", lineHeight: 1.35, marginBottom: 12 }}>
-                    {user.email}
+                  zIndex: 11001,
+                  overflow: "visible",
+                }}
+              >
+                <div
+                  style={{
+                    height: 2,
+                    borderRadius: "12px 12px 0 0",
+                    background: `linear-gradient(90deg,transparent,${DASH_C.acL},transparent)`,
+                    opacity: 0.85,
+                  }}
+                />
+                <div style={{ padding: "14px 14px 12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: "50%",
+                        flexShrink: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: DASH_C.acD,
+                        border: "1px solid rgba(74,106,255,0.35)",
+                        color: DASH_C.acL,
+                        fontSize: 14,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {(user?.name || user?.email || "?").charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          letterSpacing: "0.08em",
+                          color: DASH_C.ts,
+                          textTransform: "uppercase",
+                          marginBottom: 3,
+                        }}
+                      >
+                        {isArabic ? "الحساب" : "Account"}
+                      </div>
+                      {user ? (
+                        <>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: DASH_C.tx,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {user.name || user.email}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: DASH_C.ts,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              marginTop: 2,
+                            }}
+                          >
+                            {user.email}
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
-                ) : null}
                 <Link
                   href="/dashboard/profile/"
                   onClick={() => setProfilePanelOpen(false)}
@@ -731,23 +822,28 @@ export default function DashboardLayout({
                     width: "100%",
                     textAlign: "center" as const,
                     padding: "10px 12px",
-                    marginBottom: 10,
+                    marginBottom: 12,
                     borderRadius: 8,
                     fontSize: 12,
                     fontWeight: 700,
-                    color: "rgba(74,106,255,0.95)",
-                    background: "rgba(74,106,255,0.08)",
-                    border: "1px solid rgba(74,106,255,0.22)",
+                    color: DASH_C.acL,
+                    background: DASH_C.acD,
+                    border: "1px solid rgba(74,106,255,0.28)",
                     textDecoration: "none",
                     fontFamily: F,
                     boxSizing: "border-box" as const,
                   }}
                 >
-                  {isArabic ? "إعدادات الحساب الكاملة" : "Account settings"}
+                  {isArabic ? "إعدادات الحساب" : "Account settings"}
                 </Link>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div style={{ width: "100%" }}>
-                    <DashboardNotificationBell isArabic={isArabic} dropdownAnchorStart fullWidthButton />
+                  <div style={{ position: "relative", marginBottom: 10 }}>
+                    <DashboardNotificationBell
+                      isArabic={isArabic}
+                      dropdownAnchorStart
+                      fullWidthButton
+                      openUpward
+                      panelWidth={PROFILE_PANEL_W - 28}
+                    />
                   </div>
                   <button
                     type="button"
@@ -764,9 +860,10 @@ export default function DashboardLayout({
                       border: "1px solid rgba(255,80,104,0.2)",
                       borderRadius: 8,
                       padding: "10px 12px",
-                      cursor:"default",
+                      cursor: "pointer",
                       fontFamily: F,
-                    }}>
+                    }}
+                  >
                     {isArabic ? "تسجيل الخروج" : "Logout"}
                   </button>
                 </div>
