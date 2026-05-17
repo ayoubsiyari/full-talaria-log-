@@ -8,6 +8,7 @@ import { BacktestNewSessionProvider } from "./BacktestNewSessionContext";
 import "./dashboard-shell.css";
 import {
   dashboardPathRequiresPaidJournal,
+  defaultDashboardPathForUser,
   userCanAccessDashboardPath,
   userHasDashboardModule,
 } from "@/lib/dashboardAccess";
@@ -22,9 +23,11 @@ type User = {
   email: string;
   role: string;
   has_journal_access?: boolean;
+  has_active_subscription?: boolean;
   manual_full_access?: boolean;
   has_dashboard_access?: boolean;
   dashboard_modules?: Record<string, boolean>;
+  subscription?: { status?: string };
 };
 
 async function fetchMe(): Promise<User> {
@@ -336,27 +339,48 @@ export default function DashboardLayout({
       });
   }, []);
 
-  /** Re-sync after checkout, admin access change, or tab focus (keeps gate accurate). */
+  const enforceAccessForPath = React.useCallback((u: User, path: string) => {
+    if (!dashboardPathRequiresPaidJournal(path)) return;
+    if (userCanAccessDashboardPath(u, path)) return;
+    window.location.replace(defaultDashboardPathForUser(u));
+  }, []);
+
+  /** Re-sync after checkout, admin access change, tab focus, or browser back (bfcache). */
   React.useEffect(() => {
+    const resync = () => {
+      fetchMe()
+        .then((u) => {
+          setUser(u);
+          setAuthReady(true);
+          enforceAccessForPath(u, window.location.pathname);
+        })
+        .catch(() => {});
+    };
     const onVis = () => {
       if (document.visibilityState !== "visible" || !authReady) return;
-      fetchMe()
-        .then((u) => setUser(u))
-        .catch(() => {});
+      resync();
     };
     const onFocus = () => {
       if (!authReady) return;
-      fetchMe()
-        .then((u) => setUser(u))
-        .catch(() => {});
+      resync();
+    };
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) resync();
     };
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("focus", onFocus);
+    window.addEventListener("pageshow", onPageShow);
     return () => {
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("pageshow", onPageShow);
     };
-  }, [authReady]);
+  }, [authReady, enforceAccessForPath]);
+
+  React.useEffect(() => {
+    if (!authReady || !user) return;
+    enforceAccessForPath(user, pathname);
+  }, [authReady, user, pathname, enforceAccessForPath]);
 
   const gatedPath = dashboardPathRequiresPaidJournal(pathname);
   const pathAllowed = userCanAccessDashboardPath(user, pathname);

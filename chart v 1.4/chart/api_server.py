@@ -7725,6 +7725,7 @@ def _user_public_dict(user: User, db=None):
         "is_active": bool(user.is_active),
         "manual_full_access": bool(getattr(user, "has_journal_access", False)),
         "has_journal_access": journal_entitled,
+        "has_active_subscription": subscription_entitled,
         "has_dashboard_access": has_dashboard_access,
         "dashboard_modules": mod_map,
         "access_expires_at": expires.isoformat() if expires else None,
