@@ -7070,15 +7070,17 @@ function _renderFirstrateNightlyHealth() {
         'class="btn sm"',
         'data-fr-run-class="' + c.asset_class + '"',
         'style="font-size:11px;padding:2px 8px"',
-        'title="Pull latest day bundle for ' + c.asset_class + ' from FirstRate and merge into existing datasets"',
+        'title="Routine update: pull today\u2019s day bundle for all ' + c.asset_class + ' tickers. For stale/missing data use Fix issues instead."',
       ];
       if (!hasTickers) btnAttrs.push('disabled');
+      var issueN = (c.stale_count || 0) + (c.missing_count || 0);
       var fixBtns = '';
-      if (c.stale_count > 0) {
-        fixBtns += '<button type="button" class="btn sm" data-fr-fix-stale="' + c.asset_class + '" style="font-size:10px;padding:2px 6px;color:#eab308;border-color:#eab308" title="Download week bundle for ' + c.stale_count + ' stale ticker(s) to bring them up to date">Fix ' + c.stale_count + ' stale</button>';
-      }
-      if (c.missing_count > 0) {
-        fixBtns += '<button type="button" class="btn sm" data-fr-fix-missing="' + c.asset_class + '" style="font-size:10px;padding:2px 6px;color:#ef4444;border-color:#ef4444" title="Download month bundle for ' + c.missing_count + ' missing ticker(s) to recover their data">Fix ' + c.missing_count + ' missing</button>';
+      if (issueN > 0) {
+        var fixTitle = 'Queue FirstRate repair for ' + issueN + ' ticker(s)';
+        if (c.missing_count > 0) fixTitle += ' (month bundle — covers stale + missing)';
+        else fixTitle += ' (week bundle for stale tickers)';
+        fixTitle += '. Runs immediately — no need to click Run now.';
+        fixBtns += '<button type="button" class="btn sm primary" data-fr-fix-class="' + c.asset_class + '" style="font-size:10px;padding:3px 10px" title="' + fixTitle.replace(/"/g, '&quot;') + '">Fix ' + issueN + ' issue' + (issueN === 1 ? '' : 's') + '</button>';
       }
       return (
         '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel)">' +
@@ -7246,8 +7248,11 @@ async function _runFirstrateClassNow(assetClass, btn) {
       toast('FirstRate ' + assetClass + ' import queued — watching progress…', 'ok');
     }
     if (btn) btn.textContent = 'Running…';
-    if (data && data.job_id && typeof waitForFirstrateJob === 'function') {
-      await waitForFirstrateJob(data.job_id);
+    if (data && data.job_id) {
+      try { ensureFirstrateLivePoll(); } catch (_) {}
+      if (typeof waitForFirstrateJob === 'function') {
+        await waitForFirstrateJob(data.job_id);
+      }
     }
   } catch (e) {
     if (typeof toast === 'function') {
@@ -7271,12 +7276,15 @@ document.addEventListener('click', function (e) {
     e.preventDefault();
     const cls = t.getAttribute('data-fr-run-class');
     _runFirstrateClassNow(cls, t);
+  } else if (t.matches('button[data-fr-fix-class]')) {
+    e.preventDefault();
+    _fixClassHealth(t.getAttribute('data-fr-fix-class'), t);
   } else if (t.matches('button[data-fr-fix-stale]')) {
     e.preventDefault();
-    _fixStaleOrMissing(t.getAttribute('data-fr-fix-stale'), 'stale', t);
+    _fixClassHealth(t.getAttribute('data-fr-fix-stale'), t);
   } else if (t.matches('button[data-fr-fix-missing]')) {
     e.preventDefault();
-    _fixStaleOrMissing(t.getAttribute('data-fr-fix-missing'), 'missing', t);
+    _fixClassHealth(t.getAttribute('data-fr-fix-missing'), t);
   } else if (t.matches('button[data-fr-manage-class]')) {
     e.preventDefault();
     _openBulkManage(t.getAttribute('data-fr-manage-class'));
@@ -7613,22 +7621,29 @@ async function _bulkDeleteSelected() {
   _loadBulkManageClass();
 }
 
-async function _fixStaleOrMissing(assetClass, freshness, btn) {
+/** Repair stale + missing tickers for one asset class (same logic as server auto-repair). */
+async function _fixClassHealth(assetClass, btn) {
   if (!assetClass || !_firstrateHealthCache) return;
   var datasets = _firstrateHealthCache.datasets || [];
-  var tickers = [];
+  var staleTickers = [];
+  var missingTickers = [];
   datasets.forEach(function (d) {
-    if (d.asset_class === assetClass && d.freshness === freshness) {
-      if (d.ticker && tickers.indexOf(d.ticker) === -1) tickers.push(d.ticker);
-    }
+    if (d.asset_class !== assetClass || !d.ticker) return;
+    if (d.freshness === 'stale' && staleTickers.indexOf(d.ticker) === -1) staleTickers.push(d.ticker);
+    if (d.freshness === 'missing' && missingTickers.indexOf(d.ticker) === -1) missingTickers.push(d.ticker);
+  });
+  var tickers = staleTickers.slice();
+  missingTickers.forEach(function (t) {
+    if (tickers.indexOf(t) === -1) tickers.push(t);
   });
   if (!tickers.length) {
-    if (typeof toast === 'function') toast('No ' + freshness + ' tickers found for ' + assetClass, 'err');
+    if (typeof toast === 'function') toast('No stale or missing tickers for ' + assetClass, 'err');
     return;
   }
-  var period = freshness === 'stale' ? 'week' : 'month';
+  // Match backend _firstrate_period_for_repair_stats: month if any missing, else week.
+  var period = missingTickers.length > 0 ? 'month' : 'week';
   var origLabel = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = 'Downloading…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Queueing…'; }
   try {
     var body = {
       period: period,
@@ -7644,16 +7659,20 @@ async function _fixStaleOrMissing(assetClass, freshness, btn) {
       body: JSON.stringify(body),
     });
     if (typeof toast === 'function') {
-      toast('Fixing ' + tickers.length + ' ' + freshness + ' ' + assetClass + ' ticker(s) — downloading ' + period + ' data…', 'ok');
+      toast(
+        'Repairing ' + tickers.length + ' ' + assetClass + ' ticker(s) (' + period + ' bundle)…',
+        'ok'
+      );
     }
-    if (btn) btn.textContent = tickers.length + ' tickers…';
+    if (btn) btn.textContent = 'Running…';
+    try { ensureFirstrateLivePoll(); } catch (_) {}
     if (data && data.job_id && typeof waitForFirstrateJob === 'function') {
       await waitForFirstrateJob(data.job_id);
     }
-    if (typeof toast === 'function') toast(assetClass + ' ' + freshness + ' fix complete!', 'ok');
+    if (typeof toast === 'function') toast(assetClass + ' repair finished', 'ok');
   } catch (e) {
     if (typeof toast === 'function') {
-      toast('Fix ' + freshness + ' ' + assetClass + ' failed: ' + (e && e.message ? e.message : e), 'err');
+      toast('Repair ' + assetClass + ' failed: ' + (e && e.message ? e.message : e), 'err');
     }
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = origLabel; }
