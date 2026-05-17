@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -357,13 +358,15 @@ export default function PricingClient() {
       >
         <div className="mx-auto flex h-[60px] max-w-[1280px] items-center justify-between px-5 sm:px-8 lg:px-10">
           <Link href="/" className="flex items-center gap-2.5">
-            <span
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-[11px] font-black"
-              style={{ background: C.acGlow, color: C.ac, border: `1px solid ${C.borderHi}` }}
-            >
-              T
-            </span>
-            <span className="text-[16px] font-extrabold tracking-tight">Talaria</span>
+            <Image
+              src="/logo-04.png"
+              alt="Talaria"
+              width={36}
+              height={36}
+              className="h-9 w-9 shrink-0"
+              priority
+            />
+            <span className="text-[17px] font-extrabold tracking-tight">Talaria-Log</span>
           </Link>
           {isLoggedIn ? (
             showDashboardNav ? (
@@ -478,29 +481,50 @@ export default function PricingClient() {
             </button>
           </div>
         ) : (
-          <div className="flex gap-1.5">
-            <input
-              type="text"
-              value={couponCode}
-              onChange={(e) => {
-                setCouponCode(e.target.value.toUpperCase());
-                if (couponResult) setCouponResult(null);
-              }}
-              onKeyDown={(e) => e.key === "Enter" && handleValidateCoupon()}
-              placeholder="Coupon code"
-              maxLength={50}
-              className="w-full rounded-xl border px-3.5 py-2.5 text-[13px] placeholder:opacity-40 focus:outline-none"
-              style={{ borderColor: C.border, background: C.el, color: C.tx }}
-            />
-            <button
-              type="button"
-              onClick={handleValidateCoupon}
-              disabled={!couponCode.trim() || couponValidating}
-              className="flex shrink-0 items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-[12px] font-medium text-white/50 transition hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-25"
+          <div className="w-full">
+            <label
+              htmlFor="pricing-coupon"
+              className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em]"
+              style={{ color: C.ts }}
             >
-              {couponValidating && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
-              Apply
-            </button>
+              <Tag className="h-3.5 w-3.5" style={{ color: C.ac }} aria-hidden />
+              Coupon code
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="pricing-coupon"
+                type="text"
+                value={couponCode}
+                onChange={(e) => {
+                  setCouponCode(e.target.value.toUpperCase());
+                  if (couponResult) setCouponResult(null);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && handleValidateCoupon()}
+                placeholder="Enter code"
+                maxLength={50}
+                className="min-h-[44px] w-full rounded-xl border px-4 py-2.5 text-[14px] font-semibold placeholder:text-white/45 focus:outline-none focus:ring-2 focus:ring-[rgba(74,106,255,0.35)]"
+                style={{
+                  borderColor: "rgba(140,160,255,0.32)",
+                  background: "rgba(255,255,255,0.07)",
+                  color: C.tx,
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleValidateCoupon}
+                disabled={!couponCode.trim() || couponValidating}
+                className="flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-xl border px-4 py-2.5 text-[13px] font-bold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                style={{
+                  borderColor: C.borderHi,
+                  background: `linear-gradient(135deg, #1e38e8, ${C.ac})`,
+                  color: "rgba(255,255,255,0.96)",
+                }}
+              >
+                {couponValidating && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+                Apply
+              </button>
+            </div>
           </div>
         )}
         {couponResult && !couponResult.valid && (
@@ -762,7 +786,10 @@ export default function PricingClient() {
 
       <footer className="relative z-10 border-t px-5 py-8 sm:px-8 lg:px-10" style={{ borderColor: C.border }}>
         <div className="mx-auto flex max-w-[1280px] items-center justify-between">
-          <span className="text-[11px] text-white/25">Talaria</span>
+          <span className="flex items-center gap-2 text-[11px]" style={{ color: C.tm }}>
+            <Image src="/logo-04.png" alt="" width={18} height={18} className="h-[18px] w-[18px] opacity-70" />
+            Talaria-Log
+          </span>
           <div className="flex items-center gap-4">
             <Link href="/terms/" className="text-[11px] text-white/25 transition hover:text-white/45">
               Terms
