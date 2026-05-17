@@ -1100,6 +1100,71 @@ select { cursor:default; }
 .fr-bulk-delete-btn:not(:disabled):hover { opacity: .9; transform: scale(1.02); }
 .fr-bulk-status-msg { font-size: 11px; color: var(--text-muted); margin-left: auto; }
 
+/* ── Dataset Management hub (tabbed) ───────────────── */
+.ds-hub { margin-bottom: 20px; }
+.ds-hub-head {
+  display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+  gap: 12px 20px; margin-bottom: 16px;
+}
+.ds-hub-head h2 {
+  margin: 0; font-size: 15px; font-weight: 600; color: var(--text);
+  letter-spacing: -0.02em;
+}
+.ds-hub-head p {
+  margin: 6px 0 0; font-size: 12px; color: var(--text-muted); line-height: 1.5; max-width: 52rem;
+}
+.ds-hub-stats { margin-bottom: 14px; }
+.ds-hub-tabs {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 4px; border-radius: var(--radius);
+  background: var(--surface-overlay); border: 1px solid var(--border);
+}
+.ds-hub-tab {
+  appearance: none; border: none; cursor: pointer;
+  padding: 8px 14px; border-radius: var(--radius-xs);
+  font-size: 12px; font-weight: 600; color: var(--text-muted);
+  background: transparent; transition: background .15s, color .15s;
+}
+.ds-hub-tab:hover { color: var(--text-secondary); background: rgba(255,255,255,.04); }
+.ds-hub-tab.active {
+  color: var(--text); background: var(--surface-raised);
+  box-shadow: 0 1px 0 rgba(255,255,255,.06);
+}
+.ds-tab-panel { display: none; animation: dsTabIn .2s ease; }
+.ds-tab-panel.active { display: block; }
+@keyframes dsTabIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ds-tab-panel .card { margin-bottom: 16px; }
+.ds-tab-panel .card:last-child { margin-bottom: 0; }
+#sec-datasets [data-ds-group] { display: none !important; }
+#sec-datasets.ds-hub-view-overview [data-ds-group="overview"],
+#sec-datasets.ds-hub-view-import [data-ds-group="import"],
+#sec-datasets.ds-hub-view-sync [data-ds-group="sync"],
+#sec-datasets.ds-hub-view-maintenance [data-ds-group="maintenance"],
+#sec-datasets.ds-hub-view-library [data-ds-group="library"] {
+  display: block !important;
+}
+#sec-datasets.ds-hub-view-library .grid-2 { display: grid !important; }
+#sec-datasets.ds-hub-view-registry > *:not(.ds-hub) { display: none !important; }
+#sec-dataset-registry { display: none !important; }
+#sec-dataset-registry.ds-hub-registry-visible {
+  display: block !important;
+  animation: fadeIn .32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+#sec-dataset-registry.ds-hub-registry-visible #datasetRegistrySummary { display: none; }
+.ds-import-grid {
+  display: grid; grid-template-columns: 1fr; gap: 16px;
+}
+@media (min-width: 1100px) {
+  .ds-import-grid.ds-import-split { grid-template-columns: 1.15fr 0.85fr; align-items: start; }
+}
+.ds-card-lead {
+  font-size: 12px; color: var(--text-muted); margin: 0 0 14px; line-height: 1.55;
+}
+.ds-card-lead code { font-size: 10px; }
+
 /* ── Dataset registry (all datasets / health) ─────── */
 .dr-registry-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .dr-registry-wrap th, .dr-registry-wrap td {
@@ -1832,10 +1897,6 @@ select { cursor:default; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
         Datasets
       </a>
-      <a class="nav-item" data-section="dataset-registry" onclick="navigate('dataset-registry')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-        Dataset registry
-      </a>
       <a class="nav-item" data-section="insights" onclick="navigate('insights')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
         Analytics &amp; VPS
@@ -1975,7 +2036,7 @@ select { cursor:default; }
             <div class="adm-map-title">Engine performance</div>
             <div class="adm-map-desc">CPU, memory, charts — partial in Analytics &amp; VPS; deeper perf: roadmap.</div>
           </button>
-          <button type="button" class="adm-map-card" onclick="navigate('dataset-registry')" title="Dataset registry &amp; health">
+          <button type="button" class="adm-map-card" onclick="navigate('datasets'); setDsHubTab('registry')" title="Dataset registry &amp; health">
             <span class="adm-bdg adm-bdg-ops">Ops</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Data feed health</div>
@@ -2233,19 +2294,57 @@ select { cursor:default; }
       </div>
 
       <!-- ════════ DATASETS SECTION ════════ -->
-      <div class="section" id="sec-datasets">
-        <!-- FirstRate Data — primary vendor; Dukascopy card below for quick M1 samples -->
-        <div class="card" style="margin-bottom:16px">
+      <div class="section ds-hub-view-overview" id="sec-datasets">
+        <div class="ds-hub">
+          <div class="ds-hub-head">
+            <div>
+              <h2>Market data pipeline</h2>
+              <p>One place for imports, sync status, registry health, and per-dataset settings. Use the tabs — the separate “Dataset registry” page is merged here.</p>
+            </div>
+          </div>
+          <div class="stat-cards ds-hub-stats" id="dsHubSummary">
+            <div class="stat-card accent"><div class="label">Datasets</div><div class="value" id="dsHubCount">—</div></div>
+            <div class="stat-card warn"><div class="label">Disk (all)</div><div class="value" style="font-size:18px" id="dsHubDisk">—</div></div>
+            <div class="stat-card ok"><div class="label">Healthy</div><div class="value" id="dsHubHealthy">—</div></div>
+            <div class="stat-card danger"><div class="label">Needs attention</div><div class="value" id="dsHubAttention">—</div></div>
+          </div>
+          <div class="ds-hub-tabs" role="tablist">
+            <button type="button" class="ds-hub-tab active" data-ds-tab="overview" onclick="setDsHubTab('overview')">Overview</button>
+            <button type="button" class="ds-hub-tab" data-ds-tab="registry" onclick="setDsHubTab('registry')">Registry</button>
+            <button type="button" class="ds-hub-tab" data-ds-tab="library" onclick="setDsHubTab('library')">Library</button>
+            <button type="button" class="ds-hub-tab" data-ds-tab="import" onclick="setDsHubTab('import')">Import</button>
+            <button type="button" class="ds-hub-tab" data-ds-tab="sync" onclick="setDsHubTab('sync')">Sync health</button>
+            <button type="button" class="ds-hub-tab" data-ds-tab="maintenance" onclick="setDsHubTab('maintenance')">Maintenance</button>
+          </div>
+        </div>
+
+        <div class="card" data-ds-group="overview" style="margin-bottom:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+            <div class="card-title">Pipeline at a glance</div>
+          </div>
+          <div class="card-body" style="padding-top:0">
+            <p class="ds-card-lead">Stats above refresh from the registry API. Jump to a task:</p>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+              <button type="button" class="btn sm primary" onclick="setDsHubTab('import')">Import data</button>
+              <button type="button" class="btn sm" onclick="setDsHubTab('registry')">Open registry</button>
+              <button type="button" class="btn sm" onclick="setDsHubTab('library')">Manage library</button>
+              <button type="button" class="btn sm" onclick="setDsHubTab('sync')">Sync health</button>
+              <button type="button" class="btn sm" onclick="setDsHubTab('maintenance')">Duplicates</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="dsCardFirstrate" data-ds-group="import" style="margin-bottom:16px">
           <div class="card-hdr">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <div class="card-title">Download dataset (FirstRate Data)</div>
+            <div class="card-title">FirstRate import</div>
           </div>
           <div class="card-body">
             <!-- FirstRate Data (official vendor ZIP → chart datasets) -->
             <div>
-              <p style="font-size:12px;color:var(--text-muted);margin:0 0 16px;line-height:1.55">
-                Pick an instrument type, a period, a timeframe, and optionally the tickers you want — then hit <strong>Download &amp; import now</strong>. Each matching symbol in the vendor ZIP becomes a dataset you can chart.
-                Requires <code style="font-size:10px">FIrstrate_USERID</code> on the server.
+              <p class="ds-card-lead">
+                Choose type, period, timeframe, and optional tickers, then <strong>Download &amp; import now</strong>. Requires <code style="font-size:10px">FIrstrate_USERID</code> on the server.
               </p>
               <div class="form-grid">
                 <div class="field">
@@ -2447,10 +2546,10 @@ select { cursor:default; }
         </div>
 
         <!-- Dukascopy: server-side M1 CSV (dukascopy-node) — no FirstRate account needed -->
-        <div class="card" id="dukascopyFetchCard" style="margin-bottom:16px">
+        <div class="card" id="dukascopyFetchCard" data-ds-group="import" style="margin-bottom:16px">
           <div class="card-hdr">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <div class="card-title">Download sample data (Dukascopy M1)</div>
+            <div class="card-title">Dukascopy sample (M1)</div>
           </div>
           <div class="card-body">
             <p style="font-size:12px;color:var(--text-muted);margin:0 0 14px;line-height:1.55">
@@ -2491,7 +2590,7 @@ select { cursor:default; }
         </div>
 
         <!-- Daily Sync Overview — at-a-glance status of the nightly auto-update pipeline -->
-        <div class="card" id="frDailySyncCard" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 30%, var(--border))">
+        <div class="card" id="frDailySyncCard" data-ds-group="overview" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 30%, var(--border))">
           <div class="card-hdr">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             <div class="card-title">Daily Sync Overview</div>
@@ -2540,7 +2639,7 @@ select { cursor:default; }
         </div>
 
         <!-- Live FirstRate import status (polls VPS job files) -->
-        <div class="card" id="frLiveImportCard" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 35%, var(--border))">
+        <div class="card" id="frLiveImportCard" data-ds-group="overview" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 35%, var(--border))">
           <div class="card-hdr">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <div class="card-title">FirstRate download / import</div>
@@ -2560,7 +2659,7 @@ select { cursor:default; }
         </div>
 
         <!-- Nightly sync health — per-asset visualization of the auto-update outcome. -->
-        <div class="card" id="frNightlyHealthCard" style="margin-bottom:16px">
+        <div class="card" id="frNightlyHealthCard" data-ds-group="sync" style="margin-bottom:16px">
           <div class="card-hdr">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
             <div class="card-title">Nightly sync health</div>
@@ -2698,7 +2797,7 @@ select { cursor:default; }
              executes a destructive consolidate (with confirmation phrase).
              Losers are quarantined under uploads/_quarantine/, never truly
              deleted, so a manual restore is always possible. -->
-        <div class="card" id="frDuplicatesCard" style="margin-bottom:16px">
+        <div class="card" id="frDuplicatesCard" data-ds-group="maintenance" style="margin-bottom:16px">
           <div class="card-hdr">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
             <div class="card-title">FirstRate duplicate datasets</div>
@@ -2730,7 +2829,7 @@ select { cursor:default; }
         </div>
 
         <!-- Dataset List + Settings -->
-        <div class="grid-2">
+        <div class="grid-2" data-ds-group="library">
           <div class="card">
             <div class="card-hdr">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
@@ -2801,7 +2900,7 @@ select { cursor:default; }
       </div>
 
       <!-- ════════ DATASET REGISTRY (ALL / HEALTH / SIZING) ════════ -->
-      <div class="section" id="sec-dataset-registry">
+      <div class="section ds-hub-registry-hidden" id="sec-dataset-registry">
         <div class="stat-cards" id="datasetRegistrySummary"></div>
         <div class="card">
           <div class="card-hdr">
@@ -3442,6 +3541,59 @@ const sectionTitles = {
   settings: 'Settings'
 };
 
+const DS_HUB_TABS = ['overview', 'registry', 'library', 'import', 'sync', 'maintenance'];
+let dsHubTab = 'overview';
+
+function fillDsHubSummary(s) {
+  s = s || {};
+  const set = function (id, v) { const el = $(id); if (el) el.textContent = v; };
+  set('dsHubCount', fmtN(s.dataset_count || 0));
+  set('dsHubDisk', s.total_storage_human || '—');
+  set('dsHubHealthy', fmtN(s.healthy_count || 0));
+  set('dsHubAttention', fmtN(s.needs_attention_count || 0));
+}
+
+function parseDsHubTabFromHash() {
+  const h = (window.location.hash || '').replace('#', '');
+  if (h === 'dataset-registry' || h === 'datasets:registry') return 'registry';
+  if (h.indexOf('datasets:') === 0) {
+    const t = h.split(':')[1];
+    if (DS_HUB_TABS.indexOf(t) >= 0) return t;
+  }
+  return 'overview';
+}
+
+function setDsHubTab(tab, opts) {
+  opts = opts || {};
+  tab = String(tab || 'overview').toLowerCase();
+  if (DS_HUB_TABS.indexOf(tab) < 0) tab = 'overview';
+  dsHubTab = tab;
+  const sec = $('sec-datasets');
+  if (sec) {
+    DS_HUB_TABS.forEach(function (t) { sec.classList.remove('ds-hub-view-' + t); });
+    sec.classList.add('ds-hub-view-' + tab);
+  }
+  document.querySelectorAll('.ds-hub-tab').forEach(function (btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-ds-tab') === tab);
+  });
+  const regSec = $('sec-dataset-registry');
+  if (regSec) {
+    regSec.classList.toggle('ds-hub-registry-visible', tab === 'registry');
+    regSec.classList.toggle('ds-hub-registry-hidden', tab !== 'registry');
+  }
+  if (tab === 'registry' && !opts.skipRegistryLoad) loadDatasetRegistry();
+  if (tab === 'library') loadDatasets(true).catch(function () {});
+  window.location.hash = tab === 'overview' ? 'datasets' : ('datasets:' + tab);
+}
+
+function clearDsHubRegistryPanel() {
+  const regSec = $('sec-dataset-registry');
+  if (regSec) {
+    regSec.classList.remove('ds-hub-registry-visible');
+    regSec.classList.add('ds-hub-registry-hidden');
+  }
+}
+
 let supportThreads = [];
 let selectedSupportId = null;
 let supportMessages = [];
@@ -3845,14 +3997,22 @@ function auditLogPrevPage() {
 
 function navigate(section) {
   stopInsightsSystemPoll();
+  let dsTabOverride = null;
+  if (section === 'dataset-registry') {
+    section = 'datasets';
+    dsTabOverride = 'registry';
+  }
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const sec = $('sec-' + section);
   const nav = document.querySelector(`.nav-item[data-section="${section}"]`);
   if (sec) sec.classList.add('active');
   if (nav) nav.classList.add('active');
-  $('pageTitle').textContent = sectionTitles[section] || section;
-  window.location.hash = section;
+  $('pageTitle').textContent = sectionTitles[section] || sectionTitles['dataset-registry'] || section;
+  if (section !== 'datasets') {
+    window.location.hash = section;
+    clearDsHubRegistryPanel();
+  }
   if (section !== 'support') {
     if (supportWs && supportWs.readyState === 1 && selectedSupportId) {
       try { supportWs.send(JSON.stringify({ type: 'unsubscribe', thread_id: selectedSupportId })); } catch (e) {}
@@ -3860,7 +4020,11 @@ function navigate(section) {
     }
   }
   if (section === 'sessions') loadSessions();
-  if (section === 'dataset-registry') loadDatasetRegistry();
+  if (section === 'datasets') {
+    const dsTab = dsTabOverride || parseDsHubTabFromHash();
+    setDsHubTab(dsTab, { skipRegistryLoad: true });
+    loadDatasetRegistry().catch(function (e) { console.error('loadDatasetRegistry', e); });
+  }
   if (section === 'insights') loadInsightsAnalyticsPage();
   if (section === 'subscriptions') loadSubscriptionData();
   if (section === 'payments') loadPayments();
@@ -3946,7 +4110,9 @@ let insightsOverviewCache = null;
     setInterval(function () { try { loadSessions(); } catch (e) {} }, 10000);
 
     const hash = window.location.hash.replace('#', '');
-    if (hash && sectionTitles[hash]) {
+    if (hash === 'dataset-registry' || hash.indexOf('datasets:') === 0) {
+      try { navigate('datasets'); } catch (e) { console.error('navigate', e); }
+    } else if (hash && sectionTitles[hash]) {
       try { navigate(hash); } catch (e) { console.error('navigate', e); }
     }
   } catch (e) {
@@ -4701,6 +4867,7 @@ async function loadDatasetRegistry() {
     const data = await api('/api/admin/datasets/overview');
     datasetRegistrySnapshot = data;
     const s = data.summary || {};
+    fillDsHubSummary(s);
     if (badge) badge.textContent = String(s.dataset_count || 0);
     if (genEl) genEl.textContent = data.generated_at ? ('Snapshot: ' + data.generated_at) : '';
     if (sumEl) {
@@ -4808,6 +4975,7 @@ function renderDatasetRegistryTable(data) {
 
 async function goToDatasetFromRegistry(fileId) {
   navigate('datasets');
+  setDsHubTab('library');
   try {
     await loadDatasets(true);
     const ds = allDatasets.find(function (d) { return d.id === fileId; });
