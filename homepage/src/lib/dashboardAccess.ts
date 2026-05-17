@@ -14,13 +14,16 @@ export const DASHBOARD_MODULE_LABELS: Record<string, string> = {
 
 export type DashboardUser = {
   role?: string;
+  /** Journal API / billing entitlement (subscription, extension window, manual full). */
   has_journal_access?: boolean;
+  /** Admin manual "all sections" flag (raw DB column). */
+  manual_full_access?: boolean;
   /** True when full subscription/manual access OR any admin-granted section. */
   has_dashboard_access?: boolean;
   dashboard_modules?: Record<string, boolean>;
 };
 
-/** Full subscription, manual full access, admin extension, or admin role. */
+/** Journal API entitlement — not used for per-section dashboard nav. */
 export function userHasJournalEntitlement(user: DashboardUser | null): boolean {
   if (!user) return false;
   if (user.role === "admin") return true;
@@ -29,18 +32,19 @@ export function userHasJournalEntitlement(user: DashboardUser | null): boolean {
 
 export function userHasAnyDashboardAccess(user: DashboardUser | null): boolean {
   if (!user) return false;
-  if (userHasJournalEntitlement(user)) return true;
+  if (user.role === "admin") return true;
   if (user.has_dashboard_access) return true;
   const mods = user.dashboard_modules;
   return !!(mods && Object.values(mods).some(Boolean));
 }
 
+/** Section access — uses server-resolved dashboard_modules only (not has_journal_access). */
 export function userHasDashboardModule(
   user: DashboardUser | null,
   module: string
 ): boolean {
   if (!user) return false;
-  if (userHasJournalEntitlement(user)) return true;
+  if (user.role === "admin") return true;
   const key = module.trim().toLowerCase();
   return !!user.dashboard_modules?.[key];
 }

@@ -22,6 +22,7 @@ type User = {
   email: string;
   role: string;
   has_journal_access?: boolean;
+  manual_full_access?: boolean;
   has_dashboard_access?: boolean;
   dashboard_modules?: Record<string, boolean>;
 };

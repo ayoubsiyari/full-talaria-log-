@@ -3,17 +3,20 @@
 from flask import current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 
-from dashboard_access import user_has_dashboard_module
+from dashboard_access import (
+    user_has_any_dashboard_access,
+    user_has_dashboard_module,
+    user_has_full_dashboard_modules,
+)
 from models import User
-from subscription_access import user_entitles_journal
 
 
 def user_may_access_paid_route(user, required_module: str | None) -> bool:
-    if user_entitles_journal(user):
+    if user_has_full_dashboard_modules(user):
         return True
-    if required_module and user_has_dashboard_module(user, required_module):
-        return True
-    return False
+    if required_module:
+        return user_has_dashboard_module(user, required_module)
+    return user_has_any_dashboard_access(user)
 
 
 def register_paid_journal_guard(

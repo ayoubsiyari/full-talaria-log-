@@ -1227,14 +1227,14 @@ export function BacktestView() {
                           <rect x="11" y="11" width="8" height="8" fill={hov === `cdb_${sess.id}` ? c.tx : c.ts} />
                         </svg>
                       </div>
-                      <div style={{ flex: 1, minWidth: 0, padding: "0 8px", display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
+                      <div style={{ flex: 1, minWidth: 0, padding: "0 8px", display: "flex", alignItems: "center", gap: 6, overflow: "hidden", fontFamily: F }}>
                         <div style={{
-                          fontSize: nm.length > 22 ? 9 : nm.length > 15 ? 10 : 11,
-                          fontWeight: 700, color: c.ts, lineHeight: 1.3, fontFamily: F,
+                          fontSize: nm.length > 20 ? 9 : nm.length > 15 ? 10 : 11,
+                          fontWeight: 600, color: c.ts, lineHeight: 1.35,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                           flex: 1, minWidth: 0,
                         }}>{sess.name || "—"}</div>
-                        <div style={{ fontSize: 8, fontWeight: 500, color: c.tm, fontFamily: F, whiteSpace: "nowrap", flexShrink: 0 }}>{createdStr}</div>
+                        <div style={{ fontSize: 9, fontWeight: 500, color: c.tm, lineHeight: 1.35, whiteSpace: "nowrap", flexShrink: 0 }}>{createdStr}</div>
                         <SessionInfoButton
                           active={descPop?.key === sessPopKey}
                           label="Session description"
@@ -1450,7 +1450,7 @@ export function BacktestView() {
                   <div key={sess.id}
                     onMouseEnter={() => setHov(`row_${sess.id}`)} onMouseLeave={() => setHov(null)}
                     style={{ borderTop: `1px solid ${isH ? (isProp ? "rgba(201,168,76,0.35)" : c.acB) : c.brH}`, borderRight: `1px solid ${isH ? (isProp ? "rgba(201,168,76,0.35)" : c.acB) : c.brH}`, borderBottom: `1px solid ${isH ? (isProp ? "rgba(201,168,76,0.35)" : c.acB) : c.brH}`, borderLeft: `3px solid ${stripeCol}`, background: c.sf, cursor: "default", boxShadow: isH ? `0 0 0 1px ${isProp ? "rgba(201,168,76,0.2)" : c.acB},0 4px 24px rgba(0,0,0,0.6)` : "0 3px 12px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", minHeight: 80, overflow: "hidden", marginBottom: 6 }}>
-                    <div style={{ display: "flex", alignItems: "stretch", flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", flex: 1, minHeight: 80 }}>
                       {/* Action buttons */}
                       <div style={{ width: 96, flexShrink: 0, display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: "0 10px" }}>
                         <div onClick={e => { e.stopPropagation(); openSession(sess); }}
@@ -1467,13 +1467,13 @@ export function BacktestView() {
                         </div>
                       </div>
                       {/* Session name + date */}
-                      <div style={{ width: 172, flexShrink: 0, padding: "0 10px", display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
+                      <div style={{ width: 172, flexShrink: 0, padding: "0 10px", display: "flex", alignItems: "center", gap: 6, overflow: "hidden", fontFamily: F }}>
                         <div style={{
-                          fontSize: (sess.name || "").length > 24 ? 8 : (sess.name || "").length > 16 ? 9 : 10,
-                          fontWeight: 700, color: c.ts, lineHeight: 1.3, flex: 1, minWidth: 0,
+                          fontSize: (sess.name || "").length > 20 ? 9 : (sess.name || "").length > 13 ? 10 : 11,
+                          fontWeight: 600, color: c.ts, lineHeight: 1.35, flex: 1, minWidth: 0,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>{sess.name || "—"}</div>
-                        <div style={{ fontSize: 7, color: c.tm, whiteSpace: "nowrap", flexShrink: 0 }}>{createdStr}</div>
+                        <div style={{ fontSize: 9, fontWeight: 500, color: c.tm, lineHeight: 1.35, whiteSpace: "nowrap", flexShrink: 0 }}>{createdStr}</div>
                         <SessionInfoButton
                           active={descPop?.key === sessPopKey}
                           label="Session description"
@@ -1482,8 +1482,8 @@ export function BacktestView() {
                         />
                       </div>
                       {/* Strategy + info */}
-                      <div style={{ width: 100, flexShrink: 0, padding: "0 8px 0 10px", display: "flex", alignItems: "center", gap: 4, overflow: "hidden" }}>
-                        <div style={{ fontSize: (cfgS?.strategy_name || "").length > 20 ? 9 : (cfgS?.strategy_name || "").length > 13 ? 10 : 11, fontWeight: 600, color: c.ts, lineHeight: 1.35, wordBreak: "break-word" as const, flex: 1, minWidth: 0 }}>{cfgS?.strategy_name || "—"}</div>
+                      <div style={{ width: 100, flexShrink: 0, padding: "0 8px 0 10px", display: "flex", alignItems: "center", gap: 4, overflow: "hidden", fontFamily: F }}>
+                        <div style={{ fontSize: (cfgS?.strategy_name || "").length > 20 ? 9 : (cfgS?.strategy_name || "").length > 13 ? 10 : 11, fontWeight: 600, color: c.ts, lineHeight: 1.35, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cfgS?.strategy_name || "—"}</div>
                         <SessionInfoButton
                           active={descPop?.key === stratPopKey}
                           label="Strategy description"
@@ -1527,7 +1527,6 @@ export function BacktestView() {
                         alignItems: "center",
                         justifyContent: "center",
                         overflow: "hidden",
-                        alignSelf: "stretch",
                       }}>
                         {tickerRows.length === 0 ? (
                           sess.symbol ? (
