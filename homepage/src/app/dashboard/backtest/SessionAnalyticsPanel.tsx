@@ -1391,7 +1391,7 @@ export function SessionAnalyticsPanel({
 
       {journalFetched && sessionId && !loading && !journalError && allTrades.length === 0 ? (
         <div className="bt-os-inline-hint">
-          No trades in <code>state.journal</code> for this session. Import a CSV with <strong>Import trades CSV</strong> (see
+          No journal trades for this session yet. Import a CSV with <strong>Import trades CSV</strong> (see
           Demo 500) or record trades in the chart for this session.
         </div>
       ) : null}

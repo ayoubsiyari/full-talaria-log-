@@ -110,6 +110,7 @@ _load_dotenv_files_from_chart_dir()
 
 import chart_redis
 import backtest_whatif as bw
+import session_journal_store as sjs
 
 from analytics_engine import (
     normalize_trades,
@@ -1455,7 +1456,14 @@ async def get_trading_session_analytics(session_id: int, request: Request):
 
         st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
         state = _parse_json_dict(st.state_json)
-        journal = state.get("journal") if isinstance(state.get("journal"), list) else []
+        journal = sjs.resolve_session_journal(
+            db,
+            s.id,
+            s.user_id,
+            state,
+            journal_trade_model=TradingSessionJournalTrade,
+            sync_fn=_sync_trading_session_journal_trades,
+        )
         session_public = _session_public_dict(s)
         analytics = _compute_session_analytics(session_public, journal)
         return {"analytics": _sanitize_for_json(analytics)}
@@ -1593,7 +1601,14 @@ def _compute_backtest_whatif_for_session(
 
     st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
     state = _parse_json_dict(st.state_json)
-    journal = state.get("journal") if isinstance(state.get("journal"), list) else []
+    journal = sjs.resolve_session_journal(
+        db,
+        s.id,
+        s.user_id,
+        state,
+        journal_trade_model=TradingSessionJournalTrade,
+        sync_fn=_sync_trading_session_journal_trades,
+    )
 
     cfg: dict = {}
     try:
@@ -14341,6 +14356,15 @@ async def get_trading_session_state(session_id: int, request: Request):
 
         st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
         state = _parse_json_dict(st.state_json)
+        journal = sjs.resolve_session_journal(
+            db,
+            s.id,
+            s.user_id,
+            state,
+            journal_trade_model=TradingSessionJournalTrade,
+            sync_fn=_sync_trading_session_journal_trades,
+        )
+        sjs.apply_journal_to_state_for_response(state, journal)
         return {
             "state": {
                 "drawings": state.get("drawings") if isinstance(state.get("drawings"), list) else [],
@@ -14417,11 +14441,27 @@ async def import_trading_session_journal_csv(
 
         st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
         state = _parse_json_dict(st.state_json)
-        existing = state.get("journal") if isinstance(state.get("journal"), list) else []
+        existing = sjs.resolve_session_journal(
+            db,
+            s.id,
+            s.user_id,
+            state,
+            journal_trade_model=TradingSessionJournalTrade,
+            sync_fn=_sync_trading_session_journal_trades,
+        )
         if mode_clean == "append":
-            state["journal"] = list(existing) + list(new_trades)
+            merged = list(existing) + list(new_trades)
         else:
-            state["journal"] = list(new_trades)
+            merged = list(new_trades)
+        try:
+            sjs.enforce_journal_trade_limit(merged)
+        except sjs.JournalTradeLimitExceeded as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+        _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=merged)
+        if sjs.strip_journal_from_state_json_enabled():
+            sjs.strip_journal_from_persisted_state(state)
+        else:
+            state["journal"] = merged
 
         new_state_json = json.dumps(state, separators=(",", ":"))
         new_size = len(new_state_json.encode("utf-8"))
@@ -14437,11 +14477,9 @@ async def import_trading_session_journal_csv(
             )
 
         st.state_json = new_state_json
-        j = state["journal"]
-        if isinstance(j, list):
-            _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=j)
         db.commit()
         db.refresh(st)
+        journal_len = len(merged)
         warning = None
         if new_size > SESSION_STATE_SOFT_LIMIT_BYTES:
             warning = (
@@ -14451,7 +14489,7 @@ async def import_trading_session_journal_csv(
         return {
             "imported": len(new_trades),
             "mode": mode_clean,
-            "journal_len": len(j) if isinstance(j, list) else 0,
+            "journal_len": journal_len,
             "warnings": list(parsed.get("warnings") or []),
             "warning": warning,
         }
@@ -14614,7 +14652,15 @@ async def patch_trading_session_state(session_id: int, request: Request):
         if payload.drawings is not None:
             state["drawings"] = payload.drawings
         if payload.journal is not None:
-            state["journal"] = payload.journal
+            try:
+                sjs.enforce_journal_trade_limit(payload.journal)
+            except sjs.JournalTradeLimitExceeded as exc:
+                raise HTTPException(status_code=413, detail=str(exc)) from exc
+            _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=payload.journal)
+            if sjs.strip_journal_from_state_json_enabled():
+                sjs.strip_journal_from_persisted_state(state)
+            else:
+                state["journal"] = payload.journal
         if payload.journal_by_ticker is not None:
             state["journal_by_ticker"] = payload.journal_by_ticker
         if payload.per_instrument_stats is not None:
@@ -14680,10 +14726,6 @@ async def patch_trading_session_state(session_id: int, request: Request):
             )
 
         st.state_json = new_state_json
-        if payload.journal is not None:
-            j = state.get("journal")
-            if isinstance(j, list):
-                _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=j)
         db.commit()
         db.refresh(st)
         resp = {"success": True, "size_bytes": new_size}
@@ -14735,6 +14777,9 @@ async def delete_trading_session(session_id: int, request: Request):
         state = db.query(TradingSessionState).filter(TradingSessionState.session_id == session_id).first()
         if state:
             db.delete(state)
+        db.query(TradingSessionJournalTrade).filter(
+            TradingSessionJournalTrade.session_id == session_id
+        ).delete(synchronize_session=False)
         db.delete(s)
         db.commit()
         return {"success": True}

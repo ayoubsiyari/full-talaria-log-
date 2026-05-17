@@ -4,6 +4,8 @@ Plan to support many concurrent backtest users: stable chart loads, reliable ses
 
 **Recommended order:** Track A → Track B → Track C (use Phase 0 metrics to confirm each step).
 
+**How to test:** see [backtest-scaling-test-guide.md](./backtest-scaling-test-guide.md) (steps + expected HTTP/UI output).
+
 | Track | Focus | Main win |
 |-------|--------|----------|
 | **A** | Debounce + rate limits + client cache | Fewer request storms, fair usage |
@@ -128,39 +130,39 @@ Plan to support many concurrent backtest users: stable chart loads, reliable ses
 
 ### C1 — Data model & sync rules
 
-- [ ] Confirm `TradingSessionJournalTrade` has all fields what-if / journal UI need
-- [ ] Document single source of truth: **journal trades → SQL**; **drawings/UI chrome → `state_json`**
-- [ ] On PATCH state: upsert journal rows from `state.journal` (idempotent by `client_trade_id`)
-- [ ] On GET session: optionally hydrate `state.journal` from SQL for backward compatibility (transition)
-- [ ] Migration script: backfill SQL journal from existing `state_json` for active sessions
+- [x] `TradingSessionJournalTrade.payload_json` stores full trade dict (what-if / UI fields)
+- [x] Source of truth: **journal → SQL**; **drawings/replay/chart → `state_json`** (`session_journal_store.py`)
+- [x] PATCH: upsert SQL from `payload.journal` (idempotent `client_trade_id`)
+- [x] GET `/state`: hydrate `journal` from SQL (+ legacy backfill on first read)
+- [x] Script: `chart v 1.4/chart/scripts/backfill_session_journal_sql.py`
 
 ### C2 — Shrink `state_json`
 
-- [ ] Stop writing full journal into `state_json` once SQL is authoritative (feature flag)
-- [ ] Keep drawings, layout, replay position, chart prefs in `state_json`
-- [ ] Verify PATCH payload size drops (target: most PATCHs &lt; 100–500 KB)
-- [ ] Soft/hard limits (4 MB / 16 MB) still enforced — should rarely hit now
+- [x] `SESSION_STRIP_JOURNAL_FROM_STATE_JSON=true` — journal not persisted in blob after PATCH/import
+- [x] Drawings, replay, orders, chart prefs remain in `state_json`
+- [ ] Verify PATCH **stored** size drops on staging (Network: response `size_bytes`)
+- [x] 4 MB / 16 MB limits unchanged
 
 ### C3 — What-if & analytics read from SQL
 
-- [ ] Change what-if handler to load trades from `TradingSessionJournalTrade` (not only `state_json`)
-- [ ] Align `/api/sessions/{id}/journal-trades` with chart journal UI
-- [ ] Ensure filters (pair, playbook, strategy) work on SQL-backed payloads
-- [ ] Index check: `(session_id)`, `(user_id, session_id)` — add if slow queries appear
+- [x] `_compute_backtest_whatif_for_session` uses `resolve_session_journal` (SQL first)
+- [x] `GET /api/sessions/{id}/analytics` uses SQL journal
+- [x] Filters unchanged (same trade payload shape)
+- [x] Indexes on `session_id`, `user_id` (existing model)
 
 ### C4 — Guardrails & housekeeping
 
-- [ ] Enforce `MAX_JOURNAL_TRADES_PER_SESSION` (env + API 413/400 with clear message)
-- [ ] Enforce max drawings count or size in `state_json` (optional)
-- [ ] Run/admin document archive stale sessions (`SESSION_ARCHIVE_DIR` in `api_server.py`)
-- [ ] Cron or admin endpoint: archive sessions inactive &gt; N days
-- [ ] Monitor Postgres table size: `trading_session_states` vs `trading_session_journal_trades`
+- [x] `MAX_JOURNAL_TRADES_PER_SESSION` (default 5000) → **413** on PATCH/import
+- [ ] Max drawings cap (optional, not implemented)
+- [ ] Archive stale sessions (existing admin paths — document only)
+- [ ] Cron for inactive sessions (not implemented)
+- [ ] Monitor table sizes on staging
 
 ### C5 — Frontend alignment
 
-- [ ] Chart journal save: PATCH still works but server persists trades to SQL
-- [ ] Journal dashboard / `TradesView` uses SQL-backed list APIs where possible
-- [ ] Handle migration: old sessions with journal only in JSON still load once (backfill on read)
+- [x] Chart PATCH unchanged; server writes SQL + strips blob journal
+- [x] `GET /api/journal-trades` already SQL-backed
+- [x] Legacy JSON-only sessions backfill on first GET/what-if
 
 ### C6 — Track C verification
 
@@ -211,6 +213,8 @@ Plan to support many concurrent backtest users: stable chart loads, reliable ses
 |------|------|
 | Chart API, sessions, what-if, tiles | `chart v 1.4/chart/api_server.py` |
 | What-if compute + cache keys | `chart v 1.4/chart/backtest_whatif.py` |
+| Journal SQL primary + strip blob | `chart v 1.4/chart/session_journal_store.py` |
+| Backfill script | `chart v 1.4/chart/scripts/backfill_session_journal_sql.py` |
 | Redis rate limits + binary/whatif queues | `chart v 1.4/chart/chart_redis.py` |
 | What-if UI | `homepage/src/app/dashboard/backtest/SessionAnalyticsPanel.tsx` |
 | Backtest chart load | `homepage/public/chart/chart.js` (`autoLoadBacktestingData`, `_fetchSmartWindow`) |
@@ -226,7 +230,7 @@ Plan to support many concurrent backtest users: stable chart loads, reliable ses
 | Phase 0 — Baseline | ⬜ Not started |
 | Track A | 🟡 In progress (A1–A4 coded; A5 verify pending) |
 | Track B | 🟡 In progress (B1–B5 coded; B6 verify pending) |
-| Track C | ⬜ Not started |
+| Track C | 🟡 In progress (C1–C5 coded; C6 verify pending) |
 | Optional Phase 2 | ⬜ Not started |
 | Production readiness | ⬜ Not started |
 
