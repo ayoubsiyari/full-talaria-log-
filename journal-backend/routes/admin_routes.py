@@ -132,6 +132,15 @@ def log_admin_action(action, details=""):
     if len(recent_activities) > 100:
         recent_activities.pop(0)
 
+@admin_bp.route('/dashboard-modules', methods=['GET'])
+@jwt_required()
+@admin_required
+def dashboard_modules_catalog():
+    from dashboard_access import modules_catalog
+
+    return jsonify({"modules": modules_catalog()}), 200
+
+
 @admin_bp.route('/dashboard', methods=['GET'])
 @jwt_required()
 @rate_limit_admin(max_requests=20, window_seconds=60)

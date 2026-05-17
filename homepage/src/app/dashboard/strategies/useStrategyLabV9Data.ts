@@ -71,7 +71,7 @@ export function useStrategyLabV9Data() {
       if (!res.ok) {
         if (res.status === 502 || res.status === 503 || res.status === 504) {
           setStrategiesError(
-            "Strategy API is unavailable (502). On the server run: docker compose up -d --build journal-backend",
+            "Strategy API is temporarily unavailable. Please try again in a minute.",
           );
           setMyStrategies([]);
           return;

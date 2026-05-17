@@ -2,25 +2,13 @@
 
 from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, jwt_required
+from flask_jwt_extended import JWTManager
 from models import db
 from config import Config, init_prod_config
 from email_service import init_mail
 import os
 
-# 1️⃣ Import the Blueprint objects by name:
-from routes.auth_routes import auth_bp
-# Use the new modular journal routes package
-from routes.journal import journal_bp
-from routes.profile_routes import profile_bp
-from routes.admin_routes import admin_bp  # <-- your new admin routes
-from routes.strategy_routes import strategy_bp
-from routes.feed_routes import feed_bp
-from routes.template_routes import template_bp
-from routes.feature_flags_routes import feature_flags_bp
-from routes.subscription_routes import subscription_bp
-from routes.chart_routes import chart_bp
-from routes.paid_access import register_paid_journal_guard
+from routes.blueprint_setup import register_all_blueprints
 from db_schema import ensure_users_schema
 
 import jwt as pyjwt
@@ -64,48 +52,7 @@ else:
          allow_headers=['Content-Type', 'Authorization', 'X-Requested-With'],
          methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'])
 
-# Paid journal guards MUST be attached before register_blueprint (Flask 3.x).
-register_paid_journal_guard(strategy_bp, required_module="strategies")
-register_paid_journal_guard(profile_bp, required_module="journal")
-register_paid_journal_guard(chart_bp, required_module="chart")
-register_paid_journal_guard(
-    feed_bp,
-    required_module="community",
-    skip_endpoints=frozenset({"feed.feed_explore"}),
-)
-register_paid_journal_guard(
-    template_bp,
-    required_module="strategies",
-    skip_endpoints=frozenset({"templates.list_templates_public"}),
-)
-register_paid_journal_guard(
-    feature_flags_bp,
-    skip_endpoints=frozenset({"feature_flags.get_public_feature_flags"}),
-)
-
-# Register routes
-app.register_blueprint(auth_bp,    url_prefix='/api/auth')
-app.register_blueprint(journal_bp, url_prefix='/api/journal')
-app.register_blueprint(profile_bp, url_prefix='/api/profile')
-app.register_blueprint(admin_bp,   url_prefix='/api/admin')   # ← register admin
-app.register_blueprint(strategy_bp, url_prefix='/api')
-app.register_blueprint(feed_bp, url_prefix='/api')
-app.register_blueprint(template_bp, url_prefix='/api')
-app.register_blueprint(feature_flags_bp, url_prefix='/api') # Strategy routes
-app.register_blueprint(subscription_bp, url_prefix='/api/subscriptions')  # Subscription management
-app.register_blueprint(chart_bp, url_prefix='/api/chart')  # Chart drawings
-
-@app.route('/api/admin/dashboard-modules', methods=['GET'])
-@jwt_required()
-def dashboard_modules_catalog():
-    from flask_jwt_extended import get_jwt_identity
-    from models import User
-    from dashboard_access import modules_catalog
-
-    user = User.query.get(get_jwt_identity())
-    if not user or not user.is_admin:
-        return jsonify({"error": "Admin access required"}), 403
-    return jsonify({"modules": modules_catalog()}), 200
+register_all_blueprints(app)
 
 
 @app.route('/api/health', methods=['GET'])

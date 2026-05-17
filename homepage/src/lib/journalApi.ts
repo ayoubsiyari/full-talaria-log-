@@ -46,7 +46,7 @@ export async function parseJournalJsonResponse<T>(res: Response): Promise<T> {
   if (trimmed.startsWith("<")) {
     if (res.status === 502 || res.status === 503 || res.status === 504) {
       throw new Error(
-        "Strategy API is temporarily unavailable (server maintenance). Restart journal-backend or try again in a minute.",
+        "Strategy API is temporarily unavailable. Please try again in a minute.",
       );
     }
     throw new Error(
