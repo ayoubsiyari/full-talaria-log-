@@ -8,9 +8,13 @@ import { BacktestNewSessionProvider } from "./BacktestNewSessionContext";
 import "./dashboard-shell.css";
 import {
   dashboardPathRequiresPaidJournal,
+  dashboardPathToModule,
   defaultDashboardPathForUser,
+  lockedModuleGateReason,
+  lockedModuleNavTitle,
   userCanAccessDashboardPath,
   userHasDashboardModule,
+  userHasPartialDashboardAccess,
 } from "@/lib/dashboardAccess";
 import { applyJournalTokenFromAuthResponse } from "@/lib/journalApi";
 import SubscriptionGateOverlay from "./SubscriptionGateOverlay";
@@ -384,8 +388,15 @@ export default function DashboardLayout({
 
   const gatedPath = dashboardPathRequiresPaidJournal(pathname);
   const pathAllowed = userCanAccessDashboardPath(user, pathname);
+  const blockedModule = gatedPath ? dashboardPathToModule(pathname) : null;
+  const gateReason =
+    user && blockedModule
+      ? lockedModuleGateReason(user, blockedModule)
+      : "none";
   const subscriptionWall =
     authReady && !!user && gatedPath && !pathAllowed;
+  const gateVariant =
+    gateReason === "admin_restricted" ? "admin_restricted" : "subscription";
   const gatedAuthLoading = gatedPath && !authReady;
 
   const goPricing = React.useCallback(() => {
@@ -433,7 +444,11 @@ export default function DashboardLayout({
   const handleNavClick = (id: string) => {
     const mod = navModuleForId(id);
     if (mod && user && !userHasDashboardModule(user, mod)) {
-      goPricing();
+      if (userHasPartialDashboardAccess(user)) {
+        router.push("/dashboard/support/?topic=access");
+      } else {
+        goPricing();
+      }
       return;
     }
     setActiveView(id);
@@ -598,7 +613,11 @@ export default function DashboardLayout({
                 key={id}
                 role="button"
                 tabIndex={0}
-                title={navLocked ? "Active subscription required — opens plans & pricing" : undefined}
+                title={
+                  navLocked && navMod
+                    ? lockedModuleNavTitle(user, navMod, isArabic)
+                    : undefined
+                }
                 onClick={() => handleNavClick(id)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -760,10 +779,17 @@ export default function DashboardLayout({
                 <div style={{ position: "absolute", inset: 0, background: DASH_C.bg }}>
                   <SubscriptionGateOverlay
                     active
+                    variant={gateVariant}
                     isArabic={isArabic}
                     onContinueToPlans={goPricing}
                     onAccountSettings={() => {
                       router.push("/dashboard/profile/");
+                    }}
+                    onContactSupport={() => {
+                      router.push("/dashboard/support/?topic=access");
+                    }}
+                    onGoToAllowed={() => {
+                      router.replace(defaultDashboardPathForUser(user));
                     }}
                   />
                 </div>

@@ -111,3 +111,36 @@ export function userCanAccessDashboardPath(
   if (mod === null) return true;
   return userHasDashboardModule(user, mod);
 }
+
+/** Has at least one admin-granted section but not a full paid/manual plan. */
+export function userHasPartialDashboardAccess(user: DashboardUser | null): boolean {
+  if (!user || userHasPaidFullDashboard(user)) return false;
+  return userHasAnyDashboardAccess(user);
+}
+
+/** Why a module is locked — drives nav tooltips and gate copy (not always billing). */
+export function lockedModuleGateReason(
+  user: DashboardUser | null,
+  module: string
+): "none" | "subscription" | "admin_restricted" {
+  if (!user || !module || userHasDashboardModule(user, module)) return "none";
+  if (userHasPartialDashboardAccess(user)) return "admin_restricted";
+  return "subscription";
+}
+
+export function lockedModuleNavTitle(
+  user: DashboardUser | null,
+  module: string,
+  isArabic: boolean
+): string | undefined {
+  const reason = lockedModuleGateReason(user, module);
+  if (reason === "none") return undefined;
+  if (reason === "admin_restricted") {
+    return isArabic
+      ? "هذا القسم غير مفعّل لحسابك — تواصل مع الدعم"
+      : "This section is not enabled on your account — contact support";
+  }
+  return isArabic
+    ? "يتطلب اشتراكاً نشطاً — عرض الخطط والأسعار"
+    : "Active subscription required — view plans & pricing";
+}
