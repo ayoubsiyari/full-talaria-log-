@@ -257,6 +257,53 @@ class DrawingToolsManager {
     }
 
     /**
+     * Selection bbox for toolbar placement. Line tools use anchor points (not extended stroke
+     * geometry) so trend lines with extend left/right still get a sane toolbar + bbox checks.
+     */
+    _getDrawingSelectionBBox(drawing) {
+        if (!drawing) return null;
+        const chart = this.chart;
+        const linePointTypes = new Set([
+            'trendline', 'ray', 'arrow', 'horizontal', 'vertical', 'horizontal-ray',
+            'extended-line', 'cross-line', 'curve', 'double-curve',
+        ]);
+        const pts = (drawing.virtualPoints && drawing.virtualPoints.length >= 2)
+            ? drawing.virtualPoints
+            : drawing.points;
+        if (linePointTypes.has(drawing.type) && Array.isArray(pts) && pts.length >= 2 && chart && chart.yScale) {
+            let minX = Infinity;
+            let minY = Infinity;
+            let maxX = -Infinity;
+            let maxY = -Infinity;
+            for (const p of pts) {
+                if (!p) continue;
+                const px = chart.dataIndexToPixel
+                    ? chart.dataIndexToPixel(p.x)
+                    : chart.xScale(p.x);
+                const py = chart.yScale(p.y);
+                if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+                minX = Math.min(minX, px);
+                maxX = Math.max(maxX, px);
+                minY = Math.min(minY, py);
+                maxY = Math.max(maxY, py);
+            }
+            if (!Number.isFinite(minX)) return null;
+            const pad = 14;
+            const w = Math.max(maxX - minX, 1);
+            const h = Math.max(maxY - minY, 1);
+            return { x: minX - pad, y: minY - pad, width: w + pad * 2, height: h + pad * 2 };
+        }
+        if (!drawing.group || typeof drawing.group.node !== 'function') return null;
+        try {
+            const bbox = drawing.group.node().getBBox();
+            if (bbox && Number.isFinite(bbox.x) && (bbox.width > 0 || bbox.height > 0)) {
+                return bbox;
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    /**
      * After render, re-apply handle visibility + floating toolbar (getBBox needs laid-out DOM).
      * Retries on the next frame when bbox is not ready yet — fixes “selected but no handles/bar”.
      */
@@ -277,12 +324,7 @@ class DrawingToolsManager {
             return;
         }
 
-        let bbox = null;
-        try {
-            bbox = drawing.group.node().getBBox();
-        } catch (_) {
-            bbox = null;
-        }
+        const bbox = this._getDrawingSelectionBBox(drawing);
         const bboxReady = bbox
             && Number.isFinite(bbox.x)
             && Number.isFinite(bbox.y)
@@ -4376,20 +4418,7 @@ class DrawingToolsManager {
             this.selectedDrawings = [drawing];  // Update selectedDrawings array for deselect to work
             this.renderDrawing(drawing);
 
-            // Show toolbar immediately after drawing is completed
-            if (drawing.group && this.toolbar) {
-                try {
-                    const node = drawing.group.node();
-                    const bbox = node ? node.getBBox() : null;
-                    if (bbox && bbox.width > 0) {
-                        const svgRect = this.svg.node().getBoundingClientRect();
-                        const x = svgRect.left + bbox.x + (bbox.width / 2);
-                        const y = svgRect.top + bbox.y;
-                        this.toolbar.show(drawing, x, y);
-                    }
-                } catch (e) {}
-            }
-            this._notifyV9SelectionSync(drawing);
+            this._syncSelectionChrome(drawing);
         }
         
         // [debug removed]
@@ -6887,6 +6916,11 @@ class DrawingToolsManager {
                     if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
                         try { drawing.showAxisHighlights(); } catch (_) {}
                     }
+                    if (drawing.selected || (this.selectedDrawings || []).includes(drawing)) {
+                        if (typeof drawing.select === 'function') {
+                            try { drawing.select(); } catch (_) {}
+                        }
+                    }
                 } else {
                     this.renderDrawing(drawing, { skipInteraction: true });
                 }
@@ -8351,6 +8385,39 @@ class DrawingToolsManager {
 
             const hitTolerance = (isFibLikeType || isPatternLikeType) ? 18 : baseHitTolerance;
             const minLineHitTolerance = (isFibLikeType || isPatternLikeType) ? 14 : 0;
+
+            // Two-point line tools: endpoint proximity (trend line handles sit on anchors, not extended stroke)
+            if ((drawing.type === 'trendline' || drawing.type === 'ray' || drawing.type === 'arrow'
+                || drawing.type === 'extended-line' || drawing.type === 'curve' || drawing.type === 'double-curve')
+                && !hitsById.has(drawing.id)) {
+                try {
+                    const points = drawing.points || [];
+                    if (points.length >= 2) {
+                        const xScale = this.chart && this.chart.xScale ? this.chart.xScale : null;
+                        const yScale = this.chart && this.chart.yScale ? this.chart.yScale : null;
+                        if (xScale && yScale) {
+                            let best = Infinity;
+                            const tol = Math.max(hitTolerance, 18);
+                            for (let i = 0; i < points.length; i++) {
+                                const p = points[i];
+                                const px = this.chart && this.chart.dataIndexToPixel
+                                    ? this.chart.dataIndexToPixel(p.x) : xScale(p.x);
+                                const py = yScale(p.y);
+                                const dx = mouseX - px;
+                                const dy = mouseY - py;
+                                const dist = Math.sqrt(dx * dx + dy * dy);
+                                if (dist < best) best = dist;
+                            }
+                            if (best <= tol) {
+                                hitsById.set(drawing.id, { drawing, distance: best, z });
+                                continue;
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Error in line endpoint hover hit test:', drawing.id, error);
+                }
+            }
 
             // Polyline/Path: allow vertex proximity hits so endpoints are easy to grab even if not exactly on the stroke
             if ((drawing.type === 'polyline' || drawing.type === 'path') && !hitsById.has(drawing.id)) {
