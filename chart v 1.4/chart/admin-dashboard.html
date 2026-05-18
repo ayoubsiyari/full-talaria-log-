@@ -6489,14 +6489,27 @@ async function updateFirstrateLivePanel() {
         if (primary.message && primary.message.indexOf('error') !== -1) detailMsg += '\n' + primary.message;
       }
       detail.textContent = detailMsg + (primary.error ? '\n' + primary.error : '');
+      window._frActiveImport = {
+        instrument_type: primary.instrument_type || '',
+        period: primary.period || '',
+        phase: phase,
+        status: st,
+        pct: pct,
+      };
       if (primary.job_id && primary.job_id !== _frLivePrevJobId && st === 'done') {
         _frLivePrevJobId = primary.job_id;
         try { await loadDatasets(true); } catch (e) {}
         try { await loadDatasetRegistry(); } catch (e) {}
+        try { await refreshFirstrateNightlyHealth({ rescan: true }); } catch (e) {}
+        try { refreshDailySyncOverview(); } catch (e) {}
+        if (typeof toast === 'function') {
+          toast('Import finished — nightly health rescanned from disk', 'ok');
+        }
       }
       return;
     }
 
+    window._frActiveImport = null;
     badge.textContent = 'idle';
     bar.style.width = '0%';
     if (stageEl) stageEl.textContent = '';
@@ -7040,6 +7053,17 @@ function _renderFirstrateNightlyHealth() {
   if (s.last_run_date) hl += ' · tonight (' + s.last_run_date + '): ' + (doneToday.length ? doneToday.join(', ') : 'pending');
   if (s.last_status) hl += ' · last: ' + s.last_status;
   if (s.last_error) hl += ' · ERR: ' + String(s.last_error).slice(0, 120);
+  const live = window._frActiveImport;
+  if (live && live.status !== 'done' && live.phase !== 'done') {
+    hl +=
+      ' · Import running (' +
+      (live.instrument_type || '?') +
+      ' ' +
+      (live.period || '') +
+      ' ' +
+      Math.round(live.pct || 0) +
+      '%) — stale/missing counts update after finish + rescan';
+  }
   if (headline) headline.textContent = hl;
 
   if (badge) {
@@ -7070,7 +7094,9 @@ function _renderFirstrateNightlyHealth() {
         'class="btn sm"',
         'data-fr-run-class="' + c.asset_class + '"',
         'style="font-size:11px;padding:2px 8px"',
-        'title="Routine update: pull today\u2019s day bundle for all ' + c.asset_class + ' tickers. For stale/missing data use Fix issues instead."',
+        'title="Queues import for ' +
+          c.asset_class +
+          ': day if all fresh, week if stale, month if missing. Same as Fix issues when problems exist."',
       ];
       if (!hasTickers) btnAttrs.push('disabled');
       var issueN = (c.stale_count || 0) + (c.missing_count || 0);
@@ -7224,8 +7250,24 @@ document.addEventListener('change', function (e) {
 // the health card (with `rescan=1` so the cached aggregate timestamps are
 // re-read from disk). Uses event delegation so each re-render of the grid
 // doesn't have to re-attach listeners.
+function _repairPeriodForClass(assetClass) {
+  const classes = (_firstrateHealthCache && _firstrateHealthCache.classes) || [];
+  let c = null;
+  for (let i = 0; i < classes.length; i++) {
+    if (classes[i].asset_class === assetClass) {
+      c = classes[i];
+      break;
+    }
+  }
+  if (!c) return 'day';
+  if ((c.missing_count || 0) > 0) return 'month';
+  if ((c.stale_count || 0) > 0) return 'week';
+  return 'day';
+}
+
 async function _runFirstrateClassNow(assetClass, btn) {
   if (!assetClass) return;
+  const period = _repairPeriodForClass(assetClass);
   const origLabel = btn ? btn.textContent : null;
   if (btn) {
     btn.disabled = true;
@@ -7233,7 +7275,7 @@ async function _runFirstrateClassNow(assetClass, btn) {
   }
   try {
     const body = {
-      period: 'day',
+      period: period,
       timeframe: '1min',
       instrument_type: assetClass,
       upsert_existing: true,
@@ -7245,7 +7287,14 @@ async function _runFirstrateClassNow(assetClass, btn) {
       body: JSON.stringify(body),
     });
     if (typeof toast === 'function') {
-      toast('FirstRate ' + assetClass + ' import queued — watching progress…', 'ok');
+      toast(
+        'FirstRate ' +
+          assetClass +
+          ' queued (' +
+          period +
+          ' bundle) — counts refresh when done; use Fix issues if still stale',
+        'ok'
+      );
     }
     if (btn) btn.textContent = 'Running…';
     if (data && data.job_id) {
