@@ -2174,6 +2174,30 @@ def _store_dataset_file(
         db.close()
 
 
+def _external_sort_csv_by_timestamp(path: Path) -> Path:
+    """GNU sort by first column (epoch ms). Returns a temp path; caller must unlink."""
+    import subprocess
+
+    if not path.exists():
+        raise ValueError(f"missing csv for sort: {path}")
+    out = path.with_suffix(path.suffix + ".tsorted.tmp")
+    size_mb = max(1, path.stat().st_size // (1024 * 1024))
+    timeout_sec = max(300, min(7200, size_mb * 4))
+    try:
+        subprocess.run(
+            ["sort", "-t,", "-k1,1n", "-o", str(out), str(path)],
+            check=True,
+            timeout=timeout_sec,
+        )
+    except FileNotFoundError as exc:
+        raise ValueError(
+            "CSV not sorted and `sort` unavailable — use week bundles or re-normalize"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        raise ValueError(f"external sort failed for {path.name}") from exc
+    return out
+
+
 def _merge_canonical_ohlcv_csvs(existing: Path, incoming: Path, dest: Path) -> tuple[int, int]:
     """
     Merge two canonical OHLCV CSVs (header `timestamp,open,high,low,close,volume`,
@@ -2236,8 +2260,28 @@ def _merge_canonical_ohlcv_csvs(existing: Path, incoming: Path, dest: Path) -> t
                 rows_out += 1
         tmp.replace(dest)
     except ValueError:
+        # Large unsorted merges used to load entire CSVs into RAM (hours / OOM).
+        merge_row_cap = max(
+            200_000, int(os.getenv("MERGE_DICT_FALLBACK_MAX_ROWS", "1500000"))
+        )
+        try:
+            est_rows = count_csv_rows(str(existing)) + count_csv_rows(str(incoming))
+        except Exception:
+            est_rows = merge_row_cap + 1
+        if est_rows > merge_row_cap:
+            ex_sorted = _external_sort_csv_by_timestamp(existing)
+            in_sorted = _external_sort_csv_by_timestamp(incoming)
+            try:
+                return _merge_canonical_ohlcv_csvs(ex_sorted, in_sorted, dest)
+            finally:
+                for p in (ex_sorted, in_sorted):
+                    if p != existing and p != incoming:
+                        try:
+                            p.unlink(missing_ok=True)
+                        except Exception:
+                            pass
         # Fallback: load both into a dict keyed by timestamp. Incoming wins on
-        # collision. Sort the union and re-emit.
+        # collision. Sort the union and re-emit (small files only).
         merged_map: dict[int, list[str]] = {}
         existing_ts.clear()
         with open(existing, "r", newline="", encoding="utf-8") as f:
@@ -7389,9 +7433,35 @@ def _claim_next_binary_build_job() -> dict | None:
         db.close()
 
 
-def _reclaim_stale_binary_build_jobs() -> int:
+def _minutes_since_utc_iso(iso: str | None) -> float | None:
+    if not iso:
+        return None
+    dt = _firstrate_parse_job_utc(iso)
+    if not dt:
+        return None
+    return (datetime.utcnow() - dt).total_seconds() / 60.0
+
+
+def _binary_aggregate_progress(db, file_id: int) -> dict:
+    aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id == int(file_id)).all()
+    processing = [a.timeframe for a in aggs if str(a.status) == "processing"]
+    return {
+        "ready_timeframes": sum(1 for a in aggs if str(a.status) == "ready"),
+        "processing_tf": processing[0] if len(processing) == 1 else processing,
+        "failed_timeframes": sum(1 for a in aggs if str(a.status) == "failed"),
+    }
+
+
+def _reclaim_stale_binary_build_jobs(stale_minutes: int | None = None) -> int:
     """Re-queue binary jobs stuck in `processing` (e.g. API died mid-build)."""
-    stale_min = max(30, int(os.getenv("BINARY_STUCK_PROCESSING_MINUTES", "120")))
+    stale_min = max(
+        20,
+        int(
+            stale_minutes
+            if stale_minutes is not None
+            else os.getenv("BINARY_STUCK_PROCESSING_MINUTES", "75")
+        ),
+    )
     now = datetime.utcnow()
     reclaimed = 0
     db = SessionLocal()
@@ -7442,8 +7512,11 @@ def _collect_pipeline_diagnostics() -> dict:
             continue
 
     db = SessionLocal()
+    binary_processing_sample: list[dict] = []
+    building_datasets: list[dict] = []
+    queued_n = processing_n = 0
+    bin_counts: dict[str, int] = {}
     try:
-        bin_counts: dict[str, int] = {}
         for status, cnt in db.query(
             BinaryBuildJob.status, func.count(BinaryBuildJob.id)
         ).group_by(BinaryBuildJob.status):
@@ -7459,6 +7532,23 @@ def _collect_pipeline_diagnostics() -> dict:
         queued_n = int(bin_counts.get("queued") or 0)
         processing_n = int(bin_counts.get("processing") or 0)
 
+        binary_processing_sample: list[dict] = []
+        for r in processing_rows:
+            prog = _binary_aggregate_progress(db, int(r.file_id))
+            started_iso = r.started_at.isoformat() if r.started_at else None
+            elapsed = _minutes_since_utc_iso(started_iso)
+            binary_processing_sample.append(
+                {
+                    "id": int(r.id),
+                    "file_id": int(r.file_id),
+                    "original_name": r.original_name,
+                    "started_at": started_iso,
+                    "elapsed_min": round(elapsed, 1) if elapsed is not None else None,
+                    "ready_timeframes": prog["ready_timeframes"],
+                    "processing_tf": prog.get("processing_tf"),
+                }
+            )
+
         building_datasets: list[dict] = []
         files = db.query(CSVFile).order_by(CSVFile.id.desc()).limit(400).all()
         for f in files:
@@ -7470,18 +7560,22 @@ def _collect_pipeline_diagnostics() -> dict:
             )
             if not job or str(job.status) not in ("queued", "processing"):
                 continue
-            aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id == int(f.id)).all()
-            ready = sum(1 for a in aggs if str(a.status) == "ready")
+            prog = _binary_aggregate_progress(db, int(f.id))
+            started_iso = job.started_at.isoformat() if job.started_at else None
             building_datasets.append(
                 {
                     "file_id": int(f.id),
                     "original_name": f.original_name or "",
                     "binary_job_id": int(job.id),
                     "binary_status": str(job.status),
-                    "ready_timeframes": ready,
+                    "ready_timeframes": prog["ready_timeframes"],
                     "total_timeframes": len(DATASET_TIMEFRAMES),
+                    "processing_tf": prog.get("processing_tf"),
                     "binary_error": (job.error or "")[:200] if job.error else None,
-                    "started_at": job.started_at.isoformat() if job.started_at else None,
+                    "started_at": started_iso,
+                    "elapsed_min": round(_minutes_since_utc_iso(started_iso) or 0, 1)
+                    if started_iso
+                    else None,
                 }
             )
             if len(building_datasets) >= 15:
@@ -7489,9 +7583,47 @@ def _collect_pipeline_diagnostics() -> dict:
     finally:
         db.close()
 
+    warnings: list[str] = []
+    import_stuck_min = max(35, int(os.getenv("FIrstrate_STUCK_FILE_MINUTES", "90")))
+    binary_stuck_min = max(20, int(os.getenv("BINARY_STUCK_PROCESSING_MINUTES", "75")))
+    for j in firstrate_active:
+        prog_min = _minutes_since_utc_iso(j.get("last_files_done_at"))
+        if prog_min is not None and prog_min >= import_stuck_min * 0.5:
+            warnings.append(
+                f"Import file progress idle {int(prog_min)} min at "
+                f"{j.get('files_done')}/{j.get('files_total')} — "
+                f"{j.get('message') or j.get('current_file') or '?'}"
+            )
+        if prog_min is not None and prog_min >= import_stuck_min:
+            warnings.append(
+                "Import looks STUCK (no file finished recently). Click «Unstick» or wait for auto-fail."
+            )
+    for bp in binary_processing_sample:
+        em = bp.get("elapsed_min")
+        if em is not None and em >= binary_stuck_min * 0.6:
+            tf = bp.get("processing_tf") or "?"
+            warnings.append(
+                f"Binary build on {bp.get('original_name')} running {em} min "
+                f"(TF {bp.get('ready_timeframes')}/9, on {tf})"
+            )
+        if em is not None and em >= binary_stuck_min:
+            warnings.append(
+                f"Binary job #{bp.get('id')} may be hung — will re-queue on next refresh after "
+                f"{binary_stuck_min} min."
+            )
+    if queued_n + processing_n >= 15:
+        warnings.append(
+            f"Binary backlog depth {queued_n + processing_n} — only 1 worker thread runs at a time; "
+            "large files can take 30–90 min each."
+        )
+
     du = shutil.disk_usage(str(UPLOAD_DIR.resolve()))
     sch = _load_firstrate_schedule()
     worker_expected = APP_ROLE == "worker" or BINARY_BUILD_MODE == "queue"
+    worker_threads = max(1, int(os.getenv("BINARY_WORKER_THREADS", "1")))
+
+    for j in firstrate_active:
+        j["minutes_since_file_progress"] = _minutes_since_utc_iso(j.get("last_files_done_at"))
 
     return {
         "checked_at": datetime.utcnow().isoformat() + "Z",
@@ -7499,16 +7631,10 @@ def _collect_pipeline_diagnostics() -> dict:
         "binary_build_mode": BINARY_BUILD_MODE,
         "binary_queue": bin_counts,
         "binary_queue_depth": queued_n + processing_n,
-        "binary_processing_sample": [
-            {
-                "id": int(r.id),
-                "file_id": int(r.file_id),
-                "original_name": r.original_name,
-                "started_at": r.started_at.isoformat() if r.started_at else None,
-            }
-            for r in processing_rows
-        ],
+        "binary_processing_sample": binary_processing_sample,
         "building_datasets": building_datasets,
+        "warnings": warnings,
+        "binary_worker_threads": worker_threads,
         "firstrate_active_jobs": firstrate_active[:3],
         "firstrate_recent_jobs": firstrate_recent[:3],
         "reclaimed": {
@@ -7526,9 +7652,11 @@ def _collect_pipeline_diagnostics() -> dict:
             "last_message": (sch.get("last_message") or "")[:300] if sch.get("last_message") else None,
         },
         "hints": [
+            "Stale/missing counts on asset cards do NOT update until the import finishes + you click Refresh.",
             "FirstRate CSV import runs on trading-chart; chart binaries run on trading-chart-worker when BINARY_BUILD_MODE=queue.",
-            "Registry «Building» = binary job queued or processing (can take 20–60 min per 1M-row FX file).",
-            "If binary_queue_depth > 0 and nothing moves, check: docker compose logs trading-chart-worker --tail 80",
+            "Registry «Building» = binary queued/processing (30–90+ min per large 1m stock/FX file is normal).",
+            "Compare «minutes_since_file_progress» and binary «elapsed_min» between refreshes — if both grow, work is moving.",
+            "If nothing moves for 75+ min, click Unstick or: docker compose logs trading-chart-worker --tail 80",
         ],
         "worker_expected": worker_expected,
     }
@@ -7567,17 +7695,26 @@ def _process_next_binary_build_job() -> bool:
         _mark_binary_build_job_done(int(job["id"]), ok=False, error=f"source file missing: {source_path}")
         return True
 
+    binary_max_min = max(30.0, float(os.getenv("BINARY_JOB_MAX_MINUTES", "120")))
     try:
         ok = bool(
-            build_binary_for_file(
+            _call_with_timeout(
+                binary_max_min * 60.0,
+                build_binary_for_file,
                 int(job["file_id"]),
                 source_path,
                 str(job["original_name"]),
-                run_async=False,
-                trigger=f"worker:{job['trigger']}",
+                False,
+                f"worker:{job['trigger']}",
             )
         )
         _mark_binary_build_job_done(int(job["id"]), ok=ok, error=None if ok else "binary build returned failure")
+    except TimeoutError as exc:
+        _mark_binary_build_job_done(
+            int(job["id"]),
+            ok=False,
+            error=f"binary build exceeded {int(binary_max_min)} min: {exc}"[:500],
+        )
     except Exception as exc:
         _mark_binary_build_job_done(int(job["id"]), ok=False, error=str(exc))
 
@@ -7613,7 +7750,13 @@ def _run_binary_build_worker():
 
 # Startup background behavior
 if APP_ROLE == "worker" and BINARY_BUILD_MODE == "queue":
-    threading.Thread(target=_run_chart_background_worker, daemon=True).start()
+    _binary_worker_threads = max(1, min(4, int(os.getenv("BINARY_WORKER_THREADS", "1"))))
+    for _wi in range(_binary_worker_threads):
+        threading.Thread(
+            target=_run_chart_background_worker,
+            daemon=True,
+            name=f"chart-binary-worker-{_wi}",
+        ).start()
 elif APP_ROLE == "api":
     _backfill_binaries()
     if bw.whatif_async_available() and os.getenv("BACKTEST_WHATIF_DRAIN_ON_API", "true").strip().lower() in {
@@ -11906,6 +12049,20 @@ async def admin_pipeline_diagnostics(request: Request):
     """
     _require_admin(request)
     return {"success": True, **_collect_pipeline_diagnostics()}
+
+
+@app.post("/api/admin/datasets/pipeline-unstick")
+async def admin_pipeline_unstick(request: Request):
+    """Force-reclaim stuck import + binary jobs, then return fresh diagnostics."""
+    _require_admin(request)
+    import_r = _firstrate_reclaim_stuck_import_jobs()
+    binary_r = _reclaim_stale_binary_build_jobs(stale_minutes=30)
+    diag = _collect_pipeline_diagnostics()
+    return {
+        "success": True,
+        "reclaimed": {"firstrate_import_jobs": import_r, "binary_build_jobs": binary_r},
+        **diag,
+    }
 
 
 @app.get("/api/admin/datasets/firstrate-fx/last-update")

@@ -2327,7 +2327,7 @@ select { cursor:default; }
             <button type="button" class="ds-hub-tab" data-ds-tab="import" onclick="setDsHubTab('import')">Import</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="sync" onclick="setDsHubTab('sync')">Sync health</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="maintenance" onclick="setDsHubTab('maintenance')">Maintenance</button>
-            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-05-18e</span>
+            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-05-18f</span>
           </div>
         </div>
 
@@ -2722,9 +2722,11 @@ select { cursor:default; }
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
                 <strong style="font-size:12px">VPS pipeline (import + chart binaries)</strong>
                 <span class="card-badge" id="frPipelineBadge" style="background:var(--panel);color:var(--text-muted)">loading…</span>
+                <button type="button" class="btn sm" onclick="firstratePipelineUnstick()" title="Re-queue hung binary jobs and auto-fail stuck imports">Unstick</button>
                 <button type="button" class="btn sm" style="margin-left:auto" onclick="refreshFirstratePipelineDiagnostics(true)">Refresh pipeline</button>
               </div>
-              <p id="frPipelineSummary" style="margin:0 0 8px;font-size:11px;color:var(--text-muted);line-height:1.45">Shows whether work is stuck on the server: FirstRate CSV import (API) vs chart binary builds (worker queue).</p>
+              <p id="frPipelineSummary" style="margin:0 0 8px;font-size:11px;color:var(--text-muted);line-height:1.45">Import runs on API; chart binaries on worker (1 at a time). <strong>Stale counts on cards below do not change until import finishes + Refresh.</strong> Watch elapsed minutes between refreshes.</p>
+              <div id="frPipelineWarnings" style="display:none;margin:0 0 8px;padding:8px 10px;border-radius:6px;background:rgba(248,113,113,.12);font-size:11px;color:#fca5a5;line-height:1.45"></div>
               <div id="frPipelineBody" style="font-size:11px;font-family:ui-monospace,monospace;line-height:1.55;white-space:pre-wrap"></div>
             </div>
             <p id="frHealthHeadline" style="margin:0 0 12px;font-size:12px;color:var(--text-muted);line-height:1.5">Checking last nightly run…</p>
@@ -6613,10 +6615,18 @@ function _formatPipelineDiagnostics(d) {
         (reclaimed.binary_build_jobs || 0)
     );
   }
+  var warns = d.warnings || [];
+  if (warns.length) {
+    lines.push('— warnings —');
+    warns.forEach(function (w) {
+      lines.push('⚠ ' + w);
+    });
+  }
   var active = d.firstrate_active_jobs || [];
   if (active.length) {
     lines.push('— FirstRate import (API) —');
     active.forEach(function (j) {
+      var idle = j.minutes_since_file_progress;
       lines.push(
         (j.status || '?') +
           ' ' +
@@ -6625,6 +6635,7 @@ function _formatPipelineDiagnostics(d) {
           (j.files_total || '?') +
           ' phase=' +
           (j.phase || '—') +
+          (idle != null ? ' (last file finished ' + Math.round(idle) + ' min ago)' : '') +
           ' ' +
           (j.message || j.current_file || '')
       );
@@ -6636,25 +6647,43 @@ function _formatPipelineDiagnostics(d) {
   if (proc.length) {
     lines.push('— binary processing now (worker) —');
     proc.forEach(function (p) {
-      lines.push('#' + p.id + ' file_id=' + p.file_id + ' ' + p.original_name + ' started ' + (p.started_at || '—'));
+      lines.push(
+        '#' +
+          p.id +
+          ' ' +
+          p.original_name +
+          ' elapsed ' +
+          (p.elapsed_min != null ? p.elapsed_min + ' min' : '?') +
+          ' TF ' +
+          (p.ready_timeframes || 0) +
+          '/9' +
+          (p.processing_tf ? ' building ' + p.processing_tf : '')
+      );
     });
   }
   var building = d.building_datasets || [];
   if (building.length) {
     lines.push('— registry «Building» (up to 15) —');
     building.forEach(function (b) {
-      lines.push(
+      var line =
         b.original_name +
-          ' job#' +
-          b.binary_job_id +
-          ' ' +
-          b.binary_status +
+        ' job#' +
+        b.binary_job_id +
+        ' ' +
+        b.binary_status;
+      if (b.binary_status === 'queued') {
+        line += ' (CSV ready — waiting for worker)';
+      } else {
+        line +=
           ' TF ' +
           b.ready_timeframes +
           '/' +
           b.total_timeframes +
-          (b.binary_error ? ' err=' + b.binary_error : '')
-      );
+          (b.processing_tf ? ' on ' + b.processing_tf : '') +
+          (b.elapsed_min != null ? ' ' + b.elapsed_min + ' min' : '');
+      }
+      if (b.binary_error) line += ' err=' + b.binary_error;
+      lines.push(line);
     });
   } else if ((d.binary_queue_depth || 0) === 0) {
     lines.push('registry Building: none (queue empty)');
@@ -6663,6 +6692,30 @@ function _formatPipelineDiagnostics(d) {
     lines.push('hint: ' + h);
   });
   return lines.join('\n');
+}
+
+async function firstratePipelineUnstick() {
+  var body = $('frPipelineBody');
+  if (body) body.textContent = 'Unstick: reclaiming stuck jobs…';
+  try {
+    var d = await api('/api/admin/datasets/pipeline-unstick', { method: 'POST' });
+    _frPipelineLastRun = 0;
+    if (body) body.textContent = _formatPipelineDiagnostics(d);
+    var warnEl = $('frPipelineWarnings');
+    if (warnEl) {
+      var warns = d.warnings || [];
+      if (warns.length) {
+        warnEl.style.display = 'block';
+        warnEl.textContent = warns.join(' · ');
+      } else {
+        warnEl.style.display = 'none';
+      }
+    }
+    toast('Pipeline unstick done — import reclaimed: ' + ((d.reclaimed && d.reclaimed.firstrate_import_jobs) || 0) + ', binary: ' + ((d.reclaimed && d.reclaimed.binary_build_jobs) || 0));
+  } catch (e) {
+    if (body) body.textContent = 'Unstick failed: ' + (e && e.message ? e.message : String(e));
+    toast('Unstick failed', 'error');
+  }
 }
 
 async function refreshFirstratePipelineDiagnostics(force) {
@@ -6679,6 +6732,17 @@ async function refreshFirstratePipelineDiagnostics(force) {
   try {
     var d = await api('/api/admin/datasets/pipeline-diagnostics');
     body.textContent = _formatPipelineDiagnostics(d);
+    var warnEl = $('frPipelineWarnings');
+    if (warnEl) {
+      var warns = d.warnings || [];
+      if (warns.length) {
+        warnEl.style.display = 'block';
+        warnEl.textContent = warns.join(' · ');
+      } else {
+        warnEl.style.display = 'none';
+        warnEl.textContent = '';
+      }
+    }
     var depth = d.binary_queue_depth || 0;
     var importActive = (d.firstrate_active_jobs || []).length > 0;
     if (badge) {
@@ -6719,7 +6783,7 @@ function ensureFirstrateLivePoll() {
   if (!window._frPipelinePollId) {
     window._frPipelinePollId = setInterval(function () {
       refreshFirstratePipelineDiagnostics(false);
-    }, 30000);
+    }, 15000);
   }
   if (!window._frDailySyncPollId) {
     window._frDailySyncPollId = setInterval(refreshDailySyncOverview, 30000);
