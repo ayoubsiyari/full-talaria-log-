@@ -16,6 +16,10 @@ COPY . .
 ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID=
 ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID
 
+# Public site URL for Open Graph / link previews (Discord, X, etc.)
+ARG NEXT_PUBLIC_SITE_URL=https://www.talaria-log.com
+ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
+
 # Build static export
 RUN npm run build
 

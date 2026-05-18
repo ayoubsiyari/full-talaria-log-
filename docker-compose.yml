@@ -172,6 +172,7 @@ services:
       context: ./homepage
       args:
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+        NEXT_PUBLIC_SITE_URL: ${FRONTEND_URL:-http://localhost:3000}
     ports:
       - "3000:80"
     volumes:

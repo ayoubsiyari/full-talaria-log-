@@ -19,9 +19,50 @@ const zain = localFont({
   ],
 });
 
+const SITE_TITLE = "Talaria-Log Advanced Backtesting Platform";
+const SITE_DESCRIPTION =
+  "Advanced backtesting and professional charting for serious traders.";
+const OG_IMAGE_PATH = "/talaria-log.logo.png";
+
+const siteUrl = (
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  process.env.FRONTEND_URL ||
+  "https://www.talaria-log.com"
+).replace(/\/$/, "");
+
 export const metadata: Metadata = {
-  title: "Talaria - Professional Trading Platform",
-  description: "Advanced charting and backtesting platform for professional traders",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: SITE_TITLE,
+    template: "%s | Talaria-Log",
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: "Talaria-Log",
+  icons: {
+    icon: OG_IMAGE_PATH,
+    apple: OG_IMAGE_PATH,
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    alternateLocale: ["ar_SA"],
+    url: "/",
+    siteName: "Talaria-Log",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [
+      {
+        url: OG_IMAGE_PATH,
+        alt: "Talaria-Log",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [OG_IMAGE_PATH],
+  },
 };
 
 export default function RootLayout({
