@@ -1097,6 +1097,44 @@ function legacyChartTextTypeToV9Icon(type) {
   return map[type] || "text";
 }
 
+/** chart.js `drawing.type` or legacy tool id → V9 rail group (must match `drawingTypeToPanelGroup`). */
+function v9DrawingTypeToPanelGroup(type) {
+  if (!type) return null;
+  if (['text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'callout', 'comment',
+    'price-label', 'price-label-2', 'signpost', 'signpost-2', 'flag-mark', 'image', 'emoji', 'pin', 'table'].includes(type)) {
+    return 'text';
+  }
+  if (['anchored-vwap', 'fixed-range-volume-profile', 'volume-profile', 'anchored-volume-profile'].includes(type)) return 'brush';
+  if (type.startsWith('fibonacci-') || type.startsWith('fib-') || type.startsWith('trend-fib-')) return 'fib';
+  if (type === 'gann-box' || type === 'gann-square' || type === 'gann-square-fixed' || type === 'gann-fan') return 'fib';
+  if (type.startsWith('elliott-')
+      || type === 'xabcd-pattern' || type === 'head-shoulders'
+      || type === 'abcd-pattern' || type === 'triangle-pattern'
+      || type === 'three-drives' || type === 'cypher-pattern') return 'pattern';
+  if (['rectangle', 'rotated-rectangle', 'triangle', 'arc', 'ellipse', 'circle',
+    'arrow', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down'].includes(type)) return 'rect';
+  if (['parallel-channel', 'regression-trend', 'flat-top-bottom',
+    'disjoint-channel', 'pitchfork'].includes(type)) return 'channel';
+  if (['brush', 'highlighter'].includes(type)) return 'brush2';
+  if (['ruler', 'short-position', 'long-position', 'price-range',
+    'date-range', 'date-and-price-range', 'date-price-range'].includes(type)) return 'measure';
+  if (['trendline', 'horizontal', 'vertical', 'horizontal-ray', 'ray',
+    'extended-line', 'cross-line', 'polyline', 'path', 'curve', 'double-curve'].includes(type)) {
+    return 'trendline';
+  }
+  return null;
+}
+
+/** Only push tlStyle onto drawings that match the armed legacy tool's rail (never trendline ← rectangle). */
+function v9ShouldApplyTlStylePatch(d, legacyTool) {
+  if (!d || !d.type || !d.style) return false;
+  if (v9DrawingTypeToPanelGroup(d.type) === 'text') return false;
+  if (!legacyTool) return true;
+  const drawingGroup = v9DrawingTypeToPanelGroup(d.type);
+  const toolGroup = v9DrawingTypeToPanelGroup(legacyTool);
+  return !!(drawingGroup && toolGroup && drawingGroup === toolGroup);
+}
+
 function collectV9BridgeTargetPairs(editingRefDrawing) {
   const targets = [];
   const seenIds = new Set();
@@ -1120,11 +1158,6 @@ function collectV9BridgeTargetPairs(editingRefDrawing) {
       dm.selectedDrawings.forEach((x) => pushPair(dm, x));
     }
     if (dm.selectedDrawing) pushPair(dm, dm.selectedDrawing);
-    if (Array.isArray(dm.drawings)) {
-      dm.drawings.forEach((x) => {
-        if (x && x.selected) pushPair(dm, x);
-      });
-    }
   });
   return targets;
 }
@@ -10445,6 +10478,7 @@ const TalariaV8bLive = () => {
   // Pointer-toggle — flush middle-line fields immediately (same targets as full bridge).
   const flushV9MiddleLineToChart = (prevTl, nextMidLineOn) => {
     try {
+      const legacy = resolveLegacyTool();
       const midDashArr =
         prevTl.midLineType === "bold" ? "" : (V9_DASH_TO_LEGACY[prevTl.midLineType] ?? "");
       const midWidthNum = parseInt(prevTl.midLineWidth, 10) || 1;
@@ -10456,7 +10490,7 @@ const TalariaV8bLive = () => {
       };
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
-        if (drawingTypeToPanelGroupRef.current(d.type) === "text") return;
+        if (!v9ShouldApplyTlStylePatch(d, legacy)) return;
         const tb = dm.toolbar;
         try {
           tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
@@ -10580,9 +10614,7 @@ const TalariaV8bLive = () => {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
-        // Text / callout / notes use `txtStyle` bridge only — Trend Line patches would
-        // overwrite annotation fields (stroke, dash, fontSize from line label tab, etc.).
-        if (drawingTypeToPanelGroupRef.current(d.type) === "text") return;
+        if (!v9ShouldApplyTlStylePatch(d, legacyTool)) return;
         const tb = dm.toolbar;
         // Capture before state for undo (mirror legacy onBeforeUpdate).
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}

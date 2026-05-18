@@ -2539,7 +2539,10 @@ class DrawingToolsManager {
         // [debug removed]
         
         if (!this.drawingState.isDrawing) {
-            // [debug removed]
+            const emptyHit = this._resolvePointerOverDrawings(event);
+            if (!emptyHit.primary && !event.shiftKey) {
+                this.deselectAll({ fromCanvasBackground: true });
+            }
             this.drawingState.startDrawing(this.currentTool, toolInfo.points);
             this.riskRewardPreview = null;
             this._liveSyncDrawingId = this._nextLiveSyncId();
@@ -4540,7 +4543,8 @@ class DrawingToolsManager {
         // Restore re-entry guard
         if (this.chart) this.chart._isRendering = wasRendering;
 
-        if (drawing.selected || (this.selectedDrawings || []).includes(drawing)) {
+        if (!skipInteraction && (this.selectedDrawings || []).includes(drawing)) {
+            drawing.selected = true;
             if (typeof drawing.select === 'function') {
                 try { drawing.select(); } catch (_) {}
             }
@@ -6225,17 +6229,27 @@ class DrawingToolsManager {
             }
         });
         
-        this.selectedDrawings.forEach(d => {
+        const previouslySelected = [...(this.selectedDrawings || [])];
+        previouslySelected.forEach((d) => {
             d.deselect();
+            d.selected = false;
             this.renderDrawing(d, { skipInteraction: true });
+        });
+        // Clear stale selected flags (style bridge + renderDrawing used to re-show handles).
+        this.drawings.forEach((d) => {
+            if (!d) return;
+            if (d.selected) {
+                d.deselect();
+                d.selected = false;
+                if (!previouslySelected.includes(d)) {
+                    this.renderDrawing(d, { skipInteraction: true });
+                }
+            }
         });
         this.selectedDrawing = null;
         this.selectedDrawings = [];
         this.toolbar.hide(); // Hide toolbar
-        // Empty canvas / Escape: full redraw clears handles. Selection swap: avoid wiping SVG mid-select.
-        if (!forSelectionChange) {
-            this.redrawAll();
-        }
+        this.redrawAll();
         this._updateAxisZonePointerEvents();
         if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
             this.chart.updateSVGPointerEvents();
@@ -9722,5 +9736,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260516a10_selection_chrome_fix';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260516a11_deselect_style_bridge';
 } catch (_) {}
