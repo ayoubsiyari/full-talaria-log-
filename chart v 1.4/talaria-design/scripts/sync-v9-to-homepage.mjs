@@ -65,6 +65,19 @@ if (fs.existsSync(drawingManagerSrc)) {
   console.warn("[sync-v9-to-homepage] drawing-tools-manager.js not found, skip:", drawingManagerSrc);
 }
 
+const drawingShapesSrc = path.resolve(__dirname, "../../chart/modules/drawing-tools-shapes.js");
+const drawingShapesDest = path.resolve(
+  __dirname,
+  "../../../homepage/public/chart/modules/drawing-tools-shapes.js",
+);
+if (fs.existsSync(drawingShapesSrc)) {
+  fs.mkdirSync(path.dirname(drawingShapesDest), { recursive: true });
+  fs.copyFileSync(drawingShapesSrc, drawingShapesDest);
+  console.log("[sync-v9-to-homepage] Copied drawing-tools-shapes", drawingShapesSrc, "→", drawingShapesDest);
+} else {
+  console.warn("[sync-v9-to-homepage] drawing-tools-shapes.js not found, skip:", drawingShapesSrc);
+}
+
 // Phase 7.2.x multichart bridge scripts: dist-v9 shim loads these at runtime
 // from /chart/multichart-prod/ (sync-bridge.js, multichart-manager.js,
 // engine-api-guards.js, embed-bridge.js, panel-cmd-bridge.js). Copy the
@@ -85,7 +98,7 @@ if (fs.existsSync(mcpSrc)) {
 
 // Drop stale partial copies under public/chart/modules (nginx/dev proxy serves modules from chart API).
 const modulesDir = path.resolve(__dirname, "../../../homepage/public/chart/modules");
-const modulesKeep = new Set(["compare-overlay.js", "drawing-tools-manager.js"]);
+const modulesKeep = new Set(["compare-overlay.js", "drawing-tools-manager.js", "drawing-tools-shapes.js"]);
 if (fs.existsSync(modulesDir)) {
   for (const name of fs.readdirSync(modulesDir)) {
     if (!name.endsWith(".js") || modulesKeep.has(name)) continue;

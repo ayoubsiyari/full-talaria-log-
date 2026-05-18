@@ -4669,6 +4669,12 @@ class DrawingToolsManager {
     }
 
     setupDrawingInteraction(drawing) {
+        // During box-handle resize, full re-render must not rebind move/resize listeners
+        // (would steal the active document-level resize gesture).
+        if (this.isCustomHandleDrag && this.customHandleDrawing === drawing) {
+            this._applyMinimalPointerEvents(drawing);
+            return;
+        }
         if (!drawing.group) return;
         
         const self = this;
@@ -5895,6 +5901,12 @@ class DrawingToolsManager {
         
         if (typeof drawing.handleCustomHandleDrag === 'function') {
             drawing.handleCustomHandleDrag(handleRole, context);
+            if (typeof drawing.getActiveHandleDragRole === 'function') {
+                const nextRole = drawing.getActiveHandleDragRole();
+                if (nextRole) {
+                    this.customHandleRole = nextRole;
+                }
+            }
         }
 
         // Always re-render during drag
@@ -9815,5 +9827,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260516a12_ctrl_magnet_snap';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260516a13_rect_resize_flip';
 } catch (_) {}
