@@ -3675,6 +3675,9 @@ def _firstrate_scheduler_bootstrap() -> None:
         reclaimed = _firstrate_reclaim_stuck_import_jobs()
         if reclaimed:
             print(f"[firstrate] Reclaimed {reclaimed} stuck import job(s) on startup")
+        binary_reclaimed = _reclaim_stale_binary_build_jobs()
+        if binary_reclaimed:
+            print(f"[binary] Re-queued {binary_reclaimed} stale binary build job(s) on startup")
         _firstrate_scheduler_tick()
     except Exception as exc:
         print(f"[firstrate] Scheduler bootstrap: {exc}")
@@ -7186,30 +7189,30 @@ def _run_firstrate_import_job(job_id: str) -> None:
                 pass
 
         if deferred_binary_builds:
-            # One binary build per dataset (re-importing the same ticker updates the same row).
+            # Queue binaries for trading-chart-worker — do NOT build synchronously on the
+            # API process (6M-row FX CSVs can take 30–90+ min each and block everything).
             _bin_seen: dict[int, tuple[int, Path, str]] = {}
             for fid, bpath, bname in deferred_binary_builds:
                 _bin_seen[int(fid)] = (int(fid), bpath, bname)
             deferred_binary_builds = list(_bin_seen.values())
             state = _firstrate_read_job(job_id) or state
-            state["phase"] = "binary"
+            state["phase"] = "binary_queue"
             state["current_file"] = None
-            total_bin = len(deferred_binary_builds)
-            for bi, (fid, bpath, bname) in enumerate(deferred_binary_builds, start=1):
-                state = _firstrate_read_job(job_id) or state
-                state["message"] = (
-                    f"Building chart binaries ({bi}/{total_bin}): {bname}"
-                )
-                state["last_binary_at"] = datetime.utcnow().isoformat() + "Z"
-                state["last_binary_index"] = bi
-                _firstrate_write_job(job_id, state)
+            state["binary_queued"] = 0
+            for fid, bpath, bname in deferred_binary_builds:
                 build_binary_for_file(
-                    fid,
+                    int(fid),
                     bpath,
                     bname,
-                    run_async=False,
+                    run_async=True,
                     trigger="firstrate_import",
                 )
+                state["binary_queued"] = int(state.get("binary_queued") or 0) + 1
+            state["message"] = (
+                f"CSV import done — {state['binary_queued']} chart binary job(s) queued "
+                f"(trading-chart-worker builds them; check Pipeline status in admin)"
+            )
+            _firstrate_write_job(job_id, state)
 
         state = _firstrate_read_job(job_id) or state
         state["status"] = "done"
@@ -7386,6 +7389,151 @@ def _claim_next_binary_build_job() -> dict | None:
         db.close()
 
 
+def _reclaim_stale_binary_build_jobs() -> int:
+    """Re-queue binary jobs stuck in `processing` (e.g. API died mid-build)."""
+    stale_min = max(30, int(os.getenv("BINARY_STUCK_PROCESSING_MINUTES", "120")))
+    now = datetime.utcnow()
+    reclaimed = 0
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(BinaryBuildJob)
+            .filter(BinaryBuildJob.status == "processing")
+            .all()
+        )
+        for row in rows:
+            started = row.started_at or row.created_at
+            if not started:
+                continue
+            elapsed_min = (now - started).total_seconds() / 60.0
+            if elapsed_min < stale_min:
+                continue
+            row.status = "queued"
+            row.started_at = None
+            row.error = (f"Re-queued after {int(elapsed_min)}m in processing")[:500]
+            reclaimed += 1
+        if reclaimed:
+            db.commit()
+            chart_redis.signal_binary_job_queued()
+    finally:
+        db.close()
+    return reclaimed
+
+
+def _collect_pipeline_diagnostics() -> dict:
+    """Single snapshot for admin: imports, binary queue, disk, building datasets."""
+    import shutil
+
+    import_reclaimed = _firstrate_reclaim_stuck_import_jobs()
+    binary_reclaimed = _reclaim_stale_binary_build_jobs()
+
+    firstrate_active: list[dict] = []
+    firstrate_recent: list[dict] = []
+    for p in sorted(FIrstrate_JOBS_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True)[:12]:
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                st = json.load(f)
+            st["job_file"] = p.name
+            if str(st.get("status")) in ("queued", "running"):
+                firstrate_active.append(st)
+            else:
+                firstrate_recent.append(st)
+        except Exception:
+            continue
+
+    db = SessionLocal()
+    try:
+        bin_counts: dict[str, int] = {}
+        for status, cnt in db.query(
+            BinaryBuildJob.status, func.count(BinaryBuildJob.id)
+        ).group_by(BinaryBuildJob.status):
+            bin_counts[str(status)] = int(cnt)
+
+        processing_rows = (
+            db.query(BinaryBuildJob)
+            .filter(BinaryBuildJob.status == "processing")
+            .order_by(BinaryBuildJob.started_at.asc())
+            .limit(5)
+            .all()
+        )
+        queued_n = int(bin_counts.get("queued") or 0)
+        processing_n = int(bin_counts.get("processing") or 0)
+
+        building_datasets: list[dict] = []
+        files = db.query(CSVFile).order_by(CSVFile.id.desc()).limit(400).all()
+        for f in files:
+            job = (
+                db.query(BinaryBuildJob)
+                .filter(BinaryBuildJob.file_id == int(f.id))
+                .order_by(BinaryBuildJob.id.desc())
+                .first()
+            )
+            if not job or str(job.status) not in ("queued", "processing"):
+                continue
+            aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id == int(f.id)).all()
+            ready = sum(1 for a in aggs if str(a.status) == "ready")
+            building_datasets.append(
+                {
+                    "file_id": int(f.id),
+                    "original_name": f.original_name or "",
+                    "binary_job_id": int(job.id),
+                    "binary_status": str(job.status),
+                    "ready_timeframes": ready,
+                    "total_timeframes": len(DATASET_TIMEFRAMES),
+                    "binary_error": (job.error or "")[:200] if job.error else None,
+                    "started_at": job.started_at.isoformat() if job.started_at else None,
+                }
+            )
+            if len(building_datasets) >= 15:
+                break
+    finally:
+        db.close()
+
+    du = shutil.disk_usage(str(UPLOAD_DIR.resolve()))
+    sch = _load_firstrate_schedule()
+    worker_expected = APP_ROLE == "worker" or BINARY_BUILD_MODE == "queue"
+
+    return {
+        "checked_at": datetime.utcnow().isoformat() + "Z",
+        "app_role": APP_ROLE,
+        "binary_build_mode": BINARY_BUILD_MODE,
+        "binary_queue": bin_counts,
+        "binary_queue_depth": queued_n + processing_n,
+        "binary_processing_sample": [
+            {
+                "id": int(r.id),
+                "file_id": int(r.file_id),
+                "original_name": r.original_name,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+            }
+            for r in processing_rows
+        ],
+        "building_datasets": building_datasets,
+        "firstrate_active_jobs": firstrate_active[:3],
+        "firstrate_recent_jobs": firstrate_recent[:3],
+        "reclaimed": {
+            "firstrate_import_jobs": import_reclaimed,
+            "binary_build_jobs": binary_reclaimed,
+        },
+        "disk": {
+            "uploads_free_gb": round(du.free / (1024**3), 2),
+            "uploads_used_gb": round(du.used / (1024**3), 2),
+        },
+        "schedule": {
+            "enabled": bool(sch.get("enabled")),
+            "last_status": sch.get("last_status"),
+            "last_error": (sch.get("last_error") or "")[:300] if sch.get("last_error") else None,
+            "last_message": (sch.get("last_message") or "")[:300] if sch.get("last_message") else None,
+        },
+        "hints": [
+            "FirstRate CSV import runs on trading-chart; chart binaries run on trading-chart-worker when BINARY_BUILD_MODE=queue.",
+            "Registry «Building» = binary job queued or processing (can take 20–60 min per 1M-row FX file).",
+            "If binary_queue_depth > 0 and nothing moves, check: docker compose logs trading-chart-worker --tail 80",
+        ],
+        "worker_expected": worker_expected,
+    }
+
+
 def _mark_binary_build_job_done(job_id: int, ok: bool, error: str | None = None):
     db = SessionLocal()
     try:
@@ -7443,6 +7591,12 @@ def _run_chart_background_worker():
         f"👷 Chart background worker started (poll={poll_seconds:.1f}s, "
         f"whatif_async={bw.whatif_async_available()})"
     )
+    try:
+        br = _reclaim_stale_binary_build_jobs()
+        if br:
+            print(f"[binary] Re-queued {br} stale binary build job(s) at worker start")
+    except Exception as exc:
+        print(f"[binary] Stale reclaim at worker start: {exc}")
     while True:
         did_work = _process_next_binary_build_job()
         if not did_work:
@@ -11742,6 +11896,16 @@ async def admin_firstrate_connection_status(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"success": True, **report}
+
+
+@app.get("/api/admin/datasets/pipeline-diagnostics")
+async def admin_pipeline_diagnostics(request: Request):
+    """
+    VPS-style snapshot: active FirstRate import, binary queue depth, datasets stuck
+    in Building, disk space, and reclaim counts for stuck jobs.
+    """
+    _require_admin(request)
+    return {"success": True, **_collect_pipeline_diagnostics()}
 
 
 @app.get("/api/admin/datasets/firstrate-fx/last-update")

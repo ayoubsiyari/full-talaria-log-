@@ -2327,7 +2327,7 @@ select { cursor:default; }
             <button type="button" class="ds-hub-tab" data-ds-tab="import" onclick="setDsHubTab('import')">Import</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="sync" onclick="setDsHubTab('sync')">Sync health</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="maintenance" onclick="setDsHubTab('maintenance')">Maintenance</button>
-            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-05-18d</span>
+            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-05-18e</span>
           </div>
         </div>
 
@@ -2717,6 +2717,15 @@ select { cursor:default; }
                 VPS automation (no admin clicks): nightly + <strong>auto-repair</strong> for stale/missing, merge on import, duplicate cleanup after each successful import, stuck jobs auto-failed after ~90 min so the queue continues.
               </p>
               <div id="frConnectionChecksSync" class="fr-conn-checks" style="font-size:11px"></div>
+            </div>
+            <div id="frPipelinePanel" style="margin:0 0 14px;padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(99,102,241,.06)">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                <strong style="font-size:12px">VPS pipeline (import + chart binaries)</strong>
+                <span class="card-badge" id="frPipelineBadge" style="background:var(--panel);color:var(--text-muted)">loading…</span>
+                <button type="button" class="btn sm" style="margin-left:auto" onclick="refreshFirstratePipelineDiagnostics(true)">Refresh pipeline</button>
+              </div>
+              <p id="frPipelineSummary" style="margin:0 0 8px;font-size:11px;color:var(--text-muted);line-height:1.45">Shows whether work is stuck on the server: FirstRate CSV import (API) vs chart binary builds (worker queue).</p>
+              <div id="frPipelineBody" style="font-size:11px;font-family:ui-monospace,monospace;line-height:1.55;white-space:pre-wrap"></div>
             </div>
             <p id="frHealthHeadline" style="margin:0 0 12px;font-size:12px;color:var(--text-muted);line-height:1.5">Checking last nightly run…</p>
             <div id="frHealthClassGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:10px"></div>
@@ -6562,6 +6571,141 @@ async function refreshFirstrateConnectionStatus(force) {
   }
 }
 
+var _frPipelineLastRun = 0;
+
+function _formatPipelineDiagnostics(d) {
+  if (!d) return '';
+  var lines = [];
+  lines.push('checked_at: ' + (d.checked_at || '—'));
+  lines.push('app_role: ' + (d.app_role || '—') + ' · binary_build_mode: ' + (d.binary_build_mode || '—'));
+  var bq = d.binary_queue || {};
+  lines.push(
+    'binary queue: queued=' +
+      (bq.queued || 0) +
+      ' processing=' +
+      (bq.processing || 0) +
+      ' done=' +
+      (bq.done || 0) +
+      ' failed=' +
+      (bq.failed || 0) +
+      ' (depth ' +
+      (d.binary_queue_depth || 0) +
+      ')'
+  );
+  if (d.disk) {
+    lines.push('disk uploads: free ' + d.disk.uploads_free_gb + ' GB · used ' + d.disk.uploads_used_gb + ' GB');
+  }
+  if (d.schedule) {
+    lines.push(
+      'scheduler: enabled=' +
+        d.schedule.enabled +
+        ' last_status=' +
+        (d.schedule.last_status || '—') +
+        (d.schedule.last_error ? ' err=' + d.schedule.last_error : '')
+    );
+  }
+  var reclaimed = d.reclaimed || {};
+  if ((reclaimed.firstrate_import_jobs || 0) + (reclaimed.binary_build_jobs || 0) > 0) {
+    lines.push(
+      'reclaimed this check: import=' +
+        (reclaimed.firstrate_import_jobs || 0) +
+        ' binary=' +
+        (reclaimed.binary_build_jobs || 0)
+    );
+  }
+  var active = d.firstrate_active_jobs || [];
+  if (active.length) {
+    lines.push('— FirstRate import (API) —');
+    active.forEach(function (j) {
+      lines.push(
+        (j.status || '?') +
+          ' ' +
+          (j.files_done || 0) +
+          '/' +
+          (j.files_total || '?') +
+          ' phase=' +
+          (j.phase || '—') +
+          ' ' +
+          (j.message || j.current_file || '')
+      );
+    });
+  } else {
+    lines.push('FirstRate import: none running');
+  }
+  var proc = d.binary_processing_sample || [];
+  if (proc.length) {
+    lines.push('— binary processing now (worker) —');
+    proc.forEach(function (p) {
+      lines.push('#' + p.id + ' file_id=' + p.file_id + ' ' + p.original_name + ' started ' + (p.started_at || '—'));
+    });
+  }
+  var building = d.building_datasets || [];
+  if (building.length) {
+    lines.push('— registry «Building» (up to 15) —');
+    building.forEach(function (b) {
+      lines.push(
+        b.original_name +
+          ' job#' +
+          b.binary_job_id +
+          ' ' +
+          b.binary_status +
+          ' TF ' +
+          b.ready_timeframes +
+          '/' +
+          b.total_timeframes +
+          (b.binary_error ? ' err=' + b.binary_error : '')
+      );
+    });
+  } else if ((d.binary_queue_depth || 0) === 0) {
+    lines.push('registry Building: none (queue empty)');
+  }
+  (d.hints || []).forEach(function (h) {
+    lines.push('hint: ' + h);
+  });
+  return lines.join('\n');
+}
+
+async function refreshFirstratePipelineDiagnostics(force) {
+  var body = $('frPipelineBody');
+  var badge = $('frPipelineBadge');
+  if (!body) return;
+  var now = Date.now();
+  if (!force && now - _frPipelineLastRun < 28000) return;
+  _frPipelineLastRun = now;
+  if (badge) {
+    badge.textContent = 'checking…';
+    badge.style.color = 'var(--text-muted)';
+  }
+  try {
+    var d = await api('/api/admin/datasets/pipeline-diagnostics');
+    body.textContent = _formatPipelineDiagnostics(d);
+    var depth = d.binary_queue_depth || 0;
+    var importActive = (d.firstrate_active_jobs || []).length > 0;
+    if (badge) {
+      if (importActive) {
+        badge.textContent = 'import running';
+        badge.style.color = '#38bdf8';
+      } else if (depth > 0) {
+        badge.textContent = 'binaries ' + depth + ' queued';
+        badge.style.color = '#eab308';
+      } else {
+        badge.textContent = 'idle';
+        badge.style.color = '#22c55e';
+      }
+    }
+  } catch (e) {
+    body.textContent = 'Pipeline diagnostics failed: ' + (e && e.message ? e.message : String(e));
+    if (String(e && e.message ? e.message : e).indexOf('404') >= 0) {
+      body.textContent +=
+        '\n\nRedeploy trading-chart on VPS (git pull && docker compose up -d --build trading-chart trading-chart-worker)';
+    }
+    if (badge) {
+      badge.textContent = 'error';
+      badge.style.color = 'var(--err,#f87171)';
+    }
+  }
+}
+
 function ensureFirstrateLivePoll() {
   if (window._frLivePollId) return;
   window._frLivePollId = setInterval(updateFirstrateLivePanel, 1200);
@@ -6569,6 +6713,14 @@ function ensureFirstrateLivePoll() {
   try {
     refreshFirstrateConnectionStatus(false);
   } catch (e) {}
+  try {
+    refreshFirstratePipelineDiagnostics(false);
+  } catch (e) {}
+  if (!window._frPipelinePollId) {
+    window._frPipelinePollId = setInterval(function () {
+      refreshFirstratePipelineDiagnostics(false);
+    }, 30000);
+  }
   if (!window._frDailySyncPollId) {
     window._frDailySyncPollId = setInterval(refreshDailySyncOverview, 30000);
   }
