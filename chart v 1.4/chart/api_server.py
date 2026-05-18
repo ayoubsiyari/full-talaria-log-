@@ -2567,6 +2567,7 @@ def _firstrate_start_file_heartbeat(
             st["message"] = message
             if current_file:
                 st["current_file"] = current_file
+            st["heartbeat_at"] = datetime.utcnow().isoformat() + "Z"
             _firstrate_write_job(job_id, st)
 
     threading.Thread(target=_beat, daemon=True).start()
@@ -2904,6 +2905,9 @@ def _default_firstrate_schedule() -> dict:
         # 24/7: queue week/month imports for stale/missing tickers without opening admin UI.
         "auto_repair": os.getenv("FIrstrate_SCHEDULE_AUTO_REPAIR", "true").strip().lower()
         in {"1", "true", "yes", "on"},
+        # After each successful import: merge duplicate datasets into the densest row per ticker.
+        "auto_duplicate_cleanup": os.getenv("FIrstrate_AUTO_DUPLICATE_CLEANUP", "true").strip().lower()
+        in {"1", "true", "yes", "on"},
         "upsert_existing": os.getenv("FIrstrate_SCHEDULE_UPSERT", "true").strip().lower() in {"1", "true", "yes", "on"},
         "delete_existing_first": False,
         "purge_confirmation": None,
@@ -2956,37 +2960,108 @@ def _save_firstrate_schedule(cfg: dict) -> None:
         tmp.replace(FIrstrate_SCHEDULE_PATH)
 
 
-def _firstrate_has_active_import_job() -> bool:
+def _firstrate_parse_job_utc(ts_raw: str | None) -> datetime | None:
+    if not ts_raw:
+        return None
+    try:
+        return datetime.fromisoformat(str(ts_raw).replace("Z", ""))
+    except Exception:
+        return None
+
+
+def _firstrate_fail_stuck_job(st: dict, job_id: str, reason: str) -> None:
+    st["status"] = "failed"
+    st["phase"] = "failed"
+    st["message"] = reason[:2000]
+    st["error"] = reason[:4000]
+    _firstrate_write_job(job_id, st)
+    try:
+        _firstrate_schedule_after_job(job_id, success=False, error_message=reason)
+    except Exception:
+        pass
+
+
+def _firstrate_note_import_file_progress(st: dict, job_id: str) -> None:
+    """Record that files_done advanced (heartbeat must not reset this clock)."""
+    st["last_files_done"] = int(st.get("files_done") or 0)
+    st["last_files_done_at"] = datetime.utcnow().isoformat() + "Z"
+    _firstrate_write_job(job_id, st)
+
+
+def _firstrate_reclaim_stuck_import_jobs() -> int:
+    """
+    Mark zombie import jobs failed so nightly auto-repair can continue.
+    Uses last_files_done_at (real progress), not heartbeat updated_at.
+    """
     _firstrate_cleanup_jobs()
     now = datetime.utcnow()
-    STALE_RUNNING_MINUTES = 240  # 4 hours — if no progress update, assume crashed
-    STALE_QUEUED_MINUTES = 30    # 30 min — queued but never started
+    stale_queued_min = max(10, int(os.getenv("FIrstrate_STALE_QUEUED_MINUTES", "30")))
+    stale_dead_min = max(60, int(os.getenv("FIrstrate_STALE_DEAD_MINUTES", "240")))
+    stale_file_min = max(45, int(os.getenv("FIrstrate_STUCK_FILE_MINUTES", "90")))
+    stale_binary_min = max(90, int(os.getenv("FIrstrate_STUCK_BINARY_MINUTES", "180")))
+    reclaimed = 0
     for p in FIrstrate_JOBS_DIR.glob("*.json"):
         try:
             with open(p, "r", encoding="utf-8") as f:
                 st = json.load(f)
-            status = st.get("status")
+            status = str(st.get("status") or "")
             if status not in ("queued", "running"):
                 continue
-            updated_raw = st.get("updated_at") or st.get("created_at") or ""
-            try:
-                last_update = datetime.fromisoformat(str(updated_raw).replace("Z", ""))
-            except Exception:
-                last_update = None
-            if last_update:
-                elapsed_min = (now - last_update).total_seconds() / 60.0
-                threshold = STALE_RUNNING_MINUTES if status == "running" else STALE_QUEUED_MINUTES
-                if elapsed_min > threshold:
-                    st["status"] = "failed"
-                    st["phase"] = "failed"
-                    st["message"] = (
-                        f"Auto-marked failed: no progress update for "
-                        f"{int(elapsed_min)} min (threshold {threshold} min)"
+            job_id = str(st.get("job_id") or p.stem)
+            updated_raw = st.get("updated_at") or st.get("created_at")
+            last_update = _firstrate_parse_job_utc(updated_raw)
+            if status == "queued":
+                if last_update and (now - last_update).total_seconds() / 60.0 > stale_queued_min:
+                    _firstrate_fail_stuck_job(
+                        st,
+                        job_id,
+                        f"Auto-failed: queued {int((now - last_update).total_seconds() / 60)} min with no start",
                     )
-                    st["error"] = st["message"]
-                    _firstrate_write_job(st.get("job_id") or p.stem, st)
-                    continue
-            return True
+                    reclaimed += 1
+                continue
+            phase = str(st.get("phase") or "").lower()
+            prog_raw = st.get("last_files_done_at") or st.get("created_at") or updated_raw
+            prog_at = _firstrate_parse_job_utc(prog_raw)
+            bin_raw = st.get("last_binary_at")
+            bin_at = _firstrate_parse_job_utc(bin_raw) if bin_raw else None
+            reason: str | None = None
+            if phase == "binary" and bin_at:
+                bin_min = (now - bin_at).total_seconds() / 60.0
+                if bin_min > stale_binary_min:
+                    reason = (
+                        f"Auto-failed: binary build stalled {int(bin_min)} min on "
+                        f"{st.get('message') or 'chart binaries'}"
+                    )
+            elif prog_at:
+                prog_min = (now - prog_at).total_seconds() / 60.0
+                if prog_min > stale_file_min:
+                    cur = st.get("current_file") or "?"
+                    done = int(st.get("files_done") or 0)
+                    total = int(st.get("files_total") or 0)
+                    reason = (
+                        f"Auto-failed: no file progress for {int(prog_min)} min "
+                        f"({done}/{total} files, stuck on {cur})"
+                    )
+            if not reason and last_update:
+                dead_min = (now - last_update).total_seconds() / 60.0
+                if dead_min > stale_dead_min:
+                    reason = f"Auto-failed: no server heartbeat for {int(dead_min)} min (crashed?)"
+            if reason:
+                _firstrate_fail_stuck_job(st, job_id, reason)
+                reclaimed += 1
+        except Exception:
+            continue
+    return reclaimed
+
+
+def _firstrate_has_active_import_job() -> bool:
+    _firstrate_reclaim_stuck_import_jobs()
+    for p in FIrstrate_JOBS_DIR.glob("*.json"):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                st = json.load(f)
+            if str(st.get("status") or "") in ("queued", "running"):
+                return True
         except Exception:
             continue
     return False
@@ -3379,6 +3454,7 @@ def _firstrate_schedule_after_job(job_id: str, success: bool, error_message: str
             _firstrate_mark_scheduled_type_complete(it)
             _firstrate_record_vendor_last_update(it)
             _firstrate_clear_type_failure_cooldown(it)
+            _firstrate_queue_auto_duplicate_cleanup(trigger=f"after_{it}_import")
         elif not success and it:
             _firstrate_set_type_failure_cooldown(it, 30)
         _save_firstrate_schedule(cfg)
@@ -3574,11 +3650,23 @@ def _firstrate_scheduler_loop() -> None:
         time.sleep(max(15.0, sleep_sec))
 
 
+def _firstrate_scheduler_bootstrap() -> None:
+    """On container start: clear stuck imports, then run one scheduler tick."""
+    try:
+        reclaimed = _firstrate_reclaim_stuck_import_jobs()
+        if reclaimed:
+            print(f"[firstrate] Reclaimed {reclaimed} stuck import job(s) on startup")
+        _firstrate_scheduler_tick()
+    except Exception as exc:
+        print(f"[firstrate] Scheduler bootstrap: {exc}")
+
+
 def _start_firstrate_scheduler_thread() -> None:
     if os.getenv("FIrstrate_SCHEDULE_DISABLE", "").strip().lower() in {"1", "true", "yes", "on"}:
         return
     if APP_ROLE == "worker":
         return
+    threading.Thread(target=_firstrate_scheduler_bootstrap, daemon=True, name="firstrate-bootstrap").start()
     threading.Thread(target=_firstrate_scheduler_loop, daemon=True, name="firstrate-scheduler").start()
 
 
@@ -6733,6 +6821,8 @@ def _run_firstrate_import_job(job_id: str) -> None:
         state["pairs_filter"] = pairs_norm
         state["files_total"] = 0
         state["files_done"] = 0
+        state["last_files_done"] = 0
+        state["last_files_done_at"] = datetime.utcnow().isoformat() + "Z"
         state["files_skipped_by_pair_filter"] = 0
         state["datasets_created"] = []
         state["skipped_files"] = []
@@ -6933,7 +7023,7 @@ def _run_firstrate_import_job(job_id: str) -> None:
                     st["skipped_files"] = list(skipped)
                     st["message"] = f"Normalize error on {src.name} — skipped"
                     st["current_file"] = None
-                    _firstrate_write_job(job_id, st)
+                    _firstrate_note_import_file_progress(st, job_id)
                     continue
                 finally:
                     hb_stop.set()
@@ -6949,7 +7039,7 @@ def _run_firstrate_import_job(job_id: str) -> None:
                     st["skipped_files"] = list(skipped)
                     st["message"] = f"Skipped {src.name} (0 rows)"
                     st["current_file"] = None
-                    _firstrate_write_job(job_id, st)
+                    _firstrate_note_import_file_progress(st, job_id)
                     continue
 
                 # Use the canonical ticker (period-independent) for the
@@ -7023,7 +7113,7 @@ def _run_firstrate_import_job(job_id: str) -> None:
                 st["message"] = (
                     f"Imported {len(created)} dataset(s){bundle_label}"
                 )
-                _firstrate_write_job(job_id, st)
+                _firstrate_note_import_file_progress(st, job_id)
 
             # Free extracted files between bundles.
             try:
@@ -7046,6 +7136,8 @@ def _run_firstrate_import_job(job_id: str) -> None:
                 state["message"] = (
                     f"Building chart binaries ({bi}/{total_bin}): {bname}"
                 )
+                state["last_binary_at"] = datetime.utcnow().isoformat() + "Z"
+                state["last_binary_index"] = bi
                 _firstrate_write_job(job_id, state)
                 build_binary_for_file(
                     fid,
@@ -7066,6 +7158,11 @@ def _run_firstrate_import_job(job_id: str) -> None:
         )
         _firstrate_write_job(job_id, state)
         _firstrate_schedule_after_job(job_id, success=True, error_message=None)
+        try:
+            trig = str(state.get("trigger") or "import")
+            _firstrate_queue_auto_duplicate_cleanup(trigger=f"after_{trig}")
+        except Exception:
+            pass
 
     except Exception as exc:
         err = _firstrate_read_job(job_id) or {}
@@ -12100,6 +12197,42 @@ def _read_cleanup_job() -> dict | None:
             return json.load(f)
     except Exception:
         return None
+
+
+def _firstrate_queue_auto_duplicate_cleanup(*, trigger: str = "schedule") -> bool:
+    """Background duplicate merge/quarantine when enabled and no other heavy job runs."""
+    try:
+        cfg = _load_firstrate_schedule()
+        if not bool(cfg.get("auto_duplicate_cleanup", True)):
+            return False
+    except Exception:
+        pass
+    if _firstrate_has_active_import_job():
+        return False
+    existing = _read_cleanup_job()
+    if existing and str(existing.get("status") or "") in ("running", "queued"):
+        return False
+    state = {
+        "status": "queued",
+        "phase": "scanning",
+        "message": f"Auto duplicate cleanup ({trigger})…",
+        "trigger": trigger,
+        "started_at": datetime.utcnow().isoformat() + "Z",
+        "tickers_total": 0,
+        "tickers_done": 0,
+        "cleaned": 0,
+        "current_ticker": None,
+        "current_class": None,
+        "ticker_results": [],
+        "errors": [],
+    }
+    _write_cleanup_job(state)
+    threading.Thread(
+        target=_run_cleanup_job_background,
+        daemon=True,
+        name="cleanup-duplicates-auto",
+    ).start()
+    return True
 
 
 def _run_cleanup_job_background() -> None:
