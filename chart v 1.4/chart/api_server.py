@@ -6489,13 +6489,16 @@ def _dataset_overview_entry(
         }
 
     job_status = str(latest_job.status or "").lower() if latest_job else ""
+    chart_complete = ready_tf >= len(DATASET_TIMEFRAMES) and ok
     if job_status in {"queued", "processing"}:
-        health = "building"
+        # Redundant import jobs queue binaries even when 9/9 TFs are ready — don't
+        # downgrade healthy datasets to "building" in the admin overview.
+        health = "healthy" if chart_complete else "building"
     elif latest_job and job_status == "failed":
         health = "failed"
     elif not ok:
         health = "integrity_issues"
-    elif ready_tf >= len(DATASET_TIMEFRAMES):
+    elif chart_complete:
         health = "healthy"
     elif ready_tf > 0:
         health = "partial"
@@ -6563,19 +6566,117 @@ def _dataset_file_health_for_session(
 
     ok, _issues = _dataset_binary_integrity(db, file_id)
     job_status = str(latest_job.status or "").lower() if latest_job else ""
+    chart_complete = ready_tf >= len(DATASET_TIMEFRAMES) and ok
     if job_status in {"queued", "processing"}:
-        health = "building"
+        health = "healthy" if chart_complete else "building"
     elif latest_job and job_status == "failed":
         health = "failed"
     elif not ok:
         health = "integrity_issues"
-    elif ready_tf >= len(DATASET_TIMEFRAMES):
+    elif chart_complete:
         health = "healthy"
     elif ready_tf > 0:
         health = "partial"
     else:
         health = "empty"
     return health, ready_tf
+
+
+def _dataset_chart_ready_state(db, file_id: int) -> tuple[int, bool]:
+    """Count ready timeframes and whether binary integrity passes."""
+    aggs_list = db.query(CSVAggregate).filter(CSVAggregate.file_id == int(file_id)).all()
+    agg_by_tf = {str(a.timeframe): a for a in aggs_list}
+    ready_tf = 0
+    for tf in DATASET_TIMEFRAMES:
+        agg = agg_by_tf.get(tf)
+        fname = agg.agg_filename if agg and agg.agg_filename else f"bin_{file_id}_{tf}.bin"
+        bp = BIN_DIR / fname
+        st = str(agg.status or "") if agg else ""
+        if not agg and bp.exists():
+            st = "ready"
+        elif not agg:
+            st = "missing"
+        if st == "ready":
+            ready_tf += 1
+    ok, _issues = _dataset_binary_integrity(db, int(file_id))
+    return ready_tf, ok
+
+
+def _binary_rebuild_needed(
+    file_id: int,
+    *,
+    new_rows_added: int | None = None,
+    force: bool = False,
+    db=None,
+) -> bool:
+    """
+    True when chart binaries should be built/rebuilt.
+    False when all TFs are ready, integrity OK, and merge added no new rows.
+    """
+    if force:
+        return True
+    own_db = db is None
+    if own_db:
+        db = SessionLocal()
+    try:
+        ready_tf, ok = _dataset_chart_ready_state(db, int(file_id))
+        if ready_tf < len(DATASET_TIMEFRAMES) or not ok:
+            return True
+        if new_rows_added is not None and int(new_rows_added) > 0:
+            return True
+        return False
+    finally:
+        if own_db:
+            db.close()
+
+
+def _complete_redundant_binary_jobs_for_file(file_id: int, db=None) -> int:
+    """Drop queued/processing jobs when the dataset is already chart-ready."""
+    own_db = db is None
+    if own_db:
+        db = SessionLocal()
+    completed = 0
+    try:
+        if _binary_rebuild_needed(int(file_id), db=db):
+            return 0
+        rows = (
+            db.query(BinaryBuildJob)
+            .filter(
+                BinaryBuildJob.file_id == int(file_id),
+                BinaryBuildJob.status.in_(["queued", "processing"]),
+            )
+            .all()
+        )
+        for row in rows:
+            row.status = "done"
+            row.finished_at = datetime.utcnow()
+            row.error = "skipped: chart already ready (no rebuild needed)"
+            completed += 1
+        if completed:
+            db.commit()
+    finally:
+        if own_db:
+            db.close()
+    return completed
+
+
+def _sweep_redundant_binary_jobs(limit: int = 400) -> int:
+    """Admin/diagnostics: clear bogus queue entries for already-healthy datasets."""
+    db = SessionLocal()
+    swept = 0
+    try:
+        rows = (
+            db.query(BinaryBuildJob)
+            .filter(BinaryBuildJob.status.in_(["queued", "processing"]))
+            .order_by(BinaryBuildJob.id.asc())
+            .limit(max(1, int(limit)))
+            .all()
+        )
+        for row in rows:
+            swept += _complete_redundant_binary_jobs_for_file(int(row.file_id), db=db)
+    finally:
+        db.close()
+    return swept
 
 
 def _archive_source_csv_if_ready(file_id: int, source_path: Path):
@@ -6610,7 +6711,22 @@ def _archive_source_csv_if_ready(file_id: int, source_path: Path):
     except Exception as exc:
         print(f"⚠️ Failed to archive CSV for file {file_id}: {exc}")
 
-def _enqueue_binary_build_job(file_id: int, file_path: Path, original_filename: str, trigger: str = "manual") -> int:
+def _enqueue_binary_build_job(
+    file_id: int,
+    file_path: Path,
+    original_filename: str,
+    trigger: str = "manual",
+    *,
+    force: bool = False,
+    new_rows_added: int | None = None,
+) -> int:
+    tr = str(trigger or "")
+    is_manual = tr.startswith("manual") or tr.startswith("admin") or tr == "worker:manual"
+    if not force and not is_manual:
+        if not _binary_rebuild_needed(int(file_id), new_rows_added=new_rows_added):
+            _complete_redundant_binary_jobs_for_file(int(file_id))
+            return 0
+
     db = SessionLocal()
     try:
         existing = db.query(BinaryBuildJob).filter(
@@ -6618,6 +6734,14 @@ def _enqueue_binary_build_job(file_id: int, file_path: Path, original_filename: 
             BinaryBuildJob.status.in_(["queued", "processing"]),
         ).order_by(BinaryBuildJob.id.desc()).first()
         if existing:
+            if not force and not is_manual and not _binary_rebuild_needed(
+                int(file_id), new_rows_added=new_rows_added, db=db
+            ):
+                existing.status = "done"
+                existing.finished_at = datetime.utcnow()
+                existing.error = "skipped: chart already ready (no rebuild needed)"
+                db.commit()
+                return 0
             return int(existing.id)
 
         job = BinaryBuildJob(
@@ -6638,7 +6762,16 @@ def _enqueue_binary_build_job(file_id: int, file_path: Path, original_filename: 
     finally:
         db.close()
 
-def build_binary_for_file(file_id: int, file_path, original_filename: str, run_async: bool = True, trigger: str = "manual"):
+def build_binary_for_file(
+    file_id: int,
+    file_path,
+    original_filename: str,
+    run_async: bool = True,
+    trigger: str = "manual",
+    *,
+    force: bool = False,
+    new_rows_added: int | None = None,
+):
     """
     Background job: parse CSV once, write binary (.bin) files for 1m + all TFs.
     Binary format: 48 bytes per candle (6 x float64: t,o,h,l,c,v).
@@ -6650,12 +6783,28 @@ def build_binary_for_file(file_id: int, file_path, original_filename: str, run_a
             file_path=Path(file_path),
             original_filename=original_filename,
             trigger=trigger,
+            force=force,
+            new_rows_added=new_rows_added,
         )
         return True
 
     import threading
 
     def _run():
+        tr = str(trigger or "")
+        is_manual = tr.startswith("manual") or tr.startswith("admin") or tr == "worker:manual"
+        if not force and not is_manual and "firstrate" in tr:
+            db_skip = SessionLocal()
+            try:
+                if not _binary_rebuild_needed(int(file_id), new_rows_added=new_rows_added, db=db_skip):
+                    print(
+                        f"⏭️ Skip binary rebuild for file {file_id} ({original_filename}) — "
+                        "chart already ready, no new CSV rows"
+                    )
+                    return True
+            finally:
+                db_skip.close()
+
         all_ok = True
         ALL_TFS = {
             '1m': 60000,
@@ -6900,7 +7049,7 @@ def _run_firstrate_import_job(job_id: str) -> None:
         skipped: list[dict] = []
         total_skipped_by_filter = 0
         csv_ticker_cache = _build_csvfile_ticker_cache()
-        deferred_binary_builds: list[tuple[int, Path, str]] = []
+        deferred_binary_builds: list[tuple[int, Path, str, int]] = []
 
         for bundle_idx, current_range in enumerate(ranges_to_fetch, start=1):
             bundle_label = (
@@ -7191,13 +7340,17 @@ def _run_firstrate_import_job(job_id: str) -> None:
                     reg_stop.set()
                 if isinstance(info, dict) and info.get("binary_file_id"):
                     try:
-                        deferred_binary_builds.append(
-                            (
-                                int(info["binary_file_id"]),
-                                Path(str(info["binary_path"])),
-                                str(info.get("binary_original_name") or original_label),
+                        fid = int(info["binary_file_id"])
+                        new_rows = int(info.get("new_rows_added") or 0)
+                        if _binary_rebuild_needed(fid, new_rows_added=new_rows):
+                            deferred_binary_builds.append(
+                                (
+                                    fid,
+                                    Path(str(info["binary_path"])),
+                                    str(info.get("binary_original_name") or original_label),
+                                    new_rows,
+                                )
                             )
-                        )
                     except (TypeError, ValueError):
                         pass
                 entry = info.get("file") if isinstance(info, dict) else None
@@ -7235,26 +7388,38 @@ def _run_firstrate_import_job(job_id: str) -> None:
         if deferred_binary_builds:
             # Queue binaries for trading-chart-worker — do NOT build synchronously on the
             # API process (6M-row FX CSVs can take 30–90+ min each and block everything).
-            _bin_seen: dict[int, tuple[int, Path, str]] = {}
-            for fid, bpath, bname in deferred_binary_builds:
-                _bin_seen[int(fid)] = (int(fid), bpath, bname)
+            _bin_seen: dict[int, tuple[int, Path, str, int]] = {}
+            for item in deferred_binary_builds:
+                fid = int(item[0])
+                _bin_seen[fid] = (
+                    fid,
+                    item[1],
+                    str(item[2]),
+                    int(item[3]) if len(item) > 3 else 0,
+                )
             deferred_binary_builds = list(_bin_seen.values())
             state = _firstrate_read_job(job_id) or state
             state["phase"] = "binary_queue"
             state["current_file"] = None
             state["binary_queued"] = 0
-            for fid, bpath, bname in deferred_binary_builds:
+            state["binary_skipped_ready"] = 0
+            for fid, bpath, bname, new_rows in deferred_binary_builds:
+                if not _binary_rebuild_needed(int(fid), new_rows_added=new_rows):
+                    _complete_redundant_binary_jobs_for_file(int(fid))
+                    state["binary_skipped_ready"] = int(state.get("binary_skipped_ready") or 0) + 1
+                    continue
                 build_binary_for_file(
                     int(fid),
                     bpath,
                     bname,
                     run_async=True,
                     trigger="firstrate_import",
+                    new_rows_added=new_rows,
                 )
                 state["binary_queued"] = int(state.get("binary_queued") or 0) + 1
             state["message"] = (
-                f"CSV import done — {state['binary_queued']} chart binary job(s) queued "
-                f"(trading-chart-worker builds them; check Pipeline status in admin)"
+                f"CSV import done — {state['binary_queued']} binary job(s) queued, "
+                f"{state.get('binary_skipped_ready', 0)} skipped (already chart-ready)"
             )
             _firstrate_write_job(job_id, state)
 
@@ -7496,6 +7661,7 @@ def _collect_pipeline_diagnostics() -> dict:
 
     import_reclaimed = _firstrate_reclaim_stuck_import_jobs()
     binary_reclaimed = _reclaim_stale_binary_build_jobs()
+    redundant_swept = _sweep_redundant_binary_jobs()
 
     firstrate_active: list[dict] = []
     firstrate_recent: list[dict] = []
@@ -7640,6 +7806,7 @@ def _collect_pipeline_diagnostics() -> dict:
         "reclaimed": {
             "firstrate_import_jobs": import_reclaimed,
             "binary_build_jobs": binary_reclaimed,
+            "redundant_binary_jobs_cleared": redundant_swept,
         },
         "disk": {
             "uploads_free_gb": round(du.free / (1024**3), 2),
@@ -7693,6 +7860,18 @@ def _process_next_binary_build_job() -> bool:
 
     if not source_path.exists():
         _mark_binary_build_job_done(int(job["id"]), ok=False, error=f"source file missing: {source_path}")
+        return True
+
+    if not _binary_rebuild_needed(int(job["file_id"])):
+        _mark_binary_build_job_done(
+            int(job["id"]),
+            ok=True,
+            error=None,
+        )
+        print(
+            f"⏭️ Worker skipped binary job #{job['id']} file {job['file_id']} "
+            f"({job['original_name']}) — already chart-ready"
+        )
         return True
 
     binary_max_min = max(30.0, float(os.getenv("BINARY_JOB_MAX_MINUTES", "120")))
@@ -12057,10 +12236,15 @@ async def admin_pipeline_unstick(request: Request):
     _require_admin(request)
     import_r = _firstrate_reclaim_stuck_import_jobs()
     binary_r = _reclaim_stale_binary_build_jobs(stale_minutes=30)
+    redundant_r = _sweep_redundant_binary_jobs()
     diag = _collect_pipeline_diagnostics()
     return {
         "success": True,
-        "reclaimed": {"firstrate_import_jobs": import_r, "binary_build_jobs": binary_r},
+        "reclaimed": {
+            "firstrate_import_jobs": import_r,
+            "binary_build_jobs": binary_r,
+            "redundant_binary_jobs_cleared": redundant_r,
+        },
         **diag,
     }
 
@@ -12377,7 +12561,13 @@ async def admin_rebuild_dataset_binary(file_id: int, request: Request):
         db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).update({"status": "pending"})
         db.commit()
 
-        build_binary_for_file(file_id, file_path, db_file.original_name)
+        build_binary_for_file(
+            file_id,
+            file_path,
+            db_file.original_name,
+            trigger="admin_rebuild",
+            force=True,
+        )
 
         return {
             "success": True,

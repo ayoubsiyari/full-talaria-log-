@@ -2,10 +2,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SymbolBadge } from "./backtestModal/SymbolBadge";
 import { normalizeBadgeAsset } from "./backtestModal/symbolIcons";
+import { computeOverlapRange, clampIso, isoToDisplay } from "./backtestModal/dateRangeUtils";
+import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
 import { JOURNAL_API_BASE, journalAuthHeaders, syncJournalTokenFromSession } from "@/lib/journalApi";
+
+const MON_D_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const F = "'Exo 2', sans-serif";
 
@@ -323,9 +327,26 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       });
   }, [open, filesLoading, availFiles.length]);
 
+  const selectedFilesForSession = availFiles.filter(f => newSessFiles.includes(f.id));
+  const fallbackFilesByTicker = newSessTickers
+    .map(t => availFiles.find(f => (f.ticker || "").toUpperCase() === String(t || "").toUpperCase()))
+    .filter((f): f is AvailFile => !!f);
+  const effectiveFiles = useMemo(() => {
+    const list = selectedFilesForSession.length > 0 ? selectedFilesForSession : fallbackFilesByTicker;
+    const seen = new Set<string>();
+    return list.filter(f => {
+      if (seen.has(f.id)) return false;
+      seen.add(f.id);
+      return true;
+    });
+  }, [selectedFilesForSession, fallbackFilesByTicker]);
+  const primaryEffectiveFile = effectiveFiles[0] || null;
+
+  const fileIdsForMeta = useMemo(() => effectiveFiles.map(f => f.id).filter(Boolean), [effectiveFiles]);
+
   useEffect(() => {
-    if (!open || availFiles.length === 0 || newSessFiles.length === 0) return;
-    const pending = newSessFiles.filter(fid => !fileMetaLoaded[fid]);
+    if (!open || availFiles.length === 0 || fileIdsForMeta.length === 0) return;
+    const pending = fileIdsForMeta.filter(fid => !fileMetaLoaded[fid]);
     if (pending.length === 0) return;
 
     const toIsoDate = (ts: number | null | undefined) => {
@@ -364,7 +385,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
           setFileMetaLoaded(prev => ({ ...prev, [fid]: true }));
         });
     });
-  }, [open, availFiles, newSessFiles, fileMetaLoaded]);
+  }, [open, availFiles, fileIdsForMeta, fileMetaLoaded]);
 
   useEffect(() => {
     if (!open) return;
@@ -438,22 +459,99 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     return { ...f, ...def };
   }).filter(Boolean);
 
-  const selectedFiles = availFiles.filter(f => newSessFiles.includes(f.id));
   const strategyMap = myStrategies.reduce((acc: Record<string, StrategyOption>, s) => {
     acc[s.value] = s;
     return acc;
   }, {});
   const selectedStrategy = strategyMap[newSessPlaybook] || null;
-  const availableStartIso = selectedFiles
-    .map(f => f.from)
-    .filter(Boolean)
-    .sort()
-    .slice(-1)[0] || "";
-  const availableEndIso = selectedFiles
-    .map(f => f.to)
-    .filter(Boolean)
-    .sort()
-    .slice(0, 1)[0] || "";
+
+  const tickersMissingDataset = newSessTickers.filter(
+    t => !availFiles.some(f => (f.ticker || "").toUpperCase() === String(t).toUpperCase())
+  );
+  const metaLoadingForBounds = fileIdsForMeta.some(fid => !fileMetaLoaded[fid]);
+  const filesWithRange = effectiveFiles.filter(f => f.from && f.to);
+  const overlap = computeOverlapRange(effectiveFiles);
+  const boundsReady =
+    effectiveFiles.length > 0 &&
+    !metaLoadingForBounds &&
+    filesWithRange.length === effectiveFiles.length &&
+    overlap.hasOverlap;
+  const availableStartIso = boundsReady ? overlap.start : "";
+  const availableEndIso = boundsReady ? overlap.end : "";
+
+  const dateBoundsHint = useMemo(() => {
+    if (filesLoading) return "Loading datasets…";
+    if (filesError) return filesError;
+    if (newSessTickers.length === 0 && newSessFiles.length === 0) {
+      return "Select at least one trading pair to see available dates.";
+    }
+    if (tickersMissingDataset.length > 0) {
+      return `No chart dataset for: ${tickersMissingDataset.join(", ")}. Pick symbols with server data.`;
+    }
+    if (metaLoadingForBounds) {
+      return `Loading date ranges for ${effectiveFiles.map(f => f.ticker || f.name).join(", ")}…`;
+    }
+    if (overlap.conflict) {
+      const per = effectiveFiles
+        .filter(f => f.from && f.to)
+        .map(f => `${f.ticker}: ${f.from} → ${f.to}`)
+        .join(" · ");
+      return `No overlapping range across selected symbols. ${per}`;
+    }
+    if (!boundsReady) {
+      return "Waiting for dataset date metadata…";
+    }
+    if (effectiveFiles.length === 1) {
+      const f = effectiveFiles[0];
+      return `Available for ${f.ticker}: ${f.from} → ${f.to}`;
+    }
+    const per = effectiveFiles.map(f => `${f.ticker} ${f.from}→${f.to}`).join(" · ");
+    return `Overlap (${effectiveFiles.length} symbols): ${availableStartIso} → ${availableEndIso}. ${per}`;
+  }, [
+    filesLoading,
+    filesError,
+    newSessTickers.length,
+    newSessFiles.length,
+    tickersMissingDataset,
+    metaLoadingForBounds,
+    overlap.conflict,
+    boundsReady,
+    effectiveFiles,
+    availableStartIso,
+    availableEndIso,
+  ]);
+
+  useEffect(() => {
+    if (!availableStartIso || !availableEndIso) return;
+    const clampStart = (iso: string) => clampIso(iso, availableStartIso, availableEndIso);
+    setNewSessStart(prev => {
+      if (!prev) return prev;
+      const next = clampStart(prev);
+      return next === prev ? prev : next;
+    });
+    setNewSessEnd(prev => {
+      if (!prev) return prev;
+      const endMin = [availableStartIso, newSessStart].filter(Boolean).sort().slice(-1)[0] || availableStartIso;
+      const next = clampIso(prev, endMin, availableEndIso);
+      return next === prev ? prev : next;
+    });
+  }, [availableStartIso, availableEndIso, newSessStart, newSessTickers.join(","), newSessFiles.join(",")]);
+
+  useEffect(() => {
+    if (!newSessStart) {
+      if (newSessStartInput) setNewSessStartInput("");
+      return;
+    }
+    setNewSessStartInput(isoToDisplay(newSessStart, MON_D_LABELS));
+  }, [newSessStart]);
+
+  useEffect(() => {
+    if (!newSessEnd) {
+      if (newSessEndInput) setNewSessEndInput("");
+      return;
+    }
+    setNewSessEndInput(isoToDisplay(newSessEnd, MON_D_LABELS));
+  }, [newSessEnd]);
 
   const resetFormToDefaults = useCallback(() => {
     setNewSessName("");
@@ -533,13 +631,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     setEditSessId(null);
     onClose();
   };
-
-  const selectedFilesForSession = availFiles.filter(f => newSessFiles.includes(f.id));
-  const fallbackFilesByTicker = newSessTickers
-    .map(t => availFiles.find(f => (f.ticker || "").toUpperCase() === String(t || "").toUpperCase()))
-    .filter((f): f is AvailFile => !!f);
-  const effectiveFiles = selectedFilesForSession.length > 0 ? selectedFilesForSession : fallbackFilesByTicker;
-  const primaryEffectiveFile = effectiveFiles[0] || null;
 
   const sessInfoDone = !!newSessName.trim();
   const sessSettingsDone = sessInfoDone && newSessTickers.length > 0 && !!newSessStart && !!newSessEnd;
@@ -798,6 +889,12 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     }
   };
 
+  const calMinIso =
+    newSessCalTarget === "end"
+      ? [availableStartIso, newSessStart].filter(Boolean).sort().slice(-1)[0] || availableStartIso
+      : availableStartIso;
+  const calMaxIso = availableEndIso;
+
   const startNewSession = async () => {
     if (!isValid2) return;
     try {
@@ -966,12 +1063,13 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                         const MON_D=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
                         const MONS_D=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
                         const fmtD=iso=>{if(!iso)return "";const d=new Date(iso.split("T")[0]+"T00:00:00");return `${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;};
-                        const applyD=(raw,setter)=>{
+                        const applyD=(raw,setter,{isEnd=false}={})=>{
+                          if(!availableStartIso||!availableEndIso)return;
                           const s=raw.trim();
-                          const todayIso=new Date().toISOString().slice(0,10);
-                          const minIso=availableStartIso||"1990-01-01";
-                          const maxIso=(availableEndIso&&availableEndIso<todayIso)?availableEndIso:todayIso;
-                          const clamp=iso=>iso<minIso?minIso:iso>maxIso?maxIso:iso;
+                          const endMin=isEnd?[availableStartIso,newSessStart].filter(Boolean).sort().slice(-1)[0]:availableStartIso;
+                          const minIso=endMin||availableStartIso;
+                          const maxIso=availableEndIso;
+                          const clamp=iso=>clampIso(iso,minIso,maxIso);
                           // DD-Mon-YYYY
                           const m1=s.match(/^(\d{1,2})-([a-zA-Z]{3})-(\d{1,4})$/);
                           if(m1){const moIdx=MONS_D.indexOf(m1[2].toLowerCase());if(moIdx<0)return;const y=parseInt(m1[3]),dy=Math.min(parseInt(m1[1]),new Date(y,moIdx+1,0).getDate());if(y<1990||y>new Date().getFullYear())return;setter(clamp(`${y}-${String(moIdx+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
@@ -982,14 +1080,14 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                           const m3=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
                           if(m3){const y=parseInt(m3[3]),mo=parseInt(m3[1])-1,dy=Math.min(parseInt(m3[2]),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1990||y>new Date().getFullYear())return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
                         };
-                        const openCal=(e,target,currentIso)=>{const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width/Z,calH=260;const rawL=r.left/Z,rawB=r.bottom/Z,rawTop=r.top/Z;const spaceBelow=window.innerHeight/Z-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth/Z-w-8)),width:w});setNewSessCalTarget(target);const d=currentIso?new Date(currentIso.split("T")[0]+"T00:00:00"):new Date(2020,0,1);setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
+                        const openCal=(e,target,currentIso)=>{if(!availableStartIso||!availableEndIso)return;const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width/Z,calH=260;const rawL=r.left/Z,rawB=r.bottom/Z,rawTop=r.top/Z;const spaceBelow=window.innerHeight/Z-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);const anchor=currentIso||availableStartIso;const d=new Date(anchor.split("T")[0]+"T00:00:00");setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth/Z-w-8)),width:w});setNewSessCalTarget(target);setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
                         const inpSx={flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:12,fontWeight:600,padding:"5px 7px",fontFamily:F,fontVariantNumeric:"tabular-nums",cursor:"text",minWidth:0};
                         const chvSx={padding:"0 6px",cursor:"default",display:"flex",alignItems:"center",color:c.ts,borderLeft:`1px solid ${c.br}`,alignSelf:"stretch"};
                         const ChevD=({open})=>(<svg width={8} height={8} viewBox="0 0 8 8" fill="none"><path d={open?"M1,5 L4,2 L7,5":"M1,3 L4,6 L7,3"} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/></svg>);
-                        const applyPreset=(months,years)=>{const end=new Date(),start=new Date();if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(start));setNewSessStartInput(fd(start));setNewSessEnd(fi(end));setNewSessEndInput(fd(end));};
+                        const applyPreset=(months,years)=>{if(!availableStartIso||!availableEndIso)return;let end=new Date(availableEndIso+"T00:00:00");let start=new Date(end);if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);const earliest=new Date(availableStartIso+"T00:00:00");if(start<earliest)start=earliest;const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(start));setNewSessStartInput(fd(start));setNewSessEnd(fi(end));setNewSessEndInput(fd(end));};
                         const presets=[{l:"1M",months:1},{l:"3M",months:3},{l:"6M",months:6},{l:"1Y",years:1},{l:"2Y",years:2},{l:"3Y",years:3},{l:"5Y",years:5},{l:"10Y",years:10}];
                         const unitMax={D:3650,M:120,Y:10};
-                        const randomRange=()=>{const today=new Date();today.setHours(0,0,0,0);let lenDays=newSessRandRangeUnit==="D"?newSessRandRangeVal:newSessRandRangeUnit==="M"?Math.round(newSessRandRangeVal*30.4375):Math.round(newSessRandRangeVal*365.25);const earliest=availableStartIso?new Date(availableStartIso+"T00:00:00"):new Date(today.getTime()-20*365*86400000);const maxEnd=availableEndIso?new Date(availableEndIso+"T00:00:00"):today;const latest=new Date(maxEnd.getTime()-lenDays*86400000);if(latest<=earliest)return;const s=new Date(earliest.getTime()+Math.random()*(latest.getTime()-earliest.getTime()));const e2=new Date(s.getTime()+lenDays*86400000);const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(s));setNewSessStartInput(fd(s));setNewSessEnd(fi(e2));setNewSessEndInput(fd(e2));setNewSessActivePreset(null);};
+                        const randomRange=()=>{if(!availableStartIso||!availableEndIso)return;let lenDays=newSessRandRangeUnit==="D"?newSessRandRangeVal:newSessRandRangeUnit==="M"?Math.round(newSessRandRangeVal*30.4375):Math.round(newSessRandRangeVal*365.25);const earliest=new Date(availableStartIso+"T00:00:00");const maxEnd=new Date(availableEndIso+"T00:00:00");const latest=new Date(maxEnd.getTime()-lenDays*86400000);if(latest<=earliest)return;const s=new Date(earliest.getTime()+Math.random()*(latest.getTime()-earliest.getTime()));const e2=new Date(Math.min(s.getTime()+lenDays*86400000,maxEnd.getTime()));const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(s));setNewSessStartInput(fd(s));setNewSessEnd(fi(e2));setNewSessEndInput(fd(e2));setNewSessActivePreset(null);};
                         return(<>
                           {/* ─── Market + Random row ─── */}
                           <div style={{marginBottom:8,display:"flex",alignItems:"flex-end",gap:8}}>
@@ -1288,7 +1386,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                     <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>End</div>
                                     <div style={{display:"flex",alignItems:"center",background:c.well,border:`1px solid ${newSessCalOpen&&newSessCalTarget==="end"?c.acL:(newSessEnd&&newSessStart&&newSessEnd<newSessStart?c.rd:c.brH)}`,transition:"border-color 0.12s"}}>
                                       <input value={newSessEndInput} placeholder="DD-Mon-YYYY" onClick={e=>e.stopPropagation()}
-                                        onChange={e=>{setNewSessEndInput(e.target.value);applyD(e.target.value,v=>{if(!newSessStart||v>=newSessStart)setNewSessEnd(v);});setNewSessActivePreset(null);}}
+                                        onChange={e=>{setNewSessEndInput(e.target.value);applyD(e.target.value,v=>{if(!newSessStart||v>=newSessStart)setNewSessEnd(v);},{isEnd:true});setNewSessActivePreset(null);}}
                                         onBlur={()=>{if(newSessEnd&&newSessStart&&newSessEnd<newSessStart){setNewSessEnd("");setNewSessEndInput("");}else if(newSessEnd){setNewSessEndInput(fmtD(newSessEnd));}}}
                                         style={inpSx}/>
                                       <div onClick={e=>{e.stopPropagation();if(newSessCalOpen&&newSessCalTarget==="end"){setNewSessCalOpen(false);}else{openCal(e,"end",newSessEnd);}}} style={chvSx}>
@@ -1384,14 +1482,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                 );
                               })}
                             </div>
-                            <div style={{marginTop:6,fontSize:9,color:c.tm,fontFamily:F}}>
-                              {filesLoading
-                                ? "Loading dataset metadata..."
-                                : filesError
-                                  ? filesError
-                                  : (availableStartIso && availableEndIso)
-                                    ? `Available from selected datasets: ${availableStartIso} -> ${availableEndIso}`
-                                    : "Select at least one dataset to enable real date bounds."}
+                            <div style={{marginTop:6,fontSize:9,color:overlap.conflict?c.rd:c.tm,fontFamily:F}}>
+                              {dateBoundsHint}
                             </div>
                             {!primaryEffectiveFile && (
                               <div style={{marginTop:4,fontSize:9,color:c.rd,fontFamily:F}}>
@@ -2084,6 +2176,41 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                 </div>
               </div>
             )}
+      <SessionDateCalendar
+        open={newSessCalOpen && !!calMinIso && !!calMaxIso}
+        pos={newSessCalPos}
+        label={newSessCalTarget === "end" ? "End date" : "Start date"}
+        minIso={calMinIso}
+        maxIso={calMaxIso}
+        valueIso={newSessCalTarget === "end" ? newSessEnd : newSessStart}
+        viewY={newSessCalViewY}
+        viewM={newSessCalViewM}
+        mode={newSessCalMode}
+        yearBase={newSessCalYearBase}
+        onViewY={setNewSessCalViewY}
+        onViewM={setNewSessCalViewM}
+        onMode={setNewSessCalMode}
+        onYearBase={setNewSessCalYearBase}
+        onSelect={iso => {
+          const fd = isoToDisplay(iso, MON_D_LABELS);
+          if (newSessCalTarget === "start") {
+            setNewSessStart(iso);
+            setNewSessStartInput(fd);
+            if (newSessEnd && newSessEnd < iso) {
+              setNewSessEnd("");
+              setNewSessEndInput("");
+            }
+          } else if (!newSessStart || iso >= newSessStart) {
+            setNewSessEnd(iso);
+            setNewSessEndInput(fd);
+          }
+          setNewSessActivePreset(null);
+        }}
+        onClose={() => setNewSessCalOpen(false)}
+        colors={{ ...c, acB: c.acB }}
+        fontFamily={F}
+        IconClose={props => <IconI n="x" {...props} />}
+      />
       <style>{`
         @keyframes tlrPopIn {
           from { opacity: 0; transform: scale(0.98); }

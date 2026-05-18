@@ -22,6 +22,9 @@ const zain = localFont({
 const SITE_TITLE = "Talaria-Log Advanced Backtesting Platform";
 const SITE_DESCRIPTION =
   "Advanced backtesting and professional charting for serious traders.";
+/** Browser tab / bookmark icon (square mark). */
+const FAVICON_PATH = "/logo-04.png";
+/** Link previews (Discord, X, etc.). */
 const OG_IMAGE_PATH = "/talaria-log.logo.png";
 
 const siteUrl = (
@@ -39,8 +42,12 @@ export const metadata: Metadata = {
   description: SITE_DESCRIPTION,
   applicationName: "Talaria-Log",
   icons: {
-    icon: OG_IMAGE_PATH,
-    apple: OG_IMAGE_PATH,
+    icon: [
+      { url: FAVICON_PATH, sizes: "32x32", type: "image/png" },
+      { url: FAVICON_PATH, sizes: "192x192", type: "image/png" },
+    ],
+    apple: FAVICON_PATH,
+    shortcut: FAVICON_PATH,
   },
   openGraph: {
     type: "website",
