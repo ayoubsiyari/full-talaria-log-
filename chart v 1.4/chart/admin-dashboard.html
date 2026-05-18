@@ -6460,6 +6460,10 @@ async function updateFirstrateLivePanel() {
         var done = parseInt(primary.files_done, 10) || 0;
         pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : st === 'running' ? 18 : 0;
         pctLabel = total > 0 ? done + '/' + total + ' files · ' + pct + '%' : '';
+      } else if (phase === 'binary') {
+        stageLabel = 'Chart binaries';
+        pct = 96;
+        pctLabel = '…';
       } else if (phase === 'done') {
         stageLabel = 'Done';
         pct = 100;
@@ -6487,6 +6491,13 @@ async function updateFirstrateLivePanel() {
       if (primary.current_file && phase === 'normalize' && st === 'running') {
         detailMsg = 'Processing: ' + primary.current_file;
         if (primary.message && primary.message.indexOf('error') !== -1) detailMsg += '\n' + primary.message;
+        detailMsg +=
+          '\nMonth FX 1m files are large — the bar may sit on one file for several minutes while merge runs.';
+      }
+      if (phase === 'binary' && st === 'running') {
+        detailMsg =
+          (primary.message || 'Building chart binaries…') +
+          '\nThis runs after all CSVs are imported (faster than building per file during import).';
       }
       detail.textContent = detailMsg + (primary.error ? '\n' + primary.error : '');
       window._frActiveImport = {

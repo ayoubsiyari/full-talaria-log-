@@ -2053,12 +2053,78 @@ def get_db():
         db.close()
 
 def count_csv_rows(file_path: str) -> int:
-    """Count rows in CSV file"""
+    """Count data rows in a CSV (streaming; safe for multi-million-row files)."""
     try:
-        with open(file_path, 'r') as f:
-            return len(f.readlines()) - 1  # Exclude header
-    except:
+        n = 0
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.strip():
+                    n += 1
+        return max(0, n - 1)  # exclude header
+    except Exception:
         return 0
+
+
+def _csv_has_data_rows(file_path: str | Path) -> bool:
+    """True if the CSV has at least one non-header data row (without scanning the whole file)."""
+    try:
+        p = Path(file_path)
+        if p.stat().st_size < 32:
+            return False
+    except OSError:
+        return False
+    try:
+        with open(p, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                s = line.strip()
+                if not s:
+                    continue
+                first = s.split(",", 1)[0].strip().strip('"').lower()
+                if first in {"timestamp", "datetime", "date", "time"}:
+                    continue
+                return True
+    except OSError:
+        return False
+    return False
+
+
+def _build_csvfile_ticker_cache() -> list[CSVFile]:
+    """Snapshot dataset registry rows for ticker-based upsert matching (one query per import job)."""
+    db = SessionLocal()
+    try:
+        return list(db.query(CSVFile).all())
+    finally:
+        db.close()
+
+
+def _pick_csvfile_by_canonical_ticker(
+    rows: list[CSVFile],
+    wanted_ticker: str,
+    wanted_class: str | None,
+) -> CSVFile | None:
+    wanted_ticker = (wanted_ticker or "").strip().upper()
+    if not wanted_ticker:
+        return None
+    firstrate_matches: list[CSVFile] = []
+    any_source_matches: list[CSVFile] = []
+    for cand in rows:
+        cand_orig = cand.original_name or ""
+        cand_ticker = (_firstrate_extract_ticker_from_filename(cand_orig) or "").upper()
+        if not cand_ticker or cand_ticker != wanted_ticker:
+            continue
+        if wanted_class:
+            cand_class = _firstrate_classify_ticker(cand_ticker)
+            if cand_class != wanted_class:
+                continue
+        cand_disk = (cand.filename or "").lower()
+        if "_firstrate_" in cand_disk:
+            firstrate_matches.append(cand)
+        else:
+            any_source_matches.append(cand)
+    matches = firstrate_matches or any_source_matches
+    if not matches:
+        return None
+    return max(matches, key=lambda r: int(r.row_count or 0))
 
 def _dataset_file_public_dict(db_file: CSVFile) -> dict:
     return {
@@ -2068,7 +2134,13 @@ def _dataset_file_public_dict(db_file: CSVFile) -> dict:
         "uploadDate": db_file.upload_date.isoformat() if db_file.upload_date else None,
     }
 
-def _store_dataset_file(file_path: Path, original_name: str, description: str | None = None):
+def _store_dataset_file(
+    file_path: Path,
+    original_name: str,
+    description: str | None = None,
+    *,
+    skip_binary_build: bool = False,
+):
     row_count = count_csv_rows(file_path)
     db = SessionLocal()
     try:
@@ -2082,8 +2154,8 @@ def _store_dataset_file(file_path: Path, original_name: str, description: str | 
         db.commit()
         db.refresh(db_file)
 
-        # Kick off background binary conversion for all timeframes
-        build_binary_for_file(db_file.id, file_path, original_name)
+        if not skip_binary_build:
+            build_binary_for_file(db_file.id, file_path, original_name)
 
         return {
             "success": True,
@@ -2224,6 +2296,9 @@ def _upsert_or_create_dataset_from_csv(
     upsert: bool,
     match_canonical_ticker: str | None = None,
     match_canonical_class: str | None = None,
+    *,
+    csv_ticker_cache: list[CSVFile] | None = None,
+    defer_binary_build: bool = False,
 ) -> dict:
     """
     Register a normalized CSV as a dataset, or **merge** the incoming CSV into
@@ -2267,10 +2342,18 @@ def _upsert_or_create_dataset_from_csv(
                 wanted_ticker = (match_canonical_ticker or "").strip().upper()
                 wanted_class = (match_canonical_class or "").strip().lower() or None
                 if wanted_ticker:
-                    candidates = db.query(CSVFile).all()
+                    cache_rows = csv_ticker_cache if csv_ticker_cache is not None else db.query(CSVFile).all()
+                    cached_pick = _pick_csvfile_by_canonical_ticker(
+                        cache_rows, wanted_ticker, wanted_class
+                    )
+                    if cached_pick is not None:
+                        db_file = (
+                            db.query(CSVFile).filter(CSVFile.id == cached_pick.id).first()
+                            or cached_pick
+                        )
                     firstrate_matches = []
                     any_source_matches = []
-                    for cand in candidates:
+                    for cand in cache_rows:
                         cand_orig = cand.original_name or ""
                         cand_ticker = (
                             _firstrate_extract_ticker_from_filename(cand_orig) or ""
@@ -2286,10 +2369,6 @@ def _upsert_or_create_dataset_from_csv(
                             firstrate_matches.append(cand)
                         else:
                             any_source_matches.append(cand)
-                    # Prefer FirstRate-sourced datasets; fall back to any source.
-                    matches = firstrate_matches or any_source_matches
-                    if matches:
-                        db_file = max(matches, key=lambda r: int(r.row_count or 0))
                     # Auto-consolidate: merge stale duplicates into winner so
                     # they don't accumulate over repeated nightly imports.
                     all_matches = firstrate_matches + any_source_matches
@@ -2319,7 +2398,7 @@ def _upsert_or_create_dataset_from_csv(
                     db_file.original_name = original_name
                 final_path = _resolve_dataset_csv_for_file(db_file)
                 new_rows_added = 0
-                if final_path.exists() and count_csv_rows(str(final_path)) > 0:
+                if final_path.exists() and _csv_has_data_rows(final_path):
                     try:
                         rc, new_rows_added = _merge_canonical_ohlcv_csvs(
                             existing=final_path,
@@ -2344,7 +2423,8 @@ def _upsert_or_create_dataset_from_csv(
                     db_file.description = description
                 db.commit()
                 db.refresh(db_file)
-                build_binary_for_file(db_file.id, final_path, db_file.original_name)
+                if not defer_binary_build:
+                    build_binary_for_file(db_file.id, final_path, db_file.original_name)
                 try:
                     if file_path.resolve() != final_path.resolve():
                         file_path.unlink(missing_ok=True)
@@ -2357,15 +2437,28 @@ def _upsert_or_create_dataset_from_csv(
                     "merged": True,
                     "new_rows_added": int(new_rows_added),
                     "total_rows": int(rc),
+                    "binary_file_id": int(db_file.id),
+                    "binary_path": str(final_path),
+                    "binary_original_name": db_file.original_name or original_name,
                 }
                 return out
         finally:
             db.close()
 
-    out = _store_dataset_file(file_path, original_name=original_name, description=description)
+    out = _store_dataset_file(
+        file_path,
+        original_name=original_name,
+        description=description,
+        skip_binary_build=defer_binary_build,
+    )
     if isinstance(out, dict):
         out["upserted"] = False
         out["merged"] = False
+        f = out.get("file") if isinstance(out.get("file"), dict) else None
+        if defer_binary_build and f and f.get("id"):
+            out["binary_file_id"] = int(f["id"])
+            out["binary_path"] = str(file_path)
+            out["binary_original_name"] = original_name
     return out
 
 
@@ -2454,6 +2547,29 @@ def _firstrate_write_job(job_id: str, state: dict) -> None:
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(state, f)
     tmp.replace(p)
+
+
+def _firstrate_start_file_heartbeat(
+    job_id: str,
+    *,
+    message: str,
+    current_file: str | None,
+) -> threading.Event:
+    """Refresh job JSON while a single CSV normalize/merge runs (admin live panel)."""
+    stop = threading.Event()
+
+    def _beat() -> None:
+        while not stop.wait(12.0):
+            st = _firstrate_read_job(job_id)
+            if not st or str(st.get("status")) not in ("queued", "running"):
+                break
+            st["message"] = message
+            if current_file:
+                st["current_file"] = current_file
+            _firstrate_write_job(job_id, st)
+
+    threading.Thread(target=_beat, daemon=True).start()
+    return stop
 
 
 def _firstrate_read_job(job_id: str) -> dict | None:
@@ -6626,6 +6742,8 @@ def _run_firstrate_import_job(job_id: str) -> None:
         created: list[dict] = []
         skipped: list[dict] = []
         total_skipped_by_filter = 0
+        csv_ticker_cache = _build_csvfile_ticker_cache()
+        deferred_binary_builds: list[tuple[int, Path, str]] = []
 
         for bundle_idx, current_range in enumerate(ranges_to_fetch, start=1):
             bundle_label = (
@@ -6800,6 +6918,11 @@ def _run_firstrate_import_job(job_id: str) -> None:
                 st["current_file"] = src.name
                 _firstrate_write_job(job_id, st)
 
+                hb_stop = _firstrate_start_file_heartbeat(
+                    job_id,
+                    message=st["message"],
+                    current_file=src.name,
+                )
                 try:
                     n = normalize_firstrate_csv_to_standard(src, dest_csv, instrument_type)
                 except Exception as exc:
@@ -6811,6 +6934,8 @@ def _run_firstrate_import_job(job_id: str) -> None:
                     st["current_file"] = None
                     _firstrate_write_job(job_id, st)
                     continue
+                finally:
+                    hb_stop.set()
 
                 if n < 1:
                     try:
@@ -6838,14 +6963,41 @@ def _run_firstrate_import_job(job_id: str) -> None:
                 ).upper()
                 original_label = f"{canonical_ticker}_{timeframe}.csv"
                 upsert = bool(state.get("upsert_existing"))
-                info = _upsert_or_create_dataset_from_csv(
-                    dest_csv,
-                    original_name=original_label,
-                    description=f"FirstRate {instrument_type} ({period}, {timeframe})",
-                    upsert=upsert,
-                    match_canonical_ticker=canonical_ticker,
-                    match_canonical_class=instrument_type,
+                st = _firstrate_read_job(job_id) or state
+                st["message"] = (
+                    f"Registering {canonical_ticker} ({files_done_so_far + 1}/{files_total_so_far})"
                 )
+                st["current_file"] = src.name
+                _firstrate_write_job(job_id, st)
+                reg_stop = _firstrate_start_file_heartbeat(
+                    job_id,
+                    message=st["message"],
+                    current_file=src.name,
+                )
+                try:
+                    info = _upsert_or_create_dataset_from_csv(
+                        dest_csv,
+                        original_name=original_label,
+                        description=f"FirstRate {instrument_type} ({period}, {timeframe})",
+                        upsert=upsert,
+                        match_canonical_ticker=canonical_ticker,
+                        match_canonical_class=instrument_type,
+                        csv_ticker_cache=csv_ticker_cache,
+                        defer_binary_build=True,
+                    )
+                finally:
+                    reg_stop.set()
+                if isinstance(info, dict) and info.get("binary_file_id"):
+                    try:
+                        deferred_binary_builds.append(
+                            (
+                                int(info["binary_file_id"]),
+                                Path(str(info["binary_path"])),
+                                str(info.get("binary_original_name") or original_label),
+                            )
+                        )
+                    except (TypeError, ValueError):
+                        pass
                 entry = info.get("file") if isinstance(info, dict) else None
                 if entry:
                     created.append(entry)
@@ -6878,10 +7030,35 @@ def _run_firstrate_import_job(job_id: str) -> None:
             except Exception:
                 pass
 
+        if deferred_binary_builds:
+            # One binary build per dataset (re-importing the same ticker updates the same row).
+            _bin_seen: dict[int, tuple[int, Path, str]] = {}
+            for fid, bpath, bname in deferred_binary_builds:
+                _bin_seen[int(fid)] = (int(fid), bpath, bname)
+            deferred_binary_builds = list(_bin_seen.values())
+            state = _firstrate_read_job(job_id) or state
+            state["phase"] = "binary"
+            state["current_file"] = None
+            total_bin = len(deferred_binary_builds)
+            for bi, (fid, bpath, bname) in enumerate(deferred_binary_builds, start=1):
+                state = _firstrate_read_job(job_id) or state
+                state["message"] = (
+                    f"Building chart binaries ({bi}/{total_bin}): {bname}"
+                )
+                _firstrate_write_job(job_id, state)
+                build_binary_for_file(
+                    fid,
+                    bpath,
+                    bname,
+                    run_async=False,
+                    trigger="firstrate_import",
+                )
+
         state = _firstrate_read_job(job_id) or state
         state["status"] = "done"
         state["phase"] = "done"
         state["current_bundle"] = None
+        state["current_file"] = None
         state["message"] = (
             f"Complete — {len(created)} dataset(s), {len(skipped)} skipped across "
             f"{len(ranges_to_fetch)} bundle(s)"
