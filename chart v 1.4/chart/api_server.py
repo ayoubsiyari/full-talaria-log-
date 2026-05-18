@@ -2300,6 +2300,7 @@ def _upsert_or_create_dataset_from_csv(
     *,
     csv_ticker_cache: list[CSVFile] | None = None,
     defer_binary_build: bool = False,
+    skip_inline_duplicate_consolidation: bool = False,
 ) -> dict:
     """
     Register a normalized CSV as a dataset, or **merge** the incoming CSV into
@@ -2373,7 +2374,11 @@ def _upsert_or_create_dataset_from_csv(
                     # Auto-consolidate: merge stale duplicates into winner so
                     # they don't accumulate over repeated nightly imports.
                     all_matches = firstrate_matches + any_source_matches
-                    if db_file and len(all_matches) > 1:
+                    if (
+                        not skip_inline_duplicate_consolidation
+                        and db_file
+                        and len(all_matches) > 1
+                    ):
                         losers = [m for m in all_matches if m.id != db_file.id]
                         winner_path = _resolve_dataset_csv_for_file(db_file)
                         for loser in losers:
@@ -2548,6 +2553,20 @@ def _firstrate_write_job(job_id: str, state: dict) -> None:
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(state, f)
     tmp.replace(p)
+
+
+def _call_with_timeout(timeout_sec: float, fn, *args, **kwargs):
+    """Run `fn` in a worker thread; raise TimeoutError if it exceeds `timeout_sec`."""
+    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import TimeoutError as FuturesTimeout
+
+    limit = max(30.0, float(timeout_sec))
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        fut = pool.submit(fn, *args, **kwargs)
+        try:
+            return fut.result(timeout=limit)
+        except FuturesTimeout as exc:
+            raise TimeoutError(f"Timed out after {int(limit)}s") from exc
 
 
 def _firstrate_start_file_heartbeat(
@@ -6996,6 +7015,11 @@ def _run_firstrate_import_job(job_id: str) -> None:
             st["message"] = filter_msg
             _firstrate_write_job(job_id, st)
 
+            normalize_timeout = float(
+                os.getenv("FIrstrate_FILE_NORMALIZE_TIMEOUT_SEC", "900")
+            )
+            merge_timeout = float(os.getenv("FIrstrate_FILE_MERGE_TIMEOUT_SEC", "2400"))
+
             for src_idx, src in enumerate(csv_paths):
                 stem_raw = src.stem
                 stem_safe = re.sub(r"[^A-Za-z0-9_\-]+", "_", stem_raw).strip("_")[:96] or "instrument"
@@ -7015,7 +7039,28 @@ def _run_firstrate_import_job(job_id: str) -> None:
                     current_file=src.name,
                 )
                 try:
-                    n = normalize_firstrate_csv_to_standard(src, dest_csv, instrument_type)
+                    n = _call_with_timeout(
+                        normalize_timeout,
+                        normalize_firstrate_csv_to_standard,
+                        src,
+                        dest_csv,
+                        instrument_type,
+                    )
+                except TimeoutError as exc:
+                    skipped.append(
+                        {"file": src.name, "error": f"normalize timeout: {exc}"[:800]}
+                    )
+                    try:
+                        dest_csv.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    st = _firstrate_read_job(job_id) or state
+                    st["files_done"] = int(st.get("files_done") or 0) + 1
+                    st["skipped_files"] = list(skipped)
+                    st["message"] = f"Skipped {src.name} (normalize timeout)"
+                    st["current_file"] = None
+                    _firstrate_note_import_file_progress(st, job_id)
+                    continue
                 except Exception as exc:
                     skipped.append({"file": src.name, "error": str(exc)[:800]})
                     st = _firstrate_read_job(job_id) or state
@@ -7066,16 +7111,35 @@ def _run_firstrate_import_job(job_id: str) -> None:
                     current_file=src.name,
                 )
                 try:
-                    info = _upsert_or_create_dataset_from_csv(
-                        dest_csv,
-                        original_name=original_label,
-                        description=f"FirstRate {instrument_type} ({period}, {timeframe})",
-                        upsert=upsert,
-                        match_canonical_ticker=canonical_ticker,
-                        match_canonical_class=instrument_type,
-                        csv_ticker_cache=csv_ticker_cache,
-                        defer_binary_build=True,
+                    info = _call_with_timeout(
+                        merge_timeout,
+                        lambda: _upsert_or_create_dataset_from_csv(
+                            dest_csv,
+                            original_name=original_label,
+                            description=f"FirstRate {instrument_type} ({period}, {timeframe})",
+                            upsert=upsert,
+                            match_canonical_ticker=canonical_ticker,
+                            match_canonical_class=instrument_type,
+                            csv_ticker_cache=csv_ticker_cache,
+                            defer_binary_build=True,
+                            skip_inline_duplicate_consolidation=True,
+                        ),
                     )
+                except TimeoutError as exc:
+                    skipped.append(
+                        {"file": src.name, "error": f"merge timeout: {exc}"[:800]}
+                    )
+                    try:
+                        dest_csv.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    st = _firstrate_read_job(job_id) or state
+                    st["files_done"] = int(st.get("files_done") or 0) + 1
+                    st["skipped_files"] = list(skipped)
+                    st["message"] = f"Skipped {src.name} (merge timeout — retry week bundle)"
+                    st["current_file"] = None
+                    _firstrate_note_import_file_progress(st, job_id)
+                    continue
                 finally:
                     reg_stop.set()
                 if isinstance(info, dict) and info.get("binary_file_id"):
@@ -7241,6 +7305,13 @@ def _queue_firstrate_fx_import_job(
         "pairs": list(pairs) if pairs else [],
     }
     _firstrate_write_job(job_id, state)
+    try:
+        cfg = _load_firstrate_schedule()
+        cfg["last_error"] = None
+        cfg["last_message"] = f"Import queued ({trigger}) job {job_id}"
+        _save_firstrate_schedule(cfg)
+    except Exception:
+        pass
     threading.Thread(target=lambda: _run_firstrate_import_job(job_id), daemon=True).start()
     return {"success": True, "job_id": job_id}
 
@@ -11175,23 +11246,35 @@ async def admin_firstrate_fx_live_status(request: Request):
     sch = _load_firstrate_schedule()
     primary = active[0] if active else None
     if primary and str(primary.get("status")) == "running":
-        ua = primary.get("updated_at")
-        if ua:
-            try:
-                last_ts = datetime.fromisoformat(str(ua).replace("Z", ""))
-                elapsed = (datetime.utcnow() - last_ts).total_seconds()
-                primary["seconds_since_update"] = int(max(0, elapsed))
-                phase = str(primary.get("phase") or "").lower()
-                if phase in ("normalize", "binary") and elapsed > 900:
-                    primary["likely_stuck"] = True
-                    primary["stuck_hint"] = (
-                        "No job progress for 15+ minutes — import may be hung on a large merge "
-                        "or the server process restarted. Check docker logs; cancel and re-run after deploy."
-                    )
-                elif phase in ("normalize", "binary") and elapsed > 120:
-                    primary["slow_but_active"] = True
-            except Exception:
-                pass
+        prog_raw = primary.get("last_files_done_at") or primary.get("created_at")
+        prog_at = _firstrate_parse_job_utc(str(prog_raw) if prog_raw else None)
+        if prog_at:
+            file_elapsed = (datetime.utcnow() - prog_at).total_seconds()
+            primary["seconds_since_file_progress"] = int(max(0, file_elapsed))
+        hb_raw = primary.get("heartbeat_at") or primary.get("updated_at")
+        hb_at = _firstrate_parse_job_utc(str(hb_raw) if hb_raw else None)
+        if hb_at:
+            primary["seconds_since_heartbeat"] = int(
+                max(0, (datetime.utcnow() - hb_at).total_seconds())
+            )
+        try:
+            phase = str(primary.get("phase") or "").lower()
+            file_elapsed = float(primary.get("seconds_since_file_progress") or 0)
+            stuck_file_min = max(30, int(os.getenv("FIrstrate_STUCK_FILE_MINUTES", "90")))
+            if phase in ("normalize", "binary") and file_elapsed > stuck_file_min * 60:
+                cur = primary.get("current_file") or "?"
+                done = int(primary.get("files_done") or 0)
+                total = int(primary.get("files_total") or 0)
+                primary["likely_stuck"] = True
+                primary["stuck_hint"] = (
+                    f"No file progress for {int(file_elapsed / 60)} min "
+                    f"({done}/{total} files, on {cur}) — will auto-fail at "
+                    f"{stuck_file_min} min; merge may be skipped on timeout after deploy."
+                )
+            elif phase in ("normalize", "binary") and file_elapsed > 20 * 60:
+                primary["slow_but_active"] = True
+        except Exception:
+            pass
     return {
         "success": True,
         "has_firstrate_userid": bool(get_firstrate_userid()),

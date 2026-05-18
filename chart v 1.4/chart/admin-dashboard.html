@@ -2327,7 +2327,7 @@ select { cursor:default; }
             <button type="button" class="ds-hub-tab" data-ds-tab="import" onclick="setDsHubTab('import')">Import</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="sync" onclick="setDsHubTab('sync')">Sync health</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="maintenance" onclick="setDsHubTab('maintenance')">Maintenance</button>
-            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-05-18c</span>
+            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-05-18d</span>
           </div>
         </div>
 
@@ -6665,7 +6665,10 @@ async function updateFirstrateLivePanel() {
         detailMsg = 'Processing: ' + primary.current_file;
         if (primary.message && primary.message.indexOf('error') !== -1) detailMsg += '\n' + primary.message;
         detailMsg +=
-          '\nMonth FX 1m files are large — the bar may sit on one file for several minutes while merge runs.';
+          '\nMonth FX 1m files are large — merge can take 10–40 min per pair. Slow pairs are skipped after timeout so the job can finish.';
+        if (primary.seconds_since_file_progress != null) {
+          detailMsg += '\nLast file finished: ' + Math.round(primary.seconds_since_file_progress / 60) + ' min ago.';
+        }
       }
       if (phase === 'binary' && st === 'running') {
         detailMsg =
@@ -6819,7 +6822,7 @@ async function refreshDailySyncOverview() {
     // Count auto-recovered (stuck jobs the server cleaned up)
     var recoveredCount = 0;
     recentJobs.forEach(function (j) {
-      if (j.status === 'failed' && j.error && j.error.indexOf('Auto-marked failed') !== -1) recoveredCount++;
+      if (j.status === 'failed' && j.error && (j.error.indexOf('Auto-failed') !== -1 || j.error.indexOf('Auto-marked failed') !== -1)) recoveredCount++;
     });
     if (valRecovered) {
       valRecovered.textContent = String(recoveredCount);
@@ -6834,7 +6837,11 @@ async function refreshDailySyncOverview() {
       if (valStatus) { valStatus.textContent = 'Disabled'; valStatus.className = 'fr-sync-stat-value warn'; }
       if (badge) { badge.textContent = 'off'; badge.style.background = 'color-mix(in oklab, #eab308 18%, var(--panel))'; badge.style.color = '#eab308'; }
     } else if (primary && (primary.status === 'running' || primary.status === 'queued')) {
-      if (valStatus) { valStatus.textContent = 'Syncing now…'; valStatus.className = 'fr-sync-stat-value ok'; }
+      var fd = parseInt(primary.files_done, 10) || 0;
+      var ft = parseInt(primary.files_total, 10) || 0;
+      var syncLbl = 'Syncing now…';
+      if (ft > 0) syncLbl = 'Syncing ' + fd + '/' + ft + ' (' + Math.round((fd / ft) * 100) + '%)';
+      if (valStatus) { valStatus.textContent = syncLbl; valStatus.className = 'fr-sync-stat-value ok'; }
       if (badge) { badge.textContent = 'active'; badge.style.background = 'color-mix(in oklab, #22c55e 18%, var(--panel))'; badge.style.color = '#22c55e'; }
     } else if (lastDone) {
       if (valStatus) { valStatus.textContent = 'Active'; valStatus.className = 'fr-sync-stat-value ok'; }
