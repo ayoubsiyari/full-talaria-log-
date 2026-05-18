@@ -147,6 +147,7 @@ from firstrate_ingest import (
     fetch_firstrate_last_update,
     fetch_firstrate_ticker_listing_rows,
     get_firstrate_userid,
+    run_firstrate_connection_checks,
     iter_csv_files,
     normalize_firstrate_csv_to_standard,
 )
@@ -11076,6 +11077,24 @@ async def admin_firstrate_fx_live_status(request: Request):
     recent = sorted(recent, key=lambda x: float(x.get("_mtime") or 0), reverse=True)[:8]
     sch = _load_firstrate_schedule()
     primary = active[0] if active else None
+    if primary and str(primary.get("status")) == "running":
+        ua = primary.get("updated_at")
+        if ua:
+            try:
+                last_ts = datetime.fromisoformat(str(ua).replace("Z", ""))
+                elapsed = (datetime.utcnow() - last_ts).total_seconds()
+                primary["seconds_since_update"] = int(max(0, elapsed))
+                phase = str(primary.get("phase") or "").lower()
+                if phase in ("normalize", "binary") and elapsed > 900:
+                    primary["likely_stuck"] = True
+                    primary["stuck_hint"] = (
+                        "No job progress for 15+ minutes — import may be hung on a large merge "
+                        "or the server process restarted. Check docker logs; cancel and re-run after deploy."
+                    )
+                elif phase in ("normalize", "binary") and elapsed > 120:
+                    primary["slow_but_active"] = True
+            except Exception:
+                pass
     return {
         "success": True,
         "has_firstrate_userid": bool(get_firstrate_userid()),
@@ -11510,6 +11529,39 @@ async def admin_firstrate_fx_ticker_listing(request: Request, instrument_type: s
         "truncated": total > len(capped),
         "rows": capped,
     }
+
+
+@app.get("/api/admin/datasets/firstrate-fx/connection-status")
+async def admin_firstrate_connection_status(
+    request: Request,
+    instrument_type: str = Query("fx", description="fx, crypto, stock, etf, futures, index"),
+    period: str = Query("month", description="day, week, month, or full — used for download probe only"),
+    timeframe: str = Query("1min"),
+    ticker_range: str | None = Query(None, description="A–Z letter for stock/etf full bundles"),
+    adjustment: str | None = Query(None, description="Required for futures; optional for stock/etf"),
+    download_probe: bool = Query(True, description="Peek first KB of a data_file ZIP (validates download auth)"),
+):
+    """
+    Admin diagnostics: confirm FIrstrate_USERID, reachability of FirstRate APIs, and
+    whether `data_file` returns a ZIP for the chosen bundle parameters.
+    """
+    _require_admin(request)
+    uid = get_firstrate_userid()
+    tr = (ticker_range or "").strip().upper()[:1] or None
+    adj = (adjustment or "").strip() or None
+    try:
+        report = run_firstrate_connection_checks(
+            userid=uid,
+            instrument_type=instrument_type,
+            period=period,
+            timeframe=timeframe,
+            ticker_range=tr,
+            adjustment=adj,
+            include_download_probe=bool(download_probe),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"success": True, **report}
 
 
 @app.get("/api/admin/datasets/firstrate-fx/last-update")

@@ -13,6 +13,8 @@ from __future__ import annotations
 import csv
 import io
 import os
+import re
+import time
 from collections.abc import Callable
 import zipfile
 from dataclasses import dataclass
@@ -204,6 +206,299 @@ def fetch_firstrate_last_update(
         "last_update": raw_date,
         "last_update_iso": iso,
         "fetched_at": datetime.now(_UTC_TZ).isoformat(timespec="seconds"),
+    }
+
+
+def mask_firstrate_userid(userid: str) -> str:
+    """Mask userid for admin UI (show last 4 chars only)."""
+    u = (userid or "").strip()
+    if not u:
+        return ""
+    if len(u) <= 4:
+        return "****"
+    return "*" * min(12, len(u) - 4) + u[-4:]
+
+
+def redact_firstrate_url(url: str) -> str:
+    """Hide userid query param in URLs shown to admins."""
+    return re.sub(
+        r"([?&]userid=)[^&]+",
+        lambda m: m.group(1) + "***",
+        url or "",
+        flags=re.IGNORECASE,
+    )
+
+
+def probe_firstrate_data_file_start(
+    *,
+    userid: str,
+    instrument_type: str = "fx",
+    period: str = "day",
+    timeframe: str = "1min",
+    ticker_range: str | None = None,
+    adjustment: str | None = None,
+    peek_bytes: int = 8192,
+    timeout_sec: float = 45,
+) -> dict[str, object]:
+    """
+    Open a FirstRate `data_file` URL and read only the first few KB to confirm the
+    server returns a ZIP (not an HTML error page). Does not save the bundle.
+    """
+    url = build_firstrate_data_file_url(
+        userid=userid,
+        instrument_type=instrument_type,
+        period=period,
+        timeframe=timeframe,
+        ticker_range=ticker_range,
+        adjustment=adjustment,
+    )
+    t0 = time.perf_counter()
+    req = Request(url, headers={"User-Agent": "TalariaFirstrateImporter/1.0"})
+    try:
+        with urlopen(req, timeout=timeout_sec) as resp:
+            status = int(getattr(resp, "status", 200) or 200)
+            content_length = resp.headers.get("Content-Length")
+            content_type = (resp.headers.get("Content-Type") or "").strip()
+            chunk = resp.read(max(256, int(peek_bytes)))
+    except HTTPError as e:
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        tail = e.read().decode("utf-8", errors="replace")[:1200]
+        return {
+            "ok": False,
+            "http_status": int(e.code),
+            "elapsed_ms": elapsed_ms,
+            "url": redact_firstrate_url(url),
+            "error": f"HTTP {e.code}",
+            "sample": tail.replace("\n", " ").strip()[:280],
+            "looks_like_zip": False,
+            "looks_like_html_error": "<html" in tail.lower() or "no datafile" in tail.lower(),
+        }
+    except OSError as e:
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        return {
+            "ok": False,
+            "elapsed_ms": elapsed_ms,
+            "url": redact_firstrate_url(url),
+            "error": str(e)[:500],
+            "looks_like_zip": False,
+            "looks_like_html_error": False,
+        }
+
+    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+    head_lower = chunk[:600].lower()
+    looks_html = b"<html" in head_lower or b"<!doctype" in head_lower or b"no datafile" in head_lower
+    looks_zip = len(chunk) >= 2 and chunk[:2] == b"PK"
+    if not looks_zip and len(chunk) >= 4:
+        try:
+            looks_zip = zipfile.is_zipfile(io.BytesIO(chunk))
+        except Exception:
+            looks_zip = False
+    sample_txt = chunk[:220].decode("utf-8", errors="replace").replace("\n", " ").strip()
+    ok = looks_zip and not looks_html and status < 400
+    out: dict[str, object] = {
+        "ok": ok,
+        "http_status": status,
+        "elapsed_ms": elapsed_ms,
+        "url": redact_firstrate_url(url),
+        "content_type": content_type,
+        "content_length": content_length,
+        "bytes_peeked": len(chunk),
+        "looks_like_zip": looks_zip,
+        "looks_like_html_error": looks_html,
+        "sample": sample_txt[:220],
+    }
+    if not ok and not looks_html and len(chunk) < 64:
+        out["error"] = "Response too small — not a ZIP (check userid / subscription / period)."
+    elif not ok and looks_html:
+        out["error"] = "FirstRate returned HTML or an error page instead of a ZIP."
+    elif not ok:
+        out["error"] = "Could not confirm ZIP header from FirstRate."
+    return out
+
+
+def run_firstrate_connection_checks(
+    *,
+    userid: str,
+    instrument_type: str = "fx",
+    period: str = "month",
+    timeframe: str = "1min",
+    ticker_range: str | None = None,
+    adjustment: str | None = None,
+    include_download_probe: bool = True,
+) -> dict[str, object]:
+    """
+    Admin diagnostics: env userid, vendor last_update API, optional data_file ZIP peek.
+    """
+    it = (instrument_type or "fx").strip().lower()
+    p = (period or "month").strip().lower()
+    tf = (timeframe or "1min").strip().lower()
+    checks: list[dict[str, object]] = []
+    all_ok = True
+
+    if not userid:
+        checks.append(
+            {
+                "id": "userid",
+                "label": "FIrstrate_USERID on server",
+                "ok": False,
+                "detail": "Not set — add FIrstrate_USERID to the trading-chart container env.",
+            }
+        )
+        all_ok = False
+    else:
+        checks.append(
+            {
+                "id": "userid",
+                "label": "FIrstrate_USERID on server",
+                "ok": True,
+                "detail": f"Configured ({mask_firstrate_userid(userid)})",
+            }
+        )
+
+    api_base = (os.getenv("FIrstrate_API_BASE") or _FIrestratE_DEFAULT_BASE).strip()
+    checks.append(
+        {
+            "id": "api_base",
+            "label": "FirstRate API base URL",
+            "ok": True,
+            "detail": api_base,
+        }
+    )
+
+    if userid and it in VALID_LAST_UPDATE_TYPES:
+        t0 = time.perf_counter()
+        try:
+            info = fetch_firstrate_last_update(
+                userid=userid, instrument_type=it, is_full_update=False, timeout_sec=25
+            )
+            ms = int((time.perf_counter() - t0) * 1000)
+            checks.append(
+                {
+                    "id": "last_update",
+                    "label": f"API reachability (last_update · {it})",
+                    "ok": True,
+                    "detail": f"Vendor date {info.get('last_update')!s} ({ms} ms)",
+                    "last_update_iso": info.get("last_update_iso"),
+                }
+            )
+        except Exception as exc:
+            ms = int((time.perf_counter() - t0) * 1000)
+            checks.append(
+                {
+                    "id": "last_update",
+                    "label": f"API reachability (last_update · {it})",
+                    "ok": False,
+                    "detail": str(exc)[:500],
+                    "elapsed_ms": ms,
+                }
+            )
+            all_ok = False
+    elif userid:
+        checks.append(
+            {
+                "id": "last_update",
+                "label": "API reachability (last_update)",
+                "ok": False,
+                "detail": f"Instrument type {it!r} not supported for last_update.",
+            }
+        )
+        all_ok = False
+
+    if userid and it in VALID_INSTRUMENT_TYPES:
+        t0 = time.perf_counter()
+        label_tl = f"Ticker listing (ticker_listing · {it})"
+        try:
+            url = f"{_FIrestratE_TICKER_LISTING}?{urlencode({'type': it, 'userid': userid, 'html': 'false'})}"
+            req = Request(url, headers={"User-Agent": "TalariaFirstrateImporter/1.0"})
+            with urlopen(req, timeout=30) as resp:
+                sample = resp.read(131072).decode("utf-8-sig", errors="replace")
+            ms = int((time.perf_counter() - t0) * 1000)
+            rows = _parse_ticker_listing_csv(sample)
+            if not rows:
+                head = sample[:400].lower()
+                if "<html" in head or "no datafile" in head:
+                    raise ValueError(
+                        "FirstRate returned HTML or an error page — check userid and subscription."
+                    )
+                raise ValueError("Ticker listing returned no parseable symbols.")
+            sample_sym = rows[0].get("ticker", "")
+            checks.append(
+                {
+                    "id": "ticker_listing",
+                    "label": label_tl,
+                    "ok": True,
+                    "detail": (
+                        f"CSV OK · {len(rows)}+ symbol(s) in sample · example {sample_sym!r} ({ms} ms)"
+                    ),
+                }
+            )
+        except Exception as exc:
+            ms = int((time.perf_counter() - t0) * 1000)
+            checks.append(
+                {
+                    "id": "ticker_listing",
+                    "label": label_tl,
+                    "ok": False,
+                    "detail": f"{str(exc)[:480]} ({ms} ms)",
+                }
+            )
+            all_ok = False
+
+    if include_download_probe and userid:
+        label = f"Download probe (data_file · {it} · {p} · {tf})"
+        try:
+            probe = probe_firstrate_data_file_start(
+                userid=userid,
+                instrument_type=it,
+                period=p,
+                timeframe=tf,
+                ticker_range=ticker_range,
+                adjustment=adjustment,
+                timeout_sec=50,
+            )
+            ok = bool(probe.get("ok"))
+            detail = (
+                f"HTTP {probe.get('http_status')} · {probe.get('elapsed_ms')} ms · "
+                f"peek {probe.get('bytes_peeked')} B"
+            )
+            if probe.get("content_length"):
+                detail += f" · Content-Length {probe['content_length']}"
+            if not ok and probe.get("error"):
+                detail += f" — {probe['error']}"
+            elif ok:
+                detail += " · ZIP header OK"
+            checks.append(
+                {
+                    "id": "download_probe",
+                    "label": label,
+                    "ok": ok,
+                    "detail": detail,
+                    "url": probe.get("url"),
+                    "sample": probe.get("sample"),
+                }
+            )
+            if not ok:
+                all_ok = False
+        except ValueError as exc:
+            checks.append(
+                {
+                    "id": "download_probe",
+                    "label": label,
+                    "ok": False,
+                    "detail": str(exc)[:500],
+                }
+            )
+            all_ok = False
+
+    return {
+        "ok": all_ok,
+        "checked_at": datetime.now(_UTC_TZ).isoformat(timespec="seconds"),
+        "instrument_type": it,
+        "period": p,
+        "timeframe": tf,
+        "userid_masked": mask_firstrate_userid(userid),
+        "api_base": api_base,
+        "checks": checks,
     }
 
 

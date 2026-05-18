@@ -940,6 +940,17 @@ select { cursor:default; }
 .fr-sync-stat-value.err { color: #ef4444; }
 
 /* ── Unclassified Datasets Panel ───────────────────── */
+.fr-conn-checks { display: flex; flex-direction: column; gap: 8px; }
+.fr-conn-row {
+  display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px;
+  border-radius: 8px; background: var(--panel); border: 1px solid var(--border);
+}
+.fr-conn-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+.fr-conn-dot.ok { background: #22c55e; }
+.fr-conn-dot.fail { background: #ef4444; }
+.fr-conn-label { font-weight: 600; font-size: 11px; color: var(--text); }
+.fr-conn-detail { color: var(--text-muted); font-size: 11px; margin-top: 2px; word-break: break-word; }
+
 .fr-unclassified-panel {
   margin-bottom: 14px;
   border: 1px solid rgba(234,179,8,.2);
@@ -2635,6 +2646,27 @@ select { cursor:default; }
               </div>
             </div>
             <div id="frDailySyncAlerts" style="display:none;margin-top:8px;padding:10px 12px;border-radius:6px;font-size:12px;line-height:1.5"></div>
+          </div>
+        </div>
+
+        <!-- FirstRate server connection diagnostics -->
+        <div class="card" id="frConnectionCard" data-ds-group="overview import sync" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 25%, var(--border))">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <div class="card-title">FirstRate server connection</div>
+            <span class="card-badge" id="frConnectionBadge" style="background:var(--panel);color:var(--text-muted)">not tested</span>
+            <button type="button" class="btn sm" id="frConnectionTestBtn" style="margin-left:auto" onclick="refreshFirstrateConnectionStatus(true)">Test connection</button>
+          </div>
+          <div class="card-body" style="padding-top:0">
+            <p id="frConnectionSummary" style="margin:0 0 10px;font-size:12px;color:var(--text-muted);line-height:1.5">
+              Tests match the FirstRate API docs: <code style="font-size:10px">last_update</code> (auth + fresh date),
+              <code style="font-size:10px">ticker_listing</code> (symbol CSV for your type, e.g. <code style="font-size:10px">fx</code>),
+              and <code style="font-size:10px">data_file</code> (ZIP download peek). Uses Import form type / period / timeframe.
+            </p>
+            <div id="frConnectionChecks" class="fr-conn-checks" style="font-size:12px;line-height:1.55"></div>
+            <p style="margin:10px 0 0;font-size:11px;color:var(--text-muted)">
+              API docs: <a href="https://firstratedata.com/about/api-docs" target="_blank" rel="noopener" style="color:var(--accent)">firstratedata.com/about/api-docs</a>
+            </p>
           </div>
         </div>
 
@@ -6391,11 +6423,104 @@ function frPairsAdd(line) {
 }
 
 let _frLivePrevJobId = null;
+let _frConnLastRun = 0;
+
+function renderFirstrateConnectionChecks(data) {
+  const el = $('frConnectionChecks');
+  const badge = $('frConnectionBadge');
+  if (!el) return;
+  const checks = (data && data.checks) || [];
+  if (!checks.length) {
+    el.innerHTML = '<p style="color:var(--text-muted)">No checks returned.</p>';
+    return;
+  }
+  el.innerHTML = checks
+    .map(function (c) {
+      const ok = !!c.ok;
+      const body =
+        '<div class="fr-conn-row">' +
+        '<span class="fr-conn-dot ' +
+        (ok ? 'ok' : 'fail') +
+        '"></span>' +
+        '<div><div class="fr-conn-label">' +
+        esc(String(c.label || c.id || 'Check')) +
+        '</div>' +
+        '<div class="fr-conn-detail">' +
+        esc(String(c.detail || '')) +
+        (c.sample && !ok
+          ? '<br><span style="opacity:.85">' + esc(String(c.sample).slice(0, 200)) + '</span>'
+          : '') +
+        '</div></div></div>';
+      return body;
+    })
+    .join('');
+  if (badge) {
+    badge.textContent = data.ok ? 'connected' : 'failed';
+    badge.style.color = data.ok ? '#22c55e' : 'var(--err, #f87171)';
+    badge.style.background = data.ok ? 'rgba(34,197,94,.12)' : 'rgba(248,113,113,.12)';
+  }
+}
+
+async function refreshFirstrateConnectionStatus(force) {
+  const checksEl = $('frConnectionChecks');
+  const btn = $('frConnectionTestBtn');
+  if (!checksEl) return;
+  const now = Date.now();
+  if (!force && now - _frConnLastRun < 55000) return;
+  _frConnLastRun = now;
+  if (btn) btn.disabled = true;
+  if (force) checksEl.innerHTML = '<p style="color:var(--text-muted);margin:0">Running checks…</p>';
+  const inst = $('fr_type') ? String($('fr_type').value || 'fx').trim().toLowerCase() : 'fx';
+  const period = $('fr_period') ? String($('fr_period').value || 'month').trim().toLowerCase() : 'month';
+  const tf = $('fr_tf') ? String($('fr_tf').value || '1min').trim().toLowerCase() : '1min';
+  const qs = new URLSearchParams({
+    instrument_type: inst,
+    period: period,
+    timeframe: tf,
+    download_probe: 'true',
+  });
+  const letterEl = $('fr_ticker_range');
+  if (letterEl && letterEl.value && letterEl.value !== 'auto') qs.set('ticker_range', letterEl.value);
+  const adjEl = $('fr_adjustment');
+  if (adjEl && adjEl.value) qs.set('adjustment', adjEl.value);
+  try {
+    const data = await api('/api/admin/datasets/firstrate-fx/connection-status?' + qs.toString());
+    renderFirstrateConnectionChecks(data);
+    const sum = $('frConnectionSummary');
+    if (sum && data.checked_at) {
+      sum.textContent =
+        'Last tested ' +
+        data.checked_at +
+        ' · ' +
+        inst +
+        ' · ' +
+        period +
+        ' · ' +
+        tf +
+        (data.ok ? ' — FirstRate APIs look OK.' : ' — fix failures below before importing.');
+    }
+  } catch (e) {
+    checksEl.innerHTML =
+      '<p style="color:var(--err,#f87171);margin:0">Connection test failed: ' +
+      esc(e && e.message ? e.message : String(e)) +
+      '</p>';
+    const badge = $('frConnectionBadge');
+    if (badge) {
+      badge.textContent = 'error';
+      badge.style.color = 'var(--err, #f87171)';
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
 
 function ensureFirstrateLivePoll() {
   if (window._frLivePollId) return;
   window._frLivePollId = setInterval(updateFirstrateLivePanel, 1200);
   updateFirstrateLivePanel();
+  try {
+    refreshFirstrateConnectionStatus(false);
+  } catch (e) {}
   if (!window._frDailySyncPollId) {
     window._frDailySyncPollId = setInterval(refreshDailySyncOverview, 30000);
   }
@@ -6498,6 +6623,9 @@ async function updateFirstrateLivePanel() {
         detailMsg =
           (primary.message || 'Building chart binaries…') +
           '\nThis runs after all CSVs are imported (faster than building per file during import).';
+      }
+      if (primary.likely_stuck && primary.stuck_hint) {
+        detailMsg += '\n⚠ ' + primary.stuck_hint;
       }
       detail.textContent = detailMsg + (primary.error ? '\n' + primary.error : '');
       window._frActiveImport = {
