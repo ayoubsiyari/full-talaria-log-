@@ -9827,5 +9827,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260516a13_rect_resize_flip';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260516a14_rect_flip_anchor';
 } catch (_) {}

@@ -62,7 +62,8 @@ function applyBoxHandleDragWithFlip(role, start, dataPoint) {
                 right = start.right;
                 activeRole = 'side-left';
             } else {
-                left = start.left;
+                // Crossed right edge — anchor at crossed edge, not original left
+                left = start.right;
                 right = dataPoint.x;
                 activeRole = 'side-right';
             }
@@ -73,7 +74,7 @@ function applyBoxHandleDragWithFlip(role, start, dataPoint) {
                 left = start.left;
                 activeRole = 'side-right';
             } else {
-                right = start.right;
+                right = start.left;
                 left = dataPoint.x;
                 activeRole = 'side-left';
             }
@@ -84,7 +85,7 @@ function applyBoxHandleDragWithFlip(role, start, dataPoint) {
                 bottom = start.bottom;
                 activeRole = 'side-top';
             } else {
-                top = start.top;
+                top = start.bottom;
                 bottom = dataPoint.y;
                 activeRole = 'side-bottom';
             }
@@ -95,7 +96,7 @@ function applyBoxHandleDragWithFlip(role, start, dataPoint) {
                 top = start.top;
                 activeRole = 'side-bottom';
             } else {
-                bottom = start.bottom;
+                bottom = start.top;
                 top = dataPoint.y;
                 activeRole = 'side-top';
             }
@@ -446,6 +447,16 @@ class RectangleTool extends BaseDrawing {
         if (!next) {
             console.warn(`⚠️ Rectangle handleCustomHandleDrag: Unknown role ${role}`);
             return false;
+        }
+
+        if (next.activeRole !== role) {
+            // Re-anchor at the crossed edge so continued drag does not snap to drag-start bounds
+            this._resizeStart = {
+                left: next.left,
+                right: next.right,
+                top: next.top,
+                bottom: next.bottom,
+            };
         }
 
         this._resizeRole = next.activeRole;
