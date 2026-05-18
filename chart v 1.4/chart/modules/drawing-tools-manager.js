@@ -304,48 +304,65 @@ class DrawingToolsManager {
     }
 
     /**
-     * After render, re-apply handle visibility + floating toolbar (getBBox needs laid-out DOM).
-     * Retries on the next frame when bbox is not ready yet — fixes “selected but no handles/bar”.
+     * Screen position for the floating style toolbar (anchor bbox for lines, group bbox otherwise).
+     * @returns {{ x: number, y: number } | null}
+     */
+    _getToolbarScreenPosition(drawing) {
+        if (!drawing || !this.svg || !this.svg.node) return null;
+        const svgRect = this.svg.node().getBoundingClientRect();
+        const bbox = this._getDrawingSelectionBBox(drawing);
+        if (bbox && Number.isFinite(bbox.x) && (bbox.width > 0 || bbox.height > 0)) {
+            return {
+                x: svgRect.left + bbox.x + bbox.width / 2,
+                y: svgRect.top + bbox.y,
+            };
+        }
+        const p = drawing.points && drawing.points[0];
+        if (p && this.chart && this.chart.yScale) {
+            const px = this.chart.dataIndexToPixel
+                ? this.chart.dataIndexToPixel(p.x)
+                : this.chart.xScale(p.x);
+            const py = this.chart.yScale(p.y);
+            if (Number.isFinite(px) && Number.isFinite(py)) {
+                return { x: svgRect.left + px, y: svgRect.top + py };
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Re-apply resize handles + floating toolbar after render (deferred one frame if DOM not ready).
      */
     _syncSelectionChrome(drawing, attempt = 0) {
         if (!drawing) return;
-        const stillSelected = (this.selectedDrawings || []).includes(drawing);
-        if (!stillSelected) return;
+        if (!(this.selectedDrawings || []).includes(drawing)) return;
 
         drawing.selected = true;
         if (typeof drawing.select === 'function') {
             try { drawing.select(); } catch (_) {}
         }
 
-        if (!drawing.group || !drawing.group.node || !this.svg || !this.svg.node) {
-            if (attempt < 4) {
+        const pos = this._getToolbarScreenPosition(drawing);
+        if (!pos) {
+            if (attempt < 2) {
                 requestAnimationFrame(() => this._syncSelectionChrome(drawing, attempt + 1));
             }
             return;
         }
 
-        const bbox = this._getDrawingSelectionBBox(drawing);
-        const bboxReady = bbox
-            && Number.isFinite(bbox.x)
-            && Number.isFinite(bbox.y)
-            && (bbox.width > 0 || bbox.height > 0);
-        if (!bboxReady) {
-            if (attempt < 4) {
-                requestAnimationFrame(() => this._syncSelectionChrome(drawing, attempt + 1));
-            }
-            return;
-        }
-
-        const svgRect = this.svg.node().getBoundingClientRect();
-        const x = svgRect.left + bbox.x + bbox.width / 2;
-        const y = svgRect.top + bbox.y;
         if (typeof this.toolbar.onBeforeUpdate === 'function') {
             try { this.toolbar.onBeforeUpdate(drawing); } catch (_) {}
         }
         try {
-            this.toolbar.show(drawing, x, y);
+            this.toolbar.show(drawing, pos.x, pos.y);
         } catch (_) {}
         this._notifyV9SelectionSync(drawing);
+    }
+
+    _refreshSingleSelectionChrome(drawing) {
+        if (!drawing || (this.selectedDrawings || []).length !== 1) return;
+        if (this.selectedDrawings[0] !== drawing) return;
+        this._syncSelectionChrome(drawing);
     }
 
     _setupHandleMouseDownCapture() {
@@ -5742,7 +5759,8 @@ class DrawingToolsManager {
         if (this.chart.broadcastDrawingChange && index > -1) {
             this.chart.broadcastDrawingChange('update', drawing, index);
         }
-        // [debug removed]
+        this.renderDrawing(drawing);
+        this._refreshSingleSelectionChrome(drawing);
     }
 
     startCustomHandleDrag(drawing, handleRole, event, pointIndex) {
@@ -5850,7 +5868,7 @@ class DrawingToolsManager {
                 this.chart.broadcastDrawingChange('update', drawing, index);
             }
         }
-        // [debug removed]
+        this._refreshSingleSelectionChrome(drawing);
     }
 
     collectHandleContext(event) {
@@ -6025,6 +6043,11 @@ class DrawingToolsManager {
             this.renderDrawing(this.draggingDrawing);
         }
         
+        const movedDrawing = this.draggingDrawing
+            || (this.multiDragStartPositions && this.multiDragStartPositions[0]
+                ? this.multiDragStartPositions[0].drawing
+                : null);
+
         this.isDragging = false;
         this.draggingDrawing = null;
         this.dragStartPoint = null;
@@ -6038,6 +6061,11 @@ class DrawingToolsManager {
         if (canvas) canvas.style.cursor = '';
         this.svg.style('cursor', '');
         this.saveDrawings();
+        if (movedDrawing) {
+            this._refreshSingleSelectionChrome(movedDrawing);
+        } else if ((this.selectedDrawings || []).length === 1) {
+            this._refreshSingleSelectionChrome(this.selectedDrawings[0]);
+        }
     }
 
     /**
@@ -6082,18 +6110,18 @@ class DrawingToolsManager {
             // If this drawing is already the only selected drawing, don't deselectAll().
             // deselectAll() contains cleanup logic that can auto-remove empty ImageTool drawings.
             if (this.selectedDrawings.length === 1 && this.selectedDrawings[0] === drawing) {
+                drawing.select();
                 this.selectedDrawing = drawing;
                 this.selectedDrawings = [drawing];
-                drawing.selected = true;
                 this.renderDrawing(drawing);
                 this._syncSelectionChrome(drawing);
                 return;
             }
             // Single selection - deselect all others
             this.deselectAll({ forSelectionChange: true });
+            drawing.select();
             this.selectedDrawing = drawing;
             this.selectedDrawings = [drawing];
-            drawing.selected = true;
             this.renderDrawing(drawing);
             this._syncSelectionChrome(drawing);
         }
@@ -6204,7 +6232,7 @@ class DrawingToolsManager {
         this.selectedDrawing = null;
         this.selectedDrawings = [];
         this.toolbar.hide(); // Hide toolbar
-        // Caller is about to select another drawing — skip full teardown (clears handles mid-select).
+        // Empty canvas / Escape: full redraw clears handles. Selection swap: avoid wiping SVG mid-select.
         if (!forSelectionChange) {
             this.redrawAll();
         }
@@ -9694,5 +9722,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260516a8_selection_chrome_trendline';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260516a10_selection_chrome_fix';
 } catch (_) {}
