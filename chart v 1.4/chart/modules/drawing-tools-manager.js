@@ -1129,25 +1129,35 @@ class DrawingToolsManager {
         svg.on('mousemove.drawing', (event) => this.handleMouseMove(event));
         svg.on('mouseup.drawing', (event) => this.handleMouseUp(event));
 
-        // Shift-release: immediately refresh preview to real mouse position
-        document.addEventListener('keyup', (e) => {
-            if (e.key !== 'Shift') return;
+        const refreshPlacementPreviewFromLastPointer = (keyPatch) => {
             if (!this.currentTool || !this.drawingState || !this.drawingState.isDrawing) return;
             if (!this._lastMouseEvent) return;
             const last = this._lastMouseEvent;
             const fakeEvent = {
                 clientX: last.clientX,
                 clientY: last.clientY,
-                shiftKey: false,
-                ctrlKey: last.ctrlKey,
+                shiftKey: keyPatch.shiftKey !== undefined ? keyPatch.shiftKey : last.shiftKey,
+                ctrlKey: keyPatch.ctrlKey !== undefined ? keyPatch.ctrlKey : last.ctrlKey,
                 altKey: last.altKey,
-                metaKey: last.metaKey,
+                metaKey: keyPatch.metaKey !== undefined ? keyPatch.metaKey : last.metaKey,
                 buttons: last.buttons,
                 button: last.button,
                 target: last.target,
                 currentTarget: last.currentTarget
             };
             this.handleMouseMove(fakeEvent);
+        };
+
+        // Shift-release: immediately refresh preview to real mouse position
+        document.addEventListener('keyup', (e) => {
+            if (e.key !== 'Shift') return;
+            refreshPlacementPreviewFromLastPointer({ shiftKey: false });
+        });
+
+        // Ctrl/Cmd-release: refresh preview magnet snap (crosshair already updates via chart key state)
+        document.addEventListener('keyup', (e) => {
+            if (e.key !== 'Control' && e.key !== 'Meta') return;
+            refreshPlacementPreviewFromLastPointer({ ctrlKey: false, metaKey: false });
         });
 
         // Double-click anywhere on a drawing (use same geometric hit-test as selection)
@@ -2620,6 +2630,11 @@ class DrawingToolsManager {
             const rangeMode = this.getRangeToolMode();
             point = this.constrainDatePriceRangePoint(point, anchorPoint, rangeMode);
         }
+
+        {
+            const [, screenY] = this._eventCanvasLocalXY(event);
+            point = this._applyOHLCMagnetSnap(point, screenY, event);
+        }
         
         if (this._shouldIgnoreDrawStartOnExistingDrawing(event, { allowWhileDrawing: true })) {
             this._abortInProgressPlacement();
@@ -3285,6 +3300,11 @@ class DrawingToolsManager {
             const rangeMode = this.getRangeToolMode();
             point = this.constrainDatePriceRangePoint(point, anchorPoint, rangeMode);
         }
+
+        {
+            const [, screenY] = this._eventCanvasLocalXY(event);
+            point = this._applyOHLCMagnetSnap(point, screenY, event);
+        }
         
         if (
             toolInfo &&
@@ -3395,6 +3415,11 @@ class DrawingToolsManager {
                 if (event.shiftKey) {
                     const referencePoint = this.drawingState.tempPoints[0];
                     point = this.constrainToAngle(referencePoint, point);
+                }
+
+                {
+                    const [, screenY] = this._eventCanvasLocalXY(event);
+                    point = this._applyOHLCMagnetSnap(point, screenY, event);
                 }
                 
                 // Add second point
@@ -3598,7 +3623,74 @@ class DrawingToolsManager {
         if (event.key === 'Meta' || event.key === 'Control') {
             this.magnetKeyHeld = false;
             this.ctrlSelectMode = false;
+            if (this.currentTool && this.drawingState && this.drawingState.isDrawing && this._lastMouseEvent) {
+                const last = this._lastMouseEvent;
+                this.handleMouseMove({
+                    clientX: last.clientX,
+                    clientY: last.clientY,
+                    shiftKey: last.shiftKey,
+                    ctrlKey: false,
+                    metaKey: false,
+                    altKey: last.altKey,
+                    buttons: last.buttons,
+                    button: last.button,
+                    target: last.target,
+                    currentTarget: last.currentTarget
+                });
+            }
         }
+    }
+
+    /** True when OHLC magnet should apply (toolbar magnet or temporary Ctrl/Cmd). */
+    _isMagnetSnapActive(event) {
+        const keyHeld = event && (event.metaKey || event.ctrlKey);
+        const mode = this.magnetMode || (this.chart && this.chart.magnetMode) || 'off';
+        return !!(keyHeld || mode === 'weak' || mode === 'strong' || mode === true);
+    }
+
+    /**
+     * Snap placement price to nearest OHLC — same rules as Chart.updateCrosshair (30px weak, Ctrl = force).
+     */
+    _applyOHLCMagnetSnap(point, screenY, event) {
+        if (!point || !this._isMagnetSnapActive(event)) return point;
+        const data = this.chart && this.chart.data;
+        if (!Array.isArray(data) || data.length === 0) return point;
+        if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return point;
+
+        const idx = Math.round(Math.max(0, Math.min(data.length - 1, point.x)));
+        const candle = data[idx];
+        if (!candle) return point;
+
+        const ohlc = [candle.o, candle.h, candle.l, candle.c].filter((v) => Number.isFinite(v));
+        if (!ohlc.length) return point;
+
+        let closest = ohlc[0];
+        let minDist = Math.abs(point.y - closest);
+        for (let i = 1; i < ohlc.length; i++) {
+            const d = Math.abs(point.y - ohlc[i]);
+            if (d < minDist) {
+                minDist = d;
+                closest = ohlc[i];
+            }
+        }
+
+        const keyHeld = event && (event.metaKey || event.ctrlKey);
+        const mode = this.magnetMode || (this.chart && this.chart.magnetMode) || 'off';
+        const forceSnap = keyHeld || mode === 'strong' || mode === true;
+
+        if (!forceSnap && this.chart.yScale && Number.isFinite(screenY)) {
+            const closestPx = this.chart.yScale(closest);
+            if (Number.isFinite(closestPx) && Math.abs(screenY - closestPx) > 30) {
+                return { x: idx, y: point.y };
+            }
+        }
+
+        const snapToIndicators = this.snapToIndicators || this.chart?.snapToIndicators || window.snapToIndicators;
+        if (snapToIndicators && typeof this.snapToCandle === 'function') {
+            return this.snapToCandle({ x: idx, y: closest });
+        }
+
+        return { x: idx, y: closest };
     }
 
     /**
@@ -3709,22 +3801,9 @@ class DrawingToolsManager {
             xScale: this.chart.xScale,
             yScale: this.chart.yScale
         }, this.chart, isContinuousTool);
-        
-        // Apply magnet mode only when explicitly active (not via stuck key flag)
-        // Use event.metaKey/ctrlKey directly - never rely on potentially-stuck magnetKeyHeld flag
-        const keyHeld = event && (event.metaKey || event.ctrlKey);
-        const effectiveMagnetMode = keyHeld ? 'strong' : this.magnetMode;
-        
-        // Only snap when cursor is within the loaded candle data range (no snap in empty/future area)
-        const dataLen = this.chart && this.chart.data ? this.chart.data.length : 0;
-        const isOverCandleData = dataLen > 0 && point.x >= 0 && point.x <= dataLen - 1;
-        if (!isContinuousTool && isOverCandleData && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
-            point = CoordinateUtils.snapToOHLC(
-                point,
-                this.chart.data,
-                { xScale: this.chart.xScale, yScale: this.chart.yScale },
-                effectiveMagnetMode
-            );
+
+        if (!isContinuousTool) {
+            point = this._applyOHLCMagnetSnap(point, screenY, event);
         }
 
         point = this.clampPointToCandleRange(point, activeToolType);
@@ -9736,5 +9815,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260516a11_deselect_style_bridge';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260516a12_ctrl_magnet_snap';
 } catch (_) {}

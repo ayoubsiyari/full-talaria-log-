@@ -18278,12 +18278,15 @@ class Chart {
                 const dataIdx = Math.round(this.pixelToDataIndex(x));
                 const snappedX = this.dataIndexToPixel(dataIdx);
                 let price = this.yScale.invert(y);
+                const ctrlHeld = !!(event.ctrlKey || event.metaKey);
+                const magnetOn = this.magnetMode === 'weak' || this.magnetMode === 'strong' || this.magnetMode === true;
+                if (ctrlHeld || magnetOn) {
+                    price = this.snapToOHLC(dataIdx, price, { force: ctrlHeld });
+                }
+                const snappedY = this.yScale(price);
                 
-                // Apply magnet mode snapping
-                price = this.snapToOHLC(dataIdx, price);
-                
-                // Store start points - use snapped X for pixel position
-                start = [snappedX, y];
+                // Store start points - use snapped X/Y for pixel position
+                start = [snappedX, Number.isFinite(snappedY) ? snappedY : y];
                 startData = {idx: dataIdx, price};
                 liveSyncDrawingId = `live_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
             }
@@ -18319,6 +18322,15 @@ class Chart {
             
             // Ensure we have valid scales
             if (!this.yScale) return;
+
+            let endPrice = this.yScale.invert(y);
+            const ctrlHeld = !!(event.ctrlKey || event.metaKey);
+            const magnetOn = this.magnetMode === 'weak' || this.magnetMode === 'strong' || this.magnetMode === true;
+            if (ctrlHeld || magnetOn) {
+                endPrice = this.snapToOHLC(snapIdx, endPrice, { force: ctrlHeld });
+            }
+            const endY = this.yScale(endPrice);
+            const y2 = Number.isFinite(endY) ? endY : y;
             
             try {
                 switch (this.tool) {
@@ -18328,7 +18340,7 @@ class Chart {
                             .attr('x1', start[0])
                             .attr('y1', start[1])
                             .attr('x2', x)
-                            .attr('y2', y)
+                            .attr('y2', y2)
                             .attr('stroke', colors.stroke)
                             .attr('stroke-width', colors.strokeWidth);
                         break;
