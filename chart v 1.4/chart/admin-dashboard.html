@@ -1150,11 +1150,12 @@ select { cursor:default; }
 .ds-tab-panel .card { margin-bottom: 16px; }
 .ds-tab-panel .card:last-child { margin-bottom: 0; }
 #sec-datasets [data-ds-group] { display: none !important; }
-#sec-datasets.ds-hub-view-overview [data-ds-group="overview"],
-#sec-datasets.ds-hub-view-import [data-ds-group="import"],
-#sec-datasets.ds-hub-view-sync [data-ds-group="sync"],
-#sec-datasets.ds-hub-view-maintenance [data-ds-group="maintenance"],
-#sec-datasets.ds-hub-view-library [data-ds-group="library"] {
+/* ~= matches space-separated groups, e.g. data-ds-group="overview sync" */
+#sec-datasets.ds-hub-view-overview [data-ds-group~="overview"],
+#sec-datasets.ds-hub-view-import [data-ds-group~="import"],
+#sec-datasets.ds-hub-view-sync [data-ds-group~="sync"],
+#sec-datasets.ds-hub-view-maintenance [data-ds-group~="maintenance"],
+#sec-datasets.ds-hub-view-library [data-ds-group~="library"] {
   display: block !important;
 }
 #sec-datasets.ds-hub-view-library .grid-2 { display: grid !important; }
@@ -2326,6 +2327,7 @@ select { cursor:default; }
             <button type="button" class="ds-hub-tab" data-ds-tab="import" onclick="setDsHubTab('import')">Import</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="sync" onclick="setDsHubTab('sync')">Sync health</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="maintenance" onclick="setDsHubTab('maintenance')">Maintenance</button>
+            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-05-18b</span>
           </div>
         </div>
 
@@ -2650,7 +2652,7 @@ select { cursor:default; }
         </div>
 
         <!-- FirstRate server connection diagnostics -->
-        <div class="card" id="frConnectionCard" data-ds-group="overview import sync" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 25%, var(--border))">
+        <div class="card" id="frConnectionCard" data-ds-group="sync overview import" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 25%, var(--border))">
           <div class="card-hdr">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             <div class="card-title">FirstRate server connection</div>
@@ -2671,7 +2673,7 @@ select { cursor:default; }
         </div>
 
         <!-- Live FirstRate import status (polls VPS job files) -->
-        <div class="card" id="frLiveImportCard" data-ds-group="overview" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 35%, var(--border))">
+        <div class="card" id="frLiveImportCard" data-ds-group="overview sync" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 35%, var(--border))">
           <div class="card-hdr">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <div class="card-title">FirstRate download / import</div>
@@ -2704,6 +2706,17 @@ select { cursor:default; }
             </div>
           </div>
           <div class="card-body" style="padding-top:0">
+            <div id="frConnectionSyncEmbed" style="margin:0 0 14px;padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--panel)">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                <strong style="font-size:12px">FirstRate server connection</strong>
+                <span class="card-badge" id="frConnectionBadgeSync" style="background:var(--panel);color:var(--text-muted)">not tested</span>
+                <button type="button" class="btn sm" style="margin-left:auto" onclick="refreshFirstrateConnectionStatus(true)">Test connection</button>
+              </div>
+              <p id="frConnectionSummarySync" style="margin:0 0 8px;font-size:11px;color:var(--text-muted);line-height:1.45">
+                Tests <code style="font-size:10px">last_update</code>, <code style="font-size:10px">ticker_listing</code>, and <code style="font-size:10px">data_file</code> (FirstRate API docs).
+              </p>
+              <div id="frConnectionChecksSync" class="fr-conn-checks" style="font-size:11px"></div>
+            </div>
             <p id="frHealthHeadline" style="margin:0 0 12px;font-size:12px;color:var(--text-muted);line-height:1.5">Checking last nightly run…</p>
             <div id="frHealthClassGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:10px"></div>
             <p id="frHealthRegistryNote" style="display:none;margin:0 0 14px;font-size:11px;color:var(--text-muted);line-height:1.5"></p>
@@ -3615,6 +3628,11 @@ function setDsHubTab(tab, opts) {
   }
   if (tab === 'registry' && !opts.skipRegistryLoad) loadDatasetRegistry();
   if (tab === 'library') loadDatasets(true).catch(function () {});
+  if (tab === 'sync') {
+    try {
+      refreshFirstrateConnectionStatus(true);
+    } catch (_) {}
+  }
   window.location.hash = tab === 'overview' ? 'datasets' : ('datasets:' + tab);
 }
 
@@ -6425,16 +6443,12 @@ function frPairsAdd(line) {
 let _frLivePrevJobId = null;
 let _frConnLastRun = 0;
 
-function renderFirstrateConnectionChecks(data) {
-  const el = $('frConnectionChecks');
-  const badge = $('frConnectionBadge');
-  if (!el) return;
+function _frConnChecksHtml(data) {
   const checks = (data && data.checks) || [];
   if (!checks.length) {
-    el.innerHTML = '<p style="color:var(--text-muted)">No checks returned.</p>';
-    return;
+    return '<p style="color:var(--text-muted);margin:0">No checks returned.</p>';
   }
-  el.innerHTML = checks
+  return checks
     .map(function (c) {
       const ok = !!c.ok;
       const body =
@@ -6454,22 +6468,53 @@ function renderFirstrateConnectionChecks(data) {
       return body;
     })
     .join('');
-  if (badge) {
+}
+
+function renderFirstrateConnectionChecks(data) {
+  const html = _frConnChecksHtml(data);
+  const el = $('frConnectionChecks');
+  const elSync = $('frConnectionChecksSync');
+  if (el) el.innerHTML = html;
+  if (elSync) elSync.innerHTML = html;
+  const badgeIds = ['frConnectionBadge', 'frConnectionBadgeSync'];
+  badgeIds.forEach(function (id) {
+    const badge = $(id);
+    if (!badge) return;
     badge.textContent = data.ok ? 'connected' : 'failed';
     badge.style.color = data.ok ? '#22c55e' : 'var(--err, #f87171)';
     badge.style.background = data.ok ? 'rgba(34,197,94,.12)' : 'rgba(248,113,113,.12)';
-  }
+  });
+}
+
+function _frConnSummaryText(data, inst, period, tf) {
+  if (!data || !data.checked_at) return '';
+  return (
+    'Last tested ' +
+    data.checked_at +
+    ' · ' +
+    inst +
+    ' · ' +
+    period +
+    ' · ' +
+    tf +
+    (data.ok ? ' — FirstRate APIs look OK.' : ' — fix failures below before importing.')
+  );
 }
 
 async function refreshFirstrateConnectionStatus(force) {
   const checksEl = $('frConnectionChecks');
+  const checksElSync = $('frConnectionChecksSync');
   const btn = $('frConnectionTestBtn');
-  if (!checksEl) return;
+  if (!checksEl && !checksElSync) return;
   const now = Date.now();
   if (!force && now - _frConnLastRun < 55000) return;
   _frConnLastRun = now;
   if (btn) btn.disabled = true;
-  if (force) checksEl.innerHTML = '<p style="color:var(--text-muted);margin:0">Running checks…</p>';
+  const runningHtml = '<p style="color:var(--text-muted);margin:0">Running checks…</p>';
+  if (force) {
+    if (checksEl) checksEl.innerHTML = runningHtml;
+    if (checksElSync) checksElSync.innerHTML = runningHtml;
+  }
   const inst = $('fr_type') ? String($('fr_type').value || 'fx').trim().toLowerCase() : 'fx';
   const period = $('fr_period') ? String($('fr_period').value || 'month').trim().toLowerCase() : 'month';
   const tf = $('fr_tf') ? String($('fr_tf').value || '1min').trim().toLowerCase() : '1min';
@@ -6486,29 +6531,31 @@ async function refreshFirstrateConnectionStatus(force) {
   try {
     const data = await api('/api/admin/datasets/firstrate-fx/connection-status?' + qs.toString());
     renderFirstrateConnectionChecks(data);
-    const sum = $('frConnectionSummary');
-    if (sum && data.checked_at) {
-      sum.textContent =
-        'Last tested ' +
-        data.checked_at +
-        ' · ' +
-        inst +
-        ' · ' +
-        period +
-        ' · ' +
-        tf +
-        (data.ok ? ' — FirstRate APIs look OK.' : ' — fix failures below before importing.');
+    const sumTxt = _frConnSummaryText(data, inst, period, tf);
+    if (sumTxt) {
+      const sum = $('frConnectionSummary');
+      const sumSync = $('frConnectionSummarySync');
+      if (sum) sum.textContent = sumTxt;
+      if (sumSync) sumSync.textContent = sumTxt;
     }
   } catch (e) {
-    checksEl.innerHTML =
+    var errHtml =
       '<p style="color:var(--err,#f87171);margin:0">Connection test failed: ' +
       esc(e && e.message ? e.message : String(e)) +
       '</p>';
-    const badge = $('frConnectionBadge');
-    if (badge) {
-      badge.textContent = 'error';
-      badge.style.color = 'var(--err, #f87171)';
+    if (String(e && e.message ? e.message : e).indexOf('404') >= 0) {
+      errHtml +=
+        '<p style="margin:8px 0 0;font-size:11px;color:var(--text-muted)">API not found — rebuild <code>trading-chart</code> on the VPS (<code>git pull &amp;&amp; docker compose up -d --build trading-chart</code>).</p>';
     }
+    if (checksEl) checksEl.innerHTML = errHtml;
+    if (checksElSync) checksElSync.innerHTML = errHtml;
+    ['frConnectionBadge', 'frConnectionBadgeSync'].forEach(function (id) {
+      const badge = $(id);
+      if (badge) {
+        badge.textContent = 'error';
+        badge.style.color = 'var(--err, #f87171)';
+      }
+    });
   } finally {
     if (btn) btn.disabled = false;
   }
