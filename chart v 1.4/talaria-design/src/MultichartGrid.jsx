@@ -1490,9 +1490,8 @@ export default function MultichartGrid({
 
     // ─── Push sync-mode changes to the live manager ─────────────────────
     //
-    // The MultichartManager constructor defaults syncMode to ALL true
-    // (multichart-manager.js:75). React's layoutSync state, however,
-    // defaults to crosshair/symbol/drawings ON but time/dateRange OFF.
+    // The MultichartManager constructor defaults syncMode to crosshair +
+    // drawings only. React's layoutSync state matches (time/dateRange/symbol OFF).
     // If we only pushed on `[layoutSync]` change the user would see this
     // mismatch on first split: panels would actually pan/zoom together
     // (manager default visibleRange:true) even though the dropdown

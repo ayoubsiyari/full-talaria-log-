@@ -67,6 +67,10 @@ const LAYOUT_SYNC_ITEMS = [
   ["symbol","Symbol"],["interval","Interval"],["crosshair","Crosshair"],["time","Time"],
   ["dateRange","Date Range"],["drawings","Drawings"],["indicators","Indicators"],["chartType","Chart Type"]
 ];
+const LAYOUT_SYNC_HELP =
+  "Crosshair, Symbol, Drawings, Time, and Date range control the items named on each row. " +
+  "Replay (playhead) is always shared across tiles. Indicators and Chart type switches apply to the classic panel manager only; " +
+  "multichart iframe tiles use the focused panel for new indicators until full fan-out is wired.";
 
 // ── Color utilities ──────────────────────────────────────────────────────────
 function parseColor(str) {
@@ -5213,14 +5217,9 @@ const TalariaV8bLive = () => {
   // Phase 7.2.3: TradingView-style topbar layout dropdown (replaces the
   // deleted topbar layout entry). Anchor ref lets us position the popover
   // directly below the button so it lines up like TradingView.
-  const [layoutDropdownOpen, setLayoutDropdownOpen] = useState(false);
-  const layoutDropdownBtnRef = useRef(null);
-  const layoutDropdownPopRef = useRef(null);
   // Keep V9 defaults aligned with panel-manager.js defaults to avoid startup
   // races re-enabling sync modes (especially `time`) unexpectedly.
-  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: true, interval: false, dateRange: false, indicators: false, chartType: false });
-  const [layoutTab, setLayoutTab] = useState("panels");
-
+  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
   // ── Support Chat Widget state ─────────────────────────────────────────
   const [supportChatOpen, setSupportChatOpen] = useState(false);
   const [supportThreads, setSupportThreads] = useState([]);
@@ -5581,30 +5580,6 @@ const TalariaV8bLive = () => {
     tryHydrate();
     return () => { cancelled = true; };
   }, []);
-
-  // Phase 7.2.3: close the topbar layout dropdown on outside click / Esc.
-  // Anchor + popover refs are excluded so internal interactions (clicking
-  // a layout variant or sync toggle) don't dismiss the popover before the
-  // state update lands. Selecting a variant closes explicitly via its own
-  // onClick.
-  useEffect(() => {
-    if (!layoutDropdownOpen) return;
-    const onDocDown = (e) => {
-      const t = e.target;
-      const a = layoutDropdownBtnRef.current;
-      const p = layoutDropdownPopRef.current;
-      if (a && a.contains(t)) return;
-      if (p && p.contains(t)) return;
-      setLayoutDropdownOpen(false);
-    };
-    const onKey = (e) => { if (e.key === "Escape") setLayoutDropdownOpen(false); };
-    document.addEventListener("mousedown", onDocDown, true);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDocDown, true);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [layoutDropdownOpen]);
 
   // V9 layout picker → panelManager.applyLayout(id).
   // Skips the very first run (initial defaults) so we don't reset whatever
@@ -20340,7 +20315,7 @@ const TalariaV8bLive = () => {
         <div style={{ flex: 1 }}/>
         {/* ── Support Chat button (left of Place Order) ── */}
         <button type="button" ref={supportBtnRef}
-          onClick={(e) => { e.stopPropagation(); closeWindows(); setSettingsOpen(false); setLayoutDropdownOpen(false); setRightPanel(null); setOrderPanelOpen(false); setSupportChatOpen(prev => !prev); }}
+          onClick={(e) => { e.stopPropagation(); closeWindows(); setSettingsOpen(false); setRightPanel(null); setOrderPanelOpen(false); setSupportChatOpen(prev => !prev); }}
           onMouseEnter={e=>{setHov("u-support");showTip("Support",e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
           style={{ width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", border:"none", cursor:"default", position:"relative", marginRight:12,
             background: supportChatOpen ? "rgba(74,106,255,0.10)" : hov==="u-support" ? c.hv : "transparent", transition:"background 0.12s" }}>
@@ -20371,140 +20346,24 @@ const TalariaV8bLive = () => {
         {/* Phase 7.2.3: Panel layout first (right of Place Order), then objects / news / screenshot / fullscreen. */}
         {[{id:"layout",icon:"layout",label:"Layouts"},{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
           <button type="button" key={id}
-            ref={(el) => { if (id === "layout") layoutDropdownBtnRef.current = el; }}
             onClick={(e) => {
-              if(id==="layout"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setRightPanel(null); setOrderPanelOpen(false); setLayoutDropdownOpen(prev => !prev); setSupportChatOpen(false); return; }
-              if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} }
-              if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); }
-              if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} }
-              if(id==="expand"){ e.stopPropagation(); setLayoutDropdownOpen(false); setSupportChatOpen(false); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }
+              if(id==="layout"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setSupportChatOpen(false); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} return; }
+              if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); setSupportChatOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} }
+              if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setSupportChatOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); }
+              if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); setSupportChatOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} }
+              if(id==="expand"){ e.stopPropagation(); setSupportChatOpen(false); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }
             }}
             onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
-              background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&layoutDropdownOpen) || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
+              background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
               transition: "background 0.12s" }}>
-            {(() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&layoutDropdownOpen) || (id==="expand"&&isFullscreen); return <>
+            {(() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return <>
               <I n={id==="expand"&&isFullscreen?"compress":icon} s={16} cl={isActive ? c.acL : hov===`u-${id}` ? c.tx : c.ts}/>
               {isActive && <div style={{ position: "absolute", bottom: 0, left: "15%", right: "15%", height: 2, background: `linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
               {hov===`u-${id}` && !isActive && <div style={{ position: "absolute", bottom: 0, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
             </>; })()}
           </button>
         ))}
-        {/* ─── Phase 7.2.3: Layout dropdown popover (TradingView-style) ───
-             Portal to document.body so it floats above all chrome and is not
-             clipped by any flexbox/overflow context in the topbar tree. */}
-        {layoutDropdownOpen && layoutDropdownBtnRef.current && createPortal(
-          (() => {
-            const r = layoutDropdownBtnRef.current.getBoundingClientRect();
-            const POP_W = 280;
-            // Anchor the right edge of the popover to the right edge of the
-            // button so it doesn't overflow the viewport, then nudge by 4px
-            // for breathing room.
-            const right = Math.max(8, window.innerWidth - r.right - 4);
-            const top   = Math.round(r.bottom + 6);
-            const IW = 30, IH = 20;
-            return (
-              <div
-                ref={layoutDropdownPopRef}
-                data-v9-chrome="1"
-                onPointerDown={(e)=>e.stopPropagation()}
-                onMouseDown={(e)=>e.stopPropagation()}
-                style={{
-                  position: "fixed",
-                  top, right,
-                  width: POP_W,
-                  maxHeight: "min(70vh, 560px)",
-                  background: c.sf,
-                  border: `1px solid rgba(140,160,255,0.32)`,
-                  borderRadius: 4,
-                  boxShadow: "0 10px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)",
-                  zIndex: 9999,
-                  display: "flex",
-                  flexDirection: "column",
-                  fontFamily: F,
-                  overflow: "hidden",
-                  animation: "tlrPanelIn 0.14s ease",
-                }}
-              >
-                <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`, flexShrink: 0 }}/>
-                <div style={{ padding: "8px 12px", display: "flex", alignItems: "center", borderBottom: `1px solid ${c.br}`, flexShrink: 0 }}>
-                  <I n="layout" s={14} cl={c.acL}/>
-                  <span style={{ fontSize: 13, fontWeight: 700, flex: 1, marginLeft: 7, color: c.tx }}>Layouts</span>
-                  <div onClick={()=>setLayoutDropdownOpen(false)} onMouseEnter={()=>setSwHov("xLayoutDD")} onMouseLeave={()=>setSwHov(null)} style={{ cursor: "default", padding: 2 }}>
-                    <I n="x" s={15} cl={swHov==="xLayoutDD"?c.rd:c.ts}/>
-                  </div>
-                </div>
-                <div className="tlr-scroll" style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "10px 12px 12px" }}>
-                  {/* Variants grid — same shape as right-panel layout tab */}
-                  {[1,2,3,4,5,6,7,8].map((n) => {
-                    const variants = LAYOUT_LY_LINES[n-1];
-                    return (
-                      <div key={n} style={{ marginBottom: 6 }}>
-                        <div style={{ fontSize: 9, color: c.tm, marginBottom: 4, opacity: 0.55 }}>{n}</div>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                          {variants.map((lines, li) => {
-                            const isAct = layoutPanels.n===n && layoutPanels.li===li;
-                            const isH  = swHov===`ddly-${n}-${li}`;
-                            const pad = 1;
-                            const iw = IW - pad*2, ih = IH - pad*2;
-                            const lineCol = isAct ? c.acL : isH ? "rgba(140,160,255,0.70)" : "rgba(140,160,255,0.40)";
-                            return (
-                              <div key={li}
-                                onClick={() => { setLayoutPanels({n,li}); setLayoutDropdownOpen(false); }}
-                                onMouseEnter={()=>setSwHov(`ddly-${n}-${li}`)}
-                                onMouseLeave={()=>setSwHov(null)}
-                                style={{ width: IW, height: IH, cursor: "default", flexShrink: 0 }}>
-                                <svg width={IW} height={IH} viewBox={`0 0 ${IW} ${IH}`} style={{ display: "block" }}>
-                                  <rect x={pad} y={pad} width={iw} height={ih} rx={1}
-                                    fill={isAct ? "rgba(38,67,247,0.15)" : isH ? "rgba(140,160,255,0.08)" : "rgba(140,160,255,0.05)"}
-                                    stroke={lineCol} strokeWidth={0.7}/>
-                                  {lines.map((l, i) => (
-                                    <line key={i}
-                                      x1={pad+l.x1*iw} y1={pad+l.y1*ih}
-                                      x2={pad+l.x2*iw} y2={pad+l.y2*ih}
-                                      stroke={lineCol} strokeWidth={0.7}/>
-                                  ))}
-                                </svg>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {/* Sync toggles section */}
-                  <div style={{ height: 1, background: `linear-gradient(90deg,transparent,${c.br},transparent)`, margin: "10px 0 6px" }}/>
-                  <div style={{ fontSize: 9, color: c.tm, letterSpacing: "0.06em", fontWeight: 700, marginBottom: 2 }}>SYNC</div>
-                  <div style={{ fontSize: 9, color: c.tm, opacity: 0.78, lineHeight: 1.35, marginBottom: 8, maxWidth: 232 }}>
-                    Crosshair, Symbol, Drawings, Time, and Date range control the items named on each row.
-                    Replay (playhead) is always shared across tiles. Indicators and Chart type switches apply to the classic panel manager only; multichart iframe tiles use the focused panel for new indicators until full fan-out is wired.
-                  </div>
-                  {LAYOUT_SYNC_ITEMS.map(([key, label]) => {
-                    const on = !!layoutSync[key];
-                    const isH = swHov===`ddsync-${key}`;
-                    const bCol = on ? c.acL : isH ? c.ts : "rgba(140,160,255,0.22)";
-                    return (
-                      <div key={key}
-                        onClick={() => setLayoutSync(prev => ({ ...prev, [key]: !prev[key] }))}
-                        onMouseEnter={()=>setSwHov(`ddsync-${key}`)}
-                        onMouseLeave={()=>setSwHov(null)}
-                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "5px 8px", marginLeft: -4, marginRight: -4, cursor: "default", position: "relative", borderRadius: 2,
-                          background: on ? c.acD : isH ? "rgba(255,255,255,0.025)" : "transparent",
-                          transition: "background 0.1s" }}>
-                        {on && <div style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
-                        <span style={{ fontSize: 12, color: on ? c.tx : c.ts, fontWeight: on ? 600 : 500 }}>{label}</span>
-                        <div style={{ width: 22, height: 12, borderRadius: 6, border: `1px solid ${bCol}`, position: "relative", background: on ? "rgba(74,106,255,0.20)" : "transparent", transition: "all 0.15s" }}>
-                          <div style={{ position: "absolute", top: 1, left: on ? 11 : 1, width: 8, height: 8, borderRadius: "50%", background: on ? c.acL : c.ts, transition: "left 0.15s, background 0.15s", boxShadow: on ? `0 0 6px ${c.acG}` : "none" }}/>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })(),
-          document.body
-        )}
         {/* ─── Support Chat dropdown popover ─── */}
         {supportChatOpen && supportBtnRef.current && createPortal(
           (() => {
@@ -21956,7 +21815,7 @@ const TalariaV8bLive = () => {
           <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`, flexShrink: 0 }}/>
           <div style={{ padding: "6px 10px", display: "flex", alignItems: "center" }}>
             <I n={rightPanel==="layout"?"layout":rightPanel==="layers"?"tree":"news"} s={15} cl={c.acL}/>
-            <span style={{ fontSize: 14, fontWeight: 700, flex: 1, marginLeft: 7 }}>{rightPanel==="layout"?"Layout":rightPanel==="news"?"News":"Objects Tree"}</span>
+            <span style={{ fontSize: 14, fontWeight: 700, flex: 1, marginLeft: 7 }}>{rightPanel==="layout"?"Layouts":rightPanel==="news"?"News":"Objects Tree"}</span>
             <div {...modalPointerActivate(() => setRightPanel(null))} onMouseEnter={()=>setSwHov("xRightPanel")} onMouseLeave={()=>setSwHov(null)} style={{ cursor: "default", padding: 2 }}><I n="x" s={17} cl={swHov==="xRightPanel"?c.rd:c.ts}/></div>
           </div>
           <div style={{ height: 1, background: c.br, flexShrink: 0 }}/>
@@ -22516,137 +22375,66 @@ const TalariaV8bLive = () => {
               </div>
             )}
             {rightPanel==="layout" && (
-              <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
-                {/* Tab bar */}
-                <div style={{position:"relative",display:"flex",flexShrink:0,borderBottom:`1px solid ${c.br}`}}>
-                  {(()=>{
-                    const layoutTabs=[["panels","Panel Layouts"],["sync","Sync"],["sessionDemo","Session demo"]];
-                    const tabIdx=Math.max(0,layoutTabs.findIndex(([id])=>id===layoutTab));
-                    const tabCount=layoutTabs.length;
-                    const tabPct=100/tabCount;
-                    return(
-                      <>
-                  {layoutTabs.map(([id,label])=>{
-                    const isAct=layoutTab===id; const isH=swHov===`ltab-${id}`;
-                    return(
-                      <div key={id} onClick={()=>setLayoutTab(id)}
-                        onMouseEnter={()=>setSwHov(`ltab-${id}`)} onMouseLeave={()=>setSwHov(null)}
-                        style={{flex:1,padding:"8px 4px",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",
-                          fontSize:11,fontWeight:isAct?700:500,
-                          color:isAct?c.acL:isH?c.tx:c.ts,
-                          background:isH&&!isAct?c.hv2:"transparent",
-                          transition:"color 0.15s,background 0.12s",whiteSpace:"nowrap"}}>
-                        {label}
-                      </div>
-                    );
-                  })}
-                  <div style={{position:"absolute",bottom:0,height:2,width:`${tabPct}%`,
-                    left:`${tabIdx*tabPct}%`,
-                    transition:"left 0.25s cubic-bezier(0.4,0,0.2,1)",
-                    background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,
-                    boxShadow:`0 0 8px ${c.acG}`}}/>
-                      </>
-                    );
-                  })()}
-                </div>
-                {/* Tab content */}
-                <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0}}>
-                  {layoutTab==="panels" && (
-                    <div style={{padding:"14px 12px 16px"}}>
-                      {[1,2,3,4,5,6,7,8].map((n)=>{
-                        const variants = lyLines[n-1];
-                        return (
-                          <div key={n} style={{marginBottom:8}}>
-                            <div style={{fontSize:9,color:c.tm,marginBottom:4,opacity:0.55}}>{n}</div>
-                            <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-                              {variants.map((lines,li)=>{
-                                const isAct = layoutPanels.n===n && layoutPanels.li===li;
-                                const isH = swHov===`ly-${n}-${li}`;
-                                const pad=1;
-                                const iw=IW-pad*2, ih=IH-pad*2;
-                                const lineCol = isAct?c.acL:isH?"rgba(140,160,255,0.70)":"rgba(140,160,255,0.40)";
-                                return (
-                                  <div key={li}
-                                    onClick={()=>setLayoutPanels({n,li})}
-                                    onMouseEnter={()=>setSwHov(`ly-${n}-${li}`)}
-                                    onMouseLeave={()=>setSwHov(null)}
-                                    style={{width:IW,height:IH,cursor:"default",flexShrink:0}}>
-                                    <svg width={IW} height={IH} viewBox={`0 0 ${IW} ${IH}`} style={{display:"block"}}>
-                                      <rect x={pad} y={pad} width={iw} height={ih} rx={1}
-                                        fill={isAct?"rgba(38,67,247,0.15)":isH?"rgba(140,160,255,0.08)":"rgba(140,160,255,0.05)"}
-                                        stroke={lineCol} strokeWidth={0.7}/>
-                                      {lines.map((l,i)=>(
-                                        <line key={i}
-                                          x1={pad+l.x1*iw} y1={pad+l.y1*ih}
-                                          x2={pad+l.x2*iw} y2={pad+l.y2*ih}
-                                          stroke={lineCol} strokeWidth={0.7}/>
-                                      ))}
-                                    </svg>
-                                  </div>
-                                );
-                              })}
+              <div style={{ padding: "10px 12px 16px" }}>
+                {[1,2,3,4,5,6,7,8].map((n) => {
+                  const variants = lyLines[n - 1];
+                  return (
+                    <div key={n} style={{ marginBottom: 6 }}>
+                      <div style={{ fontSize: 9, color: c.tm, marginBottom: 4, opacity: 0.55 }}>{n}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {variants.map((lines, li) => {
+                          const isAct = layoutPanels.n === n && layoutPanels.li === li;
+                          const isH = swHov === `ly-${n}-${li}`;
+                          const pad = 1;
+                          const iw = IW - pad * 2, ih = IH - pad * 2;
+                          const lineCol = isAct ? c.acL : isH ? "rgba(140,160,255,0.70)" : "rgba(140,160,255,0.40)";
+                          return (
+                            <div
+                              key={li}
+                              onClick={() => setLayoutPanels({ n, li })}
+                              onMouseEnter={() => setSwHov(`ly-${n}-${li}`)}
+                              onMouseLeave={() => setSwHov(null)}
+                              style={{ width: IW, height: IH, cursor: "default", flexShrink: 0 }}
+                            >
+                              <svg width={IW} height={IH} viewBox={`0 0 ${IW} ${IH}`} style={{ display: "block" }}>
+                                <rect x={pad} y={pad} width={iw} height={ih} rx={1}
+                                  fill={isAct ? "rgba(38,67,247,0.15)" : isH ? "rgba(140,160,255,0.08)" : "rgba(140,160,255,0.05)"}
+                                  stroke={lineCol} strokeWidth={0.7} />
+                                {lines.map((l, i) => (
+                                  <line key={i}
+                                    x1={pad + l.x1 * iw} y1={pad + l.y1 * ih}
+                                    x2={pad + l.x2 * iw} y2={pad + l.y2 * ih}
+                                    stroke={lineCol} strokeWidth={0.7} />
+                                ))}
+                              </svg>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {layoutTab==="sessionDemo" && (
-                    <div style={{padding:"14px 12px 16px"}}>
-                      <div style={{fontSize:9,color:c.tm,marginBottom:6,letterSpacing:"0.06em",fontWeight:700}}>SESSION NAME</div>
-                      <input
-                        type="text"
-                        value={sessionDemoName}
-                        onChange={(e)=>setSessionDemoName(e.target.value)}
-                        placeholder="Name this session…"
-                        style={{
-                          width:"100%",boxSizing:"border-box",padding:"8px 10px",marginBottom:12,
-                          background:c.well,border:`1px solid ${c.brH}`,borderRadius:2,
-                          color:c.tx,fontSize:13,fontFamily:F,outline:"none",colorScheme:c.inputScheme,
-                        }}
-                      />
-                      <div style={{fontSize:11,color:c.tm,lineHeight:1.45,opacity:0.9}}>
-                        This panel is the <span style={{color:c.acL,fontWeight:600}}>TalariaV8b.jsx</span> UI mock. Use Session demo to label the workspace session in previews and screenshots.
+                          );
+                        })}
                       </div>
                     </div>
-                  )}
-                  {layoutTab==="sync" && (
-                    <div style={{padding:"8px 0"}}>
-                      {syncItems.map(([key,label])=>{
-                        const on = layoutSync[key];
-                        const isH = swHov===`sync-${key}`;
-                        const bCol = on ? c.acL : isH ? c.ts : "rgba(140,160,255,0.22)";
-                        return (
-                          <div key={key}
-                            onClick={()=>setLayoutSync(prev=>({...prev,[key]:!prev[key]}))}
-                            onMouseEnter={()=>setSwHov(`sync-${key}`)}
-                            onMouseLeave={()=>setSwHov(null)}
-                            style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,
-                              padding:"6px 12px",cursor:"default",position:"relative",
-                              background:on?c.acD:isH?"rgba(255,255,255,0.025)":"transparent",
-                              transition:"background 0.1s"}}>
-                            {on&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                            <span style={{fontSize:13,color:on?c.acL:isH?c.tx:c.ts,fontWeight:on?600:500,transition:"color 0.15s"}}>{label}</span>
-                            <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
-                              <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                              <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                              {!on&&isH&&<>
-                                <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
-                                <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
-                              </>}
-                              {on&&<>
-                                <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                <circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/>
-                                <circle cx={5} cy={5} r={1.6} fill={c.acL}/>
-                              </>}
-                            </svg>
-                          </div>
-                        );
-                      })}
+                  );
+                })}
+                <div style={{ height: 1, background: `linear-gradient(90deg,transparent,${c.br},transparent)`, margin: "10px 0 6px" }} />
+                <div style={{ fontSize: 9, color: c.tm, letterSpacing: "0.06em", fontWeight: 700, marginBottom: 2 }}>SYNC</div>
+                <div style={{ fontSize: 9, color: c.tm, opacity: 0.78, lineHeight: 1.35, marginBottom: 8 }}>{LAYOUT_SYNC_HELP}</div>
+                {syncItems.map(([key, label]) => {
+                  const on = !!layoutSync[key];
+                  const isH = swHov === `rp-sync-${key}`;
+                  const bCol = on ? c.acL : isH ? c.ts : "rgba(140,160,255,0.22)";
+                  return (
+                    <div key={key}
+                      onClick={() => setLayoutSync((prev) => ({ ...prev, [key]: !prev[key] }))}
+                      onMouseEnter={() => setSwHov(`rp-sync-${key}`)}
+                      onMouseLeave={() => setSwHov(null)}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "5px 8px", marginLeft: -4, marginRight: -4, cursor: "default", position: "relative", borderRadius: 2, background: on ? c.acD : isH ? "rgba(255,255,255,0.025)" : "transparent", transition: "background 0.1s" }}>
+                      {on && <div style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acG}` }} />}
+                      <span style={{ fontSize: 12, color: on ? c.tx : c.ts, fontWeight: on ? 600 : 500 }}>{label}</span>
+                      <div style={{ width: 22, height: 12, borderRadius: 6, border: `1px solid ${bCol}`, position: "relative", background: on ? "rgba(74,106,255,0.20)" : "transparent", transition: "all 0.15s" }}>
+                        <div style={{ position: "absolute", top: 1, left: on ? 11 : 1, width: 8, height: 8, borderRadius: "50%", background: on ? c.acL : c.ts, transition: "left 0.15s, background 0.15s", boxShadow: on ? `0 0 6px ${c.acG}` : "none" }} />
+                      </div>
                     </div>
-                  )}
-                </div>
+                  );
+                })}
               </div>
             )}
           </div>

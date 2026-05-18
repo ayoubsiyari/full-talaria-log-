@@ -80,8 +80,8 @@
         this.charts = new Map();    // id -> { id, frame, ready, state }
         this.syncMode = {
             crosshair:    true,
-            visibleRange: true,
-            symbol:       true,
+            visibleRange: false,
+            symbol:       false,
             drawings:     true,
         };
         this.counters = {
