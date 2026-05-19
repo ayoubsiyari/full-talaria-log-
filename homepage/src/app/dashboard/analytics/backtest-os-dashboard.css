@@ -1318,3 +1318,232 @@
     min-height: 420px;
   }
 }
+
+/* —— Advanced dashboard sidebar —— */
+.bt-os-adv-layout {
+  display: flex;
+  align-items: stretch;
+  min-height: calc(100vh - 120px);
+}
+
+.bt-os-adv-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.bt-os-adv-sidebar {
+  flex: 0 0 248px;
+  width: 248px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--bt-border-strong);
+  background: rgba(10, 12, 18, 0.98);
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: 100vh;
+  z-index: 40;
+}
+
+.bt-os-adv-sidebar--collapsed {
+  flex: 0 0 56px;
+  width: 56px;
+}
+
+.bt-os-adv-sidebar-head {
+  padding: 18px 14px 12px;
+  border-bottom: 1px solid var(--bt-border);
+}
+
+.bt-os-adv-sidebar-kicker {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bt-text-dim);
+  margin-bottom: 8px;
+}
+
+.bt-os-adv-sidebar-kicker--mini {
+  text-align: center;
+  margin-bottom: 0;
+}
+
+.bt-os-adv-sidebar-session {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--bt-text);
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.bt-os-adv-sidebar-tier {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bt-accent-strong);
+}
+
+.bt-os-adv-sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 8px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 106, 255, 0.35) transparent;
+}
+
+.bt-os-adv-nav-group {
+  margin-bottom: 14px;
+}
+
+.bt-os-adv-nav-group-title {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bt-text-dim);
+  padding: 4px 10px 6px;
+}
+
+.bt-os-adv-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 2px;
+  border: none;
+  border-radius: var(--bt-radius-sm);
+  background: transparent;
+  color: var(--bt-text-secondary);
+  font-family: var(--bt-sans);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  text-decoration: none;
+}
+
+.bt-os-adv-nav-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--bt-text);
+}
+
+.bt-os-adv-nav-item--active {
+  background: rgba(38, 67, 247, 0.18);
+  color: var(--bt-accent-strong);
+  box-shadow: inset 0 0 0 1px rgba(74, 106, 255, 0.25);
+}
+
+.bt-os-adv-nav-item--link {
+  box-sizing: border-box;
+}
+
+.bt-os-adv-sidebar--collapsed .bt-os-adv-nav-item {
+  justify-content: center;
+  padding: 10px 8px;
+}
+
+.bt-os-adv-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.bt-os-adv-nav-label {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.bt-os-adv-nav-badge {
+  flex-shrink: 0;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bt-green-muted);
+  color: var(--bt-green);
+}
+
+.bt-os-adv-sidebar-foot {
+  padding: 8px 8px 12px;
+  border-top: 1px solid var(--bt-border);
+}
+
+.bt-os-adv-collapse-btn {
+  margin-top: 4px;
+  color: var(--bt-text-dim);
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.bt-os-header-inner--adv {
+  max-width: none;
+  padding: 12px var(--bt-pad);
+}
+
+.bt-os-main--adv {
+  max-width: none;
+  flex: 1;
+}
+
+.bt-os-adv-placeholder {
+  text-align: center;
+  padding: 48px 32px;
+}
+
+.bt-os-adv-placeholder-title {
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--bt-text);
+}
+
+.bt-os-adv-placeholder-text {
+  margin: 0;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--bt-text-dim);
+}
+
+@media (max-width: 900px) {
+  .bt-os-adv-layout {
+    flex-direction: column;
+  }
+
+  .bt-os-adv-sidebar {
+    position: relative;
+    width: 100%;
+    flex: none;
+    max-height: none;
+    border-right: none;
+    border-bottom: 1px solid var(--bt-border-strong);
+  }
+
+  .bt-os-adv-sidebar--collapsed {
+    width: 100%;
+  }
+
+  .bt-os-adv-sidebar-nav {
+    max-height: 220px;
+  }
+}

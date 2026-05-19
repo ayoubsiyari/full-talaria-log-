@@ -11,17 +11,19 @@ import {
   OsChartsRadarAnnual,
   OsChartsTradeTriple,
 } from "./BacktestOsCharts";
+import { AdvancedDashboardSidebar } from "./AdvancedDashboardSidebar";
+import { AdvancedDashboardPlaceholder } from "./AdvancedDashboardPlaceholder";
+import {
+  DEFAULT_ADVANCED_VIEW,
+  advancedViewLabel,
+  type AdvancedDashboardViewId,
+} from "./advancedDashboardNav";
 
 export type { BacktestOsChartPack } from "./BacktestOsCharts";
+export type { AdvancedDashboardViewId };
 
-const TABS = [
-  { id: "overview" as const, label: "Overview" },
-  { id: "returns" as const, label: "Returns" },
-  { id: "risk" as const, label: "Risk" },
-  { id: "trades" as const, label: "Trades" },
-];
-
-export type AnalyticsTabId = (typeof TABS)[number]["id"];
+/** @deprecated Use AdvancedDashboardViewId */
+export type AnalyticsTabId = "overview" | "returns" | "risk" | "trades";
 
 function MetricGrid({ cards }: { cards: OsMetricCard[] }) {
   return (
@@ -51,6 +53,16 @@ function SectionHeader({ tag, tagClass, title }: { tag: string; tagClass: string
   );
 }
 
+const PLACEHOLDER_VIEWS: AdvancedDashboardViewId[] = [
+  "correlation-independence",
+  "price-behavior",
+  "tag-analysis",
+  "edge-finder",
+  "behavioral-patterns",
+  "market-regime",
+  "position-sizing",
+];
+
 export type BacktestOsDashboardLayoutProps = {
   sessionName: string;
   strategyLine: string;
@@ -64,9 +76,9 @@ export type BacktestOsDashboardLayoutProps = {
   tradeCards: OsMetricCard[];
   statCards: OsMetricCard[];
   timeCards: OsMetricCard[];
-  /** Optional PnL calendar / time visual below time metric cards */
   calendarSection?: React.ReactNode;
   advancedSection: React.ReactNode;
+  sessionTier?: string;
 };
 
 export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps) {
@@ -85,86 +97,121 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
     timeCards,
     calendarSection,
     advancedSection,
+    sessionTier = "STANDARD",
   } = props;
 
-  const [tab, setTab] = useState<AnalyticsTabId>("overview");
+  const [view, setView] = useState<AdvancedDashboardViewId>(DEFAULT_ADVANCED_VIEW);
 
-  return (
-    <>
-      <header className="bt-os-header">
-        <div className="bt-os-header-inner bt-os-header-inner--tabs">
-          <div className="bt-os-header-context" title={strategyLine}>
-            <div className="bt-os-header-context-mark" aria-hidden />
-            <div className="bt-os-header-context-text">
-              <span className="bt-os-session-name">{sessionName}</span>
-              <span className="bt-os-session-range">{dateRangeLine}</span>
+  const renderContent = () => {
+    if (PLACEHOLDER_VIEWS.includes(view)) {
+      return <AdvancedDashboardPlaceholder viewId={view} />;
+    }
+
+    switch (view) {
+      case "performance-summary":
+        return (
+          <div className="bt-os-cluster">
+            <div className="bt-os-section">
+              <SectionHeader tag="Return" tagClass="bt-os-tag-return" title="Return metrics" />
+              <MetricGrid cards={returnCards} />
             </div>
-          </div>
-
-          <nav className="bt-os-tabbar" role="tablist" aria-label="Analytics sections">
-            {TABS.map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={tab === id}
-                className={tab === id ? "bt-os-tab bt-os-tab--active" : "bt-os-tab"}
-                onClick={() => setTab(id)}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
-
-          <div className="bt-os-header-meta">
-            <div className="bt-os-header-meta-primary">{strategyLine}</div>
-            <div className="bt-os-header-meta-secondary">{dateRangeLine}</div>
-            <div className={`bt-os-status${nTrades > 0 ? " bt-os-status--live" : " bt-os-status--empty"}`}>
-              <span className="bt-os-status-dot" aria-hidden />
-              {nTrades > 0 ? "DATA" : "EMPTY"}
+            <div className="bt-os-section">
+              <SectionHeader tag="Chart" tagClass="bt-os-tag-return" title="Equity curve & rolling return" />
+              <OsChartsEquityRolling equity={chartPack.equity} rolling={chartPack.rolling} />
             </div>
+            {calendarSection ? (
+              <div className="bt-os-section">
+                <SectionHeader tag="Time" tagClass="bt-os-tag-time" title="Calendar & rhythm" />
+                <div className="bt-os-calendar-shell">{calendarSection}</div>
+              </div>
+            ) : null}
           </div>
-        </div>
-      </header>
+        );
 
-      <main className="bt-os-main">
-        {tab === "overview" ? (
+      case "monte-carlo":
+        return (
           <>
             <div className="bt-os-cluster">
               <div className="bt-os-section">
-                <SectionHeader tag="Return" tagClass="bt-os-tag-return" title="Return metrics" />
-                <MetricGrid cards={returnCards} />
+                <SectionHeader tag="Stats" tagClass="bt-os-tag-stat" title="Statistical metrics" />
+                <MetricGrid cards={statCards} />
               </div>
               <div className="bt-os-section">
-                <SectionHeader tag="Chart" tagClass="bt-os-tag-return" title="Equity curve & rolling return" />
-                <OsChartsEquityRolling equity={chartPack.equity} rolling={chartPack.rolling} />
+                <SectionHeader tag="Chart" tagClass="bt-os-tag-stat" title="Monte Carlo simulation" />
+                <OsChartsMonteCarlo monteCarlo={chartPack.monteCarlo} />
               </div>
-              {calendarSection ? (
-                <div className="bt-os-section">
-                  <SectionHeader tag="Time" tagClass="bt-os-tag-time" title="Calendar & rhythm" />
-                  <div className="bt-os-calendar-shell">{calendarSection}</div>
-                </div>
-              ) : null}
             </div>
           </>
-        ) : null}
+        );
 
-        {tab === "returns" ? (
-          <div className="bt-os-cluster">
-            <div className="bt-os-section">
-              <SectionHeader tag="Chart" tagClass="bt-os-tag-return" title="Return distribution & monthly %" />
-              <OsChartsDistMonthly dist={chartPack.dist} monthlyPct={chartPack.monthlyPct} />
-            </div>
-          </div>
-        ) : null}
-
-        {tab === "risk" ? (
+      case "distributions-risk":
+        return (
           <>
             <div className="bt-os-cluster">
               <div className="bt-os-section">
                 <SectionHeader tag="Risk" tagClass="bt-os-tag-risk" title="Risk metrics" />
                 <MetricGrid cards={riskCards} />
               </div>
+              <div className="bt-os-section">
+                <SectionHeader tag="Chart" tagClass="bt-os-tag-return" title="Return distribution & monthly %" />
+                <OsChartsDistMonthly dist={chartPack.dist} monthlyPct={chartPack.monthlyPct} />
+              </div>
+            </div>
+          </>
+        );
+
+      case "excursion-mae-mfe":
+        return (
+          <div className="bt-os-cluster">
+            <div className="bt-os-section">
+              <SectionHeader tag="Chart" tagClass="bt-os-tag-trade" title="Excursion analysis (MAE / MFE)" />
+              <OsChartsTradeTriple
+                tradePL={chartPack.tradePL}
+                winLoss={chartPack.winLoss}
+                duration={chartPack.duration}
+              />
+            </div>
+          </div>
+        );
+
+      case "execution-quality":
+        return (
+          <>
+            <div className="bt-os-cluster">
+              <div className="bt-os-section">
+                <SectionHeader tag="Trades" tagClass="bt-os-tag-trade" title="Execution & trade quality" />
+                <MetricGrid cards={tradeCards} />
+              </div>
+            </div>
+            <div className="bt-os-cluster bt-os-cluster--wide">
+              <div className="bt-os-section">
+                <SectionHeader tag="Log" tagClass="bt-os-tag-trade" title="Recent trade log" />
+                {advancedSection}
+              </div>
+            </div>
+          </>
+        );
+
+      case "edge-decay":
+        return (
+          <>
+            <div className="bt-os-cluster">
+              <div className="bt-os-section">
+                <SectionHeader tag="Ratios" tagClass="bt-os-tag-ratio" title="Edge decay & stability" />
+                <MetricGrid cards={ratioCards} />
+              </div>
+              <div className="bt-os-section">
+                <SectionHeader tag="Chart" tagClass="bt-os-tag-ratio" title="Risk-adjusted radar & annual" />
+                <OsChartsRadarAnnual radar={chartPack.radar} annual={chartPack.annual} />
+              </div>
+            </div>
+          </>
+        );
+
+      case "sequence-risk":
+        return (
+          <>
+            <div className="bt-os-cluster">
               <div className="bt-os-section">
                 <SectionHeader tag="Drawdown" tagClass="bt-os-tag-draw" title="Drawdown metrics" />
                 <MetricGrid cards={drawCards} />
@@ -176,67 +223,57 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
             </div>
             <div className="bt-os-cluster">
               <div className="bt-os-section">
-                <SectionHeader tag="Ratios" tagClass="bt-os-tag-ratio" title="Risk-adjusted ratios" />
-                <MetricGrid cards={ratioCards} />
-              </div>
-              <div className="bt-os-section">
-                <SectionHeader tag="Chart" tagClass="bt-os-tag-ratio" title="Risk-adjusted radar & annual" />
-                <OsChartsRadarAnnual radar={chartPack.radar} annual={chartPack.annual} />
-              </div>
-            </div>
-          </>
-        ) : null}
-
-        {tab === "trades" ? (
-          <>
-            <div className="bt-os-cluster">
-              <div className="bt-os-section">
-                <SectionHeader tag="Trades" tagClass="bt-os-tag-trade" title="Trade metrics" />
-                <MetricGrid cards={tradeCards} />
-              </div>
-              <div className="bt-os-section">
-                <SectionHeader tag="Chart" tagClass="bt-os-tag-trade" title="Trade analysis" />
-                <OsChartsTradeTriple
-                  tradePL={chartPack.tradePL}
-                  winLoss={chartPack.winLoss}
-                  duration={chartPack.duration}
-                />
-              </div>
-            </div>
-
-            <div className="bt-os-cluster bt-os-cluster--wide">
-              <div className="bt-os-section">
-                <SectionHeader tag="Log" tagClass="bt-os-tag-trade" title="Recent trade log" />
-                {advancedSection}
-              </div>
-            </div>
-
-            <div className="bt-os-cluster">
-              <div className="bt-os-section">
-                <SectionHeader tag="Stats" tagClass="bt-os-tag-stat" title="Statistical metrics" />
-                <MetricGrid cards={statCards} />
-              </div>
-              <div className="bt-os-section">
-                <SectionHeader tag="Chart" tagClass="bt-os-tag-stat" title="Monte Carlo simulation" />
-                <OsChartsMonteCarlo monteCarlo={chartPack.monteCarlo} />
-              </div>
-            </div>
-
-            <div className="bt-os-cluster">
-              <div className="bt-os-section">
                 <SectionHeader tag="Time" tagClass="bt-os-tag-time" title="Time & session stats" />
                 <MetricGrid cards={timeCards} />
               </div>
             </div>
           </>
-        ) : null}
-      </main>
+        );
 
-      <footer className="bt-os-footer">
-        <div className="bt-os-footer-inner">
-          {sessionName} · {dateRangeLine} · {nTrades} trades · Past performance ≠ future results.
-        </div>
-      </footer>
-    </>
+      default:
+        return <AdvancedDashboardPlaceholder viewId={view} />;
+    }
+  };
+
+  return (
+    <div className="bt-os-adv-layout">
+      <AdvancedDashboardSidebar
+        sessionName={sessionName}
+        sessionTier={sessionTier}
+        activeView={view}
+        onViewChange={setView}
+      />
+
+      <div className="bt-os-adv-main">
+        <header className="bt-os-header">
+          <div className="bt-os-header-inner bt-os-header-inner--adv">
+            <div className="bt-os-header-context">
+              <div className="bt-os-header-context-mark" aria-hidden />
+              <div className="bt-os-header-context-text">
+                <span className="bt-os-session-name">{advancedViewLabel(view)}</span>
+                <span className="bt-os-session-range">{dateRangeLine}</span>
+              </div>
+            </div>
+
+            <div className="bt-os-header-meta">
+              <div className="bt-os-header-meta-primary">{strategyLine}</div>
+              <div className="bt-os-header-meta-secondary">{dateRangeLine}</div>
+              <div className={`bt-os-status${nTrades > 0 ? " bt-os-status--live" : " bt-os-status--empty"}`}>
+                <span className="bt-os-status-dot" aria-hidden />
+                {nTrades > 0 ? "DATA" : "EMPTY"}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="bt-os-main bt-os-main--adv">{renderContent()}</main>
+
+        <footer className="bt-os-footer">
+          <div className="bt-os-footer-inner">
+            {sessionName} · {dateRangeLine} · {nTrades} trades · Past performance ≠ future results.
+          </div>
+        </footer>
+      </div>
+    </div>
   );
 }
