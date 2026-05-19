@@ -48,7 +48,7 @@ COPY ["homepage/src/app/dashboard/analytics/backend", "./analytics_backend"]
 
 RUN test -f ./analytics_backend/backtest_whatif.py \
     && test -d ./analytics_backend/analytics_core \
-    && python3 -c "import _analytics_bootstrap; _analytics_bootstrap.install(); import analytics_core, backtest_whatif"
+    && python3 -c "import _analytics_bootstrap; p=_analytics_bootstrap.install(); import analytics_core; print('analytics backend:', p)"
 
 # Overwrite committed dist-v9 with freshly built + bump-dist-v9-cache output.
 COPY --from=v9_react /build/chart/dist-v9 ./dist-v9

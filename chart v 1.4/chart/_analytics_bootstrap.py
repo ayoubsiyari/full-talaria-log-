@@ -5,21 +5,27 @@ import sys
 from pathlib import Path
 
 _CHART_DIR = Path(__file__).resolve().parent
-_REPO_ROOT = _CHART_DIR.parents[1]
+
+
+def _dev_backend_from_repo() -> Path | None:
+    """Local dev: homepage/.../backend when chart lives under repo root."""
+    rel = Path("homepage") / "src" / "app" / "dashboard" / "analytics" / "backend"
+    for base in (_CHART_DIR, *_CHART_DIR.parents):
+        candidate = base / rel
+        if (candidate / "analytics_core").is_dir():
+            return candidate
+    return None
 
 
 def _backend_candidates() -> list[Path]:
-    return [
+    out: list[Path] = [
         _CHART_DIR / "analytics_backend",
         Path("/app/analytics_backend"),
-        _REPO_ROOT
-        / "homepage"
-        / "src"
-        / "app"
-        / "dashboard"
-        / "analytics"
-        / "backend",
     ]
+    dev = _dev_backend_from_repo()
+    if dev is not None:
+        out.append(dev)
+    return out
 
 
 def install() -> Path:
