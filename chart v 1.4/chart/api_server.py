@@ -3558,9 +3558,11 @@ def _firstrate_period_for_repair_stats(
         "yes",
         "on",
     }
+    # Stale < 7d: use `day` (last session — e.g. Monday when run on Tuesday). `week` often
+    # re-downloads the same rolling window ending Friday and adds 0 new bars (MERGED —).
     if auto and no_month_auto:
         if stale_n > 0 or stale_only_job:
-            if max_h is not None and float(max_h) <= 72:
+            if max_h is not None and float(max_h) <= 24 * 7:
                 return "day"
             return "week"
         if missing_n > 0:
@@ -3569,7 +3571,7 @@ def _firstrate_period_for_repair_stats(
     if missing_n > 0 and not stale_only_job:
         return "month"
     if stale_n > 0:
-        if max_h is not None and float(max_h) <= 72:
+        if max_h is not None and float(max_h) <= 24 * 7:
             return "day"
         return "week"
     return "day"

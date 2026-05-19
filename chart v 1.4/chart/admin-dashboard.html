@@ -7736,7 +7736,8 @@ function _repairPeriodForClass(assetClass) {
       var h = ds[j].staleness_hours;
       if (h != null && (maxH === null || h > maxH)) maxH = h;
     }
-    if (maxH !== null && maxH <= 72) return 'day';
+    // Under 7d stale → day bundle (Monday session on Tuesday). Week often adds 0 new rows.
+    if (maxH !== null && maxH <= 24 * 7) return 'day';
     return 'week';
   }
   return 'day';
@@ -8180,8 +8181,17 @@ async function _fixClassHealth(assetClass, btn) {
     if (typeof toast === 'function') toast('No stale or missing tickers for ' + assetClass, 'err');
     return;
   }
-  // Match backend _firstrate_period_for_repair_stats: month if any missing, else week.
-  var period = missingTickers.length > 0 ? 'month' : 'week';
+  // Match backend: month if missing, else day when data is <7d stale (not week — week duplicates Fri).
+  var period = 'day';
+  if (missingTickers.length > 0) period = 'month';
+  else {
+    var maxH = null;
+    datasets.forEach(function (d) {
+      if (d.asset_class !== assetClass || d.staleness_hours == null) return;
+      if (maxH === null || d.staleness_hours > maxH) maxH = d.staleness_hours;
+    });
+    if (maxH !== null && maxH > 24 * 7) period = 'week';
+  }
   var origLabel = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Queueing…'; }
   try {
