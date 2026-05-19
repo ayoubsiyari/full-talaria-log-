@@ -3003,8 +3003,8 @@ def _default_firstrate_schedule() -> dict:
         "auto_all_types": os.getenv("FIrstrate_SCHEDULE_AUTO_ALL_TYPES", "true").strip().lower() in {"1", "true", "yes", "on"},
         "excluded_types": [x.strip().lower() for x in os.getenv("FIrstrate_SCHEDULE_EXCLUDED_TYPES", "").split(",") if x.strip()],
         "interval_minutes": int(os.getenv("FIrstrate_SCHEDULE_INTERVAL_MINUTES", "1440")),
-        # Default `week` (not `day`) so scheduled sync backfills recent holes, not only the last session.
-        "period": (os.getenv("FIrstrate_SCHEDULE_PERIOD", "week").strip() or "week"),
+        # Default `day` for routine daily sync (last session). Use week/month via adaptive when very stale.
+        "period": (os.getenv("FIrstrate_SCHEDULE_PERIOD", "day").strip() or "day"),
         "timeframe": (os.getenv("FIrstrate_SCHEDULE_TIMEFRAME", "1min").strip() or "1min"),
         "adaptive_period": os.getenv("FIrstrate_SCHEDULE_ADAPTIVE_PERIOD", "true").strip().lower()
         in {"1", "true", "yes", "on"},
@@ -3662,6 +3662,8 @@ def _firstrate_pick_schedule_period(cfg: dict, instrument_type: str) -> tuple[st
     if stats["missing_count"] > 0 or (max_h is not None and max_h > 24 * 7):
         return "month", stats
     if stats["stale_count"] > 0 or (max_h is not None and max_h > 48):
+        if max_h is not None and float(max_h) <= 24 * 7:
+            return "day", stats
         return "week", stats
     if base == "day":
         return "day", stats

@@ -2482,7 +2482,7 @@ select { cursor:default; }
                     </label>
                     <div style="height:1px;background:var(--border);margin:10px 0"></div>
                     <p style="font-size:11px;color:var(--text-muted);margin:0 0 10px;line-height:1.55">
-                      <strong>Nightly auto-sync</strong> merges FirstRate update bundles into your existing datasets (history is preserved). It uses <em>week</em> or <em>month</em> bundles when tickers are stale or missing — not only <em>day</em> (which updates the latest session only). One ZIP per asset class covers all registered tickers in that class.
+                      <strong>Daily auto-sync:</strong> after the UTC hour below, the VPS pulls <em>day</em> bundles (Monday on Tuesday, etc.) for each asset class. <strong>24/7 stale-only</strong> fills gaps between nights (12 tickers/job, fx→futures→crypto→stock). Use <strong>nightly</strong> mode + all asset classes — not interval pinned to one class.
                     </p>
                     <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:10px;font-size:12px">
                       <input type="checkbox" id="fr_sched_enabled">
@@ -7411,8 +7411,8 @@ async function saveFirstrateSchedule() {
       body: JSON.stringify(payload)
     });
     toast(mode === 'nightly'
-      ? 'Schedule saved — VPS will auto-sync every night'
-      : 'Schedule saved — VPS will sync per interval', 'ok');
+      ? 'Schedule saved — daily auto-sync at ' + (payload.nightly_utc_hour != null ? payload.nightly_utc_hour : 2) + ':00 UTC + 24/7 stale repair'
+      : 'Schedule saved — interval mode (prefer nightly for once-per-day)', 'ok');
     await loadFirstrateSchedule();
   } catch (e) {
     toast(e.message || String(e), 'err');
