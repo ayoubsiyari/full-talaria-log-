@@ -13,35 +13,20 @@ import {
 } from "./BacktestOsCharts";
 import { AdvancedDashboardSidebar } from "./AdvancedDashboardSidebar";
 import { AdvancedDashboardPlaceholder } from "./AdvancedDashboardPlaceholder";
+import { QuantKpiFromCards, QuantKpiStrip } from "./QuantKpiStrip";
+import { TalariaScorePanel } from "./TalariaScorePanel";
 import {
   DEFAULT_ADVANCED_VIEW,
   advancedViewLabel,
   type AdvancedDashboardViewId,
 } from "./advancedDashboardNav";
+import type { QuantKpiItem, TalariaScoreBreakdown } from "./quantMetricHelpers";
 
 export type { BacktestOsChartPack } from "./BacktestOsCharts";
 export type { AdvancedDashboardViewId };
 
 /** @deprecated Use AdvancedDashboardViewId */
 export type AnalyticsTabId = "overview" | "returns" | "risk" | "trades";
-
-function MetricGrid({ cards }: { cards: OsMetricCard[] }) {
-  return (
-    <div className="bt-os-metrics-grid">
-      {cards.map((c, i) => (
-        <div key={`${c.label}-${i}`} className="bt-os-metric-card" style={{ ["--card-accent" as string]: c.accent }}>
-          <div className="bt-os-metric-label">{c.label}</div>
-          <div
-            className={`bt-os-metric-value${c.tone === "pos" ? " bt-os-pos" : ""}${c.tone === "neg" ? " bt-os-neg" : ""}`}
-          >
-            {c.value}
-          </div>
-          <div className="bt-os-metric-sub">{c.sub}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function SectionHeader({ tag, tagClass, title }: { tag: string; tagClass: string; title: string }) {
   return (
@@ -79,6 +64,9 @@ export type BacktestOsDashboardLayoutProps = {
   calendarSection?: React.ReactNode;
   advancedSection: React.ReactNode;
   sessionTier?: string;
+  quantKpis?: QuantKpiItem[];
+  talariaScore?: TalariaScoreBreakdown | null;
+  scoreTrend?: number[];
 };
 
 export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps) {
@@ -98,6 +86,9 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
     calendarSection,
     advancedSection,
     sessionTier = "STANDARD",
+    quantKpis = [],
+    talariaScore = null,
+    scoreTrend = [],
   } = props;
 
   const [view, setView] = useState<AdvancedDashboardViewId>(DEFAULT_ADVANCED_VIEW);
@@ -110,11 +101,9 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
     switch (view) {
       case "performance-summary":
         return (
-          <div className="bt-os-cluster">
-            <div className="bt-os-section">
-              <SectionHeader tag="Return" tagClass="bt-os-tag-return" title="Return metrics" />
-              <MetricGrid cards={returnCards} />
-            </div>
+          <div className="bt-os-cluster bt-os-cluster--quant">
+            {quantKpis.length ? <QuantKpiStrip items={quantKpis} title="Quant KPI strip" /> : null}
+            {talariaScore ? <TalariaScorePanel scores={talariaScore} trendSeries={scoreTrend} /> : null}
             <div className="bt-os-section">
               <SectionHeader tag="Chart" tagClass="bt-os-tag-return" title="Equity curve & rolling return" />
               <OsChartsEquityRolling equity={chartPack.equity} rolling={chartPack.rolling} />
@@ -134,7 +123,7 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
             <div className="bt-os-cluster">
               <div className="bt-os-section">
                 <SectionHeader tag="Stats" tagClass="bt-os-tag-stat" title="Statistical metrics" />
-                <MetricGrid cards={statCards} />
+                <QuantKpiFromCards cards={statCards} title="Statistical metrics" />
               </div>
               <div className="bt-os-section">
                 <SectionHeader tag="Chart" tagClass="bt-os-tag-stat" title="Monte Carlo simulation" />
@@ -150,7 +139,7 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
             <div className="bt-os-cluster">
               <div className="bt-os-section">
                 <SectionHeader tag="Risk" tagClass="bt-os-tag-risk" title="Risk metrics" />
-                <MetricGrid cards={riskCards} />
+                <QuantKpiFromCards cards={riskCards} title="Risk metrics" />
               </div>
               <div className="bt-os-section">
                 <SectionHeader tag="Chart" tagClass="bt-os-tag-return" title="Return distribution & monthly %" />
@@ -180,7 +169,7 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
             <div className="bt-os-cluster">
               <div className="bt-os-section">
                 <SectionHeader tag="Trades" tagClass="bt-os-tag-trade" title="Execution & trade quality" />
-                <MetricGrid cards={tradeCards} />
+                <QuantKpiFromCards cards={tradeCards} title="Trade metrics" />
               </div>
             </div>
             <div className="bt-os-cluster bt-os-cluster--wide">
@@ -198,7 +187,7 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
             <div className="bt-os-cluster">
               <div className="bt-os-section">
                 <SectionHeader tag="Ratios" tagClass="bt-os-tag-ratio" title="Edge decay & stability" />
-                <MetricGrid cards={ratioCards} />
+                <QuantKpiFromCards cards={ratioCards} title="Risk-adjusted ratios" />
               </div>
               <div className="bt-os-section">
                 <SectionHeader tag="Chart" tagClass="bt-os-tag-ratio" title="Risk-adjusted radar & annual" />
@@ -214,7 +203,7 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
             <div className="bt-os-cluster">
               <div className="bt-os-section">
                 <SectionHeader tag="Drawdown" tagClass="bt-os-tag-draw" title="Drawdown metrics" />
-                <MetricGrid cards={drawCards} />
+                <QuantKpiFromCards cards={drawCards} title="Drawdown metrics" />
               </div>
               <div className="bt-os-section">
                 <SectionHeader tag="Chart" tagClass="bt-os-tag-draw" title="Drawdown over time" />
@@ -224,7 +213,7 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
             <div className="bt-os-cluster">
               <div className="bt-os-section">
                 <SectionHeader tag="Time" tagClass="bt-os-tag-time" title="Time & session stats" />
-                <MetricGrid cards={timeCards} />
+                <QuantKpiFromCards cards={timeCards} title="Time & session stats" />
               </div>
             </div>
           </>

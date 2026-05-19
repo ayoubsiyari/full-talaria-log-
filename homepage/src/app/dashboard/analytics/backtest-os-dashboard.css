@@ -1,9 +1,13 @@
 /* BacktestOS analytics — aligned with dashboard BacktestView (Exo 2, blue accent, #07080E) */
 
 .bt-os-dashboard {
-  --bt-bg: #07080e;
-  --bt-bg-elevated: #0a0c14;
-  --bt-bg-panel: #0f1119;
+  --bt-bg: #0a0c14;
+  --bt-bg-elevated: #12151c;
+  --bt-bg-panel: #151921;
+  --bt-quant-cyan: #00f2ff;
+  --bt-quant-red: #ff2d55;
+  --bt-quant-yellow: #ffcc00;
+  --bt-quant-blue: #4d7cfe;
   --bt-bg-input: #0a0b0e;
   --bt-border: rgba(140, 160, 255, 0.05);
   --bt-border-strong: rgba(140, 160, 255, 0.12);
@@ -1545,5 +1549,251 @@
 
   .bt-os-adv-sidebar-nav {
     max-height: 220px;
+  }
+}
+
+/* —— Quant KPI strip + Talaria score —— */
+.bt-os-cluster--quant {
+  padding: 20px 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.bt-os-section--flush {
+  margin-bottom: 0;
+}
+
+.bt-quant-section-label {
+  display: block;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bt-quant-blue);
+  margin-bottom: 12px;
+}
+
+.bt-quant-kpi-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(77, 124, 254, 0.4) transparent;
+}
+
+.bt-quant-kpi-card {
+  flex: 0 0 118px;
+  min-width: 118px;
+  background: var(--bt-bg-panel);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 10px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bt-quant-kpi-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--bt-text-dim);
+}
+
+.bt-quant-kpi-value {
+  font-family: var(--bt-mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--bt-text);
+}
+
+.bt-quant-kpi-value--pos {
+  color: var(--bt-quant-cyan);
+}
+.bt-quant-kpi-value--neg {
+  color: var(--bt-quant-red);
+}
+.bt-quant-kpi-value--warn {
+  color: var(--bt-quant-yellow);
+}
+.bt-quant-kpi-value--neutral {
+  color: var(--bt-quant-blue);
+}
+
+.bt-quant-kpi-viz {
+  height: 34px;
+  margin-top: 4px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.bt-quant-viz-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.bt-quant-viz--empty {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+}
+
+.bt-quant-progress {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.bt-quant-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+
+.bt-quant-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+}
+
+.bt-quant-bar {
+  flex: 1;
+  min-width: 4px;
+  border-radius: 2px 2px 0 0;
+}
+
+.bt-quant-ring-svg {
+  width: 32px;
+  height: 32px;
+  display: block;
+  margin: 0 auto;
+}
+
+.bt-talaria-score-panel {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 20px;
+  align-items: center;
+  background: var(--bt-bg-panel);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 20px 22px;
+}
+
+.bt-talaria-ring {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.bt-talaria-ring--lg {
+  min-width: 128px;
+}
+
+.bt-talaria-ring-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -58%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.bt-talaria-ring--sm .bt-talaria-ring-center {
+  transform: translate(-50%, -52%);
+}
+
+.bt-talaria-ring-score {
+  display: block;
+  font-family: var(--bt-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--bt-quant-cyan);
+  line-height: 1;
+}
+
+.bt-talaria-ring--sm .bt-talaria-ring-score {
+  font-size: 0.65rem;
+}
+
+.bt-talaria-ring-denom {
+  font-size: 0.55em;
+  color: var(--bt-text-dim);
+  font-weight: 600;
+}
+
+.bt-talaria-ring-grade {
+  display: block;
+  margin-top: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--bt-quant-cyan);
+}
+
+.bt-talaria-ring-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bt-text-dim);
+  text-align: center;
+  max-width: 72px;
+}
+
+.bt-talaria-pillars {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  justify-items: center;
+}
+
+.bt-talaria-trend {
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bt-talaria-trend-svg {
+  width: 100%;
+  height: 72px;
+  display: block;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.bt-talaria-trend-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--bt-text-dim);
+}
+
+@media (max-width: 1100px) {
+  .bt-talaria-score-panel {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .bt-talaria-pillars {
+    width: 100%;
+    max-width: 360px;
+  }
+
+  .bt-talaria-trend {
+    width: 100%;
+    max-width: 320px;
   }
 }

@@ -19,6 +19,7 @@ import {
   skewness,
   varCvar95,
 } from "./backtestOsCompute";
+import { buildQuantKpiStrip, computeTalariaScores } from "./quantMetricHelpers";
 import {
   resolveSessionIdForUser,
   sessionMatchesStrategyFilter,
@@ -1241,6 +1242,66 @@ export function SessionAnalyticsPanel({
     };
   }, [sessionAnalytics, stats, pnls, filteredTrades, sortedPerPair, sortedByCloseForStreak]);
 
+  const quantDashboard = useMemo(() => {
+    const eq = osChartPack.equity?.strategy ?? [];
+    const dd = osChartPack.drawdown?.values ?? [];
+    const mo = osChartPack.monthlyPct?.values ?? [];
+    const sharpe = sessionAnalytics?.sharpe_sortino?.sharpe;
+    const sortino = sessionAnalytics?.sharpe_sortino?.sortino;
+    const mddp = sessionAnalytics?.balance?.max_drawdown_pct;
+    const sb =
+      sessionAnalytics?.balance?.start_balance != null && Number.isFinite(n(sessionAnalytics.balance.start_balance))
+        ? n(sessionAnalytics.balance.start_balance)
+        : null;
+    const totalRetPct =
+      sb != null && sb > 0 ? ((stats.net / sb) * 100).toFixed(2) + "%" : undefined;
+    const mddpN = mddp != null ? n(mddp) : null;
+    const calmarCard = osMetricBundles.ratioCards.find((c) => c.label === "Calmar ratio");
+    const omegaCard = osMetricBundles.ratioCards.find((c) => c.label === "Omega ratio");
+    const expectancyCard = osMetricBundles.tradeCards.find((c) => c.label === "Expectancy");
+    const payoff =
+      stats.avgLoss > 0 ? stats.avgWin / stats.avgLoss : null;
+
+    const quantKpis = buildQuantKpiStrip({
+      sharpe,
+      sortino,
+      winRate: stats.winRate,
+      profitFactor: stats.profitFactor,
+      maxDrawdownPct: mddpN,
+      totalReturnPct: totalRetPct,
+      expectancy: expectancyCard?.value,
+      omega: omegaCard?.value,
+      calmar: calmarCard?.value,
+      equitySeries: eq,
+      drawdownSeries: dd,
+      monthlyPctSeries: mo,
+    });
+
+    const netRet = sb != null && sb > 0 ? (stats.net / sb) * 100 : null;
+    const talariaScore = computeTalariaScores({
+      sharpe,
+      sortino,
+      winRate: stats.winRate,
+      profitFactor: stats.profitFactor,
+      maxDrawdownPct: mddpN != null ? (mddpN <= 1 ? mddpN * 100 : mddpN) : null,
+      netReturnPct: netRet,
+      payoffRatio: payoff,
+    });
+
+    let scoreTrend: number[] = [];
+    if (eq.length >= 4) {
+      const base = eq[0] || 1;
+      scoreTrend = eq.slice(-30).map((v) => {
+        const ret = ((v - base) / Math.abs(base)) * 100;
+        return Math.max(0, Math.min(100, 50 + ret * 0.8));
+      });
+    } else if (mo.length >= 3) {
+      scoreTrend = mo.slice(-30).map((v) => Math.max(0, Math.min(100, 50 + v * 2)));
+    }
+
+    return { quantKpis, talariaScore, scoreTrend };
+  }, [osChartPack, sessionAnalytics, stats, osMetricBundles]);
+
   const sessionDisplayName =
     sessions.find((s) => String(s.id) === String(sessionId))?.name || `Session #${sessionId || "?"}`;
 
@@ -1414,6 +1475,9 @@ export function SessionAnalyticsPanel({
           tradeCards={osMetricBundles.tradeCards}
           statCards={osMetricBundles.statCards}
           timeCards={osMetricBundles.timeCards}
+          quantKpis={quantDashboard.quantKpis}
+          talariaScore={quantDashboard.talariaScore}
+          scoreTrend={quantDashboard.scoreTrend}
           calendarSection={<PnlCalendarHeatmap trades={filteredTrades} />}
           advancedSection={(
             <>
