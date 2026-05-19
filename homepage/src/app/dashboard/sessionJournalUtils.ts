@@ -233,6 +233,73 @@ export function buildSessionJournalColumns(rows: Record<string, unknown>[]): str
   return ordered;
 }
 
+export const TRADES_HIDDEN_COLUMNS_STORAGE_KEY = "talaria_trades_hidden_columns_v1";
+
+export function loadTradesHiddenColumns(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(TRADES_HIDDEN_COLUMNS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((x): x is string => typeof x === "string" && x.length > 0));
+  } catch {
+    return new Set();
+  }
+}
+
+export function saveTradesHiddenColumns(hidden: Set<string>): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(TRADES_HIDDEN_COLUMNS_STORAGE_KEY, JSON.stringify([...hidden]));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+const JOURNAL_COLUMN_LABELS: Record<string, string> = {
+  client_trade_id: "Client trade ID",
+  session_name: "Session name",
+  session_id: "Session ID",
+  updated_at: "Updated at",
+  id: "ID",
+  time: "Time",
+  symbol: "Symbol",
+  side: "Side",
+  status: "Status",
+  size: "Size",
+  type: "Type",
+  entry: "Entry",
+  exit: "Exit",
+  pnl: "P&L",
+  duration: "Duration",
+  tags: "Tags",
+  notes: "Notes",
+  screenshots: "Screenshots",
+  post_trade_notes: "Post-trade notes",
+  postTradeNotes: "Post-trade notes",
+  strategy_variables: "Strategy variables",
+  strategyVariables: "Strategy variables",
+  post_strategy_variables: "Post strategy variables",
+  postStrategyVariables: "Post strategy variables",
+  entryScreenshot: "Entry screenshot",
+  exitScreenshot: "Exit screenshot",
+  entryScreenshots: "Entry screenshots",
+  railScreenshots: "Rail screenshots",
+  tp: "Take profit",
+  sl: "Stop loss",
+  mae: "MAE",
+  mfe: "MFE",
+};
+
+export function journalColumnLabel(key: string): string {
+  if (JOURNAL_COLUMN_LABELS[key]) return JOURNAL_COLUMN_LABELS[key];
+  return key
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
 export function escapeCsvCell(val: unknown): string {
   const s = val == null ? "" : String(val);
   if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;

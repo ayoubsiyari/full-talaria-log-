@@ -3,12 +3,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLanguage } from "../LanguageProvider";
 import SessionJournalTable from "./SessionJournalTable";
+import TradesColumnPicker from "./TradesColumnPicker";
 import {
   buildSessionJournalColumns,
   buildSessionJournalCsvText,
   compareTradeRows,
   downloadUtf8Csv,
   flattenJournalApiTrade,
+  loadTradesHiddenColumns,
+  saveTradesHiddenColumns,
   tradeRowPnl,
   tradeRowSide,
   tradeRowStatus,
@@ -108,6 +111,16 @@ export function TradesView() {
   const [sortPreset, setSortPreset] = useState<TradeSortPreset>("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    setHiddenColumns(loadTradesHiddenColumns());
+  }, []);
+
+  const persistHiddenColumns = useCallback((next: Set<string>) => {
+    setHiddenColumns(next);
+    saveTradesHiddenColumns(next);
+  }, []);
 
   const loadTrades = useCallback(async () => {
     setLoading(true);
@@ -232,8 +245,21 @@ export function TradesView() {
     else setSortDir("asc");
   };
 
+  const allColumns = useMemo(() => buildSessionJournalColumns(rows), [rows]);
+
+  const visibleColumns = useMemo(
+    () => allColumns.filter((col) => !hiddenColumns.has(col)),
+    [allColumns, hiddenColumns]
+  );
+
+  useEffect(() => {
+    if (sortColumn && hiddenColumns.has(sortColumn)) {
+      setSortColumn(null);
+    }
+  }, [sortColumn, hiddenColumns]);
+
   const exportCsv = () => {
-    const cols = buildSessionJournalColumns(filteredRows);
+    const cols = visibleColumns.length > 0 ? visibleColumns : allColumns;
     const csv = buildSessionJournalCsvText(cols, filteredRows);
     const stamp = new Date().toISOString().slice(0, 10);
     downloadUtf8Csv(`talaria-all-trades-${stamp}.csv`, csv);
@@ -389,6 +415,15 @@ export function TradesView() {
 
         <div style={{ flex: 1, minWidth: 8 }} />
 
+        {allColumns.length > 0 ? (
+          <TradesColumnPicker
+            allColumns={allColumns}
+            hiddenColumns={hiddenColumns}
+            onHiddenChange={persistHiddenColumns}
+            isArabic={isArabic}
+          />
+        ) : null}
+
         <button
           type="button"
           onClick={exportCsv}
@@ -504,6 +539,7 @@ export function TradesView() {
 
       <SessionJournalTable
         rows={filteredRows}
+        columns={visibleColumns.length > 0 ? visibleColumns : allColumns}
         loading={loading}
         sortColumn={sortColumn}
         sortDirection={sortDir}

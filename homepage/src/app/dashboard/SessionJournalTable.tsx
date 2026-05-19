@@ -5,6 +5,7 @@ import {
   buildSessionJournalColumns,
   formatJournalCellForDisplay,
   formatJournalCellRawTitle,
+  journalColumnLabel,
 } from "./sessionJournalUtils";
 
 const c = {
@@ -21,6 +22,8 @@ const F = "'Exo 2', sans-serif";
 
 type Props = {
   rows: Record<string, unknown>[];
+  /** When set, only these columns are shown (order preserved). */
+  columns?: string[];
   loading?: boolean;
   emptyMessage?: string;
   sortColumn?: string | null;
@@ -30,13 +33,15 @@ type Props = {
 
 export default function SessionJournalTable({
   rows,
+  columns,
   loading = false,
   emptyMessage = "No trades yet.",
   sortColumn = null,
   sortDirection = "desc",
   onSortColumn,
 }: Props) {
-  const cols = buildSessionJournalColumns(rows);
+  const cols =
+    columns && columns.length > 0 ? columns : buildSessionJournalColumns(rows);
 
   return (
     <div
@@ -95,7 +100,7 @@ export default function SessionJournalTable({
                       title={sortable ? "Click to sort" : undefined}
                     >
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                        {col.replace(/_/g, " ")}
+                        {journalColumnLabel(col)}
                         {active ? (
                           <span style={{ fontSize: 8, color: c.acL }}>
                             {sortDirection === "asc" ? "▲" : "▼"}
