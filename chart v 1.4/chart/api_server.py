@@ -17233,6 +17233,49 @@ async def get_file_candles(
     finally:
         db.close()
 
+def _dataset_authoritative_ts_bounds(
+    file_id: int, db_file: CSVFile, aggs: list
+) -> tuple[float | None, float | None, float | None]:
+    """
+    Best available [start_ms, end_ms] for UI date pickers.
+
+    After a FirstRate CSV merge, `end_ts` on the 1m aggregate (and the CSV on disk)
+    can be newer than `bin_{id}_1m.bin` until the binary worker rebuilds. The old
+    meta endpoint only read the binary file, so backtest showed Friday while admin
+  showed fresh.
+    """
+    starts: list[float] = []
+    ends: list[float] = []
+    bin_end: float | None = None
+    bin_1m = BIN_DIR / f"bin_{file_id}_1m.bin"
+    if bin_1m.exists():
+        total = _bin_total_candles(bin_1m)
+        if total > 0:
+            first = _read_bin_range(bin_1m, 0, 1)
+            last = _read_bin_range(bin_1m, total - 1, 1)
+            if first:
+                starts.append(float(_normalize_epoch_ms(first[0]["t"])))
+            if last:
+                bin_end = float(_normalize_epoch_ms(last[0]["t"]))
+                ends.append(bin_end)
+    agg_1m = next((a for a in aggs if getattr(a, "timeframe", None) == "1m"), None)
+    if agg_1m is not None:
+        if agg_1m.start_ts is not None:
+            starts.append(float(_normalize_epoch_ms(agg_1m.start_ts)))
+        if agg_1m.end_ts is not None:
+            ends.append(float(_normalize_epoch_ms(agg_1m.end_ts)))
+    try:
+        csv_path = _resolve_dataset_csv_for_file(db_file)
+        disk_end = _tail_csv_last_timestamp_ms(csv_path)
+        if disk_end is not None:
+            ends.append(float(disk_end))
+    except Exception:
+        pass
+    start_ms = min(starts) if starts else None
+    end_ms = max(ends) if ends else None
+    return start_ms, end_ms, bin_end
+
+
 @app.get("/api/file/{file_id}/meta")
 async def get_file_meta(file_id: int):
     """
@@ -17249,24 +17292,25 @@ async def get_file_meta(file_id: int):
         aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
         timeframes = {}
 
-        # Detect date range from binary 1m file (fast) or DB
-        raw_start_ts = None
-        raw_end_ts = None
-        bin_1m = BIN_DIR / f"bin_{file_id}_1m.bin"
-        if bin_1m.exists():
-            total = _bin_total_candles(bin_1m)
-            if total > 0:
-                first = _read_bin_range(bin_1m, 0, 1)
-                last = _read_bin_range(bin_1m, total - 1, 1)
-                raw_start_ts = _normalize_epoch_ms(first[0]["t"]) if first else None
-                raw_end_ts = _normalize_epoch_ms(last[0]["t"]) if last else None
-
-        agg_1m = next((a for a in aggs if getattr(a, "timeframe", None) == "1m"), None)
-        if agg_1m:
-            if raw_start_ts is None:
-                raw_start_ts = _normalize_epoch_ms(agg_1m.start_ts)
-            if raw_end_ts is None:
-                raw_end_ts = _normalize_epoch_ms(agg_1m.end_ts)
+        raw_start_ts, raw_end_ts, bin_end_ts = _dataset_authoritative_ts_bounds(
+            file_id, db_file, aggs
+        )
+        if (
+            raw_end_ts is not None
+            and bin_end_ts is not None
+            and float(raw_end_ts) > float(bin_end_ts) + 60_000
+        ):
+            try:
+                csv_path = _resolve_dataset_csv_for_file(db_file)
+                build_binary_for_file(
+                    file_id,
+                    csv_path,
+                    db_file.original_name or "",
+                    run_async=True,
+                    trigger="meta_csv_ahead",
+                )
+            except Exception:
+                pass
 
         for agg in aggs:
             timeframes[agg.timeframe] = {
