@@ -84,12 +84,38 @@
 
 /* —— API / page chrome —— */
 .bt-os-api-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   padding: 10px var(--bt-pad) 12px;
   font-family: var(--bt-mono);
   font-size: 12px;
   color: #f0a0a0;
   border-bottom: 1px solid var(--bt-border);
   background: rgba(180, 60, 60, 0.06);
+}
+
+.bt-os-api-error-retry {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  font-family: var(--bt-mono);
+  font-size: 11px;
+  color: #f0d0d0;
+  background: rgba(180, 60, 60, 0.15);
+  border: 1px solid rgba(240, 160, 160, 0.35);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.bt-os-api-error-retry:hover:not(:disabled) {
+  background: rgba(180, 60, 60, 0.28);
+}
+
+.bt-os-api-error-retry:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .bt-os-csv-msg {

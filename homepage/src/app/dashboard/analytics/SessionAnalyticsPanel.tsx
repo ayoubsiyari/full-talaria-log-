@@ -122,63 +122,104 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+const WHATIF_POLL_DELAYS_MS = [300, 400, 500, 650, 800, 1000, 1200, 1500, 2000];
+const WHATIF_MAX_POLL_ATTEMPTS = 200;
+
+function isRetryableWhatIfError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("timed out") ||
+    m.includes("not found") ||
+    m.includes("job missing") ||
+    m.includes("failed to fetch") ||
+    m.includes("network")
+  );
+}
+
+async function pollWhatIfJob(jobId: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
+  for (let attempt = 0; attempt < WHATIF_MAX_POLL_ATTEMPTS; attempt++) {
+    if (signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    await sleep(WHATIF_POLL_DELAYS_MS[Math.min(attempt, WHATIF_POLL_DELAYS_MS.length - 1)], signal);
+    const job = await fetchJson<WhatIfJobResponse>(
+      `/api/analytics/backtest/whatif/jobs/${encodeURIComponent(jobId)}`,
+      { signal }
+    );
+    if (job.status === "done" && job.result && typeof job.result === "object") {
+      return job.result;
+    }
+    if (job.status === "failed") {
+      throw new Error(job.error || "What-if analysis failed");
+    }
+  }
+  throw new Error(
+    "What-if analysis timed out — the server is still computing or the job expired. Try Retry."
+  );
+}
+
 /** POST what-if (sync, cache hit, or 202 job); polls until done when async. */
 export async function fetchBacktestWhatIf(
   payload: Record<string, unknown>,
   signal?: AbortSignal
 ): Promise<Record<string, unknown>> {
   const resolved = chartApiUrl("/api/analytics/backtest/whatif");
-  const res = await fetch(resolved, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    cache: "no-store",
-    signal,
-    body: JSON.stringify(payload),
-  });
-  const text = await res.text();
-  let body: unknown = null;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    if (!res.ok) {
-      throw new Error(`Request failed: ${res.status} (${resolved}) — response was not JSON`);
+  let lastError: Error | null = null;
+
+  for (let postTry = 0; postTry < 2; postTry++) {
+    if (signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
     }
-    throw new Error(`Invalid JSON from ${resolved}: ${text.slice(0, 160)}`);
-  }
-  if (res.status === 202) {
-    const queued = body as WhatIfJobResponse;
-    const jobId = queued?.job_id;
-    if (!jobId) {
-      throw new Error("What-if job missing job_id");
+    try {
+      const res = await fetch(resolved, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        cache: "no-store",
+        signal,
+        body: JSON.stringify(payload),
+      });
+      const text = await res.text();
+      let body: unknown = null;
+      try {
+        body = text ? JSON.parse(text) : null;
+      } catch {
+        if (!res.ok) {
+          throw new Error(`Request failed: ${res.status} (${resolved}) — response was not JSON`);
+        }
+        throw new Error(`Invalid JSON from ${resolved}: ${text.slice(0, 160)}`);
+      }
+
+      if (res.status === 202) {
+        const queued = body as WhatIfJobResponse;
+        const jobId = queued?.job_id;
+        if (!jobId) {
+          throw new Error("What-if job missing job_id");
+        }
+        return await pollWhatIfJob(jobId, signal);
+      }
+
+      if (!res.ok) {
+        const detail = (body as { detail?: string })?.detail;
+        throw new Error(detail ?? `Request failed: ${res.status} (${resolved})`);
+      }
+      if (body && typeof body === "object" && !Array.isArray(body)) {
+        return body as Record<string, unknown>;
+      }
+      throw new Error("Invalid what-if response");
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        throw e;
+      }
+      lastError = e instanceof Error ? e : new Error(String(e));
+      if (postTry === 0 && isRetryableWhatIfError(lastError.message)) {
+        continue;
+      }
+      throw lastError;
     }
-    const delays = [280, 400, 500, 650, 800, 1000];
-    for (let attempt = 0; attempt < 90; attempt++) {
-      if (signal?.aborted) {
-        throw new DOMException("Aborted", "AbortError");
-      }
-      await sleep(delays[Math.min(attempt, delays.length - 1)], signal);
-      const job = await fetchJson<WhatIfJobResponse>(
-        `/api/analytics/backtest/whatif/jobs/${encodeURIComponent(jobId)}`,
-        { signal }
-      );
-      if (job.status === "done" && job.result && typeof job.result === "object") {
-        return job.result;
-      }
-      if (job.status === "failed") {
-        throw new Error(job.error || "What-if analysis failed");
-      }
-    }
-    throw new Error("What-if analysis timed out");
   }
-  if (!res.ok) {
-    const detail = (body as { detail?: string })?.detail;
-    throw new Error(detail ?? `Request failed: ${res.status} (${resolved})`);
-  }
-  if (body && typeof body === "object" && !Array.isArray(body)) {
-    return body as Record<string, unknown>;
-  }
-  throw new Error("Invalid what-if response");
+
+  throw lastError ?? new Error("What-if analysis failed");
 }
 
 function n(v: unknown): number {
@@ -331,6 +372,8 @@ export function SessionAnalyticsPanel({
   const [heatmapMetric, setHeatmapMetric] = useState<"USD" | "R">("USD");
   const [whatIfApi, setWhatIfApi] = useState<any>(null);
   const [whatIfError, setWhatIfError] = useState<string | null>(null);
+  const [whatIfLoading, setWhatIfLoading] = useState(false);
+  const whatIfAbortRef = useRef<AbortController | null>(null);
   const [journalReloadToken, setJournalReloadToken] = useState(0);
   const [csvImportMode, setCsvImportMode] = useState<"replace" | "append">("replace");
   const [importStartBalance, setImportStartBalance] = useState("100000");
@@ -708,16 +751,18 @@ export function SessionAnalyticsPanel({
     });
   }, [filteredTrades, tickerColor]);
 
-  useEffect(() => {
-    if (!sessionId) {
-      setWhatIfApi(null);
-      return;
-    }
-    const ac = new AbortController();
-    const timer = window.setTimeout(() => {
+  const runWhatIfFetch = useCallback(
+    (signal: AbortSignal) => {
+      if (!sessionId) {
+        setWhatIfApi(null);
+        setWhatIfError(null);
+        setWhatIfLoading(false);
+        return;
+      }
       void (async () => {
+        setWhatIfLoading(true);
+        setWhatIfError(null);
         try {
-          setWhatIfError(null);
           const payload = await fetchBacktestWhatIf(
             {
               session_id: Number(sessionId),
@@ -729,22 +774,72 @@ export function SessionAnalyticsPanel({
               tp_r: simTpR,
               sl_r: simSlR,
             },
-            ac.signal
+            signal
           );
-          if (ac.signal.aborted) return;
+          if (signal.aborted) return;
           setWhatIfApi(payload || null);
+          setWhatIfError(null);
         } catch (e) {
-          if (ac.signal.aborted) return;
-          setWhatIfApi(null);
-          setWhatIfError(e instanceof Error ? e.message : String(e));
+          if (signal.aborted) return;
+          const msg = e instanceof Error ? e.message : String(e);
+          setWhatIfError(msg);
+        } finally {
+          if (!signal.aborted) setWhatIfLoading(false);
         }
       })();
-    }, 450);
+    },
+    [
+      sessionId,
+      pairFilter,
+      playbookFilter,
+      strategyFilter,
+      outcomeFilter,
+      heatmapPair,
+      simTpR,
+      simSlR,
+    ]
+  );
+
+  useEffect(() => {
+    whatIfAbortRef.current?.abort();
+    if (!sessionId) {
+      setWhatIfApi(null);
+      setWhatIfError(null);
+      setWhatIfLoading(false);
+      return;
+    }
+    const ac = new AbortController();
+    whatIfAbortRef.current = ac;
+    const timer = window.setTimeout(() => runWhatIfFetch(ac.signal), 450);
     return () => {
       window.clearTimeout(timer);
       ac.abort();
     };
-  }, [sessionId, pairFilter, playbookFilter, strategyFilter, outcomeFilter, heatmapPair, simTpR, simSlR, journalReloadToken, dataReloadKey]);
+  }, [
+    sessionId,
+    pairFilter,
+    playbookFilter,
+    strategyFilter,
+    outcomeFilter,
+    heatmapPair,
+    simTpR,
+    simSlR,
+    journalReloadToken,
+    dataReloadKey,
+    runWhatIfFetch,
+  ]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !sessionId || !whatIfError) return;
+      whatIfAbortRef.current?.abort();
+      const ac = new AbortController();
+      whatIfAbortRef.current = ac;
+      runWhatIfFetch(ac.signal);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [whatIfError, sessionId, runWhatIfFetch]);
 
   const whatIfEquityCurve = useMemo(
     () =>
@@ -1344,7 +1439,25 @@ export function SessionAnalyticsPanel({
     >
 
       {whatIfError ? (
-        <div className="bt-os-api-error">Analytics API: {whatIfError}</div>
+        <div className="bt-os-api-error" role="alert">
+          <span>
+            Analytics API: {whatIfError}
+            {whatIfApi ? " Showing last loaded metrics." : ""}
+          </span>
+          <button
+            type="button"
+            className="bt-os-api-error-retry"
+            disabled={whatIfLoading}
+            onClick={() => {
+              whatIfAbortRef.current?.abort();
+              const ac = new AbortController();
+              whatIfAbortRef.current = ac;
+              runWhatIfFetch(ac.signal);
+            }}
+          >
+            {whatIfLoading ? "Retrying…" : "Retry"}
+          </button>
+        </div>
       ) : null}
 
       <div className={`bt-os-toolbar${variant === "compact" ? " bt-os-toolbar--compact" : ""}`}>
