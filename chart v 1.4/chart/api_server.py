@@ -3130,16 +3130,13 @@ def _firstrate_has_active_import_job() -> bool:
     return False
 
 
-def _firstrate_mark_scheduled_type_complete(instrument_type: str) -> None:
+def _firstrate_mark_scheduled_type_attempted(instrument_type: str) -> None:
     """
-    Mark an asset class as successfully synced for the current UTC day.
-    Only when every ticker in that class is fresh (no stale / missing left).
+    Record that we ran a scheduled/repair import for this class today so nightly
+    rotation advances even if some tickers remain stale (avoids stock-only loops).
     """
     it = (instrument_type or "").strip().lower()
     if not it:
-        return
-    stats = _firstrate_class_health_stats(it)
-    if int(stats.get("stale_count") or 0) > 0 or int(stats.get("missing_count") or 0) > 0:
         return
     today_str = datetime.utcnow().strftime("%Y-%m-%d")
     cfg = _load_firstrate_schedule()
@@ -3151,6 +3148,20 @@ def _firstrate_mark_scheduled_type_complete(instrument_type: str) -> None:
         done.append(it)
     cfg["last_run_types_today"] = done
     _save_firstrate_schedule(cfg)
+
+
+def _firstrate_mark_scheduled_type_complete(instrument_type: str) -> None:
+    """
+    Mark an asset class as successfully synced for the current UTC day.
+    Only when every ticker in that class is fresh (no stale / missing left).
+    """
+    it = (instrument_type or "").strip().lower()
+    if not it:
+        return
+    stats = _firstrate_class_health_stats(it)
+    if int(stats.get("stale_count") or 0) > 0 or int(stats.get("missing_count") or 0) > 0:
+        return
+    _firstrate_mark_scheduled_type_attempted(it)
 
 
 def _firstrate_type_in_failure_cooldown(instrument_type: str, cfg: dict) -> bool:
@@ -3476,16 +3487,53 @@ def _firstrate_queue_scheduled_import_for_type(
     _save_firstrate_schedule(cfg2)
 
 
+def _firstrate_repair_cooldown_hours(cfg: dict) -> float:
+    return max(
+        1.0,
+        float(os.getenv("FIrstrate_REPAIR_CLASS_COOLDOWN_HOURS", "8")),
+    )
+
+
+def _firstrate_hours_since_type_repair(cfg: dict, instrument_type: str) -> float | None:
+    it = (instrument_type or "").strip().lower()
+    raw = (cfg.get("last_repair_queued_at_by_type") or {}).get(it)
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(raw).replace("Z", ""))
+        return (datetime.utcnow() - dt).total_seconds() / 3600.0
+    except Exception:
+        return None
+
+
 def _firstrate_try_queue_auto_repair(cfg: dict) -> bool:
     """
-    24/7 background repair: queue the worst stale/missing asset class.
-    Returns True if a job was queued or skipped-as-complete.
+    24/7 background repair: queue a stale/missing asset class.
+
+    Rotates across classes (fx, futures, stock, …) instead of always picking
+    the highest score — prevents re-downloading the same stock month ZIP every
+    scheduler tick while fx stays stale.
     """
     candidates = _firstrate_repair_candidates(cfg)
     if not candidates:
         return False
+
+    cooldown_h = _firstrate_repair_cooldown_hours(cfg)
+
+    def _sort_key(item: tuple[int, str, list[str], dict]) -> tuple:
+        score, it, _, _stats = item
+        hrs = _firstrate_hours_since_type_repair(cfg, it)
+        # Deprioritize types repaired recently (large penalty), then by score.
+        penalty = 10_000_000 if (hrs is not None and hrs < cooldown_h) else 0
+        return (penalty, -score, it)
+
+    candidates.sort(key=_sort_key)
+
     for _score, next_type, pair_list, stats in candidates:
         if _firstrate_type_in_failure_cooldown(next_type, cfg):
+            continue
+        hrs = _firstrate_hours_since_type_repair(cfg, next_type)
+        if hrs is not None and hrs < cooldown_h:
             continue
         period = _firstrate_period_for_repair_stats(stats)
         adjustment = _firstrate_default_adjustment_for(next_type)
@@ -3498,6 +3546,11 @@ def _firstrate_try_queue_auto_repair(cfg: dict) -> bool:
             trigger="repair",
             force_download=True,
         )
+        cfg2 = _load_firstrate_schedule()
+        last_map = dict(cfg2.get("last_repair_queued_at_by_type") or {})
+        last_map[next_type] = datetime.utcnow().isoformat() + "Z"
+        cfg2["last_repair_queued_at_by_type"] = last_map
+        _save_firstrate_schedule(cfg2)
         return True
     return False
 
@@ -3514,6 +3567,7 @@ def _firstrate_schedule_after_job(job_id: str, success: bool, error_message: str
         cfg["last_status"] = "done" if success else "failed"
         cfg["last_error"] = None if success else ((error_message or "")[:2000])
         if success and it:
+            _firstrate_mark_scheduled_type_attempted(it)
             _firstrate_mark_scheduled_type_complete(it)
             _firstrate_record_vendor_last_update(it)
             _firstrate_clear_type_failure_cooldown(it)
