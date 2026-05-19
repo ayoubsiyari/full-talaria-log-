@@ -2714,7 +2714,7 @@ select { cursor:default; }
               </div>
               <p id="frConnectionSummarySync" style="margin:0 0 8px;font-size:11px;color:var(--text-muted);line-height:1.45">
                 Tests <code style="font-size:10px">last_update</code>, <code style="font-size:10px">ticker_listing</code>, and <code style="font-size:10px">data_file</code> (FirstRate API docs).
-                VPS automation (no admin clicks): nightly + <strong>auto-repair</strong> for stale/missing, merge on import, duplicate cleanup after each successful import, stuck jobs auto-failed after ~90 min so the queue continues.
+                VPS automation: nightly + <strong>stale-only auto-sync</strong>, merge on import. Stuck imports auto-fail after ~60 min (Registering/merge ~55 min) — use <strong>Unstick</strong> to unlock manual/auto updates immediately.
               </p>
               <div id="frConnectionChecksSync" class="fr-conn-checks" style="font-size:11px"></div>
             </div>
@@ -2725,7 +2725,12 @@ select { cursor:default; }
                 <button type="button" class="btn sm" onclick="firstratePipelineUnstick()" title="Re-queue hung binary jobs and auto-fail stuck imports">Unstick</button>
                 <button type="button" class="btn sm" style="margin-left:auto" onclick="refreshFirstratePipelineDiagnostics(true)">Refresh pipeline</button>
               </div>
-              <p id="frPipelineSummary" style="margin:0 0 8px;font-size:11px;color:var(--text-muted);line-height:1.45">Import runs on API; chart binaries on worker (1 at a time). <strong>Stale counts on cards below do not change until import finishes + Refresh.</strong> Watch elapsed minutes between refreshes.</p>
+              <p id="frPipelineSummary" style="margin:0 0 8px;font-size:11px;color:var(--text-muted);line-height:1.45">Import runs on API; chart binaries on worker (1 at a time). <strong>While «import running», manual Fix and auto-sync are blocked.</strong> Stale counts update only after import ends + <strong>Refresh</strong>.</p>
+              <div id="frPipelineUnlock" style="display:none;margin:0 0 8px;padding:10px 12px;border-radius:6px;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.35);font-size:12px;color:#fde68a;line-height:1.5">
+                <strong>Updates are blocked</strong> — this import has not finished a file in a long time.
+                <button type="button" class="btn sm primary" style="margin:8px 8px 0 0" onclick="firstratePipelineUnstick()">Unstick now</button>
+                <span style="font-size:11px;color:var(--text-muted)">Then use Fix issues per class, or wait for stale-only auto-sync (~30–60s).</span>
+              </div>
               <div id="frPipelineWarnings" style="display:none;margin:0 0 8px;padding:8px 10px;border-radius:6px;background:rgba(248,113,113,.12);font-size:11px;color:#fca5a5;line-height:1.45"></div>
               <div id="frPipelineBody" style="font-size:11px;font-family:ui-monospace,monospace;line-height:1.55;white-space:pre-wrap"></div>
             </div>
@@ -6743,8 +6748,20 @@ async function refreshFirstratePipelineDiagnostics(force) {
         warnEl.textContent = '';
       }
     }
-    var depth = d.binary_queue_depth || 0;
+    var unlockEl = $('frPipelineUnlock');
     var importActive = (d.firstrate_active_jobs || []).length > 0;
+    var stuckMin = 0;
+    if (importActive && d.firstrate_active_jobs[0]) {
+      var j0 = d.firstrate_active_jobs[0];
+      stuckMin =
+        j0.minutes_since_file_progress != null
+          ? Number(j0.minutes_since_file_progress)
+          : 0;
+    }
+    if (unlockEl) {
+      unlockEl.style.display = importActive && stuckMin >= 45 ? 'block' : 'none';
+    }
+    var depth = d.binary_queue_depth || 0;
     if (badge) {
       if (importActive) {
         badge.textContent = 'import running';

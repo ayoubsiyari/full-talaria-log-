@@ -3063,8 +3063,19 @@ def _firstrate_reclaim_stuck_import_jobs() -> int:
     now = datetime.utcnow()
     stale_queued_min = max(10, int(os.getenv("FIrstrate_STALE_QUEUED_MINUTES", "30")))
     stale_dead_min = max(60, int(os.getenv("FIrstrate_STALE_DEAD_MINUTES", "240")))
-    stale_file_min = max(45, int(os.getenv("FIrstrate_STUCK_FILE_MINUTES", "90")))
+    stale_file_min = max(45, int(os.getenv("FIrstrate_STUCK_FILE_MINUTES", "60")))
     stale_binary_min = max(90, int(os.getenv("FIrstrate_STUCK_BINARY_MINUTES", "180")))
+    merge_timeout_min = max(
+        30.0,
+        float(os.getenv("FIrstrate_FILE_MERGE_TIMEOUT_SEC", "2400")) / 60.0,
+    )
+    register_stuck_min = max(
+        45.0,
+        merge_timeout_min + 15.0,
+        float(os.getenv("FIrstrate_REGISTER_STUCK_MINUTES", "0")) or 0,
+    )
+    if register_stuck_min <= 0:
+        register_stuck_min = merge_timeout_min + 15.0
     reclaimed = 0
     for p in FIrstrate_JOBS_DIR.glob("*.json"):
         try:
@@ -3100,8 +3111,12 @@ def _firstrate_reclaim_stuck_import_jobs() -> int:
                     )
             elif prog_at:
                 prog_min = (now - prog_at).total_seconds() / 60.0
-                if prog_min > stale_file_min:
-                    cur = st.get("current_file") or "?"
+                msg_l = str(st.get("message") or "").lower()
+                stuck_limit = stale_file_min
+                if phase == "normalize" and "registering" in msg_l:
+                    stuck_limit = min(stale_file_min, register_stuck_min)
+                if prog_min > stuck_limit:
+                    cur = st.get("current_file") or st.get("message") or "?"
                     done = int(st.get("files_done") or 0)
                     total = int(st.get("files_total") or 0)
                     reason = (
@@ -7609,6 +7624,13 @@ def _queue_firstrate_fx_import_job(
             )
 
     _firstrate_cleanup_jobs()
+    # Free the single-import lock if a previous job is hung (unblocks manual + auto sync).
+    reclaimed = _firstrate_reclaim_stuck_import_jobs()
+    if _firstrate_has_active_import_job():
+        raise ValueError(
+            "A FirstRate import is already running. Wait for it to finish, or click "
+            "Unstick in Admin → Datasets → VPS pipeline to force-fail a stuck job."
+        )
     job_id = f"fr_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(4)}"
     state = {
         "job_id": job_id,
@@ -7866,7 +7888,7 @@ def _collect_pipeline_diagnostics() -> dict:
         db.close()
 
     warnings: list[str] = []
-    import_stuck_min = max(35, int(os.getenv("FIrstrate_STUCK_FILE_MINUTES", "90")))
+    import_stuck_min = max(35, int(os.getenv("FIrstrate_STUCK_FILE_MINUTES", "60")))
     binary_stuck_min = max(20, int(os.getenv("BINARY_STUCK_PROCESSING_MINUTES", "75")))
     for j in firstrate_active:
         prog_min = _minutes_since_utc_iso(j.get("last_files_done_at"))
@@ -7939,7 +7961,7 @@ def _collect_pipeline_diagnostics() -> dict:
             "FirstRate CSV import runs on trading-chart; chart binaries run on trading-chart-worker when BINARY_BUILD_MODE=queue.",
             "Registry «Building» = binary queued/processing (30–90+ min per large 1m stock/FX file is normal).",
             "Compare «minutes_since_file_progress» and binary «elapsed_min» between refreshes — if both grow, work is moving.",
-            "If nothing moves for 75+ min, click Unstick or: docker compose logs trading-chart-worker --tail 80",
+            "If nothing moves for 55+ min on Registering/merge, click Unstick (or wait for auto-fail ~60 min)",
         ],
         "worker_expected": worker_expected,
     }
