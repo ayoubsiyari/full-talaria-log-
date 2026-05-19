@@ -24,8 +24,6 @@ import {
   Pencil,
 } from "lucide-react";
 
-import NinjaTraderWordmark from "../../ninjatrader/Landing-Page-Text-Images/NinjaTrader/NinjaTrader_Wordmark_color_RGB.png";
-
 const talariaBrands = [
   
   { name: "Talaria-Prop", href: "#" },
@@ -91,14 +89,6 @@ export default function HomePage() {
     if (!q) return COUNTRIES;
     return COUNTRIES.filter(c => c.toLowerCase().includes(q));
   }, [countryQuery]);
-
-  /** Same gating as /dashboard/backtest/: logged-in users without journal access go to pricing, not the app. */
-  const journalTabHref = React.useMemo(() => {
-    if (!user) return "/login/?next=/dashboard/journal/";
-    if (user.role === "admin") return "/dashboard/backtest/";
-    if (user.has_journal_access) return "/dashboard/backtest/";
-    return "/pricing/";
-  }, [user]);
 
   React.useEffect(() => {
     fetch("/api/auth/me", {
@@ -180,9 +170,8 @@ export default function HomePage() {
         ? {
             tabs: {
               bootcamp: "المنتورشيب",
-              journal: "الجورنال",
               backtest: "باكتست",
-              strategiesLab: "استراتيجيات",
+              ninjatrader: "نينجاتريدر",
             },
             hero: {
               titleA: "تداول",
@@ -221,9 +210,8 @@ export default function HomePage() {
         : {
             tabs: {
               bootcamp: "Mentorship",
-              journal: "Journal",
               backtest: "Backtest",
-              strategiesLab: "Strategies Lab",
+              ninjatrader: "NinjaTrader",
             },
             hero: {
               titleA: "Trade",
@@ -593,34 +581,16 @@ export default function HomePage() {
                   {t.tabs.bootcamp}
                 </Button>
               </Link>
-              <Link href={journalTabHref}>
-                <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
-                  {t.tabs.journal}
-                </Button>
-              </Link>
               <Link href={user ? "/dashboard/backtest/" : "/login/?next=/dashboard/backtest/"}>
                 <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
                   {t.tabs.backtest}
                 </Button>
               </Link>
-              <Link href={user ? "/dashboard/strategies/" : "/login/?next=/dashboard/strategies/"}>
+              <Link href="/ninjatrader/">
                 <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
-                  {t.tabs.strategiesLab}
+                  {t.tabs.ninjatrader}
                 </Button>
               </Link>
-              {/* NinjaTrader tab hidden for now
-              <Link href="/ninjatrader">
-                <Button variant="ghost" className="px-2 sm:px-4 py-1 text-sm rounded-full h-6 sm:h-8 flex items-center bg-transparent hover:bg-white/10">
-                  <Image
-                    src={NinjaTraderWordmark}
-                    alt="NinjaTrader"
-                    width={112}
-                    height={16}
-                    className="h-3 sm:h-4 w-auto object-contain mix-blend-screen"
-                  />
-                </Button>
-              </Link>
-              */}
             </motion.div>
           </div>
         </div>
