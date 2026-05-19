@@ -1,7 +1,7 @@
 # Trading Chart API — builds V9 React (TalariaV8bLive) inside the image so VPS deploys
 # always ship fresh dist-v9 + cache-bumped index.html without manual local npm.
 #
-# Build from repository root (required paths: chart v 1.4/talaria-design + chart v 1.4/chart):
+# Build from repository root (chart v 1.4/chart + homepage/.../dashboard/analytics/backend):
 #   docker compose build trading-chart
 # Optional stable cache-bust id:
 #   docker compose build --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) trading-chart
@@ -43,6 +43,7 @@ COPY ["chart v 1.4/chart/package.json", "chart v 1.4/chart/package-lock.json", "
 RUN npm ci
 
 COPY ["chart v 1.4/chart", "./"]
+COPY ["homepage/src/app/dashboard/analytics/backend", "/app/analytics_backend"]
 
 # Overwrite committed dist-v9 with freshly built + bump-dist-v9-cache output.
 COPY --from=v9_react /build/chart/dist-v9 ./dist-v9

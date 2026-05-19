@@ -4,7 +4,7 @@ Compatibility facade for analytics engine.
 This module keeps existing imports stable:
     from analytics_engine import ...
 
-Internally, implementation now lives in analytics_core package modules.
+Internally, implementation lives in `dashboard/analytics/backend/analytics_core/`.
 """
 
 from analytics_core import (

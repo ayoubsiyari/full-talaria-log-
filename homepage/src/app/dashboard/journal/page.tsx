@@ -1,15 +1,15 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BacktestOsDashboardLayout } from "../backtest/BacktestOsDashboardLayout";
-import type { BacktestOsChartPack } from "../backtest/BacktestOsDashboardLayout";
-import { PnlCalendarHeatmap } from "../backtest/PnlCalendarHeatmap";
-import type { OsMetricCard } from "../backtest/backtestOsTypes";
+import { BacktestOsDashboardLayout } from "../analytics/BacktestOsDashboardLayout";
+import type { BacktestOsChartPack } from "../analytics/BacktestOsDashboardLayout";
+import { PnlCalendarHeatmap } from "../analytics/PnlCalendarHeatmap";
+import type { OsMetricCard } from "../analytics/backtestOsTypes";
 import {
   durationBucketsHours, kurtosisExcess, maxConsecutiveStreaks,
   mean, monteCarloPercentiles, sampleStd, skewness, varCvar95,
-} from "../backtest/backtestOsCompute";
-import "../backtest/sessions-dashboard.css";
-import "../backtest/backtest-os-dashboard.css";
+} from "../analytics/backtestOsCompute";
+import "../analytics/sessions-dashboard.css";
+import "../analytics/backtest-os-dashboard.css";
 
 // ── API helpers ────────────────────────────────────────────────────────────────
 function jApiUrl(path: string) {

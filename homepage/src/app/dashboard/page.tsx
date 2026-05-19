@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import BacktestAnalyticsPage from "./backtest/BacktestAnalyticsPage";
+import BacktestAnalyticsPage from "./analytics/BacktestAnalyticsPage";
 
 export default function DashboardPage() {
   return (

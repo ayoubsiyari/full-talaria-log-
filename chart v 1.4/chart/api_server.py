@@ -110,6 +110,10 @@ def _load_dotenv_files_from_chart_dir() -> None:
 
 _load_dotenv_files_from_chart_dir()
 
+import _analytics_bootstrap
+
+_analytics_bootstrap.install()
+
 import chart_redis
 import backtest_whatif as bw
 import session_journal_store as sjs

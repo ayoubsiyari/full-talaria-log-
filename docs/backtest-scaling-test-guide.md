@@ -482,5 +482,5 @@ Copy into your release notes when staging passes:
 ## Related files
 
 - Checklist: [backtest-scaling-checklist.md](./backtest-scaling-checklist.md)
-- Backend: `chart v 1.4/chart/backtest_whatif.py`, `api_server.py`, `chart_redis.py`
+- Backend: `homepage/src/app/dashboard/analytics/backend/backtest_whatif.py`, `api_server.py`, `chart_redis.py`
 - Frontend: `homepage/src/app/dashboard/backtest/SessionAnalyticsPanel.tsx`

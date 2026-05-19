@@ -212,7 +212,7 @@ Plan to support many concurrent backtest users: stable chart loads, reliable ses
 | Area | Path |
 |------|------|
 | Chart API, sessions, what-if, tiles | `chart v 1.4/chart/api_server.py` |
-| What-if compute + cache keys | `chart v 1.4/chart/backtest_whatif.py` |
+| What-if compute + cache keys | `homepage/src/app/dashboard/analytics/backend/backtest_whatif.py` |
 | Journal SQL primary + strip blob | `chart v 1.4/chart/session_journal_store.py` |
 | Backfill script | `chart v 1.4/chart/scripts/backfill_session_journal_sql.py` |
 | Redis rate limits + binary/whatif queues | `chart v 1.4/chart/chart_redis.py` |
