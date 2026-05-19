@@ -455,12 +455,12 @@ export default function DashboardLayout({
       userCanAccessAdminOnlyWipPath(user, pathname)
     ) {
       setActiveView("cot");
-    else if (pathname.startsWith("/dashboard/support")) setActiveView("profile");
+    } else if (pathname.startsWith("/dashboard/support")) setActiveView("profile");
     else if (pathname.startsWith("/dashboard/admin")) setActiveView("admin");
     else if (pathname.startsWith("/dashboard/profile")) setActiveView("profile");
     else if (pathname === "/dashboard" || pathname === "/dashboard/") setActiveView("dashboard");
     else if (pathname.startsWith("/dashboard")) setActiveView("dashboard");
-  }, [pathname]);
+  }, [pathname, user]);
 
   React.useEffect(() => {
     if (!profilePanelOpen) return;
