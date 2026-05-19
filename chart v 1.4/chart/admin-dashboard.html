@@ -2327,7 +2327,7 @@ select { cursor:default; }
             <button type="button" class="ds-hub-tab" data-ds-tab="import" onclick="setDsHubTab('import')">Import</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="sync" onclick="setDsHubTab('sync')">Sync health</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="maintenance" onclick="setDsHubTab('maintenance')">Maintenance</button>
-            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-05-18f</span>
+            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-05-19a</span>
           </div>
         </div>
 
@@ -2521,7 +2521,7 @@ select { cursor:default; }
                     </div>
                     <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;font-size:12px">
                       <input type="checkbox" id="fr_sched_auto_repair" checked>
-                      24/7 background repair — auto-fix stale/missing (no admin clicks)
+                      24/7 stale-only auto-sync — checks stale/missing tickers and queues them automatically (not the whole class)
                     </label>
                     <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;font-size:12px">
                       <input type="checkbox" id="fr_sched_adaptive" checked>
@@ -7304,7 +7304,7 @@ async function loadFirstrateSchedule() {
     const uidOk = data.has_firstrate_userid !== false;
     const bits = [];
     bits.push(s.enabled ? 'Auto-sync ON' : 'Auto-sync OFF');
-    if (s.auto_repair !== false) bits.push('24/7 repair ON');
+    if (s.auto_repair !== false) bits.push('24/7 stale-only auto-sync ON');
     if (!uidOk) bits.push('set FIrstrate_USERID on server');
     if (s.last_run_finished_at) bits.push('last finished: ' + s.last_run_finished_at);
     if (s.last_status) bits.push('last: ' + s.last_status);
@@ -7671,12 +7671,34 @@ function _repairPeriodForClass(assetClass) {
   }
   if (!c) return 'day';
   if ((c.missing_count || 0) > 0) return 'month';
-  if ((c.stale_count || 0) > 0) return 'week';
+  if ((c.stale_count || 0) > 0) {
+    var maxH = null;
+    var ds = (_firstrateHealthCache && _firstrateHealthCache.datasets) || [];
+    for (var j = 0; j < ds.length; j++) {
+      if (ds[j].asset_class !== assetClass) continue;
+      var h = ds[j].staleness_hours;
+      if (h != null && (maxH === null || h > maxH)) maxH = h;
+    }
+    if (maxH !== null && maxH <= 72) return 'day';
+    return 'week';
+  }
   return 'day';
+}
+
+function _staleMissingTickersForClass(assetClass) {
+  var datasets = (_firstrateHealthCache && _firstrateHealthCache.datasets) || [];
+  var tickers = [];
+  datasets.forEach(function (d) {
+    if (d.asset_class !== assetClass || !d.ticker) return;
+    if (d.freshness !== 'stale' && d.freshness !== 'missing') return;
+    if (tickers.indexOf(d.ticker) === -1) tickers.push(d.ticker);
+  });
+  return tickers;
 }
 
 async function _runFirstrateClassNow(assetClass, btn) {
   if (!assetClass) return;
+  const staleTickers = _staleMissingTickersForClass(assetClass);
   const period = _repairPeriodForClass(assetClass);
   const origLabel = btn ? btn.textContent : null;
   if (btn) {
@@ -7691,6 +7713,7 @@ async function _runFirstrateClassNow(assetClass, btn) {
       upsert_existing: true,
       delete_existing_first: false,
     };
+    if (staleTickers.length) body.pairs = staleTickers;
     const data = await api('/api/admin/datasets/firstrate-fx/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -7702,7 +7725,8 @@ async function _runFirstrateClassNow(assetClass, btn) {
           assetClass +
           ' queued (' +
           period +
-          ' bundle) — counts refresh when done; use Fix issues if still stale',
+          (staleTickers.length ? ', ' + staleTickers.length + ' stale/missing ticker(s)' : ', full class') +
+          ') — counts refresh when done',
         'ok'
       );
     }

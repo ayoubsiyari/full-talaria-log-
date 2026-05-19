@@ -2965,8 +2965,11 @@ def _default_firstrate_schedule() -> dict:
         "timeframe": (os.getenv("FIrstrate_SCHEDULE_TIMEFRAME", "1min").strip() or "1min"),
         "adaptive_period": os.getenv("FIrstrate_SCHEDULE_ADAPTIVE_PERIOD", "true").strip().lower()
         in {"1", "true", "yes", "on"},
-        # 24/7: queue week/month imports for stale/missing tickers without opening admin UI.
+        # 24/7: queue imports for stale/missing tickers only (not whole asset class).
         "auto_repair": os.getenv("FIrstrate_SCHEDULE_AUTO_REPAIR", "true").strip().lower()
+        in {"1", "true", "yes", "on"},
+        # When true, auto-repair and nightly pulls pass `pairs` = stale/missing tickers only.
+        "stale_pairs_only": os.getenv("FIrstrate_STALE_PAIRS_ONLY", "true").strip().lower()
         in {"1", "true", "yes", "on"},
         # After each successful import: merge duplicate datasets into the densest row per ticker.
         "auto_duplicate_cleanup": os.getenv("FIrstrate_AUTO_DUPLICATE_CLEANUP", "true").strip().lower()
@@ -3354,10 +3357,47 @@ def _firstrate_tickers_needing_repair(instrument_type: str) -> list[str]:
     return sorted(out)
 
 
+def _firstrate_stale_pairs_only(cfg: dict) -> bool:
+    return bool(cfg.get("stale_pairs_only", True))
+
+
+def _firstrate_stale_repair_batch_limit() -> int:
+    """Max tickers per auto-repair job (0 = no limit)."""
+    try:
+        return max(0, int(os.getenv("FIrstrate_STALE_REPAIR_MAX_PAIRS", "0")))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _firstrate_cap_pair_list(pair_list: list[str]) -> list[str]:
+    limit = _firstrate_stale_repair_batch_limit()
+    if limit <= 0 or len(pair_list) <= limit:
+        return pair_list
+    return sorted(pair_list)[:limit]
+
+
+def _firstrate_targeted_pair_list(
+    cfg: dict, instrument_type: str, all_pairs: list[str]
+) -> list[str]:
+    """
+    Pair list for scheduled / nightly imports.
+
+    When `stale_pairs_only` is on and any ticker is stale/missing, return only
+    those tickers; otherwise return the full class list (routine day pull).
+    """
+    if not _firstrate_stale_pairs_only(cfg):
+        return list(all_pairs)
+    repair = _firstrate_tickers_needing_repair(instrument_type)
+    return repair if repair else list(all_pairs)
+
+
 def _firstrate_repair_candidates(cfg: dict) -> list[tuple[int, str, list[str], dict]]:
     """
     Asset classes with stale/missing datasets, highest priority first.
     Returns [(score, instrument_type, pair_list, health_stats), ...].
+
+    With `stale_pairs_only` (default), only tickers that are actually stale or
+    missing are queued — never the whole asset class.
     """
     if not bool(cfg.get("auto_repair", True)):
         return []
@@ -3365,6 +3405,7 @@ def _firstrate_repair_candidates(cfg: dict) -> list[tuple[int, str, list[str], d
         str(x).strip().lower() for x in (cfg.get("excluded_types") or []) if x
     )
     buckets = _firstrate_classify_existing_datasets()
+    stale_only = _firstrate_stale_pairs_only(cfg)
     candidates: list[tuple[int, str, list[str], dict]] = []
     for it, all_pairs in buckets.items():
         if it in excluded:
@@ -3375,7 +3416,12 @@ def _firstrate_repair_candidates(cfg: dict) -> list[tuple[int, str, list[str], d
         if stale_n < 1 and missing_n < 1:
             continue
         repair_pairs = _firstrate_tickers_needing_repair(it)
-        pair_list = repair_pairs if repair_pairs else list(all_pairs)
+        if stale_only:
+            if not repair_pairs:
+                continue
+            pair_list = _firstrate_cap_pair_list(repair_pairs)
+        else:
+            pair_list = repair_pairs if repair_pairs else list(all_pairs)
         score = missing_n * 1000 + stale_n * 10
         candidates.append((score, it, pair_list, stats))
     candidates.sort(key=lambda x: x[0], reverse=True)
@@ -3385,9 +3431,12 @@ def _firstrate_repair_candidates(cfg: dict) -> list[tuple[int, str, list[str], d
 def _firstrate_period_for_repair_stats(stats: dict) -> str:
     if int(stats.get("missing_count") or 0) > 0:
         return "month"
+    max_h = stats.get("max_staleness_hours")
     if int(stats.get("stale_count") or 0) > 0:
+        if max_h is not None and float(max_h) <= 72:
+            return "day"
         return "week"
-    return "week"
+    return "day"
 
 
 def _firstrate_pick_schedule_period(cfg: dict, instrument_type: str) -> tuple[str, dict]:
@@ -3508,11 +3557,10 @@ def _firstrate_hours_since_type_repair(cfg: dict, instrument_type: str) -> float
 
 def _firstrate_try_queue_auto_repair(cfg: dict) -> bool:
     """
-    24/7 background repair: queue a stale/missing asset class.
+    24/7 background repair: queue stale/missing tickers only (`pairs` filter).
 
     Rotates across classes (fx, futures, stock, …) instead of always picking
-    the highest score — prevents re-downloading the same stock month ZIP every
-    scheduler tick while fx stays stale.
+    the highest score — prevents one class from monopolizing the import lock.
     """
     candidates = _firstrate_repair_candidates(cfg)
     if not candidates:
@@ -3543,8 +3591,8 @@ def _firstrate_try_queue_auto_repair(cfg: dict) -> bool:
             pair_list=pair_list,
             adjustment=adjustment,
             period_override=period,
-            trigger="repair",
-            force_download=True,
+            trigger="stale_auto",
+            force_download=False,
         )
         cfg2 = _load_firstrate_schedule()
         last_map = dict(cfg2.get("last_repair_queued_at_by_type") or {})
@@ -3558,7 +3606,7 @@ def _firstrate_try_queue_auto_repair(cfg: dict) -> bool:
 def _firstrate_schedule_after_job(job_id: str, success: bool, error_message: str | None) -> None:
     try:
         st = _firstrate_read_job(job_id)
-        if not st or st.get("trigger") not in ("schedule", "repair"):
+        if not st or st.get("trigger") not in ("schedule", "repair", "stale_auto"):
             return
         it = str(st.get("instrument_type") or "").strip().lower()
         cfg = _load_firstrate_schedule()
@@ -3662,13 +3710,20 @@ def _firstrate_scheduler_tick() -> None:
                 return
 
             next_type = pending[0]
-            pair_list = list(buckets[next_type])
+            all_pairs = list(buckets[next_type])
+            pair_list = _firstrate_targeted_pair_list(cfg, next_type, all_pairs)
             adjustment = _firstrate_default_adjustment_for(next_type)
+            period_override = None
+            if pair_list != all_pairs:
+                period_override = _firstrate_period_for_repair_stats(
+                    _firstrate_class_health_stats(next_type)
+                )
             _firstrate_queue_scheduled_import_for_type(
                 cfg=cfg,
                 next_type=next_type,
                 pair_list=pair_list,
                 adjustment=adjustment,
+                period_override=period_override,
             )
             return
 
@@ -3715,13 +3770,20 @@ def _firstrate_scheduler_tick() -> None:
                 return
 
             next_type = pending[0]
-            pair_list = list(buckets[next_type])
+            all_pairs = list(buckets[next_type])
+            pair_list = _firstrate_targeted_pair_list(cfg, next_type, all_pairs)
             adjustment = _firstrate_default_adjustment_for(next_type)
+            period_override = None
+            if pair_list != all_pairs:
+                period_override = _firstrate_period_for_repair_stats(
+                    _firstrate_class_health_stats(next_type)
+                )
             _firstrate_queue_scheduled_import_for_type(
                 cfg=cfg,
                 next_type=next_type,
                 pair_list=pair_list,
                 adjustment=adjustment,
+                period_override=period_override,
             )
             return
 
