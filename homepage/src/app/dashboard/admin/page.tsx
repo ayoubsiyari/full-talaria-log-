@@ -165,7 +165,7 @@ export default function AdminDashboard() {
         <div className="flex items-center gap-2">
           <LanguageToggle className="text-xs px-3 py-1.5" />
           <a href="/dashboard/admin/datasets/" className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10 transition"><Database className="h-3.5 w-3.5"/>Datasets</a>
-          <a href="/dashboard/sessions/" className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10 transition"><Activity className="h-3.5 w-3.5"/>Sessions</a>
+          <a href="/dashboard/backtest/" className="flex items-center gap-1.5 rounded-full border border-blue-500/35 bg-blue-500/10 px-3 py-1.5 text-xs text-blue-200 hover:bg-blue-500/20 transition"><Activity className="h-3.5 w-3.5"/>Trading app</a>
           <button onClick={load} className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10 transition"><RefreshCw className={`h-3.5 w-3.5 ${loading?"animate-spin":""}`}/>Refresh</button>
         </div>
       </div>

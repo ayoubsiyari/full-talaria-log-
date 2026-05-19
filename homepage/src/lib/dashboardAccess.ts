@@ -12,6 +12,57 @@ export const DASHBOARD_MODULE_LABELS: Record<string, string> = {
   chart: "Chart data & drawings",
 };
 
+/**
+ * While Journal, COT, and Resources (bootcamp) are under active editing,
+ * hide them from nav and block routes for everyone except admins.
+ */
+export const ADMIN_ONLY_WIP_SECTIONS = true;
+
+const ADMIN_ONLY_WIP_MODULES = new Set(["journal", "cot"]);
+const ADMIN_ONLY_WIP_NAV_IDS = new Set(["journal", "cot", "resources"]);
+
+export function userIsDashboardAdmin(user: DashboardUser | null): boolean {
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  return !!(user as DashboardUser & { is_admin?: boolean }).is_admin;
+}
+
+/** Primary trading app entry (sessions / backtest) — used for admin default landing. */
+export function defaultAppDashboardPathForUser(
+  user: DashboardUser | null
+): string {
+  if (!user) return "/pricing/?browse=1";
+  if (userIsDashboardAdmin(user)) return "/dashboard/backtest/";
+  return defaultDashboardPathForUser(user);
+}
+
+export function isModuleAdminOnlyWip(module: string): boolean {
+  if (!ADMIN_ONLY_WIP_SECTIONS) return false;
+  return ADMIN_ONLY_WIP_MODULES.has(module.trim().toLowerCase());
+}
+
+export function isNavItemAdminOnlyWip(navId: string): boolean {
+  if (!ADMIN_ONLY_WIP_SECTIONS) return false;
+  return ADMIN_ONLY_WIP_NAV_IDS.has(navId);
+}
+
+/** True for /dashboard/journal/*, /dashboard/cot/*, and /bootcamp/* while WIP gate is on. */
+export function isPathAdminOnlyWip(path: string): boolean {
+  if (!ADMIN_ONLY_WIP_SECTIONS) return false;
+  const p = path.split("?")[0].split("#")[0];
+  if (p === "/bootcamp" || p.startsWith("/bootcamp/")) return true;
+  const mod = dashboardPathToModule(p);
+  return mod !== null && isModuleAdminOnlyWip(mod);
+}
+
+export function userCanAccessAdminOnlyWipPath(
+  user: DashboardUser | null,
+  path: string
+): boolean {
+  if (!isPathAdminOnlyWip(path)) return true;
+  return userIsDashboardAdmin(user);
+}
+
 export type DashboardGateVariant =
   | "subscription"
   | "subscription_ended"
@@ -73,22 +124,30 @@ export function userHasDashboardModule(
   module: string
 ): boolean {
   if (!user) return false;
-  if (userHasPaidFullDashboard(user)) return true;
   const key = module.trim().toLowerCase();
+  if (isModuleAdminOnlyWip(key)) return userIsDashboardAdmin(user);
+  if (userHasPaidFullDashboard(user)) return true;
   return !!user.dashboard_modules?.[key];
 }
 
 /** First dashboard path the user may open (for redirects). */
 export function defaultDashboardPathForUser(user: DashboardUser | null): string {
   if (!user) return "/pricing/?browse=1";
-  if (userHasPaidFullDashboard(user)) return "/dashboard/journal/";
+  if (userIsDashboardAdmin(user)) {
+    return "/dashboard/backtest/";
+  }
+  if (userHasPaidFullDashboard(user)) {
+    if (ADMIN_ONLY_WIP_SECTIONS) {
+      return "/dashboard/backtest/";
+    }
+    return "/dashboard/journal/";
+  }
   const order = ["journal", "backtest", "strategies", "cot", "community", "chart"] as const;
   for (const mod of order) {
+    if (isModuleAdminOnlyWip(mod)) continue;
     if (user.dashboard_modules?.[mod]) {
-      if (mod === "journal") return "/dashboard/journal/";
       if (mod === "backtest") return "/dashboard/backtest/";
       if (mod === "strategies") return "/dashboard/strategies/";
-      if (mod === "cot") return "/dashboard/cot/";
     }
   }
   return "/pricing/?browse=1";
@@ -123,6 +182,7 @@ export function userCanAccessDashboardPath(
   user: DashboardUser | null,
   path: string
 ): boolean {
+  if (!userCanAccessAdminOnlyWipPath(user, path)) return false;
   const mod = dashboardPathToModule(path);
   if (mod === null) return true;
   return userHasDashboardModule(user, mod);

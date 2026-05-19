@@ -10,12 +10,16 @@ import {
   dashboardPathRequiresPaidJournal,
   dashboardPathToModule,
   defaultDashboardPathForUser,
+  isNavItemAdminOnlyWip,
+  isPathAdminOnlyWip,
   lockedModuleGateReason,
   lockedModuleNavTitle,
   resolveDashboardGateVariant,
+  userCanAccessAdminOnlyWipPath,
   userCanAccessDashboardPath,
   userHasDashboardModule,
   userHasPartialDashboardAccess,
+  userIsDashboardAdmin,
 } from "@/lib/dashboardAccess";
 import { applyJournalTokenFromAuthResponse } from "@/lib/journalApi";
 import SubscriptionGateOverlay from "./SubscriptionGateOverlay";
@@ -27,6 +31,7 @@ type User = {
   name: string;
   email: string;
   role: string;
+  is_admin?: boolean;
   has_journal_access?: boolean;
   has_active_subscription?: boolean;
   manual_full_access?: boolean;
@@ -322,6 +327,7 @@ const INTERNAL_NAV: Record<string, string> = {
   backtest:  "/dashboard/backtest/",
   strategies: "/dashboard/strategies/",
   cot:       "/dashboard/cot/",
+  admin:     "/dashboard/admin/",
 };
 
 export default function DashboardLayout({
@@ -362,6 +368,10 @@ export default function DashboardLayout({
   }, []);
 
   const enforceAccessForPath = React.useCallback((u: User, path: string) => {
+    if (isPathAdminOnlyWip(path) && !userCanAccessAdminOnlyWipPath(u, path)) {
+      window.location.replace(defaultDashboardPathForUser(u));
+      return;
+    }
     if (!dashboardPathRequiresPaidJournal(path)) return;
     if (userCanAccessDashboardPath(u, path)) return;
     window.location.replace(defaultDashboardPathForUser(u));
@@ -406,13 +416,18 @@ export default function DashboardLayout({
 
   const gatedPath = dashboardPathRequiresPaidJournal(pathname);
   const pathAllowed = userCanAccessDashboardPath(user, pathname);
+  const wipSectionBlocked =
+    authReady &&
+    !!user &&
+    isPathAdminOnlyWip(pathname) &&
+    !userCanAccessAdminOnlyWipPath(user, pathname);
   const blockedModule = gatedPath ? dashboardPathToModule(pathname) : null;
   const gateReason =
     user && blockedModule
       ? lockedModuleGateReason(user, blockedModule)
       : "none";
   const subscriptionWall =
-    authReady && !!user && gatedPath && !pathAllowed;
+    authReady && !!user && gatedPath && !pathAllowed && !wipSectionBlocked;
   const gateVariant = resolveDashboardGateVariant(user);
   const gatedAuthLoading = gatedPath && !authReady;
 
@@ -426,12 +441,20 @@ export default function DashboardLayout({
   }, [gatedPath, router]);
 
   React.useEffect(() => {
-    if (pathname.startsWith("/dashboard/journal")) setActiveView("journal");
-    else if (pathname.startsWith("/dashboard/trades")) setActiveView("trades");
+    if (
+      pathname.startsWith("/dashboard/journal") &&
+      userCanAccessAdminOnlyWipPath(user, pathname)
+    ) {
+      setActiveView("journal");
+    } else if (pathname.startsWith("/dashboard/trades")) setActiveView("trades");
     else if (pathname.startsWith("/dashboard/backtest")) setActiveView("backtest");
     else if (pathname.startsWith("/dashboard/strategies"))
       setActiveView("strategies");
-    else if (pathname.startsWith("/dashboard/cot")) setActiveView("cot");
+    else if (
+      pathname.startsWith("/dashboard/cot") &&
+      userCanAccessAdminOnlyWipPath(user, pathname)
+    ) {
+      setActiveView("cot");
     else if (pathname.startsWith("/dashboard/support")) setActiveView("profile");
     else if (pathname.startsWith("/dashboard/admin")) setActiveView("admin");
     else if (pathname.startsWith("/dashboard/profile")) setActiveView("profile");
@@ -451,6 +474,7 @@ export default function DashboardLayout({
   }, [profilePanelOpen]);
 
   const navModuleForId = (id: string): string | null => {
+    if (id === "admin") return null;
     if (id === "journal") return "journal";
     if (id === "trades") return "backtest";
     if (id === "backtest") return "backtest";
@@ -460,7 +484,14 @@ export default function DashboardLayout({
     return null;
   };
 
+  const isAdminUser = userIsDashboardAdmin(user);
+  const onAdminRoute = pathname.startsWith("/dashboard/admin");
+
   const handleNavClick = (id: string) => {
+    if (isNavItemAdminOnlyWip(id) && user && !userIsDashboardAdmin(user)) {
+      router.replace(defaultDashboardPathForUser(user));
+      return;
+    }
     const mod = navModuleForId(id);
     if (mod && user && !userHasDashboardModule(user, mod)) {
       if (userHasPartialDashboardAccess(user)) {
@@ -491,7 +522,7 @@ export default function DashboardLayout({
 
   const pageTitle = VIEW_TITLES[activeView] || "Dashboard";
 
-  const NAV_ITEMS: { id: string; label: string; icon: React.ReactNode }[] = [
+  const ALL_NAV_ITEMS: { id: string; label: string; icon: React.ReactNode }[] = [
     { id: "dashboard", label: "Dashboard", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="3" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/></svg> },
     { id: "journal",   label: "Journal",   icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="15" height="18" rx="1" stroke="currentColor" strokeWidth="1.5"/><line x1="7" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="7" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="7" y1="16" x2="11" y2="16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
     { id: "trades",    label: "Trades",    icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="1" stroke="currentColor" strokeWidth="1.5"/><line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" strokeWidth="1.5"/><line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="8" y1="17" x2="13" y2="17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
@@ -500,6 +531,36 @@ export default function DashboardLayout({
     { id: "strategies",label: "Strategies",icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="2" width="14" height="20" rx="1" stroke="currentColor" strokeWidth="1.4"/><rect x="8" y="1" width="4" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.3"/><circle cx="7" cy="9" r="1.2" fill="currentColor" opacity="0.8"/><circle cx="13" cy="9" r="1.2" fill="currentColor" opacity="0.8"/><circle cx="10" cy="14" r="1.2" fill="currentColor" opacity="0.8"/><path d="M7 9c0 3 3 3 3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><path d="M13 9c-1 2-1 3-3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="8.5" y1="19" x2="11.5" y2="19" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
     { id: "resources", label: "Resources", icon: <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="2" y="16.5" width="20" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="5.5" y1="16.5" x2="5.5" y2="20" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="3.5" y="12" width="17" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="7" y1="12" x2="7" y2="15.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="5" y="7.5" width="14" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="8.5" y1="7.5" x2="8.5" y2="11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg> },
   ];
+
+  const ADMIN_NAV_ITEM = React.useMemo(
+    () =>
+      ({
+        id: "admin",
+        label: "Admin",
+        icon: (
+          <svg width={21} height={21} viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path
+              d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.3L12 14.8 7.2 16.8l.9-5.3-3.9-3.8 5.4-.8L12 2z"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinejoin="round"
+            />
+            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.4" opacity="0.35" />
+          </svg>
+        ),
+      }) as const,
+    []
+  );
+
+  const NAV_ITEMS = React.useMemo(() => {
+    const items = ALL_NAV_ITEMS.filter(
+      (item) => !isNavItemAdminOnlyWip(item.id) || userIsDashboardAdmin(user)
+    );
+    if (userIsDashboardAdmin(user)) {
+      return [...items, ADMIN_NAV_ITEM];
+    }
+    return items;
+  }, [user, ADMIN_NAV_ITEM]);
 
   return (
     <div style={{ position: "fixed", inset: 0, background: DASH_C.bg, fontFamily: F, color: DASH_C.tx, display: "flex", flexDirection: "column", overflow: "hidden" }}
@@ -605,11 +666,41 @@ export default function DashboardLayout({
               {isArabic ? "استراتيجية جديدة" : "New Strategy"}
             </button>
           ) : null}
-          {user?.role === "admin" && (
-            <a href="/dashboard/admin/" style={{ fontSize: 11, fontWeight: 600, color: DASH_C.ts, textDecoration: "none", padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(140,160,255,0.12)", fontFamily: F }}>
-              Admin
-            </a>
-          )}
+          {isAdminUser ? (
+            onAdminRoute ? (
+              <a
+                href="/dashboard/backtest/"
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: DASH_C.acL,
+                  textDecoration: "none",
+                  padding: "4px 10px",
+                  borderRadius: 6,
+                  border: "1px solid rgba(74,106,255,0.35)",
+                  fontFamily: F,
+                }}
+              >
+                {isArabic ? "التطبيق" : "Trading app"}
+              </a>
+            ) : (
+              <a
+                href="/dashboard/admin/"
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: DASH_C.ts,
+                  textDecoration: "none",
+                  padding: "4px 8px",
+                  borderRadius: 6,
+                  border: "1px solid rgba(140,160,255,0.12)",
+                  fontFamily: F,
+                }}
+              >
+                Admin
+              </a>
+            )
+          ) : null}
         </div>
       </header>
 
@@ -880,7 +971,7 @@ export default function DashboardLayout({
               visibility: !EXTERNAL_VIEWS[activeView] ? "visible" : "hidden",
               pointerEvents: !EXTERNAL_VIEWS[activeView] ? "auto" : "none",
             }}>
-              {gatedAuthLoading ? (
+              {gatedAuthLoading || wipSectionBlocked ? (
                 <DashboardAccessSkeleton isArabic={isArabic} />
               ) : subscriptionWall ? (
                 <div style={{ position: "absolute", inset: 0, background: DASH_C.bg }}>

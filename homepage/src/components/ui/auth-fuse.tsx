@@ -9,6 +9,10 @@ import { Eye, EyeOff } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { GoogleAuthButton } from "./GoogleAuthButton";
+import {
+  isPathAdminOnlyWip,
+  userIsDashboardAdmin,
+} from "@/lib/dashboardAccess";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -59,9 +63,13 @@ export function getPostAuthRedirectUrl(opts: {
 }): string {
   const raw = opts.nextPath;
   const safeNext = raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : null;
-  const isAdmin = opts.user.role === "admin";
+  const isAdmin = userIsDashboardAdmin(opts.user);
   if (isAdmin) {
-    return safeNext || "/dashboard/admin/";
+    if (safeNext) return safeNext;
+    return "/dashboard/backtest/";
+  }
+  if (safeNext && isPathAdminOnlyWip(safeNext)) {
+    return "/dashboard/backtest/";
   }
   const hasAccess = !!opts.user.has_journal_access;
   if (!hasAccess) {
@@ -73,7 +81,7 @@ export function getPostAuthRedirectUrl(opts: {
   if (safeNext) {
     return safeNext;
   }
-  return "/dashboard/";
+  return "/dashboard/backtest/";
 }
 
 type AuthSuccessBody = {
