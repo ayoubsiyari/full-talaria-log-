@@ -6919,8 +6919,12 @@ async function updateFirstrateLivePanel() {
       if (primary.current_file && phase === 'normalize' && st === 'running') {
         detailMsg = 'Processing: ' + primary.current_file;
         if (primary.message && primary.message.indexOf('error') !== -1) detailMsg += '\n' + primary.message;
+        var per = String(primary.period || 'week').toLowerCase();
         detailMsg +=
-          '\nMonth FX 1m files are large — merge can take 10–40 min per pair. Slow pairs are skipped after timeout so the job can finish.';
+          '\n' + per.toUpperCase() + ' FX 1m: each pair is merged after download (Registering). ' +
+          'Fresh/stale cards update only when this job finishes + you click Refresh. ' +
+          'If last bar stays on Friday after a week job, use Fix with day bundle (week often adds 0 new bars). ' +
+          'Merge can take 10–40 min per pair; slow pairs are skipped on timeout.';
         if (primary.seconds_since_file_progress != null) {
           detailMsg += '\nLast file finished: ' + Math.round(primary.seconds_since_file_progress / 60) + ' min ago.';
         }
