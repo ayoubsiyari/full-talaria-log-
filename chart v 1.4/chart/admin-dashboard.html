@@ -6950,6 +6950,7 @@ async function updateFirstrateLivePanel() {
       } catch (_) {}
       if (primary.job_id && primary.job_id !== _frLivePrevJobId && st === 'done') {
         _frLivePrevJobId = primary.job_id;
+        window._frImportFinishedAt = Date.now();
         try { await loadDatasets(true); } catch (e) {}
         try { await loadDatasetRegistry(); } catch (e) {}
         try { await refreshFirstrateNightlyHealth({ rescan: true }); } catch (e) {}
@@ -7703,7 +7704,11 @@ function _applyFirstrateHealthAutoRefresh(on) {
     _firstrateHealthAutoTimer = null;
   }
   if (on) {
-    _firstrateHealthAutoTimer = setInterval(refreshFirstrateNightlyHealth, 30_000);
+    _firstrateHealthAutoTimer = setInterval(function () {
+      var live = window._frActiveImport;
+      var afterImport = !live && window._frImportFinishedAt && Date.now() - window._frImportFinishedAt < 600000;
+      refreshFirstrateNightlyHealth({ rescan: !!afterImport });
+    }, 30_000);
   }
 }
 

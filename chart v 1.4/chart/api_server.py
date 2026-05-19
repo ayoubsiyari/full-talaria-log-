@@ -2473,6 +2473,7 @@ def _upsert_or_create_dataset_from_csv(
                     db_file.description = description
                 db.commit()
                 db.refresh(db_file)
+                _sync_1m_aggregate_end_ts_from_csv(int(db_file.id), final_path)
                 if not defer_binary_build:
                     build_binary_for_file(db_file.id, final_path, db_file.original_name)
                 try:
@@ -12071,6 +12072,38 @@ async def admin_firstrate_fx_live_status(request: Request):
         "primary_job": primary,
         "schedule": sch,
     }
+
+
+def _sync_1m_aggregate_end_ts_from_csv(file_id: int, csv_path: Path) -> bool:
+    """
+    After a CSV merge, update the 1m aggregate last-bar from disk immediately.
+
+    Chart binaries are queued async (`defer_binary_build`); without this, nightly
+    health keeps showing Friday's `end_ts` until the worker finishes (hours).
+    """
+    disk_ts = _tail_csv_last_timestamp_ms(csv_path)
+    if disk_ts is None:
+        return False
+    db = SessionLocal()
+    try:
+        agg = (
+            db.query(CSVAggregate)
+            .filter(CSVAggregate.file_id == int(file_id), CSVAggregate.timeframe == "1m")
+            .first()
+        )
+        if agg is None:
+            return False
+        agg.end_ts = float(disk_ts)
+        try:
+            agg.row_count = int(count_csv_rows(str(csv_path)))
+        except Exception:
+            pass
+        db.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        db.close()
 
 
 def _tail_csv_last_timestamp_ms(path: Path) -> float | None:
