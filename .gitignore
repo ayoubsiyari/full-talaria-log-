@@ -86,3 +86,6 @@ chart\ v\ 1.4/chart/__pycache__/
 
 # Chart legacy minified build (generated in Docker by `npm run build:chart-client`)
 chart\ v\ 1.4/chart/dist/
+
+# Docker COPY target for dashboard analytics backend (source: homepage/.../analytics/backend)
+chart\ v\ 1.4/chart/analytics_backend/

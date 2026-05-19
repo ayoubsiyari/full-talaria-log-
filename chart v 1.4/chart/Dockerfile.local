@@ -43,7 +43,12 @@ COPY ["chart v 1.4/chart/package.json", "chart v 1.4/chart/package-lock.json", "
 RUN npm ci
 
 COPY ["chart v 1.4/chart", "./"]
-COPY ["homepage/src/app/dashboard/analytics/backend", "/app/analytics_backend"]
+# Colocated with api_server.py so imports work even if only /app is on PYTHONPATH.
+COPY ["homepage/src/app/dashboard/analytics/backend", "./analytics_backend"]
+
+RUN test -f ./analytics_backend/backtest_whatif.py \
+    && test -d ./analytics_backend/analytics_core \
+    && python3 -c "import _analytics_bootstrap; _analytics_bootstrap.install(); import analytics_core, backtest_whatif"
 
 # Overwrite committed dist-v9 with freshly built + bump-dist-v9-cache output.
 COPY --from=v9_react /build/chart/dist-v9 ./dist-v9
@@ -55,7 +60,7 @@ RUN mkdir -p uploads/bin uploads/tiles uploads/aggregates data db indicators && 
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=45s --retries=5 \
     CMD curl -f http://localhost:8000/api/status || exit 1
 
 CMD ["gunicorn", "api_server:app", \

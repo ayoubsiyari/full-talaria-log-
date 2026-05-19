@@ -36,7 +36,7 @@ Route entry: `../page.tsx` → `BacktestAnalyticsPage`.
 | `backend/backtest_whatif.py` | What-if payload orchestration |
 
 Chart API loads `backend/` via `chart v 1.4/chart/_analytics_bootstrap.py`  
-(local dev: this path; Docker: copied to `/app/analytics_backend`).
+(local dev: this folder; Docker: copied to `chart/analytics_backend/` inside the image).
 
 ## Tests
 
