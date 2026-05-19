@@ -3030,6 +3030,7 @@ def _default_firstrate_schedule() -> dict:
         "last_error": None,
         "last_run_date": None,            # YYYY-MM-DD UTC; resets per-day completion list
         "last_run_types_today": [],       # instrument_types successfully synced today (scheduled)
+        "last_auto_repair_class": None,   # round-robin cursor for stale_auto (fx→futures→…)
         "vendor_last_update_by_type": {},  # last seen FirstRate last_update per type (incremental)
         "type_failure_cooldown_until": {},  # ISO UTC — backoff after a failed scheduled job
         "pairs": [],
@@ -3372,6 +3373,57 @@ def _firstrate_class_health_stats(instrument_type: str) -> dict:
     return stats
 
 
+_FIRSTRATE_AUTO_REPAIR_CLASS_ORDER = ("fx", "futures", "crypto", "stock", "etf")
+
+
+def _firstrate_tickers_repair_bucket(
+    instrument_type: str, bucket: str
+) -> list[str]:
+    """Tickers in this class that are only `stale` or only `missing` (not both)."""
+    want = (instrument_type or "").strip().lower()
+    bucket = (bucket or "").strip().lower()
+    if bucket not in {"stale", "missing"}:
+        return []
+    all_need = _firstrate_tickers_needing_repair(want)
+    if not all_need:
+        return []
+    now_ms = datetime.utcnow().timestamp() * 1000.0
+    out: list[str] = []
+    db = SessionLocal()
+    try:
+        files = db.query(CSVFile).all()
+        aggs = (
+            db.query(CSVAggregate)
+            .filter(CSVAggregate.timeframe == "1m")
+            .all()
+        )
+    finally:
+        db.close()
+    agg_by_file = {int(a.file_id): a for a in aggs}
+    for f in files:
+        ticker = _firstrate_extract_ticker_from_filename(f.original_name or "")
+        asset_class = _firstrate_classify_ticker(ticker) if ticker else None
+        if asset_class != want or not ticker:
+            continue
+        canon = ticker.upper()
+        if canon not in all_need:
+            continue
+        last_ts = None
+        agg = agg_by_file.get(int(f.id))
+        if agg is not None and agg.end_ts is not None:
+            try:
+                last_ts = float(agg.end_ts)
+            except (TypeError, ValueError):
+                last_ts = None
+        staleness_hours: float | None = None
+        if last_ts is not None:
+            staleness_hours = max(0.0, (now_ms - last_ts) / 3_600_000.0)
+        b = _firstrate_freshness_bucket(staleness_hours)
+        if b == bucket:
+            out.append(canon)
+    return sorted(set(out))
+
+
 def _firstrate_tickers_needing_repair(instrument_type: str) -> list[str]:
     """Canonical tickers in this class that are stale or missing (for targeted merge)."""
     want = (instrument_type or "").strip().lower()
@@ -3486,15 +3538,100 @@ def _firstrate_repair_candidates(cfg: dict) -> list[tuple[int, str, list[str], d
     return candidates
 
 
-def _firstrate_period_for_repair_stats(stats: dict) -> str:
-    if int(stats.get("missing_count") or 0) > 0:
-        return "month"
+def _firstrate_period_for_repair_stats(
+    stats: dict,
+    *,
+    trigger: str = "repair",
+    stale_only_job: bool = False,
+) -> str:
+    """
+    Manual Fix: month when any missing. Auto/stale_auto: week/day only — month ZIPs
+    (especially stock) monopolize the VPS and loop because missing_count stays > 0.
+    """
     max_h = stats.get("max_staleness_hours")
-    if int(stats.get("stale_count") or 0) > 0:
+    stale_n = int(stats.get("stale_count") or 0)
+    missing_n = int(stats.get("missing_count") or 0)
+    auto = str(trigger or "").strip().lower() in {"stale_auto", "schedule"}
+    no_month_auto = os.getenv("FIrstrate_AUTO_REPAIR_NO_MONTH", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if auto and no_month_auto:
+        if stale_n > 0 or stale_only_job:
+            if max_h is not None and float(max_h) <= 72:
+                return "day"
+            return "week"
+        if missing_n > 0:
+            return "week"
+        return "day"
+    if missing_n > 0 and not stale_only_job:
+        return "month"
+    if stale_n > 0:
         if max_h is not None and float(max_h) <= 72:
             return "day"
         return "week"
     return "day"
+
+
+def _firstrate_auto_repair_pair_list(instrument_type: str) -> tuple[list[str], dict, bool]:
+    """
+    Pairs for 24/7 auto-repair: prefer stale tickers (week bundle). Missing-only
+    tickers are capped (3) and still use week in auto — never month.
+    Returns (pair_list, health_stats, stale_only_job).
+    """
+    it = (instrument_type or "").strip().lower()
+    stats = _firstrate_class_health_stats(it)
+    stale_pairs = _firstrate_tickers_repair_bucket(it, "stale")
+    if stale_pairs:
+        return _firstrate_cap_pair_list(stale_pairs), stats, True
+    missing_pairs = _firstrate_tickers_repair_bucket(it, "missing")
+    skip_missing_only = os.getenv("FIrstrate_AUTO_REPAIR_SKIP_MISSING_ONLY", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if missing_pairs and not skip_missing_only:
+        cap = min(3, _firstrate_stale_repair_batch_limit() or 3)
+        return sorted(missing_pairs)[: max(1, cap)], stats, False
+    return [], stats, False
+
+
+def _firstrate_pick_auto_repair_candidate(
+    cfg: dict,
+    candidates: list[tuple[int, str, list[str], dict]],
+) -> tuple[str, list[str], dict] | None:
+    """
+    Round-robin across fx → futures → crypto → stock so stock missing_count
+    does not starve fx/futures forever.
+    """
+    if not candidates:
+        return None
+    by_class = {item[1]: item for item in candidates}
+    order = list(_FIRSTRATE_AUTO_REPAIR_CLASS_ORDER)
+    for k in by_class:
+        if k not in order:
+            order.append(k)
+    last = str(cfg.get("last_auto_repair_class") or "").strip().lower()
+    start = (order.index(last) + 1) % len(order) if last in order else 0
+    cooldown_h = _firstrate_repair_cooldown_hours(cfg)
+    for offset in range(len(order)):
+        it = order[(start + offset) % len(order)]
+        if it not in by_class:
+            continue
+        if _firstrate_type_in_failure_cooldown(it, cfg):
+            continue
+        hrs = _firstrate_hours_since_type_repair(cfg, it)
+        if hrs is not None and hrs < cooldown_h:
+            continue
+        _score, _it, _pairs, stats = by_class[it]
+        pair_list, stats, _stale_only = _firstrate_auto_repair_pair_list(it)
+        if not pair_list:
+            continue
+        return it, pair_list, stats
+    return None
 
 
 def _firstrate_pick_schedule_period(cfg: dict, instrument_type: str) -> tuple[str, dict]:
@@ -3615,50 +3752,38 @@ def _firstrate_hours_since_type_repair(cfg: dict, instrument_type: str) -> float
 
 def _firstrate_try_queue_auto_repair(cfg: dict) -> bool:
     """
-    24/7 background repair: queue stale/missing tickers only (`pairs` filter).
-
-    Rotates across classes (fx, futures, stock, …) instead of always picking
-    the highest score — prevents one class from monopolizing the import lock.
+    24/7 background repair: stale tickers only, week/day bundles, round-robin
+    fx → futures → crypto → stock (stock no longer wins every time due to missing).
     """
     candidates = _firstrate_repair_candidates(cfg)
     if not candidates:
         return False
 
-    cooldown_h = _firstrate_repair_cooldown_hours(cfg)
-
-    def _sort_key(item: tuple[int, str, list[str], dict]) -> tuple:
-        score, it, _, _stats = item
-        hrs = _firstrate_hours_since_type_repair(cfg, it)
-        # Deprioritize types repaired recently (large penalty), then by score.
-        penalty = 10_000_000 if (hrs is not None and hrs < cooldown_h) else 0
-        return (penalty, -score, it)
-
-    candidates.sort(key=_sort_key)
-
-    for _score, next_type, pair_list, stats in candidates:
-        if _firstrate_type_in_failure_cooldown(next_type, cfg):
-            continue
-        hrs = _firstrate_hours_since_type_repair(cfg, next_type)
-        if hrs is not None and hrs < cooldown_h:
-            continue
-        period = _firstrate_period_for_repair_stats(stats)
-        adjustment = _firstrate_default_adjustment_for(next_type)
-        _firstrate_queue_scheduled_import_for_type(
-            cfg=cfg,
-            next_type=next_type,
-            pair_list=pair_list,
-            adjustment=adjustment,
-            period_override=period,
-            trigger="stale_auto",
-            force_download=True,
-        )
-        cfg2 = _load_firstrate_schedule()
-        last_map = dict(cfg2.get("last_repair_queued_at_by_type") or {})
-        last_map[next_type] = datetime.utcnow().isoformat() + "Z"
-        cfg2["last_repair_queued_at_by_type"] = last_map
-        _save_firstrate_schedule(cfg2)
-        return True
-    return False
+    picked = _firstrate_pick_auto_repair_candidate(cfg, candidates)
+    if not picked:
+        return False
+    next_type, pair_list, stats = picked
+    stale_only = bool(_firstrate_tickers_repair_bucket(next_type, "stale"))
+    period = _firstrate_period_for_repair_stats(
+        stats, trigger="stale_auto", stale_only_job=stale_only
+    )
+    adjustment = _firstrate_default_adjustment_for(next_type)
+    _firstrate_queue_scheduled_import_for_type(
+        cfg=cfg,
+        next_type=next_type,
+        pair_list=pair_list,
+        adjustment=adjustment,
+        period_override=period,
+        trigger="stale_auto",
+        force_download=True,
+    )
+    cfg2 = _load_firstrate_schedule()
+    last_map = dict(cfg2.get("last_repair_queued_at_by_type") or {})
+    last_map[next_type] = datetime.utcnow().isoformat() + "Z"
+    cfg2["last_repair_queued_at_by_type"] = last_map
+    cfg2["last_auto_repair_class"] = next_type
+    _save_firstrate_schedule(cfg2)
+    return True
 
 
 def _firstrate_schedule_after_job(job_id: str, success: bool, error_message: str | None) -> None:
@@ -3774,7 +3899,8 @@ def _firstrate_scheduler_tick() -> None:
             period_override = None
             if pair_list != all_pairs:
                 period_override = _firstrate_period_for_repair_stats(
-                    _firstrate_class_health_stats(next_type)
+                    _firstrate_class_health_stats(next_type),
+                    trigger="schedule",
                 )
             _firstrate_queue_scheduled_import_for_type(
                 cfg=cfg,
@@ -3834,7 +3960,8 @@ def _firstrate_scheduler_tick() -> None:
             period_override = None
             if pair_list != all_pairs:
                 period_override = _firstrate_period_for_repair_stats(
-                    _firstrate_class_health_stats(next_type)
+                    _firstrate_class_health_stats(next_type),
+                    trigger="schedule",
                 )
             _firstrate_queue_scheduled_import_for_type(
                 cfg=cfg,
@@ -12446,7 +12573,10 @@ async def admin_pipeline_unstick(request: Request):
 
 
 @app.post("/api/admin/datasets/firstrate-fx/repair-stale-now")
-async def admin_firstrate_repair_stale_now(request: Request):
+async def admin_firstrate_repair_stale_now(
+    request: Request,
+    prefer_class: str | None = None,
+):
     """
     Clear import lock, then queue one stale-only repair job (highest-priority asset class).
     Use when auto-sync appears stuck or Fix issues returns 'import already running'.
@@ -12473,7 +12603,28 @@ async def admin_firstrate_repair_stale_now(request: Request):
                 "Restart trading-chart: docker compose restart trading-chart"
             ),
         )
-    queued = _firstrate_try_queue_auto_repair(cfg)
+    prefer = (prefer_class or "").strip().lower()
+    queued = False
+    if prefer and prefer in VALID_INSTRUMENT_TYPES:
+        pair_list, stats, stale_only = _firstrate_auto_repair_pair_list(prefer)
+        if pair_list and not _firstrate_has_active_import_job():
+            period = _firstrate_period_for_repair_stats(
+                stats, trigger="stale_auto", stale_only_job=stale_only
+            )
+            _firstrate_queue_scheduled_import_for_type(
+                cfg=cfg,
+                next_type=prefer,
+                pair_list=pair_list,
+                adjustment=_firstrate_default_adjustment_for(prefer),
+                period_override=period,
+                trigger="stale_auto",
+                force_download=True,
+            )
+            cfg["last_auto_repair_class"] = prefer
+            _save_firstrate_schedule(cfg)
+            queued = True
+    if not queued:
+        queued = _firstrate_try_queue_auto_repair(cfg)
     if not queued:
         detail = "No stale/missing tickers to repair, or all classes are in cooldown."
         if not cfg.get("enabled"):

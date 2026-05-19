@@ -2723,7 +2723,7 @@ select { cursor:default; }
                 <strong style="font-size:12px">VPS pipeline (import + chart binaries)</strong>
                 <span class="card-badge" id="frPipelineBadge" style="background:var(--panel);color:var(--text-muted)">loading…</span>
                 <button type="button" class="btn sm" onclick="firstratePipelineUnstick()" title="Immediately cancel stuck imports (no 60 min wait) and resume stale repair">Unstick</button>
-                <button type="button" class="btn sm primary" onclick="firstrateRepairStaleNow()" title="Cancel any blocking import and queue stale-only repair (12 tickers max per job)">Repair stale now</button>
+                <button type="button" class="btn sm primary" onclick="firstrateRepairStaleNow()" title="Cancel blocking import and queue fx stale tickers first (week bundle, 12 max — not stock month)">Repair fx stale</button>
                 <button type="button" class="btn sm" style="margin-left:auto" onclick="refreshFirstratePipelineDiagnostics(true)">Refresh pipeline</button>
               </div>
               <p id="frPipelineSummary" style="margin:0 0 8px;font-size:11px;color:var(--text-muted);line-height:1.45">Import runs on API; chart binaries on worker (1 at a time). <strong>While «import running», manual Fix and auto-sync are blocked.</strong> Stale counts update only after import ends + <strong>Refresh</strong>.</p>
@@ -6731,7 +6731,7 @@ async function firstrateRepairStaleNow() {
   var body = $('frPipelineBody');
   if (body) body.textContent = 'Repair stale: clearing lock and queueing…';
   try {
-    var d = await api('/api/admin/datasets/firstrate-fx/repair-stale-now', { method: 'POST' });
+    var d = await api('/api/admin/datasets/firstrate-fx/repair-stale-now?prefer_class=fx', { method: 'POST' });
     _frPipelineLastRun = 0;
     toast(d.message || 'Stale repair queued', 'ok');
     if (body) body.textContent = JSON.stringify(d, null, 2);
