@@ -24,6 +24,8 @@ import {
   Pencil,
 } from "lucide-react";
 
+import NinjaTraderWordmark from "../../ninjatrader/Landing-Page-Text-Images/NinjaTrader/NinjaTrader_Wordmark_color_RGB.png";
+
 const talariaBrands = [
   
   { name: "Talaria-Prop", href: "#" },
@@ -586,9 +588,18 @@ export default function HomePage() {
                   {t.tabs.backtest}
                 </Button>
               </Link>
-              <Link href="/ninjatrader/">
-                <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
-                  {t.tabs.ninjatrader}
+              <Link href="/ninjatrader/" className="inline-flex">
+                <Button
+                  variant="ghost"
+                  className="rounded-full h-auto px-4 py-3 sm:px-8 sm:py-5 bg-[#060912]/95 border border-white/10 hover:bg-[#0a101c] hover:border-[#ff4d00]/35 shadow-[0_0_0_1px_rgba(255,77,0,0.12),0_12px_32px_rgba(255,77,0,0.08)] hover:shadow-[0_0_0_1px_rgba(255,77,0,0.28),0_16px_40px_rgba(255,77,0,0.14)] transition-all"
+                >
+                  <Image
+                    src={NinjaTraderWordmark}
+                    alt={t.tabs.ninjatrader}
+                    width={152}
+                    height={24}
+                    className="h-[14px] sm:h-[18px] w-auto object-contain"
+                  />
                 </Button>
               </Link>
             </motion.div>

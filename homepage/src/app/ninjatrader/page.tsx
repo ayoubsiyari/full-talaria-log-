@@ -15,6 +15,9 @@ import NinjaTraderMonitor from "../../../ninjatrader/Landing-Page-Text-Images/Ni
 import KinetickBadge from "../../../ninjatrader/Landing-Page-Text-Images/Kinetick/Kinetick_Badge.png";
 import KinetickLogo from "../../../ninjatrader/Landing-Page-Text-Images/Kinetick/Kinetick_Logo.png";
 
+/** NinjaTrader affiliate / vendor landing (hero CTAs). */
+const NINJATRADER_VENDOR_URL = "https://ninjatraderdomesticvendor.sjv.io/xJnDGk";
+
 const talariaBrands = [
   { name: "Talaria-Prop", href: "#" },
   { name: "Talaria-Flow", href: "#" },
@@ -332,25 +335,25 @@ export default function NinjaTraderPage() {
               </p>
 
               <div className="flex flex-col sm:flex-row flex-wrap gap-3">
-                <a href="http://ninjatrader.com/GetStarted" target="_blank" rel="noreferrer" className="inline-flex">
+                <a href={NINJATRADER_VENDOR_URL} target="_blank" rel="noopener noreferrer" className="inline-flex">
                   <Button className="bg-purple-600 hover:bg-purple-700 text-white px-6">
                     {t.hero.ctas.platform}
                     <ExternalLink className={`w-4 h-4 ${isArabic ? "mr-2" : "ml-2"}`} />
                   </Button>
                 </a>
-                <a href="http://ninjatrader.com" target="_blank" rel="noreferrer" className="inline-flex">
+                <a href={NINJATRADER_VENDOR_URL} target="_blank" rel="noopener noreferrer" className="inline-flex">
                   <Button className="bg-blue-600 hover:bg-blue-700 text-white px-6">
                     {t.hero.ctas.download}
                     <ExternalLink className={`w-4 h-4 ${isArabic ? "mr-2" : "ml-2"}`} />
                   </Button>
                 </a>
-                <a href="http://ninjatrader.com/Simulate" target="_blank" rel="noreferrer" className="inline-flex">
+                <a href={NINJATRADER_VENDOR_URL} target="_blank" rel="noopener noreferrer" className="inline-flex">
                   <Button variant="ghost" className="text-white hover:text-blue-400 px-6">
                     {t.hero.ctas.simulator}
                     <ExternalLink className={`w-4 h-4 ${isArabic ? "mr-2" : "ml-2"}`} />
                   </Button>
                 </a>
-                <a href="http://ninjatrader.com" target="_blank" rel="noreferrer" className="inline-flex">
+                <a href={NINJATRADER_VENDOR_URL} target="_blank" rel="noopener noreferrer" className="inline-flex">
                   <Button variant="ghost" className="text-white hover:text-blue-400 px-6">
                     {t.hero.ctas.startFree}
                     <ExternalLink className={`w-4 h-4 ${isArabic ? "mr-2" : "ml-2"}`} />
