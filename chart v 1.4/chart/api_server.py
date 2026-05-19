@@ -2590,13 +2590,53 @@ def _firstrate_cleanup_jobs() -> None:
             pass
 
 
-def _firstrate_write_job(job_id: str, state: dict) -> None:
+def _firstrate_write_job(job_id: str, state: dict, *, force: bool = False) -> None:
+    """
+  Write job JSON. When `force` is false, do not overwrite admin-cancelled / failed jobs
+  (background import threads keep running after Unstick otherwise).
+    """
+    if not force:
+        cur = _firstrate_read_job(job_id)
+        if cur:
+            if cur.get("cancelled"):
+                return
+            cur_status = str(cur.get("status") or "")
+            new_status = str(state.get("status") or "")
+            if cur_status == "failed" and new_status in ("queued", "running"):
+                return
     p = _firstrate_job_path(job_id)
     state["updated_at"] = datetime.utcnow().isoformat()
     tmp = p.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(state, f)
     tmp.replace(p)
+
+
+def _firstrate_job_aborted(job_id: str) -> bool:
+    st = _firstrate_read_job(job_id)
+    if not st:
+        return True
+    if st.get("cancelled"):
+        return True
+    return str(st.get("status") or "") == "failed"
+
+
+def _firstrate_force_fail_running_import_jobs(reason: str) -> int:
+    """Admin Unstick: fail every queued/running import immediately (no idle-time wait)."""
+    _firstrate_cleanup_jobs()
+    n = 0
+    for p in FIrstrate_JOBS_DIR.glob("*.json"):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                st = json.load(f)
+            if str(st.get("status") or "") not in ("queued", "running"):
+                continue
+            job_id = str(st.get("job_id") or p.stem)
+            _firstrate_fail_stuck_job(st, job_id, reason[:2000])
+            n += 1
+        except Exception:
+            continue
+    return n
 
 
 def _call_with_timeout(timeout_sec: float, fn, *args, **kwargs):
@@ -2626,6 +2666,8 @@ def _firstrate_start_file_heartbeat(
         while not stop.wait(12.0):
             st = _firstrate_read_job(job_id)
             if not st or str(st.get("status")) not in ("queued", "running"):
+                break
+            if st.get("cancelled"):
                 break
             st["message"] = message
             if current_file:
@@ -3038,9 +3080,10 @@ def _firstrate_parse_job_utc(ts_raw: str | None) -> datetime | None:
 def _firstrate_fail_stuck_job(st: dict, job_id: str, reason: str) -> None:
     st["status"] = "failed"
     st["phase"] = "failed"
+    st["cancelled"] = True
     st["message"] = reason[:2000]
     st["error"] = reason[:4000]
-    _firstrate_write_job(job_id, st)
+    _firstrate_write_job(job_id, st, force=True)
     try:
         _firstrate_schedule_after_job(job_id, success=False, error_message=reason)
     except Exception:
@@ -3379,7 +3422,7 @@ def _firstrate_stale_pairs_only(cfg: dict) -> bool:
 def _firstrate_stale_repair_batch_limit() -> int:
     """Max tickers per auto-repair job (0 = no limit)."""
     try:
-        return max(0, int(os.getenv("FIrstrate_STALE_REPAIR_MAX_PAIRS", "0")))
+        return max(0, int(os.getenv("FIrstrate_STALE_REPAIR_MAX_PAIRS", "12")))
     except (TypeError, ValueError):
         return 0
 
@@ -3554,7 +3597,7 @@ def _firstrate_queue_scheduled_import_for_type(
 def _firstrate_repair_cooldown_hours(cfg: dict) -> float:
     return max(
         1.0,
-        float(os.getenv("FIrstrate_REPAIR_CLASS_COOLDOWN_HOURS", "8")),
+        float(os.getenv("FIrstrate_REPAIR_CLASS_COOLDOWN_HOURS", "2")),
     )
 
 
@@ -3607,7 +3650,7 @@ def _firstrate_try_queue_auto_repair(cfg: dict) -> bool:
             adjustment=adjustment,
             period_override=period,
             trigger="stale_auto",
-            force_download=False,
+            force_download=True,
         )
         cfg2 = _load_firstrate_schedule()
         last_map = dict(cfg2.get("last_repair_queued_at_by_type") or {})
@@ -7348,6 +7391,8 @@ def _run_firstrate_import_job(job_id: str) -> None:
             merge_timeout = float(os.getenv("FIrstrate_FILE_MERGE_TIMEOUT_SEC", "2400"))
 
             for src_idx, src in enumerate(csv_paths):
+                if _firstrate_job_aborted(job_id):
+                    return
                 stem_raw = src.stem
                 stem_safe = re.sub(r"[^A-Za-z0-9_\-]+", "_", stem_raw).strip("_")[:96] or "instrument"
                 out_name = f"{ts_prefix}_b{bundle_idx:02d}_{src_idx:04d}_firstrate_{stem_safe}_{timeframe}.csv"
@@ -12370,11 +12415,23 @@ async def admin_pipeline_diagnostics(request: Request):
 
 @app.post("/api/admin/datasets/pipeline-unstick")
 async def admin_pipeline_unstick(request: Request):
-    """Force-reclaim stuck import + binary jobs, then return fresh diagnostics."""
+    """Force-fail active imports (no 60 min wait), reclaim binaries, clear repair cooldowns."""
     _require_admin(request)
-    import_r = _firstrate_reclaim_stuck_import_jobs()
+    import_r = _firstrate_force_fail_running_import_jobs(
+        "Admin Unstick: import cancelled so stale repair can run"
+    )
+    import_r += _firstrate_reclaim_stuck_import_jobs()
     binary_r = _reclaim_stale_binary_build_jobs(stale_minutes=30)
     redundant_r = _sweep_redundant_binary_jobs()
+    try:
+        cfg = _load_firstrate_schedule()
+        cfg["type_failure_cooldown_until"] = {}
+        cfg["last_error"] = None
+        cfg["last_message"] = "Unstick: import lock cleared — stale-only auto-sync will resume"
+        _save_firstrate_schedule(cfg)
+        repair_queued = _firstrate_try_queue_auto_repair(cfg)
+    except Exception:
+        repair_queued = False
     diag = _collect_pipeline_diagnostics()
     return {
         "success": True,
@@ -12383,7 +12440,51 @@ async def admin_pipeline_unstick(request: Request):
             "binary_build_jobs": binary_r,
             "redundant_binary_jobs_cleared": redundant_r,
         },
+        "stale_repair_queued": bool(repair_queued),
         **diag,
+    }
+
+
+@app.post("/api/admin/datasets/firstrate-fx/repair-stale-now")
+async def admin_firstrate_repair_stale_now(request: Request):
+    """
+    Clear import lock, then queue one stale-only repair job (highest-priority asset class).
+    Use when auto-sync appears stuck or Fix issues returns 'import already running'.
+    """
+    _require_admin(request)
+    if not get_firstrate_userid():
+        raise HTTPException(
+            status_code=400,
+            detail="Set FIrstrate_USERID on the trading-chart container.",
+        )
+    forced = _firstrate_force_fail_running_import_jobs(
+        "Repair stale now: cancelled blocking import"
+    )
+    _firstrate_reclaim_stuck_import_jobs()
+    cfg = _load_firstrate_schedule()
+    cfg["type_failure_cooldown_until"] = {}
+    cfg["auto_repair"] = True
+    _save_firstrate_schedule(cfg)
+    if _firstrate_has_active_import_job():
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Import still marked active after force-cancel. "
+                "Restart trading-chart: docker compose restart trading-chart"
+            ),
+        )
+    queued = _firstrate_try_queue_auto_repair(cfg)
+    if not queued:
+        detail = "No stale/missing tickers to repair, or all classes are in cooldown."
+        if not cfg.get("enabled"):
+            detail += " Enable automatic schedule + 24/7 stale-only auto-sync."
+        raise HTTPException(status_code=400, detail=detail)
+    cfg2 = _load_firstrate_schedule()
+    return {
+        "success": True,
+        "forced_cancelled_imports": forced,
+        "queued": True,
+        "message": cfg2.get("last_message") or "Stale-only repair queued",
     }
 
 

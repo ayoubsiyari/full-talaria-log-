@@ -2327,7 +2327,7 @@ select { cursor:default; }
             <button type="button" class="ds-hub-tab" data-ds-tab="import" onclick="setDsHubTab('import')">Import</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="sync" onclick="setDsHubTab('sync')">Sync health</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="maintenance" onclick="setDsHubTab('maintenance')">Maintenance</button>
-            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-05-19a</span>
+            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-05-19b</span>
           </div>
         </div>
 
@@ -2722,7 +2722,8 @@ select { cursor:default; }
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
                 <strong style="font-size:12px">VPS pipeline (import + chart binaries)</strong>
                 <span class="card-badge" id="frPipelineBadge" style="background:var(--panel);color:var(--text-muted)">loading…</span>
-                <button type="button" class="btn sm" onclick="firstratePipelineUnstick()" title="Re-queue hung binary jobs and auto-fail stuck imports">Unstick</button>
+                <button type="button" class="btn sm" onclick="firstratePipelineUnstick()" title="Immediately cancel stuck imports (no 60 min wait) and resume stale repair">Unstick</button>
+                <button type="button" class="btn sm primary" onclick="firstrateRepairStaleNow()" title="Cancel any blocking import and queue stale-only repair (12 tickers max per job)">Repair stale now</button>
                 <button type="button" class="btn sm" style="margin-left:auto" onclick="refreshFirstratePipelineDiagnostics(true)">Refresh pipeline</button>
               </div>
               <p id="frPipelineSummary" style="margin:0 0 8px;font-size:11px;color:var(--text-muted);line-height:1.45">Import runs on API; chart binaries on worker (1 at a time). <strong>While «import running», manual Fix and auto-sync are blocked.</strong> Stale counts update only after import ends + <strong>Refresh</strong>.</p>
@@ -6716,10 +6717,31 @@ async function firstratePipelineUnstick() {
         warnEl.style.display = 'none';
       }
     }
-    toast('Pipeline unstick done — import reclaimed: ' + ((d.reclaimed && d.reclaimed.firstrate_import_jobs) || 0) + ', binary: ' + ((d.reclaimed && d.reclaimed.binary_build_jobs) || 0));
+    var imp = (d.reclaimed && d.reclaimed.firstrate_import_jobs) || 0;
+    var msg = 'Unstick done — cancelled ' + imp + ' import(s), binary reclaimed: ' + ((d.reclaimed && d.reclaimed.binary_build_jobs) || 0);
+    if (d.stale_repair_queued) msg += '. Stale repair queued.';
+    toast(msg, imp > 0 || d.stale_repair_queued ? 'ok' : 'warn');
   } catch (e) {
     if (body) body.textContent = 'Unstick failed: ' + (e && e.message ? e.message : String(e));
     toast('Unstick failed', 'error');
+  }
+}
+
+async function firstrateRepairStaleNow() {
+  var body = $('frPipelineBody');
+  if (body) body.textContent = 'Repair stale: clearing lock and queueing…';
+  try {
+    var d = await api('/api/admin/datasets/firstrate-fx/repair-stale-now', { method: 'POST' });
+    _frPipelineLastRun = 0;
+    toast(d.message || 'Stale repair queued', 'ok');
+    if (body) body.textContent = JSON.stringify(d, null, 2);
+    try { ensureFirstrateLivePoll(); } catch (_) {}
+    await refreshFirstratePipelineDiagnostics(true);
+    try { await refreshFirstrateNightlyHealth({ rescan: false }); } catch (_) {}
+  } catch (e) {
+    var err = e && e.message ? e.message : String(e);
+    if (body) body.textContent = 'Repair stale failed: ' + err;
+    toast('Repair stale failed: ' + err, 'err');
   }
 }
 
@@ -6919,6 +6941,9 @@ async function updateFirstrateLivePanel() {
         status: st,
         pct: pct,
       };
+      try {
+        if (_firstrateHealthCache) _renderFirstrateNightlyHealth();
+      } catch (_) {}
       if (primary.job_id && primary.job_id !== _frLivePrevJobId && st === 'done') {
         _frLivePrevJobId = primary.job_id;
         try { await loadDatasets(true); } catch (e) {}
@@ -7526,9 +7551,24 @@ function _renderFirstrateNightlyHealth() {
           ': day if all fresh, week if stale, month if missing. Same as Fix issues when problems exist."',
       ];
       if (!hasTickers) btnAttrs.push('disabled');
+      var liveImp = window._frActiveImport;
+      var importingThisClass =
+        liveImp &&
+        liveImp.status === 'running' &&
+        liveImp.instrument_type === c.asset_class;
+      var importProgressNote = '';
+      if (importingThisClass) {
+        importProgressNote =
+          '<div style="display:block;margin:6px 0;padding:6px 8px;border-radius:6px;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.25);font-size:11px;color:#7dd3fc;line-height:1.45">' +
+          '<strong>Import in progress (' +
+          Math.round(liveImp.pct || 0) +
+          '%)</strong> — fresh/stale counts on this card are <em>not</em> updated live. ' +
+          'They refresh automatically when the job finishes (or click Refresh with rescan).' +
+          '</div>';
+      }
       var issueN = (c.stale_count || 0) + (c.missing_count || 0);
       var fixBtns = '';
-      if (issueN > 0) {
+      if (issueN > 0 && !importingThisClass) {
         var fixTitle = 'Queue FirstRate repair for ' + issueN + ' ticker(s)';
         if (c.missing_count > 0) fixTitle += ' (month bundle — covers stale + missing)';
         else fixTitle += ' (week bundle for stale tickers)';
