@@ -445,6 +445,12 @@ const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
   magnet: new Set(["magnet", "magnetOff", "magnetWeak", "magnetStrong"]),
 });
 
+/** V9 fib rail icons that expose an Input tab (matches legacy `isFibonacciInputTabTool` + spiral CCW). */
+const V9_FIB_ICONS_WITH_INPUT_TAB = new Set([
+  "fib", "fibExtension", "fibChannel", "fibTimeZone", "fibFan", "fibTime",
+  "fibCircles", "fibArcs", "fibWedge", "fibSpiral",
+]);
+
 function v9RailSubtoolOrFallback(groupId, sel, fallback) {
   const allowed = V9_RAIL_ICONS_BY_GROUP[groupId];
   if (!allowed) return sel || fallback;
@@ -493,6 +499,22 @@ function v9SubToolIconFromDrawingType(drawingType, panelGroup) {
       "date-price-range": "measure",
       "long-position": "longPos",
       "short-position": "shortPos",
+    },
+    fib: {
+      "fibonacci-retracement": "fib",
+      "fibonacci-extension": "fibExtension",
+      "trend-fib-extension": "fibExtension",
+      "fib-channel": "fibChannel",
+      "fib-timezone": "fibTimeZone",
+      "fib-speed-fan": "fibFan",
+      "trend-fib-time": "fibTime",
+      "fib-circles": "fibCircles",
+      "fib-spiral": "fibSpiral",
+      "fib-arcs": "fibArcs",
+      "fib-wedge": "fibWedge",
+      "gann-box": "gannBox",
+      "gann-square-fixed": "gannSquare",
+      "gann-fan": "gannFan",
     },
   };
   return (byGroup[panelGroup] && byGroup[panelGroup][drawingType]) || null;
@@ -1302,6 +1324,31 @@ const V9_LEGACY_DASH_STRING_TO_LINE_TYPE = (() => {
 
 /** V9 line type → chart.js `stroke-dasharray` for parallel-channel level lines. */
 const V9_LINE_TYPE_TO_LEGACY_DASH = { solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4', bold: '' };
+
+/** Default parallel-channel level rows (matches `ParallelChannelTool` / legacy settings). */
+function v9DefaultParallelChannelChLines(strokeColor) {
+  const base = strokeColor || "#2962FF";
+  return [
+    { on: false, value: "-0.25", color: "#1e3a5f", type: "solid", width: "2" },
+    { on: false, value: "0.25", color: "#1e3a5f", type: "solid", width: "2" },
+    { on: true, value: "0.5", color: base, type: "dashed", width: "1" },
+    { on: false, value: "0.75", color: "#1e3a5f", type: "solid", width: "2" },
+    { on: false, value: "1.25", color: "#1e3a5f", type: "solid", width: "2" },
+  ].map((row) => ({ ...row }));
+}
+
+/** Panel-safe `chLines` — never empty for parallel-channel UI. */
+function v9ResolveParallelChannelChLines(tlStyle, drawing) {
+  if (Array.isArray(tlStyle?.chLines) && tlStyle.chLines.length > 0) {
+    return tlStyle.chLines;
+  }
+  const stroke = drawing?.style?.stroke || drawing?.style?.color || tlStyle?.lineColor;
+  if (Array.isArray(drawing?.levels) && drawing.levels.length > 0) {
+    const fromLv = v9ParallelLevelsToChLines(drawing.levels);
+    if (fromLv && fromLv.length) return fromLv;
+  }
+  return v9DefaultParallelChannelChLines(stroke);
+}
 
 /** `drawing.levels` (parallel-channel) ↔ Settings panel `tlStyle.chLines`. */
 function v9ParallelLevelsToChLines(levels) {
@@ -7016,7 +7063,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a28-drawing-input-tabs";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a29-fib-input-tabs";
   }, []);
 
   useEffect(() => {
@@ -12530,7 +12577,8 @@ const TalariaV8bLive = () => {
           {(()=>{
             const noTextTab = isFibTool || isGannTool || isPatternTool || effectiveTlGroup === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
             const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","curve","doubleCurve","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
-            const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || (isFibTool && tlSubTool.icon !== "fibSpiral") || isGannTool
+            const hasFibInputTab = V9_FIB_ICONS_WITH_INPUT_TAB.has(tlSubTool.icon);
+            const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || hasFibInputTab || isGannTool
               || ["channel", "pitchfork", "flatChannel", "disjointCh"].includes(tlSubTool.icon);
             const tlTabs=[["style","Style"],!noTextTab&&["text","Text"],hasInputTab&&["input","Input"],!noCoordsTab&&["coordinates","Coordinates"],["visibility","Visibility"]].filter(Boolean);
             const tlTabIdx=Math.max(0, tlTabs.findIndex(([id])=>id===tlSettTab));
@@ -13753,8 +13801,9 @@ const TalariaV8bLive = () => {
               </div></>}
             </>}
 
-            {/* ── INPUT TAB ── */}
-            {tlSettTab==="input" && tlSubTool.icon.startsWith("fib") && (()=>{
+            {/* ── INPUT TAB (Fibonacci family) ── */}
+            {tlSettTab==="input" && V9_FIB_ICONS_WITH_INPUT_TAB.has(tlSubTool.icon) && (()=>{
+              const fi = tlSubTool.icon;
               const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
               const dropShellFib = (key, w, rightAlign, children) => (
                 <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} style={{ position:"absolute", top:"calc(100% + 4px)", zIndex:10,
@@ -13773,7 +13822,12 @@ const TalariaV8bLive = () => {
                            boxShadow:swHov===key||colorPicker===key?`0 0 8px ${color}`:"inset 0 1px 3px rgba(0,0,0,0.5)",
                            transition:"border-color 0.12s,box-shadow 0.12s" }}/>
               );
-              if (tlSubTool.icon === "fibTimeZone") return <>
+              if (fi === "fibSpiral") return (
+                <div style={{ padding:"8px 0" }}>
+                  {TlChk(tlStyle.fibSpiralCCW ?? false, "tlchk-fibSpiralCCW-in", "Counter Clockwise", () => setTlStyle(s => ({ ...s, fibSpiralCCW: !(s.fibSpiralCCW ?? false) })))}
+                </div>
+              );
+              if (fi === "fibTimeZone") return <>
                 <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"8px 0 10px" }}>FIBONACCI NUMBERS</div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, alignItems:"end", paddingRight:24 }}>
                   <div/>
@@ -13883,7 +13937,7 @@ const TalariaV8bLive = () => {
                   </div>
                 </div>
               </>;
-              if (tlSubTool.icon === "fibFan") {
+              if (fi === "fibFan") {
                 const mkLevelsSection = (title, stateKey, swatchPrefix, hkPrefix, addHk, resetHk, defaultLevels) => <>
                   <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"8px 0 10px" }}>{title}</div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", columnGap:12, rowGap:8, padding:"0 0 8px" }}>
@@ -13947,7 +14001,7 @@ const TalariaV8bLive = () => {
                 </>;
               }
               return <>
-                {tlSubTool.icon === "fibTime" && (()=>{
+                {fi === "fibTime" && (()=>{
                   const on = tlStyle.fibTrendLine;
                   const op = on ? 1 : 0.38;
                   const pe = on ? "auto" : "none";
@@ -14020,8 +14074,8 @@ const TalariaV8bLive = () => {
                     </div>
                   </div>;
                 })()}
-                {(tlSubTool.icon === "fibArcs" || tlSubTool.icon === "fibWedge") && (()=>{
-                  const isArcs = tlSubTool.icon === "fibArcs";
+                {(fi === "fibArcs" || fi === "fibWedge") && (()=>{
+                  const isArcs = fi === "fibArcs";
                   const on = isArcs ? tlStyle.fibArcsTrendLine : tlStyle.fibWedgeTrendLine;
                   const op = on ? 1 : 0.38;
                   const pe = on ? "auto" : "none";
