@@ -112,23 +112,48 @@ class TileManager {
     }
 }
 
-/** Suppress the native browser context menu anywhere inside the chart shell. */
+/** Text fields keep the native menu (spellcheck, etc.). */
+function _chartContextMenuAllowNative(target) {
+    if (!target || typeof target.closest !== 'function') return false;
+    return !!target.closest(
+        'input, textarea, select, option, [contenteditable="true"], [contenteditable=""]'
+    );
+}
+
+/** True when the event target is part of the chart app (including UI portaled to body). */
+function _chartContextMenuShouldBlock(target) {
+    if (!target || typeof target.closest !== 'function') return false;
+    if (_chartContextMenuAllowNative(target)) return false;
+
+    const html = document.documentElement;
+    if (html && html.classList.contains('multichart-embed')) return true;
+
+    if (target.closest('[data-v9-app]')) return true;
+
+    const chartAppActive =
+        !!document.querySelector('[data-v9-app]') ||
+        !!document.getElementById('chartCanvas');
+    if (!chartAppActive) return false;
+
+    return !!target.closest(
+        '#chart-container, #chartWrapper, .chart-wrapper, #panels-container, #chartCanvas, ' +
+        '.linked-pane-wrapper, .chart-context-menu, .tv-context-menu, .drawing-style-editor, ' +
+        '.drawing-toolbar, .chart-settings-modal, .settings-sidebar, #compareModalOverlay, ' +
+        '.compare-modal-overlay, [data-multichart-grid], [data-v9-chrome], [data-chart-ui]'
+    );
+}
+
+/** Suppress the native browser context menu across the chart shell. */
 let _chartContextMenuCaptureInstalled = false;
 function installChartContextMenuCapture() {
     if (_chartContextMenuCaptureInstalled || typeof document === 'undefined') return;
     _chartContextMenuCaptureInstalled = true;
     document.addEventListener('contextmenu', (e) => {
-        if (!e || !e.target || typeof e.target.closest !== 'function') return;
-        const inChart =
-            e.target.closest('#chart-container') ||
-            e.target.closest('#chartWrapper') ||
-            e.target.closest('.chart-wrapper') ||
-            e.target.closest('#panels-container') ||
-            e.target.id === 'chartCanvas' ||
-            e.target.closest('.linked-pane-wrapper');
-        if (inChart) e.preventDefault();
+        if (!e || !e.target) return;
+        if (_chartContextMenuShouldBlock(e.target)) e.preventDefault();
     }, { capture: true });
 }
+installChartContextMenuCapture();
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {

@@ -13,6 +13,30 @@
         } catch (e) {}
     })();
     </script>
+    <script>
+    (function () {
+        function allowNative(t) {
+            if (!t || !t.closest) return false;
+            return !!t.closest('input,textarea,select,option,[contenteditable="true"],[contenteditable=""]');
+        }
+        function shouldBlock(t) {
+            if (!t || !t.closest) return false;
+            if (allowNative(t)) return false;
+            if (document.documentElement.classList.contains('multichart-embed')) return true;
+            if (t.closest('[data-v9-app]')) return true;
+            if (!document.querySelector('[data-v9-app]') && !document.getElementById('chartCanvas')) return false;
+            return !!t.closest(
+                '#chart-container,#chartWrapper,.chart-wrapper,#panels-container,#chartCanvas,' +
+                '.linked-pane-wrapper,.chart-context-menu,.tv-context-menu,.drawing-style-editor,' +
+                '.drawing-toolbar,.chart-settings-modal,.settings-sidebar,#compareModalOverlay,' +
+                '.compare-modal-overlay,[data-multichart-grid],[data-v9-chrome],[data-chart-ui]'
+            );
+        }
+        document.addEventListener('contextmenu', function (e) {
+            if (e && e.target && shouldBlock(e.target)) e.preventDefault();
+        }, true);
+    })();
+    </script>
 
     <!-- ──────────────────────────────────────────────────────────────────
          MULTICHART EMBED SHIM (Phase 7.2.1 foundation — SOURCE OF TRUTH)

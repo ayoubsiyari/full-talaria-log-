@@ -72,6 +72,28 @@ const LAYOUT_SYNC_HELP =
   "Replay (playhead) is always shared across tiles. Indicators and Chart type switches apply to the classic panel manager only; " +
   "multichart iframe tiles use the focused panel for new indicators until full fan-out is wired.";
 
+/** Block Chrome/Edge default menu on the chart app; keep native menu on text fields only. */
+function v9BlockBrowserContextMenu(e) {
+  const t = e.target;
+  if (!t || typeof t.closest !== "function") return;
+  if (t.closest('input, textarea, select, option, [contenteditable="true"], [contenteditable=""]')) return;
+  e.preventDefault();
+}
+
+function v9DocumentContextMenuShouldBlock(target) {
+  if (!target || typeof target.closest !== "function") return false;
+  if (target.closest('input, textarea, select, option, [contenteditable="true"], [contenteditable=""]')) return false;
+  if (document.documentElement.classList.contains("multichart-embed")) return true;
+  if (target.closest("[data-v9-app]")) return true;
+  if (!document.querySelector("[data-v9-app]") && !document.getElementById("chartCanvas")) return false;
+  return !!target.closest(
+    "#chart-container, #chartWrapper, .chart-wrapper, #panels-container, #chartCanvas, " +
+    ".linked-pane-wrapper, .chart-context-menu, .tv-context-menu, .drawing-style-editor, " +
+    ".drawing-toolbar, .chart-settings-modal, .settings-sidebar, #compareModalOverlay, " +
+    ".compare-modal-overlay, [data-multichart-grid], [data-v9-chrome], [data-chart-ui]"
+  );
+}
+
 // ── Color utilities ──────────────────────────────────────────────────────────
 function parseColor(str) {
   if (!str) return { r:255, g:255, b:255, a:1 };
@@ -9670,10 +9692,10 @@ const TalariaV8bLive = () => {
   const suppressVpBridge = useRef(false);
   const suppressAvBridge = useRef(false);
 
-  // Legacy chart.js saves drawings and updates `d.levels` / style directly; React `tlStyle` does not
-  // hear those edits. The forward bridge below would then push *stale* `tlStyle.fibLevels` back onto
-  // the chart on the next toolbar interaction. Re-read the live selection into `tlStyle` whenever
-  // drawings persist — chart modules stay unchanged; this is integration-only.
+  // Legacy chart.js updates drawing geometry/style on canvas (drag, fib edits, etc.) without touching
+  // React `tlStyle`. Re-read the live selection whenever drawings persist so coord/visibility/fib
+  // fields stay in sync — otherwise the style bridge would push stale coordinates on the next
+  // color change and the shape would snap back.
   useEffect(() => {
     let rafId = 0;
     const v9DrawingUsesFibStyleBridge = (t) =>
@@ -9686,9 +9708,15 @@ const TalariaV8bLive = () => {
         const d = getSelectedDrawingAcrossCharts(
           editingDrawingRef.current ? editingDrawingRef.current.drawing : null,
         );
-        if (!d || !d.type || !v9DrawingUsesFibStyleBridge(d.type)) return;
-        const patch = v9TlStylePatchFromDrawing(d);
-        if (!patch || Object.keys(patch).length === 0) return;
+        if (!d || !d.type) return;
+        const patch = {
+          ...v9CoordPatchFromDrawing(d),
+          ...v9VisibilityPatchFromDrawing(d),
+        };
+        if (v9DrawingUsesFibStyleBridge(d.type)) {
+          Object.assign(patch, v9TlStylePatchFromDrawing(d) || {});
+        }
+        if (Object.keys(patch).length === 0) return;
         suppressForwardBridge.current = true;
         setTlStyle((s) => {
           let changed = false;
@@ -9701,6 +9729,26 @@ const TalariaV8bLive = () => {
           }
           return changed ? next : s;
         });
+        if (drawingTypeToPanelGroupRef.current(d.type) === "text") {
+          const txtPatch = {
+            ...v9CoordPatchFromDrawing(d),
+            ...v9VisibilityPatchFromDrawing(d),
+          };
+          if (Object.keys(txtPatch).length > 0) {
+            suppressTxtForwardBridge.current = true;
+            setTxtStyle((s) => {
+              let changed = false;
+              const next = { ...s };
+              for (const key of Object.keys(txtPatch)) {
+                if (next[key] !== txtPatch[key]) {
+                  next[key] = txtPatch[key];
+                  changed = true;
+                }
+              }
+              return changed ? next : s;
+            });
+          }
+        }
       } catch (_) { /* ignore */ }
     };
     const onDrawingsChanged = () => {
@@ -10677,13 +10725,8 @@ const TalariaV8bLive = () => {
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
         Object.assign(d.style, stylePatch);
         v9ApplyTlStyleExtrasToDrawing(d, tlStyle, null);
-        let pointsMoved = false;
-        try { pointsMoved = v9ApplyPointsFromTlStyle(d, tlStyle); } catch (_) {}
-        try { v9ApplyVisibilityFromTlStyle(d, tlStyle); } catch (_) {}
-        if (pointsMoved) {
-          try { dm.renderDrawing?.(d); } catch (_) {}
-          try { dm.saveDrawings?.(); } catch (_) {}
-        }
+        // Coordinates / visibility are applied in a separate effect (below) so
+        // color/style edits do not re-push stale pt* from React after a canvas drag.
         // Prefer onUpdate (history + render + persist + saveDrawings).
         if (tb && typeof tb.onUpdate === 'function') {
           try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
@@ -10707,11 +10750,6 @@ const TalariaV8bLive = () => {
     tlStyle.labelColor, tlStyle.labelFontSize, tlStyle.labelBg, tlStyle.labelBgColor,
     tlStyle.textContent, tlStyle.textColor, tlStyle.textSize, tlStyle.textBold, tlStyle.textItalic,
     tlStyle.vertAlign, tlStyle.horizAlign,
-    tlStyle.pt1Price, tlStyle.pt1Bar, tlStyle.pt2Price, tlStyle.pt2Bar,
-    tlStyle.pt3Price, tlStyle.pt3Bar, tlStyle.pt4Price, tlStyle.pt4Bar,
-    tlStyle.pt5Price, tlStyle.pt5Bar, tlStyle.pt6Price, tlStyle.pt6Bar,
-    tlStyle.pt7Price, tlStyle.pt7Bar,
-    tlStyle.visMinutes, tlStyle.visHours, tlStyle.visDays, tlStyle.visWeeks, tlStyle.visMonths,
     tlStyle.chLines,
     tlStyle.regLines,
     tlStyle.source,
@@ -10756,6 +10794,60 @@ const TalariaV8bLive = () => {
     tool, groupSelected,
   ]);
 
+  // Coordinates + visibility tab only — never run on lineColor etc., or moved shapes snap back.
+  useLayoutEffect(() => {
+    let ch =
+      typeof window !== "undefined" && typeof window.getActiveChart === "function"
+        ? window.getActiveChart()
+        : window.chart;
+    let dm = ch && ch.drawingManager;
+    if (!dm && window.chart && window.chart !== ch) {
+      ch = window.chart;
+      dm = ch && ch.drawingManager;
+    }
+    if (!dm) return;
+    if (suppressForwardBridge.current) {
+      suppressForwardBridge.current = false;
+      return;
+    }
+    const legacyTool = resolveLegacyTool();
+    try {
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm: dm2, d }) => {
+        if (!d || !d.style) return;
+        if (!v9ShouldApplyTlStylePatch(d, legacyTool)) return;
+        const tb = dm2.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+        let pointsMoved = false;
+        try { pointsMoved = v9ApplyPointsFromTlStyle(d, tlStyle); } catch (_) {}
+        try { v9ApplyVisibilityFromTlStyle(d, tlStyle); } catch (_) {}
+        if (pointsMoved) {
+          try { dm2.renderDrawing?.(d); } catch (_) {}
+          try { dm2.saveDrawings?.(); } catch (_) {}
+        }
+        if (tb && typeof tb.onUpdate === "function") {
+          try { tb.onUpdate(d); } catch (_) { try { dm2.renderDrawing?.(d); } catch (_) {} }
+        } else {
+          try { dm2.renderDrawing?.(d); } catch (_) {}
+        }
+        if (d.selected && typeof d.showAxisHighlights === "function") {
+          try { d.showAxisHighlights(); } catch (_) {}
+        }
+        if (dm2.chart) chartsToRender.add(dm2.chart);
+      });
+      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
+    } catch (err) {
+      console.warn("[V9 coord/vis bridge] failed:", err);
+    }
+  }, [
+    tlStyle.pt1Price, tlStyle.pt1Bar, tlStyle.pt2Price, tlStyle.pt2Bar,
+    tlStyle.pt3Price, tlStyle.pt3Bar, tlStyle.pt4Price, tlStyle.pt4Bar,
+    tlStyle.pt5Price, tlStyle.pt5Bar, tlStyle.pt6Price, tlStyle.pt6Bar,
+    tlStyle.pt7Price, tlStyle.pt7Bar,
+    tlStyle.visMinutes, tlStyle.visHours, tlStyle.visDays, tlStyle.visWeeks, tlStyle.visMonths,
+    tool, groupSelected,
+  ]);
+
   // V9 txtStyle → selected text/callout/note drawings (annotation rail bar).
   useLayoutEffect(() => {
     if (!txtStyleBridgeReady.current) {
@@ -10779,13 +10871,6 @@ const TalariaV8bLive = () => {
           tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
         } catch (_) {}
         v9ApplyTxtStyleToDrawing(d, txtStyle);
-        let txtPointsMoved = false;
-        try { txtPointsMoved = v9ApplyPointsFromTlStyle(d, txtStyle); } catch (_) {}
-        try { v9ApplyVisibilityFromTlStyle(d, txtStyle); } catch (_) {}
-        if (txtPointsMoved) {
-          try { dm.renderDrawing?.(d); } catch (_) {}
-          try { dm.saveDrawings?.(); } catch (_) {}
-        }
         if (tb && typeof tb.onUpdate === "function") {
           try {
             tb.onUpdate(d);
@@ -10823,6 +10908,44 @@ const TalariaV8bLive = () => {
     txtStyle.content,
     txtStyle.horizAlign,
     txtStyle.pinLabelColor,
+    tool,
+    groupSelected,
+  ]);
+
+  useLayoutEffect(() => {
+    if (suppressTxtForwardBridge.current) {
+      suppressTxtForwardBridge.current = false;
+      return;
+    }
+    try {
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || !d.style) return;
+        if (drawingTypeToPanelGroupRef.current(d.type) !== "text") return;
+        const tb = dm.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+        let txtPointsMoved = false;
+        try { txtPointsMoved = v9ApplyPointsFromTlStyle(d, txtStyle); } catch (_) {}
+        try { v9ApplyVisibilityFromTlStyle(d, txtStyle); } catch (_) {}
+        if (txtPointsMoved) {
+          try { dm.renderDrawing?.(d); } catch (_) {}
+          try { dm.saveDrawings?.(); } catch (_) {}
+        }
+        if (tb && typeof tb.onUpdate === "function") {
+          try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
+        } else {
+          try { dm.renderDrawing?.(d); } catch (_) {}
+        }
+        if (d.selected && typeof d.showAxisHighlights === "function") {
+          try { d.showAxisHighlights(); } catch (_) {}
+        }
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
+    } catch (err) {
+      console.warn("[V9 txt coord/vis bridge] failed:", err);
+    }
+  }, [
     txtStyle.pt1Price, txtStyle.pt1Bar, txtStyle.pt2Price, txtStyle.pt2Bar,
     txtStyle.visMinutes, txtStyle.visHours, txtStyle.visDays, txtStyle.visWeeks, txtStyle.visMonths,
     tool,
@@ -11692,8 +11815,17 @@ const TalariaV8bLive = () => {
     };
   }, [rollback, darkMode, c.gn, c.rd]);
 
+  useEffect(() => {
+    const onCtx = (e) => {
+      if (e?.target && v9DocumentContextMenuShouldBlock(e.target)) e.preventDefault();
+    };
+    document.addEventListener("contextmenu", onCtx, true);
+    return () => document.removeEventListener("contextmenu", onCtx, true);
+  }, []);
+
   return (
     <div data-v9-app="1" style={{ width: "100%", height: "100dvh", boxSizing: "border-box", paddingLeft: 1, background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
+      onContextMenu={v9BlockBrowserContextMenu}
       onClick={(e) => {
         // Never run closeAll on bubbled clicks from children — it ran after every button/dropdown
         // handler and cleared state in the same tick (felt like “dead clicks”, many taps needed).
@@ -20598,8 +20730,8 @@ const TalariaV8bLive = () => {
           document.body
         )}
       </div>
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }}>
-        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 40, flexShrink: 0, boxSizing: "border-box", background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 1, paddingLeft:0, paddingRight: 0, overflowY: "auto", overflowX: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", minWidth: 0 }} onContextMenu={v9BlockBrowserContextMenu}>
+        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} onContextMenu={v9BlockBrowserContextMenu} style={{ width: 40, flexShrink: 0, boxSizing: "border-box", background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 1, paddingLeft:0, paddingRight: 0, overflowY: "auto", overflowX: "hidden" }}>
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%" }}>
               {gi === toolGroups.length - 1 && <div style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>}
