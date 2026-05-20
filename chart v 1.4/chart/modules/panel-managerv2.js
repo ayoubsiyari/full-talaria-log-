@@ -970,6 +970,7 @@ class PanelManager {
         if (!sourceChart?.data?.length) return;
 
         const d = scrollDetail || {};
+        const srcTf = sourceChart.currentTimeframe != null ? String(sourceChart.currentTimeframe) : '';
         const canNative = Number.isFinite(d.candleWidth) && d.candleWidth > 0;
         let startIdx = Number.isFinite(d.startIndex) ? Math.floor(d.startIndex) : null;
         let endIdx = Number.isFinite(d.endIndex) ? Math.floor(d.endIndex) : null;
@@ -1007,19 +1008,24 @@ class PanelManager {
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);
 
-                if (canNative && this._mirrorNativeViewport(chart, sourceChart, d)) {
-                    // same wheel zoom / pan as solo chart
+                const tgtTf = chart.currentTimeframe != null ? String(chart.currentTimeframe) : '';
+                const sameTf = srcTf.length > 0 && tgtTf.length > 0 && srcTf === tgtTf;
+
+                if (canNative && sameTf && this._mirrorNativeViewport(chart, sourceChart, d)) {
+                    // same wheel zoom / pan as solo chart (identical TF only)
                 } else {
                     let iR;
                     let iL;
-                    if (sameData(chart)) {
+                    if (sameData(chart) && sameTf) {
                         iR = endIdx;
                         iL = startIdx;
                     } else {
                         iR = this._findLastIndexAtOrBefore(chart.data, rangeEndExclusive - 1);
-                        iL = Math.max(0, iR - barCount + 1);
+                        iL = this._findLastIndexAtOrBefore(chart.data, startTimestamp);
+                        if (iL > iR) iL = Math.max(0, iR - barCount + 1);
                     }
-                    this._fitChartToBarWindow(chart, iL, iR, barCount);
+                    const localBars = Math.max(1, iR - iL + 1);
+                    this._fitChartToBarWindow(chart, iL, iR, localBars);
                 }
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();

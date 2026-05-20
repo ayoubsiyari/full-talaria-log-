@@ -131,7 +131,70 @@
     }
 
     /**
-     * TradingView-style: same bar count + right-edge time anchor on every panel.
+     * Same wall-clock window on every TF (1D + 4H show Jan–Oct, not the same bar count).
+     * @returns {boolean} true if applied
+     */
+    function applyWallClockDateRange(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        if (!Number.isFinite(m.startTime) || !Number.isFinite(m.endTime) || m.endTime <= m.startTime) {
+            return false;
+        }
+
+        const iL = findLastAtOrBefore(chart.data, toMillis(m.startTime));
+        const iR = findLastAtOrBefore(chart.data, toMillis(m.endTime) - 1);
+        const iL2 = Math.max(0, Math.min(iL, chart.data.length - 1));
+        const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
+        const numBars = Math.max(1, iR2 - iL2 + 1);
+
+        const margin = chart.margin || { l: 60, r: 60 };
+        const widthPx = (chart.w || chart.canvas?.width || 800) - (margin.l + margin.r);
+        if (widthPx <= 0) return false;
+
+        let desiredSpacing = widthPx / numBars;
+        let cw = desiredSpacing;
+        if (typeof chart._getSpacingForCandleWidth === 'function') {
+            const s1 = chart._getSpacingForCandleWidth(cw);
+            if (s1 > 0) cw = cw * (desiredSpacing / s1);
+            const s2 = chart._getSpacingForCandleWidth(cw);
+            if (s2 > 0) cw = cw * (desiredSpacing / s2);
+        }
+
+        const allowedWidths = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths) && chart.zoomLevel.allowedWidths.length)
+            ? chart.zoomLevel.allowedWidths
+            : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+        chart.candleWidth = Math.max(allowedWidths[0], Math.min(allowedWidths[allowedWidths.length - 1], cw));
+
+        let nearestIdx = 0;
+        let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);
+        for (let i = 1; i < allowedWidths.length; i++) {
+            const d = Math.abs(chart.candleWidth - allowedWidths[i]);
+            if (d < minDiff) { minDiff = d; nearestIdx = i; }
+        }
+        if (chart.zoomLevel) chart.zoomLevel.candleWidthIndex = nearestIdx;
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (spacing > 0) {
+            chart.offsetX = widthPx - (iR2 + 1) * spacing;
+            if (typeof chart.constrainOffset === 'function') {
+                try { chart.constrainOffset(); } catch (_) {}
+            }
+        }
+
+        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        return true;
+    }
+
+    function sameTimeframeMessage(chart, m) {
+        const src = m.sourceTimeframe != null ? String(m.sourceTimeframe) : '';
+        const mine = chart.currentTimeframe != null ? String(chart.currentTimeframe) : '';
+        return src.length > 0 && mine.length > 0 && src === mine;
+    }
+
+    /**
+     * TradingView-style: same bar count + right-edge time anchor (same TF only).
      * @returns {boolean} true if applied
      */
     function applyTradingViewVisibleRange(chart, m) {
@@ -379,6 +442,7 @@
             rightEdgeBarIndex: (typeof chart.getVisibleEndIndex === 'function')
                 ? chart.getVisibleEndIndex()
                 : endIdx,
+            sourceTimeframe: chart.currentTimeframe || null,
             offsetX: chart.offsetX,
             candleWidth: chart.candleWidth,
             zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
@@ -497,6 +561,7 @@
                     endIndex: r.endIndex,
                     visibleBarCount: r.visibleBarCount,
                     rightEdgeBarIndex: r.rightEdgeBarIndex,
+                    sourceTimeframe: r.sourceTimeframe,
                     offsetX: r.offsetX,
                     candleWidth: r.candleWidth,
                     zoomLevelIndex: r.zoomLevelIndex,
@@ -573,6 +638,7 @@
                 endIndex: ei,
                 visibleBarCount: Math.max(1, ei - si + 1),
                 rightEdgeBarIndex: Number.isFinite(d.rightEdgeBarIndex) ? d.rightEdgeBarIndex : ei,
+                sourceTimeframe: chart.currentTimeframe || null,
                 offsetX: d.offsetX,
                 candleWidth: d.candleWidth,
                 zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
@@ -644,6 +710,7 @@
                                 endIndex: endIndex,
                                 visibleBarCount: Math.max(1, endIndex - startIndex + 1),
                                 rightEdgeBarIndex: rightEdgeBarIndex,
+                                sourceTimeframe: chart.currentTimeframe || null,
                                 startTimestamp: startTimestamp,
                                 endTimestamp: endTimestamp,
                                 timeSyncEndTimestamp: endTimestamp,
@@ -1184,7 +1251,17 @@
             state.applied.add(m.causationId);
             beginApplying();
 
-            if (!applyNativeChartViewport(chart, m) && !applyTradingViewVisibleRange(chart, m)) {
+            let applied = false;
+            if (sameTimeframeMessage(chart, m)) {
+                applied = applyNativeChartViewport(chart, m);
+            }
+            if (!applied) {
+                applied = applyWallClockDateRange(chart, m);
+            }
+            if (!applied) {
+                applied = applyTradingViewVisibleRange(chart, m);
+            }
+            if (!applied) {
                 const myTf = chart.currentTimeframe || '1m';
                 const myBucket = tfSec(myTf);
                 const startSnapped = floorToBucket(m.startTime, myBucket);
@@ -1229,6 +1306,9 @@
         function applyBridgeConfig(m) {
             if (m.config && m.config.chartId) state.chartId = m.config.chartId;
             if (m.config && m.config.parentOrigin) state.parentOrigin = m.config.parentOrigin;
+            if (syncModeGate) {
+                chart.syncCrosshair = !!(syncModeGate.crosshair || syncModeGate.visibleRange);
+            }
         }
 
         function reportAssertion(syncType, violations, before, after) {
@@ -1283,7 +1363,12 @@
             readVisibleTimeRange: function () { return readVisibleTimeRange(chart); },
             // Let the parent wire the manager's syncMode object so the
             // bridge's own message listener respects sync toggles.
-            setSyncModeGate: function (ref) { syncModeGate = ref || null; },
+            setSyncModeGate: function (ref) {
+                syncModeGate = ref || null;
+                if (syncModeGate) {
+                    chart.syncCrosshair = !!(syncModeGate.crosshair || syncModeGate.visibleRange);
+                }
+            },
         };
     }
 

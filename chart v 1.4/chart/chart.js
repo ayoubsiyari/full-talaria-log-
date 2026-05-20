@@ -21988,6 +21988,11 @@ class Chart {
      * Date-range mode aligns charts by time; crosshair must follow the same wall-clock time on every TF.
      */
     _crosshairPanelSyncAllowed() {
+        // V9 multichart (host + iframes): no panelManager — bridge + chart.syncCrosshair.
+        if (typeof window !== 'undefined' && window.__multichartBridgeState) {
+            if (this.syncCrosshair === false) return false;
+            return true;
+        }
         const pm = window.panelManager;
         if (!pm || pm.currentLayout === '1') return false;
         const s = pm.syncSettings;
