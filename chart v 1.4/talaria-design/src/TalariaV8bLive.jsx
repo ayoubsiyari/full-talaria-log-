@@ -522,13 +522,13 @@ function v9ChartVertToUi(chartVert) {
 const V9_DASH_TO_LEGACY = { solid: "", dashed: "5,5", dotted: "2,4", dashdot: "7,4,2,4" };
 
 /** Maps V9 `tlStyle` → chart.js `drawing.style` patch (preview + new placements). */
-function v9BuildLegacyStylePatchFromTlStyle(tlStyle) {
+function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
   if (!tlStyle) return {};
   const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? "";
   const midDashArr = tlStyle.midLineType === "bold" ? "" : (V9_DASH_TO_LEGACY[tlStyle.midLineType] ?? "");
   const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
   const midWidthNum = parseInt(tlStyle.midLineWidth, 10) || 1;
-  return {
+  const patch = {
     stroke: tlStyle.lineColor,
     color: tlStyle.lineColor,
     strokeWidth: widthNum,
@@ -575,6 +575,14 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle) {
     middleLineWidth: midWidthNum,
     middleLineDash: midDashArr,
   };
+  if (legacyTool && v9IsClassicFibRetracementType(legacyTool) && Array.isArray(tlStyle.fibLevels)) {
+    patch.levels = v9TlFibLevelsToChart(
+      tlStyle.fibLevels,
+      tlStyle.fibLineType,
+      tlStyle.fibLineWidth,
+    );
+  }
+  return patch;
 }
 
 /** Keeps drawing-tools-manager preview/finalize in sync with the armed V9 toolbar. */
@@ -586,7 +594,7 @@ function v9PushArmedDrawStyle(legacyTool, tlStyle) {
   }
   window.__v9ArmedDrawStyle = {
     tool: legacyTool,
-    patch: v9BuildLegacyStylePatchFromTlStyle(tlStyle),
+    patch: v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool),
     tlStyle,
     updatedAt: typeof performance !== "undefined" ? performance.now() : Date.now(),
   };
@@ -1157,7 +1165,11 @@ const V9_EXACT_STYLE_MATCH_GROUPS = new Set(['fib', 'gann', 'pattern', 'rect', '
 function v9ShouldApplyTlStylePatch(d, legacyTool) {
   if (!d || !d.type || !d.style) return false;
   if (v9DrawingTypeToPanelGroup(d.type) === 'text') return false;
-  if (!legacyTool) return true;
+  if (!legacyTool) {
+    const drawingGroup = v9DrawingTypeToPanelGroup(d.type);
+    if (drawingGroup && V9_EXACT_STYLE_MATCH_GROUPS.has(drawingGroup)) return false;
+    return true;
+  }
   if (d.type === legacyTool) return true;
   const drawingGroup = v9DrawingTypeToPanelGroup(d.type);
   const toolGroup = v9DrawingTypeToPanelGroup(legacyTool);
@@ -1399,6 +1411,30 @@ function v9PfToPitchforkLevels(pfLevels) {
 /** Fib Retracement / Extension (`drawing-tools-fibonacci.js`) share `tlStyle.fibLevels` + fib* toggles. */
 function v9IsClassicFibRetracementType(t) {
   return t === "fibonacci-retracement" || t === "fibonacci-extension";
+}
+
+/** Default V9 price-level rows per classic fib tool (must match `drawing-tools-fibonacci.js`). */
+function v9ClassicFibDefaultLevelsTlForLegacy(legacyType) {
+  if (legacyType === "fibonacci-extension") {
+    return [
+      { on: true, value: "0", color: "#787B86" },
+      { on: true, value: "1", color: "#787B86" },
+      { on: true, value: "0.618", color: "#4CAF50" },
+      { on: true, value: "1.272", color: "#2196F3" },
+      { on: true, value: "1.618", color: "#9C27B0" },
+      { on: true, value: "2.618", color: "#E91E63" },
+      { on: true, value: "4.236", color: "#F44336" },
+    ];
+  }
+  return [
+    { on: true, value: "0", color: "#787B86" },
+    { on: true, value: "0.236", color: "#F44336" },
+    { on: true, value: "0.382", color: "#FF9800" },
+    { on: true, value: "0.5", color: "#FFEB3B" },
+    { on: true, value: "0.618", color: "#4CAF50" },
+    { on: true, value: "0.786", color: "#2196F3" },
+    { on: true, value: "1", color: "#787B86" },
+  ];
 }
 
 function v9FibLevelsModeUiToChart(mode) {
@@ -1729,6 +1765,35 @@ function v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthFallback) {
       : 0.5;
 }
 
+function v9FibTlLevelsMatchLegacyType(legacyType, fibLevels) {
+  if (!Array.isArray(fibLevels) || !fibLevels.length) return false;
+  const vals = fibLevels
+    .map((l) => parseFloat(l.value))
+    .filter((n) => Number.isFinite(n));
+  if (legacyType === "fibonacci-extension") {
+    return vals.some((v) => v >= 1.272 || v > 1.05);
+  }
+  if (legacyType === "fibonacci-retracement") {
+    return vals.some((v) => v > 0 && v < 1 && v !== 1);
+  }
+  return true;
+}
+
+function v9ResolveClassicFibLevelRowsForDrawing(d, tlStyle) {
+  if (v9FibTlLevelsMatchLegacyType(d.type, tlStyle.fibLevels)) {
+    return tlStyle.fibLevels;
+  }
+  const fromDrawing = v9FibLevelsChartToTl(d.levels);
+  if (
+    fromDrawing &&
+    fromDrawing.length &&
+    v9FibTlLevelsMatchLegacyType(d.type, fromDrawing)
+  ) {
+    return fromDrawing;
+  }
+  return v9ClassicFibDefaultLevelsTlForLegacy(d.type);
+}
+
 function v9ApplyClassicFibFromTlStyle(d, tlStyle, trendWidthFallback) {
   if (!d || !d.style || !v9IsClassicFibRetracementType(d.type)) return;
   const fibDashStr =
@@ -1742,8 +1807,9 @@ function v9ApplyClassicFibFromTlStyle(d, tlStyle, trendWidthFallback) {
     parseInt(String(tlStyle.lineWidth), 10) ||
     (typeof trendWidthFallback === "number" ? trendWidthFallback : 1) ||
     1;
+  const levelRows = v9ResolveClassicFibLevelRowsForDrawing(d, tlStyle);
   d.levels = v9TlFibLevelsToChart(
-    tlStyle.fibLevels,
+    levelRows,
     tlStyle.fibLineType,
     tlStyle.fibLineWidth,
   );
@@ -2401,11 +2467,23 @@ function v9MergeHydratePatchFromLegacy(dm, legacy) {
       : fillRaw !== null && fillRaw !== ""
         ? fillRaw
         : V9_DEFAULT_TL_SHAPE_FILL;
-  return {
+  const out = {
     ...basePatch,
     lineColor: basePatch.lineColor ?? strokeFallback,
     bgColor: bgResolved,
   };
+  if (v9IsClassicFibRetracementType(legacy)) {
+    const savedLevels = Array.isArray(saved.levels)
+      ? saved.levels
+      : Array.isArray(styleForPatch.levels)
+        ? styleForPatch.levels
+        : null;
+    out.fibLevels =
+      savedLevels && savedLevels.length
+        ? v9FibLevelsChartToTl(savedLevels)
+        : v9ClassicFibDefaultLevelsTlForLegacy(legacy);
+  }
+  return out;
 }
 
 function v9DeepCloneJson(obj) {
@@ -6821,7 +6899,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a24-tdz-fix";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a25-fib-extension-fix";
   }, []);
 
   useEffect(() => {
@@ -10354,13 +10432,17 @@ const TalariaV8bLive = () => {
               const full = v9BuildFullTlStyleFromDrawing(drawing, dm);
               if (full) {
                 br.suppressForwardBridge.current = true;
-                br.setTlStyle(full);
+                flushSync(() => br.setTlStyle(full));
               }
             } else {
               const patch = v9TlStylePatchFromDrawing(drawing);
               if (patch) {
                 br.suppressForwardBridge.current = true;
-                br.setTlStyle(s => ({ ...s, ...patch }));
+                if (v9IsClassicFibRetracementType(drawing.type) && patch.fibLevels) {
+                  flushSync(() => br.setTlStyle((s) => ({ ...s, ...patch })));
+                } else {
+                  br.setTlStyle((s) => ({ ...s, ...patch }));
+                }
               }
             }
             if (typeof drawing.locked === 'boolean') br.setTlLocked(!!drawing.locked);
@@ -10608,13 +10690,17 @@ const TalariaV8bLive = () => {
             const full = v9BuildFullTlStyleFromDrawing(live, dm);
             if (full) {
               br.suppressForwardBridge.current = true;
-              br.setTlStyle(full);
+              flushSync(() => br.setTlStyle(full));
             }
           } else {
             const patch = v9TlStylePatchFromDrawing(live);
             if (patch) {
               br.suppressForwardBridge.current = true;
-              br.setTlStyle((s) => ({ ...s, ...patch }));
+              if (v9IsClassicFibRetracementType(live.type) && patch.fibLevels) {
+                flushSync(() => br.setTlStyle((s) => ({ ...s, ...patch })));
+              } else {
+                br.setTlStyle((s) => ({ ...s, ...patch }));
+              }
             }
           }
         }
@@ -10879,7 +10965,18 @@ const TalariaV8bLive = () => {
       dm = ch && ch.drawingManager;
     }
     if (!dm) return;
-    const legacyTool = resolveLegacyTool();
+    let legacyTool = resolveLegacyTool();
+    if (!legacyTool) {
+      try {
+        const pairs = collectV9BridgeTargetPairs(editingDrawingRef.current?.drawing);
+        const primary =
+          pairs.find((p) => p.d && (p.d.selected || p.d === dm.selectedDrawing)) || pairs[0];
+        if (primary && primary.d && primary.d.type) {
+          const g = v9DrawingTypeToPanelGroup(primary.d.type);
+          if (g && V9_EXACT_STYLE_MATCH_GROUPS.has(g)) legacyTool = primary.d.type;
+        }
+      } catch (_) {}
+    }
     if (!styleBridgeReady.current) {
       styleBridgeReady.current = true;
       v9PushArmedDrawStyle(legacyTool, legacyTool ? tlStyle : null);
@@ -10892,7 +10989,7 @@ const TalariaV8bLive = () => {
     // rail) still propagate to the selected drawing.
 
     v9PushArmedDrawStyle(legacyTool, legacyTool ? tlStyle : null);
-    const stylePatch = v9BuildLegacyStylePatchFromTlStyle(tlStyle);
+    const stylePatch = v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool);
 
     // Do NOT persist style as default for this tool — each new drawing starts fresh.
 
