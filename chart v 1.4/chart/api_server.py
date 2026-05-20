@@ -6934,6 +6934,9 @@ def _binary_rebuild_needed(
             return True
         if new_rows_added is not None and int(new_rows_added) > 0:
             return True
+        db_file = db.query(CSVFile).filter(CSVFile.id == int(file_id)).first()
+        if db_file and _csv_ahead_of_chart_binary(int(file_id), db_file):
+            return True
         return False
     finally:
         if own_db:
@@ -16991,47 +16994,42 @@ async def get_file_smart(
 
         candles = _apply_dataset_filters(candles, original_name=db_file.original_name)
 
-        # Recovery path: some legacy/stale prebuilt aggregates can yield an empty
-        # tile/bin window even though the canonical CSV still has data (observed on
-        # long-running FirstRate imports). If that happens, fall back to a direct
-        # CSV read+resample for this request so higher-TF views stay usable.
-        if not candles and source in {"tiles", "binary", "custom-tf-resample"}:
+        # Recovery: empty tile/bin window OR binaries still ending before merged CSV
+        # (FirstRate nightly merge updates CSV immediately; tiles lag until rebuild).
+        needs_csv_recover = (
+            source in {"tiles", "binary", "custom-tf-resample"}
+            and not BINARY_ONLY_RUNTIME
+            and (
+                not candles
+                or _csv_ahead_of_chart_binary(
+                    file_id,
+                    db_file,
+                    served_last_ts=float(candles[-1]["t"]) if candles else None,
+                )
+            )
+        )
+        if needs_csv_recover:
             try:
-                file_path = _resolve_dataset_csv_for_file(db_file)
-                if file_path.exists() and not BINARY_ONLY_RUNTIME:
-                    csv_candles = _parse_candles_from_csv(file_path, original_name=db_file.original_name)
-                    if timeframe == "1mo":
-                        csv_candles = _resample_candles_monthly(csv_candles)
-                    elif timeframe != "1m":
-                        csv_candles = _resample_candles(csv_candles, _parse_tf_ms(timeframe))
-
-                    if start_ts is not None or end_ts is not None:
-                        csv_candles = [
-                            c for c in csv_candles
-                            if (start_ts is None or c['t'] >= start_ts)
-                            and (end_ts is None or c['t'] <= end_ts)
-                        ]
-
-                    csv_total = len(csv_candles)
-                    csv_has_more_left = False
-                    csv_has_more_right = False
-                    if csv_total > limit:
-                        if anchor == "start":
-                            csv_candles = csv_candles[:limit]
-                            csv_has_more_right = True
-                        else:
-                            csv_candles = csv_candles[-limit:]
-                            csv_has_more_left = True
-
-                    csv_candles = _apply_dataset_filters(csv_candles, original_name=db_file.original_name)
-                    if csv_candles:
-                        candles = csv_candles
-                        total_candles = csv_total
-                        has_more_left = csv_has_more_left
-                        has_more_right = csv_has_more_right
-                        source = f"{source}+csv-recover"
+                csv_candles, csv_total, csv_has_more_left, csv_has_more_right = _smart_load_from_csv(
+                    db_file,
+                    timeframe,
+                    limit=limit,
+                    anchor=anchor,
+                    start_ts=start_ts,
+                    end_ts=end_ts,
+                )
+                csv_candles = _apply_dataset_filters(csv_candles, original_name=db_file.original_name)
+                if csv_candles:
+                    candles = csv_candles
+                    total_candles = csv_total
+                    has_more_left = csv_has_more_left
+                    has_more_right = csv_has_more_right
+                    source = f"{source}+csv-recover"
+                    _maybe_queue_binary_rebuild_when_csv_ahead(
+                        file_id, db_file, trigger="smart_csv_ahead"
+                    )
             except Exception:
-                # Keep original empty response if fallback path fails.
+                # Keep original response if fallback path fails.
                 pass
 
         # Recompute cursors after weekend/spike filtering and any recovery path.
@@ -17179,12 +17177,20 @@ async def get_file_candles(
 
         candles = _apply_dataset_filters(candles, original_name=db_file.original_name)
 
-        # Same recovery as /smart: if a stale tile/bin aggregate returns an empty
-        # window, rebuild this response from canonical CSV for correctness.
-        if not candles and (tile_meta is not None or (binary_ready and bin_path.exists())):
+        # Same recovery as /smart: stale/empty tile/bin vs merged CSV on disk.
+        uses_binary = tile_meta is not None or (binary_ready and bin_path.exists())
+        needs_csv_recover = uses_binary and not BINARY_ONLY_RUNTIME and (
+            not candles
+            or _csv_ahead_of_chart_binary(
+                file_id,
+                db_file,
+                served_last_ts=float(candles[-1]["t"]) if candles else None,
+            )
+        )
+        if needs_csv_recover:
             try:
                 file_path = _resolve_dataset_csv_for_file(db_file)
-                if file_path.exists() and not BINARY_ONLY_RUNTIME:
+                if file_path.exists():
                     raw = _parse_candles_from_csv(file_path, original_name=db_file.original_name)
                     if timeframe == "1mo":
                         recovered = _resample_candles_monthly(raw)
@@ -17204,6 +17210,9 @@ async def get_file_candles(
                     recovered = _apply_dataset_filters(recovered, original_name=db_file.original_name)
                     if recovered:
                         candles = recovered
+                        _maybe_queue_binary_rebuild_when_csv_ahead(
+                            file_id, db_file, trigger="candles_csv_ahead"
+                        )
             except Exception:
                 pass
 
@@ -17236,6 +17245,121 @@ async def get_file_candles(
         }
     finally:
         db.close()
+
+# After a FirstRate merge, CSV/aggregate can extend past tiles/bin until rebuild finishes.
+_CSV_AHEAD_OF_BINARY_SLACK_MS = 60_000
+
+
+def _chart_binary_last_ts_ms(file_id: int, timeframe: str = "1m") -> float | None:
+    """Last candle timestamp currently stored in chart tiles or legacy .bin."""
+    tile_meta = _load_tile_meta(file_id, timeframe)
+    if tile_meta is not None:
+        tiles = tile_meta.get("tiles") or []
+        if tiles:
+            try:
+                return float(_normalize_epoch_ms(tiles[-1]["end_ts"]))
+            except Exception:
+                pass
+    bin_path = BIN_DIR / f"bin_{file_id}_{timeframe}.bin"
+    if bin_path.exists():
+        try:
+            total = _mmap_total(bin_path)
+            if total > 0:
+                last = _mmap_read_range(bin_path, total - 1, 1)
+                if last:
+                    return float(_normalize_epoch_ms(last[0]["t"]))
+        except Exception:
+            pass
+    return None
+
+
+def _dataset_csv_tail_end_ms(db_file: CSVFile) -> float | None:
+    try:
+        csv_path = _resolve_dataset_csv_for_file(db_file)
+        return _tail_csv_last_timestamp_ms(csv_path)
+    except Exception:
+        return None
+
+
+def _csv_ahead_of_chart_binary(
+    file_id: int,
+    db_file: CSVFile,
+    *,
+    served_last_ts: float | None = None,
+    slack_ms: float = _CSV_AHEAD_OF_BINARY_SLACK_MS,
+) -> bool:
+    """True when canonical CSV on disk extends past what chart binaries would serve."""
+    csv_end = _dataset_csv_tail_end_ms(db_file)
+    if csv_end is None:
+        return False
+    bin_end = served_last_ts
+    if bin_end is None:
+        bin_end = _chart_binary_last_ts_ms(file_id, "1m")
+    if bin_end is None:
+        return False
+    return float(csv_end) > float(bin_end) + float(slack_ms)
+
+
+def _maybe_queue_binary_rebuild_when_csv_ahead(
+    file_id: int,
+    db_file: CSVFile,
+    *,
+    trigger: str = "csv_ahead_of_binary",
+) -> None:
+    if not _csv_ahead_of_chart_binary(int(file_id), db_file):
+        return
+    try:
+        csv_path = _resolve_dataset_csv_for_file(db_file)
+        build_binary_for_file(
+            int(file_id),
+            csv_path,
+            db_file.original_name or "",
+            run_async=True,
+            trigger=trigger,
+            force=True,
+        )
+    except Exception:
+        pass
+
+
+def _smart_load_from_csv(
+    db_file: CSVFile,
+    timeframe: str,
+    *,
+    limit: int,
+    anchor: str = "end",
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+) -> tuple[list, int, bool, bool]:
+    """Load a smart-window slice from the canonical CSV (merge source of truth)."""
+    file_path = _resolve_dataset_csv_for_file(db_file)
+    if not file_path.exists():
+        return [], 0, False, False
+
+    candles = _parse_candles_from_csv(file_path, original_name=db_file.original_name)
+    if timeframe == "1mo":
+        candles = _resample_candles_monthly(candles)
+    elif timeframe != "1m":
+        candles = _resample_candles(candles, _parse_tf_ms(timeframe))
+
+    if start_ts is not None or end_ts is not None:
+        candles = [
+            c for c in candles
+            if (start_ts is None or c["t"] >= start_ts)
+            and (end_ts is None or c["t"] <= end_ts)
+        ]
+    total_candles = len(candles)
+    has_more_left = False
+    has_more_right = False
+    if total_candles > limit:
+        if anchor == "start":
+            candles = candles[:limit]
+            has_more_right = True
+        else:
+            candles = candles[-limit:]
+            has_more_left = True
+    return candles, total_candles, has_more_left, has_more_right
+
 
 def _dataset_authoritative_ts_bounds(
     file_id: int, db_file: CSVFile, aggs: list
