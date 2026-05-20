@@ -1734,6 +1734,22 @@ class DrawingToolsManager {
         }
     }
 
+    /**
+     * Multichart iframe only: parent V9 rail should return to crosshair after a stroke.
+     * Called from finalizeDrawing only (not clearTool) so sync clears do not fire this.
+     */
+    _notifyV9MultichartStrokeDone() {
+        try {
+            if (typeof window === 'undefined' || !window.parent || window.parent === window) return;
+            const params = new URLSearchParams(window.location.search);
+            const panelId = params.get('panelId') || params.get('id') || null;
+            window.parent.postMessage({
+                type: 'v9-drawing-tool-cleared',
+                source: panelId,
+            }, '*');
+        } catch (_) {}
+    }
+
     _cancelFreehandPreviewRaf() {
         if (this._freehandPreviewRaf) {
             cancelAnimationFrame(this._freehandPreviewRaf);
@@ -4049,6 +4065,7 @@ class DrawingToolsManager {
             
             // Clear the tool so button deactivates
             this.clearTool();
+            this._notifyV9MultichartStrokeDone();
             
             // Don't save to localStorage yet
             return;
@@ -4167,6 +4184,7 @@ class DrawingToolsManager {
 
         if (!shouldKeepTool) {
             this.clearTool();
+            this._notifyV9MultichartStrokeDone();
             // Update UI - remove active from all tools except the persistent cursor button
             document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(b => b.classList.remove('active'));

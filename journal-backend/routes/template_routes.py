@@ -3,12 +3,15 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
-from models import db, StrategyTemplate, Strategy, User, TemplateLike
+from sqlalchemy.exc import IntegrityError
+
+from models import db, StrategyTemplate, Strategy, User, TemplateLike, TemplateClone
 from routes.strategy_routes import _strategy_dict
 from schemas.strategy_lab import merge_definition_from_legacy, default_strategy_definition
 from user_public_id import ensure_user_public_id
 from community_publish import (
     apply_publish_filter,
+    extract_preview_image,
     normalize_backtest_snapshot,
     parse_publish_settings,
     public_backtest_snapshot,
@@ -73,6 +76,17 @@ def _copies_count(template):
     return int(getattr(template, 'clone_count', 0) or 0)
 
 
+def _user_copied_template(template_id, user_id):
+    if not user_id:
+        return False
+    return (
+        TemplateClone.query.filter_by(
+            template_id=template_id, user_id=user_id,
+        ).first()
+        is not None
+    )
+
+
 def _engagement_for_template(template, viewer_id=None):
     creator_id = template.creator_user_id
     likes_count = _likes_count(template.id, creator_id)
@@ -84,7 +98,8 @@ def _engagement_for_template(template, viewer_id=None):
             ).first()
             is not None
         )
-    return likes_count, _copies_count(template), liked_by_me
+    copied_by_me = _user_copied_template(template.id, viewer_id) if viewer_id else False
+    return likes_count, _copies_count(template), liked_by_me, copied_by_me
 
 
 def _engagement_map(templates, viewer_id=None):
@@ -93,6 +108,7 @@ def _engagement_map(templates, viewer_id=None):
     for t in templates:
         is_author = _viewer_is_author(t, viewer_id)
         liked_by_me = False
+        copied_by_me = False
         if viewer_id and not is_author:
             liked_by_me = (
                 TemplateLike.query.filter_by(
@@ -100,11 +116,13 @@ def _engagement_map(templates, viewer_id=None):
                 ).first()
                 is not None
             )
+            copied_by_me = _user_copied_template(t.id, viewer_id)
         out[t.id] = {
             'likes_count': _likes_count(t.id, t.creator_user_id),
             'liked_by_me': liked_by_me,
             'copies_count': _copies_count(t),
             'is_author': is_author,
+            'copied_by_me': copied_by_me,
         }
     return out
 
@@ -124,13 +142,20 @@ def _tpl_dict(t, strategy_snapshot=None, viewer_id=None, engagement=None):
     )
     is_author = _viewer_is_author(t, viewer_id)
     if engagement is None:
-        likes_count, copies_count, liked_by_me = _engagement_for_template(t, viewer_id)
+        likes_count, copies_count, liked_by_me, copied_by_me = _engagement_for_template(
+            t, viewer_id,
+        )
     else:
         likes_count = engagement.get('likes_count', 0)
         liked_by_me = engagement.get('liked_by_me', False)
         copies_count = engagement.get('copies_count', _copies_count(t))
         is_author = engagement.get('is_author', is_author)
-    allow_clone = bool(settings.get('allow_clone', True)) and not is_author
+        copied_by_me = engagement.get('copied_by_me', False)
+    allow_clone = (
+        bool(settings.get('allow_clone', True))
+        and not is_author
+        and not copied_by_me
+    )
     out = {
         'id': t.id,
         'title': t.title,
@@ -142,6 +167,7 @@ def _tpl_dict(t, strategy_snapshot=None, viewer_id=None, engagement=None):
         'copies_count': copies_count,
         'likes_count': likes_count,
         'liked_by_me': liked_by_me,
+        'copied_by_me': copied_by_me,
         'is_author': is_author,
         'can_copy': allow_clone,
         'rating_avg': round(rating_avg, 2) if rating_avg is not None else None,
@@ -150,6 +176,7 @@ def _tpl_dict(t, strategy_snapshot=None, viewer_id=None, engagement=None):
         'creator': creator,
         'publish_settings': settings,
         'allow_clone': allow_clone,
+        'preview_image': getattr(t, 'preview_image', None) or extract_preview_image(public_defn),
         'backtest_snapshot': public_backtest_snapshot(t),
         'definition': public_defn,
     }
@@ -269,6 +296,11 @@ def clone_template(template_id):
                 'success': False,
                 'error': 'Author disabled copying for this strategy',
             }), 403
+        if _user_copied_template(template_id, user_id):
+            return jsonify({
+                'success': False,
+                'error': 'You already copied this strategy to My Strategies',
+            }), 403
 
         defn = t.definition if isinstance(t.definition, dict) else default_strategy_definition()
         defn = apply_publish_filter(defn, settings)
@@ -283,13 +315,26 @@ def clone_template(template_id):
             strategy_definition=defn,
         )
         db.session.add(new_s)
+        db.session.flush()
+        db.session.add(TemplateClone(
+            template_id=template_id,
+            user_id=user_id,
+            strategy_id=new_s.id,
+        ))
         t.clone_count = (t.clone_count or 0) + 1
         db.session.commit()
         return jsonify({
             'success': True,
             'strategy': _strategy_dict(new_s),
             'copies_count': _copies_count(t),
+            'copied_by_me': True,
         }), 201
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'error': 'You already copied this strategy to My Strategies',
+        }), 403
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -332,6 +377,11 @@ def submit_template():
         settings = parse_publish_settings(data)
         full_defn = merge_definition_from_legacy(strat)
         public_defn = apply_publish_filter(full_defn, settings)
+        preview = (
+            extract_preview_image(full_defn)
+            if settings.get('include_preview_image', True)
+            else None
+        )
         snapshot = normalize_backtest_snapshot(data.get('backtest_snapshot'), settings)
         creator = User.query.get(user_id)
         ensure_user_public_id(creator)
@@ -346,6 +396,7 @@ def submit_template():
             status='published',
             publish_settings=settings,
             backtest_snapshot=snapshot,
+            preview_image=preview,
         )
         db.session.add(tpl)
         db.session.commit()

@@ -421,12 +421,17 @@ export function useStrategyLabV9Data() {
         success?: boolean;
         error?: string;
         copies_count?: number;
+        copied_by_me?: boolean;
       }>(res));
       if (!res.ok || !data.success) {
         throw new Error(data.error || `Copy failed (${res.status})`);
       }
       const copies = data.copies_count ?? 0;
-      patchCommunityTemplate(templateId, { copyCount: copies });
+      patchCommunityTemplate(templateId, {
+        copyCount: copies,
+        copiedByMe: true,
+        canCopy: false,
+      });
       await loadStrategies();
       return copies;
     },

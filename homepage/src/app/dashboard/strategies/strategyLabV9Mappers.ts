@@ -199,6 +199,7 @@ export type CommunityPublishOptions = {
   include_conditions: boolean;
   include_variables: boolean;
   include_strategy_details: boolean;
+  include_preview_image: boolean;
   include_backtest_stats: boolean;
   allow_clone: boolean;
 };
@@ -220,9 +221,24 @@ export const DEFAULT_COMMUNITY_PUBLISH_OPTIONS: CommunityPublishOptions = {
   include_conditions: true,
   include_variables: true,
   include_strategy_details: true,
+  include_preview_image: true,
   include_backtest_stats: true,
   allow_clone: true,
 };
+
+/** Hero image for community feed cards — API field or first image still in definition. */
+export function communityPreviewImageUrl(
+  previewImage: unknown,
+  definition?: Record<string, unknown> | null,
+): string {
+  const fromApi = strategyImageUrl(previewImage);
+  if (fromApi) return fromApi;
+  if (!definition || typeof definition !== "object") return "";
+  const v9raw = definition[TALARIA_V9_PANEL_KEY];
+  const v9 = v9raw && typeof v9raw === "object" ? (v9raw as Record<string, unknown>) : {};
+  const gallery = bankGalleryImages(v9.images, definition.cover_image);
+  return gallery[0] ? strategyImageUrl(gallery[0]) : "";
+}
 
 export function buildBacktestSnapshotFromSession(
   sess: Record<string, unknown> | null | undefined,
@@ -266,6 +282,7 @@ export type ApiTemplateRecord = {
   likes_count?: number;
   copies_count?: number;
   liked_by_me?: boolean;
+  copied_by_me?: boolean;
   is_author?: boolean;
   can_copy?: boolean;
   created_at?: string | null;
@@ -274,6 +291,7 @@ export type ApiTemplateRecord = {
   publish_settings?: Partial<CommunityPublishOptions> | null;
   allow_clone?: boolean;
   backtest_snapshot?: BacktestSnapshotPublic | null;
+  preview_image?: StrategyImageEntry | { src: string; name?: string } | null;
 };
 
 /** Map published community template → Strategy Bank community row. */
@@ -333,9 +351,10 @@ export function templateToCommunityRow(t: ApiTemplateRecord): Record<string, unk
     likeCount: t.likes_count ?? 0,
     copyCount: t.copies_count ?? t.clone_count ?? 0,
     likedByMe: !!t.liked_by_me,
+    copiedByMe: !!t.copied_by_me,
     postedAt: t.created_at || null,
     isAuthor: !!t.is_author,
-    canCopy: t.can_copy !== false && t.allow_clone !== false,
+    canCopy: t.can_copy !== false && t.allow_clone !== false && !t.copied_by_me,
     isMine: false,
     templatePreview: true,
     template: t,
@@ -345,6 +364,9 @@ export function templateToCommunityRow(t: ApiTemplateRecord): Record<string, unk
     backtestSessions,
     rollbackAllowed: !!snap?.rollback_allowed,
     showRollbackBadge: !!(settings.include_backtest_stats && snap),
+    previewImage: settings.include_preview_image !== false
+      ? communityPreviewImageUrl(t.preview_image, def)
+      : "",
   };
 }
 

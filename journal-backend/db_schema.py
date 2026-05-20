@@ -62,6 +62,24 @@ def ensure_users_schema(app) -> None:
                             ")"
                         )
                     )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE strategy_templates ADD COLUMN IF NOT EXISTS "
+                            "preview_image JSONB"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "CREATE TABLE IF NOT EXISTS template_clones ("
+                            "id SERIAL PRIMARY KEY, "
+                            "template_id INTEGER NOT NULL REFERENCES strategy_templates(id), "
+                            "user_id INTEGER NOT NULL REFERENCES users(id), "
+                            "strategy_id INTEGER REFERENCES strategies(id), "
+                            "created_at TIMESTAMP, "
+                            "CONSTRAINT uq_template_clone_user UNIQUE (template_id, user_id)"
+                            ")"
+                        )
+                    )
                 else:
                     if "users" not in insp.get_table_names():
                         return
@@ -109,6 +127,13 @@ def ensure_users_schema(app) -> None:
                                     "share_count INTEGER NOT NULL DEFAULT 0"
                                 )
                             )
+                        if "preview_image" not in st_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE strategy_templates ADD COLUMN "
+                                    "preview_image JSON"
+                                )
+                            )
                     if "template_likes" not in insp.get_table_names():
                         conn.execute(
                             text(
@@ -119,6 +144,22 @@ def ensure_users_schema(app) -> None:
                                 "created_at DATETIME, "
                                 "FOREIGN KEY(template_id) REFERENCES strategy_templates(id), "
                                 "FOREIGN KEY(user_id) REFERENCES users(id), "
+                                "UNIQUE(template_id, user_id)"
+                                ")"
+                            )
+                        )
+                    if "template_clones" not in insp.get_table_names():
+                        conn.execute(
+                            text(
+                                "CREATE TABLE template_clones ("
+                                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                                "template_id INTEGER NOT NULL, "
+                                "user_id INTEGER NOT NULL, "
+                                "strategy_id INTEGER, "
+                                "created_at DATETIME, "
+                                "FOREIGN KEY(template_id) REFERENCES strategy_templates(id), "
+                                "FOREIGN KEY(user_id) REFERENCES users(id), "
+                                "FOREIGN KEY(strategy_id) REFERENCES strategies(id), "
                                 "UNIQUE(template_id, user_id)"
                                 ")"
                             )

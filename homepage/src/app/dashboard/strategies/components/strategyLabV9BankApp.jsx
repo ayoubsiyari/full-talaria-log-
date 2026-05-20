@@ -18,6 +18,7 @@ import {
   DEFAULT_COMMUNITY_PUBLISH_OPTIONS,
   buildBacktestSnapshotFromSession,
   pickBestBacktestSession,
+  strategyImageUrl,
 } from "@/app/dashboard/strategies/strategyLabV9Mappers";
 import { collectStrategyImageStats } from "@/app/dashboard/strategies/strategyLabV9Images";
 import { useOptionalBacktestNewSession } from "@/app/dashboard/BacktestNewSessionContext";
@@ -383,19 +384,28 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
         </div>
       </div>
     );
-    const cardH = showSocial ? 372 : 342;
+    const previewSrc = showSocial ? String(strat.previewImage || "") : "";
+    const hasPreview = !!previewSrc;
+    const previewH = hasPreview ? 100 : 0;
+    const cardH = (showSocial ? 372 : 342) + previewH;
     const isAuthorPost = !!strat.isAuthor;
     const liked = !!strat.likedByMe;
     const likeCount = strat.likeCount ?? 0;
     const copyCount = strat.copyCount ?? 0;
     const postedLabel = formatPostedAt(strat.postedAt);
-    const canCopyPost = !isAuthorPost && strat.canCopy !== false && strat.allowClone !== false;
+    const copiedByMe = !!strat.copiedByMe;
+    const canCopyPost = !isAuthorPost && !copiedByMe && strat.canCopy !== false && strat.allowClone !== false;
     return (
       <div onMouseEnter={()=>setStratCardHov(strat.id)} onMouseLeave={()=>setStratCardHov(null)}
         onDoubleClick={openEditableStrategy}
         style={{position:"relative",width:"100%",minWidth:0,height:cardH,minHeight:cardH,maxHeight:cardH,padding:0,overflow:"hidden",background:isH?"rgba(140,160,255,0.045)":c.sf,border:`1px solid ${isH?c.brH:c.br}`,cursor:"default",userSelect:"none",boxShadow:isH?"0 8px 22px rgba(0,0,0,0.32)":"none",transition:"background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease",display:"flex",flexDirection:"column",boxSizing:"border-box",alignSelf:"stretch"}}>
         <div style={{height:2,background:c.acL,boxShadow:`0 0 6px ${c.acG}`,flexShrink:0}}/>
-        <div style={{padding:"12px 14px 12px",flex:1,display:"flex",flexDirection:"column",gap:9}}>
+        {hasPreview ? (
+          <div style={{height:previewH,flexShrink:0,overflow:"hidden",background:c.hv2,borderBottom:`1px solid ${c.brH}`}}>
+            <img src={previewSrc} alt="" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+          </div>
+        ) : null}
+        <div style={{padding:"12px 14px 12px",flex:1,display:"flex",flexDirection:"column",gap:9,minHeight:0}}>
           <div style={{display:"grid",gridTemplateColumns:"26px minmax(0,1fr) 32px",alignItems:"center",gap:9}}>
             <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:c.hv2,border:`1px solid ${isH?c.acB:c.brH}`,color:c.acL,boxSizing:"border-box",transition:"border-color 0.14s ease, background 0.14s ease"}}>
               <span style={{fontSize:18,lineHeight:1,filter:"saturate(1.08)"}}>{cardIcon}</span>
@@ -477,9 +487,9 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                 <svg width={14} height={14} viewBox="0 0 24 24" fill={liked&&!isAuthorPost?"currentColor":"none"}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>
                 <span style={{fontSize:10,fontWeight:800,fontVariantNumeric:"tabular-nums"}}>{likeCount}</span>
               </div>
-              <div role={canCopyPost?"button":undefined} tabIndex={canCopyPost?0:-1} aria-label={canCopyPost?"Copy to My Strategies":"Copies"} title={isAuthorPost?"Copies by other members":(canCopyPost?"Copy to My Strategies":"Copy disabled")}
+              <div role={canCopyPost?"button":undefined} tabIndex={canCopyPost?0:-1} aria-label={copiedByMe?"Copied":(canCopyPost?"Copy to My Strategies":"Copies")} title={isAuthorPost?"Copies by other members":(copiedByMe?"Already in My Strategies":(canCopyPost?"Copy to My Strategies":"Copy disabled"))}
                 onClick={canCopyPost?()=>onCopy&&onCopy(strat):undefined}
-                style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"default",color:canCopyPost?c.ts:c.tm,fontFamily:F,transition:"color 0.12s",opacity:isAuthorPost?0.85:1}}
+                style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"default",color:copiedByMe?c.gn:(canCopyPost?c.ts:c.tm),fontFamily:F,transition:"color 0.12s",opacity:isAuthorPost?0.85:1}}
                 onMouseEnter={canCopyPost?e=>{e.currentTarget.style.color=c.acL;}:undefined}
                 onMouseLeave={canCopyPost?e=>{e.currentTarget.style.color=c.ts;}:undefined}>
                 <svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
@@ -668,6 +678,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
         const tfs = strat.timeframes||[];
         const tags = (strat.tags||[]).slice(0,10);
         const backtests = strat.backtestSessions||[];
+        const rowPreview = showPublicId ? String(strat.previewImage || "") : "";
         const openEditableStrategy = e => {
           e.stopPropagation();
           if (strat.templatePreview && !isMine) return;
@@ -681,9 +692,15 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
             onDoubleClick={openEditableStrategy}
             style={{display:"grid",gridTemplateColumns:rowCols,alignItems:"stretch",height:80,minHeight:80,maxHeight:80,borderTop:`1px solid ${isH?c.acB:c.brH}`,borderRight:`1px solid ${isH?c.acB:c.brH}`,borderBottom:`1px solid ${isH?c.acB:c.brH}`,borderLeft:`3px solid ${c.acL}`,background:isH?"rgba(140,160,255,0.045)":c.sf,cursor:"default",transition:"box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease",boxShadow:isH?`0 0 0 1px ${c.acB}, 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(38,67,247,0.15)`:"0 3px 12px rgba(0,0,0,0.5)",marginTop:idx===0?0:6,overflow:"hidden",boxSizing:"border-box"}}>
             <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,padding:"0 10px",overflow:"hidden",boxSizing:"border-box"}}>
-              <div style={{width:24,height:24,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:c.hv2,border:`1px solid ${isH?c.acB:c.brH}`,boxSizing:"border-box"}}>
-                <span style={{fontSize:17,lineHeight:1,filter:"saturate(1.08)"}}>{icon}</span>
-              </div>
+              {rowPreview ? (
+                <div style={{width:36,height:36,flexShrink:0,overflow:"hidden",border:`1px solid ${isH?c.acB:c.brH}`,background:c.hv2,boxSizing:"border-box"}}>
+                  <img src={rowPreview} alt="" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                </div>
+              ) : (
+                <div style={{width:24,height:24,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:c.hv2,border:`1px solid ${isH?c.acB:c.brH}`,boxSizing:"border-box"}}>
+                  <span style={{fontSize:17,lineHeight:1,filter:"saturate(1.08)"}}>{icon}</span>
+                </div>
+              )}
               <div style={{minWidth:0,flex:1}}>
                 <div style={{fontSize:12,fontWeight:850,color:c.tx,lineHeight:1.25,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{strat.name}</div>
                 {showPublicId ? (
@@ -693,7 +710,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                       <svg width={10} height={10} viewBox="0 0 24 24" fill={strat.likedByMe&&!strat.isAuthor?"currentColor":"none"}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" stroke="currentColor" strokeWidth="2"/></svg>
                       {strat.likeCount ?? 0}
                     </span>
-                    <span role={strat.isAuthor||strat.canCopy===false?undefined:"button"} tabIndex={strat.isAuthor||strat.canCopy===false?-1:0} onClick={strat.isAuthor||strat.canCopy===false?undefined:e=>{e.stopPropagation();onCopy&&onCopy(strat);}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:8,fontWeight:800,color:c.tm,fontFamily:F,cursor:"default"}}>
+                    <span role={strat.isAuthor||strat.copiedByMe||strat.canCopy===false?undefined:"button"} tabIndex={strat.isAuthor||strat.copiedByMe||strat.canCopy===false?-1:0} onClick={strat.isAuthor||strat.copiedByMe||strat.canCopy===false?undefined:e=>{e.stopPropagation();onCopy&&onCopy(strat);}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:8,fontWeight:800,color:strat.copiedByMe?c.gn:c.tm,fontFamily:F,cursor:"default"}} title={strat.copiedByMe?"Already copied":undefined}>
                       <svg width={10} height={10} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.8"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
                       {strat.copyCount ?? 0}
                     </span>
@@ -895,6 +912,10 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
     if (source.templatePreview && source.templateId) {
       if (source.isAuthor) {
         window.alert("You cannot copy your own community strategy.");
+        return;
+      }
+      if (source.copiedByMe) {
+        window.alert("You already copied this strategy to My Strategies.");
         return;
       }
       if (source.allowClone === false || source.canCopy === false) {
@@ -1364,6 +1385,8 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
         const removeFromCommunity=()=>deleteCommunityFromBank(ms);
         const communityCopyAction=ms.isAuthor
           ? null
+          : ms.copiedByMe
+          ? {label:"Already copied",handler:()=>window.alert("You already copied this strategy to My Strategies."),col:c.gn,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
           : ms.allowClone === false || ms.canCopy === false
           ? {label:"Copy disabled",handler:()=>window.alert("The author disabled copying for this strategy."),col:c.tm,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>}
           : {label:"Copy to My Strategies",handler:runDuplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>};
@@ -1517,6 +1540,18 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                 onMouseEnter={e=>e.currentTarget.style.color=c.tx} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</div>
             </div>
             <div style={{padding:"18px"}}>
+              {(()=>{
+                const sharePreview=(stratShareStrat.images||[]).map(strategyImageUrl).find(Boolean)||"";
+                return sharePreview ? (
+                  <div style={{height:120,marginBottom:14,overflow:"hidden",border:`1px solid ${c.brH}`,background:c.hv2}}>
+                    <img src={sharePreview} alt="" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                  </div>
+                ) : (
+                  <div style={{fontSize:8,color:c.tm,fontFamily:F,marginBottom:14,padding:"10px 12px",border:`1px dashed ${c.brH}`,background:"rgba(255,255,255,0.02)"}}>
+                    Add a strategy screenshot in the builder to show a preview on Community cards.
+                  </div>
+                );
+              })()}
               <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:18}}>
                 <div style={{width:42,height:42,background:"rgba(201,168,76,0.12)",border:`1px solid ${c.gold}44`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                   <svg width={18} height={18} viewBox="0 0 24 24" fill="none" style={{color:c.gold}}><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="1.8"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="1.8"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
@@ -1529,6 +1564,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
               <div style={{fontSize:8,fontWeight:800,color:c.tm,textTransform:"uppercase",letterSpacing:"0.07em",fontFamily:F,marginBottom:8}}>What to show publicly</div>
               <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
                 {[
+                  ["include_preview_image","Preview image","Strategy screenshot on the Community card"],
                   ["include_description","Description","Strategy summary text"],
                   ["include_strategy_details","Strategy details","Markets, timeframes, tags, style"],
                   ["include_conditions","Conditions & checklist","Decision tree / builder logic"],

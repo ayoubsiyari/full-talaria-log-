@@ -441,6 +441,7 @@ class StrategyTemplate(db.Model):
         'allow_clone': True,
     })
     backtest_snapshot = db.Column(JSON, nullable=True)
+    preview_image = db.Column(JSON, nullable=True)
 
     source_strategy = db.relationship('Strategy', foreign_keys=[source_strategy_id])
     creator = db.relationship('User', foreign_keys=[creator_user_id])
@@ -460,6 +461,25 @@ class TemplateLike(db.Model):
     user = db.relationship('User', backref=db.backref('template_likes', lazy=True))
 
     __table_args__ = (db.UniqueConstraint('template_id', 'user_id', name='uq_template_like_user'),)
+
+
+class TemplateClone(db.Model):
+    """One community template copy per user (enforced by unique constraint)."""
+    __tablename__ = 'template_clones'
+    id = db.Column(db.Integer, primary_key=True)
+    template_id = db.Column(db.Integer, db.ForeignKey('strategy_templates.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    strategy_id = db.Column(db.Integer, db.ForeignKey('strategies.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    template = db.relationship(
+        'StrategyTemplate',
+        backref=db.backref('clones', lazy=True, cascade='all, delete-orphan'),
+    )
+    user = db.relationship('User', backref=db.backref('template_clones', lazy=True))
+    strategy = db.relationship('Strategy', foreign_keys=[strategy_id])
+
+    __table_args__ = (db.UniqueConstraint('template_id', 'user_id', name='uq_template_clone_user'),)
 
 
 class FeatureFlags(db.Model):

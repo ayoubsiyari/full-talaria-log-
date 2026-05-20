@@ -9338,6 +9338,14 @@ const TalariaV8bLive = () => {
           const fid = typeof grid.getFocusedPanelId === "function"
             ? grid.getFocusedPanelId()
             : null;
+          if (
+            !v9UserExplicitToolRef.current
+            && typeof window !== "undefined"
+            && window.__v9BlockFocusToolArmOnce
+          ) {
+            legacyParam = null;
+            window.__v9BlockFocusToolArmOnce = false;
+          }
           // Refocusing host (A) after drawing on iframe B/C: multichart sync had cleared
           // the host's drawingManager while React still shows the last tool — do not push
           // that stale selection back onto A (bug: rail shows Trend Line on A but A is cursor).
@@ -9439,18 +9447,39 @@ const TalariaV8bLive = () => {
         if (typeof window !== "undefined") window.__v9MultichartFocusToolTick = false;
       }
     };
+    const onV9DrawingToolCleared = () => {
+      try {
+        if (editingDrawingRef.current || v9UserExplicitToolRef.current) return;
+        const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+        try {
+          if (typeof window !== "undefined") window.__v9BlockFocusToolArmOnce = true;
+        } catch (_) {}
+        if (grid && typeof grid.runCommandIframes === "function") {
+          void grid.runCommandIframes("clearActiveDrawingTool", null).catch(() => {});
+        }
+        try {
+          const hdm = window.chart && window.chart.drawingManager;
+          if (hdm && typeof hdm.clearTool === "function") hdm.clearTool();
+        } catch (_) {}
+        setTool("crosshair");
+        setDropdown(null);
+        setBtnPressed(null);
+      } catch (_) {}
+    };
     window.addEventListener("panelSelected", onPanelSelected);
     window.addEventListener("panelsCreated", onPanelSelected);
     window.addEventListener("chartDataLoaded", onPanelSelected);
     // Phase 7.2.4: tile focus — disarm non-focused panels (see apply branch
     // guarded by __v9MultichartFocusToolTick + syncDrawingToolAcrossPanels).
     window.addEventListener("multichartFocusChanged", onMultichartFocusChanged);
+    window.addEventListener("v9DrawingToolCleared", onV9DrawingToolCleared);
     return () => {
       cancelled = true;
       window.removeEventListener("panelSelected", onPanelSelected);
       window.removeEventListener("panelsCreated", onPanelSelected);
       window.removeEventListener("chartDataLoaded", onPanelSelected);
       window.removeEventListener("multichartFocusChanged", onMultichartFocusChanged);
+      window.removeEventListener("v9DrawingToolCleared", onV9DrawingToolCleared);
     };
     // layoutPanels.n is in deps so we re-run when the multichart grid
     // mounts/unmounts (1 ↔ N panels) and pick the right routing branch.
@@ -9492,6 +9521,12 @@ const TalariaV8bLive = () => {
         // finishing a stroke on a background chart must not reset V9 while a panel is active.
         if (activeDm && dm !== activeDm) return;
         if (!dm || dm.currentTool) return;
+        if (g && typeof g.runCommandIframes === "function") {
+          try {
+            if (typeof window !== "undefined") window.__v9BlockFocusToolArmOnce = true;
+          } catch (_) {}
+          void g.runCommandIframes("clearActiveDrawingTool", null).catch(() => {});
+        }
         setTool("crosshair");
         setDropdown(null);
         setBtnPressed(null);

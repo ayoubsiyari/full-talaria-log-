@@ -7,11 +7,14 @@ from typing import Any
 
 TALARIA_V9_KEY = "talaria_v9"
 
+MAX_PREVIEW_IMAGE_LEN = 2_800_000
+
 DEFAULT_PUBLISH_SETTINGS: dict[str, bool] = {
     "include_description": True,
     "include_conditions": True,
     "include_variables": True,
     "include_strategy_details": True,
+    "include_preview_image": True,
     "include_backtest_stats": False,
     "allow_clone": True,
 }
@@ -30,6 +33,38 @@ def parse_publish_settings(data: dict | None) -> dict[str, bool]:
 def _v9_panel(defn: dict) -> dict:
     raw = defn.get(TALARIA_V9_KEY)
     return raw if isinstance(raw, dict) else {}
+
+
+def _normalize_preview_entry(entry: Any) -> dict | None:
+    """First strategy gallery / cover image as `{src, name?}` for community card."""
+    if entry is None:
+        return None
+    src = ""
+    name = ""
+    if isinstance(entry, str):
+        src = entry.strip()
+    elif isinstance(entry, dict):
+        raw = entry.get("src")
+        src = raw.strip() if isinstance(raw, str) else ""
+        nm = entry.get("name")
+        name = str(nm).strip()[:120] if nm else ""
+    if not src.startswith("data:image/") or len(src) > MAX_PREVIEW_IMAGE_LEN:
+        return None
+    return {"src": src, "name": name} if name else {"src": src}
+
+
+def extract_preview_image(defn: Any) -> dict | None:
+    """Pick hero image for community feed cards (strategy screenshots)."""
+    if not isinstance(defn, dict):
+        return None
+    v9 = _v9_panel(defn)
+    imgs = v9.get("images")
+    if isinstance(imgs, list):
+        for item in imgs:
+            prev = _normalize_preview_entry(item)
+            if prev:
+                return prev
+    return _normalize_preview_entry(defn.get("cover_image"))
 
 
 def apply_publish_filter(defn: Any, settings: dict[str, bool] | None) -> dict:
