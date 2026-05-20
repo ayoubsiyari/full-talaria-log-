@@ -1251,8 +1251,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
           {label:isSavedNow?"Saved":"Save",handler:()=>saveCommunity(ms),col:isSavedNow?c.acL:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill={isSavedNow?c.acL:"none"}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7"/></svg>},
         ]:isSavedMenu?[
             {label:"Remove",handler:()=>saveCommunity(ms),col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
-        ]:[communityCopyAction],
-        ];
+        ]:[communityCopyAction];
         return(<>
           <div style={{position:"fixed",inset:0,zIndex:100000}} onClick={e=>{e.stopPropagation();closeMenu();}}/>
           <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:menuTop,left:menuLeft,zIndex:100001,width:menuW,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F}}>
