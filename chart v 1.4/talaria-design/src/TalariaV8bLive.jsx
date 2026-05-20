@@ -416,6 +416,16 @@ const V9_INFO_PROP_TO_LABEL = Object.fromEntries(
 
 /** Sub-tool icon ids per left-rail group (matches `toolGroups` dd). Used to clamp stale `groupSelected` so the Shapes rail cannot show a Lines icon.
  * Arrow tools (`arrowMarker` … `arrowDn`) belong to group `rect` only (Shapes dropdown); chart arrow drawings map there so the Lines rail is not overwritten. */
+/** Left-rail drawing tool groups — clicking the same group again must not deselect the chart shape. */
+const V9_DRAWING_TOOL_GROUP_IDS = new Set([
+  "trendline", "rect", "channel", "brush2", "fib", "pattern", "measure", "text", "brush",
+]);
+
+function v9ShouldClearChartSelectionForRailClick(nextToolId, currentTool) {
+  if (!V9_DRAWING_TOOL_GROUP_IDS.has(nextToolId)) return false;
+  return nextToolId !== currentTool;
+}
+
 const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
   trendline: new Set([
     "trendline", "hray", "hline", "vline", "ray", "extendedLine", "crossLine", "polyline", "pathTool", "curve", "doubleCurve",
@@ -6944,7 +6954,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a27-fib-tlstyle-arrays-fix";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a26-chart-context-menu-v9";
   }, []);
 
   useEffect(() => {
@@ -11809,7 +11819,7 @@ const TalariaV8bLive = () => {
           if (t.dd) {
             if (!["eye", "magnet", "trash"].includes(t.id)) {
               editingDrawingRef.current = null;
-              if (tlBarSelected) {
+              if (tlBarSelected && v9ShouldClearChartSelectionForRailClick(t.id, tool)) {
                 setTlBarSelected(false); setTlBarSelectedType(null);
                 try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll(); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
               }
@@ -11822,7 +11832,7 @@ const TalariaV8bLive = () => {
           }
           else {
             editingDrawingRef.current = null;
-            if (tlBarSelected) {
+            if (tlBarSelected && v9ShouldClearChartSelectionForRailClick(t.id, tool)) {
               setTlBarSelected(false); setTlBarSelectedType(null);
               try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll(); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
             }

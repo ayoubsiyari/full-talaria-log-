@@ -250,9 +250,13 @@ class DrawingToolsManager {
     _notifyV9SelectionSync(drawing) {
         try {
             if (!drawing || !drawing.type) return;
-            window.dispatchEvent(new CustomEvent('talaria:v9-selected-drawing', {
-                detail: { drawingType: drawing.type, drawingId: drawing.id },
-            }));
+            const detail = { drawingType: drawing.type, drawingId: drawing.id };
+            const ev = new CustomEvent('talaria:v9-selected-drawing', { detail });
+            window.dispatchEvent(ev);
+            // Multichart iframe tiles: parent React listens on the top window, not the iframe.
+            if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+                try { window.parent.dispatchEvent(new CustomEvent('talaria:v9-selected-drawing', { detail })); } catch (_) {}
+            }
         } catch (_) {}
     }
 
@@ -346,7 +350,10 @@ class DrawingToolsManager {
         if (!pos) {
             if (attempt < 2) {
                 requestAnimationFrame(() => this._syncSelectionChrome(drawing, attempt + 1));
+                return;
             }
+            // Legacy DOM toolbar is hidden in V9; still tell React a shape is selected.
+            this._notifyV9SelectionSync(drawing);
             return;
         }
 
