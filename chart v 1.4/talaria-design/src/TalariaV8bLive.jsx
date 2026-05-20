@@ -4961,6 +4961,7 @@ const TalariaV8bLive = () => {
   // Must be declared before render-time `settingsEditGroup` (line ~6980) — TDZ if defined later.
   const editingDrawingRef = useRef(null);
   const tlSettOpenRef = useRef(false);
+  const v9LastSelectedDrawingTypeRef = useRef(null);
   const [tlSettOpen, setTlSettOpen] = useState(false);
   tlSettOpenRef.current = tlSettOpen;
   const [tlSettPos, setTlSettPos] = useState({ x: 200, y: 90 });
@@ -6820,7 +6821,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a23";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a24-tdz-fix";
   }, []);
 
   useEffect(() => {
@@ -10818,7 +10819,6 @@ const TalariaV8bLive = () => {
   // When the armed legacy tool changes (e.g. Rectangle → Triangle), reset `tlStyle`
   // to clean defaults so settings never carry over from the previous tool.
   const v9LastHydratedLegacyRef = useRef(null);
-  const v9LastSelectedDrawingTypeRef = useRef(null);
   const [legacyHydrateNonce, setLegacyHydrateNonce] = useState(0);
   useEffect(() => {
     const onChartData = () => {
