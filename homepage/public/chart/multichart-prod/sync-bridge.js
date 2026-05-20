@@ -126,7 +126,7 @@
         if (typeof chart.constrainOffset === 'function') {
             try { chart.constrainOffset(); } catch (_) {}
         }
-        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        finishViewportApply(chart, !!m.panSync);
         return true;
     }
 
@@ -183,7 +183,7 @@
             }
         }
 
-        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        finishViewportApply(chart, !!m.panSync);
         return true;
     }
 
@@ -191,6 +191,47 @@
         const src = m.sourceTimeframe != null ? String(m.sourceTimeframe) : '';
         const mine = chart.currentTimeframe != null ? String(chart.currentTimeframe) : '';
         return src.length > 0 && mine.length > 0 && src === mine;
+    }
+
+    /** Low-latency pan follow: offset mirror only + immediate paint (no bar-count refit). */
+    function applyFastPanSync(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        const srcOffset = Number(m.offsetX);
+        if (!Number.isFinite(srcOffset)) return false;
+
+        const margin = chart.margin || { l: 60, r: 60 };
+        const plotW = (chart.w || chart.canvas?.width || 800) - (margin.l + margin.r);
+        if (plotW <= 0) return false;
+
+        const srcCw = Number(m.candleWidth);
+        if (Number.isFinite(srcCw) && srcCw > 0) {
+            chart.candleWidth = srcCw;
+            if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+                chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+            }
+            if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+        }
+
+        const sw = Number(m.plotWidthPx);
+        chart.offsetX = (sw > 0) ? srcOffset * (plotW / sw) : srcOffset;
+
+        if (typeof chart.constrainOffset === 'function') {
+            try { chart.constrainOffset(); } catch (_) {}
+        }
+
+        chart._panSyncBurstUntil = performance.now() + 48;
+        if (typeof chart.render === 'function') chart.render();
+        else if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        return true;
+    }
+
+    function finishViewportApply(chart, panSync) {
+        if (panSync) {
+            chart._panSyncBurstUntil = performance.now() + 48;
+            if (typeof chart.render === 'function') chart.render();
+        } else if (typeof chart.scheduleRender === 'function') {
+            chart.scheduleRender();
+        }
     }
 
     /**
@@ -272,7 +313,7 @@
             }
         }
 
-        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        finishViewportApply(chart, false);
         return true;
     }
 
@@ -562,6 +603,7 @@
                     visibleBarCount: r.visibleBarCount,
                     rightEdgeBarIndex: r.rightEdgeBarIndex,
                     sourceTimeframe: r.sourceTimeframe,
+                    panSync: r.panSync,
                     offsetX: r.offsetX,
                     candleWidth: r.candleWidth,
                     zoomLevelIndex: r.zoomLevelIndex,
@@ -631,7 +673,7 @@
                 : (typeof chart.getVisibleStartIndex === 'function' ? chart.getVisibleStartIndex() : 0);
             const ei = Number.isFinite(d.endIndex) ? d.endIndex
                 : (typeof chart.getVisibleEndIndex === 'function' ? chart.getVisibleEndIndex() : chart.data.length - 1);
-            pending.visibleRange = {
+            const rangePayload = {
                 startSec: toSeconds(startT),
                 endSec: toSeconds(endT),
                 startIndex: si,
@@ -639,12 +681,32 @@
                 visibleBarCount: Math.max(1, ei - si + 1),
                 rightEdgeBarIndex: Number.isFinite(d.rightEdgeBarIndex) ? d.rightEdgeBarIndex : ei,
                 sourceTimeframe: chart.currentTimeframe || null,
+                panSync: !!d.panSync,
                 offsetX: d.offsetX,
                 candleWidth: d.candleWidth,
                 zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
                 plotWidthPx: plotWidthPx > 0 ? plotWidthPx : undefined,
             };
-            scheduleFlush();
+            if (d.panSync) {
+                send({
+                    type: 'visibleRange',
+                    startTime: rangePayload.startSec,
+                    endTime: rangePayload.endSec,
+                    startIndex: rangePayload.startIndex,
+                    endIndex: rangePayload.endIndex,
+                    visibleBarCount: rangePayload.visibleBarCount,
+                    rightEdgeBarIndex: rangePayload.rightEdgeBarIndex,
+                    sourceTimeframe: rangePayload.sourceTimeframe,
+                    panSync: true,
+                    offsetX: rangePayload.offsetX,
+                    candleWidth: rangePayload.candleWidth,
+                    zoomLevelIndex: rangePayload.zoomLevelIndex,
+                    plotWidthPx: rangePayload.plotWidthPx,
+                });
+            } else {
+                pending.visibleRange = rangePayload;
+                scheduleFlush();
+            }
         });
 
         // 2b) Force-dispatch chartScrolled regardless of legacy panelManager.
@@ -711,6 +773,7 @@
                                 visibleBarCount: Math.max(1, endIndex - startIndex + 1),
                                 rightEdgeBarIndex: rightEdgeBarIndex,
                                 sourceTimeframe: chart.currentTimeframe || null,
+                                panSync: !!(chart.drag && chart.drag.active && chart.drag.type === 'pan'),
                                 startTimestamp: startTimestamp,
                                 endTimestamp: endTimestamp,
                                 timeSyncEndTimestamp: endTimestamp,
@@ -1247,12 +1310,17 @@
         }
 
         function applyVisibleRange(m) {
+            const panSync = !!m.panSync;
             const before = G.snapshotPriceState(chart);
             state.applied.add(m.causationId);
             beginApplying();
 
             let applied = false;
-            if (sameTimeframeMessage(chart, m)) {
+            if (panSync) {
+                applied = applyFastPanSync(chart, m)
+                    || (sameTimeframeMessage(chart, m) && applyNativeChartViewport(chart, m))
+                    || applyWallClockDateRange(chart, m);
+            } else if (sameTimeframeMessage(chart, m)) {
                 applied = applyNativeChartViewport(chart, m);
             }
             if (!applied) {
@@ -1271,14 +1339,13 @@
                 chart.autoScale = true;
             }
 
-            // Drop the next few chartScrolled-driven outbound range posts —
-            // they are almost always echoes from this programmatic viewport
-            // change, not a new user pan (see state.suppressRangeScrollEcho*).
             var tSil = (typeof performance !== 'undefined' && performance.now)
                 ? performance.now()
                 : Date.now();
-            state.suppressRangeScrollEchoUntil = tSil + 200;
-            state.suppressRangeScrollEchoLeft = 6;
+            state.suppressRangeScrollEchoUntil = tSil + (panSync ? 48 : 200);
+            state.suppressRangeScrollEchoLeft = panSync ? 2 : 6;
+
+            if (panSync) return;
 
             // Defer assertion until raf so render() has applied autoScale
             requestAnimationFrame(function () {

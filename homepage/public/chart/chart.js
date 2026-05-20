@@ -8956,10 +8956,12 @@ class Chart {
         }
         
         if (!sourcePanel) return;
+        const panSync = !!(this.drag && this.drag.active && this.drag.type === 'pan');
         window.dispatchEvent(new CustomEvent('chartScrolled', {
             detail: {
                 chart: this,
                 panel: sourcePanel,
+                panSync,
                 startIndex,
                 endIndex,
                 visibleBarCount: Math.max(1, endIndex - startIndex + 1),
@@ -13342,7 +13344,11 @@ class Chart {
             typeof this._wheelBurstUntil === 'number' &&
             performance.now() < this._wheelBurstUntil;
 
-        if (replayPlaying || timeAxisZoomDrag || inertialPan || wheelBurst) {
+        const panSyncBurst =
+            typeof this._panSyncBurstUntil === 'number' &&
+            performance.now() < this._panSyncBurstUntil;
+
+        if (replayPlaying || timeAxisZoomDrag || inertialPan || wheelBurst || panSyncBurst) {
             this.renderPending = false;
             this.render();
             return;

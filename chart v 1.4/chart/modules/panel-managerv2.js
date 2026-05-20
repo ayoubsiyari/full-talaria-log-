@@ -911,6 +911,40 @@ class PanelManager {
     }
 
     /**
+     * Fast pan follow: mirror offsetX only (same frame feel as solo chart drag).
+     */
+    _mirrorFastPan(chart, sourceChart, scrollDetail) {
+        if (!chart?.data?.length || !sourceChart) return false;
+        const d = scrollDetail || {};
+        const srcOffset = Number.isFinite(d.offsetX) ? d.offsetX : sourceChart.offsetX;
+        if (!Number.isFinite(srcOffset)) return false;
+
+        const sm = sourceChart.margin || { l: 0, r: 60 };
+        const tm = chart.margin || { l: 0, r: 60 };
+        const sw = (sourceChart.w || 0) - sm.l - sm.r;
+        const tw = (chart.w || 0) - tm.l - tm.r;
+        if (tw <= 0) return false;
+
+        const srcCw = Number.isFinite(d.candleWidth) && d.candleWidth > 0
+            ? d.candleWidth
+            : sourceChart.candleWidth;
+        if (Number.isFinite(srcCw) && srcCw > 0) {
+            chart.candleWidth = srcCw;
+            if (chart.zoomLevel && Number.isFinite(d.zoomLevelIndex)) {
+                chart.zoomLevel.candleWidthIndex = d.zoomLevelIndex;
+            }
+            if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+        }
+
+        chart.offsetX = sw > 0 ? srcOffset * (tw / sw) : srcOffset;
+        if (chart.constrainOffset) chart.constrainOffset();
+        chart._panSyncBurstUntil = performance.now() + 48;
+        if (chart.render) chart.render();
+        else if (chart.scheduleRender) chart.scheduleRender();
+        return true;
+    }
+
+    /**
      * Same pan/zoom as solo chart: copy candleWidth + right-edge anchor (chart.js wheel logic).
      */
     _mirrorNativeViewport(chart, sourceChart, scrollDetail) {
@@ -1010,9 +1044,12 @@ class PanelManager {
 
                 const tgtTf = chart.currentTimeframe != null ? String(chart.currentTimeframe) : '';
                 const sameTf = srcTf.length > 0 && tgtTf.length > 0 && srcTf === tgtTf;
+                const panSync = !!d.panSync;
 
-                if (canNative && sameTf && this._mirrorNativeViewport(chart, sourceChart, d)) {
-                    // same wheel zoom / pan as solo chart (identical TF only)
+                if (panSync && sameTf && this._mirrorFastPan(chart, sourceChart, d)) {
+                    // low-latency pan (offset mirror)
+                } else if (canNative && sameTf && this._mirrorNativeViewport(chart, sourceChart, d)) {
+                    // zoom / full viewport (identical TF)
                 } else {
                     let iR;
                     let iL;
@@ -1028,7 +1065,10 @@ class PanelManager {
                     this._fitChartToBarWindow(chart, iL, iR, localBars);
                 }
                 if (chart.constrainOffset) chart.constrainOffset();
-                if (chart.scheduleRender) chart.scheduleRender();
+                if (panSync) {
+                    chart._panSyncBurstUntil = performance.now() + 48;
+                    if (chart.render) chart.render();
+                } else if (chart.scheduleRender) chart.scheduleRender();
                 else if (chart.render) chart.render();
             });
         } finally {
