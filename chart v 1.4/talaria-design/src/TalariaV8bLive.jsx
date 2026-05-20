@@ -9225,6 +9225,7 @@ const TalariaV8bLive = () => {
   // and wipes the selection the user just made — and leaves draw mode armed.
   const v9SelectionToolbarSyncRef = useRef(false);
   const v9UserExplicitToolRef = useRef(false);
+  const v9LastToolSyncFocusPanelRef = useRef(null);
 
   const getSelectedDrawingForTemplate = useCallback(() => {
     try {
@@ -9412,7 +9413,6 @@ const TalariaV8bLive = () => {
       applyHostDm();
     };
     apply();
-    const lastToolSyncFocusPanelRef = { current: null };
     const onPanelSelected = () => {
       n = 0;
       apply();
@@ -9421,8 +9421,8 @@ const TalariaV8bLive = () => {
       // Re-syncing the rail tool on every focus mirror event (tf/file/pan)
       // re-arms the iframe after finalizeDrawing → clearTool on the same click.
       const pid = e?.detail?.panelId ?? null;
-      if (pid != null && pid === lastToolSyncFocusPanelRef.current) return;
-      lastToolSyncFocusPanelRef.current = pid;
+      if (pid != null && pid === v9LastToolSyncFocusPanelRef.current) return;
+      v9LastToolSyncFocusPanelRef.current = pid;
       n = 0;
       try {
         if (typeof window !== "undefined") window.__v9MultichartFocusToolTick = true;
@@ -9431,8 +9431,18 @@ const TalariaV8bLive = () => {
         if (typeof window !== "undefined") window.__v9MultichartFocusToolTick = false;
       }
     };
-    const onV9DrawingToolCleared = () => {
+    const onV9DrawingToolCleared = (e) => {
       try {
+        // Ignore background-panel clears from syncDrawingToolAcrossPanels (see drawing-tools-manager).
+        if (v9UserExplicitToolRef.current) return;
+        const legacyNow = resolveLegacyTool();
+        if (legacyNow) return;
+        const g = typeof window !== "undefined" ? window.__multichartGrid : null;
+        const clearedPid = e?.detail?.panelId ?? null;
+        if (g && clearedPid && typeof g.getFocusedPanelId === "function") {
+          const fid = g.getFocusedPanelId();
+          if (fid && clearedPid !== fid) return;
+        }
         v9PushRailLegacyTool(null);
         setTool("crosshair");
         setDropdown(null);

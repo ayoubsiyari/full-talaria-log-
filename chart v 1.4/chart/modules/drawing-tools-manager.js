@@ -1717,12 +1717,6 @@ class DrawingToolsManager {
         }
         this._updateAxisZonePointerEvents();
 
-        // Multichart iframe: tell parent V9 rail to drop draw mode (otherwise
-        // multichartFocusChanged re-arms via syncDrawingToolAcrossPanels).
-        if (!_mirrored) {
-            this._notifyV9MultichartToolCleared();
-        }
-
         // Mirror clear to all other panel drawing managers
         if (!_mirrored && window.panelManager && window.panelManager.currentLayout !== '1') {
             const allDms = [];
@@ -4072,6 +4066,7 @@ class DrawingToolsManager {
             
             // Clear the tool so button deactivates
             this.clearTool();
+            this._notifyV9MultichartToolCleared();
             
             // Don't save to localStorage yet
             return;
@@ -4190,6 +4185,9 @@ class DrawingToolsManager {
 
         if (!shouldKeepTool) {
             this.clearTool();
+            // Stroke finished on an iframe: notify parent once (not on every clearTool —
+            // multichart sync clears background panels and must not reset the V9 rail).
+            this._notifyV9MultichartToolCleared();
             // Update UI - remove active from all tools except the persistent cursor button
             document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(b => b.classList.remove('active'));
