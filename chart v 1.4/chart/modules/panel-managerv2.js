@@ -911,7 +911,56 @@ class PanelManager {
     }
 
     /**
-     * TradingView-style date-range sync: same visible bar count + same time window on every panel.
+     * Same pan/zoom as solo chart: copy candleWidth + right-edge anchor (chart.js wheel logic).
+     */
+    _mirrorNativeViewport(chart, sourceChart, scrollDetail) {
+        if (!chart?.data?.length || !sourceChart?.data?.length) return false;
+        const d = scrollDetail || {};
+        const srcCw = Number.isFinite(d.candleWidth) && d.candleWidth > 0
+            ? d.candleWidth
+            : sourceChart.candleWidth;
+        if (!Number.isFinite(srcCw) || srcCw <= 0) return false;
+
+        const m = chart.margin || { l: 0, r: 60 };
+        const plotW = (chart.w || 0) - m.l - m.r;
+        if (plotW <= 0) return false;
+
+        chart.candleWidth = srcCw;
+        if (Number.isFinite(d.zoomLevelIndex) && chart.zoomLevel) {
+            chart.zoomLevel.candleWidthIndex = d.zoomLevelIndex;
+        } else if (sourceChart.zoomLevel && Number.isFinite(sourceChart.zoomLevel.candleWidthIndex)) {
+            chart.zoomLevel.candleWidthIndex = sourceChart.zoomLevel.candleWidthIndex;
+        }
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : chart.candleWidth;
+        if (!(spacing > 0)) return false;
+
+        const barMs = typeof sourceChart.inferBarDurationMs === 'function'
+            ? sourceChart.inferBarDurationMs()
+            : 60000;
+        let endIdx = Number.isFinite(d.endIndex) ? Math.floor(d.endIndex) : null;
+        if (endIdx == null && typeof sourceChart.getVisibleEndIndex === 'function') {
+            endIdx = sourceChart.getVisibleEndIndex();
+        }
+        if (endIdx == null) endIdx = sourceChart.data.length - 1;
+
+        let iR;
+        if (chart.data.length === sourceChart.data.length
+            && String(chart.currentFileId || '') === String(sourceChart.currentFileId || '')
+            && chart.currentFileId != null) {
+            iR = Math.max(0, Math.min(endIdx, chart.data.length - 1));
+        } else {
+            const endTs = (sourceChart.data[Math.min(endIdx, sourceChart.data.length - 1)]?.t ?? 0) + barMs;
+            iR = this._findLastIndexAtOrBefore(chart.data, endTs - 1);
+        }
+
+        chart.offsetX = plotW - (iR + 1) * spacing;
+        return true;
+    }
+
+    /**
+     * Date-range sync: native zoom mirror first, then bar-count window fallback.
      */
     syncScrollTradingView(sourcePanel, scrollDetail) {
         if (this._isSyncing) return;
@@ -921,6 +970,7 @@ class PanelManager {
         if (!sourceChart?.data?.length) return;
 
         const d = scrollDetail || {};
+        const canNative = Number.isFinite(d.candleWidth) && d.candleWidth > 0;
         let startIdx = Number.isFinite(d.startIndex) ? Math.floor(d.startIndex) : null;
         let endIdx = Number.isFinite(d.endIndex) ? Math.floor(d.endIndex) : null;
         if (startIdx == null && typeof sourceChart.getVisibleStartIndex === 'function') {
@@ -957,17 +1007,20 @@ class PanelManager {
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);
 
-                let iR;
-                let iL;
-                if (sameData(chart)) {
-                    iR = endIdx;
-                    iL = startIdx;
+                if (canNative && this._mirrorNativeViewport(chart, sourceChart, d)) {
+                    // same wheel zoom / pan as solo chart
                 } else {
-                    iR = this._findLastIndexAtOrBefore(chart.data, rangeEndExclusive - 1);
-                    iL = Math.max(0, iR - barCount + 1);
+                    let iR;
+                    let iL;
+                    if (sameData(chart)) {
+                        iR = endIdx;
+                        iL = startIdx;
+                    } else {
+                        iR = this._findLastIndexAtOrBefore(chart.data, rangeEndExclusive - 1);
+                        iL = Math.max(0, iR - barCount + 1);
+                    }
+                    this._fitChartToBarWindow(chart, iL, iR, barCount);
                 }
-
-                this._fitChartToBarWindow(chart, iL, iR, barCount);
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();
                 else if (chart.render) chart.render();

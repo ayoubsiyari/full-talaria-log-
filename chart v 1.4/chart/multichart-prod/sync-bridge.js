@@ -89,6 +89,48 @@
     }
 
     /**
+     * Mirror solo-chart pan/zoom: same candleWidth + same right-edge bar anchor as chart.js wheel.
+     * @returns {boolean} true if applied
+     */
+    function applyNativeChartViewport(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        const srcCw = Number(m.candleWidth);
+        if (!Number.isFinite(srcCw) || srcCw <= 0) return false;
+
+        const margin = chart.margin || { l: 60, r: 60 };
+        const plotW = (chart.w || chart.canvas?.width || 800) - (margin.l + margin.r);
+        if (plotW <= 0) return false;
+
+        chart.candleWidth = srcCw;
+        if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+            chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+        }
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (!(spacing > 0)) return false;
+
+        let iR = -1;
+        if (Number.isFinite(m.endTime)) {
+            iR = findLastAtOrBefore(chart.data, toMillis(m.endTime) - 1);
+        } else if (Number.isFinite(m.endIndex)) {
+            iR = Math.max(0, Math.min(Math.floor(m.endIndex), chart.data.length - 1));
+        } else if (Number.isFinite(m.rightEdgeBarIndex)) {
+            iR = Math.max(0, Math.min(Math.floor(m.rightEdgeBarIndex), chart.data.length - 1));
+        }
+        if (iR < 0) return false;
+
+        chart.offsetX = plotW - (iR + 1) * spacing;
+        if (typeof chart.constrainOffset === 'function') {
+            try { chart.constrainOffset(); } catch (_) {}
+        }
+        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        return true;
+    }
+
+    /**
      * TradingView-style: same bar count + right-edge time anchor on every panel.
      * @returns {boolean} true if applied
      */
@@ -334,6 +376,9 @@
             startIndex: startIdx,
             endIndex: endIdx,
             visibleBarCount: Math.max(1, endIdx - startIdx + 1),
+            rightEdgeBarIndex: (typeof chart.getVisibleEndIndex === 'function')
+                ? chart.getVisibleEndIndex()
+                : endIdx,
             offsetX: chart.offsetX,
             candleWidth: chart.candleWidth,
             zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
@@ -451,6 +496,7 @@
                     startIndex: r.startIndex,
                     endIndex: r.endIndex,
                     visibleBarCount: r.visibleBarCount,
+                    rightEdgeBarIndex: r.rightEdgeBarIndex,
                     offsetX: r.offsetX,
                     candleWidth: r.candleWidth,
                     zoomLevelIndex: r.zoomLevelIndex,
@@ -526,6 +572,7 @@
                 startIndex: si,
                 endIndex: ei,
                 visibleBarCount: Math.max(1, ei - si + 1),
+                rightEdgeBarIndex: Number.isFinite(d.rightEdgeBarIndex) ? d.rightEdgeBarIndex : ei,
                 offsetX: d.offsetX,
                 candleWidth: d.candleWidth,
                 zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
@@ -578,12 +625,25 @@
                         : 0;
                     if (Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
                         && endTimestamp > startTimestamp) {
+                        const m = chart.margin || { l: 60, r: 60 };
+                        const spacing = (typeof chart.getCandleSpacing === 'function')
+                            ? chart.getCandleSpacing()
+                            : chart.candleWidth;
+                        const rightEdgePx = (chart.w || 0) - m.r;
+                        const idxAtRight = spacing > 0
+                            ? (rightEdgePx - m.l - chart.offsetX) / spacing
+                            : endIndex;
+                        const rightEdgeBarIndex = Math.max(0, Math.min(
+                            chart.data.length - 1,
+                            Math.floor(idxAtRight)
+                        ));
                         global.dispatchEvent(new CustomEvent('chartScrolled', {
                             detail: {
                                 chart: chart,
                                 startIndex: startIndex,
                                 endIndex: endIndex,
                                 visibleBarCount: Math.max(1, endIndex - startIndex + 1),
+                                rightEdgeBarIndex: rightEdgeBarIndex,
                                 startTimestamp: startTimestamp,
                                 endTimestamp: endTimestamp,
                                 timeSyncEndTimestamp: endTimestamp,
@@ -1124,7 +1184,7 @@
             state.applied.add(m.causationId);
             beginApplying();
 
-            if (!applyTradingViewVisibleRange(chart, m)) {
+            if (!applyNativeChartViewport(chart, m) && !applyTradingViewVisibleRange(chart, m)) {
                 const myTf = chart.currentTimeframe || '1m';
                 const myBucket = tfSec(myTf);
                 const startSnapped = floorToBucket(m.startTime, myBucket);
