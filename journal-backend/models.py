@@ -427,6 +427,7 @@ class StrategyTemplate(db.Model):
     template_type = db.Column(db.String(20), nullable=False, default='community')
     status = db.Column(db.String(20), nullable=False, default='published')
     clone_count = db.Column(db.Integer, nullable=False, default=0)
+    share_count = db.Column(db.Integer, nullable=False, default=0)
     rating_sum = db.Column(db.Integer, nullable=False, default=0)
     rating_count = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -443,6 +444,22 @@ class StrategyTemplate(db.Model):
 
     source_strategy = db.relationship('Strategy', foreign_keys=[source_strategy_id])
     creator = db.relationship('User', foreign_keys=[creator_user_id])
+
+
+class TemplateLike(db.Model):
+    __tablename__ = 'template_likes'
+    id = db.Column(db.Integer, primary_key=True)
+    template_id = db.Column(db.Integer, db.ForeignKey('strategy_templates.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    template = db.relationship(
+        'StrategyTemplate',
+        backref=db.backref('likes', lazy=True, cascade='all, delete-orphan'),
+    )
+    user = db.relationship('User', backref=db.backref('template_likes', lazy=True))
+
+    __table_args__ = (db.UniqueConstraint('template_id', 'user_id', name='uq_template_like_user'),)
 
 
 class FeatureFlags(db.Model):

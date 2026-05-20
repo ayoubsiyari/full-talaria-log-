@@ -45,6 +45,23 @@ def ensure_users_schema(app) -> None:
                             "backtest_snapshot JSONB"
                         )
                     )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE strategy_templates ADD COLUMN IF NOT EXISTS "
+                            "share_count INTEGER NOT NULL DEFAULT 0"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "CREATE TABLE IF NOT EXISTS template_likes ("
+                            "id SERIAL PRIMARY KEY, "
+                            "template_id INTEGER NOT NULL REFERENCES strategy_templates(id), "
+                            "user_id INTEGER NOT NULL REFERENCES users(id), "
+                            "created_at TIMESTAMP, "
+                            "CONSTRAINT uq_template_like_user UNIQUE (template_id, user_id)"
+                            ")"
+                        )
+                    )
                 else:
                     if "users" not in insp.get_table_names():
                         return
@@ -85,6 +102,27 @@ def ensure_users_schema(app) -> None:
                                     "backtest_snapshot JSON"
                                 )
                             )
+                        if "share_count" not in st_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE strategy_templates ADD COLUMN "
+                                    "share_count INTEGER NOT NULL DEFAULT 0"
+                                )
+                            )
+                    if "template_likes" not in insp.get_table_names():
+                        conn.execute(
+                            text(
+                                "CREATE TABLE template_likes ("
+                                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                                "template_id INTEGER NOT NULL, "
+                                "user_id INTEGER NOT NULL, "
+                                "created_at DATETIME, "
+                                "FOREIGN KEY(template_id) REFERENCES strategy_templates(id), "
+                                "FOREIGN KEY(user_id) REFERENCES users(id), "
+                                "UNIQUE(template_id, user_id)"
+                                ")"
+                            )
+                        )
             app.logger.info(
                 "schema patch applied (users public_id, strategy_templates publish)"
             )

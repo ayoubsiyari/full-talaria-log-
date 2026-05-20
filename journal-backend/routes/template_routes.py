@@ -1,9 +1,11 @@
 """Strategy template library."""
 
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
-from models import db, StrategyTemplate, Strategy, User
+from sqlalchemy import func
+
+from models import db, StrategyTemplate, Strategy, User, TemplateLike
 from routes.strategy_routes import _strategy_dict
 from schemas.strategy_lab import merge_definition_from_legacy, default_strategy_definition
 from user_public_id import ensure_user_public_id
@@ -23,6 +25,19 @@ def _uid():
     return int(get_jwt_identity())
 
 
+def _request_is_admin():
+    """JWT is_admin claim or User.role / User.is_admin (matches dashboard admin checks)."""
+    claims = get_jwt() or {}
+    if claims.get('is_admin'):
+        return True
+    user = User.query.get(_uid())
+    if not user:
+        return False
+    if getattr(user, 'role', None) == 'admin':
+        return True
+    return bool(getattr(user, 'is_admin', False))
+
+
 def _creator_dict(user):
     if not user:
         return None
@@ -40,7 +55,55 @@ def _template_publish_settings(t):
     return dict(DEFAULT_PUBLISH_SETTINGS)
 
 
-def _tpl_dict(t, strategy_snapshot=None):
+def _engagement_for_template(template_id, viewer_id=None):
+    likes_count = (
+        TemplateLike.query.filter_by(template_id=template_id).count()
+    )
+    liked_by_me = False
+    if viewer_id:
+        liked_by_me = (
+            TemplateLike.query.filter_by(
+                template_id=template_id, user_id=viewer_id,
+            ).first()
+            is not None
+        )
+    tpl = StrategyTemplate.query.get(template_id)
+    shares_count = int(getattr(tpl, 'share_count', 0) or 0) if tpl else 0
+    return likes_count, shares_count, liked_by_me
+
+
+def _engagement_map(template_ids, viewer_id=None):
+    """Batch like counts for list endpoints."""
+    if not template_ids:
+        return {}
+    rows = (
+        db.session.query(TemplateLike.template_id, func.count(TemplateLike.id))
+        .filter(TemplateLike.template_id.in_(template_ids))
+        .group_by(TemplateLike.template_id)
+        .all()
+    )
+    like_counts = {tid: int(cnt) for tid, cnt in rows}
+    liked_ids = set()
+    if viewer_id:
+        liked_rows = (
+            TemplateLike.query.filter(
+                TemplateLike.template_id.in_(template_ids),
+                TemplateLike.user_id == viewer_id,
+            )
+            .with_entities(TemplateLike.template_id)
+            .all()
+        )
+        liked_ids = {r[0] for r in liked_rows}
+    out = {}
+    for tid in template_ids:
+        out[tid] = {
+            'likes_count': like_counts.get(tid, 0),
+            'liked_by_me': tid in liked_ids,
+        }
+    return out
+
+
+def _tpl_dict(t, strategy_snapshot=None, viewer_id=None, engagement=None):
     rating_avg = (t.rating_sum / t.rating_count) if t.rating_count else None
     creator = None
     if t.creator_user_id:
@@ -53,6 +116,12 @@ def _tpl_dict(t, strategy_snapshot=None):
         if strategy_snapshot is not None
         else apply_publish_filter(t.definition, settings)
     )
+    if engagement is None:
+        likes_count, shares_count, liked_by_me = _engagement_for_template(t.id, viewer_id)
+    else:
+        likes_count = engagement.get('likes_count', 0)
+        liked_by_me = engagement.get('liked_by_me', False)
+        shares_count = int(getattr(t, 'share_count', 0) or 0)
     out = {
         'id': t.id,
         'title': t.title,
@@ -61,6 +130,9 @@ def _tpl_dict(t, strategy_snapshot=None):
         'template_type': t.template_type,
         'status': t.status,
         'clone_count': t.clone_count,
+        'likes_count': likes_count,
+        'shares_count': shares_count,
+        'liked_by_me': liked_by_me,
         'rating_avg': round(rating_avg, 2) if rating_avg is not None else None,
         'rating_count': t.rating_count,
         'created_at': t.created_at.isoformat() if t.created_at else None,
@@ -71,6 +143,12 @@ def _tpl_dict(t, strategy_snapshot=None):
         'definition': public_defn,
     }
     return out
+
+
+def _templates_payload(items, viewer_id=None):
+    ids = [t.id for t in items]
+    eng = _engagement_map(ids, viewer_id)
+    return [_tpl_dict(t, viewer_id=viewer_id, engagement=eng.get(t.id)) for t in items]
 
 
 def _published_templates_list():
@@ -92,7 +170,7 @@ def list_templates_public():
         items = _published_templates_list()
         return jsonify({
             'success': True,
-            'templates': [_tpl_dict(t) for t in items],
+            'templates': _templates_payload(items, viewer_id=None),
         }), 200
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -106,7 +184,7 @@ def list_templates():
         items = _published_templates_list()
         return jsonify({
             'success': True,
-            'templates': [_tpl_dict(t) for t in items],
+            'templates': _templates_payload(items, viewer_id=_uid()),
         }), 200
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -119,8 +197,60 @@ def get_template(template_id):
         t = StrategyTemplate.query.filter_by(id=template_id, status='published').first()
         if not t:
             return jsonify({'success': False, 'error': 'Not found'}), 404
-        return jsonify({'success': True, 'template': _tpl_dict(t)}), 200
+        return jsonify({'success': True, 'template': _tpl_dict(t, viewer_id=_uid())}), 200
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@template_bp.route('/templates/<int:template_id>/like', methods=['POST', 'DELETE'])
+@jwt_required()
+def like_template(template_id):
+    """Toggle like on a published community template (one like per user)."""
+    try:
+        user_id = _uid()
+        t = StrategyTemplate.query.filter_by(id=template_id, status='published').first()
+        if not t:
+            return jsonify({'success': False, 'error': 'Not found'}), 404
+        existing = TemplateLike.query.filter_by(
+            template_id=template_id, user_id=user_id,
+        ).first()
+        if request.method == 'POST':
+            if not existing:
+                db.session.add(TemplateLike(template_id=template_id, user_id=user_id))
+            db.session.commit()
+            liked = True
+        else:
+            if existing:
+                db.session.delete(existing)
+            db.session.commit()
+            liked = False
+        likes_count = TemplateLike.query.filter_by(template_id=template_id).count()
+        return jsonify({
+            'success': True,
+            'liked': liked,
+            'likes_count': likes_count,
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@template_bp.route('/templates/<int:template_id>/share', methods=['POST'])
+@jwt_required()
+def share_template(template_id):
+    """Record a share action (link copy / native share)."""
+    try:
+        t = StrategyTemplate.query.filter_by(id=template_id, status='published').first()
+        if not t:
+            return jsonify({'success': False, 'error': 'Not found'}), 404
+        t.share_count = int(getattr(t, 'share_count', 0) or 0) + 1
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'shares_count': t.share_count,
+        }), 200
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -238,14 +368,32 @@ def saved_templates_placeholder():
 def approve_template(template_id):
     """Admin: publish a pending community template."""
     try:
-        user_id = _uid()
-        admin = User.query.get(user_id)
-        if not admin or getattr(admin, 'role', None) != 'admin':
+        if not _request_is_admin():
             return jsonify({'success': False, 'error': 'Forbidden'}), 403
         t = StrategyTemplate.query.get(template_id)
         if not t:
             return jsonify({'success': False, 'error': 'Not found'}), 404
         t.status = 'published'
+        db.session.commit()
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@template_bp.route('/templates/<int:template_id>', methods=['DELETE'])
+@jwt_required()
+def remove_template_from_community(template_id):
+    """Admin: remove a published community/official template from the public library."""
+    try:
+        if not _request_is_admin():
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
+        t = StrategyTemplate.query.get(template_id)
+        if not t:
+            return jsonify({'success': False, 'error': 'Not found'}), 404
+        if t.status != 'published':
+            return jsonify({'success': False, 'error': 'Template is not published'}), 400
+        t.status = 'removed'
         db.session.commit()
         return jsonify({'success': True}), 200
     except Exception as e:

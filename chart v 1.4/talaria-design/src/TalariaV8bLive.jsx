@@ -9226,8 +9226,6 @@ const TalariaV8bLive = () => {
   const v9SelectionToolbarSyncRef = useRef(false);
   const v9UserExplicitToolRef = useRef(false);
   const v9LastToolSyncFocusPanelRef = useRef(null);
-  /** After iframe stroke ends, block re-arm until user picks a tool from the rail. */
-  const v9SuppressMultichartArmRef = useRef(false);
 
   const getSelectedDrawingForTemplate = useCallback(() => {
     try {
@@ -9346,14 +9344,22 @@ const TalariaV8bLive = () => {
             : null;
           const focusTick = !!(typeof window !== "undefined" && window.__v9MultichartFocusToolTick);
           const explicitPick = v9UserExplicitToolRef.current;
-          if (v9SuppressMultichartArmRef.current && !explicitPick) {
+          // One shot after iframe stroke: React rail may still show the draw tool when the
+          // next panel-focus runs — do not re-arm from stale state (B→A bug). Not a latch;
+          // explicit rail picks and drawing on B work normally once this is consumed.
+          if (
+            !explicitPick
+            && focusTick
+            && typeof window !== "undefined"
+            && window.__v9BlockFocusToolArmOnce
+          ) {
             legacyParam = null;
+            window.__v9BlockFocusToolArmOnce = false;
           }
           let syncToPanels = legacyParam;
           if (explicitPick) {
-            v9SuppressMultichartArmRef.current = false;
             try {
-              if (typeof window !== "undefined") window.__v9MultichartSuppressToolArm = false;
+              if (typeof window !== "undefined") window.__v9BlockFocusToolArmOnce = false;
             } catch (_) {}
             try { window.__v9MultichartSelectBeforeDrawPanelId = null; } catch (_) {}
             if (!editingDrawingRef.current) v9PushRailLegacyTool(legacyParam);
@@ -9460,12 +9466,9 @@ const TalariaV8bLive = () => {
     const onV9DrawingToolCleared = () => {
       try {
         // Fired only after finalizeDrawing on an iframe (not sync clears).
-        // React `tool` can still show the draw id when focusedPanelId changes — suppress
-        // re-arm until the user explicitly picks a tool from the rail.
         if (v9UserExplicitToolRef.current) return;
-        v9SuppressMultichartArmRef.current = true;
         try {
-          if (typeof window !== "undefined") window.__v9MultichartSuppressToolArm = true;
+          if (typeof window !== "undefined") window.__v9BlockFocusToolArmOnce = true;
         } catch (_) {}
         try { window.__v9MultichartSelectBeforeDrawPanelId = null; } catch (_) {}
         v9PushRailLegacyTool(null);
@@ -9533,9 +9536,8 @@ const TalariaV8bLive = () => {
         if (activeDm && dm !== activeDm) return;
         if (!dm || dm.currentTool) return;
         if (g) {
-          v9SuppressMultichartArmRef.current = true;
           try {
-            if (typeof window !== "undefined") window.__v9MultichartSuppressToolArm = true;
+            if (typeof window !== "undefined") window.__v9BlockFocusToolArmOnce = true;
           } catch (_) {}
           v9PushRailLegacyTool(null);
         }

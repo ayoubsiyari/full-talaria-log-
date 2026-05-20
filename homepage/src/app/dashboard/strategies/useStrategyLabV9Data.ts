@@ -43,6 +43,7 @@ export function useStrategyLabV9Data() {
   const [communityLoading, setCommunityLoading] = useState(true);
   const [communityError, setCommunityError] = useState<string | null>(null);
   const [myPublicId, setMyPublicId] = useState<string | null>(null);
+  const [isDashboardAdmin, setIsDashboardAdmin] = useState(false);
 
   const loadStrategies = useCallback(async () => {
     await syncJournalTokenFromSession();
@@ -114,9 +115,13 @@ export function useStrategyLabV9Data() {
     try {
       const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
       if (!res.ok) return;
-      const data = (await res.json()) as { user?: { public_id?: string | null } };
-      const pid = data.user?.public_id;
+      const data = (await res.json()) as {
+        user?: { public_id?: string | null; is_admin?: boolean; role?: string };
+      };
+      const u = data.user;
+      const pid = u?.public_id;
       setMyPublicId(typeof pid === "string" && pid ? pid : null);
+      setIsDashboardAdmin(u?.role === "admin" || !!u?.is_admin);
     } catch {
       setMyPublicId(null);
     }
@@ -346,6 +351,87 @@ export function useStrategyLabV9Data() {
     [loadCommunity],
   );
 
+  const patchCommunityTemplate = useCallback(
+    (templateId: number, patch: Record<string, unknown>) => {
+      setCommunityStrategies((prev) =>
+        prev.map((row) =>
+          row.templateId === templateId ? { ...row, ...patch } : row,
+        ),
+      );
+    },
+    [],
+  );
+
+  const toggleTemplateLike = useCallback(
+    async (templateId: number, currentlyLiked: boolean) => {
+      await syncJournalTokenFromSession();
+      const method = currentlyLiked ? "DELETE" : "POST";
+      const res = await fetch(`${JOURNAL_API_BASE}/templates/${templateId}/like`, {
+        method,
+        credentials: "include",
+        headers: journalAuthHeaders(),
+      });
+      const data = (await parseJournalJsonResponse<{
+        success?: boolean;
+        error?: string;
+        liked?: boolean;
+        likes_count?: number;
+      }>(res));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Like failed (${res.status})`);
+      }
+      patchCommunityTemplate(templateId, {
+        likedByMe: !!data.liked,
+        likeCount: data.likes_count ?? 0,
+      });
+    },
+    [patchCommunityTemplate],
+  );
+
+  const recordTemplateShare = useCallback(
+    async (templateId: number) => {
+      await syncJournalTokenFromSession();
+      const res = await fetch(`${JOURNAL_API_BASE}/templates/${templateId}/share`, {
+        method: "POST",
+        credentials: "include",
+        headers: journalAuthHeaders(),
+      });
+      const data = (await parseJournalJsonResponse<{
+        success?: boolean;
+        error?: string;
+        shares_count?: number;
+      }>(res));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Share failed (${res.status})`);
+      }
+      patchCommunityTemplate(templateId, {
+        shareCount: data.shares_count ?? 0,
+      });
+      return data.shares_count ?? 0;
+    },
+    [patchCommunityTemplate],
+  );
+
+  const deleteCommunityTemplate = useCallback(
+    async (templateId: number): Promise<void> => {
+      await syncJournalTokenFromSession();
+      const res = await fetch(`${JOURNAL_API_BASE}/templates/${templateId}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: journalAuthHeaders(),
+      });
+      const data = (await parseJournalJsonResponse<{
+        success?: boolean;
+        error?: string;
+      }>(res));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Remove failed (${res.status})`);
+      }
+      await loadCommunity();
+    },
+    [loadCommunity],
+  );
+
   const cloneCommunityTemplate = useCallback(
     async (templateId: number, name?: string): Promise<void> => {
       await syncJournalTokenFromSession();
@@ -381,8 +467,12 @@ export function useStrategyLabV9Data() {
     communityError,
     reloadCommunity: loadCommunity,
     myPublicId,
+    isDashboardAdmin,
     reloadMyPublicId: loadMyPublicId,
     submitStrategyToCommunity,
+    deleteCommunityTemplate,
+    toggleTemplateLike,
+    recordTemplateShare,
     cloneCommunityTemplate,
     persistStrategy,
     deleteStrategyRemote,

@@ -967,9 +967,7 @@ export default function MultichartGrid({
             try {
                 const w = typeof window !== "undefined" ? window : null;
                 if (!w) { /* noop */ }
-                else if (w.__v9MultichartSuppressToolArm) {
-                    w.__v9MultichartSelectBeforeDrawPanelId = null;
-                } else if (w.__v9RailLegacyTool) {
+                else if (w.__v9RailLegacyTool) {
                     w.__v9MultichartSelectBeforeDrawPanelId = panelId;
                 } else {
                     w.__v9MultichartSelectBeforeDrawPanelId = null;
