@@ -966,10 +966,12 @@ export default function MultichartGrid({
         if (panelId !== prev) {
             try {
                 const w = typeof window !== "undefined" ? window : null;
-                const rail = w && w.__v9RailLegacyTool;
-                if (rail) {
+                if (!w) { /* noop */ }
+                else if (w.__v9MultichartSuppressToolArm) {
+                    w.__v9MultichartSelectBeforeDrawPanelId = null;
+                } else if (w.__v9RailLegacyTool) {
                     w.__v9MultichartSelectBeforeDrawPanelId = panelId;
-                } else if (w) {
+                } else {
                     w.__v9MultichartSelectBeforeDrawPanelId = null;
                 }
             } catch (_) {}

@@ -137,7 +137,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const [stratSortDir, setStratSortDir] = useState("asc");
   const [stratSortOpen, setStratSortOpen] = useState(false);
   const [stratStyleFilter, setStratStyleFilter] = useState("All");
-  const [stratLayoutMode, setStratLayoutMode] = useState("rows");
+  const [stratLayoutMode, setStratLayoutMode] = useState("cards");
   const [stratBuilderOpen, setStratBuilderOpen] = useState(false);
   /** null | 'saving' | 'success' — drives builder overlay + footer button while POST runs */
   const [stratBuilderSavePhase, setStratBuilderSavePhase] = useState(null);
@@ -313,6 +313,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
     const backtestMoney = value => value==null ? "—" : `${value>=0?"+":"-"}$${Math.abs(value).toLocaleString()}`;
     const openEditableStrategy = e => {
       e.stopPropagation();
+      if (strat.templatePreview && !isMine) return;
       if (strat.templatePreview && onUseTemplate) onUseTemplate(strat.template);
       else if (isMine && onEdit) onEdit(strat);
     };
@@ -357,7 +358,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
               ) : null}
             </div>
             <div role="button" tabIndex={0} aria-label={`Open actions for ${strat.name}`}
-              onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,x:r.right/Z,y:r.bottom/Z});}}
+              onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,inCommunityTab:stratTab==="community",x:r.right/Z,y:r.bottom/Z});}}
               onDoubleClick={e=>e.stopPropagation()}
               style={{width:32,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",color:stratActMenu?.id===strat.id?c.acL:c.ts,background:"transparent",transition:"background 0.12s, color 0.12s, transform 0.08s"}}
               onMouseEnter={e=>{e.currentTarget.style.color=stratActMenu?.id===strat.id?c.acL:c.tx;e.currentTarget.style.background="rgba(255,255,255,0.08)";}}
@@ -587,6 +588,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
         const backtests = strat.backtestSessions||[];
         const openEditableStrategy = e => {
           e.stopPropagation();
+          if (strat.templatePreview && !isMine) return;
           if (strat.templatePreview && onUseTemplate) onUseTemplate(strat.template);
           else if (isMine && onEdit) onEdit(strat);
         };
@@ -632,7 +634,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
             </div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 8px"}}>
               <div role="button" tabIndex={0} aria-label={`Open actions for ${strat.name}`}
-                title="Actions" onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,x:r.right/Z,y:r.bottom/Z});}}
+                title="Actions" onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,inCommunityTab:stratTab==="community",x:r.right/Z,y:r.bottom/Z});}}
                 onDoubleClick={e=>e.stopPropagation()}
                 style={{width:32,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",color:stratActMenu?.id===strat.id?c.acL:c.ts,background:"transparent",transition:"background 0.12s, color 0.12s, transform 0.08s"}}
                 onMouseEnter={e=>{e.currentTarget.style.color=stratActMenu?.id===strat.id?c.acL:c.tx;e.currentTarget.style.background="rgba(255,255,255,0.08)";}}
@@ -959,7 +961,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                 const tabBg=isA?c.acD:"transparent";
                 const badgeBg=isA?"rgba(74,106,255,0.2)":"rgba(255,255,255,0.07)";
                 return(
-                  <div key={k} role="button" tabIndex={disabled?-1:0} aria-disabled={disabled?"true":"false"} onClick={()=>{if(!disabled)setStratTab(k);}}
+                  <div key={k} role="button" tabIndex={disabled?-1:0} aria-disabled={disabled?"true":"false"} onClick={()=>{if(!disabled){setStratTab(k);if(k==="community")setStratLayoutMode("cards");}}}
                     style={{height:26,display:"flex",alignItems:"flex-end",padding:"0 12px",cursor:"default",transition:"color 0.12s, background 0.12s, opacity 0.12s, transform 0.08s",background:tabBg,color:tabCol,opacity:disabled?0.42:1,flexShrink:0,userSelect:"none"}}
                     onMouseEnter={e=>{if(!disabled&&!isA){e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.color=c.tx;}}}
                     onMouseLeave={e=>{if(!disabled&&!isA){e.currentTarget.style.background="transparent";e.currentTarget.style.color=c.ts;}e.currentTarget.style.transform="scale(1)";}}
@@ -1200,10 +1202,12 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
         const ms=stratActMenu.strat;
         if(!ms)return null;
         const isTemplate=!!ms.templatePreview;
+        const isCommunityView=!!stratActMenu.inCommunityTab||(isTemplate&&!stratActMenu.isMine);
         const isMineMenu=!!stratActMenu.isMine&&!isTemplate;
         const isSavedMenu=!!stratActMenu.inSavedTab;
         const isSavedNow=savedCommunityIds.has(ms.id);
-        const menuW=126, menuH=(isMineMenu||isTemplate)?158:104;
+        const menuW=126;
+        const menuH=isMineMenu?158:isCommunityView?52:isSavedMenu?52:104;
         const vpW=window.innerWidth/Z, vpH=window.innerHeight/Z;
         const menuLeft=Math.max(8,Math.min(stratActMenu.x-menuW,vpW-menuW-8));
         const menuTop=Math.max(8,Math.min(stratActMenu.y+2,vpH-menuH-8));
@@ -1231,30 +1235,23 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
         };
         const runDuplicateStrategy=()=>{ void duplicateStrategy(ms); };
         const deleteStrategy=()=>deleteStrategyFromBank(ms);
-        const actions=[
+        const communityCopyAction=ms.allowClone === false
+          ? {label:"Copy disabled",handler:()=>window.alert("The author disabled copying for this strategy."),col:c.tm,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>}
+          : {label:"Copy to My Strategies",handler:runDuplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>};
+        const actions=isMineMenu?[
           {label:"New Session",handler:startStrategy,col:c.acL,icon:<svg width={14} height={14} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>},
           {label:"Dashboard",handler:openStrategyDashboard,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill="currentColor"/><rect x="11" y="1" width="8" height="8" fill="currentColor"/><rect x="1" y="11" width="8" height="8" fill="currentColor"/><rect x="11" y="11" width="8" height="8" fill="currentColor"/></svg>},
           {label:"divider"},
-          ...(isTemplate?[
-            {label:"Edit",handler:()=>applyTemplateToBuilder(ms.template),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
-            ...(ms.allowClone === false ? [
-              {label:"Copy disabled",handler:()=>window.alert("The author disabled copying for this strategy."),col:c.tm,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
-            ] : [
-              {label:"Copy",handler:runDuplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
-            ]),
-            {label:"Delete",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
-          ]:isMineMenu?[
-            {label:"Edit",handler:()=>openBuilder(ms),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
-            {label:"Share to Community",handler:()=>openShareToCommunity(ms),col:c.gold,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="1.8"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="1.8"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>},
-            {label:"Copy",handler:runDuplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
-            {label:"Delete",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
-          ]:isSavedMenu?[
+          {label:"Edit",handler:()=>openBuilder(ms),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
+          {label:"Share to Community",handler:()=>openShareToCommunity(ms),col:c.gold,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="1.8"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="1.8"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>},
+          {label:"Copy",handler:runDuplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
+          {label:"Delete",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
+        ]:isCommunityView?[
+          communityCopyAction,
+          {label:isSavedNow?"Saved":"Save",handler:()=>saveCommunity(ms),col:isSavedNow?c.acL:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill={isSavedNow?c.acL:"none"}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7"/></svg>},
+        ]:isSavedMenu?[
             {label:"Remove",handler:()=>saveCommunity(ms),col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
-          ]:ms.allowClone === false ? [
-            {label:"Copy disabled",handler:()=>window.alert("The author disabled copying for this strategy."),col:c.tm,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
-          ]:[
-            {label:isSavedNow?"Saved":"Save",handler:()=>saveCommunity(ms),col:isSavedNow?c.acL:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill={isSavedNow?c.acL:"none"}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7"/></svg>},
-          ]),
+        ]:[communityCopyAction],
         ];
         return(<>
           <div style={{position:"fixed",inset:0,zIndex:100000}} onClick={e=>{e.stopPropagation();closeMenu();}}/>

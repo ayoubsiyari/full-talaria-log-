@@ -9226,6 +9226,8 @@ const TalariaV8bLive = () => {
   const v9SelectionToolbarSyncRef = useRef(false);
   const v9UserExplicitToolRef = useRef(false);
   const v9LastToolSyncFocusPanelRef = useRef(null);
+  /** After iframe stroke ends, block re-arm until user picks a tool from the rail. */
+  const v9SuppressMultichartArmRef = useRef(false);
 
   const getSelectedDrawingForTemplate = useCallback(() => {
     try {
@@ -9344,8 +9346,15 @@ const TalariaV8bLive = () => {
             : null;
           const focusTick = !!(typeof window !== "undefined" && window.__v9MultichartFocusToolTick);
           const explicitPick = v9UserExplicitToolRef.current;
+          if (v9SuppressMultichartArmRef.current && !explicitPick) {
+            legacyParam = null;
+          }
           let syncToPanels = legacyParam;
           if (explicitPick) {
+            v9SuppressMultichartArmRef.current = false;
+            try {
+              if (typeof window !== "undefined") window.__v9MultichartSuppressToolArm = false;
+            } catch (_) {}
             try { window.__v9MultichartSelectBeforeDrawPanelId = null; } catch (_) {}
             if (!editingDrawingRef.current) v9PushRailLegacyTool(legacyParam);
           } else if (focusTick && legacyParam) {
@@ -9451,10 +9460,13 @@ const TalariaV8bLive = () => {
     const onV9DrawingToolCleared = () => {
       try {
         // Fired only after finalizeDrawing on an iframe (not sync clears).
-        // Do NOT bail when resolveLegacyTool() is still the draw tool — React lags
-        // chart.js clearTool; skipping here left the rail armed and panel A re-armed
-        // on focus change.
+        // React `tool` can still show the draw id when focusedPanelId changes — suppress
+        // re-arm until the user explicitly picks a tool from the rail.
         if (v9UserExplicitToolRef.current) return;
+        v9SuppressMultichartArmRef.current = true;
+        try {
+          if (typeof window !== "undefined") window.__v9MultichartSuppressToolArm = true;
+        } catch (_) {}
         try { window.__v9MultichartSelectBeforeDrawPanelId = null; } catch (_) {}
         v9PushRailLegacyTool(null);
         setTool("crosshair");
@@ -9479,8 +9491,11 @@ const TalariaV8bLive = () => {
     };
     // layoutPanels.n is in deps so we re-run when the multichart grid
     // mounts/unmounts (1 ↔ N panels) and pick the right routing branch.
+    // Do NOT include focusedPanelId: that re-ran apply() without __v9MultichartFocusToolTick
+    // and re-armed the new tile from stale React tool state after a stroke on another panel.
+    // Panel focus tool sync is handled only via multichartFocusChanged (focusTick path).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, groupSelected, layoutPanels.n, focusedPanelId]);
+  }, [tool, groupSelected, layoutPanels.n]);
 
   // Keep V9 left rail in sync when legacy drawing mode ends: (1) finalizeDrawing
   // clears the tool after a completed stroke; (2) clearTool runs in many paths
@@ -9517,6 +9532,13 @@ const TalariaV8bLive = () => {
         // finishing a stroke on a background chart must not reset V9 while a panel is active.
         if (activeDm && dm !== activeDm) return;
         if (!dm || dm.currentTool) return;
+        if (g) {
+          v9SuppressMultichartArmRef.current = true;
+          try {
+            if (typeof window !== "undefined") window.__v9MultichartSuppressToolArm = true;
+          } catch (_) {}
+          v9PushRailLegacyTool(null);
+        }
         setTool("crosshair");
         setDropdown(null);
         setBtnPressed(null);
