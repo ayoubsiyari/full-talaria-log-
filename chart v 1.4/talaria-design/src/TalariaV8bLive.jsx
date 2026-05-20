@@ -1150,14 +1150,20 @@ function v9DrawingTypeToPanelGroup(type) {
   return null;
 }
 
+/** Rail groups where each chart.js `drawing.type` has its own settings (never fib fan ← fib retracement). */
+const V9_EXACT_STYLE_MATCH_GROUPS = new Set(['fib', 'gann', 'pattern', 'rect', 'channel']);
+
 /** Only push tlStyle onto drawings that match the armed legacy tool's rail (never trendline ← rectangle). */
 function v9ShouldApplyTlStylePatch(d, legacyTool) {
   if (!d || !d.type || !d.style) return false;
   if (v9DrawingTypeToPanelGroup(d.type) === 'text') return false;
   if (!legacyTool) return true;
+  if (d.type === legacyTool) return true;
   const drawingGroup = v9DrawingTypeToPanelGroup(d.type);
   const toolGroup = v9DrawingTypeToPanelGroup(legacyTool);
-  return !!(drawingGroup && toolGroup && drawingGroup === toolGroup);
+  if (!drawingGroup || !toolGroup || drawingGroup !== toolGroup) return false;
+  if (V9_EXACT_STYLE_MATCH_GROUPS.has(drawingGroup)) return false;
+  return true;
 }
 
 function v9IsSameDrawingSession(a, b) {
@@ -1172,6 +1178,7 @@ function v9StyleBridgeAppliesToDrawing(d, editingSession) {
   if (!v9IsSameDrawingSession(d, editingSession.drawing)) return false;
   const pg = editingSession.panelGroup;
   if (pg && v9DrawingTypeToPanelGroup(d.type) !== pg) return false;
+  if (pg && V9_EXACT_STYLE_MATCH_GROUPS.has(pg) && d.type !== editingSession.drawing.type) return false;
   return true;
 }
 
@@ -2309,6 +2316,64 @@ function v9TlStylePatchFromDrawing(d) {
 
 const V9_DEFAULT_TL_LINE_COLOR = "#8C8C8C";
 const V9_DEFAULT_TL_SHAPE_FILL = "rgba(74,106,255,0.15)";
+
+/** Baseline tlStyle before per-tool saved defaults / drawing read-back (prevents fib subtype field bleed). */
+function v9FreshTlStyleDefaults() {
+  return {
+    lineColor: V9_DEFAULT_TL_LINE_COLOR,
+    bgColor: V9_DEFAULT_TL_SHAPE_FILL,
+    lineType: "solid",
+    lineWidth: "2",
+    ep1: "normal",
+    ep2: "normal",
+    extendLeft: false,
+    extendRight: false,
+    priceLabels: true,
+    timeLabels: true,
+    showInfo: false,
+    showInfoTypes: ["Price range"],
+    labelColor: "#ffffff",
+    labelFontSize: "12",
+    labelBg: true,
+    labelBgColor: "rgba(0,0,0,0.6)",
+    textSize: 14,
+    textColor: "#ffffff",
+    textItalic: false,
+    textBold: false,
+    textContent: "",
+    labelLineType: "solid",
+    labelLineWidth: "1",
+    vertAlign: "top",
+    horizAlign: "center",
+    midLine: false,
+    midLineColor: V9_DEFAULT_TL_LINE_COLOR,
+    midLineType: "dashed",
+    midLineWidth: "1",
+  };
+}
+
+function v9NeedsFullTlStyleReplaceForType(type) {
+  const g = v9DrawingTypeToPanelGroup(type);
+  return !!(g && V9_EXACT_STYLE_MATCH_GROUPS.has(g));
+}
+
+/** Replace tlStyle from a selected drawing (full reset for fib/gann/pattern/rect/channel subtypes). */
+function v9BuildFullTlStyleFromDrawing(drawing, dm) {
+  if (!drawing || !drawing.type) return null;
+  const patch = v9TlStylePatchFromDrawing(drawing);
+  if (!patch) return null;
+  const fresh = v9FreshTlStyleDefaults();
+  const saved = dm && v9NeedsFullTlStyleReplaceForType(drawing.type)
+    ? v9MergeHydratePatchFromLegacy(dm, drawing.type)
+    : {};
+  return {
+    ...fresh,
+    ...saved,
+    ...patch,
+    ...v9CoordPatchFromDrawing(drawing),
+    ...v9VisibilityPatchFromDrawing(drawing),
+  };
+}
 
 /** When the user switches armed drawing tools, merge chart.js saved defaults into V9 `tlStyle` so the next stroke does not inherit the previous tool's colors/fill. */
 function v9MergeHydratePatchFromLegacy(dm, legacy) {
@@ -6755,7 +6820,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a21-rect-extend";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a23";
   }, []);
 
   useEffect(() => {
@@ -9903,7 +9968,19 @@ const TalariaV8bLive = () => {
         // Suppress the forward bridge once: this read-back into tlStyle
         // would otherwise re-emit the same values back to the drawing.
         suppressForwardBridge.current = true;
-        setTlStyle(prev => ({
+        {
+          let dmEd = null;
+          try {
+            dmEd = typeof window !== "undefined" && typeof window.getActiveChart === "function"
+              ? window.getActiveChart()?.drawingManager
+              : window.chart?.drawingManager;
+          } catch (_) {}
+          const fullEd = v9NeedsFullTlStyleReplaceForType(drawing.type)
+            ? v9BuildFullTlStyleFromDrawing(drawing, dmEd)
+            : null;
+          if (fullEd) {
+            setTlStyle(fullEd);
+          } else setTlStyle(prev => ({
           ...prev,
           lineColor: s.stroke || s.color || prev.lineColor,
           lineWidth: String(s.strokeWidth ?? prev.lineWidth),
@@ -10060,6 +10137,7 @@ const TalariaV8bLive = () => {
             return out;
           })(),
         }));
+        }
 
         // Position panel near dblclick (clientX/Y are post-zoom; tlSettPos / txtSettPos
         // are consumed inside the zoomed root, so divide by Z to get pre-zoom CSS pixels).
@@ -10194,6 +10272,7 @@ const TalariaV8bLive = () => {
     editingDrawingRef,
     tlSettOpenRef,
     dismissShapeSettingsForNewSelection,
+    v9LastSelectedDrawingTypeRef,
   };
 
   // ─── Drawing selection bridge ───────────────────────────────────────────
@@ -10266,13 +10345,24 @@ const TalariaV8bLive = () => {
               else if (dm) dm.currentTool = null;
             } catch (_) {}
           }
-          if (!editRef?.current) {
-            const patch = v9TlStylePatchFromDrawing(drawing);
-            if (patch) {
-              br.suppressForwardBridge.current = true;
-              br.setTlStyle(s => ({ ...s, ...patch }));
-              if (typeof drawing.locked === 'boolean') br.setTlLocked(!!drawing.locked);
+          if (!editRef?.current && drawing && drawing.style) {
+            const prevType = br.v9LastSelectedDrawingTypeRef?.current;
+            const typeChanged = prevType !== drawing.type;
+            br.v9LastSelectedDrawingTypeRef.current = drawing.type;
+            if (typeChanged && v9NeedsFullTlStyleReplaceForType(drawing.type)) {
+              const full = v9BuildFullTlStyleFromDrawing(drawing, dm);
+              if (full) {
+                br.suppressForwardBridge.current = true;
+                br.setTlStyle(full);
+              }
+            } else {
+              const patch = v9TlStylePatchFromDrawing(drawing);
+              if (patch) {
+                br.suppressForwardBridge.current = true;
+                br.setTlStyle(s => ({ ...s, ...patch }));
+              }
             }
+            if (typeof drawing.locked === 'boolean') br.setTlLocked(!!drawing.locked);
           }
           if (drawing && drawing.type && !editRef?.current) {
             const gTxt = br.drawingTypeToPanelGroupRef.current(drawing.type);
@@ -10503,11 +10593,28 @@ const TalariaV8bLive = () => {
           br.setDropdown(null);
           br.setBtnPressed(null);
         }
-        if (!br.editingDrawingRef?.current) {
-          const patch = v9TlStylePatchFromDrawing(drawing);
-          if (patch) {
-            br.suppressForwardBridge.current = true;
-            br.setTlStyle((s) => ({ ...s, ...patch }));
+        if (!br.editingDrawingRef?.current && live) {
+          let dm = null;
+          try {
+            dm = typeof window !== "undefined" && typeof window.getActiveChart === "function"
+              ? window.getActiveChart()?.drawingManager
+              : window.chart?.drawingManager;
+          } catch (_) {}
+          const prevType = br.v9LastSelectedDrawingTypeRef?.current;
+          const typeChanged = prevType !== live.type;
+          br.v9LastSelectedDrawingTypeRef.current = live.type;
+          if (typeChanged && v9NeedsFullTlStyleReplaceForType(live.type)) {
+            const full = v9BuildFullTlStyleFromDrawing(live, dm);
+            if (full) {
+              br.suppressForwardBridge.current = true;
+              br.setTlStyle(full);
+            }
+          } else {
+            const patch = v9TlStylePatchFromDrawing(live);
+            if (patch) {
+              br.suppressForwardBridge.current = true;
+              br.setTlStyle((s) => ({ ...s, ...patch }));
+            }
           }
         }
         if (!br.editingDrawingRef?.current && g === "text") {
@@ -10711,6 +10818,7 @@ const TalariaV8bLive = () => {
   // When the armed legacy tool changes (e.g. Rectangle → Triangle), reset `tlStyle`
   // to clean defaults so settings never carry over from the previous tool.
   const v9LastHydratedLegacyRef = useRef(null);
+  const v9LastSelectedDrawingTypeRef = useRef(null);
   const [legacyHydrateNonce, setLegacyHydrateNonce] = useState(0);
   useEffect(() => {
     const onChartData = () => {
@@ -10736,17 +10844,7 @@ const TalariaV8bLive = () => {
     if (v9LastHydratedLegacyRef.current === legacy) return;
 
     v9LastHydratedLegacyRef.current = legacy;
-    const freshDefaults = {
-      lineColor: "#8C8C8C", bgColor: "rgba(74,106,255,0.15)", lineType: "solid", lineWidth: "2",
-      ep1: "normal", ep2: "normal", extendLeft: false, extendRight: false,
-      priceLabels: true, timeLabels: true,
-      showInfo: false, showInfoTypes: ["Price range"],
-      labelColor: "#ffffff", labelFontSize: "12", labelBg: true, labelBgColor: "rgba(0,0,0,0.6)",
-      textSize: 14, textColor: "#ffffff", textItalic: false, textBold: false, textContent: "",
-      labelLineType: "solid", labelLineWidth: "1",
-      vertAlign: "top", horizAlign: "center",
-      midLine: false, midLineColor: "#8C8C8C", midLineType: "dashed", midLineWidth: "1",
-    };
+    const freshDefaults = v9FreshTlStyleDefaults();
     let dm = null;
     try {
       const ch =
