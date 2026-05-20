@@ -328,8 +328,6 @@
         if (!Number.isFinite(startT) || !Number.isFinite(endT)) return null;
         const pm = chart.margin || { l: 60, r: 60 };
         const plotWidthPx = (chart.w || 0) - pm.l - pm.r;
-        const startIdx = typeof chart.getVisibleStartIndex === 'function' ? chart.getVisibleStartIndex() : 0;
-        const endIdx = typeof chart.getVisibleEndIndex === 'function' ? chart.getVisibleEndIndex() : chart.data.length - 1;
         return {
             startSec: toSeconds(startT),
             endSec:   toSeconds(endT) + Math.floor(barMs / 1000),
