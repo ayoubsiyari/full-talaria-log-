@@ -397,6 +397,10 @@
             type:        'visibleRange',
             startTime:   range.startSec,
             endTime:     range.endSec,
+            offsetX:     range.offsetX,
+            candleWidth: range.candleWidth,
+            zoomLevelIndex: range.zoomLevelIndex,
+            plotWidthPx: range.plotWidthPx,
             source:      host.id,
             causationId: 'host-init-' + Date.now() + '-' + (Math.random() * 1e6 | 0).toString(16),
         });

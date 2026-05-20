@@ -75,6 +75,38 @@
     function tfSec(tf) { return TIMEFRAME_SECONDS[tf] || 60; }
 
     /**
+     * Mirror source pan/zoom: copy candleWidth + offsetX (scaled if plot widths differ).
+     * @returns {boolean} true if applied
+     */
+    function applyViewportMirror(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        const srcOffset = Number(m.offsetX);
+        const srcCw = Number(m.candleWidth);
+        if (!Number.isFinite(srcOffset) && !(Number.isFinite(srcCw) && srcCw > 0)) return false;
+
+        if (Number.isFinite(srcCw) && srcCw > 0) {
+            chart.candleWidth = srcCw;
+            if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+                chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+            }
+            if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+        }
+
+        if (Number.isFinite(srcOffset)) {
+            const sw = Number.isFinite(m.plotWidthPx) && m.plotWidthPx > 0 ? m.plotWidthPx : 0;
+            const tm = chart.margin || { l: 60, r: 60 };
+            const tw = (chart.w || chart.canvas?.width || 800) - tm.l - tm.r;
+            chart.offsetX = (sw > 0 && tw > 0) ? srcOffset * (tw / sw) : srcOffset;
+        }
+
+        if (typeof chart.constrainOffset === 'function') {
+            try { chart.constrainOffset(); } catch (_) {}
+        }
+        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        return true;
+    }
+
+    /**
      * Apply a sync'd visible time-range to the recipient chart.
      *
      * Modeled after chart.js's own internal cross-panel sync (chart.js:2015-
@@ -229,9 +261,15 @@
         const endT     = chart.data[endIdx]   && chart.data[endIdx].t;
         const barMs    = chart.inferBarDurationMs ? chart.inferBarDurationMs() : 60000;
         if (!Number.isFinite(startT) || !Number.isFinite(endT)) return null;
+        const pm = chart.margin || { l: 60, r: 60 };
+        const plotWidthPx = (chart.w || 0) - pm.l - pm.r;
         return {
             startSec: toSeconds(startT),
             endSec:   toSeconds(endT) + Math.floor(barMs / 1000),
+            offsetX: chart.offsetX,
+            candleWidth: chart.candleWidth,
+            zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
+            plotWidthPx: plotWidthPx > 0 ? plotWidthPx : undefined,
         };
     }
 
@@ -338,7 +376,15 @@
             }
             if (pending.visibleRange) {
                 const r = pending.visibleRange; pending.visibleRange = null;
-                send({ type: 'visibleRange', startTime: r.startSec, endTime: r.endSec });
+                send({
+                    type: 'visibleRange',
+                    startTime: r.startSec,
+                    endTime: r.endSec,
+                    offsetX: r.offsetX,
+                    candleWidth: r.candleWidth,
+                    zoomLevelIndex: r.zoomLevelIndex,
+                    plotWidthPx: r.plotWidthPx,
+                });
             }
         }
         function scheduleFlush() {
@@ -397,7 +443,16 @@
             const startT = d.startTimestamp;
             const endT   = d.timeSyncEndTimestamp || d.endTimestamp;
             if (!Number.isFinite(startT) || !Number.isFinite(endT)) return;
-            pending.visibleRange = { startSec: toSeconds(startT), endSec: toSeconds(endT) };
+            const pm = chart.margin || { l: 60, r: 60 };
+            const plotWidthPx = (chart.w || 0) - pm.l - pm.r;
+            pending.visibleRange = {
+                startSec: toSeconds(startT),
+                endSec: toSeconds(endT),
+                offsetX: d.offsetX,
+                candleWidth: d.candleWidth,
+                zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
+                plotWidthPx: plotWidthPx > 0 ? plotWidthPx : undefined,
+            };
             scheduleFlush();
         });
 
@@ -456,6 +511,12 @@
                                 rangeEndExclusive: endTimestamp,
                                 offsetX: chart.offsetX,
                                 candleWidth: chart.candleWidth,
+                                zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
+                                plotWidthPx: (() => {
+                                    const pm = chart.margin || { l: 60, r: 60 };
+                                    const w = (chart.w || 0) - pm.l - pm.r;
+                                    return w > 0 ? w : undefined;
+                                })(),
                                 _multichartForced: true,
                             },
                         }));
@@ -984,12 +1045,16 @@
             state.applied.add(m.causationId);
             beginApplying();
 
-            // Snap to recipient TF buckets per Decision 3.
-            const myTf = chart.currentTimeframe || '1m';
-            const myBucket = tfSec(myTf);
-            const startSnapped = floorToBucket(m.startTime, myBucket);
-            const endSnapped   = ceilToBucket(m.endTime,   myBucket);
-            setVisibleTimeRange(chart, startSnapped, endSnapped);
+            const mirrored = applyViewportMirror(chart, m);
+            if (!mirrored) {
+                const myTf = chart.currentTimeframe || '1m';
+                const myBucket = tfSec(myTf);
+                const startSnapped = floorToBucket(m.startTime, myBucket);
+                const endSnapped   = ceilToBucket(m.endTime,   myBucket);
+                setVisibleTimeRange(chart, startSnapped, endSnapped);
+                if (chart.priceScale) chart.priceScale.autoScale = true;
+                chart.autoScale = true;
+            }
 
             // Drop the next few chartScrolled-driven outbound range posts —
             // they are almost always echoes from this programmatic viewport

@@ -8968,7 +8968,8 @@ class Chart {
                 endTimestamp,
                 rangeEndExclusive: endTimestamp,
                 offsetX: this.offsetX,
-                candleWidth: this.candleWidth
+                candleWidth: this.candleWidth,
+                zoomLevelIndex: this.zoomLevel?.candleWidthIndex
             }
         }));
     }

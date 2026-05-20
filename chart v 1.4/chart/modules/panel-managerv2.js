@@ -125,11 +125,9 @@ class PanelManager {
             const { panel, startTimestamp, endTimestamp } = d;
             if (!panel) return;
 
-            // Date Range: continuous full-window sync (scroll + zoom locked).
-            if (this.syncSettings.dateRange
-                && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
-                && startTimestamp > 0 && endTimestamp > startTimestamp) {
-                this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
+            // Date Range: mirror source pan/zoom (offsetX + candleWidth), not wall-clock remap.
+            if (this.syncSettings.dateRange) {
+                this.syncScrollByViewport(panel, d);
             }
             // Time: discrete range-by-range sync. Each TARGET panel jumps only when
             // the bar IT would show at its right edge changes — so a 5m target jumps
@@ -542,15 +540,12 @@ class PanelManager {
 
                 if (e.target.checked && this.panels.length > 1) {
                     const selectedPanel = this.panels[this.selectedPanelIndex];
-                    if (selectedPanel?.chartInstance?.data?.length) {
-                        const chart = selectedPanel.chartInstance;
-                        const startIndex = chart.getVisibleStartIndex ? chart.getVisibleStartIndex() : 0;
-                        const endIndex = chart.getVisibleEndIndex ? chart.getVisibleEndIndex() : chart.data.length - 1;
-                        const startTimestamp = chart.data[Math.max(0, startIndex)]?.t;
-                        const endTimestamp = chart.data[Math.min(chart.data.length - 1, endIndex)]?.t;
-                        if (startTimestamp && endTimestamp) {
-                            this.syncDateRange(selectedPanel, startTimestamp, endTimestamp);
-                        }
+                    if (selectedPanel) {
+                        this.syncScrollByViewport(selectedPanel, {
+                            offsetX: selectedPanel.chartInstance?.offsetX,
+                            candleWidth: selectedPanel.chartInstance?.candleWidth,
+                            zoomLevelIndex: selectedPanel.chartInstance?.zoomLevel?.candleWidthIndex,
+                        });
                     }
                 }
             });
@@ -871,18 +866,28 @@ class PanelManager {
     }
 
     /**
-     * Date-range sync: every panel shows the same wall-clock window [start, rangeEndExclusive).
-     * Fits candles into the plot width (resize) + scroll so the span matches (e.g. 7×30m = same 3.5h on 1m).
-     * @param {number} rangeEndExclusive - first instant after the last visible bar (source open + barMs).
+     * Mirror the source panel's horizontal pan + zoom on every follower.
+     * Copies candleWidth and offsetX so panel B moves exactly like panel A
+     * (TradingView-style linked scroll), including right-edge zoom anchor.
      */
-    syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive) {
+    syncScrollByViewport(sourcePanel, scrollDetail) {
         if (this._isSyncing) return;
         if (!this.syncSettings.dateRange || (this.panels || []).length <= 1) return;
 
         const sourceChart = this._getPanelChartInstance(sourcePanel);
         if (!sourceChart?.data?.length) return;
-        if (!Number.isFinite(startTimestamp) || !Number.isFinite(rangeEndExclusive)) return;
-        if (rangeEndExclusive <= startTimestamp) return;
+
+        const d = scrollDetail || {};
+        const srcOffset = Number.isFinite(d.offsetX) ? d.offsetX : sourceChart.offsetX;
+        const srcCw = Number.isFinite(d.candleWidth) && d.candleWidth > 0
+            ? d.candleWidth
+            : sourceChart.candleWidth;
+        const srcZoomIdx = Number.isFinite(d.zoomLevelIndex)
+            ? d.zoomLevelIndex
+            : sourceChart.zoomLevel?.candleWidthIndex;
+
+        const sm = sourceChart.margin || { l: 0, r: 60 };
+        const sw = (sourceChart.w || 0) - sm.l - sm.r;
 
         const toRelease = [];
         this._isSyncing = true;
@@ -892,51 +897,24 @@ class PanelManager {
                 if (panel.index === sourcePanel.index) return;
                 const chart = this._getPanelChartInstance(panel);
                 if (!chart?.data?.length) return;
-                // Date-range sync is wall-clock [start, end): safe across pairs (e.g. ES + NQ).
 
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);
 
-                const m = chart.margin || { l: 0, r: 60 };
-                const chartWidth = chart.w - m.l - m.r;
-                if (chartWidth <= 0) return;
-
-                const iL = this._findLastIndexAtOrBefore(chart.data, startTimestamp);
-                const iR = this._findLastIndexAtOrBefore(chart.data, rangeEndExclusive - 1);
-                const iL2 = Math.max(0, Math.min(iL, chart.data.length - 1));
-                const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
-                const numBars = Math.max(1, iR2 - iL2 + 1);
-
-                // Desired spacing = chartWidth / numBars, but getCandleSpacing adds a gap.
-                // Solve for candleWidth so that getCandleSpacing(cw) ≈ desiredSpacing.
-                const desiredSpacing = chartWidth / numBars;
-                let cw = desiredSpacing;
-                if (typeof chart._getSpacingForCandleWidth === 'function') {
-                    const s1 = chart._getSpacingForCandleWidth(cw);
-                    if (s1 > 0) cw = cw * (desiredSpacing / s1);
-                    const s2 = chart._getSpacingForCandleWidth(cw);
-                    if (s2 > 0) cw = cw * (desiredSpacing / s2);
+                if (Number.isFinite(srcCw) && srcCw > 0) {
+                    chart.candleWidth = srcCw;
+                    if (chart.zoomLevel && Number.isFinite(srcZoomIdx)) {
+                        chart.zoomLevel.candleWidthIndex = srcZoomIdx;
+                    }
+                    if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
                 }
 
-                const allowedWidths = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths) && chart.zoomLevel.allowedWidths.length)
-                    ? chart.zoomLevel.allowedWidths
-                    : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-                const minW = allowedWidths[0];
-                const maxW = allowedWidths[allowedWidths.length - 1];
-                chart.candleWidth = Math.max(minW, Math.min(maxW, cw));
-
-                let nearestIdx = 0;
-                let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);
-                for (let i = 1; i < allowedWidths.length; i++) {
-                    const d = Math.abs(chart.candleWidth - allowedWidths[i]);
-                    if (d < minDiff) { minDiff = d; nearestIdx = i; }
+                if (Number.isFinite(srcOffset)) {
+                    const tm = chart.margin || { l: 0, r: 60 };
+                    const tw = (chart.w || 0) - tm.l - tm.r;
+                    chart.offsetX = (sw > 0 && tw > 0) ? srcOffset * (tw / sw) : srcOffset;
                 }
-                if (chart.zoomLevel) chart.zoomLevel.candleWidthIndex = nearestIdx;
-                if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
 
-                // Right-edge anchoring (TradingView-style): last visible bar stays at right margin
-                const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : chart.candleWidth;
-                chart.offsetX = chartWidth - (iR2 + 1) * spacing;
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();
                 else if (chart.render) chart.render();
@@ -952,6 +930,14 @@ class PanelManager {
         }
     }
 
+    /** @deprecated wall-clock remap — use syncScrollByViewport for date-range sync */
+    syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive) {
+        this.syncScrollByViewport(sourcePanel, {
+            offsetX: this._getPanelChartInstance(sourcePanel)?.offsetX,
+            candleWidth: this._getPanelChartInstance(sourcePanel)?.candleWidth,
+        });
+    }
+
     /** @deprecated kept for backward compatibility */
     syncScroll(sourcePanel) {
         this.syncTimeToPanel(sourcePanel);
@@ -960,16 +946,15 @@ class PanelManager {
     /**
      * Sync date range across all panels (same visible wall-clock window + fit zoom)
      */
-    syncDateRange(sourcePanel, startTimestamp, endTimestampLastOpen) {
+    syncDateRange(sourcePanel) {
         if (!this.syncSettings.dateRange || (this.panels || []).length <= 1) return;
-
         const sourceChart = this._getPanelChartInstance(sourcePanel);
         if (!sourceChart?.data?.length) return;
-        const barMs = typeof sourceChart.inferBarDurationMs === 'function'
-            ? sourceChart.inferBarDurationMs()
-            : 60000;
-        const rangeEndExclusive = (Number.isFinite(endTimestampLastOpen) ? endTimestampLastOpen : startTimestamp) + barMs;
-        this.syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive);
+        this.syncScrollByViewport(sourcePanel, {
+            offsetX: sourceChart.offsetX,
+            candleWidth: sourceChart.candleWidth,
+            zoomLevelIndex: sourceChart.zoomLevel?.candleWidthIndex,
+        });
     }
     
     /**
