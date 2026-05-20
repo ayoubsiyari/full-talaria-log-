@@ -9431,18 +9431,13 @@ const TalariaV8bLive = () => {
         if (typeof window !== "undefined") window.__v9MultichartFocusToolTick = false;
       }
     };
-    const onV9DrawingToolCleared = (e) => {
+    const onV9DrawingToolCleared = () => {
       try {
-        // Ignore background-panel clears from syncDrawingToolAcrossPanels (see drawing-tools-manager).
+        // Fired only after finalizeDrawing on an iframe (not sync clears).
+        // Do NOT bail when resolveLegacyTool() is still the draw tool — React lags
+        // chart.js clearTool; skipping here left the rail armed and panel A re-armed
+        // on focus change.
         if (v9UserExplicitToolRef.current) return;
-        const legacyNow = resolveLegacyTool();
-        if (legacyNow) return;
-        const g = typeof window !== "undefined" ? window.__multichartGrid : null;
-        const clearedPid = e?.detail?.panelId ?? null;
-        if (g && clearedPid && typeof g.getFocusedPanelId === "function") {
-          const fid = g.getFocusedPanelId();
-          if (fid && clearedPid !== fid) return;
-        }
         v9PushRailLegacyTool(null);
         setTool("crosshair");
         setDropdown(null);

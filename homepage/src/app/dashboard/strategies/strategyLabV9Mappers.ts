@@ -194,6 +194,58 @@ function firstTf(cfg: Record<string, unknown>): string {
   return String(cfg.timeframe || cfg.tf || "");
 }
 
+export type ApiTemplateRecord = {
+  id: number;
+  title: string;
+  definition?: Record<string, unknown> | null;
+  template_type?: string;
+  category?: string | null;
+  difficulty?: string | null;
+  clone_count?: number;
+  status?: string;
+  creator?: { name?: string; public_id?: string | null } | null;
+};
+
+/** Map published community template → Strategy Bank community row. */
+export function templateToCommunityRow(t: ApiTemplateRecord): Record<string, unknown> {
+  const def = (t.definition && typeof t.definition === "object" ? t.definition : {}) as Record<string, unknown>;
+  const v9raw = def[TALARIA_V9_PANEL_KEY];
+  const v9 = v9raw && typeof v9raw === "object" ? (v9raw as Record<string, unknown>) : {};
+  const tags = Array.isArray(v9.tags)
+    ? (v9.tags as string[])
+    : Array.isArray(def.strategy_tags)
+      ? (def.strategy_tags as string[])
+      : [];
+  const instruments = Array.isArray(v9.instruments) ? (v9.instruments as string[]) : [];
+  const timeframes = Array.isArray(v9.timeframes)
+    ? (v9.timeframes as string[])
+    : def.timeframe
+      ? [String(def.timeframe)]
+      : [];
+  const creator = t.creator || {};
+  return {
+    id: `tpl_${t.id}`,
+    templateId: t.id,
+    name: t.title,
+    desc:
+      (typeof v9.desc === "string" && v9.desc) ||
+      String(def.description || ""),
+    icon: typeof v9.icon === "string" ? v9.icon : "◎",
+    author: creator.name || "Community",
+    authorPublicId: creator.public_id || "",
+    authorBadge: "",
+    style: String(def.style || "Trend Following"),
+    instruments,
+    timeframes,
+    tags,
+    complexity: typeof v9.complexity === "string" ? v9.complexity : "Medium",
+    saves: t.clone_count ?? 0,
+    isMine: false,
+    templatePreview: true,
+    template: t,
+  };
+}
+
 /** Map `/api/sessions` row (+ optional KPIs) → Strategy Bank “review session” row. */
 export function mapApiSessionToReviewRow(sess: ApiSessionRecord, kpis?: KpisLite | null): Record<string, unknown> {
   const cfg = (sess.config && typeof sess.config === "object" ? sess.config : {}) as Record<string, unknown>;

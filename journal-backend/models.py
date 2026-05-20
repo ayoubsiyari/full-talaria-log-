@@ -82,7 +82,9 @@ class User(db.Model):
     stripe_customer_id = db.Column(db.String(100), nullable=True)
     access_expires_at = db.Column(db.DateTime, nullable=True)
     max_sessions = db.Column(db.Integer, default=1, nullable=False, server_default="1")
-    
+    # Community / feed display id (e.g. TLR-00428173) — not the internal primary key.
+    public_id = db.Column(db.String(20), unique=True, nullable=True, index=True)
+
     # Alias for compatibility with journal backend auth
     @property
     def password(self):

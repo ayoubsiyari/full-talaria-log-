@@ -3,6 +3,7 @@
 from sqlalchemy import inspect, text
 
 from models import db
+from user_public_id import backfill_missing_public_ids
 
 
 def ensure_users_schema(app) -> None:
@@ -19,6 +20,18 @@ def ensure_users_schema(app) -> None:
                             "dashboard_module_grants TEXT"
                         )
                     )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                            "public_id VARCHAR(20)"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_public_id "
+                            "ON users (public_id) WHERE public_id IS NOT NULL"
+                        )
+                    )
                 else:
                     insp = inspect(engine)
                     if "users" not in insp.get_table_names():
@@ -31,6 +44,25 @@ def ensure_users_schema(app) -> None:
                                 "dashboard_module_grants TEXT"
                             )
                         )
-            app.logger.info("users schema patch applied (dashboard_module_grants)")
+                    if "public_id" not in cols:
+                        conn.execute(
+                            text("ALTER TABLE users ADD COLUMN public_id VARCHAR(20)")
+                        )
+                        try:
+                            conn.execute(
+                                text(
+                                    "CREATE UNIQUE INDEX ix_users_public_id "
+                                    "ON users (public_id)"
+                                )
+                            )
+                        except Exception:
+                            pass
+            app.logger.info("users schema patch applied (dashboard_module_grants, public_id)")
+            try:
+                n = backfill_missing_public_ids()
+                if n:
+                    app.logger.info("assigned public_id to %s user(s)", n)
+            except Exception as backfill_exc:
+                app.logger.warning("public_id backfill skipped: %s", backfill_exc)
         except Exception as exc:
             app.logger.error("users schema patch failed: %s", exc)

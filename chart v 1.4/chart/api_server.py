@@ -652,6 +652,7 @@ class User(Base):
     country = Column(String(100), nullable=True)
     phone = Column(String(50), nullable=True)
     birth_date = Column(Date, nullable=True)
+    public_id = Column(String(20), unique=True, nullable=True, index=True)
 
 class SubscriptionPlan(Base):
     """Maps to journal-backend's subscription_plans table (read/write for admin)."""
@@ -934,6 +935,16 @@ try:
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS country VARCHAR(100)"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE"))
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS public_id VARCHAR(20)"))
+        try:
+            _conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_public_id "
+                    "ON users (public_id) WHERE public_id IS NOT NULL"
+                )
+            )
+        except Exception:
+            pass
         _conn.commit()
 except Exception:
     pass
@@ -9425,6 +9436,23 @@ def _subscription_access_context(db, user: User) -> dict:
     }
 
 
+def _ensure_user_public_id_chart(db, user: User) -> str | None:
+    """Assign TLR-######## when missing (shared users table with journal-backend)."""
+    existing = getattr(user, "public_id", None)
+    if existing:
+        return existing
+    for _ in range(40):
+        candidate = f"TLR-{secrets.randbelow(10**8):08d}"
+        clash = db.query(User).filter(User.public_id == candidate).first()
+        if clash:
+            continue
+        user.public_id = candidate
+        db.commit()
+        db.refresh(user)
+        return candidate
+    return None
+
+
 def _user_public_dict(user: User, db=None):
     created = getattr(user, 'created_at', None)
     updated = getattr(user, 'updated_at', created)
@@ -9484,10 +9512,14 @@ def _user_public_dict(user: User, db=None):
         user, fully_entitled=full_modules, grants_override=grants
     )
     has_dashboard_access = full_modules or any(mod_map.values())
+    public_id = getattr(user, "public_id", None)
+    if db is not None and not public_id:
+        public_id = _ensure_user_public_id_chart(db, user)
     out = {
         "id": user.id,
         "name": user.name,
         "email": user.email,
+        "public_id": public_id,
         "role": user.role,
         "timezone": getattr(user, 'timezone', 'UTC'),
         "base_currency": getattr(user, 'base_currency', 'USD'),
@@ -9552,6 +9584,8 @@ async def auth_signup(payload: SignUpIn, request: Request):
             is_active=True,
         )
         db.add(user)
+        db.flush()
+        _ensure_user_public_id_chart(db, user)
         db.commit()
         db.refresh(user)
         try:
@@ -9624,6 +9658,8 @@ async def auth_google(payload: GoogleAuthIn, request: Request, response: Respons
                 is_active=True,
             )
             db.add(user)
+            db.flush()
+            _ensure_user_public_id_chart(db, user)
             db.commit()
             db.refresh(user)
             is_new = True

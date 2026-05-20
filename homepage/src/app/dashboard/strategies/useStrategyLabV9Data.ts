@@ -11,7 +11,9 @@ import {
   apiStrategyToBankRow,
   bankStrategyToApiBody,
   mapApiSessionToReviewRow,
+  templateToCommunityRow,
   type ApiStrategyRecord,
+  type ApiTemplateRecord,
 } from "./strategyLabV9Mappers";
 import { getToken } from "./strategyLabV9Auth";
 
@@ -35,6 +37,10 @@ export function useStrategyLabV9Data() {
 
   const [reviewSessions, setReviewSessions] = useState<Record<string, unknown>[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [communityStrategies, setCommunityStrategies] = useState<Record<string, unknown>[]>([]);
+  const [communityLoading, setCommunityLoading] = useState(true);
+  const [communityError, setCommunityError] = useState<string | null>(null);
+  const [myPublicId, setMyPublicId] = useState<string | null>(null);
 
   const loadStrategies = useCallback(async () => {
     await syncJournalTokenFromSession();
@@ -99,6 +105,56 @@ export function useStrategyLabV9Data() {
       setMyStrategies([]);
     } finally {
       setStrategiesLoading(false);
+    }
+  }, []);
+
+  const loadMyPublicId = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { user?: { public_id?: string | null } };
+      const pid = data.user?.public_id;
+      setMyPublicId(typeof pid === "string" && pid ? pid : null);
+    } catch {
+      setMyPublicId(null);
+    }
+  }, []);
+
+  const loadCommunity = useCallback(async () => {
+    await syncJournalTokenFromSession();
+    const token = getToken();
+    if (!token) {
+      setCommunityStrategies([]);
+      setCommunityLoading(false);
+      return;
+    }
+    setCommunityLoading(true);
+    setCommunityError(null);
+    try {
+      const url = `${JOURNAL_API_BASE}/templates?type=community`;
+      const res = await fetch(url, {
+        credentials: "include",
+        headers: journalAuthHeaders(),
+      });
+      const data = await parseJournalJsonResponse<{
+        success?: boolean;
+        templates?: ApiTemplateRecord[];
+        error?: string;
+      }>(res);
+      if (!res.ok || !data.success) {
+        setCommunityError(data.error || `Could not load community (HTTP ${res.status})`);
+        setCommunityStrategies([]);
+        return;
+      }
+      const rows = (data.templates || [])
+        .filter((t) => (t.status || "published") === "published" && t.template_type === "community")
+        .map((t) => templateToCommunityRow(t));
+      setCommunityStrategies(rows);
+    } catch (e) {
+      setCommunityError(e instanceof Error ? e.message : "Network error");
+      setCommunityStrategies([]);
+    } finally {
+      setCommunityLoading(false);
     }
   }, []);
 
@@ -253,6 +309,35 @@ export function useStrategyLabV9Data() {
     [loadStrategies],
   );
 
+  useEffect(() => {
+    void loadMyPublicId();
+    void loadCommunity();
+  }, [loadMyPublicId, loadCommunity]);
+
+  const submitStrategyToCommunity = useCallback(
+    async (strategyId: number): Promise<{ public_id: string | null }> => {
+      await syncJournalTokenFromSession();
+      const res = await fetch(`${JOURNAL_API_BASE}/templates/submit`, {
+        method: "POST",
+        credentials: "include",
+        headers: { ...journalAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ strategy_id: strategyId }),
+      });
+      const data = (await parseJournalJsonResponse<{
+        success?: boolean;
+        error?: string;
+        public_id?: string | null;
+      }>(res));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Submit failed (${res.status})`);
+      }
+      if (data.public_id) setMyPublicId(data.public_id);
+      await loadCommunity();
+      return { public_id: data.public_id ?? null };
+    },
+    [loadCommunity],
+  );
+
   return {
     myStrategies,
     setMyStrategies,
@@ -262,6 +347,13 @@ export function useStrategyLabV9Data() {
     reviewSessions,
     sessionsLoading,
     reloadSessions: loadSessions,
+    communityStrategies,
+    communityLoading,
+    communityError,
+    reloadCommunity: loadCommunity,
+    myPublicId,
+    reloadMyPublicId: loadMyPublicId,
+    submitStrategyToCommunity,
     persistStrategy,
     deleteStrategyRemote,
     duplicateStrategyRemote,

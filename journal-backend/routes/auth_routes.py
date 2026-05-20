@@ -295,6 +295,9 @@ def register_user():
     )
     
     db.session.add(new_user)
+    db.session.flush()
+    from user_public_id import ensure_user_public_id
+    ensure_user_public_id(new_user, commit=False)
     db.session.commit()
 
     # Skip email verification - user is auto-verified
@@ -477,9 +480,12 @@ def get_profile():
     user_id_str = get_jwt_identity()
     user_id = int(user_id_str)
     user = User.query.get_or_404(user_id)
+    from user_public_id import ensure_user_public_id
+    public_id = ensure_user_public_id(user)
     return jsonify({
         'email': user.email,
         'name': user.name,
+        'public_id': public_id,
         'profile_image': ""
     }), 200
 
@@ -523,6 +529,8 @@ def validate_token():
         has_journal_access = user_entitles_journal(user)
         dashboard_modules = effective_dashboard_modules(user)
 
+        from user_public_id import ensure_user_public_id
+        public_id = ensure_user_public_id(user)
         return jsonify({
             "valid": True,
             "user": {
@@ -533,6 +541,7 @@ def validate_token():
                 "has_journal_access": has_journal_access,
                 "has_dashboard_access": user_has_any_dashboard_access(user),
                 "dashboard_modules": dashboard_modules,
+                "public_id": public_id,
             }
         }), 200
     except Exception as e:

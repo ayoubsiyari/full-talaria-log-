@@ -36,7 +36,7 @@ export type FeedPost = {
   liked_by_me?: boolean;
   likes_count?: number;
   comments_count?: number;
-  author?: { id?: number; name?: string | null } | null;
+  author?: { id?: number; name?: string | null; public_id?: string | null } | null;
   strategy?: {
     id?: number;
     name?: string | null;
@@ -174,7 +174,9 @@ export default function PostCard({ post, onLike, onOpenComments, onOpenStrategy,
               {authorName}
             </h3>
             <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] font-normal text-[var(--sl-text-muted)]">
-              <span className="truncate text-[var(--sl-text-sec)]">{handle}</span>
+              <span className="truncate text-[var(--sl-text-sec)]">
+                {post.author?.public_id || handle}
+              </span>
               <span className="text-[var(--sl-text-muted)]">·</span>
               <span className="shrink-0">{timeAgo}</span>
               {visBadge && (

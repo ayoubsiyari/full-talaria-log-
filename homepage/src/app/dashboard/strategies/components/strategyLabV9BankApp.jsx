@@ -114,6 +114,11 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
     persistStrategy,
     deleteStrategyRemote,
     duplicateStrategyRemote,
+    communityStrategies,
+    communityLoading,
+    communityError,
+    myPublicId,
+    submitStrategyToCommunity,
   } = useStrategyLabV9Data();
 
   const strategyReviewSessions = useMemo(() => reviewSessions || [], [reviewSessions]);
@@ -180,6 +185,8 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const [canvasInspectorCollapsed, setCanvasInspectorCollapsed] = useState(false);
   const [stratPerfStrat, setStratPerfStrat] = useState(null);
   const [stratShareStrat, setStratShareStrat] = useState(null);
+  const [stratShareBusy, setStratShareBusy] = useState(false);
+  const [stratShareErr, setStratShareErr] = useState(null);
   const [stratCardHov, setStratCardHov] = useState(null);
   const [stratActMenu, setStratActMenu] = useState(null);
 
@@ -197,21 +204,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const TFS = ["1m","2m","3m","5m","10m","15m","30m","1H","2H","4H","1D","1W"];
   const complexityColor={Easy:c.gn,Medium:c.gold,Hard:c.rd};
 
-  /* ─── Community pool ─── */
-  const communityPool = [
-    {id:"c1",author:"TraderMike",authorBadge:"Pro",name:"Momentum Breakout",style:"Trend Following",instruments:["NQ","ES","YM"],timeframes:["5m","15m"],winRate:58,rr:2.1,trades:214,pnl:8340,complexity:"Medium",tags:["Breakout","Momentum","Volume"],saves:412,desc:"Trades NQ momentum breakouts on the 5m chart using volume confirmation and ATR-based stops."},
-    {id:"c2",author:"FXAlchemist",authorBadge:"",name:"EMA Mean Reversion",style:"Mean Reversion",instruments:["ES","SPY","QQQ"],timeframes:["15m","1H"],winRate:44,rr:1.4,trades:87,pnl:-1220,complexity:"Easy",tags:["EMA","Pullback","Counter-trend"],saves:87,desc:"Fades extended moves using EMA distance bands. Entries on pullback candles after price stretches >1.5 ATR."},
-    {id:"c3",author:"LondonLion",authorBadge:"Verified",name:"London Session Scalp",style:"Scalping",instruments:["EURUSD","GBPUSD","USDJPY"],timeframes:["1m","5m","15m"],winRate:65,rr:1.8,trades:312,pnl:6750,complexity:"Hard",tags:["Forex","Session","Scalp"],saves:631,desc:"Scalps during the London open using key S/R levels. Targets 10–20 pips with tight 5-pip stops."},
-    {id:"c4",author:"OilTrader99",authorBadge:"",name:"Volume Breakout",style:"Breakout",instruments:["CL","NG","HO"],timeframes:["1H","4H"],winRate:52,rr:2.6,trades:48,pnl:2840,complexity:"Medium",tags:["Volume","Energy","Futures"],saves:203,desc:"Trades range breakouts on crude oil with volume confirmation. Requires 150% avg volume on the breakout candle."},
-    {id:"c5",author:"GoldDigger",authorBadge:"Pro",name:"Golden Cross Trend",style:"Trend Following",instruments:["GC","SI","PL"],timeframes:["4H","1D"],winRate:71,rr:2.6,trades:52,pnl:12480,complexity:"Easy",tags:["Gold","SMA","Long-term"],saves:889,desc:"Long-only trend strategy using the 50/200 EMA golden cross on gold and silver."},
-    {id:"c6",author:"VWAPmaster",authorBadge:"",name:"VWAP Intraday",style:"Scalping",instruments:["ES","NQ","SPY"],timeframes:["1m","5m"],winRate:60,rr:1.5,trades:440,pnl:4210,complexity:"Medium",tags:["VWAP","Intraday","Scalp"],saves:344,desc:"Bounces off VWAP during regular trading hours. Uses 1-min confirmation candles with a volume spike filter."},
-    {id:"c7",author:"ZoneHunter",authorBadge:"Verified",name:"Supply & Demand Zones",style:"Swing",instruments:["EURUSD","GBPJPY","XAUUSD"],timeframes:["1H","4H","1D"],winRate:55,rr:3.2,trades:67,pnl:7650,complexity:"Hard",tags:["Zones","Price Action","Swing"],saves:521,desc:"Identifies major S&D zones on the 4H chart; takes precision entries on the 15m chart. Minimum 1:3 R:R."},
-    {id:"c8",author:"ICT_Trader",authorBadge:"Pro",name:"ICT SMC Framework",style:"Price Action",instruments:["NQ","ES","DX"],timeframes:["5m","15m","1H"],winRate:62,rr:2.8,trades:130,pnl:9200,complexity:"Hard",tags:["ICT","SMC","Liquidity"],saves:1204,desc:"Applies ICT methodology: Order Blocks, Fair Value Gaps, and liquidity sweeps. Only enters after confirmed displacement."},
-    {id:"c9",author:"AsianEdge",authorBadge:"",name:"Asian Range Breakout",style:"Breakout",instruments:["GBPUSD","AUDUSD","USDJPY"],timeframes:["15m","1H"],winRate:55,rr:1.9,trades:58,pnl:1890,complexity:"Medium",tags:["Session","Range","Forex"],saves:167,desc:"Breaks out of the Asian session range during the London open on GBP pairs. Min R:R of 1.8 required."},
-    {id:"c10",author:"MacroBot",authorBadge:"Verified",name:"News Trading Catalyst",style:"News Trading",instruments:["EURUSD","XAUUSD","USDJPY"],timeframes:["1H","4H"],winRate:61,rr:2.0,trades:22,pnl:7200,complexity:"Hard",tags:["News","NFP","FOMC"],saves:278,desc:"Trades high-impact news events (NFP, CPI, FOMC) with breakout entries and wide initial stops."},
-    {id:"c11",author:"GridKing",authorBadge:"",name:"EUR/USD Grid System",style:"Algorithmic",instruments:["EURUSD","EURGBP","EURJPY"],timeframes:["1H","4H"],winRate:62,rr:1.2,trades:388,pnl:2210,complexity:"Medium",tags:["Grid","Algorithmic","Forex"],saves:95,desc:"Places a grid of buy/sell orders every 20 pips around a central price level. Profits from oscillating price action."},
-    {id:"c12",author:"YieldCurveZ",authorBadge:"Pro",name:"Treasury Bond Yield Curve",style:"Swing",instruments:["ZB","ZN","ZF","TLT"],timeframes:["1H","1D"],winRate:61,rr:2.5,trades:33,pnl:7200,complexity:"Hard",tags:["Bonds","Yield","Macro"],saves:312,desc:"Trades the yield curve by going long ZB and short ZN/ZF during inversion periods."},
-  ];
+  const communityPool = communityStrategies;
 
   const normalizeStrategyBankName = value => String(value||'')
     .replace(/\s*\((my version|copy)\)\s*/ig,' ')
@@ -234,7 +227,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const filteredCommunity = communityPool
     .filter(s => {
       const q = stratSearch.toLowerCase();
-      return !q || s.name.toLowerCase().includes(q) || s.author.toLowerCase().includes(q) || s.tags.some(t=>t.toLowerCase().includes(q));
+      return !q || s.name.toLowerCase().includes(q) || (s.author||"").toLowerCase().includes(q) || (s.authorPublicId||"").toLowerCase().includes(q) || (s.tags||[]).some(t=>t.toLowerCase().includes(q));
     })
     .sort((a,b)=>{
       let av=a[stratSort]??0, bv=b[stratSort]??0;
@@ -257,7 +250,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const isLoadingMyStrategies = Boolean(getToken()) && strategiesLoading;
   const filteredSavedCommunity = savedCommunityStrats.filter(s=>{
     const q=stratSearch.toLowerCase();
-    return !q||s.name.toLowerCase().includes(q)||(s.author||"").toLowerCase().includes(q)||(s.tags||[]).some(t=>t.toLowerCase().includes(q));
+    return !q||s.name.toLowerCase().includes(q)||(s.author||"").toLowerCase().includes(q)||(s.authorPublicId||"").toLowerCase().includes(q)||(s.tags||[]).some(t=>t.toLowerCase().includes(q));
   });
 
   /* ─── Strategy card (shared) ─── */
@@ -312,6 +305,11 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
             </div>
             <div style={{minWidth:0}}>
               <div style={{fontSize:14,fontWeight:850,color:c.tx,lineHeight:1.12,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{strat.name}</div>
+              {!isMine && strat.authorPublicId ? (
+                <div style={{fontSize:8,fontWeight:750,color:c.acL,fontFamily:F,marginTop:3,letterSpacing:"0.04em"}} title={`Posted by ${strat.author||"Community"}`}>
+                  {strat.authorPublicId}
+                </div>
+              ) : null}
             </div>
             <div role="button" tabIndex={0} aria-label={`Open actions for ${strat.name}`}
               onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,x:r.right/Z,y:r.bottom/Z});}}
@@ -451,6 +449,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
 
   /** Icon + name share first column (same total width as old 44+190) — tight gap like sessions row. */
   const STRAT_ROW_COLS = "234px 330px 285px 135px 110px 150px 44px";
+  const STRAT_ROW_COLS_COMMUNITY = "200px 108px 252px 285px 135px 110px 150px 44px";
   const stratMarkets = strat => (strat.markets||[]).length
     ? (strat.markets||[]).map(m=>(MKT_CAT_OPTS.find(x=>x.id===m)?.label||m))
     : (strat.instruments||[]);
@@ -518,11 +517,16 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
       </div>
     );
   };
-  const StrategyRows = ({items,isMine=false,inSavedTab=false,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onPerf,onUseTemplate}) => (
+  const StrategyRows = ({items,isMine=false,inSavedTab=false,showPublicId=false,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onPerf,onUseTemplate}) => {
+    const rowCols = showPublicId ? STRAT_ROW_COLS_COMMUNITY : STRAT_ROW_COLS;
+    const headers = showPublicId
+      ? ["Strategy","Public ID","Description","Strategy Tags","Markets","Time Frames","Backtesting Results",""]
+      : ["Strategy","Description","Strategy Tags","Markets","Time Frames","Backtesting Results",""];
+    return (
     <div style={{width:1288,margin:"0 auto",display:"flex",flexDirection:"column",padding:"0 0 24px"}}>
-      <div style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"center",height:26,borderBottom:`1px solid ${c.brH}`}}>
-        {["Strategy","Description","Strategy Tags","Markets","Time Frames","Backtesting Results",""].map((label,i)=>{
-          const pad = i === 6 ? "0 8px" : i >= 2 ? "8px 10px" : "0 10px";
+      <div style={{display:"grid",gridTemplateColumns:rowCols,alignItems:"center",height:26,borderBottom:`1px solid ${c.brH}`}}>
+        {headers.map((label,i)=>{
+          const pad = i === headers.length - 1 ? "0 8px" : i >= (showPublicId ? 3 : 2) ? "8px 10px" : "0 10px";
           return (
           <div key={label||"_icon"} style={{fontSize:8,fontWeight:850,color:c.tm,textTransform:"uppercase",letterSpacing:"0.08em",whiteSpace:"nowrap",fontFamily:F,textAlign:label?"left":"center",padding:pad,display:"flex",alignItems:"center",justifyContent:label?"flex-start":"center",boxSizing:"border-box",minWidth:0}}>
             {label}
@@ -546,13 +550,23 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
             onMouseEnter={()=>setStratCardHov(strat.id)}
             onMouseLeave={()=>setStratCardHov(null)}
             onDoubleClick={openEditableStrategy}
-            style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"stretch",height:80,minHeight:80,maxHeight:80,borderTop:`1px solid ${isH?c.acB:c.brH}`,borderRight:`1px solid ${isH?c.acB:c.brH}`,borderBottom:`1px solid ${isH?c.acB:c.brH}`,borderLeft:`3px solid ${c.acL}`,background:isH?"rgba(140,160,255,0.045)":c.sf,cursor:"default",transition:"box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease",boxShadow:isH?`0 0 0 1px ${c.acB}, 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(38,67,247,0.15)`:"0 3px 12px rgba(0,0,0,0.5)",marginTop:idx===0?0:6,overflow:"hidden",boxSizing:"border-box"}}>
+            style={{display:"grid",gridTemplateColumns:rowCols,alignItems:"stretch",height:80,minHeight:80,maxHeight:80,borderTop:`1px solid ${isH?c.acB:c.brH}`,borderRight:`1px solid ${isH?c.acB:c.brH}`,borderBottom:`1px solid ${isH?c.acB:c.brH}`,borderLeft:`3px solid ${c.acL}`,background:isH?"rgba(140,160,255,0.045)":c.sf,cursor:"default",transition:"box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease",boxShadow:isH?`0 0 0 1px ${c.acB}, 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(38,67,247,0.15)`:"0 3px 12px rgba(0,0,0,0.5)",marginTop:idx===0?0:6,overflow:"hidden",boxSizing:"border-box"}}>
             <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,padding:"0 10px",overflow:"hidden",boxSizing:"border-box"}}>
               <div style={{width:24,height:24,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:c.hv2,border:`1px solid ${isH?c.acB:c.brH}`,boxSizing:"border-box"}}>
                 <span style={{fontSize:17,lineHeight:1,filter:"saturate(1.08)"}}>{icon}</span>
               </div>
               <div style={{fontSize:12,fontWeight:850,color:c.tx,lineHeight:1.25,fontFamily:F,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{strat.name}</div>
             </div>
+            {showPublicId ? (
+              <div style={{display:"flex",flexDirection:"column",justifyContent:"center",minWidth:0,padding:"0 10px",gap:2}}>
+                <div style={{fontSize:10,fontWeight:800,color:c.acL,fontFamily:F,letterSpacing:"0.04em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={strat.authorPublicId||""}>
+                  {strat.authorPublicId || "—"}
+                </div>
+                <div style={{fontSize:8,fontWeight:600,color:c.tm,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={strat.author||""}>
+                  {strat.author || ""}
+                </div>
+              </div>
+            ) : null}
             <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"0 10px"}}>
               <div style={{fontSize:10.5,fontWeight:560,color:c.ts,fontFamily:F,lineHeight:1.35,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>
                 {strat.desc||"No description added."}
@@ -587,6 +601,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
       })}
     </div>
   );
+  };
 
   /* ─── Builder modal open/close helper ─── */
   const openBuilder = async (editStrat=null) => {
@@ -848,6 +863,12 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
           <div style={{fontSize:13,fontWeight:700,color:c.ts,letterSpacing:"0.06em",fontFamily:F}}>Strategy Bank</div>
         </div>
         <div style={{flex:1}}/>
+        {myPublicId ? (
+          <div style={{marginRight:16,fontSize:9,fontWeight:700,color:c.tm,fontFamily:F,letterSpacing:"0.06em",textTransform:"uppercase",flexShrink:0}}>
+            Your Public ID{" "}
+            <span style={{color:c.acL,fontWeight:850,letterSpacing:"0.04em"}}>{myPublicId}</span>
+          </div>
+        ) : null}
         {/* Build Strategy button */}
         <div role="button" tabIndex={0} aria-label="Build strategy" onClick={()=>openBuilder()}
           style={{width:160,height:36,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:12.5,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.08em",boxShadow:"0 2px 10px rgba(38,67,247,0.35)",marginRight:20,fontFamily:F,transition:"filter 0.12s, transform 0.08s",flexShrink:0,boxSizing:"border-box",whiteSpace:"nowrap"}}
@@ -873,7 +894,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
           ) : null}
           <div style={{width:1288,margin:"0 auto",display:"flex",alignItems:"flex-end",height:40,gap:5,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
             <div style={{display:"flex",alignItems:"flex-end",height:"100%",gap:5,flexShrink:0}}>
-              {[{k:"mine",l:"My Strategies",ct:mineSource.length},{k:"community",l:"Community",ct:communityPool.length,disabled:true}].map(({k,l,ct,disabled})=>{
+              {[{k:"mine",l:"My Strategies",ct:mineSource.length},{k:"community",l:"Community",ct:communityPool.length}].map(({k,l,ct,disabled})=>{
                 const isA=stratTab===k&&!disabled;
                 const tabCol=isA?c.acL:(disabled?c.tm:c.ts);
                 const tabBg=isA?c.acD:"transparent";
@@ -1084,15 +1105,19 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
 
           {/* COMMUNITY */}
           {stratTab==="community"&&(
-            filteredCommunity.length===0?(
+            communityError ? (
+              <div style={{width:1288,margin:"0 auto",padding:"12px 0",fontSize:9,fontFamily:F,color:c.rd}}>{communityError}</div>
+            ) : communityLoading ? (
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:340,fontSize:11,color:c.tm,fontFamily:F}}>Loading community strategies…</div>
+            ) : filteredCommunity.length===0?(
               <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,height:340}}>
                 <svg width={48} height={48} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.2"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
-                <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>No results</div>
-                <div style={{fontSize:10,color:c.tm,fontFamily:F}}>Try adjusting your search or filters.</div>
+                <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>No community strategies yet</div>
+                <div style={{fontSize:10,color:c.tm,fontFamily:F}}>Published strategies show the author&apos;s Public ID (TLR-########).</div>
               </div>
             ):(
               stratLayoutMode==="rows"?(
-                <StrategyRows items={filteredCommunity} isMine={false}
+                <StrategyRows items={filteredCommunity} isMine={false} showPublicId
                   isSaved={id=>savedCommunityIds.has(id)}
                   onSave={s=>saveCommunity(s)}/>
               ):(
@@ -1320,23 +1345,41 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                   </div>
                 ))}
               </div>
-              <div style={{fontSize:8,fontWeight:500,color:c.tm,fontFamily:F,marginBottom:16,lineHeight:1.6}}>Your strategy will be visible to all community members. You can remove it from the community at any time.</div>
+              <div style={{fontSize:8,fontWeight:500,color:c.tm,fontFamily:F,marginBottom:10,lineHeight:1.6}}>Your strategy will be visible to all members with site access. Posts show your Public ID so others can recognize your work.</div>
+              {myPublicId ? (
+                <div style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,marginBottom:12,padding:"8px 10px",background:"rgba(74,106,255,0.08)",border:`1px solid ${c.brH}`}}>
+                  Your Public ID: <span style={{color:c.acL}}>{myPublicId}</span>
+                </div>
+              ) : null}
+              {stratShareErr ? (
+                <div style={{fontSize:9,color:c.rd,fontFamily:F,marginBottom:10}}>{stratShareErr}</div>
+              ) : null}
               <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-                <div onClick={()=>setStratShareStrat(null)}
+                <div onClick={()=>{if(!stratShareBusy){setStratShareStrat(null);setStratShareErr(null);}}}
                   style={{height:32,padding:"0 16px",display:"flex",alignItems:"center",fontSize:9,fontWeight:700,color:c.ts,border:`1px solid ${c.br}`,cursor:"default",fontFamily:F,transition:"all 0.12s"}}
                   onMouseEnter={e=>{e.currentTarget.style.borderColor=c.brH;e.currentTarget.style.color=c.tx;}}
                   onMouseLeave={e=>{e.currentTarget.style.borderColor=c.br;e.currentTarget.style.color=c.ts;}}>
                   Cancel
                 </div>
                 <div onClick={()=>{
-                  const newCommunityStrat={...stratShareStrat,id:`comm_${Date.now()}`,author:"You",authorBadge:"",saves:0,isMine:false};
-                  setStratShareStrat(null);
+                  if(stratShareBusy) return;
+                  const sid = typeof stratShareStrat?.id === "number" ? stratShareStrat.id : Number(stratShareStrat?.id);
+                  if(!Number.isFinite(sid) || sid <= 0){
+                    setStratShareErr("Save this strategy first, then share it to Community.");
+                    return;
+                  }
+                  setStratShareBusy(true);
+                  setStratShareErr(null);
+                  void submitStrategyToCommunity(sid)
+                    .then(()=>{ setStratShareStrat(null); })
+                    .catch(err=>{ setStratShareErr(err instanceof Error ? err.message : "Could not post to community"); })
+                    .finally(()=>{ setStratShareBusy(false); });
                 }}
-                  style={{height:32,padding:"0 20px",display:"flex",alignItems:"center",gap:6,fontSize:9,fontWeight:800,color:"rgba(255,255,255,0.95)",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontFamily:F,letterSpacing:"0.05em",transition:"filter 0.12s"}}
-                  onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
+                  style={{height:32,padding:"0 20px",display:"flex",alignItems:"center",gap:6,fontSize:9,fontWeight:800,color:"rgba(255,255,255,0.95)",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontFamily:F,letterSpacing:"0.05em",transition:"filter 0.12s",opacity:stratShareBusy?0.65:1}}
+                  onMouseEnter={e=>{if(!stratShareBusy)e.currentTarget.style.filter="brightness(1.12)";}}
                   onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
                   <svg width={11} height={11} viewBox="0 0 24 24" fill="none"><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="2"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                  Post to Community
+                  {stratShareBusy ? "Posting…" : "Post to Community"}
                 </div>
               </div>
             </div>

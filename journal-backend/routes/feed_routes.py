@@ -6,6 +6,7 @@ from sqlalchemy import or_, and_, func
 
 from models import db, StrategyPost, PostLike, PostComment, UserFollow, Strategy, User, JournalEntry
 from routes.strategy_routes import _strategy_dict
+from user_public_id import ensure_user_public_id
 
 
 feed_bp = Blueprint('feed', __name__)
@@ -43,6 +44,15 @@ _ALLOWED_VISIBILITY = frozenset({'public', 'guest', 'friends', 'private'})
 
 def _uid():
     return int(get_jwt_identity())
+
+
+def _author_public_dict(user):
+    if not user:
+        return None
+    return {
+        'name': user.name,
+        'public_id': ensure_user_public_id(user),
+    }
 
 
 def _mutual_friend_ids(user_id):
@@ -109,7 +119,7 @@ def _serialize_post_row(p, viewer_id):
         'likes_count': likes,
         'comments_count': comments,
         'liked_by_me': liked,
-        'author': {'id': author.id, 'name': author.name} if author else None,
+        'author': _author_public_dict(author),
         'strategy': _strategy_dict(strat, include_legacy=False) if strat else None,
         'stats_preview': stats_preview,
     }
@@ -122,7 +132,7 @@ def _comment_replies(parent_comment_id):
         out.append({
             'id': r.id,
             'body': r.body,
-            'author': {'id': ru.id, 'name': ru.name} if ru else None,
+            'author': _author_public_dict(ru),
         })
     return out
 
@@ -316,7 +326,7 @@ def post_comments(post_id):
                     'id': c.id,
                     'body': c.body,
                     'created_at': c.created_at.isoformat() if c.created_at else None,
-                    'author': {'id': u.id, 'name': u.name} if u else None,
+                    'author': _author_public_dict(u),
                     'replies': _comment_replies(c.id),
                 })
             return jsonify({'success': True, 'comments': out}), 200

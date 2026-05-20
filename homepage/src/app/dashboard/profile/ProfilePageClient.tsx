@@ -44,6 +44,7 @@ type MeUser = {
   phone?: string | null;
   birth_date?: string | null;
   stripe_customer_id?: string | null;
+  public_id?: string | null;
 };
 
 function initials(name: string, email: string) {
@@ -412,6 +413,17 @@ function ProfilePageInner() {
                           {isArabic ? "لا يمكن تغيير البريد من هنا." : "Email cannot be changed here."}
                         </div>
                       </div>
+                      {user.public_id ? (
+                        <div className="prof-field prof-field--full">
+                          <label htmlFor="prof-public-id">{isArabic ? "المعرّف العام" : "Public ID"}</label>
+                          <input id="prof-public-id" value={user.public_id} disabled readOnly />
+                          <div className="prof-hint">
+                            {isArabic
+                              ? "يظهر على استراتيجياتك في المجتمع ليتعرف عليك الأعضاء."
+                              : "Shown on your Community strategies so other members can identify your posts."}
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="prof-field">
                         <label htmlFor="prof-country">{isArabic ? "الدولة / المنطقة" : "Country / region"}</label>
                         <input id="prof-country" value={country} onChange={(e) => setCountry(e.target.value)} autoComplete="country-name" />

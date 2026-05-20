@@ -6,6 +6,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, StrategyTemplate, Strategy, User
 from routes.strategy_routes import _strategy_dict
 from schemas.strategy_lab import merge_definition_from_legacy, default_strategy_definition
+from user_public_id import ensure_user_public_id
 
 
 template_bp = Blueprint('templates', __name__)
@@ -15,8 +16,23 @@ def _uid():
     return int(get_jwt_identity())
 
 
+def _creator_dict(user):
+    if not user:
+        return None
+    ensure_user_public_id(user)
+    return {
+        'name': user.name,
+        'public_id': user.public_id,
+    }
+
+
 def _tpl_dict(t, strategy_snapshot=None):
     rating_avg = (t.rating_sum / t.rating_count) if t.rating_count else None
+    creator = None
+    if t.creator_user_id:
+        creator = _creator_dict(User.query.get(t.creator_user_id))
+    elif t.template_type == 'official':
+        creator = {'name': 'Talaria', 'public_id': None}
     out = {
         'id': t.id,
         'title': t.title,
@@ -28,6 +44,7 @@ def _tpl_dict(t, strategy_snapshot=None):
         'rating_avg': round(rating_avg, 2) if rating_avg is not None else None,
         'rating_count': t.rating_count,
         'created_at': t.created_at.isoformat() if t.created_at else None,
+        'creator': creator,
     }
     if strategy_snapshot:
         out['definition'] = strategy_snapshot
@@ -151,6 +168,8 @@ def submit_template():
             return jsonify({'success': False, 'error': 'Strategy not found'}), 404
 
         defn = merge_definition_from_legacy(strat)
+        creator = User.query.get(user_id)
+        ensure_user_public_id(creator)
         tpl = StrategyTemplate(
             source_strategy_id=strat.id,
             creator_user_id=user_id,
@@ -163,7 +182,11 @@ def submit_template():
         )
         db.session.add(tpl)
         db.session.commit()
-        return jsonify({'success': True, 'template_id': tpl.id}), 201
+        return jsonify({
+            'success': True,
+            'template_id': tpl.id,
+            'public_id': creator.public_id if creator else None,
+        }), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
