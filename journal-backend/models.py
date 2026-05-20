@@ -430,6 +430,16 @@ class StrategyTemplate(db.Model):
     rating_sum = db.Column(db.Integer, nullable=False, default=0)
     rating_count = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Author visibility + copy controls for community publishes
+    publish_settings = db.Column(JSON, nullable=False, default=lambda: {
+        'include_description': True,
+        'include_conditions': True,
+        'include_variables': True,
+        'include_strategy_details': True,
+        'include_backtest_stats': False,
+        'allow_clone': True,
+    })
+    backtest_snapshot = db.Column(JSON, nullable=True)
 
     source_strategy = db.relationship('Strategy', foreign_keys=[source_strategy_id])
     creator = db.relationship('User', foreign_keys=[creator_user_id])

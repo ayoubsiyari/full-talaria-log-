@@ -7,6 +7,13 @@ from models import db, StrategyTemplate, Strategy, User
 from routes.strategy_routes import _strategy_dict
 from schemas.strategy_lab import merge_definition_from_legacy, default_strategy_definition
 from user_public_id import ensure_user_public_id
+from community_publish import (
+    apply_publish_filter,
+    normalize_backtest_snapshot,
+    parse_publish_settings,
+    public_backtest_snapshot,
+    DEFAULT_PUBLISH_SETTINGS,
+)
 
 
 template_bp = Blueprint('templates', __name__)
@@ -26,6 +33,13 @@ def _creator_dict(user):
     }
 
 
+def _template_publish_settings(t):
+    raw = getattr(t, 'publish_settings', None)
+    if isinstance(raw, dict):
+        return parse_publish_settings(raw)
+    return dict(DEFAULT_PUBLISH_SETTINGS)
+
+
 def _tpl_dict(t, strategy_snapshot=None):
     rating_avg = (t.rating_sum / t.rating_count) if t.rating_count else None
     creator = None
@@ -33,6 +47,12 @@ def _tpl_dict(t, strategy_snapshot=None):
         creator = _creator_dict(User.query.get(t.creator_user_id))
     elif t.template_type == 'official':
         creator = {'name': 'Talaria', 'public_id': None}
+    settings = _template_publish_settings(t)
+    public_defn = (
+        strategy_snapshot
+        if strategy_snapshot is not None
+        else apply_publish_filter(t.definition, settings)
+    )
     out = {
         'id': t.id,
         'title': t.title,
@@ -45,11 +65,11 @@ def _tpl_dict(t, strategy_snapshot=None):
         'rating_count': t.rating_count,
         'created_at': t.created_at.isoformat() if t.created_at else None,
         'creator': creator,
+        'publish_settings': settings,
+        'allow_clone': bool(settings.get('allow_clone', True)),
+        'backtest_snapshot': public_backtest_snapshot(t),
+        'definition': public_defn,
     }
-    if strategy_snapshot:
-        out['definition'] = strategy_snapshot
-    else:
-        out['definition'] = t.definition
     return out
 
 
@@ -112,8 +132,15 @@ def clone_template(template_id):
         t = StrategyTemplate.query.filter_by(id=template_id, status='published').first()
         if not t:
             return jsonify({'success': False, 'error': 'Not found'}), 404
+        settings = _template_publish_settings(t)
+        if not settings.get('allow_clone', True):
+            return jsonify({
+                'success': False,
+                'error': 'Author disabled copying for this strategy',
+            }), 403
 
         defn = t.definition if isinstance(t.definition, dict) else default_strategy_definition()
+        defn = apply_publish_filter(defn, settings)
         name = (request.get_json() or {}).get('name') or f'{t.title} (My Copy)'
         new_s = Strategy(
             user_id=user_id,
@@ -167,18 +194,23 @@ def submit_template():
         if not strat:
             return jsonify({'success': False, 'error': 'Strategy not found'}), 404
 
-        defn = merge_definition_from_legacy(strat)
+        settings = parse_publish_settings(data)
+        full_defn = merge_definition_from_legacy(strat)
+        public_defn = apply_publish_filter(full_defn, settings)
+        snapshot = normalize_backtest_snapshot(data.get('backtest_snapshot'), settings)
         creator = User.query.get(user_id)
         ensure_user_public_id(creator)
         tpl = StrategyTemplate(
             source_strategy_id=strat.id,
             creator_user_id=user_id,
             title=strat.name[:200],
-            definition=defn,
+            definition=public_defn,
             category=data.get('category'),
             difficulty=data.get('difficulty'),
             template_type='community',
-            status='pending',
+            status='published',
+            publish_settings=settings,
+            backtest_snapshot=snapshot,
         )
         db.session.add(tpl)
         db.session.commit()
@@ -186,6 +218,8 @@ def submit_template():
             'success': True,
             'template_id': tpl.id,
             'public_id': creator.public_id if creator else None,
+            'publish_settings': settings,
+            'backtest_snapshot': snapshot,
         }), 201
     except Exception as e:
         db.session.rollback()

@@ -34,7 +34,7 @@
  *     right-panel layout tab.
  */
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 // Phase 7.2.5: tile id "A" is the HOST tile — it does NOT spawn an iframe.
 // Instead, the parent's existing #chartWrapper (the original main chart with

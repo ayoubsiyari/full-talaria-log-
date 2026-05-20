@@ -194,6 +194,67 @@ function firstTf(cfg: Record<string, unknown>): string {
   return String(cfg.timeframe || cfg.tf || "");
 }
 
+export type CommunityPublishOptions = {
+  include_description: boolean;
+  include_conditions: boolean;
+  include_variables: boolean;
+  include_strategy_details: boolean;
+  include_backtest_stats: boolean;
+  allow_clone: boolean;
+};
+
+export type BacktestSnapshotPublic = {
+  session_id?: number | null;
+  session_name?: string;
+  win_rate?: number | null;
+  pnl?: number | null;
+  trades?: number | null;
+  progress?: number | null;
+  rollback_allowed?: boolean;
+  start_date?: string;
+  end_date?: string;
+};
+
+export const DEFAULT_COMMUNITY_PUBLISH_OPTIONS: CommunityPublishOptions = {
+  include_description: true,
+  include_conditions: true,
+  include_variables: true,
+  include_strategy_details: true,
+  include_backtest_stats: true,
+  allow_clone: true,
+};
+
+export function buildBacktestSnapshotFromSession(
+  sess: Record<string, unknown> | null | undefined,
+): BacktestSnapshotPublic | null {
+  if (!sess || typeof sess.id !== "number") return null;
+  return {
+    session_id: sess.id as number,
+    session_name: String(sess.name || ""),
+    win_rate: sess.winRate != null ? Number(sess.winRate) : null,
+    pnl: sess.pnl != null ? Number(sess.pnl) : null,
+    trades: sess.trades != null ? Number(sess.trades) : null,
+    progress: sess.progress != null ? Number(sess.progress) : null,
+    rollback_allowed: !!sess.rollbackAllowed,
+    start_date: String(sess.startDate || ""),
+    end_date: String(sess.endDate || ""),
+  };
+}
+
+export function pickBestBacktestSession(
+  sessions: Record<string, unknown>[] | undefined,
+): Record<string, unknown> | null {
+  const list = Array.isArray(sessions) ? sessions : [];
+  const withTrades = list.filter((s) => Number(s.trades) > 0);
+  const pool = withTrades.length ? withTrades : list;
+  if (!pool.length) return null;
+  return [...pool].sort(
+    (a, b) =>
+      new Date(String(b.createdAt || b.endDate || 0)).getTime() -
+      new Date(String(a.createdAt || a.endDate || 0)).getTime(),
+  )[0];
+}
+
 export type ApiTemplateRecord = {
   id: number;
   title: string;
@@ -204,6 +265,9 @@ export type ApiTemplateRecord = {
   clone_count?: number;
   status?: string;
   creator?: { name?: string; public_id?: string | null } | null;
+  publish_settings?: Partial<CommunityPublishOptions> | null;
+  allow_clone?: boolean;
+  backtest_snapshot?: BacktestSnapshotPublic | null;
 };
 
 /** Map published community template → Strategy Bank community row. */
@@ -223,26 +287,52 @@ export function templateToCommunityRow(t: ApiTemplateRecord): Record<string, unk
       ? [String(def.timeframe)]
       : [];
   const creator = t.creator || {};
+  const settings = { ...DEFAULT_COMMUNITY_PUBLISH_OPTIONS, ...(t.publish_settings || {}) };
+  const snap = t.backtest_snapshot || null;
+  const showDesc = settings.include_description;
+  const showDetails = settings.include_strategy_details;
+  const backtestSessions =
+    settings.include_backtest_stats && snap
+      ? [
+          {
+            id: snap.session_id,
+            name: snap.session_name || "Backtest",
+            winRate: snap.win_rate,
+            pnl: snap.pnl,
+            trades: snap.trades,
+            progress: snap.progress ?? (snap.trades ? 100 : 0),
+            rollbackAllowed: !!snap.rollback_allowed,
+            startDate: snap.start_date,
+            endDate: snap.end_date,
+          },
+        ]
+      : [];
   return {
     id: `tpl_${t.id}`,
     templateId: t.id,
     name: t.title,
-    desc:
-      (typeof v9.desc === "string" && v9.desc) ||
-      String(def.description || ""),
+    desc: showDesc
+      ? (typeof v9.desc === "string" && v9.desc) || String(def.description || "")
+      : "",
     icon: typeof v9.icon === "string" ? v9.icon : "◎",
     author: creator.name || "Community",
     authorPublicId: creator.public_id || "",
     authorBadge: "",
-    style: String(def.style || "Trend Following"),
-    instruments,
-    timeframes,
-    tags,
-    complexity: typeof v9.complexity === "string" ? v9.complexity : "Medium",
+    style: showDetails ? String(def.style || "Trend Following") : "—",
+    instruments: showDetails ? instruments : [],
+    timeframes: showDetails ? timeframes : [],
+    tags: showDetails ? tags : [],
+    complexity: showDetails && typeof v9.complexity === "string" ? v9.complexity : "Medium",
     saves: t.clone_count ?? 0,
     isMine: false,
     templatePreview: true,
     template: t,
+    publishSettings: settings,
+    allowClone: t.allow_clone !== false && settings.allow_clone !== false,
+    backtestSnapshot: snap,
+    backtestSessions,
+    rollbackAllowed: !!snap?.rollback_allowed,
+    showRollbackBadge: !!(settings.include_backtest_stats && snap),
   };
 }
 

@@ -14,6 +14,8 @@ import {
   templateToCommunityRow,
   type ApiStrategyRecord,
   type ApiTemplateRecord,
+  type CommunityPublishOptions,
+  type BacktestSnapshotPublic,
 } from "./strategyLabV9Mappers";
 import { getToken } from "./strategyLabV9Auth";
 
@@ -315,13 +317,19 @@ export function useStrategyLabV9Data() {
   }, [loadMyPublicId, loadCommunity]);
 
   const submitStrategyToCommunity = useCallback(
-    async (strategyId: number): Promise<{ public_id: string | null }> => {
+    async (
+      strategyId: number,
+      options: CommunityPublishOptions & { backtest_snapshot?: BacktestSnapshotPublic | null },
+    ): Promise<{ public_id: string | null }> => {
       await syncJournalTokenFromSession();
       const res = await fetch(`${JOURNAL_API_BASE}/templates/submit`, {
         method: "POST",
         credentials: "include",
         headers: { ...journalAuthHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ strategy_id: strategyId }),
+        body: JSON.stringify({
+          strategy_id: strategyId,
+          ...options,
+        }),
       });
       const data = (await parseJournalJsonResponse<{
         success?: boolean;
@@ -336,6 +344,27 @@ export function useStrategyLabV9Data() {
       return { public_id: data.public_id ?? null };
     },
     [loadCommunity],
+  );
+
+  const cloneCommunityTemplate = useCallback(
+    async (templateId: number, name?: string): Promise<void> => {
+      await syncJournalTokenFromSession();
+      const res = await fetch(`${JOURNAL_API_BASE}/templates/${templateId}/clone`, {
+        method: "POST",
+        credentials: "include",
+        headers: { ...journalAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(name ? { name } : {}),
+      });
+      const data = (await parseJournalJsonResponse<{
+        success?: boolean;
+        error?: string;
+      }>(res));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Copy failed (${res.status})`);
+      }
+      await loadStrategies();
+    },
+    [loadStrategies],
   );
 
   return {
@@ -354,6 +383,7 @@ export function useStrategyLabV9Data() {
     myPublicId,
     reloadMyPublicId: loadMyPublicId,
     submitStrategyToCommunity,
+    cloneCommunityTemplate,
     persistStrategy,
     deleteStrategyRemote,
     duplicateStrategyRemote,

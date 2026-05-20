@@ -13,6 +13,7 @@ def ensure_users_schema(app) -> None:
             engine = db.engine
             dialect = engine.dialect.name
             with engine.begin() as conn:
+                insp = inspect(engine)
                 if dialect == "postgresql":
                     conn.execute(
                         text(
@@ -32,8 +33,19 @@ def ensure_users_schema(app) -> None:
                             "ON users (public_id) WHERE public_id IS NOT NULL"
                         )
                     )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE strategy_templates ADD COLUMN IF NOT EXISTS "
+                            "publish_settings JSONB"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE strategy_templates ADD COLUMN IF NOT EXISTS "
+                            "backtest_snapshot JSONB"
+                        )
+                    )
                 else:
-                    insp = inspect(engine)
                     if "users" not in insp.get_table_names():
                         return
                     cols = {c["name"] for c in insp.get_columns("users")}
@@ -57,7 +69,25 @@ def ensure_users_schema(app) -> None:
                             )
                         except Exception:
                             pass
-            app.logger.info("users schema patch applied (dashboard_module_grants, public_id)")
+                    if "strategy_templates" in insp.get_table_names():
+                        st_cols = {c["name"] for c in insp.get_columns("strategy_templates")}
+                        if "publish_settings" not in st_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE strategy_templates ADD COLUMN "
+                                    "publish_settings JSON"
+                                )
+                            )
+                        if "backtest_snapshot" not in st_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE strategy_templates ADD COLUMN "
+                                    "backtest_snapshot JSON"
+                                )
+                            )
+            app.logger.info(
+                "schema patch applied (users public_id, strategy_templates publish)"
+            )
             try:
                 n = backfill_missing_public_ids()
                 if n:

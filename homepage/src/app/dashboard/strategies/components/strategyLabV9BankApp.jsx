@@ -13,7 +13,12 @@ import {
 import { useStrategyLabV9Data } from "@/app/dashboard/strategies/useStrategyLabV9Data";
 import { getToken, loginUrlWithNext } from "@/app/dashboard/strategies/strategyLabV9Auth";
 import { syncJournalTokenFromSession } from "@/lib/journalApi";
-import { bankStrategyToApiBody } from "@/app/dashboard/strategies/strategyLabV9Mappers";
+import {
+  bankStrategyToApiBody,
+  DEFAULT_COMMUNITY_PUBLISH_OPTIONS,
+  buildBacktestSnapshotFromSession,
+  pickBestBacktestSession,
+} from "@/app/dashboard/strategies/strategyLabV9Mappers";
 import { collectStrategyImageStats } from "@/app/dashboard/strategies/strategyLabV9Images";
 import { useOptionalBacktestNewSession } from "@/app/dashboard/BacktestNewSessionContext";
 
@@ -119,6 +124,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
     communityError,
     myPublicId,
     submitStrategyToCommunity,
+    cloneCommunityTemplate,
   } = useStrategyLabV9Data();
 
   const strategyReviewSessions = useMemo(() => reviewSessions || [], [reviewSessions]);
@@ -188,6 +194,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const [stratShareStrat, setStratShareStrat] = useState(null);
   const [stratShareBusy, setStratShareBusy] = useState(false);
   const [stratShareErr, setStratShareErr] = useState(null);
+  const [stratShareOpts, setStratShareOpts] = useState(() => ({ ...DEFAULT_COMMUNITY_PUBLISH_OPTIONS }));
   const [stratCardHov, setStratCardHov] = useState(null);
   const [stratActMenu, setStratActMenu] = useState(null);
 
@@ -204,6 +211,40 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const STYLES = ["All","Trend Following","Mean Reversion","Scalping","Breakout","Price Action","Swing","Algorithmic","News Trading","Other"];
   const TFS = ["1m","2m","3m","5m","10m","15m","30m","1H","2H","4H","1D","1W"];
   const complexityColor={Easy:c.gn,Medium:c.gold,Hard:c.rd};
+
+  const RollbackBadge = ({ allowed, compact }) => (
+    <span
+      title={allowed ? "Backtest run with rollback enabled" : "Backtest run without rollback"}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        height: compact ? 16 : 18,
+        padding: compact ? "0 6px" : "0 7px",
+        fontSize: compact ? 7 : 8,
+        fontWeight: 800,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        fontFamily: F,
+        color: allowed ? c.gn : c.tm,
+        background: allowed ? c.gnD : "rgba(255,255,255,0.04)",
+        border: `1px solid ${allowed ? c.gnB : c.brH}`,
+        flexShrink: 0,
+      }}
+    >
+      {allowed ? "Rollback" : "No rollback"}
+    </span>
+  );
+
+  const openShareToCommunity = (strat) => {
+    if (!strat) return;
+    setStratShareOpts({ ...DEFAULT_COMMUNITY_PUBLISH_OPTIONS });
+    setStratShareErr(null);
+    setStratShareStrat(strat);
+  };
+
+  const toggleShareOpt = (key) => {
+    setStratShareOpts((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const communityPool = communityStrategies;
 
@@ -307,8 +348,11 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
             <div style={{minWidth:0}}>
               <div style={{fontSize:14,fontWeight:850,color:c.tx,lineHeight:1.12,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{strat.name}</div>
               {!isMine && strat.authorPublicId ? (
-                <div style={{fontSize:8,fontWeight:750,color:c.acL,fontFamily:F,marginTop:3,letterSpacing:"0.04em"}} title={`Posted by ${strat.author||"Community"}`}>
-                  {strat.authorPublicId}
+                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3,flexWrap:"wrap"}}>
+                  <div style={{fontSize:8,fontWeight:750,color:c.acL,fontFamily:F,letterSpacing:"0.04em"}} title={`Posted by ${strat.author||"Community"}`}>
+                    {strat.authorPublicId}
+                  </div>
+                  {strat.showRollbackBadge ? <RollbackBadge allowed={!!strat.rollbackAllowed} compact /> : null}
                 </div>
               ) : null}
             </div>
@@ -566,6 +610,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                 <div style={{fontSize:8,fontWeight:600,color:c.tm,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={strat.author||""}>
                   {strat.author || ""}
                 </div>
+                {strat.showRollbackBadge ? <RollbackBadge allowed={!!strat.rollbackAllowed} compact /> : null}
               </div>
             ) : null}
             <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"0 10px"}}>
@@ -748,6 +793,19 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   };
   const duplicateStrategy = async (source) => {
     if (!source) return;
+    if (source.templatePreview && source.templateId) {
+      if (source.allowClone === false) {
+        window.alert("The author disabled copying for this strategy.");
+        return;
+      }
+      try {
+        await cloneCommunityTemplate(Number(source.templateId));
+        void reloadSessions();
+      } catch (e) {
+        window.alert(e instanceof Error ? e.message : "Copy failed");
+      }
+      return;
+    }
     if (typeof source.id === "number" && source.id > 0 && !source.templatePreview) {
       try {
         await duplicateStrategyRemote(source.id);
@@ -1145,7 +1203,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
         const isMineMenu=!!stratActMenu.isMine&&!isTemplate;
         const isSavedMenu=!!stratActMenu.inSavedTab;
         const isSavedNow=savedCommunityIds.has(ms.id);
-        const menuW=126, menuH=(isMineMenu||isTemplate)?132:104;
+        const menuW=126, menuH=(isMineMenu||isTemplate)?158:104;
         const vpW=window.innerWidth/Z, vpH=window.innerHeight/Z;
         const menuLeft=Math.max(8,Math.min(stratActMenu.x-menuW,vpW-menuW-8));
         const menuTop=Math.max(8,Math.min(stratActMenu.y+2,vpH-menuH-8));
@@ -1179,14 +1237,21 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
           {label:"divider"},
           ...(isTemplate?[
             {label:"Edit",handler:()=>applyTemplateToBuilder(ms.template),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
-            {label:"Copy",handler:runDuplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
+            ...(ms.allowClone === false ? [
+              {label:"Copy disabled",handler:()=>window.alert("The author disabled copying for this strategy."),col:c.tm,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
+            ] : [
+              {label:"Copy",handler:runDuplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
+            ]),
             {label:"Delete",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
           ]:isMineMenu?[
             {label:"Edit",handler:()=>openBuilder(ms),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
+            {label:"Share to Community",handler:()=>openShareToCommunity(ms),col:c.gold,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="1.8"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="1.8"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>},
             {label:"Copy",handler:runDuplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
             {label:"Delete",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
           ]:isSavedMenu?[
             {label:"Remove",handler:()=>saveCommunity(ms),col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
+          ]:ms.allowClone === false ? [
+            {label:"Copy disabled",handler:()=>window.alert("The author disabled copying for this strategy."),col:c.tm,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
           ]:[
             {label:isSavedNow?"Saved":"Save",handler:()=>saveCommunity(ms),col:isSavedNow?c.acL:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill={isSavedNow?c.acL:"none"}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7"/></svg>},
           ]),
@@ -1332,21 +1397,56 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                   <div style={{fontSize:8,fontWeight:600,color:c.tm,fontFamily:F}}>{stratShareStrat.style} · {stratShareStrat.complexity}</div>
                 </div>
               </div>
-              <div style={{fontSize:8,fontWeight:800,color:c.tm,textTransform:"uppercase",letterSpacing:"0.07em",fontFamily:F,marginBottom:8}}>Include in post</div>
-              <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
-                {[["Conditions & checklist","Share your decision tree with the community"],["Trade tags","Share pre/post-trade tag definitions"],["Performance stats","Share your win rate and P&L history"]].map(([l,sub])=>(
-                  <div key={l} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"rgba(255,255,255,0.02)",border:`1px solid ${c.brH}`}}>
-                    <div style={{width:14,height:14,border:`1px solid ${c.acL}`,background:c.acD,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      <svg width={8} height={8} viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke={c.acL} strokeWidth="1.5" strokeLinecap="round"/></svg>
+              <div style={{fontSize:8,fontWeight:800,color:c.tm,textTransform:"uppercase",letterSpacing:"0.07em",fontFamily:F,marginBottom:8}}>What to show publicly</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
+                {[
+                  ["include_description","Description","Strategy summary text"],
+                  ["include_strategy_details","Strategy details","Markets, timeframes, tags, style"],
+                  ["include_conditions","Conditions & checklist","Decision tree / builder logic"],
+                  ["include_variables","Trade tags","Pre/post-trade tag definitions"],
+                  ["include_backtest_stats","Backtest results","Win rate, P&L, trades from your latest backtest session"],
+                ].map(([key,l,sub])=>{
+                  const on=!!stratShareOpts[key];
+                  return(
+                    <div key={key} role="button" tabIndex={0} onClick={()=>toggleShareOpt(key)}
+                      style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:on?"rgba(74,106,255,0.06)":"rgba(255,255,255,0.02)",border:`1px solid ${on?c.acB:c.brH}`,cursor:"default"}}>
+                      <div style={{width:14,height:14,border:`1px solid ${on?c.acL:c.br}`,background:on?c.acD:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        {on?<svg width={8} height={8} viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke={c.acL} strokeWidth="1.5" strokeLinecap="round"/></svg>:null}
+                      </div>
+                      <div>
+                        <div style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F}}>{l}</div>
+                        <div style={{fontSize:7,fontWeight:500,color:c.tm,fontFamily:F}}>{sub}</div>
+                      </div>
                     </div>
-                    <div>
-                      <div style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F}}>{l}</div>
-                      <div style={{fontSize:7,fontWeight:500,color:c.tm,fontFamily:F}}>{sub}</div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-              <div style={{fontSize:8,fontWeight:500,color:c.tm,fontFamily:F,marginBottom:10,lineHeight:1.6}}>Your strategy will be visible to all members with site access. Posts show your Public ID so others can recognize your work.</div>
+              <div style={{fontSize:8,fontWeight:800,color:c.tm,textTransform:"uppercase",letterSpacing:"0.07em",fontFamily:F,marginBottom:8}}>Permissions</div>
+              <div role="button" tabIndex={0} onClick={()=>toggleShareOpt("allow_clone")}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",marginBottom:12,background:stratShareOpts.allow_clone?"rgba(74,106,255,0.06)":"rgba(255,255,255,0.02)",border:`1px solid ${stratShareOpts.allow_clone?c.acB:c.brH}`,cursor:"default"}}>
+                <div style={{width:14,height:14,border:`1px solid ${stratShareOpts.allow_clone?c.acL:c.br}`,background:stratShareOpts.allow_clone?c.acD:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {stratShareOpts.allow_clone?<svg width={8} height={8} viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke={c.acL} strokeWidth="1.5" strokeLinecap="round"/></svg>:null}
+                </div>
+                <div>
+                  <div style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F}}>Allow others to copy</div>
+                  <div style={{fontSize:7,fontWeight:500,color:c.tm,fontFamily:F}}>When off, members can view only — no duplicate into their bank</div>
+                </div>
+              </div>
+              {stratShareOpts.include_backtest_stats ? (()=>{
+                const sess=pickBestBacktestSession(stratShareStrat?.backtestSessions);
+                return sess ? (
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:12,padding:"8px 10px",background:"rgba(255,255,255,0.03)",border:`1px solid ${c.brH}`}}>
+                    <div style={{fontSize:8,fontWeight:600,color:c.tm,fontFamily:F,lineHeight:1.5}}>
+                      Backtest: <span style={{color:c.ts}}>{sess.name}</span>
+                      {sess.trades!=null?` · ${sess.trades} trades`:null}
+                    </div>
+                    <RollbackBadge allowed={!!sess.rollbackAllowed} compact />
+                  </div>
+                ) : (
+                  <div style={{fontSize:8,color:c.tm,fontFamily:F,marginBottom:12}}>No backtest session linked yet — run a backtest to show results & rollback badge.</div>
+                );
+              })() : null}
+              <div style={{fontSize:8,fontWeight:500,color:c.tm,fontFamily:F,marginBottom:10,lineHeight:1.6}}>Published immediately to Community for all members with access. Your Public ID is shown on the listing.</div>
               {myPublicId ? (
                 <div style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,marginBottom:12,padding:"8px 10px",background:"rgba(74,106,255,0.08)",border:`1px solid ${c.brH}`}}>
                   Your Public ID: <span style={{color:c.acL}}>{myPublicId}</span>
@@ -1371,8 +1471,15 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                   }
                   setStratShareBusy(true);
                   setStratShareErr(null);
-                  void submitStrategyToCommunity(sid)
-                    .then(()=>{ setStratShareStrat(null); })
+                  const sess=pickBestBacktestSession(stratShareStrat?.backtestSessions);
+                  const payload={
+                    ...stratShareOpts,
+                    backtest_snapshot:stratShareOpts.include_backtest_stats
+                      ? buildBacktestSnapshotFromSession(sess)
+                      : null,
+                  };
+                  void submitStrategyToCommunity(sid, payload)
+                    .then(()=>{ setStratShareStrat(null); setStratTab("community"); })
                     .catch(err=>{ setStratShareErr(err instanceof Error ? err.message : "Could not post to community"); })
                     .finally(()=>{ setStratShareBusy(false); });
                 }}
