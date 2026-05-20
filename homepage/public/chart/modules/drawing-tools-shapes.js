@@ -20,6 +20,45 @@ const RECTANGLE_TEXT_ANCHOR_MAP = (typeof TEXT_ALIGN_TO_ANCHOR !== 'undefined')
     ? TEXT_ALIGN_TO_ANCHOR
     : { left: 'start', center: 'middle', right: 'end', start: 'start', end: 'end' };
 
+/** Apply rectangle extend-left/right in pixel space (same coords as dataIndexToPixel). */
+function applyRectangleHorizontalExtend(x1, x2, scales, style) {
+    if (!style || (!style.extendLeft && !style.extendRight)) {
+        return { x1, x2 };
+    }
+    const bounds = (typeof SVGHelpers !== 'undefined' && SVGHelpers.getChartHorizontalPixelBounds)
+        ? SVGHelpers.getChartHorizontalPixelBounds(scales)
+        : { left: scales.xScale.range()[0], right: scales.xScale.range()[1] };
+    const chartLeftX = bounds.left;
+    const chartRightX = bounds.right;
+    let px1 = x1;
+    let px2 = x2;
+    const minX = Math.min(px1, px2);
+    const maxX = Math.max(px1, px2);
+    const degenerate = (maxX - minX) < 2;
+
+    if (style.extendLeft) {
+        if (degenerate && style.extendRight) {
+            px1 = chartLeftX;
+            px2 = chartRightX;
+        } else if (px1 <= px2) {
+            px1 = chartLeftX;
+        } else {
+            px2 = chartLeftX;
+        }
+    }
+    if (style.extendRight) {
+        if (degenerate && style.extendLeft) {
+            px1 = chartLeftX;
+            px2 = chartRightX;
+        } else if (px1 >= px2) {
+            px1 = chartRightX;
+        } else {
+            px2 = chartRightX;
+        }
+    }
+    return { x1: px1, x2: px2 };
+}
+
 /** Axis-aligned box bounds in data space (top = higher price). */
 function boxBoundsFromPoints(points) {
     const p1 = points[0];
@@ -209,30 +248,8 @@ class RectangleTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
         let x2 = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
-        
-        // Get chart dimensions for extend functionality
-        const xRange = scales.xScale.range();
-        const chartLeftEdge = xRange[0];
-        const chartRightEdge = xRange[1];
-        
-        // Apply extend left/right
-        if (this.style.extendLeft) {
-            const leftX = Math.min(x1, x2);
-            if (x1 < x2) {
-                x1 = chartLeftEdge;
-            } else {
-                x2 = chartLeftEdge;
-            }
-        }
-        
-        if (this.style.extendRight) {
-            const rightX = Math.max(x1, x2);
-            if (x1 > x2) {
-                x1 = chartRightEdge;
-            } else {
-                x2 = chartRightEdge;
-            }
-        }
+
+        ({ x1, x2 } = applyRectangleHorizontalExtend(x1, x2, scales, this.style));
         
         const x = Math.min(x1, x2);
         const y = Math.min(scales.yScale(p1.y), scales.yScale(p2.y));
@@ -347,10 +364,11 @@ class RectangleTool extends BaseDrawing {
         const p2 = this.points[1];
         
         // Get screen coordinates
-        const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
+        let x1 = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
-        const x2 = scales.chart && scales.chart.dataIndexToPixel ? 
+        let x2 = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
+        ({ x1, x2 } = applyRectangleHorizontalExtend(x1, x2, scales, this.style));
         const y1 = scales.yScale(p1.y);
         const y2 = scales.yScale(p2.y);
         

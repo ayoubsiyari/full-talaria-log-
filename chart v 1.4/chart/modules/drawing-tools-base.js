@@ -1319,6 +1319,42 @@ class SVGHelpers {
     }
 
     /**
+     * Horizontal plot bounds in pixel space (matches dataIndexToPixel / margin layout).
+     * Used by rectangle extend so edges align with the chart, not raw xScale(0) when scales diverge.
+     */
+    static getChartHorizontalPixelBounds(scales) {
+        const xRange = scales.xScale.range();
+        const chart = scales.chart;
+        const m = (chart && chart.margin) ? chart.margin : { l: 0, r: 60 };
+        let left = (typeof m.l === 'number') ? m.l : xRange[0];
+        let right = (chart && typeof chart.w === 'number') ? (chart.w - m.r) : xRange[1];
+
+        if (chart && typeof chart.dataIndexToPixel === 'function' && chart.data && chart.data.length > 0) {
+            const startIdx = Math.max(0, Number.isFinite(chart.visibleStartIndex) ? chart.visibleStartIndex : 0);
+            const endIdx = Math.max(
+                startIdx,
+                Math.min(
+                    chart.data.length - 1,
+                    Number.isFinite(chart.visibleEndIndex) ? chart.visibleEndIndex - 1 : chart.data.length - 1
+                )
+            );
+            const visLeft = chart.dataIndexToPixel(startIdx);
+            const visRight = chart.dataIndexToPixel(endIdx);
+            if (Number.isFinite(visLeft)) left = visLeft;
+            if (Number.isFinite(visRight)) right = visRight;
+        }
+
+        const plotLeft = (typeof m.l === 'number') ? m.l : left;
+        const plotRight = (chart && typeof chart.w === 'number') ? (chart.w - m.r) : right;
+        left = Math.max(left, plotLeft);
+        right = Math.min(right, plotRight);
+        if (!Number.isFinite(left) || !Number.isFinite(right) || right <= left) {
+            return { left: xRange[0], right: xRange[1] };
+        }
+        return { left, right };
+    }
+
+    /**
      * Apply selection effect to drawing
      */
     static applySelectionEffect(element, isSelected) {
