@@ -172,7 +172,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   const [dropdown, setDropdown] = useState<any>(null);
   const [ddAnchor, setDdAnchor] = useState<any>(null);
 
-  const Z = 1.05;
   const I = IconI;
 
   const sep = <div style={{ margin: "12px 0", height: 1, background: `linear-gradient(90deg,transparent,${c.br} 20%,${c.br} 80%,transparent)` }} />;
@@ -971,7 +970,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               {/* Row 2: strategy dropdown – same full width */}
                               <div style={{position:"relative"}}>
                                 {lbl("Strategy")}
-                                <div onClick={(e)=>{e.stopPropagation();if(newSessStratDropOpen){setNewSessStratDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+3,left:r.left/Z,width:r.width/Z});setNewSessStratDropOpen(true);setDropdown(null);}}}
+                                <div onClick={(e)=>{e.stopPropagation();if(newSessStratDropOpen){setNewSessStratDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+3,left:r.left,width:r.width});setNewSessStratDropOpen(true);setDropdown(null);}}}
                                   style={{...inp({padding:"0 24px 0 8px",cursor:"default"}),display:"flex",alignItems:"center",border:`1px solid ${newSessStratDropOpen?c.acB:c.brH}`,position:"relative",userSelect:"none"}}>
                                   <span style={{flex:1,color:newSessPlaybook?c.tx:c.tm,fontSize:11,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                                     {selectedStrategy?.label || newSessPlaybook || "— None —"}
@@ -1080,7 +1079,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                           const m3=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
                           if(m3){const y=parseInt(m3[3]),mo=parseInt(m3[1])-1,dy=Math.min(parseInt(m3[2]),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1990||y>new Date().getFullYear())return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
                         };
-                        const openCal=(e,target,currentIso)=>{if(!availableStartIso||!availableEndIso)return;const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width/Z,calH=260;const rawL=r.left/Z,rawB=r.bottom/Z,rawTop=r.top/Z;const spaceBelow=window.innerHeight/Z-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);const anchor=currentIso||availableStartIso;const d=new Date(anchor.split("T")[0]+"T00:00:00");setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth/Z-w-8)),width:w});setNewSessCalTarget(target);setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
+                        const openCal=(e,target,currentIso)=>{if(!availableStartIso||!availableEndIso)return;const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width,calH=260;const rawL=r.left,rawB=r.bottom,rawTop=r.top;const spaceBelow=window.innerHeight-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);const anchor=currentIso||availableStartIso;const d=new Date(anchor.split("T")[0]+"T00:00:00");setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth-w-8)),width:w});setNewSessCalTarget(target);setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
                         const inpSx={flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:12,fontWeight:600,padding:"5px 7px",fontFamily:F,fontVariantNumeric:"tabular-nums",cursor:"text",minWidth:0};
                         const chvSx={padding:"0 6px",cursor:"default",display:"flex",alignItems:"center",color:c.ts,borderLeft:`1px solid ${c.br}`,alignSelf:"stretch"};
                         const ChevD=({open})=>(<svg width={8} height={8} viewBox="0 0 8 8" fill="none"><path d={open?"M1,5 L4,2 L7,5":"M1,3 L4,6 L7,3"} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/></svg>);
@@ -1095,7 +1094,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                             <div style={{width:"50%",flexShrink:0}}>
                               {lbl("Markets & Instruments *")}
                               <div style={{position:"relative"}}>
-                                <div onClick={e=>{e.stopPropagation();if(newSessAssetDropOpen){setNewSessAssetDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+3,left:r.left/Z,width:r.width/Z});setNewSessAssetDropOpen(true);setDropdown(null);setNewSessStratDropOpen(false);}}}
+                                <div onClick={e=>{e.stopPropagation();if(newSessAssetDropOpen){setNewSessAssetDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+3,left:r.left,width:r.width});setNewSessAssetDropOpen(true);setDropdown(null);setNewSessStratDropOpen(false);}}}
                                   style={{...inp({padding:"0 24px 0 8px",cursor:"default"}),display:"flex",alignItems:"center",border:`1px solid ${newSessAssetDropOpen?c.acB:c.brH}`,position:"relative",userSelect:"none"}}>
                                   <span style={{flex:1,fontSize:11,fontWeight:600,color:c.tx,fontFamily:F}}>{newSessAssetClass}</span>
                                   <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${newSessAssetDropOpen?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -1199,7 +1198,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               <div style={{padding:"4px 8px 6px",display:"flex",gap:5,alignItems:"flex-start"}}>
                                 {/* Plus button — tall (2 tag rows) */}
                                 <div style={{position:"relative",flexShrink:0}}>
-                                  <div onClick={e=>{e.stopPropagation();if(newSessSymPickerOpen){setNewSessSymPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSymPickerPos({top:r.bottom/Z+2,left:r.left/Z});setNewSessSymPickerSearch("");setNewSessSymPickerOpen(true);}}}
+                                  <div onClick={e=>{e.stopPropagation();if(newSessSymPickerOpen){setNewSessSymPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSymPickerPos({top:r.bottom+2,left:r.left});setNewSessSymPickerSearch("");setNewSessSymPickerOpen(true);}}}
                                     onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");e.currentTarget.style.filter="brightness(1.12)";}}
                                     onMouseLeave={e=>{setHov(null);e.currentTarget.style.filter="brightness(1)";}}
                                     style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(38,67,247,0.35)"}}>
@@ -1294,7 +1293,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               <div style={{padding:"4px 8px 6px",display:"flex",gap:5,alignItems:"flex-start",opacity:newSessSupportEnabled?1:0.35,pointerEvents:newSessSupportEnabled?"auto":"none",transition:"opacity 0.15s"}}>
                                 {/* Plus button — tall (2 tag rows) */}
                                 <div style={{position:"relative",flexShrink:0}}>
-                                  <div onClick={e=>{e.stopPropagation();if(newSessSupPickerOpen){setNewSessSupPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSupPickerPos({top:r.bottom/Z+2,left:r.left/Z});setNewSessSupPickerSearch("");setNewSessSymPickerOpen(false);setNewSessSupPickerOpen(true);}}}
+                                  <div onClick={e=>{e.stopPropagation();if(newSessSupPickerOpen){setNewSessSupPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSupPickerPos({top:r.bottom+2,left:r.left});setNewSessSupPickerSearch("");setNewSessSymPickerOpen(false);setNewSessSupPickerOpen(true);}}}
                                     onMouseEnter={e=>{e.stopPropagation();e.currentTarget.style.filter="brightness(1.12)";}} onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
                                     style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#a07000,#e8c252)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(200,150,0,0.35)"}}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
@@ -1434,7 +1433,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                     const ddKey="randUnitDrop";
                                     return(
                                       <div style={{position:"relative",width:88,flexShrink:0}}>
-                                        <div onClick={e=>{e.stopPropagation();if(dropdown===ddKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown(ddKey);}}}
+                                        <div onClick={e=>{e.stopPropagation();if(dropdown===ddKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+2,left:r.left,width:r.width});setDropdown(ddKey);}}}
                                           style={{height:27,display:"flex",alignItems:"center",padding:"0 22px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown===ddKey?c.acB:c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                                           <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>{curLabel}</span>
                                           <svg style={{position:"absolute",right:6,top:"50%",transform:`translateY(-50%) rotate(${dropdown===ddKey?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -1513,7 +1512,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                 <div style={{height:27,display:"flex",alignItems:"center",gap:10}}>
                                   <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",flexShrink:0,width:130}}>Time Zone</span>
                                   <div style={{position:"relative",width:170}}>
-                                    <div onClick={e=>{e.stopPropagation();if(dropdown===tzDdKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:Math.max(r.width/Z,200)});setDropdown(tzDdKey);}}}
+                                    <div onClick={e=>{e.stopPropagation();if(dropdown===tzDdKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+2,left:r.left,width:Math.max(r.width,200)});setDropdown(tzDdKey);}}}
                                       style={{height:27,display:"flex",alignItems:"center",padding:"0 24px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown===tzDdKey?c.acB:c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                                       <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tzLabel}</span>
                                       <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown===tzDdKey?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -1658,7 +1657,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                           {!meta.perSymComm&&(<><span style={{fontSize:10,color:c.tm,fontFamily:F,whiteSpace:"nowrap"}}>{meta.commLabel}:</span>{numCell(row.commission,e=>setComm(e.target.value),meta.commStep,58)}<span style={{fontSize:10,color:c.tm,fontFamily:F,whiteSpace:"nowrap",marginLeft:-4}}>{meta.commUnit}</span></>)}
                                           {!meta.hideLev&&(<><span style={{fontSize:10,color:c.tm,fontFamily:F,whiteSpace:"nowrap"}}>Leverage:</span>
                                             <div style={{position:"relative",width:62,height:22,flexShrink:0}}>
-                                              <div onClick={e=>{e.stopPropagation();if(dropdown==="lev_"+asset){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,minWidth:r.width/Z});setDropdown("lev_"+asset);setNewSessStratDropOpen(false);}}}
+                                              <div onClick={e=>{e.stopPropagation();if(dropdown==="lev_"+asset){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+2,left:r.left,minWidth:r.width});setDropdown("lev_"+asset);setNewSessStratDropOpen(false);}}}
                                                 style={{height:22,display:"flex",alignItems:"center",padding:"0 18px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown==="lev_"+asset?c.acB:c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                                                 <span style={{fontSize:10,fontWeight:700,color:c.tx,fontFamily:F}}>{row.leverage||meta.defLev}</span>
                                                 <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown==="lev_"+asset?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -1797,7 +1796,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                         <div style={{height:27,display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                           <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",flexShrink:0,width:130}}>Challenge Type</span>
                           <div style={{position:"relative",width:130,flexShrink:0}}>
-                            <div onClick={e=>{e.stopPropagation();if(dropdown==="challTypeDrop"){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown("challTypeDrop");}}}
+                            <div onClick={e=>{e.stopPropagation();if(dropdown==="challTypeDrop"){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+2,left:r.left,width:r.width});setDropdown("challTypeDrop");}}}
                               style={{height:27,display:"flex",alignItems:"center",padding:"0 24px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown==="challTypeDrop"?"rgba(232,194,82,0.5)":c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                               <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>{sessNumPhases===1?"1 Phase":"2 Phase"}</span>
                               <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown==="challTypeDrop"?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -1981,7 +1980,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                             <div style={{height:27,display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                               <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",flexShrink:0,width:130}}>Drawdown Type</span>
                               <div style={{position:"relative",width:130,flexShrink:0}}>
-                                <div onClick={e=>{e.stopPropagation();if(dropdown==="ddTypeDrop"){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown("ddTypeDrop");}}}
+                                <div onClick={e=>{e.stopPropagation();if(dropdown==="ddTypeDrop"){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+2,left:r.left,width:r.width});setDropdown("ddTypeDrop");}}}
                                   style={{height:27,display:"flex",alignItems:"center",padding:"0 24px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown==="ddTypeDrop"?"rgba(232,194,82,0.5)":c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                                   <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>{sessTrailingDrawdown?"Trailing":"EOD"}</span>
                                   <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown==="ddTypeDrop"?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -2072,7 +2071,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                             <div style={{height:27,display:"flex",alignItems:"center",gap:10}}>
                               <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",flexShrink:0,width:130}}>Leverage</span>
                               <div style={{position:"relative",width:130,flexShrink:0}}>
-                                <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();if(dropdown==="sessLevDrop"){setDropdown(null);setDdAnchor(null);}else{setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown("sessLevDrop");}}}
+                                <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();if(dropdown==="sessLevDrop"){setDropdown(null);setDdAnchor(null);}else{setDdAnchor({top:r.bottom+2,left:r.left,width:r.width});setDropdown("sessLevDrop");}}}
                                   style={{...inp({padding:"0 24px 0 8px"}),display:"flex",alignItems:"center",border:`1px solid ${dropdown==="sessLevDrop"?"rgba(232,194,82,0.5)":c.brH}`,cursor:"default",userSelect:"none",position:"relative",transition:"border-color 0.12s",boxSizing:"border-box"}}>
                                   <span style={{fontSize:11,fontWeight:700,color:c.tx,fontFamily:F}}>{sessLeverage}</span>
                                   <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown==="sessLevDrop"?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -2112,7 +2111,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                 const MPU_OPTS=[["lots","Lots"],["%","%"]];
                                 return(
                                   <div style={{position:"relative",width:72,flexShrink:0}}>
-                                    <div onClick={e=>{e.stopPropagation();if(dropdown===mpuKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown(mpuKey);}}}
+                                    <div onClick={e=>{e.stopPropagation();if(dropdown===mpuKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+2,left:r.left,width:r.width});setDropdown(mpuKey);}}}
                                       style={{height:27,display:"flex",alignItems:"center",padding:"0 22px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown===mpuKey?"rgba(232,194,82,0.5)":c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s",opacity:sessMaxPosEnabled?1:0.4}}>
                                       <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>{MPU_OPTS.find(([u])=>u===sessMaxPosUnit)?.[1]||"Lots"}</span>
                                       <svg style={{position:"absolute",right:6,top:"50%",transform:`translateY(-50%) rotate(${dropdown===mpuKey?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
