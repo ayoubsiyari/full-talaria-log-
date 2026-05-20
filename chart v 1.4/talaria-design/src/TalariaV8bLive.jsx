@@ -635,7 +635,10 @@ function v9CoordPatchFromDrawing(d) {
     if (!p) continue;
     const n = i + 1;
     patch[`pt${n}Price`] = fmtPrice(p.y);
-    patch[`pt${n}Bar`] = Number.isFinite(p.x) ? String(Math.round(p.x)) : "";
+    const barIdx = p.x;
+    patch[`pt${n}Bar`] = Number.isFinite(barIdx)
+      ? (Math.abs(barIdx - Math.round(barIdx)) < 1e-6 ? String(Math.round(barIdx)) : barIdx.toFixed(2))
+      : "";
   }
   return patch;
 }
@@ -6481,6 +6484,35 @@ const TalariaV8bLive = () => {
   };
   const F = "'Exo 2',sans-serif";
   tradeRowThemeRef.current = c;
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    window.__talariaV9UiTheme = {
+      font: F,
+      sf: c.sf,
+      br: c.br,
+      brH: c.brH,
+      tx: c.tx,
+      ts: c.ts,
+      tm: c.tm,
+      ac: c.ac,
+      acL: c.acL,
+      acG: c.acG,
+      hv: darkMode ? "rgba(74,106,255,0.14)" : "rgba(38,67,247,0.12)",
+    };
+    const root = document.documentElement;
+    root.style.setProperty("--tlr-cm-font", F);
+    root.style.setProperty("--tlr-cm-sf", c.sf);
+    root.style.setProperty("--tlr-cm-br", c.brH);
+    root.style.setProperty("--tlr-cm-tx", c.tx);
+    root.style.setProperty("--tlr-cm-ts", c.ts);
+    root.style.setProperty("--tlr-cm-tm", c.tm);
+    root.style.setProperty("--tlr-cm-ac", c.ac);
+    root.style.setProperty("--tlr-cm-acL", c.acL);
+    root.style.setProperty("--tlr-cm-acG", c.acG);
+    root.style.setProperty("--tlr-cm-hv", window.__talariaV9UiTheme.hv);
+    document.body.classList.toggle("light-mode", !darkMode);
+  }, [darkMode, c.sf, c.brH, c.tx, c.ts, c.tm, c.ac, c.acL, c.acG, c.br]);
 
   const allSymbols = SYMBOLS_DATA.flatMap(c => c.items);
   const currentSymbol = resolveSessionChartSymbol(symbol, allSymbols);

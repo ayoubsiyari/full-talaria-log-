@@ -342,6 +342,7 @@ class TrendlineTool extends BaseDrawing {
                 .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
+                .style('shape-rendering', 'geometricPrecision')
                 .style('pointer-events', 'none')
                 .style('cursor', 'move');
             
@@ -367,6 +368,7 @@ class TrendlineTool extends BaseDrawing {
                 .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
+                .style('shape-rendering', 'geometricPrecision')
                 .style('pointer-events', 'none')
                 .style('cursor', 'move');
             
@@ -394,6 +396,7 @@ class TrendlineTool extends BaseDrawing {
                 .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
+                .style('shape-rendering', 'geometricPrecision')
                 .style('pointer-events', 'none')
                 .style('cursor', 'move');
             

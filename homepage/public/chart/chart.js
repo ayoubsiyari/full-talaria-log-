@@ -155,6 +155,176 @@ function installChartContextMenuCapture() {
 }
 installChartContextMenuCapture();
 
+/** V9 shell theme → CSS variables for chart context menu (see TalariaV8bLive). */
+function applyChartContextMenuThemeVars() {
+    if (typeof document === 'undefined') return;
+    const t = (typeof window !== 'undefined' && window.__talariaV9UiTheme) || null;
+    const light = document.body && document.body.classList.contains('light-mode');
+    const defaults = light ? {
+        sf: '#DFE3F0',
+        br: 'rgba(0,5,40,0.26)',
+        tx: 'rgba(0,0,0,0.92)',
+        ts: 'rgba(0,0,0,0.88)',
+        tm: 'rgba(0,0,0,0.72)',
+        ac: '#2643F7',
+        acL: '#2F55E8',
+        acG: 'rgba(38,67,247,0.14)',
+        hv: 'rgba(38,67,247,0.12)',
+        font: "'Exo 2',sans-serif",
+    } : {
+        sf: '#0A0C14',
+        br: 'rgba(140,160,255,0.12)',
+        tx: 'rgba(255,255,255,0.92)',
+        ts: 'rgba(255,255,255,0.70)',
+        tm: 'rgba(255,255,255,0.50)',
+        ac: '#2643F7',
+        acL: '#4A6AFF',
+        acG: 'rgba(38,67,247,0.12)',
+        hv: 'rgba(74,106,255,0.14)',
+        font: "'Exo 2',sans-serif",
+    };
+    const pick = (key) => (t && t[key] != null ? t[key] : defaults[key]);
+    const root = document.documentElement;
+    root.style.setProperty('--tlr-cm-sf', pick('sf'));
+    root.style.setProperty('--tlr-cm-br', pick('brH') || pick('br'));
+    root.style.setProperty('--tlr-cm-tx', pick('tx'));
+    root.style.setProperty('--tlr-cm-ts', pick('ts'));
+    root.style.setProperty('--tlr-cm-tm', pick('tm'));
+    root.style.setProperty('--tlr-cm-ac', pick('ac'));
+    root.style.setProperty('--tlr-cm-acL', pick('acL'));
+    root.style.setProperty('--tlr-cm-acG', pick('acG'));
+    root.style.setProperty('--tlr-cm-hv', pick('hv') || defaults.hv);
+    root.style.setProperty('--tlr-cm-font', (t && t.font) || defaults.font);
+}
+
+let _chartContextMenuStylesInstalled = false;
+function installChartContextMenuStyles() {
+    if (_chartContextMenuStylesInstalled || typeof document === 'undefined') return;
+    _chartContextMenuStylesInstalled = true;
+    if (document.getElementById('chart-context-menu-v9-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'chart-context-menu-v9-styles';
+    style.textContent = `
+        @keyframes tlrChartCmIn {
+            from { opacity: 0; transform: translateY(-4px) scale(0.99); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .chart-context-menu {
+            position: fixed;
+            display: none;
+            min-width: 220px;
+            max-width: 340px;
+            padding: 4px 0 6px;
+            margin: 0;
+            overflow: hidden;
+            z-index: 10000;
+            font-family: var(--tlr-cm-font, 'Exo 2', sans-serif);
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--tlr-cm-tx, rgba(255,255,255,0.92));
+            background: var(--tlr-cm-sf, #0A0C14);
+            border: 1px solid var(--tlr-cm-br, rgba(140,160,255,0.12));
+            border-radius: 4px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.75), 0 0 16px var(--tlr-cm-acG, rgba(38,67,247,0.12));
+            user-select: none;
+            animation: tlrChartCmIn 0.15s ease;
+        }
+        .chart-context-menu::before {
+            content: '';
+            display: block;
+            height: 2px;
+            margin: 0 0 4px;
+            background: linear-gradient(90deg, var(--tlr-cm-ac, #2643F7), var(--tlr-cm-acL, #4A6AFF), var(--tlr-cm-ac, #2643F7));
+        }
+        .chart-context-menu .tv-context-menu-item {
+            position: relative;
+            display: block;
+            padding: 0;
+            margin: 0;
+            cursor: default;
+            border-radius: 0;
+            transition: background 0.1s ease;
+        }
+        .chart-context-menu .chart-cm-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 7px 10px 7px 12px;
+            min-height: 28px;
+            box-sizing: border-box;
+        }
+        .chart-context-menu .chart-cm-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            flex: 1;
+        }
+        .chart-context-menu .chart-cm-label {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 12px;
+            font-weight: 500;
+            line-height: 1.35;
+            color: var(--tlr-cm-tx, rgba(255,255,255,0.92));
+        }
+        .chart-context-menu .chart-cm-icon {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--tlr-cm-acL, #4A6AFF);
+            opacity: 0.9;
+        }
+        .chart-context-menu .chart-cm-icon svg {
+            width: 14px;
+            height: 14px;
+            stroke-width: 1.6;
+        }
+        .chart-context-menu .chart-cm-shortcut {
+            flex-shrink: 0;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            color: var(--tlr-cm-tm, rgba(255,255,255,0.5));
+            font-family: var(--tlr-cm-font, 'Exo 2', sans-serif);
+        }
+        .chart-context-menu .tv-context-menu-item:hover {
+            background: var(--tlr-cm-hv, rgba(74,106,255,0.14));
+        }
+        .chart-context-menu .tv-context-menu-item:hover .chart-cm-label {
+            color: var(--tlr-cm-acL, #4A6AFF);
+            font-weight: 600;
+        }
+        .chart-context-menu .tv-context-menu-item:hover::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 12%;
+            bottom: 12%;
+            width: 2px;
+            background: linear-gradient(180deg, transparent, var(--tlr-cm-acL, #4A6AFF), transparent);
+            box-shadow: 0 0 6px var(--tlr-cm-acG, rgba(38,67,247,0.12));
+            pointer-events: none;
+        }
+        .chart-context-menu .chart-cm-divider {
+            height: 1px;
+            margin: 4px 10px;
+            background: linear-gradient(90deg, transparent, var(--tlr-cm-br, rgba(140,160,255,0.12)), transparent);
+        }
+        body.light-mode .chart-context-menu {
+            box-shadow: 0 12px 40px rgba(0,0,0,0.2), 0 0 16px var(--tlr-cm-acG, rgba(38,67,247,0.14));
+        }
+    `;
+    document.head.appendChild(style);
+    applyChartContextMenuThemeVars();
+}
+installChartContextMenuStyles();
+
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
         installChartContextMenuCapture();
@@ -201,24 +371,14 @@ class Chart {
         
         // Create context menu with unique ID for panels
         const menuId = this.isPanel ? `panel-context-menu-${Date.now()}` : 'main-context-menu';
+        installChartContextMenuStyles();
         this.contextMenu = d3.select('body')
             .append('div')
             .attr('class', 'chart-context-menu')
             .attr('id', menuId)
-            .style('position', 'fixed')
             .style('display', 'none')
             .style('visibility', 'hidden')
-            .style('opacity', '0')
-            .style('transform', 'none')
-            .style('transition', 'none')
-            .style('background', '#131722')
-            .style('border', '1px solid rgba(140,160,255,0.22)')
-            .style('border-radius', '4px')
-            .style('padding', '6px 0')
-            .style('box-shadow', '0 10px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)')
-            .style('z-index', '10000')
-            .style('min-width', '160px')
-            .style('font-family', "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif");
+            .style('opacity', '0');
         this.rawData = []; // Store raw data - will be populated from CSV
         this.data = []; // Working data (resampled based on timeframe)
         this.dataVersion = 0; // Increment whenever data changes (used for caching)
@@ -20384,6 +20544,9 @@ class Chart {
             return;
         }
 
+        installChartContextMenuStyles();
+        applyChartContextMenuThemeVars();
+
         // Hide ALL chart context menus (from all panels and main chart)
         d3.selectAll('.chart-context-menu')
             .style('display', 'none')
@@ -20434,16 +20597,7 @@ class Chart {
             .style('left', menuX + 'px')
             .style('top', menuY + 'px')
             .style('opacity', '1')
-            .style('transform', 'none')
-            .style('transition', 'none')
-            .style('min-width', '240px')
             .style('width', 'fit-content')
-            .style('max-width', '330px')
-            .style('padding', '6px 0')
-            .style('background', '#131722')
-            .style('border', '1px solid rgba(140,160,255,0.22)')
-            .style('border-radius', '4px')
-            .style('box-shadow', '0 10px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)')
             .html('');
 
         // ── 1. Buy / Sell / Add Order ──────────────────────────────
@@ -20788,10 +20942,7 @@ class Chart {
     }
 
     addTradingViewContextMenuDivider(menu) {
-        menu.append('div')
-            .style('height', '1px')
-            .style('background', 'rgba(140,160,255,0.15)')
-            .style('margin', '4px 8px');
+        menu.append('div').attr('class', 'chart-cm-divider');
     }
 
     getTradingViewContextMenuIcon(iconKey = '') {
@@ -20817,70 +20968,28 @@ class Chart {
         } = options;
 
         const item = menu.append('div')
-            .attr('class', 'context-menu-item tv-context-menu-item')
-            .style('padding', '7px 14px')
-            .style('cursor', 'default')
-            .style('user-select', 'none')
-            .style('transition', 'background 0.1s')
-            .style('color', 'rgba(209,212,220,0.9)')
-            .style('font-size', '12px')
-            .style('line-height', '1.3')
-            .style('font-family', 'inherit');
+            .attr('class', 'context-menu-item tv-context-menu-item');
 
-        const row = item.append('div')
-            .style('display', 'flex')
-            .style('align-items', 'center')
-            .style('justify-content', 'space-between')
-            .style('gap', '10px');
-
-        const left = row.append('div')
-            .style('display', 'flex')
-            .style('align-items', 'center')
-            .style('gap', icon ? '8px' : '0px')
-            .style('min-width', '0');
+        const row = item.append('div').attr('class', 'chart-cm-row');
+        const left = row.append('div').attr('class', 'chart-cm-left');
 
         if (icon) {
-            const iconWrap = left.append('span')
-                .attr('class', 'tv-context-icon')
-                .style('width', '18px')
-                .style('height', '18px')
-                .style('display', 'inline-flex')
-                .style('align-items', 'center')
-                .style('justify-content', 'center')
-                .style('opacity', '0.7')
-                .style('flex-shrink', '0')
-                .style('color', 'rgba(140,160,255,0.85)');
-
+            const iconWrap = left.append('span').attr('class', 'chart-cm-icon');
             const iconSvg = this.getTradingViewContextMenuIcon(icon);
             if (iconSvg) {
                 iconWrap.html(iconSvg);
             } else {
-                iconWrap.style('text-align', 'center').text(icon);
+                iconWrap.text(icon);
             }
         }
 
-        left.append('span')
-            .style('overflow', 'hidden')
-            .style('text-overflow', 'ellipsis')
-            .style('white-space', 'nowrap')
-            .text(label);
+        left.append('span').attr('class', 'chart-cm-label').text(label);
 
-        if (hasSubmenu) {
-            row.append('span')
-                .style('flex-shrink', '0')
-                .style('color', 'rgba(140,160,255,0.5)')
-                .style('font-size', '14px')
-                .style('font-weight', '500')
-                .text('›');
+        if (shortcut) {
+            row.append('span').attr('class', 'chart-cm-shortcut').text(shortcut);
+        } else if (hasSubmenu) {
+            row.append('span').attr('class', 'chart-cm-shortcut').text('›');
         }
-
-        item.on('mouseenter', function() {
-            d3.select(this).style('background', 'rgba(74,106,255,0.08)').style('color', '#e1e3ea');
-        });
-
-        item.on('mouseleave', function() {
-            d3.select(this).style('background', 'transparent').style('color', 'rgba(209,212,220,0.9)');
-        });
 
         item.on('click', async () => {
             if (typeof onClick === 'function') {
