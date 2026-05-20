@@ -40,7 +40,10 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     document.documentElement.lang = language;
-    document.documentElement.dir = isArabic ? "rtl" : "ltr";
+    // Dashboard, tables, and chart chrome are LTR-only; RTL on <html> flips flex/grid and breaks layout.
+    // Arabic copy still works; legal/marketing blocks may set local dir="rtl" where needed.
+    document.documentElement.dir = "ltr";
+    document.documentElement.dataset.talariaLang = language;
     try {
       window.localStorage.setItem("talaria_language", language);
     } catch {}

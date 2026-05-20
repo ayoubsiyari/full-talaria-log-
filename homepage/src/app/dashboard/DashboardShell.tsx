@@ -224,7 +224,7 @@ function DashboardNotificationBell({
             ...(openUpward
               ? { bottom: "calc(100% + 10px)", top: "auto" }
               : { top: "calc(100% + 8px)" }),
-            ...(dropdownAnchorStart ? { left: 0 } : isArabic ? { left: 0 } : { right: 0 }),
+            ...(dropdownAnchorStart ? { left: 0 } : { right: 0 }),
             width: panelWidth ?? 340,
             maxHeight: openUpward ? "min(52vh, 360px)" : 380,
             overflowY: "auto",
@@ -563,8 +563,12 @@ export default function DashboardShell({
   }, [user, ADMIN_NAV_ITEM]);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: DASH_C.bg, fontFamily: F, color: DASH_C.tx, display: "flex", flexDirection: "column", overflow: "hidden" }}
-      dir={isArabic ? "rtl" : "ltr"}>
+    <div
+      className="dashboard-shell"
+      lang={isArabic ? "ar" : "en"}
+      dir="ltr"
+      style={{ position: "fixed", inset: 0, background: DASH_C.bg, fontFamily: F, color: DASH_C.tx, display: "flex", flexDirection: "column", overflow: "hidden" }}
+    >
 
       {/* ── Top Header (parity with Design `SessionsView.jsx`) ── */}
       <header style={{ height: 64, flexShrink: 0, display: "flex", alignItems: "center", gap: 0, background: DASH_C.el, boxShadow: "0 2px 18px rgba(0,0,0,0.5)", zIndex: 2 }}>
@@ -714,7 +718,7 @@ export default function DashboardShell({
             const hovered = navHoverId === id && !active;
             const bg = active ? DASH_C.acD : hovered ? DASH_C.hv : "transparent";
             const color = active ? DASH_C.acL : hovered ? DASH_C.tx : DASH_C.ts;
-            const railSide = isArabic ? "right" : "left";
+            const railSide = "left";
             const navMod = navModuleForId(id);
             const navLocked =
               !!user && !!navMod && !userHasDashboardModule(user, navMod);
@@ -799,7 +803,7 @@ export default function DashboardShell({
                 <div
                   style={{
                     position: "absolute",
-                    [isArabic ? "right" : "left"]: 0,
+                    left: 0,
                     top: "20%",
                     bottom: "20%",
                     width: 2,
@@ -818,7 +822,7 @@ export default function DashboardShell({
                 onClick={(e) => e.stopPropagation()}
                 style={{
                   position: "fixed",
-                  ...(isArabic ? { right: 72 } : { left: 72 }),
+                  left: 72,
                   bottom: 16,
                   width: PROFILE_PANEL_W,
                   padding: 0,

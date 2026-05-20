@@ -804,3 +804,13 @@
 .tlr-scroll::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Dashboard chrome stays LTR when UI language is Arabic (see LanguageProvider). */
+.dashboard-shell,
+.dashboard-shell * {
+  direction: ltr;
+}
+
+html[dir="ltr"] .dashboard-shell [lang="ar"] {
+  font-family: var(--font-zain), "Exo 2", sans-serif;
+}
