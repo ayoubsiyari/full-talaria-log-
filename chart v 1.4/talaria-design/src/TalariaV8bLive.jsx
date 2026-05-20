@@ -1171,11 +1171,27 @@ function v9DrawingTypeToPanelGroup(type) {
 /** Rail groups where each chart.js `drawing.type` has its own settings (never fib fan ← fib retracement). */
 const V9_EXACT_STYLE_MATCH_GROUPS = new Set(['fib', 'gann', 'pattern', 'rect', 'channel']);
 
+/** Legacy tool id for the style forward bridge (armed rail or drawing under edit). */
+function v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editingSession) {
+  const armed = typeof resolveLegacyTool === 'function' ? resolveLegacyTool() : null;
+  if (armed) return armed;
+  const edType = editingSession?.drawing?.type;
+  if (edType) return edType;
+  return null;
+}
+
 /** Only push tlStyle onto drawings that match the armed legacy tool's rail (never trendline ← rectangle). */
-function v9ShouldApplyTlStylePatch(d, legacyTool) {
+function v9ShouldApplyTlStylePatch(d, legacyTool, editingSession) {
   if (!d || !d.type || !d.style) return false;
   if (v9DrawingTypeToPanelGroup(d.type) === 'text') return false;
   if (!legacyTool) {
+    // Settings panel open on crosshair: still apply to the shape being edited (rect, fib, …).
+    if (
+      editingSession?.drawing &&
+      v9IsSameDrawingSession(d, editingSession.drawing)
+    ) {
+      return true;
+    }
     const drawingGroup = v9DrawingTypeToPanelGroup(d.type);
     if (drawingGroup && V9_EXACT_STYLE_MATCH_GROUPS.has(drawingGroup)) return false;
     return true;
@@ -6954,7 +6970,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a26-chart-context-menu-v9";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a27-settings-bridge-fix";
   }, []);
 
   useEffect(() => {
@@ -7029,6 +7045,10 @@ const TalariaV8bLive = () => {
         el.closest("#chart-container") ||
         el.closest("#panels-container");
       if (!onChartSurface) return;
+
+      // Keep the style panel open while editing a shape — chart clicks should not
+      // dismiss it before toggles/colors can reach the forward bridge.
+      if (tlSettOpenRef.current) return;
 
       try { closeAllRef.current?.(); } catch (_) {}
       setTlSettTplDrop(false);
@@ -10323,6 +10343,8 @@ const TalariaV8bLive = () => {
           setAvSettTab("style");
         } else {
           closeIndSett();
+          setTlBarSelected(true);
+          setTlBarSelectedType(drawing.type);
           setTlSettPos({ x: px, y: py });
           setTlSettOpen(true);
           if (drawing.type === "gann-box" || drawing.type === "gann-square-fixed" || drawing.type === "gann-fan") {
@@ -10336,10 +10358,22 @@ const TalariaV8bLive = () => {
       }
     };
 
-    if (typeof window !== 'undefined') window.__v9OpenDrawingSettings = hook;
+    if (typeof window !== 'undefined') {
+      window.__v9OpenDrawingSettings = hook;
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.__v9OpenDrawingSettings = hook;
+        }
+      } catch (_) {}
+    }
     return () => {
-      if (typeof window !== 'undefined' && window.__v9OpenDrawingSettings === hook) {
-        window.__v9OpenDrawingSettings = null;
+      if (typeof window !== 'undefined') {
+        if (window.__v9OpenDrawingSettings === hook) window.__v9OpenDrawingSettings = null;
+        try {
+          if (window.parent && window.parent !== window && window.parent.__v9OpenDrawingSettings === hook) {
+            window.parent.__v9OpenDrawingSettings = null;
+          }
+        } catch (_) {}
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -10923,15 +10957,31 @@ const TalariaV8bLive = () => {
     if (ed && ed.drawing) {
       const targets = [];
       const seenIds = new Set();
-      enumerateV9DrawingManagersFromWindow().forEach((dm) => {
-        const live = resolveLiveDrawingInDm(dm, ed.drawing);
+      const pushLive = (dm, live) => {
         if (!live || !live.style) return;
         if (live.id != null) {
           if (seenIds.has(live.id)) return;
           seenIds.add(live.id);
         }
         targets.push({ dm, d: live });
+      };
+      enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+        let live = resolveLiveDrawingInDm(dm, ed.drawing);
+        if (!live && ed.drawing.id != null && Array.isArray(dm.drawings)) {
+          live = dm.drawings.find((x) => x && x.id === ed.drawing.id) || null;
+        }
+        pushLive(dm, live);
       });
+      if (!targets.length) {
+        try {
+          const fallback = getSelectedDrawingAcrossCharts(ed.drawing);
+          if (fallback) {
+            for (const dm of enumerateV9DrawingManagersFromWindow()) {
+              pushLive(dm, resolveLiveDrawingInDm(dm, fallback) || fallback);
+            }
+          }
+        } catch (_) {}
+      }
       if (targets.length) return targets;
     }
     return collectV9BridgeTargetPairs(null);
@@ -10939,7 +10989,8 @@ const TalariaV8bLive = () => {
   // Pointer-toggle — flush middle-line fields immediately (same targets as full bridge).
   const flushV9MiddleLineToChart = (prevTl, nextMidLineOn) => {
     try {
-      const legacy = resolveLegacyTool();
+      const editSess = editingDrawingRef.current;
+      const legacy = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
       const midDashArr =
         prevTl.midLineType === "bold" ? "" : (V9_DASH_TO_LEGACY[prevTl.midLineType] ?? "");
       const midWidthNum = parseInt(prevTl.midLineWidth, 10) || 1;
@@ -10951,7 +11002,7 @@ const TalariaV8bLive = () => {
       };
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
-        if (!v9ShouldApplyTlStylePatch(d, legacy)) return;
+        if (!v9ShouldApplyTlStylePatch(d, legacy, editSess)) return;
         const tb = dm.toolbar;
         try {
           tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
@@ -11040,10 +11091,11 @@ const TalariaV8bLive = () => {
       dm = ch && ch.drawingManager;
     }
     if (!dm) return;
-    let legacyTool = resolveLegacyTool();
+    const editSess = editingDrawingRef.current;
+    let legacyTool = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
     if (!legacyTool) {
       try {
-        const pairs = collectV9BridgeTargetPairs(editingDrawingRef.current?.drawing);
+        const pairs = collectV9BridgeTargetPairs(editSess?.drawing);
         const primary =
           pairs.find((p) => p.d && (p.d.selected || p.d === dm.selectedDrawing)) || pairs[0];
         if (primary && primary.d && primary.d.type) {
@@ -11077,16 +11129,15 @@ const TalariaV8bLive = () => {
     // until the user deselected and reselected.
     try {
       const chartsToRender = new Set();
-      const editSess = editingDrawingRef.current;
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
-        if (!v9ShouldApplyTlStylePatch(d, legacyTool)) return;
+        if (!v9ShouldApplyTlStylePatch(d, legacyTool, editSess)) return;
         if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
         const tb = dm.toolbar;
         // Capture before state for undo (mirror legacy onBeforeUpdate).
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
         Object.assign(d.style, stylePatch);
-        v9ApplyTlStyleExtrasToDrawing(d, tlStyle, null);
+        v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm);
         // Coordinates / visibility are applied in a separate effect (below) so
         // color/style edits do not re-push stale pt* from React after a canvas drag.
         // Prefer onUpdate (history + render + persist + saveDrawings).
@@ -11172,13 +11223,13 @@ const TalariaV8bLive = () => {
       suppressForwardBridge.current = false;
       return;
     }
-    const legacyTool = resolveLegacyTool();
+    const editSess = editingDrawingRef.current;
+    const legacyTool = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
     try {
       const chartsToRender = new Set();
-      const editSess = editingDrawingRef.current;
       collectV9BridgeTargets().forEach(({ dm: dm2, d }) => {
         if (!d || !d.style) return;
-        if (!v9ShouldApplyTlStylePatch(d, legacyTool)) return;
+        if (!v9ShouldApplyTlStylePatch(d, legacyTool, editSess)) return;
         if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
         const tb = dm2.toolbar;
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
