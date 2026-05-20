@@ -3754,6 +3754,26 @@ class DrawingToolsManager {
     }
 
     /**
+     * Fractional bar index (sub-candle X) for smooth handle rotation / resize.
+     * New placements still snap to whole candles; freehand tools always continuous.
+     */
+    _usesContinuousDataCoords(toolType) {
+        if (!toolType) return false;
+        if (this.currentTool === 'path' || this.currentTool === 'brush' || this.currentTool === 'highlighter') {
+            return true;
+        }
+        if (this.currentTool) return false;
+        const editing =
+            this.isResizing
+            || this.isDragging
+            || this.isCustomHandleDrag
+            || this.isCustomHandleDragging;
+        if (!editing) return false;
+        if (this.isCandleBoundTool(toolType)) return false;
+        return true;
+    }
+
+    /**
      * Get data point from mouse event
      * Returns {x: candleIndex, y: price}
      * For freehand tools (path, brush, highlighter), uses continuous coordinates for smooth curves
@@ -3806,13 +3826,10 @@ class DrawingToolsManager {
                 : Math.max(0, Math.min(maxY, screenY));
         }
         
-        // Preserve legacy behavior: continuous coordinates are only for actively drawn freehand tools
-        const isContinuousTool = this.currentTool === 'path' || 
-                                  this.currentTool === 'brush' || 
-                                  this.currentTool === 'highlighter';
-        
-        // Pass chart instance for accurate index calculation
-        // Use continuous mode for freehand tools to get smooth curves
+        const isContinuousTool = this._usesContinuousDataCoords(activeToolType);
+
+        // Pass chart instance for accurate index calculation.
+        // Continuous mode keeps fractional bar indices while rotating/resizing handles.
         let point = CoordinateUtils.screenToData(screenX, screenY, {
             xScale: this.chart.xScale,
             yScale: this.chart.yScale
@@ -3824,8 +3841,7 @@ class DrawingToolsManager {
 
         point = this.clampPointToCandleRange(point, activeToolType);
 
-        // Keep panel/original behavior consistent for non-freehand tools:
-        // anchor X to candle indices so points cannot land between candles.
+        // Snap new strokes to candle centers; editing existing drawings stays smooth (see _usesContinuousDataCoords).
         if (!isContinuousTool) {
             point = this.snapPointXToNearestCandle(point);
         }

@@ -10,7 +10,7 @@
     "dev:live": "vite --config vite.config.live.js",
     "bump:cache": "node scripts/bump-dist-v9-cache.mjs --live && node scripts/bump-dist-v9-cache.mjs --dist",
     "build:live": "node scripts/bump-dist-v9-cache.mjs --live && vite build --config vite.config.live.js && node scripts/bump-dist-v9-cache.mjs --dist && node scripts/sync-v9-to-homepage.mjs",
-    "build:live:chart": "node scripts/bump-dist-v9-cache.mjs --live && vite build --config vite.config.live.js && node scripts/bump-dist-v9-cache.mjs --dist",
+    "build:live:chart": "node scripts/bump-dist-v9-cache.mjs --live && vite build --config vite.config.live.js && node scripts/bump-dist-v9-cache.mjs --dist && node scripts/sync-v9-to-homepage.mjs",
     "sync:homepage": "node scripts/sync-v9-to-homepage.mjs",
     "preview:live": "vite preview --config vite.config.live.js"
   },

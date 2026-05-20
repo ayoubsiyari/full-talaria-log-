@@ -20,6 +20,8 @@ const liveIndexPath = path.resolve(__dirname, "../live/index.html");
 const distIndexPath = path.resolve(__dirname, "../../chart/dist-v9/index.html");
 
 const SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
+/** Multichart iframe inject() cache bust in live/index.html */
+const INLINE_MULTICHART_V_RE = /var V = '\d{8}a\d+';/g;
 
 function defaultBuildId() {
   const d = new Date();
@@ -58,7 +60,8 @@ function bumpChartScriptsInHtml(filePath, { required, buildId: buildIdOverride }
 
   const before = fs.readFileSync(filePath, "utf8");
   const buildId = buildIdOverride ?? resolveBuildId(before);
-  const after = before.replace(SCRIPT_SRC_RE, `$1$2?v=${buildId}$3`);
+  let after = before.replace(SCRIPT_SRC_RE, `$1$2?v=${buildId}$3`);
+  after = after.replace(INLINE_MULTICHART_V_RE, `var V = '${buildId}';`);
 
   if (after === before) {
     console.warn("[bump-dist-v9-cache] No /chart/ script src= matched in", filePath);

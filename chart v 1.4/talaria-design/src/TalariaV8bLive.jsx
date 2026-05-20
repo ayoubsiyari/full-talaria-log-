@@ -6722,7 +6722,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260503-analytics-session-journal-merge";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a18-context-menu-v9";
   }, []);
 
   useEffect(() => {

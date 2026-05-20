@@ -52,30 +52,17 @@ if (fs.existsSync(compareOverlaySrc)) {
   console.warn("[sync-v9-to-homepage] compare-overlay.js not found, skip:", compareOverlaySrc);
 }
 
-const drawingManagerSrc = path.resolve(__dirname, "../../chart/modules/drawing-tools-manager.js");
-const drawingManagerDest = path.resolve(
-  __dirname,
-  "../../../homepage/public/chart/modules/drawing-tools-manager.js",
-);
-if (fs.existsSync(drawingManagerSrc)) {
-  fs.mkdirSync(path.dirname(drawingManagerDest), { recursive: true });
-  fs.copyFileSync(drawingManagerSrc, drawingManagerDest);
-  console.log("[sync-v9-to-homepage] Copied drawing-tools-manager", drawingManagerSrc, "→", drawingManagerDest);
+// Mirror full chart/modules so runtime /chart/modules/* matches source (not just dist-v9).
+const modulesSrc = path.resolve(__dirname, "../../chart/modules");
+const modulesDest = path.resolve(__dirname, "../../../homepage/public/chart/modules");
+if (fs.existsSync(modulesSrc)) {
+  if (fs.existsSync(modulesDest)) {
+    fs.rmSync(modulesDest, { recursive: true, force: true });
+  }
+  fs.cpSync(modulesSrc, modulesDest, { recursive: true });
+  console.log("[sync-v9-to-homepage] Copied chart/modules", modulesSrc, "→", modulesDest);
 } else {
-  console.warn("[sync-v9-to-homepage] drawing-tools-manager.js not found, skip:", drawingManagerSrc);
-}
-
-const drawingShapesSrc = path.resolve(__dirname, "../../chart/modules/drawing-tools-shapes.js");
-const drawingShapesDest = path.resolve(
-  __dirname,
-  "../../../homepage/public/chart/modules/drawing-tools-shapes.js",
-);
-if (fs.existsSync(drawingShapesSrc)) {
-  fs.mkdirSync(path.dirname(drawingShapesDest), { recursive: true });
-  fs.copyFileSync(drawingShapesSrc, drawingShapesDest);
-  console.log("[sync-v9-to-homepage] Copied drawing-tools-shapes", drawingShapesSrc, "→", drawingShapesDest);
-} else {
-  console.warn("[sync-v9-to-homepage] drawing-tools-shapes.js not found, skip:", drawingShapesSrc);
+  console.warn("[sync-v9-to-homepage] chart/modules not found, skip:", modulesSrc);
 }
 
 // Phase 7.2.x multichart bridge scripts: dist-v9 shim loads these at runtime
@@ -96,13 +83,3 @@ if (fs.existsSync(mcpSrc)) {
   console.warn("[sync-v9-to-homepage] multichart-prod not found, skip:", mcpSrc);
 }
 
-// Drop stale partial copies under public/chart/modules (nginx/dev proxy serves modules from chart API).
-const modulesDir = path.resolve(__dirname, "../../../homepage/public/chart/modules");
-const modulesKeep = new Set(["compare-overlay.js", "drawing-tools-manager.js", "drawing-tools-shapes.js"]);
-if (fs.existsSync(modulesDir)) {
-  for (const name of fs.readdirSync(modulesDir)) {
-    if (!name.endsWith(".js") || modulesKeep.has(name)) continue;
-    fs.rmSync(path.join(modulesDir, name), { force: true });
-    console.log("[sync-v9-to-homepage] Removed stale module mirror:", name);
-  }
-}
