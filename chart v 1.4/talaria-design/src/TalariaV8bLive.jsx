@@ -1160,6 +1160,21 @@ function v9ShouldApplyTlStylePatch(d, legacyTool) {
   return !!(drawingGroup && toolGroup && drawingGroup === toolGroup);
 }
 
+function v9IsSameDrawingSession(a, b) {
+  if (!a || !b) return false;
+  if (a.id != null && b.id != null) return a.id === b.id;
+  return a === b;
+}
+
+/** While the V9 settings panel is open, never push tlStyle onto a different shape/type. */
+function v9StyleBridgeAppliesToDrawing(d, editingSession) {
+  if (!editingSession || !editingSession.drawing) return true;
+  if (!v9IsSameDrawingSession(d, editingSession.drawing)) return false;
+  const pg = editingSession.panelGroup;
+  if (pg && v9DrawingTypeToPanelGroup(d.type) !== pg) return false;
+  return true;
+}
+
 function collectV9BridgeTargetPairs(editingRefDrawing) {
   const targets = [];
   const seenIds = new Set();
@@ -4879,8 +4894,10 @@ const TalariaV8bLive = () => {
   const [tlBarSelected, setTlBarSelected] = useState(false);
   const [tlBarSelectedType, setTlBarSelectedType] = useState(null);
   const [tlSettOpen, setTlSettOpen] = useState(false);
+  tlSettOpenRef.current = tlSettOpen;
   // Must be declared before render-time `settingsEditGroup` (line ~6980) — TDZ if defined later.
   const editingDrawingRef = useRef(null);
+  const tlSettOpenRef = useRef(false);
   const [tlSettPos, setTlSettPos] = useState({ x: 200, y: 90 });
   const [tlName, setTlName] = useState("Trend Line");
   const [tlNameEditing, setTlNameEditing] = useState(false);
@@ -6323,6 +6340,22 @@ const TalariaV8bLive = () => {
     setTlSettTplDrop(false); setTlSaveAsMode(false); setTlNewTplName(""); setTlStyleDrop(null);
     setTimeout(() => { setTlSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("tlsett"); return n; }); }, 105);
   };
+  /** User clicked a different shape while settings were open — drop panel state immediately. */
+  const dismissShapeSettingsForNewSelection = () => {
+    editingDrawingRef.current = null;
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
+    setTlSettTplDrop(false);
+    setTlSaveAsMode(false);
+    setTlNewTplName("");
+    setTlStyleDrop(null);
+    setClosing((s) => {
+      const n = new Set(s);
+      n.delete("tlsett");
+      return n;
+    });
+    setTlSettOpen(false);
+  };
   const closeTxtSett = () => {
     cpBarAnchorRef.current = null;
     setColorPicker(null);
@@ -6722,7 +6755,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a18-context-menu-v9";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a19-settings-isolation";
   }, []);
 
   useEffect(() => {
@@ -10159,6 +10192,8 @@ const TalariaV8bLive = () => {
     v9SelectionToolbarSyncRef,
     drawingTypeToPanelGroupRef,
     editingDrawingRef,
+    tlSettOpenRef,
+    dismissShapeSettingsForNewSelection,
   };
 
   // ─── Drawing selection bridge ───────────────────────────────────────────
@@ -10180,6 +10215,15 @@ const TalariaV8bLive = () => {
         try {
           const br = v9ToolbarBridgeActRef.current;
           const editRef = br.editingDrawingRef;
+          if (editRef?.current && drawing) {
+            if (!v9IsSameDrawingSession(drawing, editRef.current.drawing)) {
+              br.dismissShapeSettingsForNewSelection?.();
+            } else {
+              br.setTlBarSelected(true);
+              br.setTlBarSelectedType(drawing.type);
+              return origShow ? origShow(drawing, x, y) : undefined;
+            }
+          }
           if (!editRef || !editRef.current) {
             br.v9SelectionToolbarSyncRef.current = true;
           }
@@ -10222,13 +10266,15 @@ const TalariaV8bLive = () => {
               else if (dm) dm.currentTool = null;
             } catch (_) {}
           }
-          const patch = v9TlStylePatchFromDrawing(drawing);
-          if (patch) {
-            br.suppressForwardBridge.current = true;
-            br.setTlStyle(s => ({ ...s, ...patch }));
-            if (typeof drawing.locked === 'boolean') br.setTlLocked(!!drawing.locked);
+          if (!editRef?.current) {
+            const patch = v9TlStylePatchFromDrawing(drawing);
+            if (patch) {
+              br.suppressForwardBridge.current = true;
+              br.setTlStyle(s => ({ ...s, ...patch }));
+              if (typeof drawing.locked === 'boolean') br.setTlLocked(!!drawing.locked);
+            }
           }
-          if (drawing && drawing.type) {
+          if (drawing && drawing.type && !editRef?.current) {
             const gTxt = br.drawingTypeToPanelGroupRef.current(drawing.type);
             if (gTxt === "text") {
               const tp = v9TxtStylePatchFromDrawing(drawing);
@@ -10409,10 +10455,6 @@ const TalariaV8bLive = () => {
         const t = ev && ev.detail && ev.detail.drawingType;
         if (!t) return;
         const br = v9ToolbarBridgeActRef.current;
-        br.setTlBarSelected(true);
-        br.setTlBarSelectedType(t);
-        br.v9SelectionToolbarSyncRef.current = true;
-        const g = br.drawingTypeToPanelGroupRef.current(t);
         let live = null;
         try {
           const p = getPrimarySelectedDrawingForActiveChart(null);
@@ -10423,6 +10465,20 @@ const TalariaV8bLive = () => {
           }
         } catch (_) {}
         const drawing = live || { type: t };
+        const editSess = br.editingDrawingRef?.current;
+        if (editSess && live) {
+          if (!v9IsSameDrawingSession(live, editSess.drawing)) {
+            br.dismissShapeSettingsForNewSelection?.();
+          } else if (br.tlSettOpenRef?.current) {
+            br.setTlBarSelected(true);
+            br.setTlBarSelectedType(t);
+            return;
+          }
+        }
+        br.setTlBarSelected(true);
+        br.setTlBarSelectedType(t);
+        br.v9SelectionToolbarSyncRef.current = true;
+        const g = br.drawingTypeToPanelGroupRef.current(t);
         if (g && !br.editingDrawingRef?.current) {
           let icon = br.LEGACY_TYPE_TO_V9_ICON[t];
           if (!icon) {
@@ -10447,12 +10503,14 @@ const TalariaV8bLive = () => {
           br.setDropdown(null);
           br.setBtnPressed(null);
         }
-        const patch = v9TlStylePatchFromDrawing(drawing);
-        if (patch) {
-          br.suppressForwardBridge.current = true;
-          br.setTlStyle((s) => ({ ...s, ...patch }));
+        if (!br.editingDrawingRef?.current) {
+          const patch = v9TlStylePatchFromDrawing(drawing);
+          if (patch) {
+            br.suppressForwardBridge.current = true;
+            br.setTlStyle((s) => ({ ...s, ...patch }));
+          }
         }
-        if (g === "text") {
+        if (!br.editingDrawingRef?.current && g === "text") {
           const tp = v9TxtStylePatchFromDrawing(drawing);
           if (tp && Object.keys(tp).length) {
             br.suppressTxtForwardBridge.current = true;
@@ -10460,7 +10518,7 @@ const TalariaV8bLive = () => {
           }
         }
         // Hydrate volume tool panels from selected drawing
-        if (drawing && drawing.style) {
+        if (!br.editingDrawingRef?.current && drawing && drawing.style) {
           const s = drawing.style;
           const DASH_REV = {'':'solid','5,5':'dashed','2,4':'dotted','7,4,2,4':'dashdot','2,2':'dotted'};
           const SRC_REV = {close:"Close",open:"Open",high:"High",low:"Low",hl2:"(H+L)/2",hlc3:"(H+L+C)/3",ohlc4:"(O+H+L+C)/4"};
@@ -10749,9 +10807,11 @@ const TalariaV8bLive = () => {
     // until the user deselected and reselected.
     try {
       const chartsToRender = new Set();
+      const editSess = editingDrawingRef.current;
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
         if (!v9ShouldApplyTlStylePatch(d, legacyTool)) return;
+        if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
         const tb = dm.toolbar;
         // Capture before state for undo (mirror legacy onBeforeUpdate).
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
@@ -10845,9 +10905,11 @@ const TalariaV8bLive = () => {
     const legacyTool = resolveLegacyTool();
     try {
       const chartsToRender = new Set();
+      const editSess = editingDrawingRef.current;
       collectV9BridgeTargets().forEach(({ dm: dm2, d }) => {
         if (!d || !d.style) return;
         if (!v9ShouldApplyTlStylePatch(d, legacyTool)) return;
+        if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
         const tb = dm2.toolbar;
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
         let pointsMoved = false;
