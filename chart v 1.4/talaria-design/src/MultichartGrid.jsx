@@ -62,7 +62,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260520a10";
+const BRIDGE_VERSION = "20260520a11";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -958,6 +958,27 @@ export default function MultichartGrid({
     // focused panel reports a new tf / fileId / symbol.
     const focusedPanelIdRef = useRef(focusedPanelId);
     useEffect(() => { focusedPanelIdRef.current = focusedPanelId; }, [focusedPanelId]);
+
+    /** TradingView-style: first click on a tile selects it; next click starts drawing. */
+    const requestPanelFocus = useCallback((panelId) => {
+        if (!panelId || typeof setFocusedPanelId !== "function") return;
+        const prev = focusedPanelIdRef.current;
+        if (panelId !== prev) {
+            try {
+                const w = typeof window !== "undefined" ? window : null;
+                const rail = w && w.__v9RailLegacyTool;
+                if (rail) {
+                    w.__v9MultichartSelectBeforeDrawPanelId = panelId;
+                } else if (w) {
+                    w.__v9MultichartSelectBeforeDrawPanelId = null;
+                }
+            } catch (_) {}
+        }
+        setFocusedPanelId(panelId);
+    }, [setFocusedPanelId]);
+    const requestPanelFocusRef = useRef(requestPanelFocus);
+    requestPanelFocusRef.current = requestPanelFocus;
+
     const onStateAnyRef = useRef(null);
 
     // ─── per-host order forwarding state ──────────────────────────────
@@ -1184,9 +1205,8 @@ export default function MultichartGrid({
                 // clicks on B/C/D — we rely on the iframe to tell us
                 // explicitly via panel-cmd-bridge's focus broadcast.
                 onPanelFocus: function (id) {
-                    if (typeof setFocusedPanelId === "function") {
-                        setFocusedPanelId(id);
-                    }
+                    const fn = requestPanelFocusRef.current;
+                    if (fn) fn(id);
                 },
                 onContextMenu: function (panelId, msg) {
                     const ch = window.chart;
@@ -1464,9 +1484,8 @@ export default function MultichartGrid({
         // user is interacting with tile A.
         const wrapper = document.getElementById(HOST_WRAPPER_ID);
         const onWrapperDown = () => {
-            if (typeof setFocusedPanelId === "function") {
-                setFocusedPanelId(HOST_PANEL_ID);
-            }
+            const fn = requestPanelFocusRef.current;
+            if (fn) fn(HOST_PANEL_ID);
         };
         if (wrapper) {
             wrapper.addEventListener("mousedown", onWrapperDown, { capture: true });
@@ -3647,9 +3666,7 @@ export default function MultichartGrid({
                         data-panel-id={tile.id}
                         data-multichart-host-cell={isHost ? "1" : undefined}
                         onMouseDownCapture={() => {
-                            if (typeof setFocusedPanelId === "function") {
-                                setFocusedPanelId(tile.id);
-                            }
+                            requestPanelFocus(tile.id);
                         }}
                         style={{
                             gridColumn: tile.gridColumn || "auto",

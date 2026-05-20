@@ -1964,6 +1964,34 @@ class DrawingToolsManager {
     }
 
     /**
+     * Multichart: first click on a newly focused tile selects only (TradingView-style).
+     * @returns {boolean} true if this mousedown was consumed as panel-select only
+     */
+    _consumeV9MultichartSelectClick() {
+        try {
+            if (typeof window === 'undefined') return false;
+            const pending = window.__v9MultichartSelectBeforeDrawPanelId;
+            if (!pending) return false;
+            let myPanelId = null;
+            if (window.parent && window.parent !== window) {
+                const params = new URLSearchParams(window.location.search);
+                myPanelId = params.get('panelId') || params.get('id');
+            } else {
+                const grid = window.__multichartGrid;
+                if (grid && grid.hostPanelId != null && this.chart === window.chart) {
+                    myPanelId = grid.hostPanelId;
+                }
+            }
+            if (!myPanelId || String(myPanelId) !== String(pending)) return false;
+            window.__v9MultichartSelectBeforeDrawPanelId = null;
+            if (this.currentTool) this.clearTool(true);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /**
      * Handle mouse down event
      */
     handleMouseDown(event) {
@@ -1972,8 +2000,20 @@ class DrawingToolsManager {
             return;
         }
 
+        if (this._consumeV9MultichartSelectClick()) {
+            return;
+        }
+
         if (this.currentTool && this.isRectSelecting) {
             this.cancelRectangularSelection();
+        }
+
+        // Multichart V9: adopt rail tool on second mousedown (first click selects panel only).
+        if (!this.currentTool && typeof window !== 'undefined' && window.__v9RailLegacyTool) {
+            const railTool = window.__v9RailLegacyTool;
+            if (this.toolRegistry[railTool] && typeof this.setTool === 'function') {
+                this.setTool(railTool, true);
+            }
         }
 
         // First-click draw in multi-panel mode:

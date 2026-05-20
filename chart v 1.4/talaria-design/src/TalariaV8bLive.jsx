@@ -9342,10 +9342,26 @@ const TalariaV8bLive = () => {
           const fid = typeof grid.getFocusedPanelId === "function"
             ? grid.getFocusedPanelId()
             : null;
-          // Stale-rail-on-host guards removed: v9DrawingToolCleared resets the rail
-          // after iframe strokes; keeping them blocked arming A when the user picked a
-          // tool then clicked the host tile (legacyParam was nullified / forced crosshair).
-          if (!editingDrawingRef.current) v9PushRailLegacyTool(legacyParam);
+          const focusTick = !!(typeof window !== "undefined" && window.__v9MultichartFocusToolTick);
+          const explicitPick = v9UserExplicitToolRef.current;
+          let syncToPanels = legacyParam;
+          if (explicitPick) {
+            try { window.__v9MultichartSelectBeforeDrawPanelId = null; } catch (_) {}
+            if (!editingDrawingRef.current) v9PushRailLegacyTool(legacyParam);
+          } else if (focusTick && legacyParam) {
+            // Panel focus changed while a draw tool is on the rail: keep cursor on
+            // all tiles until the user clicks the focused panel again to draw.
+            syncToPanels = null;
+            v9PushRailLegacyTool(legacyParam);
+            try {
+              if (!window.__v9MultichartSelectBeforeDrawPanelId && fid) {
+                window.__v9MultichartSelectBeforeDrawPanelId = fid;
+              }
+            } catch (_) {}
+          } else if (!editingDrawingRef.current) {
+            v9PushRailLegacyTool(legacyParam);
+          }
+          const deferHostArm = focusTick && legacyParam && !explicitPick;
           const finishAfterSync = () => {
             if (cancelled) return;
             if (fid && grid.hostPanelId != null && fid !== grid.hostPanelId) {
@@ -9368,9 +9384,10 @@ const TalariaV8bLive = () => {
               return;
             }
             v9UserExplicitToolRef.current = false;
+            if (deferHostArm) return;
             applyHostDm();
           };
-          void grid.syncDrawingToolAcrossPanels(legacyParam)
+          void grid.syncDrawingToolAcrossPanels(syncToPanels)
             .then(finishAfterSync)
             .catch((err) => {
               console.warn("[V9 tool bridge multichart focus] sync failed:", err);
@@ -9438,6 +9455,7 @@ const TalariaV8bLive = () => {
         // chart.js clearTool; skipping here left the rail armed and panel A re-armed
         // on focus change.
         if (v9UserExplicitToolRef.current) return;
+        try { window.__v9MultichartSelectBeforeDrawPanelId = null; } catch (_) {}
         v9PushRailLegacyTool(null);
         setTool("crosshair");
         setDropdown(null);

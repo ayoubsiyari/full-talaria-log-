@@ -129,6 +129,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const [stratSearchFocus, setStratSearchFocus] = useState(false);
   const [stratSort, setStratSort] = useState("name");
   const [stratSortDir, setStratSortDir] = useState("asc");
+  const [stratSortOpen, setStratSortOpen] = useState(false);
   const [stratStyleFilter, setStratStyleFilter] = useState("All");
   const [stratLayoutMode, setStratLayoutMode] = useState("rows");
   const [stratBuilderOpen, setStratBuilderOpen] = useState(false);
@@ -962,20 +963,20 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
             {/* sort dropdown (community tab only) */}
             {stratTab==="community"&&(
               <div style={{position:"relative",flexShrink:0}}>
-                <div onClick={e=>{e.stopPropagation();setSessSortOpen(p=>!p);}}
+                <div onClick={e=>{e.stopPropagation();setStratSortOpen(p=>!p);}}
                   style={{display:"flex",alignItems:"center",gap:6,background:c.el,border:`1px solid ${c.brH}`,padding:"0 10px",height:28,cursor:"default",fontFamily:F}}>
                   <svg width={11} height={11} viewBox="0 0 24 24" fill="none" style={{color:c.tm}}><path d="M3 6h18M6 12h12M9 18h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                   <span style={{fontSize:9,fontWeight:600,color:c.ts}}>{SORT_OPTIONS.find(o=>o.k===stratSort)?.l||"Sort"}</span>
                   <svg width={8} height={8} viewBox="0 0 24 24" fill="none" style={{color:c.tm}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                 </div>
-                {sessSortOpen&&(
+                {stratSortOpen&&(
                   <>
-                    <div style={{position:"fixed",inset:0,zIndex:99990}} onClick={()=>setSessSortOpen(false)}/>
+                    <div style={{position:"fixed",inset:0,zIndex:99990}} onClick={()=>setStratSortOpen(false)}/>
                     <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,zIndex:99991,width:160,background:c.el,border:`1px solid ${c.brH}`,boxShadow:"0 8px 24px rgba(0,0,0,0.5)"}}>
                       {SORT_OPTIONS.map(o=>{
                         const isA=stratSort===o.k;
                         return(
-                          <div key={o.k} onClick={()=>{if(isA)setStratSortDir(d=>d==="asc"?"desc":"asc");else{setStratSort(o.k);setStratSortDir("desc");}setSessSortOpen(false);}}
+                          <div key={o.k} onClick={()=>{if(isA)setStratSortDir(d=>d==="asc"?"desc":"asc");else{setStratSort(o.k);setStratSortDir("desc");}setStratSortOpen(false);}}
                             style={{padding:"8px 12px",fontSize:10,fontWeight:isA?700:500,color:isA?c.tx:c.ts,cursor:"default",display:"flex",alignItems:"center",justifyContent:"space-between",borderLeft:isA?`2px solid ${c.acL}`:"2px solid transparent",transition:"background 0.1s",fontFamily:F}}
                             onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.05)"}
                             onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
