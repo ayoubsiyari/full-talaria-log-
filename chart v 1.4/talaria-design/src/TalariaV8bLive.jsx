@@ -1570,6 +1570,12 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
     out.fibLineWidth = fall.fibLineWidth != null ? fall.fibLineWidth : "2";
   }
   if (!out.fibLineType) out.fibLineType = fall.fibLineType || "solid";
+  if (legacyType === "parallel-channel") {
+    if (!Array.isArray(out.chLines) || out.chLines.length === 0) {
+      const stroke = out.lineColor || fall.lineColor;
+      out.chLines = v9DefaultParallelChannelChLines(stroke);
+    }
+  }
   return out;
 }
 
@@ -2272,10 +2278,14 @@ function v9TlStylePatchFromDrawing(d) {
           return { midLineType: mt };
         })()
       : {}),
-    ...(d.type === "parallel-channel" && Array.isArray(d.levels) && d.levels.length
+    ...(d.type === "parallel-channel"
       ? (() => {
-          const ch = v9ParallelLevelsToChLines(d.levels);
-          return ch ? { chLines: ch } : {};
+          const stroke = s.stroke || s.color;
+          const ch =
+            Array.isArray(d.levels) && d.levels.length
+              ? v9ParallelLevelsToChLines(d.levels)
+              : null;
+          return { chLines: ch && ch.length ? ch : v9DefaultParallelChannelChLines(stroke) };
         })()
       : {}),
     ...(d.type === "regression-trend"
@@ -7063,7 +7073,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a29-fib-input-tabs";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a30-channel-chlines-fix";
   }, []);
 
   useEffect(() => {
@@ -10231,37 +10241,46 @@ const TalariaV8bLive = () => {
               ? window.getActiveChart()?.drawingManager
               : window.chart?.drawingManager;
           } catch (_) {}
-          const fullEd = v9NeedsFullTlStyleReplaceForType(drawing.type)
-            ? v9BuildFullTlStyleFromDrawing(drawing, dmEd)
+          let drawingForStyle = drawing;
+          try {
+            if (dmEd && Array.isArray(dmEd.drawings) && drawing.id != null) {
+              const live = dmEd.drawings.find((x) => x && x.id === drawing.id);
+              if (live) drawingForStyle = live;
+            }
+          } catch (_) {}
+          const fullEd = v9NeedsFullTlStyleReplaceForType(drawingForStyle.type)
+            ? v9BuildFullTlStyleFromDrawing(drawingForStyle, dmEd)
             : null;
           if (fullEd) {
             setTlStyle(fullEd);
-          } else setTlStyle(prev => ({
+          } else {
+            const sPartial = drawingForStyle.style || {};
+            setTlStyle(prev => ({
           ...prev,
-          lineColor: s.stroke || s.color || prev.lineColor,
-          lineWidth: String(s.strokeWidth ?? prev.lineWidth),
-          lineType: LEGACY_DASH_TO_V9[(s.dashArray ?? s.strokeDasharray ?? '')] || prev.lineType,
-          bgColor: s.fill || s.backgroundColor || prev.bgColor,
-          showBg: typeof s.showBackground === 'boolean' ? s.showBackground : prev.showBg,
-          showBorder: typeof s.borderEnabled === 'boolean' ? s.borderEnabled : prev.showBorder,
-          borderColor: s.borderColor || prev.borderColor,
-          borderType: LEGACY_DASH_TO_V9[(s.borderDasharray || '')] || prev.borderType,
-          borderWidth: s.borderWidth != null ? String(s.borderWidth) : prev.borderWidth,
-          ep1: s.startStyle || prev.ep1,
-          ep2: s.endStyle || prev.ep2,
-          extendLeft: !!s.extendLeft,
-          extendRight: !!s.extendRight,
-          priceLabels: s.showPriceLabel !== false,
-          timeLabels: s.showTimeLabel !== false,
-          rangeType: s.rangeMode === 'price' ? 'Price'
-                   : s.rangeMode === 'time' ? 'Date and time'
+          lineColor: sPartial.stroke || sPartial.color || prev.lineColor,
+          lineWidth: String(sPartial.strokeWidth ?? prev.lineWidth),
+          lineType: LEGACY_DASH_TO_V9[(sPartial.dashArray ?? sPartial.strokeDasharray ?? '')] || prev.lineType,
+          bgColor: sPartial.fill || sPartial.backgroundColor || prev.bgColor,
+          showBg: typeof sPartial.showBackground === 'boolean' ? sPartial.showBackground : prev.showBg,
+          showBorder: typeof sPartial.borderEnabled === 'boolean' ? sPartial.borderEnabled : prev.showBorder,
+          borderColor: sPartial.borderColor || prev.borderColor,
+          borderType: LEGACY_DASH_TO_V9[(sPartial.borderDasharray || '')] || prev.borderType,
+          borderWidth: sPartial.borderWidth != null ? String(sPartial.borderWidth) : prev.borderWidth,
+          ep1: sPartial.startStyle || prev.ep1,
+          ep2: sPartial.endStyle || prev.ep2,
+          extendLeft: !!sPartial.extendLeft,
+          extendRight: !!sPartial.extendRight,
+          priceLabels: sPartial.showPriceLabel !== false,
+          timeLabels: sPartial.showTimeLabel !== false,
+          rangeType: sPartial.rangeMode === 'price' ? 'Price'
+                   : sPartial.rangeMode === 'time' ? 'Date and time'
                    : (prev.rangeType || 'Date & Price'),
           ...(() => {
-            const info = s.infoSettings;
+            const info = sPartial.infoSettings;
             const types = v9ShowInfoTypesFromChartInfoSettings(info);
             // Range tool uses showLabel as master toggle; fall back to infoSettings.showInfo
-            const showInfo = typeof s.showLabel === 'boolean'
-              ? s.showLabel
+            const showInfo = typeof sPartial.showLabel === 'boolean'
+              ? sPartial.showLabel
               : (info
                 ? (info.showInfo === true || (types.length > 0 && info.showInfo !== false))
                 : false);
@@ -10270,35 +10289,39 @@ const TalariaV8bLive = () => {
               showInfoTypes: types.length > 0 ? types : (prev.showInfoTypes || ['Price range']),
             };
           })(),
-          labelColor: s.labelColor || prev.labelColor,
-          labelFontSize: String(s.labelFontSize ?? prev.labelFontSize),
-          labelBg: typeof s.showLabelBackground === 'boolean' ? s.showLabelBackground : (typeof s.labelBackground === 'boolean' ? s.labelBackground : prev.labelBg),
-          labelBgColor: s.labelBackgroundColor || prev.labelBgColor,
-          textContent: typeof drawing.text === 'string' ? drawing.text : prev.textContent,
-          textColor: s.textColor || prev.textColor,
-          textSize: String(s.fontSize ?? prev.textSize),
-          textBold: s.fontWeight === 'bold' || (typeof s.fontWeight === 'number' && s.fontWeight >= 600),
-          textItalic: s.fontStyle === 'italic',
-          vertAlign: v9ChartVertToUi(s.textVAlign || s.textPosition || prev.vertAlign),
-          horizAlign: (s.textHAlign || s.textAlign || prev.horizAlign),
+          labelColor: sPartial.labelColor || prev.labelColor,
+          labelFontSize: String(sPartial.labelFontSize ?? prev.labelFontSize),
+          labelBg: typeof sPartial.showLabelBackground === 'boolean' ? sPartial.showLabelBackground : (typeof sPartial.labelBackground === 'boolean' ? sPartial.labelBackground : prev.labelBg),
+          labelBgColor: sPartial.labelBackgroundColor || prev.labelBgColor,
+          textContent: typeof drawingForStyle.text === 'string' ? drawingForStyle.text : prev.textContent,
+          textColor: sPartial.textColor || prev.textColor,
+          textSize: String(sPartial.fontSize ?? prev.textSize),
+          textBold: sPartial.fontWeight === 'bold' || (typeof sPartial.fontWeight === 'number' && sPartial.fontWeight >= 600),
+          textItalic: sPartial.fontStyle === 'italic',
+          vertAlign: v9ChartVertToUi(sPartial.textVAlign || sPartial.textPosition || prev.vertAlign),
+          horizAlign: (sPartial.textHAlign || sPartial.textAlign || prev.horizAlign),
           midLine:
-            drawing.type === "rectangle" || drawing.type === "rotated-rectangle"
-            || drawing.type === "ellipse" || drawing.type === "circle"
-              ? !!s.showMiddleLine
-              : (typeof s.showMiddleLine === "boolean" ? s.showMiddleLine : prev.midLine),
-          midLineColor: s.middleLineColor != null && s.middleLineColor !== "" ? s.middleLineColor : prev.midLineColor,
-          midLineWidth: s.middleLineWidth != null ? String(parseInt(s.middleLineWidth, 10) || 1) : prev.midLineWidth,
-          midLineType: s.middleLineDash != null && s.middleLineDash !== undefined
-            ? (V9_LEGACY_DASH_STRING_TO_LINE_TYPE[String(s.middleLineDash).replace(/\s+/g, "")] ?? (String(s.middleLineDash).replace(/\s+/g, "") ? "dashed" : "solid"))
+            drawingForStyle.type === "rectangle" || drawingForStyle.type === "rotated-rectangle"
+            || drawingForStyle.type === "ellipse" || drawingForStyle.type === "circle"
+              ? !!sPartial.showMiddleLine
+              : (typeof sPartial.showMiddleLine === "boolean" ? sPartial.showMiddleLine : prev.midLine),
+          midLineColor: sPartial.middleLineColor != null && sPartial.middleLineColor !== "" ? sPartial.middleLineColor : prev.midLineColor,
+          midLineWidth: sPartial.middleLineWidth != null ? String(parseInt(sPartial.middleLineWidth, 10) || 1) : prev.midLineWidth,
+          midLineType: sPartial.middleLineDash != null && sPartial.middleLineDash !== undefined
+            ? (V9_LEGACY_DASH_STRING_TO_LINE_TYPE[String(sPartial.middleLineDash).replace(/\s+/g, "")] ?? (String(sPartial.middleLineDash).replace(/\s+/g, "") ? "dashed" : "solid"))
             : prev.midLineType,
-          ...v9CoordPatchFromDrawing(drawing),
-          ...v9VisibilityPatchFromDrawing(drawing),
+          ...v9CoordPatchFromDrawing(drawingForStyle),
+          ...v9VisibilityPatchFromDrawing(drawingForStyle),
           ...(() => {
-            const p = v9TlStylePatchFromDrawing(drawing);
+            const p = v9TlStylePatchFromDrawing(drawingForStyle);
             if (!p) return {};
             const out = {};
-            if (drawing.type === "parallel-channel" && p.chLines) out.chLines = p.chLines;
-            if (drawing.type === "regression-trend") {
+            if (drawingForStyle.type === "parallel-channel") {
+              out.chLines = p.chLines && p.chLines.length
+                ? p.chLines
+                : v9ResolveParallelChannelChLines(prev, drawingForStyle);
+            }
+            if (drawingForStyle.type === "regression-trend") {
               if (p.regLines) out.regLines = p.regLines;
               if (p.regUpperDev) out.regUpperDev = p.regUpperDev;
               if (p.regLowerDev) out.regLowerDev = p.regLowerDev;
@@ -10393,6 +10416,7 @@ const TalariaV8bLive = () => {
             return out;
           })(),
         }));
+          }
         }
 
         // Position panel near dblclick (clientX/Y are post-zoom; tlSettPos / txtSettPos
@@ -10480,6 +10504,19 @@ const TalariaV8bLive = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, groupSelected, drawingTypeToPanelGroup, LEGACY_TYPE_TO_V9_ICON]);
+
+  // Parallel channel: keep `tlStyle.chLines` populated (full reset used to leave []).
+  useLayoutEffect(() => {
+    if (!tlSettOpen || tlSubTool.icon !== "channel") return;
+    if (Array.isArray(tlStyle.chLines) && tlStyle.chLines.length > 0) return;
+    const resolved = v9ResolveParallelChannelChLines(
+      tlStyle,
+      editingDrawingRef.current?.drawing,
+    );
+    if (!resolved.length) return;
+    suppressForwardBridge.current = true;
+    setTlStyle((s) => ({ ...s, chLines: resolved.map((row) => ({ ...row })) }));
+  }, [tlSettOpen, tlSubTool.icon, tlStyle.chLines, chartPrimarySelectedDrawingType]);
 
   // When the panel closes (tlSettOpen → false), restore the previous tool
   // and clear editingDrawingRef so the chart re-arms the user's prior tool.
@@ -13140,7 +13177,12 @@ const TalariaV8bLive = () => {
                   {/* ── Channel / Regression lines rows ── */}
                   {isChannel && (()=>{
                     const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
-                    const lines = (isRegCh ? tlStyle.regLines : tlStyle.chLines) || [];
+                    const lines = isRegCh
+                      ? (tlStyle.regLines || [])
+                      : v9ResolveParallelChannelChLines(
+                          tlStyle,
+                          editingDrawingRef.current?.drawing,
+                        );
                     const stKey = isRegCh ? "regLines" : "chLines";
                     const cpKey = isRegCh ? "regLine" : "chLine";
                     return <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, rowGap:0, alignItems:"end" }}>
@@ -14594,7 +14636,10 @@ const TalariaV8bLive = () => {
 
             {/* ── INPUT TAB (parallel channel levels) ── */}
             {tlSettTab==="input" && tlSubTool.icon === "channel" && (() => {
-              const lines = tlStyle.chLines || [];
+              const lines = v9ResolveParallelChannelChLines(
+                tlStyle,
+                editingDrawingRef.current?.drawing,
+              );
               const stKey = "chLines";
               const cpKey = "chLine";
               return (
