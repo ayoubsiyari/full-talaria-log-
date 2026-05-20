@@ -4893,11 +4893,11 @@ const TalariaV8bLive = () => {
   // it only appears when the user actually has a shape selected.
   const [tlBarSelected, setTlBarSelected] = useState(false);
   const [tlBarSelectedType, setTlBarSelectedType] = useState(null);
-  const [tlSettOpen, setTlSettOpen] = useState(false);
-  tlSettOpenRef.current = tlSettOpen;
   // Must be declared before render-time `settingsEditGroup` (line ~6980) — TDZ if defined later.
   const editingDrawingRef = useRef(null);
   const tlSettOpenRef = useRef(false);
+  const [tlSettOpen, setTlSettOpen] = useState(false);
+  tlSettOpenRef.current = tlSettOpen;
   const [tlSettPos, setTlSettPos] = useState({ x: 200, y: 90 });
   const [tlName, setTlName] = useState("Trend Line");
   const [tlNameEditing, setTlNameEditing] = useState(false);
@@ -6755,7 +6755,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a19-settings-isolation";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a20-tdz-fix";
   }, []);
 
   useEffect(() => {
