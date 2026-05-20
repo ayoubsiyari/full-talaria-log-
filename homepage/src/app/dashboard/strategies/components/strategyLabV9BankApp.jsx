@@ -38,6 +38,12 @@ const c = {
   inputScheme: "dark",
 };
 
+/** Community feed cards — soft blue lift on dark background */
+const COMMUNITY_CARD_SHADOW =
+  "0 6px 22px rgba(0,0,0,0.5), 0 0 0 1px rgba(74,106,255,0.14), 0 0 24px rgba(38,67,247,0.16), 0 0 42px rgba(38,67,247,0.08)";
+const COMMUNITY_CARD_SHADOW_HOV =
+  "0 10px 32px rgba(0,0,0,0.58), 0 0 0 1px rgba(74,106,255,0.38), 0 0 32px rgba(38,67,247,0.28), 0 0 56px rgba(38,67,247,0.14)";
+
 function formatPostedAt(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -395,11 +401,20 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
     const postedLabel = formatPostedAt(strat.postedAt);
     const copiedByMe = !!strat.copiedByMe;
     const canCopyPost = !isAuthorPost && !copiedByMe && strat.canCopy !== false && strat.allowClone !== false;
+    const cardShadow = showSocial
+      ? (isH ? COMMUNITY_CARD_SHADOW_HOV : COMMUNITY_CARD_SHADOW)
+      : (isH ? "0 8px 22px rgba(0,0,0,0.32)" : "none");
+    const cardBorder = showSocial
+      ? `1px solid ${isH ? "rgba(74,106,255,0.42)" : "rgba(74,106,255,0.18)"}`
+      : `1px solid ${isH ? c.brH : c.br}`;
+    const cardBg = showSocial
+      ? (isH ? "rgba(38,67,247,0.07)" : "linear-gradient(180deg, rgba(14,18,32,0.98) 0%, rgba(10,12,20,1) 100%)")
+      : (isH ? "rgba(140,160,255,0.045)" : c.sf);
     return (
       <div onMouseEnter={()=>setStratCardHov(strat.id)} onMouseLeave={()=>setStratCardHov(null)}
         onDoubleClick={openEditableStrategy}
-        style={{position:"relative",width:"100%",minWidth:0,height:cardH,minHeight:cardH,maxHeight:cardH,padding:0,overflow:"hidden",background:isH?"rgba(140,160,255,0.045)":c.sf,border:`1px solid ${isH?c.brH:c.br}`,cursor:"default",userSelect:"none",boxShadow:isH?"0 8px 22px rgba(0,0,0,0.32)":"none",transition:"background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease",display:"flex",flexDirection:"column",boxSizing:"border-box",alignSelf:"stretch"}}>
-        <div style={{height:2,background:c.acL,boxShadow:`0 0 6px ${c.acG}`,flexShrink:0}}/>
+        style={{position:"relative",width:"100%",minWidth:0,height:cardH,minHeight:cardH,maxHeight:cardH,padding:0,overflow:"hidden",background:cardBg,border:cardBorder,borderRadius:showSocial?4:0,cursor:"default",userSelect:"none",boxShadow:cardShadow,transition:"background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease",transform:showSocial&&isH?"translateY(-2px)":"none",display:"flex",flexDirection:"column",boxSizing:"border-box",alignSelf:"stretch"}}>
+        <div style={{height:2,background:c.acL,boxShadow:showSocial?`0 0 10px ${c.acG}`:`0 0 6px ${c.acG}`,flexShrink:0}}/>
         {hasPreview ? (
           <div style={{height:previewH,flexShrink:0,overflow:"hidden",background:c.hv2,borderBottom:`1px solid ${c.brH}`}}>
             <img src={previewSrc} alt="" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
@@ -690,7 +705,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
             onMouseEnter={()=>setStratCardHov(strat.id)}
             onMouseLeave={()=>setStratCardHov(null)}
             onDoubleClick={openEditableStrategy}
-            style={{display:"grid",gridTemplateColumns:rowCols,alignItems:"stretch",height:80,minHeight:80,maxHeight:80,borderTop:`1px solid ${isH?c.acB:c.brH}`,borderRight:`1px solid ${isH?c.acB:c.brH}`,borderBottom:`1px solid ${isH?c.acB:c.brH}`,borderLeft:`3px solid ${c.acL}`,background:isH?"rgba(140,160,255,0.045)":c.sf,cursor:"default",transition:"box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease",boxShadow:isH?`0 0 0 1px ${c.acB}, 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(38,67,247,0.15)`:"0 3px 12px rgba(0,0,0,0.5)",marginTop:idx===0?0:6,overflow:"hidden",boxSizing:"border-box"}}>
+            style={{display:"grid",gridTemplateColumns:rowCols,alignItems:"stretch",height:80,minHeight:80,maxHeight:80,borderTop:`1px solid ${showPublicId?(isH?"rgba(74,106,255,0.35)":c.brH):isH?c.acB:c.brH}`,borderRight:`1px solid ${showPublicId?(isH?"rgba(74,106,255,0.35)":c.brH):isH?c.acB:c.brH}`,borderBottom:`1px solid ${showPublicId?(isH?"rgba(74,106,255,0.35)":c.brH):isH?c.acB:c.brH}`,borderLeft:`3px solid ${c.acL}`,borderRadius:showPublicId?4:0,background:showPublicId?(isH?"rgba(38,67,247,0.07)":c.sf):isH?"rgba(140,160,255,0.045)":c.sf,cursor:"default",transition:"box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease, transform 0.15s ease",boxShadow:showPublicId?(isH?COMMUNITY_CARD_SHADOW_HOV:COMMUNITY_CARD_SHADOW):isH?`0 0 0 1px ${c.acB}, 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(38,67,247,0.15)`:"0 3px 12px rgba(0,0,0,0.5)",transform:showPublicId&&isH?"translateY(-1px)":"none",marginTop:idx===0?0:8,overflow:"hidden",boxSizing:"border-box"}}>
             <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,padding:"0 10px",overflow:"hidden",boxSizing:"border-box"}}>
               {rowPreview ? (
                 <div style={{width:36,height:36,flexShrink:0,overflow:"hidden",border:`1px solid ${isH?c.acB:c.brH}`,background:c.hv2,boxSizing:"border-box"}}>
@@ -1326,7 +1341,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                   onLike={handleCommunityLike}
                   onCopy={handleCommunityCopy}/>
               ):(
-                <div style={{width:1288,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
+                <div style={{width:1288,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,padding:"8px 4px 28px"}}>
                   {filteredCommunity.map(strat=>(
                     <StratCard key={strat.id} strat={strat} isMine={false} showSocial
                       isSaved={savedCommunityIds.has(strat.id)}

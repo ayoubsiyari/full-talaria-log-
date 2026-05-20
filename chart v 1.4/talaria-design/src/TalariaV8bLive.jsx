@@ -9449,7 +9449,10 @@ const TalariaV8bLive = () => {
     };
     const onV9DrawingToolCleared = () => {
       try {
-        if (editingDrawingRef.current || v9UserExplicitToolRef.current) return;
+        if (editingDrawingRef.current) return;
+        // Stroke finished — sidebar pick is no longer "armed"; explicit-tool latch
+        // must not block rail reset (user clicked Rectangle then drew on iframe B).
+        v9UserExplicitToolRef.current = false;
         const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
         try {
           if (typeof window !== "undefined") window.__v9BlockFocusToolArmOnce = true;
@@ -9461,6 +9464,8 @@ const TalariaV8bLive = () => {
           const hdm = window.chart && window.chart.drawingManager;
           if (hdm && typeof hdm.clearTool === "function") hdm.clearTool();
         } catch (_) {}
+        setTlBarSelected(false);
+        setTlBarSelectedType(null);
         setTool("crosshair");
         setDropdown(null);
         setBtnPressed(null);
@@ -9527,6 +9532,9 @@ const TalariaV8bLive = () => {
           } catch (_) {}
           void g.runCommandIframes("clearActiveDrawingTool", null).catch(() => {});
         }
+        v9UserExplicitToolRef.current = false;
+        setTlBarSelected(false);
+        setTlBarSelectedType(null);
         setTool("crosshair");
         setDropdown(null);
         setBtnPressed(null);
