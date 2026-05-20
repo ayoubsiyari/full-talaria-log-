@@ -452,6 +452,52 @@ function v9RailSubtoolOrFallback(groupId, sel, fallback) {
   return fallback;
 }
 
+/** Map chart.js `drawing.type` → V9 settings icon when rail `groupSelected` is stale (shared channel/fib/rect groups). */
+function v9SubToolIconFromDrawingType(drawingType, panelGroup) {
+  if (!drawingType || !panelGroup) return null;
+  if (v9DrawingTypeToPanelGroup(drawingType) !== panelGroup) return null;
+  const byGroup = {
+    channel: {
+      "parallel-channel": "channel",
+      "regression-trend": "regressionCh",
+      "flat-top-bottom": "flatChannel",
+      "disjoint-channel": "disjointCh",
+      pitchfork: "pitchfork",
+    },
+    rect: {
+      rectangle: "rect",
+      "rotated-rectangle": "rect",
+      triangle: "triangle",
+      arc: "arcShape",
+      ellipse: "ellipse",
+      circle: "circle",
+      "arrow-marker": "arrowMarker",
+      arrow: "arrowLine",
+      "arrow-mark-up": "arrowUp",
+      "arrow-mark-down": "arrowDn",
+    },
+    trendline: {
+      trendline: "trendline",
+      horizontal: "hline",
+      "horizontal-ray": "hray",
+      vertical: "vline",
+      ray: "ray",
+      "extended-line": "extendedLine",
+      "cross-line": "crossLine",
+      polyline: "polyline",
+      path: "pathTool",
+      curve: "curve",
+      "double-curve": "doubleCurve",
+    },
+    measure: {
+      "date-price-range": "measure",
+      "long-position": "longPos",
+      "short-position": "shortPos",
+    },
+  };
+  return (byGroup[panelGroup] && byGroup[panelGroup][drawingType]) || null;
+}
+
 /** Single source for left-rail `<I n={…} />` so Lines vs Shapes never share an icon from stale state. */
 function v9LeftRailIconForButton(t, groupSelected) {
   if (!t || !t.id) return t && t.icon;
@@ -6970,7 +7016,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a27-settings-bridge-fix";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a28-drawing-input-tabs";
   }, []);
 
   useEffect(() => {
@@ -7308,7 +7354,7 @@ const TalariaV8bLive = () => {
       || (TL_LINE_SHAPE_GROUPS.has(tool) ? tool : null);
 
   // Active line/shape sub-tool (icon + label)
-  const tlSubTool = effectiveTlGroup === "rect"
+  const tlSubToolRail = effectiveTlGroup === "rect"
     ? v9RailSubtoolOrFallback("rect", groupSelected.rect, { icon: "rect", label: "Rectangle" })
     : effectiveTlGroup === "channel"
     ? v9RailSubtoolOrFallback("channel", groupSelected.channel, { icon: "channel", label: "Parallel Channel" })
@@ -7321,6 +7367,15 @@ const TalariaV8bLive = () => {
     : effectiveTlGroup === "measure"
     ? v9RailSubtoolOrFallback("measure", groupSelected.measure, { icon: "measure", label: "Range Tool" })
     : v9RailSubtoolOrFallback("trendline", groupSelected.trendline, { icon: "trendline", label: "Trend Line" });
+  const tlSubTool = (() => {
+    const dt =
+      chartPrimarySelectedDrawingType ||
+      editingDrawingRef.current?.drawing?.type ||
+      null;
+    const icon = v9SubToolIconFromDrawingType(dt, effectiveTlGroup);
+    if (!icon || icon === tlSubToolRail.icon) return tlSubToolRail;
+    return { icon, label: tlSubToolRail.label };
+  })();
   const tlSubToolRef = useRef(tlSubTool.label);
   const txtSubToolFromRail = groupSelected.text || { icon: "text", label: "Text" };
   const txtSubTool =
@@ -12475,7 +12530,8 @@ const TalariaV8bLive = () => {
           {(()=>{
             const noTextTab = isFibTool || isGannTool || isPatternTool || effectiveTlGroup === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
             const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","curve","doubleCurve","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
-            const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || (isFibTool && tlSubTool.icon !== "fibSpiral") || isGannTool;
+            const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || (isFibTool && tlSubTool.icon !== "fibSpiral") || isGannTool
+              || ["channel", "pitchfork", "flatChannel", "disjointCh"].includes(tlSubTool.icon);
             const tlTabs=[["style","Style"],!noTextTab&&["text","Text"],hasInputTab&&["input","Input"],!noCoordsTab&&["coordinates","Coordinates"],["visibility","Visibility"]].filter(Boolean);
             const tlTabIdx=Math.max(0, tlTabs.findIndex(([id])=>id===tlSettTab));
             return (
@@ -13054,7 +13110,12 @@ const TalariaV8bLive = () => {
                             ? <div style={{ padding:"5px 0", alignSelf:"center" }}>
                                 {TlChk(ln.on, `tlchk-${cpKey}-${idx}`, ln.label, ()=>setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===idx?{...l,on:!l.on}:l)})))}
                               </div>
-                            : <div style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 0" }}>
+                            : tlSubTool.icon === "channel" ? (
+                              <div style={{ padding:"5px 0", alignSelf:"center" }}>
+                                {!isMiddle && TlChk(ln.on, `tlchk-${cpKey}-${idx}`, idx === 0 ? "Upper" : idx === lines.length - 1 ? "Lower" : "", ()=>setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===idx?{...l,on:!l.on}:l)})))}
+                              </div>
+                            ) : (
+                              <div style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 0" }}>
                                 <div style={{ width:22, flexShrink:0 }}>
                                   {!isMiddle && TlChk(ln.on, `tlchk-${cpKey}-${idx}`, "", ()=>setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===idx?{...l,on:!l.on}:l)})))}
                                 </div>
@@ -13079,6 +13140,7 @@ const TalariaV8bLive = () => {
                                   </div>
                                 </div>
                               </div>
+                            )
                           }
                           <div style={{ padding:"5px 0", opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
                             {colorSwatch(`${cpKey}-${idx}`, ln.color)}
@@ -13163,50 +13225,10 @@ const TalariaV8bLive = () => {
                       </>}
                     </div>;
                   })()}
-                  {/* ── flatChannel: show prices checkbox ── */}
-                  {["flatChannel","disjointCh"].includes(tlSubTool.icon) && <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
-                    {TlChk(tlStyle.flatChPrices, "tlchk-flatChPrices", "Show Prices", ()=>setTlStyle(s=>({...s,flatChPrices:!s.flatChPrices})))}
-                  </div>}
-                  {/* ── Pitchfork section ── */}
+                  {/* ── Pitchfork section (type + levels on Input tab) ── */}
                   {isPitchfork && (()=>{
                     const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
-                    const pfStyles = ["Original","Schiff","Modified Schiff","Inside"];
-                    const pfDk = "pfStyle";
                     return <>
-                      {/* Style dropdown row */}
-                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
-                        <span style={{ fontSize:12, color:c.ts }}>Type</span>
-                        <div style={{ position:"relative" }}>
-                          <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===pfDk?null:pfDk);}}
-                            onMouseEnter={()=>setHov(`tl-btn-${pfDk}`)} onMouseLeave={()=>setHov(null)}
-                            style={{ height:26, padding:"0 10px", display:"flex", alignItems:"center", gap:5, cursor:"default", position:"relative",
-                                     background:tlStyleDrop===pfDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${pfDk}`?c.hv:"transparent",
-                                     transition:"background 0.12s" }}>
-                            <span style={{ fontSize:12, color:tlStyleDrop===pfDk?c.acL:c.ts }}>{tlStyle.pitchforkStyle}</span>
-                            <I n="chevDown" s={7} cl={tlStyleDrop===pfDk?c.acL:c.ts}/>
-                            {tlStyleDrop===pfDk&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
-                          </div>
-                          {tlStyleDrop===pfDk && (
-                            <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                              style={{ position:"absolute", top:"calc(100% + 4px)", right:0, zIndex:10, minWidth:120,
-                                       background:c.sf, border:`1px solid rgba(140,160,255,0.22)`, boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
-                              <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
-                              {pfStyles.map(opt=>{
-                                const isA=tlStyle.pitchforkStyle===opt; const isH=hov===`pfSty-${opt}`;
-                                return (
-                                  <div key={opt} onClick={()=>{setTlStyle(s=>({...s,pitchforkStyle:opt}));setTlStyleDrop(null);}}
-                                    onMouseEnter={()=>setHov(`pfSty-${opt}`)} onMouseLeave={()=>setHov(null)}
-                                    style={{ padding:"6px 12px", cursor:"default", position:"relative",
-                                             background:isA?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
-                                    {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                                    <span style={{ fontSize:13, color:isA?c.acL:isH?c.tx:c.ts, fontWeight:isA?700:500 }}>{opt}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
                       {/* Middle Line grid — Color / Style / Thickness */}
                       <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, rowGap:0, alignItems:"end" }}>
                         <div/><div/>
@@ -13307,40 +13329,14 @@ const TalariaV8bLive = () => {
                           </div>
                         </div>);})()}
                       </div>
-                      {/* PITCHFORK LEVELS */}
-                      <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"12px 0 6px" }}>PITCHFORK LEVELS</div>
+                      <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"12px 0 6px" }}>LEVEL COLORS</div>
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", columnGap:16, rowGap:10 }}>
-                        {tlStyle.pfLevels.map((lv, idx) => {
-                          const op = lv.on ? 1 : 0.55;
-                          return (
-                            <div key={idx} style={{ display:"flex", alignItems:"center", gap:6 }}>
-                              <div style={{ width:18, flexShrink:0 }}>
-                                {TlChk(lv.on, `tlchk-pf-${idx}`, "", ()=>setTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,i)=>i===idx?{...l,on:!l.on}:l)})))}
-                              </div>
-                              <div style={{ position:"relative", width:58, opacity:op, transition:"opacity 0.15s" }}>
-                                <input value={lv.value}
-                                  onChange={e=>{const val=e.target.value;if(/^[0-9.]*$/.test(val))setTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,i)=>i===idx?{...l,value:val}:l)}));}}
-                                  onClick={e=>e.stopPropagation()}
-                                  className="tlr-nospinner"
-                                  style={{ width:"100%", height:24, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
-                                           color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
-                                <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
-                                  {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                    <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
-                                      onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
-                                      style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
-                                               display:"flex", alignItems:"center", justifyContent:"center",
-                                               fontSize:7, lineHeight:1, fontFamily:F, padding:0,
-                                               borderBottom:i===0?`1px solid ${c.br}`:"none", transition:"color 0.1s" }}>
-                                      {chr}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                              <div style={{ opacity:op, transition:"opacity 0.15s" }}>{colorSwatch(`pfLevel-${idx}`, lv.color)}</div>
-                            </div>
-                          );
-                        })}
+                        {(tlStyle.pfLevels || []).map((lv, idx) => (
+                          <div key={idx} style={{ display:"flex", alignItems:"center", gap:8, opacity:lv.on ? 1 : 0.55 }}>
+                            <span style={{ fontSize:11, color:c.ts, width:36, fontVariantNumeric:"tabular-nums" }}>{lv.value}</span>
+                            {colorSwatch(`pfLevel-${idx}`, lv.color)}
+                          </div>
+                        ))}
                       </div>
                     </>;
                   })()}
@@ -14541,6 +14537,135 @@ const TalariaV8bLive = () => {
                 );
               })()}
             </>}
+
+            {/* ── INPUT TAB (parallel channel levels) ── */}
+            {tlSettTab==="input" && tlSubTool.icon === "channel" && (() => {
+              const lines = tlStyle.chLines || [];
+              const stKey = "chLines";
+              const cpKey = "chLine";
+              return (
+                <>
+                  <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"4px 0 10px" }}>LEVELS</div>
+                  {lines.map((ln, idx) => {
+                    const isMiddle = idx === 2;
+                    const op = (isMiddle || ln.on) ? 1 : 0.38;
+                    const pe = (isMiddle || ln.on) ? "auto" : "none";
+                    const lvlLabel = isMiddle ? "Middle" : idx === 0 ? "Upper" : idx === lines.length - 1 ? "Lower" : `Level ${idx + 1}`;
+                    return (
+                      <div key={idx} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"6px 0" }}>
+                        <div style={{ minWidth:72 }}>
+                          {!isMiddle
+                            ? TlChk(ln.on, `tlchk-in-${cpKey}-${idx}`, lvlLabel, () => setTlStyle(s => ({ ...s, [stKey]: s[stKey].map((l, i) => i === idx ? { ...l, on: !l.on } : l) })))
+                            : <span style={{ fontSize:12, color:c.ts }}>{lvlLabel}</span>}
+                        </div>
+                        <div style={{ position:"relative", width:68, marginRight:40, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
+                          <input value={ln.value}
+                            onChange={e => { const val = e.target.value; if (/^[0-9.]*$/.test(val)) setTlStyle(s => ({ ...s, [stKey]: s[stKey].map((l, i) => i === idx ? { ...l, value: val } : l) })); }}
+                            onClick={e => e.stopPropagation()}
+                            className="tlr-nospinner"
+                            style={{ width:"100%", height:24, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
+                                     color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
+                          <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
+                            {[[+1,"▲"],[-1,"▼"]].map(([delta, chr], i) => (
+                              <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s => ({ ...s, [stKey]: s[stKey].map((l, j) => j === idx ? { ...l, value: (Math.max(0, +(+l.value + delta * 0.01).toFixed(2))).toFixed(2) } : l) })))}
+                                onMouseEnter={e => e.currentTarget.style.color = c.acL} onMouseLeave={e => e.currentTarget.style.color = c.ts}
+                                style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
+                                         display:"flex", alignItems:"center", justifyContent:"center",
+                                         fontSize:7, lineHeight:1, fontFamily:F, padding:0,
+                                         borderBottom:i === 0 ? `1px solid ${c.br}` : "none", transition:"color 0.1s" }}>
+                                {chr}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              );
+            })()}
+
+            {/* ── INPUT TAB (pitchfork type + levels) ── */}
+            {tlSettTab==="input" && tlSubTool.icon === "pitchfork" && (() => {
+              const pfStyles = ["Original", "Schiff", "Modified Schiff", "Inside"];
+              const pfDk = "pfInputStyle";
+              return (
+                <>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
+                    <span style={{ fontSize:12, color:c.ts }}>Type</span>
+                    <div style={{ position:"relative", marginRight:40 }}>
+                      <div onClick={e => { e.stopPropagation(); setTlStyleDrop(tlStyleDrop === pfDk ? null : pfDk); }}
+                        onMouseEnter={() => setHov(`tl-btn-${pfDk}`)} onMouseLeave={() => setHov(null)}
+                        style={{ height:26, padding:"0 10px", display:"flex", alignItems:"center", gap:5, cursor:"default", position:"relative",
+                                 background:tlStyleDrop === pfDk ? "rgba(74,106,255,0.08)" : hov === `tl-btn-${pfDk}` ? c.hv : "transparent",
+                                 transition:"background 0.12s" }}>
+                        <span style={{ fontSize:12, color:tlStyleDrop === pfDk ? c.acL : c.ts }}>{tlStyle.pitchforkStyle}</span>
+                        <I n="chevDown" s={7} cl={tlStyleDrop === pfDk ? c.acL : c.ts}/>
+                      </div>
+                      {tlStyleDrop === pfDk && (
+                        <div onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}
+                          style={{ position:"absolute", top:"calc(100% + 4px)", right:0, zIndex:10, minWidth:120,
+                                   background:c.sf, border:`1px solid rgba(140,160,255,0.22)`, boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
+                          <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
+                          {pfStyles.map(opt => {
+                            const isA = tlStyle.pitchforkStyle === opt;
+                            const isH = hov === `pfInSty-${opt}`;
+                            return (
+                              <div key={opt} onClick={() => { setTlStyle(s => ({ ...s, pitchforkStyle: opt })); setTlStyleDrop(null); }}
+                                onMouseEnter={() => setHov(`pfInSty-${opt}`)} onMouseLeave={() => setHov(null)}
+                                style={{ padding:"6px 12px", cursor:"default", position:"relative",
+                                         background:isA ? c.acD : isH ? c.hv2 : "transparent", transition:"background 0.1s" }}>
+                                <span style={{ fontSize:13, color:isA ? c.acL : isH ? c.tx : c.ts, fontWeight:isA ? 700 : 500 }}>{opt}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"12px 0 6px" }}>PITCHFORK LEVELS</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", columnGap:16, rowGap:10 }}>
+                    {(tlStyle.pfLevels || []).map((lv, idx) => {
+                      const op = lv.on ? 1 : 0.55;
+                      return (
+                        <div key={idx} style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          <div style={{ width:18, flexShrink:0 }}>
+                            {TlChk(lv.on, `tlchk-pf-in-${idx}`, "", () => setTlStyle(s => ({ ...s, pfLevels: s.pfLevels.map((l, i) => i === idx ? { ...l, on: !l.on } : l) })))}
+                          </div>
+                          <div style={{ position:"relative", width:58, opacity:op, transition:"opacity 0.15s" }}>
+                            <input value={lv.value}
+                              onChange={e => { const val = e.target.value; if (/^[0-9.]*$/.test(val)) setTlStyle(s => ({ ...s, pfLevels: s.pfLevels.map((l, i) => i === idx ? { ...l, value: val } : l) })); }}
+                              onClick={e => e.stopPropagation()}
+                              className="tlr-nospinner"
+                              style={{ width:"100%", height:24, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
+                                       color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
+                            <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
+                              {[[+1,"▲"],[-1,"▼"]].map(([delta, chr], i) => (
+                                <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s => ({ ...s, pfLevels: s.pfLevels.map((l, j) => j === idx ? { ...l, value: (Math.max(0, +(+l.value + delta * 0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/, "") || "0" } : l) })))}
+                                  onMouseEnter={e => e.currentTarget.style.color = c.acL} onMouseLeave={e => e.currentTarget.style.color = c.ts}
+                                  style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
+                                           display:"flex", alignItems:"center", justifyContent:"center",
+                                           fontSize:7, lineHeight:1, fontFamily:F, padding:0,
+                                           borderBottom:i === 0 ? `1px solid ${c.br}` : "none", transition:"color 0.1s" }}>
+                                  {chr}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
+
+            {/* ── INPUT TAB (flat / disjoint channel) ── */}
+            {tlSettTab==="input" && (tlSubTool.icon === "flatChannel" || tlSubTool.icon === "disjointCh") && (
+              <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
+                {TlChk(tlStyle.flatChPrices, "tlchk-flatChPrices-in", "Show Prices", () => setTlStyle(s => ({ ...s, flatChPrices: !s.flatChPrices })))}
+              </div>
+            )}
 
             {/* ── INPUT TAB (RR tool: Long/Short Position) ── */}
             {tlSettTab==="input" && isRRTool && (()=>{
