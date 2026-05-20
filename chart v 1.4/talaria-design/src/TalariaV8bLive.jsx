@@ -10038,8 +10038,7 @@ const TalariaV8bLive = () => {
   }, [tlSettOpen]);
 
   // Mirror the same editingDrawingRef cleanup for the text settings panel.
-  // Without this, the forward bridge permanently stays in clearTool() mode
-  // after the text panel closes (editingDrawingRef is never cleared).
+  // Without this, editingDrawingRef is never cleared after the text panel closes.
   useEffect(() => {
     if (txtSettOpen) return;
     const editing = editingDrawingRef.current;
@@ -10516,8 +10515,26 @@ const TalariaV8bLive = () => {
   // JSON.stringify + setItem of the entire savedToolStyles map, which can
   // stall click handlers when the bridge fires on every dropdown change.
   const saveToolStyleTimer = useRef(null);
-  const collectV9BridgeTargets = () =>
-    collectV9BridgeTargetPairs(editingDrawingRef.current && editingDrawingRef.current.drawing);
+  const collectV9BridgeTargets = () => {
+    const ed = editingDrawingRef.current;
+    // Settings panel (dblclick / gear): only mutate the drawing being edited — not every
+    // selected shape on other tiles. The panel sets editingDrawingRef + crosshair tool.
+    if (ed && ed.drawing) {
+      const targets = [];
+      const seenIds = new Set();
+      enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+        const live = resolveLiveDrawingInDm(dm, ed.drawing);
+        if (!live || !live.style) return;
+        if (live.id != null) {
+          if (seenIds.has(live.id)) return;
+          seenIds.add(live.id);
+        }
+        targets.push({ dm, d: live });
+      });
+      if (targets.length) return targets;
+    }
+    return collectV9BridgeTargetPairs(null);
+  };
   // Pointer-toggle — flush middle-line fields immediately (same targets as full bridge).
   const flushV9MiddleLineToChart = (prevTl, nextMidLineOn) => {
     try {
@@ -10628,7 +10645,6 @@ const TalariaV8bLive = () => {
       dm = ch && ch.drawingManager;
     }
     if (!dm) return;
-    if (editingDrawingRef.current) return;
     const legacyTool = resolveLegacyTool();
     if (!styleBridgeReady.current) {
       styleBridgeReady.current = true;
