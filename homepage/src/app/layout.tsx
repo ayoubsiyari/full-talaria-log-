@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import { LanguageProvider } from "./LanguageProvider";
 import CookieConsent from "./CookieConsent";
+import { JsonLdScript } from "@/components/seo/JsonLdScript";
 import { getSiteUrl } from "@/lib/siteUrl";
 
 const zain = localFont({
@@ -79,6 +80,7 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl" className="dark" suppressHydrationWarning>
       <head>
+        <JsonLdScript />
         <link
           href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400;500;600;700&display=swap"
           rel="stylesheet"

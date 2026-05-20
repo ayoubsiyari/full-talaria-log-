@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { MarketingFaqSection } from "@/components/seo/MarketingFaqSection";
 import PricingClient from "./PricingClient";
 
 export const metadata: Metadata = {
@@ -28,6 +29,7 @@ export default function PricingPage() {
       }
     >
       <PricingClient />
+      <MarketingFaqSection variant="pricing" />
     </Suspense>
   );
 }

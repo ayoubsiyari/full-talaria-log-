@@ -1,6 +1,6 @@
 # SEO improvement plan
 
-**Status:** Tier 1 **implemented** (2026-05-20). Tier 2+ still optional.
+**Status:** Tier 1 + **AI visibility Tier 2** implemented (2026-05-20).
 
 ## Tier 1 (done)
 
@@ -19,13 +19,19 @@
 3. View source on `/` and `/pricing/` — unique `<title>` and meta description
 4. Google Search Console → submit sitemap
 
-## Tier 2 (optional, later)
+## Tier 2 — AI visibility (done)
 
-- JSON-LD (`SoftwareApplication`, `Organization`) on homepage
-- Server wrapper for marketing homepage (`page.tsx`) for richer static copy
+- [x] `public/llms.txt` — plain-text summary for LLM crawlers
+- [x] `JsonLdScript` in root layout — Organization, WebSite, SoftwareApplication, FAQPage
+- [x] `MarketingFaqSection` on `/` (server, via `HomePageClient` slot) and `/pricing/`
+- [x] `HomePageClient.tsx` + server `page.tsx` (FAQ in static HTML at build)
+
+## Tier 3 (optional, later)
+
 - `hreflang` en/ar
-- FAQ section + blog/docs
+- Blog/docs for long-tail keywords
 - Core Web Vitals (fonts, motion lazy-load)
+- Explicit `GPTBot` / `ClaudeBot` allow rules in `robots.ts` if needed
 
 ## Env
 
