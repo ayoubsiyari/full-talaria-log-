@@ -131,10 +131,12 @@ class FibonacciRetracementTool extends BaseDrawing {
 
             const priceAtLevel = getPriceAtLevel(level.value);
             const yAtLevel = scales.yScale(priceAtLevel);
+            if (!Number.isFinite(yAtLevel) || !Number.isFinite(priceAtLevel)) continue;
 
             const nextLevel = this.levels[i + 1];
             if (zonesEnabled && nextLevel && nextLevel.visible) {
                 const nextY = scales.yScale(getPriceAtLevel(nextLevel.value));
+                if (!Number.isFinite(nextY)) continue;
                 this.group.insert('rect', ':first-child')
                     .attr('x', fibX1)
                     .attr('y', Math.min(yAtLevel, nextY))
@@ -384,10 +386,12 @@ class FibonacciExtensionTool extends BaseDrawing {
 
             const priceAtLevel = getPriceAtLevel(level.value);
             const yAtLevel = scales.yScale(priceAtLevel);
+            if (!Number.isFinite(yAtLevel) || !Number.isFinite(priceAtLevel)) continue;
 
             const nextLevel = this.levels[i + 1];
             if (zonesEnabled && nextLevel && nextLevel.visible) {
                 const nextY = scales.yScale(getPriceAtLevel(nextLevel.value));
+                if (!Number.isFinite(nextY)) continue;
                 this.group.insert('rect', ':first-child')
                     .attr('x', fibX1)
                     .attr('y', Math.min(yAtLevel, nextY))

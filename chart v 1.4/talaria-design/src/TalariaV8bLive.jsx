@@ -1461,7 +1461,7 @@ function v9FibLevelsChartToTl(levels) {
 }
 
 function v9TlFibLevelsToChart(levels, fibLineType, fibLineWidth) {
-  if (!Array.isArray(levels)) return [];
+  if (!Array.isArray(levels) || !levels.length) return [];
   const isBold = fibLineType === "bold";
   const dashStr = isBold
     ? ""
@@ -6899,7 +6899,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a25-fib-extension-fix";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a26-fib-tlstyle-merge-fix";
   }, []);
 
   useEffect(() => {
@@ -8737,7 +8737,7 @@ const TalariaV8bLive = () => {
     setCpHex(toHex2(rgb.r)+toHex2(rgb.g)+toHex2(rgb.b));
     const colorVal = cpBuildColor(rgb.r, rgb.g, rgb.b, na);
     if(targetKey === "gotoNewColor") setGotoNewColor(colorVal);
-    else if(targetKey === "tlLineColor") setTlStyle(s=>isFibTool ? {...s, lineColor: colorVal, fibLevels: s.fibLevels.map(l=>({...l, color: colorVal}))} : {...s, lineColor: colorVal});
+    else if(targetKey === "tlLineColor") setTlStyle(s=>isFibTool ? {...s, lineColor: colorVal, fibLevels: (s.fibLevels || []).map(l=>({...l, color: colorVal}))} : {...s, lineColor: colorVal});
     else if(targetKey === "tlBgColor") setTlStyle(s=>({...s, bgColor: colorVal}));
     else if(targetKey === "tlMidLineColor") setTlStyle(s=>({...s, midLineColor: colorVal}));
     else if(targetKey === "tlTextColor") setTlStyle(s=>({...s, textColor: colorVal}));
@@ -8749,7 +8749,7 @@ const TalariaV8bLive = () => {
     else if(targetKey === "regUpperBg") setTlStyle(s=>({...s, regUpperBg: colorVal}));
     else if(targetKey === "regLowerBg") setTlStyle(s=>({...s, regLowerBg: colorVal}));
     else if(targetKey?.startsWith("pfLevel-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("fibLevel-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, fibLevels: s.fibLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
+    else if(targetKey?.startsWith("fibLevel-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, fibLevels: (s.fibLevels || []).map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
     else if(targetKey?.startsWith("fibTzLevel-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, fibTzLevels: s.fibTzLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
     else if(targetKey === "fibTrendColor") setTlStyle(s=>({...s, lineColor: colorVal}));
     else if(targetKey?.startsWith("gannPrice-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, gannPriceLevels: s.gannPriceLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
@@ -10432,7 +10432,7 @@ const TalariaV8bLive = () => {
               const full = v9BuildFullTlStyleFromDrawing(drawing, dm);
               if (full) {
                 br.suppressForwardBridge.current = true;
-                flushSync(() => br.setTlStyle(full));
+                flushSync(() => br.setTlStyle((s) => ({ ...s, ...full })));
               }
             } else {
               const patch = v9TlStylePatchFromDrawing(drawing);
@@ -10690,7 +10690,7 @@ const TalariaV8bLive = () => {
             const full = v9BuildFullTlStyleFromDrawing(live, dm);
             if (full) {
               br.suppressForwardBridge.current = true;
-              flushSync(() => br.setTlStyle(full));
+              flushSync(() => br.setTlStyle((s) => ({ ...s, ...full })));
             }
           } else {
             const patch = v9TlStylePatchFromDrawing(live);
@@ -14053,7 +14053,7 @@ const TalariaV8bLive = () => {
                 </div>
                 {/* Level rows — 2 columns */}
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", columnGap:12, rowGap:8, padding:"18px 0 8px" }}>
-                  {tlStyle.fibLevels.map((lv, idx) => {
+                  {(tlStyle.fibLevels || []).map((lv, idx) => {
                     const op = lv.on ? 1 : 0.55;
                     return (
                       <div key={idx} style={{ display:"flex", alignItems:"center", gap:5 }}>
@@ -18160,13 +18160,19 @@ const TalariaV8bLive = () => {
                     <I n="chevDown" s={7} cl={col}/>
                   </div>
                 : tlSubTool.icon.startsWith("fib")
-                ? <div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
-                    <svg width={20} height={Math.max(8,+tlStyle.fibLineWidth+3)} viewBox={`0 0 20 ${Math.max(8,+tlStyle.fibLineWidth+3)}`}>
-                      <line x1={0} y1={Math.max(8,+tlStyle.fibLineWidth+3)/2} x2={20} y2={Math.max(8,+tlStyle.fibLineWidth+3)/2}
-                        stroke={col} strokeWidth={+tlStyle.fibLineWidth} strokeLinecap="round"/>
+                ? (() => {
+                    const fibLw = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
+                    const fibPreviewH = Math.max(8, fibLw + 3);
+                    return (
+                <div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
+                    <svg width={20} height={fibPreviewH} viewBox={`0 0 20 ${fibPreviewH}`}>
+                      <line x1={0} y1={fibPreviewH / 2} x2={20} y2={fibPreviewH / 2}
+                        stroke={col} strokeWidth={fibLw} strokeLinecap="round"/>
                     </svg>
                     <I n="chevDown" s={7} cl={col}/>
                   </div>
+                    );
+                  })()
                 : <div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
                     <svg width={20} height={Math.max(8,+tlStyle.lineWidth+3)} viewBox={`0 0 20 ${Math.max(8,+tlStyle.lineWidth+3)}`}>
                       <line x1={0} y1={Math.max(8,+tlStyle.lineWidth+3)/2} x2={20} y2={Math.max(8,+tlStyle.lineWidth+3)/2}
