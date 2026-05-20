@@ -1413,6 +1413,47 @@ function v9IsClassicFibRetracementType(t) {
   return t === "fibonacci-retracement" || t === "fibonacci-extension";
 }
 
+/** Keys on `tlStyle` that must always be arrays (`.map` in settings / floating bar). */
+const V9_TLSTYLE_ARRAY_KEYS = [
+  "chLines",
+  "regLines",
+  "fibLevels",
+  "fibFanTimeLevels",
+  "fibTzLevels",
+  "gannPriceLevels",
+  "gannTimeLevels",
+  "gannGridLevels",
+  "gannFanLevels",
+  "gannArcLevels",
+  "pfLevels",
+  "showInfoTypes",
+];
+
+/** Fill missing list fields so a partial `setTlStyle` patch cannot crash React render. */
+function v9EnsureTlStyleArrays(next, prev, legacyType) {
+  const out = { ...next };
+  const fall = prev && typeof prev === "object" ? prev : {};
+  for (const key of V9_TLSTYLE_ARRAY_KEYS) {
+    if (!Array.isArray(out[key])) {
+      out[key] = Array.isArray(fall[key]) ? fall[key].map((x) => ({ ...x })) : [];
+    }
+  }
+  if (legacyType === "fibonacci-extension") {
+    if (!v9FibTlLevelsMatchLegacyType("fibonacci-extension", out.fibLevels)) {
+      out.fibLevels = v9ClassicFibDefaultLevelsTlForLegacy("fibonacci-extension");
+    }
+  } else if (legacyType === "fibonacci-retracement") {
+    if (!v9FibTlLevelsMatchLegacyType("fibonacci-retracement", out.fibLevels)) {
+      out.fibLevels = v9ClassicFibDefaultLevelsTlForLegacy("fibonacci-retracement");
+    }
+  }
+  if (out.fibLineWidth == null || out.fibLineWidth === "") {
+    out.fibLineWidth = fall.fibLineWidth != null ? fall.fibLineWidth : "2";
+  }
+  if (!out.fibLineType) out.fibLineType = fall.fibLineType || "solid";
+  return out;
+}
+
 /** Default V9 price-level rows per classic fib tool (must match `drawing-tools-fibonacci.js`). */
 function v9ClassicFibDefaultLevelsTlForLegacy(legacyType) {
   if (legacyType === "fibonacci-extension") {
@@ -2432,13 +2473,17 @@ function v9BuildFullTlStyleFromDrawing(drawing, dm) {
   const saved = dm && v9NeedsFullTlStyleReplaceForType(drawing.type)
     ? v9MergeHydratePatchFromLegacy(dm, drawing.type)
     : {};
-  return {
-    ...fresh,
-    ...saved,
-    ...patch,
-    ...v9CoordPatchFromDrawing(drawing),
-    ...v9VisibilityPatchFromDrawing(drawing),
-  };
+  return v9EnsureTlStyleArrays(
+    {
+      ...fresh,
+      ...saved,
+      ...patch,
+      ...v9CoordPatchFromDrawing(drawing),
+      ...v9VisibilityPatchFromDrawing(drawing),
+    },
+    null,
+    drawing.type,
+  );
 }
 
 /** When the user switches armed drawing tools, merge chart.js saved defaults into V9 `tlStyle` so the next stroke does not inherit the previous tool's colors/fill. */
@@ -6899,7 +6944,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a26-fib-tlstyle-merge-fix";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a27-fib-tlstyle-arrays-fix";
   }, []);
 
   useEffect(() => {
@@ -10432,14 +10477,22 @@ const TalariaV8bLive = () => {
               const full = v9BuildFullTlStyleFromDrawing(drawing, dm);
               if (full) {
                 br.suppressForwardBridge.current = true;
-                flushSync(() => br.setTlStyle((s) => ({ ...s, ...full })));
+                flushSync(() =>
+                  br.setTlStyle((s) =>
+                    v9EnsureTlStyleArrays({ ...s, ...full }, s, drawing.type),
+                  ),
+                );
               }
             } else {
               const patch = v9TlStylePatchFromDrawing(drawing);
               if (patch) {
                 br.suppressForwardBridge.current = true;
                 if (v9IsClassicFibRetracementType(drawing.type) && patch.fibLevels) {
-                  flushSync(() => br.setTlStyle((s) => ({ ...s, ...patch })));
+                  flushSync(() =>
+                    br.setTlStyle((s) =>
+                      v9EnsureTlStyleArrays({ ...s, ...patch }, s, drawing.type),
+                    ),
+                  );
                 } else {
                   br.setTlStyle((s) => ({ ...s, ...patch }));
                 }
@@ -10690,14 +10743,22 @@ const TalariaV8bLive = () => {
             const full = v9BuildFullTlStyleFromDrawing(live, dm);
             if (full) {
               br.suppressForwardBridge.current = true;
-              flushSync(() => br.setTlStyle((s) => ({ ...s, ...full })));
+              flushSync(() =>
+                br.setTlStyle((s) =>
+                  v9EnsureTlStyleArrays({ ...s, ...full }, s, live.type),
+                ),
+              );
             }
           } else {
             const patch = v9TlStylePatchFromDrawing(live);
             if (patch) {
               br.suppressForwardBridge.current = true;
               if (v9IsClassicFibRetracementType(live.type) && patch.fibLevels) {
-                flushSync(() => br.setTlStyle((s) => ({ ...s, ...patch })));
+                flushSync(() =>
+                  br.setTlStyle((s) =>
+                    v9EnsureTlStyleArrays({ ...s, ...patch }, s, live.type),
+                  ),
+                );
               } else {
                 br.setTlStyle((s) => ({ ...s, ...patch }));
               }
@@ -10944,7 +11005,11 @@ const TalariaV8bLive = () => {
     const mergePatch = legacy && dm ? v9MergeHydratePatchFromLegacy(dm, legacy) : {};
     flushSync(() => {
       setTlStyle((prev) => {
-        const next = { ...prev, ...freshDefaults, ...mergePatch };
+        const next = v9EnsureTlStyleArrays(
+          { ...prev, ...freshDefaults, ...mergePatch },
+          prev,
+          legacy,
+        );
         v9PushArmedDrawStyle(legacy, next);
         return next;
       });
@@ -12910,7 +12975,7 @@ const TalariaV8bLive = () => {
                   {/* ── Channel / Regression lines rows ── */}
                   {isChannel && (()=>{
                     const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
-                    const lines = isRegCh ? tlStyle.regLines : tlStyle.chLines;
+                    const lines = (isRegCh ? tlStyle.regLines : tlStyle.chLines) || [];
                     const stKey = isRegCh ? "regLines" : "chLines";
                     const cpKey = isRegCh ? "regLine" : "chLine";
                     return <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, rowGap:0, alignItems:"end" }}>
@@ -13765,12 +13830,12 @@ const TalariaV8bLive = () => {
                 const mkLevelsSection = (title, stateKey, swatchPrefix, hkPrefix, addHk, resetHk, defaultLevels) => <>
                   <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"8px 0 10px" }}>{title}</div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", columnGap:12, rowGap:8, padding:"0 0 8px" }}>
-                    {tlStyle[stateKey].map((lv, idx) => {
+                    {(Array.isArray(tlStyle[stateKey]) ? tlStyle[stateKey] : defaultLevels).map((lv, idx) => {
                       const op = lv.on ? 1 : 0.55;
                       return (
                         <div key={idx} style={{ display:"flex", alignItems:"center", gap:5 }}>
                           <div style={{ width:18, flexShrink:0 }}>
-                            {TlChk(lv.on, `tlchk-${hkPrefix}-${idx}`, "", ()=>setTlStyle(s=>({...s, [stateKey]: s[stateKey].map((l,i)=>i===idx?{...l,on:!l.on}:l)})))}
+                            {TlChk(lv.on, `tlchk-${hkPrefix}-${idx}`, "", ()=>setTlStyle(s=>({...s, [stateKey]: (s[stateKey] || defaultLevels).map((l,i)=>i===idx?{...l,on:!l.on}:l)})))}
                           </div>
                           <div style={{ position:"relative", width:54, opacity:op, transition:"opacity 0.15s" }}>
                             <input value={lv.value}
@@ -14025,10 +14090,16 @@ const TalariaV8bLive = () => {
                       style={{ height:26, padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
                                background:tlStyleDrop==="fibLnWidth"?"rgba(74,106,255,0.08)":hov==="tl-btn-fibLnWidth"?c.hv:"transparent",
                                transition:"background 0.12s" }}>
-                      <svg width={22} height={Math.max(8,+tlStyle.fibLineWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.fibLineWidth+4)}`}>
-                        <line x1={0} y1={Math.max(8,+tlStyle.fibLineWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.fibLineWidth+4)/2}
-                          stroke={tlStyleDrop==="fibLnWidth"?c.acL:c.ts} strokeWidth={+tlStyle.fibLineWidth} strokeLinecap="round"/>
+                      {(() => {
+                        const fibLw = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
+                        const fibH = Math.max(8, fibLw + 4);
+                        return (
+                      <svg width={22} height={fibH} viewBox={`0 0 22 ${fibH}`}>
+                        <line x1={0} y1={fibH / 2} x2={22} y2={fibH / 2}
+                          stroke={tlStyleDrop==="fibLnWidth"?c.acL:c.ts} strokeWidth={fibLw} strokeLinecap="round"/>
                       </svg>
+                        );
+                      })()}
                       <I n="chevDown" s={7} cl={tlStyleDrop==="fibLnWidth"?c.acL:c.ts}/>
                       {tlStyleDrop==="fibLnWidth"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                     </div>
@@ -14248,7 +14319,7 @@ const TalariaV8bLive = () => {
                 <>
                   <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"14px 0 8px" }}>{label}</div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", columnGap:12, rowGap:8 }}>
-                    {tlStyle[levelKey].map((_, idx) => mkLevelRow(levelKey, idx, swatchPrefix))}
+                    {(Array.isArray(tlStyle[levelKey]) ? tlStyle[levelKey] : addDefault).map((_, idx) => mkLevelRow(levelKey, idx, swatchPrefix))}
                   </div>
                   <div style={{ display:"flex", gap:8, padding:"8px 0" }}>
                     <div onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s,[levelKey]:[...s[levelKey],{on:true,value:(s[levelKey].length*0.1).toFixed(3).replace(/\.?0+$/,""),color:"#787B86"}]}));}}
