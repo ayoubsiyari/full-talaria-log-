@@ -1734,23 +1734,6 @@ class DrawingToolsManager {
         }
     }
 
-    /**
-     * Iframe panels: parent React rail still shows the draw tool after clearTool().
-     * Post a one-way message so TalariaV8bLive can switch to crosshair.
-     */
-    _notifyV9MultichartToolCleared() {
-        try {
-            if (typeof window === 'undefined' || !window.parent || window.parent === window) return;
-            const params = new URLSearchParams(window.location.search);
-            const panelId = params.get('panelId') || params.get('id') || null;
-            window.parent.postMessage({
-                type: 'v9-drawing-tool-cleared',
-                source: panelId,
-            }, '*');
-            window.__v9RailLegacyTool = null;
-        } catch (_) {}
-    }
-
     _cancelFreehandPreviewRaf() {
         if (this._freehandPreviewRaf) {
             cancelAnimationFrame(this._freehandPreviewRaf);
@@ -1964,34 +1947,6 @@ class DrawingToolsManager {
     }
 
     /**
-     * Multichart: first click on a newly focused tile selects only (TradingView-style).
-     * @returns {boolean} true if this mousedown was consumed as panel-select only
-     */
-    _consumeV9MultichartSelectClick() {
-        try {
-            if (typeof window === 'undefined') return false;
-            const pending = window.__v9MultichartSelectBeforeDrawPanelId;
-            if (!pending) return false;
-            let myPanelId = null;
-            if (window.parent && window.parent !== window) {
-                const params = new URLSearchParams(window.location.search);
-                myPanelId = params.get('panelId') || params.get('id');
-            } else {
-                const grid = window.__multichartGrid;
-                if (grid && grid.hostPanelId != null && this.chart === window.chart) {
-                    myPanelId = grid.hostPanelId;
-                }
-            }
-            if (!myPanelId || String(myPanelId) !== String(pending)) return false;
-            window.__v9MultichartSelectBeforeDrawPanelId = null;
-            if (this.currentTool) this.clearTool(true);
-            return true;
-        } catch (_) {
-            return false;
-        }
-    }
-
-    /**
      * Handle mouse down event
      */
     handleMouseDown(event) {
@@ -2000,20 +1955,8 @@ class DrawingToolsManager {
             return;
         }
 
-        if (this._consumeV9MultichartSelectClick()) {
-            return;
-        }
-
         if (this.currentTool && this.isRectSelecting) {
             this.cancelRectangularSelection();
-        }
-
-        // Multichart V9: adopt rail tool on second mousedown (first click selects panel only).
-        if (!this.currentTool && typeof window !== 'undefined' && window.__v9RailLegacyTool) {
-            const railTool = window.__v9RailLegacyTool;
-            if (this.toolRegistry[railTool] && typeof this.setTool === 'function') {
-                this.setTool(railTool, true);
-            }
         }
 
         // First-click draw in multi-panel mode:
@@ -4106,7 +4049,6 @@ class DrawingToolsManager {
             
             // Clear the tool so button deactivates
             this.clearTool();
-            this._notifyV9MultichartToolCleared();
             
             // Don't save to localStorage yet
             return;
@@ -4225,9 +4167,6 @@ class DrawingToolsManager {
 
         if (!shouldKeepTool) {
             this.clearTool();
-            // Stroke finished on an iframe: notify parent once (not on every clearTool —
-            // multichart sync clears background panels and must not reset the V9 rail).
-            this._notifyV9MultichartToolCleared();
             // Update UI - remove active from all tools except the persistent cursor button
             document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(b => b.classList.remove('active'));

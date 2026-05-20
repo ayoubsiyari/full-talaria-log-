@@ -264,8 +264,10 @@ export type ApiTemplateRecord = {
   difficulty?: string | null;
   clone_count?: number;
   likes_count?: number;
-  shares_count?: number;
+  copies_count?: number;
   liked_by_me?: boolean;
+  is_author?: boolean;
+  can_copy?: boolean;
   created_at?: string | null;
   status?: string;
   creator?: { name?: string; public_id?: string | null } | null;
@@ -329,9 +331,11 @@ export function templateToCommunityRow(t: ApiTemplateRecord): Record<string, unk
     complexity: showDetails && typeof v9.complexity === "string" ? v9.complexity : "Medium",
     saves: t.clone_count ?? 0,
     likeCount: t.likes_count ?? 0,
-    shareCount: t.shares_count ?? 0,
+    copyCount: t.copies_count ?? t.clone_count ?? 0,
     likedByMe: !!t.liked_by_me,
     postedAt: t.created_at || null,
+    isAuthor: !!t.is_author,
+    canCopy: t.can_copy !== false && t.allow_clone !== false,
     isMine: false,
     templatePreview: true,
     template: t,

@@ -560,12 +560,6 @@
                     else dmc.currentTool = null;
                     return;
                 }
-                case 'setV9RailLegacyTool': {
-                    var raw = args.tool == null ? '' : String(args.tool);
-                    var low = raw.toLowerCase();
-                    global.__v9RailLegacyTool = raw && low !== 'crosshair' && low !== 'cursor' ? raw : null;
-                    return;
-                }
 
                 // ─── indicators ────────────────────────────────────────
                 //
@@ -1288,27 +1282,7 @@
     // the first click would then miss starting a stroke. Letting the
     // current event finish first fixes "pick tool → first click doesn't draw".
     var focusPending = false;
-    // Synchronous (same event as chart mousedown): parent must know this tile is
-    // "select only" before drawing-tools-manager runs — iframe clicks do not hit
-    // the parent's cell onMouseDownCapture.
-    function syncParentSelectBeforeDrawFlag() {
-        try {
-            var w = global.parent;
-            if (!w || w === global) return;
-            var grid = w.__multichartGrid;
-            var prev = (grid && typeof grid.getFocusedPanelId === 'function')
-                ? grid.getFocusedPanelId()
-                : null;
-            if (prev === panelId) return;
-            if (w.__v9RailLegacyTool) {
-                w.__v9MultichartSelectBeforeDrawPanelId = panelId;
-            } else {
-                w.__v9MultichartSelectBeforeDrawPanelId = null;
-            }
-        } catch (_) {}
-    }
     function notifyFocus() {
-        syncParentSelectBeforeDrawFlag();
         if (focusPending) return;
         focusPending = true;
         setTimeout(function () {

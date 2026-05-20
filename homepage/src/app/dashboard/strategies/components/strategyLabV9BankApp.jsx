@@ -56,7 +56,7 @@ function formatPostedAt(iso) {
 const COMMUNITY_SORT_OPTIONS = [
   { k: "postedAt", l: "Newest" },
   { k: "likeCount", l: "Most Liked" },
-  { k: "shareCount", l: "Most Shared" },
+  { k: "copyCount", l: "Most Copied" },
   { k: "name", l: "Name" },
 ];
 
@@ -151,7 +151,6 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
     cloneCommunityTemplate,
     deleteCommunityTemplate,
     toggleTemplateLike,
-    recordTemplateShare,
   } = useStrategyLabV9Data();
 
   const strategyReviewSessions = useMemo(() => reviewSessions || [], [reviewSessions]);
@@ -329,34 +328,22 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
 
   /* ─── Strategy card (shared) ─── */
   const handleCommunityLike = async (strat) => {
-    if (strat.templateId == null) return;
+    if (strat.isAuthor || strat.templateId == null) return;
     try {
       await toggleTemplateLike(Number(strat.templateId), !!strat.likedByMe);
     } catch (e) {
       window.alert(e instanceof Error ? e.message : "Could not update like");
     }
   };
-  const handleCommunityShare = async (strat) => {
-    if (strat.templateId == null) return;
-    const tid = Number(strat.templateId);
-    const url = `${window.location.origin}/dashboard/strategies/?tpl=${tid}`;
-    const text = `Check out "${strat.name}" on Talaria Community${strat.authorPublicId ? ` (${strat.authorPublicId})` : ""}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: String(strat.name || "Strategy"), text, url });
-      } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(`${text}\n${url}`);
-        window.alert("Link copied to clipboard");
-      }
-      await recordTemplateShare(tid);
-    } catch (e) {
-      if (e?.name !== "AbortError") {
-        window.alert(e instanceof Error ? e.message : "Share failed");
-      }
+  const handleCommunityCopy = async (strat) => {
+    if (strat.isAuthor) {
+      window.alert("You cannot copy your own community strategy.");
+      return;
     }
+    await duplicateStrategy(strat);
   };
 
-  const StratCard = ({strat,isMine,inSavedTab,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onPerf,onUseTemplate,onLike,onShare,showSocial}) => {
+  const StratCard = ({strat,isMine,inSavedTab,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onPerf,onUseTemplate,onLike,onCopy,showSocial}) => {
     const isH=stratCardHov===strat.id;
     const cardIcon = strat.icon || strat.template?.icon || "◎";
     const marketItems = (strat.markets||[]).length
@@ -397,10 +384,12 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
       </div>
     );
     const cardH = showSocial ? 372 : 342;
+    const isAuthorPost = !!strat.isAuthor;
     const liked = !!strat.likedByMe;
     const likeCount = strat.likeCount ?? 0;
-    const shareCount = strat.shareCount ?? 0;
+    const copyCount = strat.copyCount ?? 0;
     const postedLabel = formatPostedAt(strat.postedAt);
+    const canCopyPost = !isAuthorPost && strat.canCopy !== false && strat.allowClone !== false;
     return (
       <div onMouseEnter={()=>setStratCardHov(strat.id)} onMouseLeave={()=>setStratCardHov(null)}
         onDoubleClick={openEditableStrategy}
@@ -415,6 +404,9 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
               <div style={{fontSize:14,fontWeight:850,color:c.tx,lineHeight:1.12,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{strat.name}</div>
               {!isMine && strat.authorPublicId ? (
                 <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3,flexWrap:"wrap"}}>
+                  {strat.isAuthor ? (
+                    <span style={{fontSize:7,fontWeight:850,color:c.gold,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F}}>Your post</span>
+                  ) : null}
                   <div style={{fontSize:8,fontWeight:750,color:c.acL,fontFamily:F,letterSpacing:"0.04em"}} title={`Posted by ${strat.author||"Community"}`}>
                     {strat.authorPublicId}
                   </div>
@@ -477,21 +469,21 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
         {showSocial ? (
           <div onClick={e=>e.stopPropagation()} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,height:30,flexShrink:0,padding:"0 14px",borderTop:`1px solid ${c.brH}`,background:"rgba(0,0,0,0.12)"}}>
             <div style={{display:"flex",alignItems:"center",gap:12}}>
-              <div role="button" tabIndex={0} aria-label={liked?"Unlike":"Like"} title={liked?"Unlike":"Like"}
-                onClick={()=>onLike&&onLike(strat)}
-                style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"default",color:liked?c.rd:c.ts,fontFamily:F,transition:"color 0.12s"}}
-                onMouseEnter={e=>{e.currentTarget.style.color=liked?c.rd:c.tx;}}
-                onMouseLeave={e=>{e.currentTarget.style.color=liked?c.rd:c.ts;}}>
-                <svg width={14} height={14} viewBox="0 0 24 24" fill={liked?"currentColor":"none"}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>
+              <div role={isAuthorPost?undefined:"button"} tabIndex={isAuthorPost?-1:0} aria-label={isAuthorPost?"Likes":(liked?"Unlike":"Like")} title={isAuthorPost?"Likes from other members":(liked?"Unlike":"Like")}
+                onClick={isAuthorPost?undefined:()=>onLike&&onLike(strat)}
+                style={{display:"inline-flex",alignItems:"center",gap:5,cursor:isAuthorPost?"default":"default",color:liked&&!isAuthorPost?c.rd:c.ts,fontFamily:F,transition:"color 0.12s",opacity:isAuthorPost?0.85:1}}
+                onMouseEnter={isAuthorPost?undefined:e=>{e.currentTarget.style.color=liked?c.rd:c.tx;}}
+                onMouseLeave={isAuthorPost?undefined:e=>{e.currentTarget.style.color=liked?c.rd:c.ts;}}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill={liked&&!isAuthorPost?"currentColor":"none"}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>
                 <span style={{fontSize:10,fontWeight:800,fontVariantNumeric:"tabular-nums"}}>{likeCount}</span>
               </div>
-              <div role="button" tabIndex={0} aria-label="Share" title="Share"
-                onClick={()=>onShare&&onShare(strat)}
-                style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"default",color:c.ts,fontFamily:F,transition:"color 0.12s"}}
-                onMouseEnter={e=>{e.currentTarget.style.color=c.acL;}}
-                onMouseLeave={e=>{e.currentTarget.style.color=c.ts;}}>
-                <svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                <span style={{fontSize:10,fontWeight:800,fontVariantNumeric:"tabular-nums"}}>{shareCount}</span>
+              <div role={canCopyPost?"button":undefined} tabIndex={canCopyPost?0:-1} aria-label={canCopyPost?"Copy to My Strategies":"Copies"} title={isAuthorPost?"Copies by other members":(canCopyPost?"Copy to My Strategies":"Copy disabled")}
+                onClick={canCopyPost?()=>onCopy&&onCopy(strat):undefined}
+                style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"default",color:canCopyPost?c.ts:c.tm,fontFamily:F,transition:"color 0.12s",opacity:isAuthorPost?0.85:1}}
+                onMouseEnter={canCopyPost?e=>{e.currentTarget.style.color=c.acL;}:undefined}
+                onMouseLeave={canCopyPost?e=>{e.currentTarget.style.color=c.ts;}:undefined}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
+                <span style={{fontSize:10,fontWeight:800,fontVariantNumeric:"tabular-nums"}}>{copyCount}</span>
               </div>
             </div>
             {postedLabel ? (
@@ -653,7 +645,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
       </div>
     );
   };
-  const StrategyRows = ({items,isMine=false,inSavedTab=false,showPublicId=false,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onPerf,onUseTemplate,onLike,onShare}) => {
+  const StrategyRows = ({items,isMine=false,inSavedTab=false,showPublicId=false,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onPerf,onUseTemplate,onLike,onCopy}) => {
     const rowCols = showPublicId ? STRAT_ROW_COLS_COMMUNITY : STRAT_ROW_COLS;
     const headers = showPublicId
       ? ["Strategy","Public ID","Description","Strategy Tags","Markets","Time Frames","Backtesting Results",""]
@@ -697,13 +689,13 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                 {showPublicId ? (
                   <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap"}}>
                     <span style={{fontSize:8,fontWeight:700,color:c.tm,fontFamily:F}}>{formatPostedAt(strat.postedAt)}</span>
-                    <span role="button" tabIndex={0} onClick={e=>{e.stopPropagation();onLike&&onLike(strat);}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:8,fontWeight:800,color:strat.likedByMe?c.rd:c.tm,fontFamily:F,cursor:"default"}}>
-                      <svg width={10} height={10} viewBox="0 0 24 24" fill={strat.likedByMe?"currentColor":"none"}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" stroke="currentColor" strokeWidth="2"/></svg>
+                    <span role={strat.isAuthor?undefined:"button"} tabIndex={strat.isAuthor?-1:0} onClick={strat.isAuthor?undefined:e=>{e.stopPropagation();onLike&&onLike(strat);}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:8,fontWeight:800,color:strat.likedByMe&&!strat.isAuthor?c.rd:c.tm,fontFamily:F,cursor:"default"}}>
+                      <svg width={10} height={10} viewBox="0 0 24 24" fill={strat.likedByMe&&!strat.isAuthor?"currentColor":"none"}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" stroke="currentColor" strokeWidth="2"/></svg>
                       {strat.likeCount ?? 0}
                     </span>
-                    <span role="button" tabIndex={0} onClick={e=>{e.stopPropagation();onShare&&onShare(strat);}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:8,fontWeight:800,color:c.tm,fontFamily:F,cursor:"default"}}>
-                      <svg width={10} height={10} viewBox="0 0 24 24" fill="none"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                      {strat.shareCount ?? 0}
+                    <span role={strat.isAuthor||strat.canCopy===false?undefined:"button"} tabIndex={strat.isAuthor||strat.canCopy===false?-1:0} onClick={strat.isAuthor||strat.canCopy===false?undefined:e=>{e.stopPropagation();onCopy&&onCopy(strat);}} style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:8,fontWeight:800,color:c.tm,fontFamily:F,cursor:"default"}}>
+                      <svg width={10} height={10} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.8"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                      {strat.copyCount ?? 0}
                     </span>
                   </div>
                 ) : null}
@@ -901,7 +893,11 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const duplicateStrategy = async (source) => {
     if (!source) return;
     if (source.templatePreview && source.templateId) {
-      if (source.allowClone === false) {
+      if (source.isAuthor) {
+        window.alert("You cannot copy your own community strategy.");
+        return;
+      }
+      if (source.allowClone === false || source.canCopy === false) {
         window.alert("The author disabled copying for this strategy.");
         return;
       }
@@ -1307,7 +1303,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                   isSaved={id=>savedCommunityIds.has(id)}
                   onSave={s=>saveCommunity(s)}
                   onLike={handleCommunityLike}
-                  onShare={handleCommunityShare}/>
+                  onCopy={handleCommunityCopy}/>
               ):(
                 <div style={{width:1288,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
                   {filteredCommunity.map(strat=>(
@@ -1315,7 +1311,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
                       isSaved={savedCommunityIds.has(strat.id)}
                       onSave={s=>saveCommunity(s)}
                       onLike={handleCommunityLike}
-                      onShare={handleCommunityShare}/>
+                      onCopy={handleCommunityCopy}/>
                   ))}
                 </div>
               )
@@ -1336,7 +1332,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
         const isSavedMenu=!!stratActMenu.inSavedTab;
         const isSavedNow=savedCommunityIds.has(ms.id);
         const menuW=126;
-        const communityMenuH=isCommunityView?(isDashboardAdmin?78:52):52;
+        const communityMenuH=isCommunityView?(isDashboardAdmin?(ms.isAuthor?52:78):(ms.isAuthor?40:52)):52;
         const menuH=isMineMenu?158:isCommunityView?communityMenuH:isSavedMenu?52:104;
         const vpW=window.innerWidth/Z, vpH=window.innerHeight/Z;
         const menuLeft=Math.max(8,Math.min(stratActMenu.x-menuW,vpW-menuW-8));
@@ -1366,7 +1362,9 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
         const runDuplicateStrategy=()=>{ void duplicateStrategy(ms); };
         const deleteStrategy=()=>deleteStrategyFromBank(ms);
         const removeFromCommunity=()=>deleteCommunityFromBank(ms);
-        const communityCopyAction=ms.allowClone === false
+        const communityCopyAction=ms.isAuthor
+          ? null
+          : ms.allowClone === false || ms.canCopy === false
           ? {label:"Copy disabled",handler:()=>window.alert("The author disabled copying for this strategy."),col:c.tm,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>}
           : {label:"Copy to My Strategies",handler:runDuplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>};
         const actions=isMineMenu?[
@@ -1378,7 +1376,7 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
           {label:"Copy",handler:runDuplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
           {label:"Delete",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
         ]:isCommunityView?[
-          communityCopyAction,
+          ...(communityCopyAction?[communityCopyAction]:[]),
           {label:isSavedNow?"Saved":"Save",handler:()=>saveCommunity(ms),col:isSavedNow?c.acL:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill={isSavedNow?c.acL:"none"}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7"/></svg>},
           ...(isDashboardAdmin?[
             {label:"divider"},

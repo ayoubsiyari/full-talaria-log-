@@ -3,8 +3,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
-from sqlalchemy import func
-
 from models import db, StrategyTemplate, Strategy, User, TemplateLike
 from routes.strategy_routes import _strategy_dict
 from schemas.strategy_lab import merge_definition_from_legacy, default_strategy_definition
@@ -55,50 +53,58 @@ def _template_publish_settings(t):
     return dict(DEFAULT_PUBLISH_SETTINGS)
 
 
-def _engagement_for_template(template_id, viewer_id=None):
-    likes_count = (
-        TemplateLike.query.filter_by(template_id=template_id).count()
+def _viewer_is_author(template, viewer_id):
+    return bool(
+        viewer_id
+        and template.creator_user_id
+        and int(viewer_id) == int(template.creator_user_id),
     )
+
+
+def _likes_count(template_id, creator_user_id=None):
+    q = TemplateLike.query.filter_by(template_id=template_id)
+    if creator_user_id:
+        q = q.filter(TemplateLike.user_id != creator_user_id)
+    return q.count()
+
+
+def _copies_count(template):
+    """Public copy count — only non-author clones increment clone_count."""
+    return int(getattr(template, 'clone_count', 0) or 0)
+
+
+def _engagement_for_template(template, viewer_id=None):
+    creator_id = template.creator_user_id
+    likes_count = _likes_count(template.id, creator_id)
     liked_by_me = False
-    if viewer_id:
+    if viewer_id and not _viewer_is_author(template, viewer_id):
         liked_by_me = (
             TemplateLike.query.filter_by(
-                template_id=template_id, user_id=viewer_id,
+                template_id=template.id, user_id=viewer_id,
             ).first()
             is not None
         )
-    tpl = StrategyTemplate.query.get(template_id)
-    shares_count = int(getattr(tpl, 'share_count', 0) or 0) if tpl else 0
-    return likes_count, shares_count, liked_by_me
+    return likes_count, _copies_count(template), liked_by_me
 
 
-def _engagement_map(template_ids, viewer_id=None):
-    """Batch like counts for list endpoints."""
-    if not template_ids:
-        return {}
-    rows = (
-        db.session.query(TemplateLike.template_id, func.count(TemplateLike.id))
-        .filter(TemplateLike.template_id.in_(template_ids))
-        .group_by(TemplateLike.template_id)
-        .all()
-    )
-    like_counts = {tid: int(cnt) for tid, cnt in rows}
-    liked_ids = set()
-    if viewer_id:
-        liked_rows = (
-            TemplateLike.query.filter(
-                TemplateLike.template_id.in_(template_ids),
-                TemplateLike.user_id == viewer_id,
-            )
-            .with_entities(TemplateLike.template_id)
-            .all()
-        )
-        liked_ids = {r[0] for r in liked_rows}
+def _engagement_map(templates, viewer_id=None):
+    """Batch engagement for list endpoints (author excluded from like/copy actions)."""
     out = {}
-    for tid in template_ids:
-        out[tid] = {
-            'likes_count': like_counts.get(tid, 0),
-            'liked_by_me': tid in liked_ids,
+    for t in templates:
+        is_author = _viewer_is_author(t, viewer_id)
+        liked_by_me = False
+        if viewer_id and not is_author:
+            liked_by_me = (
+                TemplateLike.query.filter_by(
+                    template_id=t.id, user_id=viewer_id,
+                ).first()
+                is not None
+            )
+        out[t.id] = {
+            'likes_count': _likes_count(t.id, t.creator_user_id),
+            'liked_by_me': liked_by_me,
+            'copies_count': _copies_count(t),
+            'is_author': is_author,
         }
     return out
 
@@ -116,12 +122,15 @@ def _tpl_dict(t, strategy_snapshot=None, viewer_id=None, engagement=None):
         if strategy_snapshot is not None
         else apply_publish_filter(t.definition, settings)
     )
+    is_author = _viewer_is_author(t, viewer_id)
     if engagement is None:
-        likes_count, shares_count, liked_by_me = _engagement_for_template(t.id, viewer_id)
+        likes_count, copies_count, liked_by_me = _engagement_for_template(t, viewer_id)
     else:
         likes_count = engagement.get('likes_count', 0)
         liked_by_me = engagement.get('liked_by_me', False)
-        shares_count = int(getattr(t, 'share_count', 0) or 0)
+        copies_count = engagement.get('copies_count', _copies_count(t))
+        is_author = engagement.get('is_author', is_author)
+    allow_clone = bool(settings.get('allow_clone', True)) and not is_author
     out = {
         'id': t.id,
         'title': t.title,
@@ -130,15 +139,17 @@ def _tpl_dict(t, strategy_snapshot=None, viewer_id=None, engagement=None):
         'template_type': t.template_type,
         'status': t.status,
         'clone_count': t.clone_count,
+        'copies_count': copies_count,
         'likes_count': likes_count,
-        'shares_count': shares_count,
         'liked_by_me': liked_by_me,
+        'is_author': is_author,
+        'can_copy': allow_clone,
         'rating_avg': round(rating_avg, 2) if rating_avg is not None else None,
         'rating_count': t.rating_count,
         'created_at': t.created_at.isoformat() if t.created_at else None,
         'creator': creator,
         'publish_settings': settings,
-        'allow_clone': bool(settings.get('allow_clone', True)),
+        'allow_clone': allow_clone,
         'backtest_snapshot': public_backtest_snapshot(t),
         'definition': public_defn,
     }
@@ -146,8 +157,7 @@ def _tpl_dict(t, strategy_snapshot=None, viewer_id=None, engagement=None):
 
 
 def _templates_payload(items, viewer_id=None):
-    ids = [t.id for t in items]
-    eng = _engagement_map(ids, viewer_id)
+    eng = _engagement_map(items, viewer_id)
     return [_tpl_dict(t, viewer_id=viewer_id, engagement=eng.get(t.id)) for t in items]
 
 
@@ -211,6 +221,11 @@ def like_template(template_id):
         t = StrategyTemplate.query.filter_by(id=template_id, status='published').first()
         if not t:
             return jsonify({'success': False, 'error': 'Not found'}), 404
+        if _viewer_is_author(t, user_id):
+            return jsonify({
+                'success': False,
+                'error': 'You cannot like your own community strategy',
+            }), 403
         existing = TemplateLike.query.filter_by(
             template_id=template_id, user_id=user_id,
         ).first()
@@ -224,30 +239,11 @@ def like_template(template_id):
                 db.session.delete(existing)
             db.session.commit()
             liked = False
-        likes_count = TemplateLike.query.filter_by(template_id=template_id).count()
+        likes_count = _likes_count(template_id, t.creator_user_id)
         return jsonify({
             'success': True,
             'liked': liked,
             'likes_count': likes_count,
-        }), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@template_bp.route('/templates/<int:template_id>/share', methods=['POST'])
-@jwt_required()
-def share_template(template_id):
-    """Record a share action (link copy / native share)."""
-    try:
-        t = StrategyTemplate.query.filter_by(id=template_id, status='published').first()
-        if not t:
-            return jsonify({'success': False, 'error': 'Not found'}), 404
-        t.share_count = int(getattr(t, 'share_count', 0) or 0) + 1
-        db.session.commit()
-        return jsonify({
-            'success': True,
-            'shares_count': t.share_count,
         }), 200
     except Exception as e:
         db.session.rollback()
@@ -262,6 +258,11 @@ def clone_template(template_id):
         t = StrategyTemplate.query.filter_by(id=template_id, status='published').first()
         if not t:
             return jsonify({'success': False, 'error': 'Not found'}), 404
+        if _viewer_is_author(t, user_id):
+            return jsonify({
+                'success': False,
+                'error': 'You cannot copy your own community strategy',
+            }), 403
         settings = _template_publish_settings(t)
         if not settings.get('allow_clone', True):
             return jsonify({
@@ -284,7 +285,11 @@ def clone_template(template_id):
         db.session.add(new_s)
         t.clone_count = (t.clone_count or 0) + 1
         db.session.commit()
-        return jsonify({'success': True, 'strategy': _strategy_dict(new_s)}), 201
+        return jsonify({
+            'success': True,
+            'strategy': _strategy_dict(new_s),
+            'copies_count': _copies_count(t),
+        }), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500

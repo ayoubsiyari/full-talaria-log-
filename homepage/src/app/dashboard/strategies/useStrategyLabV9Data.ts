@@ -388,30 +388,6 @@ export function useStrategyLabV9Data() {
     [patchCommunityTemplate],
   );
 
-  const recordTemplateShare = useCallback(
-    async (templateId: number) => {
-      await syncJournalTokenFromSession();
-      const res = await fetch(`${JOURNAL_API_BASE}/templates/${templateId}/share`, {
-        method: "POST",
-        credentials: "include",
-        headers: journalAuthHeaders(),
-      });
-      const data = (await parseJournalJsonResponse<{
-        success?: boolean;
-        error?: string;
-        shares_count?: number;
-      }>(res));
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || `Share failed (${res.status})`);
-      }
-      patchCommunityTemplate(templateId, {
-        shareCount: data.shares_count ?? 0,
-      });
-      return data.shares_count ?? 0;
-    },
-    [patchCommunityTemplate],
-  );
-
   const deleteCommunityTemplate = useCallback(
     async (templateId: number): Promise<void> => {
       await syncJournalTokenFromSession();
@@ -433,7 +409,7 @@ export function useStrategyLabV9Data() {
   );
 
   const cloneCommunityTemplate = useCallback(
-    async (templateId: number, name?: string): Promise<void> => {
+    async (templateId: number, name?: string): Promise<number> => {
       await syncJournalTokenFromSession();
       const res = await fetch(`${JOURNAL_API_BASE}/templates/${templateId}/clone`, {
         method: "POST",
@@ -444,13 +420,17 @@ export function useStrategyLabV9Data() {
       const data = (await parseJournalJsonResponse<{
         success?: boolean;
         error?: string;
+        copies_count?: number;
       }>(res));
       if (!res.ok || !data.success) {
         throw new Error(data.error || `Copy failed (${res.status})`);
       }
+      const copies = data.copies_count ?? 0;
+      patchCommunityTemplate(templateId, { copyCount: copies });
       await loadStrategies();
+      return copies;
     },
-    [loadStrategies],
+    [loadStrategies, patchCommunityTemplate],
   );
 
   return {
@@ -472,7 +452,6 @@ export function useStrategyLabV9Data() {
     submitStrategyToCommunity,
     deleteCommunityTemplate,
     toggleTemplateLike,
-    recordTemplateShare,
     cloneCommunityTemplate,
     persistStrategy,
     deleteStrategyRemote,
