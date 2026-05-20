@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import { LanguageProvider } from "./LanguageProvider";
 import CookieConsent from "./CookieConsent";
+import { getSiteUrl } from "@/lib/siteUrl";
 
 const zain = localFont({
   variable: "--font-zain",
@@ -19,19 +20,15 @@ const zain = localFont({
   ],
 });
 
-const SITE_TITLE = "Talaria-Log Advanced Backtesting Platform";
+const SITE_TITLE = "Talaria-Log — Advanced Backtesting & Trading Journal";
 const SITE_DESCRIPTION =
-  "Advanced backtesting and professional charting for serious traders.";
+  "Professional backtesting, trading journal, and session analytics for serious traders. Replay sessions, analyze performance, and improve your edge.";
 /** Browser tab / bookmark icon (square mark). */
 const FAVICON_PATH = "/logo-04.png";
 /** Link previews (Discord, X, etc.). */
 const OG_IMAGE_PATH = "/talaria-log.logo.png";
 
-const siteUrl = (
-  process.env.NEXT_PUBLIC_SITE_URL ||
-  process.env.FRONTEND_URL ||
-  "https://www.talaria-log.com"
-).replace(/\/$/, "");
+const siteUrl = getSiteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -40,7 +37,9 @@ export const metadata: Metadata = {
     template: "%s | Talaria-Log",
   },
   description: SITE_DESCRIPTION,
+  alternates: { canonical: "/" },
   applicationName: "Talaria-Log",
+  robots: { index: true, follow: true },
   icons: {
     icon: [
       { url: FAVICON_PATH, sizes: "32x32", type: "image/png" },

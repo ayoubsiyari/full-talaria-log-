@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
-import DashboardShell from "./DashboardShell";
 
 export const metadata: Metadata = {
+  title: "Sign in",
+  description: "Sign in to your Talaria-Log account.",
   robots: { index: false, follow: false },
-  title: "Dashboard",
+  alternates: { canonical: "/login/" },
 };
 
-export default function DashboardLayout({
+export default function LoginLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return <DashboardShell>{children}</DashboardShell>;
+  return children;
 }
