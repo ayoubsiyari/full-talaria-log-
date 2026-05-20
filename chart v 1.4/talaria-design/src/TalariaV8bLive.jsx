@@ -9341,15 +9341,9 @@ const TalariaV8bLive = () => {
           const fid = typeof grid.getFocusedPanelId === "function"
             ? grid.getFocusedPanelId()
             : null;
-          // Refocusing host (A) after drawing on iframe B/C: multichart sync had cleared
-          // the host's drawingManager while React still shows the last tool — do not push
-          // that stale selection back onto A (bug: rail shows Trend Line on A but A is cursor).
-          // Skip this guard when the user explicitly picked a tool from the sidebar.
-          if (fid != null && grid.hostPanelId != null && fid === grid.hostPanelId && !v9UserExplicitToolRef.current) {
-            const hdm = window.chart && window.chart.drawingManager;
-            const ct = hdm && hdm.currentTool;
-            if (!ct && legacyParam) legacyParam = null;
-          }
+          // Stale-rail-on-host guards removed: v9DrawingToolCleared resets the rail
+          // after iframe strokes; keeping them blocked arming A when the user picked a
+          // tool then clicked the host tile (legacyParam was nullified / forced crosshair).
           if (!editingDrawingRef.current) v9PushRailLegacyTool(legacyParam);
           const finishAfterSync = () => {
             if (cancelled) return;
@@ -9371,18 +9365,6 @@ const TalariaV8bLive = () => {
                 } catch (_) {}
               }
               return;
-            }
-            if (fid != null && grid.hostPanelId != null && fid === grid.hostPanelId && !v9UserExplicitToolRef.current) {
-              const hdm = window.chart && window.chart.drawingManager;
-              const ct = hdm && hdm.currentTool;
-              if (!ct) {
-                try {
-                  setTool("crosshair");
-                  setDropdown(null);
-                  setBtnPressed(null);
-                } catch (_) {}
-                return;
-              }
             }
             v9UserExplicitToolRef.current = false;
             applyHostDm();
@@ -9475,7 +9457,7 @@ const TalariaV8bLive = () => {
     // layoutPanels.n is in deps so we re-run when the multichart grid
     // mounts/unmounts (1 ↔ N panels) and pick the right routing branch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, groupSelected, layoutPanels.n]);
+  }, [tool, groupSelected, layoutPanels.n, focusedPanelId]);
 
   // Keep V9 left rail in sync when legacy drawing mode ends: (1) finalizeDrawing
   // clears the tool after a completed stroke; (2) clearTool runs in many paths
