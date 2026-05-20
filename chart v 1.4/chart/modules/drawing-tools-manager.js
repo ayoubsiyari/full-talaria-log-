@@ -1717,6 +1717,12 @@ class DrawingToolsManager {
         }
         this._updateAxisZonePointerEvents();
 
+        // Multichart iframe: tell parent V9 rail to drop draw mode (otherwise
+        // multichartFocusChanged re-arms via syncDrawingToolAcrossPanels).
+        if (!_mirrored) {
+            this._notifyV9MultichartToolCleared();
+        }
+
         // Mirror clear to all other panel drawing managers
         if (!_mirrored && window.panelManager && window.panelManager.currentLayout !== '1') {
             const allDms = [];
@@ -1732,6 +1738,23 @@ class DrawingToolsManager {
                 if (dm.currentTool) dm.clearTool(true);
             });
         }
+    }
+
+    /**
+     * Iframe panels: parent React rail still shows the draw tool after clearTool().
+     * Post a one-way message so TalariaV8bLive can switch to crosshair.
+     */
+    _notifyV9MultichartToolCleared() {
+        try {
+            if (typeof window === 'undefined' || !window.parent || window.parent === window) return;
+            const params = new URLSearchParams(window.location.search);
+            const panelId = params.get('panelId') || params.get('id') || null;
+            window.parent.postMessage({
+                type: 'v9-drawing-tool-cleared',
+                source: panelId,
+            }, '*');
+            window.__v9RailLegacyTool = null;
+        } catch (_) {}
     }
 
     _cancelFreehandPreviewRaf() {

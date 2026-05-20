@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
+import { buildBilingualPageMetadata } from "@/lib/marketingSeo";
 
-export const metadata: Metadata = {
-  title: "NinjaTrader Integration",
-  description:
+export const metadata: Metadata = buildBilingualPageMetadata({
+  titleEn: "NinjaTrader Integration",
+  titleAr: "تكامل نينجاتريدر",
+  descriptionEn:
     "Connect NinjaTrader with Talaria-Log for backtesting and professional trading workflows.",
-  alternates: { canonical: "/ninjatrader/" },
-  openGraph: {
-    title: "NinjaTrader Integration | Talaria-Log",
-    description: "Connect NinjaTrader with Talaria-Log for backtesting and charting.",
-    url: "/ninjatrader/",
-  },
-};
+  descriptionAr:
+    "اربط نينجاتريدر مع تالاريا-لوج للباك تست وسير عمل التداول الاحترافي.",
+  path: "/ninjatrader/",
+  openGraphPath: "/ninjatrader/",
+});
 
 export default function NinjaTraderLayout({
   children,

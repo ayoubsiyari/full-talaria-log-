@@ -641,6 +641,21 @@
                 }
                 return;
 
+            case 'v9-drawing-tool-cleared':
+                // Iframe finished a stroke (finalizeDrawing → clearTool). Parent
+                // must drop V9 rail draw mode before multichartFocusChanged
+                // re-arms the tool via syncDrawingToolAcrossPanels.
+                try {
+                    if (typeof globalThis !== 'undefined' && typeof globalThis.dispatchEvent === 'function') {
+                        globalThis.dispatchEvent(new CustomEvent('v9DrawingToolCleared', {
+                            detail: { panelId: sourceId || null },
+                        }));
+                    }
+                } catch (e) {
+                    this._log('warn', 'v9-drawing-tool-cleared dispatch failed: ' + (e && e.message || e));
+                }
+                return;
+
             case 'cmd-result': {
                 // Phase 7.2.4 reply from panel-cmd-bridge. Route back to
                 // the Promise returned by sendCommand so the React-side

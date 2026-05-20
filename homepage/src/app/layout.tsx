@@ -5,6 +5,12 @@ import "./globals.css";
 import { LanguageProvider } from "./LanguageProvider";
 import CookieConsent from "./CookieConsent";
 import { JsonLdScript } from "@/components/seo/JsonLdScript";
+import {
+  buildPublicAlternates,
+  SEO_DESCRIPTION_BILINGUAL,
+  SEO_TITLE_AR,
+  SEO_TITLE_EN,
+} from "@/lib/marketingSeo";
 import { getSiteUrl } from "@/lib/siteUrl";
 
 const zain = localFont({
@@ -21,24 +27,34 @@ const zain = localFont({
   ],
 });
 
-const SITE_TITLE = "Talaria-Log — Advanced Backtesting & Trading Journal";
-const SITE_DESCRIPTION =
-  "Professional backtesting, trading journal, and session analytics for serious traders. Replay sessions, analyze performance, and improve your edge.";
 /** Browser tab / bookmark icon (square mark). */
 const FAVICON_PATH = "/logo-04.png";
 /** Link previews (Discord, X, etc.). */
 const OG_IMAGE_PATH = "/talaria-log.logo.png";
 
 const siteUrl = getSiteUrl();
+const DEFAULT_TITLE = `${SEO_TITLE_EN} | ${SEO_TITLE_AR}`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: SITE_TITLE,
+    default: DEFAULT_TITLE,
     template: "%s | Talaria-Log",
   },
-  description: SITE_DESCRIPTION,
-  alternates: { canonical: "/" },
+  description: SEO_DESCRIPTION_BILINGUAL,
+  keywords: [
+    "backtesting",
+    "trading journal",
+    "باك تست",
+    "دفتر تداول",
+    "تحليل جلسات التداول",
+    "prop firm",
+    "futures",
+    "forex",
+    "Talaria-Log",
+    "تالاريا لوج",
+  ],
+  alternates: buildPublicAlternates("/"),
   applicationName: "Talaria-Log",
   robots: { index: true, follow: true },
   icons: {
@@ -55,19 +71,19 @@ export const metadata: Metadata = {
     alternateLocale: ["ar_SA"],
     url: "/",
     siteName: "Talaria-Log",
-    title: SITE_TITLE,
-    description: SITE_DESCRIPTION,
+    title: DEFAULT_TITLE,
+    description: SEO_DESCRIPTION_BILINGUAL,
     images: [
       {
         url: OG_IMAGE_PATH,
-        alt: "Talaria-Log",
+        alt: "Talaria-Log | تالاريا-لوج",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: SITE_TITLE,
-    description: SITE_DESCRIPTION,
+    title: DEFAULT_TITLE,
+    description: SEO_DESCRIPTION_BILINGUAL,
     images: [OG_IMAGE_PATH],
   },
 };

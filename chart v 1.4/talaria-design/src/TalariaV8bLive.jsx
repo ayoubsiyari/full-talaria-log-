@@ -570,6 +570,21 @@ function v9PushArmedDrawStyle(legacyTool, tlStyle) {
   };
 }
 
+/** V9 rail tool id for multichart first-click (does not arm every iframe). */
+function v9PushRailLegacyTool(legacyTool) {
+  if (typeof window === "undefined") return;
+  const raw = legacyTool == null ? "" : String(legacyTool);
+  const low = raw.toLowerCase();
+  const lt = raw && low !== "crosshair" && low !== "cursor" ? raw : null;
+  window.__v9RailLegacyTool = lt;
+  const grid = window.__multichartGrid;
+  if (grid && typeof grid.broadcastToIframesNoReply === "function") {
+    try {
+      grid.broadcastToIframesNoReply("setV9RailLegacyTool", { tool: lt });
+    } catch (_) {}
+  }
+}
+
 /** Returns the number of decimal places used by the chart's price axis. */
 function v9GetPriceDecimals() {
   try {
@@ -9308,24 +9323,12 @@ const TalariaV8bLive = () => {
     const apply = () => {
       if (cancelled) return;
 
-      // Phase 7.2.4 — multichart routing (two modes):
-      //   • Toolbar / chartDataLoaded / panelSelected: BROADCAST the tool to
-      //     every iframe (runCommandIframes) so the user can pick a tool and
-      //     mousedown on a tile that is not focused yet — the stroke still
-      //     starts (TradingView behaviour).
-      //   • multichartFocusChanged: syncDrawingToolAcrossPanels — arm ONLY the
-      //     focused chart for most tools; brush + highlighter arm every panel
-      //     so freehand stays active across tiles until chart.js clears it.
-      //
-      // IMPORTANT: iframe panel-cmd round-trips are async. If we fire
-      // runCommandIframes without awaiting and immediately setTool on the
-      // host, the user can click the iframe in the same frame before the
-      // iframe's drawingManager is armed — first mousedown does nothing.
-      // Await the broadcast / focus sync, then run applyHostDm.
+      // Phase 7.2.4 — multichart: arm ONLY the focused panel (syncDrawingToolAcrossPanels).
+      // Non-focused tiles stay in cursor mode so crosshair/draw mode does not look
+      // active on every panel. First mousedown on another tile adopts __v9RailLegacyTool
+      // locally (drawing-tools-manager) before deferred panel-focus re-syncs.
       const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
-      const focusOnlyMultichartTool =
-        typeof window !== "undefined" && window.__v9MultichartFocusToolTick;
-      if (grid && typeof grid.syncDrawingToolAcrossPanels === "function" && focusOnlyMultichartTool) {
+      if (grid && typeof grid.syncDrawingToolAcrossPanels === "function") {
         try {
           let legacyParam = null;
           if (editingDrawingRef.current) {
@@ -9347,6 +9350,7 @@ const TalariaV8bLive = () => {
             const ct = hdm && hdm.currentTool;
             if (!ct && legacyParam) legacyParam = null;
           }
+          if (!editingDrawingRef.current) v9PushRailLegacyTool(legacyParam);
           const finishAfterSync = () => {
             if (cancelled) return;
             if (fid && grid.hostPanelId != null && fid !== grid.hostPanelId) {
@@ -9426,11 +9430,17 @@ const TalariaV8bLive = () => {
       applyHostDm();
     };
     apply();
+    const lastToolSyncFocusPanelRef = { current: null };
     const onPanelSelected = () => {
       n = 0;
       apply();
     };
-    const onMultichartFocusChanged = () => {
+    const onMultichartFocusChanged = (e) => {
+      // Re-syncing the rail tool on every focus mirror event (tf/file/pan)
+      // re-arms the iframe after finalizeDrawing → clearTool on the same click.
+      const pid = e?.detail?.panelId ?? null;
+      if (pid != null && pid === lastToolSyncFocusPanelRef.current) return;
+      lastToolSyncFocusPanelRef.current = pid;
       n = 0;
       try {
         if (typeof window !== "undefined") window.__v9MultichartFocusToolTick = true;
@@ -9439,18 +9449,28 @@ const TalariaV8bLive = () => {
         if (typeof window !== "undefined") window.__v9MultichartFocusToolTick = false;
       }
     };
+    const onV9DrawingToolCleared = () => {
+      try {
+        v9PushRailLegacyTool(null);
+        setTool("crosshair");
+        setDropdown(null);
+        setBtnPressed(null);
+      } catch (_) {}
+    };
     window.addEventListener("panelSelected", onPanelSelected);
     window.addEventListener("panelsCreated", onPanelSelected);
     window.addEventListener("chartDataLoaded", onPanelSelected);
     // Phase 7.2.4: tile focus — disarm non-focused panels (see apply branch
     // guarded by __v9MultichartFocusToolTick + syncDrawingToolAcrossPanels).
     window.addEventListener("multichartFocusChanged", onMultichartFocusChanged);
+    window.addEventListener("v9DrawingToolCleared", onV9DrawingToolCleared);
     return () => {
       cancelled = true;
       window.removeEventListener("panelSelected", onPanelSelected);
       window.removeEventListener("panelsCreated", onPanelSelected);
       window.removeEventListener("chartDataLoaded", onPanelSelected);
       window.removeEventListener("multichartFocusChanged", onMultichartFocusChanged);
+      window.removeEventListener("v9DrawingToolCleared", onV9DrawingToolCleared);
     };
     // layoutPanels.n is in deps so we re-run when the multichart grid
     // mounts/unmounts (1 ↔ N panels) and pick the right routing branch.

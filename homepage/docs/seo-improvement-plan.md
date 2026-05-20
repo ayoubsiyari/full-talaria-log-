@@ -26,10 +26,19 @@
 - [x] `MarketingFaqSection` on `/` (server, via `HomePageClient` slot) and `/pricing/`
 - [x] `HomePageClient.tsx` + server `page.tsx` (FAQ in static HTML at build)
 
+## Arabic SEO (done)
+
+- [x] Bilingual metadata (EN | AR titles/descriptions) on `/`, `/pricing/`, bootcamp, ninjatrader, root layout
+- [x] `hreflang` via `alternates.languages` (`en`, `ar`, `x-default`) on public pages
+- [x] Crawlable FAQ in English + Arabic on home and pricing
+- [x] JSON-LD FAQ includes both languages; `alternateName` تالاريا-لوج
+- [x] Arabic section in `public/llms.txt`
+- [x] Arabic SEO keywords in root metadata
+
 ## Tier 3 (optional, later)
 
-- `hreflang` en/ar
-- Blog/docs for long-tail keywords
+- Separate `/ar/` URLs only if you commit to maintaining duplicate routes
+- Blog/docs in Arabic for long-tail keywords
 - Core Web Vitals (fonts, motion lazy-load)
 - Explicit `GPTBot` / `ClaudeBot` allow rules in `robots.ts` if needed
 

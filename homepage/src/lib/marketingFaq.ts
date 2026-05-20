@@ -37,6 +37,45 @@ export const MARKETING_FAQ_ITEMS: MarketingFaqItem[] = [
   },
 ];
 
+export const MARKETING_FAQ_ITEMS_AR: MarketingFaqItem[] = [
+  {
+    question: "ما هي تالاريا-لوج (Talaria-Log)؟",
+    answer:
+      "تالاريا-لوج منصة ويب للباك تست وإعادة تشغيل الجلسات ودفتر التداول وتحليل الأداء. تجمع بين الشارت الاحترافي والبيانات التاريخية لمراجعة أسلوبك وتحسينه.",
+  },
+  {
+    question: "هل تالاريا-لوج منصة باك تست؟",
+    answer:
+      "نعم. تتضمن محرك باك تست مع جلسات قابلة لإعادة التشغيل وشارت متعدد الإطارات وتحليلات مرتبطة بدفتر التداول على بيانات تاريخية داخل اليوم.",
+  },
+  {
+    question: "لمن صُممت المنصة؟",
+    answer:
+      "للمتداولين الجادين ومتداولي شركات التمويل (prop firms) الذين يريدون إعادة التشغيل والتدوين والتحليل في مكان واحد — خاصة في العقود والفوركس والأسواق السائلة.",
+  },
+  {
+    question: "ما الميزات المتوفرة؟",
+    answer:
+      "شارت احترافي، جلسات باك تست، دفتر تداول، تحليلات الجلسات، مختبر الاستراتيجيات (Strategy Lab)، بيانات مراكز المتداولين (COT)، واشتراكات عبر Stripe. راجع صفحة الخطط والأسعار للتفاصيل الحالية.",
+  },
+  {
+    question: "كيف تختلف عن منصة شارت فقط؟",
+    answer:
+      "تربط إعادة التشغيل وجلسات الباك تست وتحليلات الدفتر في سير عمل واحد — من المراجعة التاريخية إلى تسجيل الصفقات ومقاييس الأداء دون أدوات منفصلة.",
+  },
+  {
+    question: "أين أجد الأسعار؟",
+    answer:
+      "صفحة الخطط والأسعار على talaria-log.com/pricing/ للاشتراك والدفع الآمن.",
+  },
+];
+
+/** English + Arabic for JSON-LD FAQPage (keep pairs aligned by index). */
+export const MARKETING_FAQ_ALL_LOCALES: MarketingFaqItem[] = [
+  ...MARKETING_FAQ_ITEMS,
+  ...MARKETING_FAQ_ITEMS_AR,
+];
+
 export const PRODUCT_FEATURE_LIST = [
   "Historical session replay and backtesting",
   "Professional candlestick charts and indicators",
@@ -44,4 +83,13 @@ export const PRODUCT_FEATURE_LIST = [
   "Session and portfolio analytics",
   "Strategy lab",
   "Prop-firm oriented risk and session tools",
+] as const;
+
+export const PRODUCT_FEATURE_LIST_AR = [
+  "إعادة تشغيل الجلسات والباك تست التاريخي",
+  "شارت شموع ومؤشرات احترافية",
+  "دفتر تداول وسجل الصفقات",
+  "تحليلات الجلسات والمحفظة",
+  "مختبر الاستراتيجيات",
+  "أدوات مناسبة لتحديات شركات التمويل",
 ] as const;

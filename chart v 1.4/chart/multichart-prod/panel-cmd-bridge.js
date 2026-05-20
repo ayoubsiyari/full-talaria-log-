@@ -560,6 +560,12 @@
                     else dmc.currentTool = null;
                     return;
                 }
+                case 'setV9RailLegacyTool': {
+                    var raw = args.tool == null ? '' : String(args.tool);
+                    var low = raw.toLowerCase();
+                    global.__v9RailLegacyTool = raw && low !== 'crosshair' && low !== 'cursor' ? raw : null;
+                    return;
+                }
 
                 // ─── indicators ────────────────────────────────────────
                 //
