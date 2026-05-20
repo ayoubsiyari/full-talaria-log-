@@ -892,8 +892,7 @@ class PanelManager {
                 if (panel.index === sourcePanel.index) return;
                 const chart = this._getPanelChartInstance(panel);
                 if (!chart?.data?.length) return;
-                // Skip cross-pair date-range sync — different instruments would scroll wildly.
-                if (!this._isSamePair(sourceChart, chart)) return;
+                // Date-range sync is wall-clock [start, end): safe across pairs (e.g. ES + NQ).
 
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);

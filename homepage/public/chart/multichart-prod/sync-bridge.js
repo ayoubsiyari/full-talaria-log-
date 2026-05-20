@@ -81,7 +81,7 @@
      * 2053). Key safety properties:
      *
      *   • Never sets candleWidth so small that candles disappear (MIN_BARS).
-     *   • Always centres on the closest candle to the synced midpoint.
+     *   • Right-edge anchoring: last bar in the synced window stays at the right margin.
      *   • If the source visible window has no time overlap with this chart's
      *     bar span, falls back to fitToView() (avoids multichart "wrong era"
      *     empty margins when host and iframe use different files / ranges).
@@ -136,61 +136,59 @@
             }
         }
 
-        // How many recipient-bars are in the source's visible window?
-        const spanSec = Math.max(1, endSec - startSec);
-        const desiredBars = spanSec / barSec;
-        // Floor so we always show enough candles to be visually useful.
-        // E.g. 30-min source window on a 1h recipient = 0.5 bars; clamping to
-        // 30 gives the user 30 hours of context centred on the midpoint instead
-        // of an essentially empty chart.
-        const MIN_BARS_TO_SHOW = 30;
-        const MAX_BARS_TO_SHOW = chart.data.length;
-        const targetBars = Math.max(MIN_BARS_TO_SHOW, Math.min(MAX_BARS_TO_SHOW, desiredBars));
-
-        // Compute the candleWidth that would fit targetBars in widthPx pixels.
-        const idealCandleWidth = widthPx / targetBars;
-
-        // Snap to the chart's allowed zoom levels (TradingView-style discrete
-        // zoom rungs). Keeps the chart's own zoom state consistent with what a
-        // user could reach via the wheel.
-        if (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths)
-            && chart.zoomLevel.allowedWidths.length > 0) {
-            const allowed = chart.zoomLevel.allowedWidths;
-            let nearestIdx = 0, best = Infinity;
-            for (let i = 0; i < allowed.length; i++) {
-                const d = Math.abs(allowed[i] - idealCandleWidth);
-                if (d < best) { best = d; nearestIdx = i; }
+        const startMs = startSec * 1000;
+        const endMs = endSec * 1000;
+        const findLastAtOrBefore = (data, ts) => {
+            if (!data || data.length === 0) return 0;
+            let lo = 0;
+            let hi = data.length - 1;
+            let ans = 0;
+            while (lo <= hi) {
+                const mid = (lo + hi) >>> 1;
+                const t = data[mid]?.t || 0;
+                if (t <= ts) { ans = mid; lo = mid + 1; }
+                else hi = mid - 1;
             }
-            chart.zoomLevel.candleWidthIndex = nearestIdx;
-            chart.candleWidth = allowed[nearestIdx];
-        } else {
-            chart.candleWidth = Math.max(0.5, Math.min(80, idealCandleWidth));
+            return ans;
+        };
+
+        const iL = findLastAtOrBefore(chart.data, startMs);
+        const iR = findLastAtOrBefore(chart.data, endMs - 1);
+        const iL2 = Math.max(0, Math.min(iL, chart.data.length - 1));
+        const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
+        const numBars = Math.max(1, iR2 - iL2 + 1);
+
+        const desiredSpacing = widthPx / numBars;
+        let cw = desiredSpacing;
+        if (typeof chart._getSpacingForCandleWidth === 'function') {
+            const s1 = chart._getSpacingForCandleWidth(cw);
+            if (s1 > 0) cw = cw * (desiredSpacing / s1);
+            const s2 = chart._getSpacingForCandleWidth(cw);
+            if (s2 > 0) cw = cw * (desiredSpacing / s2);
         }
 
-        // Find the recipient candle closest to the midpoint of the source's
-        // visible window. Linear scan — chart.data is small (≤20k) and this
-        // runs at most once per rAF on the recipient.
-        const midMs = ((startSec + endSec) / 2) * 1000;
-        let bestIdx = 0;
-        let bestDiff = Infinity;
-        for (let i = 0; i < chart.data.length; i++) {
-            const t = +chart.data[i].t;
-            if (!Number.isFinite(t)) continue;
-            const d = Math.abs(t - midMs);
-            if (d < bestDiff) { bestDiff = d; bestIdx = i; }
-        }
+        const allowedWidths = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths) && chart.zoomLevel.allowedWidths.length)
+            ? chart.zoomLevel.allowedWidths
+            : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+        const minW = allowedWidths[0];
+        const maxW = allowedWidths[allowedWidths.length - 1];
+        chart.candleWidth = Math.max(minW, Math.min(maxW, cw));
 
-        // Position offsetX so bestIdx is at the horizontal CENTER of the chart
-        // drawing area. Same arithmetic chart.js uses in its own jumpToTimestamp
-        // (chart.js:11167-11172) and cross-panel align (chart.js:2041).
-        const cw = (chart.w || widthPx) - m.l - m.r;
+        let nearestIdx = 0;
+        let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);
+        for (let i = 1; i < allowedWidths.length; i++) {
+            const d = Math.abs(chart.candleWidth - allowedWidths[i]);
+            if (d < minDiff) { minDiff = d; nearestIdx = i; }
+        }
+        if (chart.zoomLevel) chart.zoomLevel.candleWidthIndex = nearestIdx;
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        const cwDraw = (chart.w || widthPx) - m.l - m.r;
         const candleSpacing = (typeof chart.getCandleSpacing === 'function')
             ? chart.getCandleSpacing()
             : chart.candleWidth;
-        if (candleSpacing > 0 && cw > 0) {
-            const centerX = cw / 2;
-            const candleX = bestIdx * candleSpacing;
-            chart.offsetX = centerX - candleX;
+        if (candleSpacing > 0 && cwDraw > 0) {
+            chart.offsetX = cwDraw - (iR2 + 1) * candleSpacing;
             if (typeof chart.constrainOffset === 'function') {
                 try { chart.constrainOffset(); } catch (_) {}
             }
@@ -202,9 +200,9 @@
         const visibleBarCount = function () {
             const cs = (typeof chart.getCandleSpacing === 'function')
                 ? chart.getCandleSpacing() : chart.candleWidth;
-            if (cs <= 0 || cw <= 0) return chart.data.length;
+            if (cs <= 0 || cwDraw <= 0) return chart.data.length;
             const i0 = Math.max(0, -Math.floor(chart.offsetX / cs));
-            const i1 = Math.min(chart.data.length, i0 + Math.ceil(cw / cs));
+            const i1 = Math.min(chart.data.length, i0 + Math.ceil(cwDraw / cs));
             return Math.max(0, i1 - i0);
         };
         if (visibleBarCount() === 0) {
