@@ -8962,6 +8962,7 @@ class Chart {
                 panel: sourcePanel,
                 startIndex,
                 endIndex,
+                visibleBarCount: Math.max(1, endIndex - startIndex + 1),
                 rightEdgeBarIndex,
                 timeSyncEndTimestamp,
                 startTimestamp,

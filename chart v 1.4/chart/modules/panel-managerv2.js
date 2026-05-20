@@ -125,9 +125,9 @@ class PanelManager {
             const { panel, startTimestamp, endTimestamp } = d;
             if (!panel) return;
 
-            // Date Range: mirror source pan/zoom (offsetX + candleWidth), not wall-clock remap.
+            // Date Range: TradingView-style — same wall-clock window + same bar count on every panel.
             if (this.syncSettings.dateRange) {
-                this.syncScrollByViewport(panel, d);
+                this.syncScrollTradingView(panel, d);
             }
             // Time: discrete range-by-range sync. Each TARGET panel jumps only when
             // the bar IT would show at its right edge changes — so a 5m target jumps
@@ -541,11 +541,17 @@ class PanelManager {
                 if (e.target.checked && this.panels.length > 1) {
                     const selectedPanel = this.panels[this.selectedPanelIndex];
                     if (selectedPanel) {
-                        this.syncScrollByViewport(selectedPanel, {
-                            offsetX: selectedPanel.chartInstance?.offsetX,
-                            candleWidth: selectedPanel.chartInstance?.candleWidth,
-                            zoomLevelIndex: selectedPanel.chartInstance?.zoomLevel?.candleWidthIndex,
-                        });
+                        const ch = selectedPanel.chartInstance;
+                        if (ch?.data?.length) {
+                            const si = ch.getVisibleStartIndex ? ch.getVisibleStartIndex() : 0;
+                            const ei = ch.getVisibleEndIndex ? ch.getVisibleEndIndex() : ch.data.length - 1;
+                            this.syncScrollTradingView(selectedPanel, {
+                                startIndex: si,
+                                endIndex: ei,
+                                startTimestamp: ch.data[si]?.t,
+                                endTimestamp: ch.data[ei]?.t,
+                            });
+                        }
                     }
                 }
             });
@@ -866,11 +872,48 @@ class PanelManager {
     }
 
     /**
-     * Mirror the source panel's horizontal pan + zoom on every follower.
-     * Copies candleWidth and offsetX so panel B moves exactly like panel A
-     * (TradingView-style linked scroll), including right-edge zoom anchor.
+     * Fit exactly `barCount` candles into the plot and anchor bar `iR` on the right edge.
      */
-    syncScrollByViewport(sourcePanel, scrollDetail) {
+    _fitChartToBarWindow(chart, iL, iR, barCount) {
+        const m = chart.margin || { l: 0, r: 60 };
+        const chartWidth = (chart.w || 0) - m.l - m.r;
+        if (chartWidth <= 0 || !chart.data?.length) return;
+
+        const iL2 = Math.max(0, Math.min(iL, chart.data.length - 1));
+        const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
+        const numBars = Math.max(1, barCount);
+
+        let desiredSpacing = chartWidth / numBars;
+        let cw = desiredSpacing;
+        if (typeof chart._getSpacingForCandleWidth === 'function') {
+            const s1 = chart._getSpacingForCandleWidth(cw);
+            if (s1 > 0) cw = cw * (desiredSpacing / s1);
+            const s2 = chart._getSpacingForCandleWidth(cw);
+            if (s2 > 0) cw = cw * (desiredSpacing / s2);
+        }
+
+        const allowedWidths = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths) && chart.zoomLevel.allowedWidths.length)
+            ? chart.zoomLevel.allowedWidths
+            : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+        chart.candleWidth = Math.max(allowedWidths[0], Math.min(allowedWidths[allowedWidths.length - 1], cw));
+
+        let nearestIdx = 0;
+        let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);
+        for (let i = 1; i < allowedWidths.length; i++) {
+            const d = Math.abs(chart.candleWidth - allowedWidths[i]);
+            if (d < minDiff) { minDiff = d; nearestIdx = i; }
+        }
+        if (chart.zoomLevel) chart.zoomLevel.candleWidthIndex = nearestIdx;
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : chart.candleWidth;
+        chart.offsetX = chartWidth - (iR2 + 1) * spacing;
+    }
+
+    /**
+     * TradingView-style date-range sync: same visible bar count + same time window on every panel.
+     */
+    syncScrollTradingView(sourcePanel, scrollDetail) {
         if (this._isSyncing) return;
         if (!this.syncSettings.dateRange || (this.panels || []).length <= 1) return;
 
@@ -878,16 +921,29 @@ class PanelManager {
         if (!sourceChart?.data?.length) return;
 
         const d = scrollDetail || {};
-        const srcOffset = Number.isFinite(d.offsetX) ? d.offsetX : sourceChart.offsetX;
-        const srcCw = Number.isFinite(d.candleWidth) && d.candleWidth > 0
-            ? d.candleWidth
-            : sourceChart.candleWidth;
-        const srcZoomIdx = Number.isFinite(d.zoomLevelIndex)
-            ? d.zoomLevelIndex
-            : sourceChart.zoomLevel?.candleWidthIndex;
+        let startIdx = Number.isFinite(d.startIndex) ? Math.floor(d.startIndex) : null;
+        let endIdx = Number.isFinite(d.endIndex) ? Math.floor(d.endIndex) : null;
+        if (startIdx == null && typeof sourceChart.getVisibleStartIndex === 'function') {
+            startIdx = sourceChart.getVisibleStartIndex();
+        }
+        if (endIdx == null && typeof sourceChart.getVisibleEndIndex === 'function') {
+            endIdx = sourceChart.getVisibleEndIndex();
+        }
+        if (startIdx == null) startIdx = 0;
+        if (endIdx == null) endIdx = sourceChart.data.length - 1;
+        startIdx = Math.max(0, Math.min(startIdx, sourceChart.data.length - 1));
+        endIdx = Math.max(startIdx, Math.min(endIdx, sourceChart.data.length - 1));
 
-        const sm = sourceChart.margin || { l: 0, r: 60 };
-        const sw = (sourceChart.w || 0) - sm.l - sm.r;
+        const barCount = Math.max(1, endIdx - startIdx + 1);
+        const barMs = typeof sourceChart.inferBarDurationMs === 'function'
+            ? sourceChart.inferBarDurationMs()
+            : 60000;
+        const rangeEndExclusive = (sourceChart.data[endIdx]?.t ?? 0) + barMs;
+        const startTimestamp = sourceChart.data[startIdx]?.t ?? 0;
+
+        const sameData = (chart) => chart.data.length === sourceChart.data.length
+            && String(chart.currentFileId || '') === String(sourceChart.currentFileId || '')
+            && chart.currentFileId != null;
 
         const toRelease = [];
         this._isSyncing = true;
@@ -901,20 +957,17 @@ class PanelManager {
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);
 
-                if (Number.isFinite(srcCw) && srcCw > 0) {
-                    chart.candleWidth = srcCw;
-                    if (chart.zoomLevel && Number.isFinite(srcZoomIdx)) {
-                        chart.zoomLevel.candleWidthIndex = srcZoomIdx;
-                    }
-                    if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+                let iR;
+                let iL;
+                if (sameData(chart)) {
+                    iR = endIdx;
+                    iL = startIdx;
+                } else {
+                    iR = this._findLastIndexAtOrBefore(chart.data, rangeEndExclusive - 1);
+                    iL = Math.max(0, iR - barCount + 1);
                 }
 
-                if (Number.isFinite(srcOffset)) {
-                    const tm = chart.margin || { l: 0, r: 60 };
-                    const tw = (chart.w || 0) - tm.l - tm.r;
-                    chart.offsetX = (sw > 0 && tw > 0) ? srcOffset * (tw / sw) : srcOffset;
-                }
-
+                this._fitChartToBarWindow(chart, iL, iR, barCount);
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();
                 else if (chart.render) chart.render();
@@ -930,11 +983,23 @@ class PanelManager {
         }
     }
 
-    /** @deprecated wall-clock remap — use syncScrollByViewport for date-range sync */
+    /** @deprecated */
+    syncScrollByViewport(sourcePanel, scrollDetail) {
+        this.syncScrollTradingView(sourcePanel, scrollDetail);
+    }
+
+    /** @deprecated */
     syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive) {
-        this.syncScrollByViewport(sourcePanel, {
-            offsetX: this._getPanelChartInstance(sourcePanel)?.offsetX,
-            candleWidth: this._getPanelChartInstance(sourcePanel)?.candleWidth,
+        const sourceChart = this._getPanelChartInstance(sourcePanel);
+        if (!sourceChart?.data?.length) return;
+        const iR = this._findLastIndexAtOrBefore(sourceChart.data, rangeEndExclusive - 1);
+        const barMs = typeof sourceChart.inferBarDurationMs === 'function' ? sourceChart.inferBarDurationMs() : 60000;
+        const iL = this._findLastIndexAtOrBefore(sourceChart.data, startTimestamp);
+        this.syncScrollTradingView(sourcePanel, {
+            startIndex: iL,
+            endIndex: iR,
+            startTimestamp,
+            endTimestamp: sourceChart.data[iR]?.t,
         });
     }
 
@@ -950,11 +1015,9 @@ class PanelManager {
         if (!this.syncSettings.dateRange || (this.panels || []).length <= 1) return;
         const sourceChart = this._getPanelChartInstance(sourcePanel);
         if (!sourceChart?.data?.length) return;
-        this.syncScrollByViewport(sourcePanel, {
-            offsetX: sourceChart.offsetX,
-            candleWidth: sourceChart.candleWidth,
-            zoomLevelIndex: sourceChart.zoomLevel?.candleWidthIndex,
-        });
+        const si = sourceChart.getVisibleStartIndex ? sourceChart.getVisibleStartIndex() : 0;
+        const ei = sourceChart.getVisibleEndIndex ? sourceChart.getVisibleEndIndex() : sourceChart.data.length - 1;
+        this.syncScrollTradingView(sourcePanel, { startIndex: si, endIndex: ei });
     }
     
     /**

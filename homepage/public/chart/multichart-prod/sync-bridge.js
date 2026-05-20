@@ -74,34 +74,99 @@
     };
     function tfSec(tf) { return TIMEFRAME_SECONDS[tf] || 60; }
 
+    function findLastAtOrBefore(data, ts) {
+        if (!data || data.length === 0) return 0;
+        let lo = 0;
+        let hi = data.length - 1;
+        let ans = 0;
+        while (lo <= hi) {
+            const mid = (lo + hi) >>> 1;
+            const t = data[mid]?.t || 0;
+            if (t <= ts) { ans = mid; lo = mid + 1; }
+            else hi = mid - 1;
+        }
+        return ans;
+    }
+
     /**
-     * Mirror source pan/zoom: copy candleWidth + offsetX (scaled if plot widths differ).
+     * TradingView-style: same bar count + right-edge time anchor on every panel.
      * @returns {boolean} true if applied
      */
-    function applyViewportMirror(chart, m) {
+    function applyTradingViewVisibleRange(chart, m) {
         if (!chart || !chart.data || chart.data.length === 0) return false;
-        const srcOffset = Number(m.offsetX);
-        const srcCw = Number(m.candleWidth);
-        if (!Number.isFinite(srcOffset) && !(Number.isFinite(srcCw) && srcCw > 0)) return false;
 
-        if (Number.isFinite(srcCw) && srcCw > 0) {
-            chart.candleWidth = srcCw;
-            if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
-                chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+        let startIdx = Number.isFinite(m.startIndex) ? Math.floor(m.startIndex) : null;
+        let endIdx = Number.isFinite(m.endIndex) ? Math.floor(m.endIndex) : null;
+        let barCount = Number.isFinite(m.visibleBarCount) ? Math.max(1, Math.floor(m.visibleBarCount)) : null;
+
+        if (startIdx != null && endIdx != null && endIdx >= startIdx) {
+            if (!barCount) barCount = endIdx - startIdx + 1;
+        } else if (Number.isFinite(m.startTime) && Number.isFinite(m.endTime) && m.endTime > m.startTime) {
+            const endMs = toMillis(m.endTime) - 1;
+            const startMs = toMillis(m.startTime);
+            endIdx = findLastAtOrBefore(chart.data, endMs);
+            startIdx = findLastAtOrBefore(chart.data, startMs);
+            if (!barCount) barCount = Math.max(1, endIdx - startIdx + 1);
+        } else {
+            return false;
+        }
+
+        barCount = Math.max(1, barCount);
+        let iR;
+        let iL;
+        if (Number.isFinite(m.endTime)) {
+            iR = findLastAtOrBefore(chart.data, toMillis(m.endTime) - 1);
+            iL = Math.max(0, iR - barCount + 1);
+        } else if (endIdx != null) {
+            iR = Math.max(0, Math.min(endIdx, chart.data.length - 1));
+            iL = startIdx != null
+                ? Math.max(0, Math.min(startIdx, iR))
+                : Math.max(0, iR - barCount + 1);
+            if (iR - iL + 1 < barCount) iL = Math.max(0, iR - barCount + 1);
+        } else {
+            return false;
+        }
+
+        const margin = chart.margin || { l: 60, r: 60 };
+        const widthPx = (chart.w || chart.canvas?.width || 800) - (margin.l + margin.r);
+        if (widthPx <= 0) return false;
+
+        const iL2 = Math.max(0, Math.min(iL, chart.data.length - 1));
+        const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
+
+        let desiredSpacing = widthPx / barCount;
+        let cw = desiredSpacing;
+        if (typeof chart._getSpacingForCandleWidth === 'function') {
+            const s1 = chart._getSpacingForCandleWidth(cw);
+            if (s1 > 0) cw = cw * (desiredSpacing / s1);
+            const s2 = chart._getSpacingForCandleWidth(cw);
+            if (s2 > 0) cw = cw * (desiredSpacing / s2);
+        }
+
+        const allowedWidths = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths) && chart.zoomLevel.allowedWidths.length)
+            ? chart.zoomLevel.allowedWidths
+            : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+        chart.candleWidth = Math.max(allowedWidths[0], Math.min(allowedWidths[allowedWidths.length - 1], cw));
+
+        let nearestIdx = 0;
+        let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);
+        for (let i = 1; i < allowedWidths.length; i++) {
+            const d = Math.abs(chart.candleWidth - allowedWidths[i]);
+            if (d < minDiff) { minDiff = d; nearestIdx = i; }
+        }
+        if (chart.zoomLevel) chart.zoomLevel.candleWidthIndex = nearestIdx;
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (spacing > 0) {
+            chart.offsetX = widthPx - (iR2 + 1) * spacing;
+            if (typeof chart.constrainOffset === 'function') {
+                try { chart.constrainOffset(); } catch (_) {}
             }
-            if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
         }
 
-        if (Number.isFinite(srcOffset)) {
-            const sw = Number.isFinite(m.plotWidthPx) && m.plotWidthPx > 0 ? m.plotWidthPx : 0;
-            const tm = chart.margin || { l: 60, r: 60 };
-            const tw = (chart.w || chart.canvas?.width || 800) - tm.l - tm.r;
-            chart.offsetX = (sw > 0 && tw > 0) ? srcOffset * (tw / sw) : srcOffset;
-        }
-
-        if (typeof chart.constrainOffset === 'function') {
-            try { chart.constrainOffset(); } catch (_) {}
-        }
         if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
         return true;
     }
@@ -263,9 +328,14 @@
         if (!Number.isFinite(startT) || !Number.isFinite(endT)) return null;
         const pm = chart.margin || { l: 60, r: 60 };
         const plotWidthPx = (chart.w || 0) - pm.l - pm.r;
+        const startIdx = typeof chart.getVisibleStartIndex === 'function' ? chart.getVisibleStartIndex() : 0;
+        const endIdx = typeof chart.getVisibleEndIndex === 'function' ? chart.getVisibleEndIndex() : chart.data.length - 1;
         return {
             startSec: toSeconds(startT),
             endSec:   toSeconds(endT) + Math.floor(barMs / 1000),
+            startIndex: startIdx,
+            endIndex: endIdx,
+            visibleBarCount: Math.max(1, endIdx - startIdx + 1),
             offsetX: chart.offsetX,
             candleWidth: chart.candleWidth,
             zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
@@ -380,6 +450,9 @@
                     type: 'visibleRange',
                     startTime: r.startSec,
                     endTime: r.endSec,
+                    startIndex: r.startIndex,
+                    endIndex: r.endIndex,
+                    visibleBarCount: r.visibleBarCount,
                     offsetX: r.offsetX,
                     candleWidth: r.candleWidth,
                     zoomLevelIndex: r.zoomLevelIndex,
@@ -445,9 +518,16 @@
             if (!Number.isFinite(startT) || !Number.isFinite(endT)) return;
             const pm = chart.margin || { l: 60, r: 60 };
             const plotWidthPx = (chart.w || 0) - pm.l - pm.r;
+            const si = Number.isFinite(d.startIndex) ? d.startIndex
+                : (typeof chart.getVisibleStartIndex === 'function' ? chart.getVisibleStartIndex() : 0);
+            const ei = Number.isFinite(d.endIndex) ? d.endIndex
+                : (typeof chart.getVisibleEndIndex === 'function' ? chart.getVisibleEndIndex() : chart.data.length - 1);
             pending.visibleRange = {
                 startSec: toSeconds(startT),
                 endSec: toSeconds(endT),
+                startIndex: si,
+                endIndex: ei,
+                visibleBarCount: Math.max(1, ei - si + 1),
                 offsetX: d.offsetX,
                 candleWidth: d.candleWidth,
                 zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
@@ -505,6 +585,7 @@
                                 chart: chart,
                                 startIndex: startIndex,
                                 endIndex: endIndex,
+                                visibleBarCount: Math.max(1, endIndex - startIndex + 1),
                                 startTimestamp: startTimestamp,
                                 endTimestamp: endTimestamp,
                                 timeSyncEndTimestamp: endTimestamp,
@@ -1045,8 +1126,7 @@
             state.applied.add(m.causationId);
             beginApplying();
 
-            const mirrored = applyViewportMirror(chart, m);
-            if (!mirrored) {
+            if (!applyTradingViewVisibleRange(chart, m)) {
                 const myTf = chart.currentTimeframe || '1m';
                 const myBucket = tfSec(myTf);
                 const startSnapped = floorToBucket(m.startTime, myBucket);
