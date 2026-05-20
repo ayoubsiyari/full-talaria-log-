@@ -82,6 +82,7 @@ export default function BacktestDesignDemoPage() {
         title="Talaria V9 live chart"
         src={iframeSrc}
         className="h-[100dvh] w-full flex-1 shrink-0 border-0"
+        onContextMenu={(e) => e.preventDefault()}
       />
     </div>
   );

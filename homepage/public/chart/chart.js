@@ -112,8 +112,27 @@ class TileManager {
     }
 }
 
+/** Suppress the native browser context menu anywhere inside the chart shell. */
+let _chartContextMenuCaptureInstalled = false;
+function installChartContextMenuCapture() {
+    if (_chartContextMenuCaptureInstalled || typeof document === 'undefined') return;
+    _chartContextMenuCaptureInstalled = true;
+    document.addEventListener('contextmenu', (e) => {
+        if (!e || !e.target || typeof e.target.closest !== 'function') return;
+        const inChart =
+            e.target.closest('#chart-container') ||
+            e.target.closest('#chartWrapper') ||
+            e.target.closest('.chart-wrapper') ||
+            e.target.closest('#panels-container') ||
+            e.target.id === 'chartCanvas' ||
+            e.target.closest('.linked-pane-wrapper');
+        if (inChart) e.preventDefault();
+    }, { capture: true });
+}
+
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
+        installChartContextMenuCapture();
         // Support both main chart and panel instances
         if (canvasElement) {
             this.canvas = canvasElement;

@@ -9464,8 +9464,8 @@ const TalariaV8bLive = () => {
           const hdm = window.chart && window.chart.drawingManager;
           if (hdm && typeof hdm.clearTool === "function") hdm.clearTool();
         } catch (_) {}
-        setTlBarSelected(false);
-        setTlBarSelectedType(null);
+        // Do not clear tlBarSelected here — finalize/select calls toolbar.show then
+        // clearTool; wiping selection chrome hides the floating style bar.
         setTool("crosshair");
         setDropdown(null);
         setBtnPressed(null);
@@ -9533,8 +9533,6 @@ const TalariaV8bLive = () => {
           void g.runCommandIframes("clearActiveDrawingTool", null).catch(() => {});
         }
         v9UserExplicitToolRef.current = false;
-        setTlBarSelected(false);
-        setTlBarSelectedType(null);
         setTool("crosshair");
         setDropdown(null);
         setBtnPressed(null);
@@ -20694,7 +20692,7 @@ const TalariaV8bLive = () => {
                   wipe sizing, so #chartWrapper spans the full chart and stacks over other panels
                   (ghost main OHLC / broken tiles). Default fill comes from live/index.html CSS. */}
               <div id="chartWrapper" className="chart-wrapper" onContextMenu={(e) => e.preventDefault()}>
-                <canvas id="chartCanvas" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", background: "transparent" }} />
+                <canvas id="chartCanvas" onContextMenu={(e) => e.preventDefault()} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", background: "transparent" }} />
                 <svg id="drawingSvg" />
                 {/* Axis cursor zones — chart.js reserves 60px right and 30px bottom margin.
                      #timeAxisZone is a thin bottom strip so Chromium/Brave do not cover
