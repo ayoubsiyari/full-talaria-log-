@@ -529,7 +529,29 @@ class DrawingToolsManager {
         this._suppressNextCanvasBgClick = true;
     }
 
-    scheduleRenderDrawing(drawing) {
+    /**
+     * Skip expensive axis label + canvas zone work during pan/resize/drag hot paths.
+     */
+    _shouldSkipAxisHighlights() {
+        if (this._deferAxisHighlights) return true;
+        if (this.chart && typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning()) {
+            return true;
+        }
+        if (this.isResizing || this.isCustomHandleDragging || this.isCustomHandleDrag) return true;
+        return false;
+    }
+
+    _refreshSelectedAxisHighlights() {
+        if (this._shouldSkipAxisHighlights()) return;
+        (this.drawings || []).forEach((drawing) => {
+            if (!drawing || !drawing.selected) return;
+            if (typeof drawing.showAxisHighlights === 'function') {
+                try { drawing.showAxisHighlights(); } catch (_) {}
+            }
+        });
+    }
+
+    scheduleRenderDrawing(drawing, opts = {}) {
         if (!drawing) return;
         if (!this._rafRenderSet) this._rafRenderSet = new Set();
         this._rafRenderSet.add(drawing);
@@ -539,6 +561,7 @@ class DrawingToolsManager {
             this._rafRenderQueued = false;
             const drawingsToRender = Array.from(this._rafRenderSet || []);
             if (this._rafRenderSet) this._rafRenderSet.clear();
+            const skipAxisHighlights = opts.skipAxisHighlights || this._shouldSkipAxisHighlights();
             drawingsToRender.forEach(d => {
                 try {
                     const stillTracked = this.drawings.find(item => item === d || (item && d && item.id === d.id));
@@ -549,10 +572,15 @@ class DrawingToolsManager {
                         }
                         return;
                     }
-                    this.renderDrawing(stillTracked);
+                    this.renderDrawing(stillTracked, {
+                        skipInteraction: true,
+                        skipAxisHighlights
+                    });
                     if (stillTracked.selected || (this.selectedDrawings || []).includes(stillTracked)) {
                         if (typeof stillTracked.select === 'function') {
-                            try { stillTracked.select(); } catch (_) {}
+                            try {
+                                stillTracked.select(skipAxisHighlights ? { skipAxisHighlights: true } : undefined);
+                            } catch (_) {}
                         }
                     }
                 } catch (e) {
@@ -4584,10 +4612,12 @@ class DrawingToolsManager {
      * @param {Object} drawing
      * @param {Object} [opts]
      * @param {boolean} [opts.skipInteraction=false] - Skip setupDrawingInteraction (hot path: pan/zoom redraws)
+     * @param {boolean} [opts.skipAxisHighlights=false] - Skip axis label/canvas zone updates (hot path: pan/resize)
      */
     renderDrawing(drawing, opts = {}) {
         if (!drawing) return;
         const skipInteraction = !!opts.skipInteraction;
+        const skipAxisHighlights = !!opts.skipAxisHighlights || this._shouldSkipAxisHighlights();
         
         // Set re-entry guard so hideAxisHighlights → scheduleRender doesn't re-enter
         // during the render cycle (stack overflow when scheduleRender is synchronous).
@@ -4652,8 +4682,8 @@ class DrawingToolsManager {
             labelsGroup: this.labelsGroup  // Unclipped group for text labels
         });
         
-        // Always show axis highlights (labels visible regardless of selection state)
-        if (typeof drawing.showAxisHighlights === 'function') {
+        // Axis highlights are expensive (SVG labels + full chart scheduleRender). Refresh once after interaction ends.
+        if (!skipAxisHighlights && typeof drawing.showAxisHighlights === 'function') {
             drawing.showAxisHighlights();
         }
         
@@ -5855,13 +5885,9 @@ class DrawingToolsManager {
         
         // Re-render without recreating handles during active drag
         this._skipHandleSetup = true;
-        this.renderDrawing(drawing);
+        this.renderDrawing(drawing, { skipAxisHighlights: true });
         this._skipHandleSetup = false;
         
-        // Update axis highlights if drawing is selected
-        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights();
-        }
         this._broadcastLiveEditUpdate(drawing);
     }
 
@@ -5905,6 +5931,7 @@ class DrawingToolsManager {
             this.chart.broadcastDrawingChange('update', drawing, index);
         }
         this.renderDrawing(drawing);
+        this._refreshSelectedAxisHighlights();
         this._refreshSingleSelectionChrome(drawing);
     }
 
@@ -5973,11 +6000,6 @@ class DrawingToolsManager {
         window.dispatchEvent(new CustomEvent('drawingStyleChanged', { 
             detail: { drawing, property: 'fontSize', value: drawing.style.fontSize } 
         }));
-        
-        // Update axis highlights if drawing is selected
-        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights();
-        }
     }
 
     endCustomHandleDrag(event) {
@@ -6019,6 +6041,7 @@ class DrawingToolsManager {
                 this.chart.broadcastDrawingChange('update', drawing, index);
             }
         }
+        this._refreshSelectedAxisHighlights();
         this._refreshSingleSelectionChrome(drawing);
     }
 
@@ -7246,12 +7269,9 @@ class DrawingToolsManager {
                 }
                 if (drawing.group && !drawing.group.empty()) {
                     drawing.render(this.drawingsGroup, scales);
-                    if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-                        try { drawing.showAxisHighlights(); } catch (_) {}
-                    }
                     if (drawing.selected || (this.selectedDrawings || []).includes(drawing)) {
                         if (typeof drawing.select === 'function') {
-                            try { drawing.select(); } catch (_) {}
+                            try { drawing.select({ skipAxisHighlights: true }); } catch (_) {}
                         }
                     }
                 } else {

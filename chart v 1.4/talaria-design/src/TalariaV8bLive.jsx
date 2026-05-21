@@ -11808,7 +11808,7 @@ const TalariaV8bLive = () => {
       };
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
-        if (!d || d.type !== "rectangle" && d.type !== "rotated-rectangle") return;
+        if (!d || (d.type !== "rectangle" && d.type !== "rotated-rectangle")) return;
         const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacy, editSess);
         if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm)) return;
         if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
@@ -11817,16 +11817,28 @@ const TalariaV8bLive = () => {
         Object.assign(d.style, patch);
         try {
           if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
-          else dm.renderDrawing?.(d);
+          else if (typeof dm.renderDrawing === "function") dm.renderDrawing(d);
+          else if (typeof dm.redrawAll === "function") dm.redrawAll();
         } catch (_) {
-          try { dm.renderDrawing?.(d); } catch (_) {}
+          try {
+            if (typeof dm.renderDrawing === "function") dm.renderDrawing(d);
+            else if (typeof dm.redrawAll === "function") dm.redrawAll();
+          } catch (_) {}
         }
         if (d.selected && typeof d.showAxisHighlights === "function") {
           try { d.showAxisHighlights(); } catch (_) {}
         }
         if (dm.chart) chartsToRender.add(dm.chart);
       });
-      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
+      chartsToRender.forEach((c) => {
+        if (c && c.drawingManager && typeof c.drawingManager.redrawAll === "function") {
+          try { c.drawingManager.redrawAll(); } catch (_) {}
+        }
+        if (c && typeof c.scheduleRender === "function") c.scheduleRender();
+      });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("drawingStyleChanged", { detail: { keys: ["extendLeft", "extendRight"] } }));
+      }
     } catch (err) {
       console.warn("[V9 extend flush] failed:", err);
     }
@@ -14354,7 +14366,7 @@ const TalariaV8bLive = () => {
                       if (k === "extendLeft" || k === "extendRight") {
                         setTlStyle((s) => {
                           const next = { ...s, [k]: !s[k] };
-                          queueMicrotask(() => flushV9ExtendToChart(next));
+                          flushV9ExtendToChart(next);
                           return next;
                         });
                       } else {

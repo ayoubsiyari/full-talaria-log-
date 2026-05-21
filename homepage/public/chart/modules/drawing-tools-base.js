@@ -258,7 +258,7 @@ class BaseDrawing {
     /**
      * Show selection state
      */
-    select() {
+    select(opts = {}) {
         this.selected = true;
         if (this.group) {
             this.group.selectAll('.resize-handle').style('opacity', 1);
@@ -271,8 +271,9 @@ class BaseDrawing {
             this.group.selectAll('.custom-handle').style('pointer-events', 'all');
             this.group.raise(); // Bring to front
         }
-        // Show axis highlights for selected drawing
-        this.showAxisHighlights();
+        if (!opts.skipAxisHighlights) {
+            this.showAxisHighlights();
+        }
     }
 
     /**
@@ -298,6 +299,11 @@ class BaseDrawing {
      */
     showAxisHighlights() {
         if (!this.chart || !this.points || this.points.length === 0) return;
+
+        const mgr = this.chart.drawingManager;
+        if (mgr && typeof mgr._shouldSkipAxisHighlights === 'function' && mgr._shouldSkipAxisHighlights()) {
+            return;
+        }
         
         // Remove any existing highlights first
         this.hideAxisHighlights();
@@ -760,7 +766,10 @@ class BaseDrawing {
         // infinite recursion when scheduleRender is synchronous, e.g. during replay).
         if (this.hasAxisHighlightZones && this.chart?.clearAxisHighlightZones) {
             this.chart.clearAxisHighlightZones();
-            if (this.chart.scheduleRender && !this.chart._isRendering) {
+            const mgr = this.chart.drawingManager;
+            const skipSchedule = this.chart._isRendering
+                || (mgr && typeof mgr._shouldSkipAxisHighlights === 'function' && mgr._shouldSkipAxisHighlights());
+            if (this.chart.scheduleRender && !skipSchedule) {
                 this.chart.scheduleRender();
             }
         }
