@@ -86,6 +86,9 @@ class DrawingToolsManager {
         this._ctrlMarqueePending = null;
         this._ctrlMarqueePendingBound = false;
         this._marqueeSvgZIndexRestore = null;
+        this._suppressCanvasClickAfterMarquee = false;
+        this._marqueeJustCompletedAt = 0;
+        this._ctrlMarqueePointerId = null;
         
         // UI components
         this.settingsPanel = new DrawingSettingsPanel();
@@ -1391,6 +1394,7 @@ class DrawingToolsManager {
                     this._getPointerCursorMode(event) === 'chart' &&
                     this._tryArmCtrlMarqueeFromPointer(event)
                 ) {
+                    suppressNextCanvasClick = true;
                     return;
                 }
 
@@ -1700,8 +1704,19 @@ class DrawingToolsManager {
                     return;
                 }
                 
-                if (!event.ctrlKey && this.selectedDrawings.length > 0 && !this.isRectSelecting) {
-                    // [debug removed]
+                if (this._suppressCanvasClickAfterMarquee) {
+                    this._suppressCanvasClickAfterMarquee = false;
+                    return;
+                }
+                if (this._marqueeJustCompletedAt && Date.now() - this._marqueeJustCompletedAt < 400) {
+                    return;
+                }
+                if (
+                    !event.ctrlKey &&
+                    !event.metaKey &&
+                    this.selectedDrawings.length > 0 &&
+                    !this.isRectSelecting
+                ) {
                     this.deselectAll({ fromCanvasBackground: true });
                 }
             };
@@ -2799,8 +2814,8 @@ class DrawingToolsManager {
                     event.stopPropagation();
                 }
             } else {
-                // Clicked on empty space - deselect all (unless Shift is held)
-                if (!event.shiftKey) {
+                // Clicked on empty space - deselect all (unless Shift/Ctrl multi-select)
+                if (!event.shiftKey && !event.ctrlKey && !event.metaKey) {
                     this.deselectAll({ fromCanvasBackground: true });
                 }
                 // Ensure SVG is transparent so canvas can receive panning events
@@ -8960,18 +8975,31 @@ class DrawingToolsManager {
         return !!(this.isRectSelecting || this._ctrlMarqueePending);
     }
 
+    _releaseCtrlMarqueePointerCapture() {
+        const pid = this._ctrlMarqueePointerId;
+        const el = this.chart && this.chart.canvas;
+        if (el && pid != null && typeof el.releasePointerCapture === 'function') {
+            try { el.releasePointerCapture(pid); } catch (_) { /* ignore */ }
+        }
+        this._ctrlMarqueePointerId = null;
+    }
+
     _cancelCtrlMarqueePending() {
         if (this._ctrlMarqueePendingBound) {
             if (this._ctrlMarqueePendingMove) {
-                document.removeEventListener('mousemove', this._ctrlMarqueePendingMove);
+                document.removeEventListener('mousemove', this._ctrlMarqueePendingMove, true);
+                document.removeEventListener('pointermove', this._ctrlMarqueePendingMove, true);
             }
             if (this._ctrlMarqueePendingUp) {
-                document.removeEventListener('mouseup', this._ctrlMarqueePendingUp);
+                document.removeEventListener('mouseup', this._ctrlMarqueePendingUp, true);
+                document.removeEventListener('pointerup', this._ctrlMarqueePendingUp, true);
+                document.removeEventListener('pointercancel', this._ctrlMarqueePendingUp, true);
             }
             if (this._ctrlMarqueePendingKeyUp) {
                 document.removeEventListener('keyup', this._ctrlMarqueePendingKeyUp);
             }
         }
+        this._releaseCtrlMarqueePointerCapture();
         this._ctrlMarqueePendingMove = null;
         this._ctrlMarqueePendingUp = null;
         this._ctrlMarqueePendingKeyUp = null;
@@ -9010,9 +9038,8 @@ class DrawingToolsManager {
                 self._cancelCtrlMarqueePending();
                 return;
             }
-            const [cx, cy] = self._eventCanvasLocalXY(e);
-            const dx = cx - self._ctrlMarqueePending.startLayoutX;
-            const dy = cy - self._ctrlMarqueePending.startLayoutY;
+            const dx = e.clientX - self._ctrlMarqueePending.startClientX;
+            const dy = e.clientY - self._ctrlMarqueePending.startClientY;
             if (Math.hypot(dx, dy) < 4) return;
 
             const pending = self._ctrlMarqueePending;
@@ -9030,10 +9057,27 @@ class DrawingToolsManager {
                 self._cancelCtrlMarqueePending();
             }
         };
+        document.addEventListener('pointermove', this._ctrlMarqueePendingMove, true);
         document.addEventListener('mousemove', this._ctrlMarqueePendingMove, true);
+        document.addEventListener('pointerup', this._ctrlMarqueePendingUp, true);
+        document.addEventListener('pointercancel', this._ctrlMarqueePendingUp, true);
         document.addEventListener('mouseup', this._ctrlMarqueePendingUp, true);
         document.addEventListener('keyup', this._ctrlMarqueePendingKeyUp);
         this._ctrlMarqueePendingBound = true;
+
+        const captureEl = this.chart && this.chart.canvas;
+        if (captureEl && typeof captureEl.setPointerCapture === 'function' && native.pointerId != null) {
+            try {
+                captureEl.setPointerCapture(native.pointerId);
+                this._ctrlMarqueePointerId = native.pointerId;
+            } catch (_) { /* ignore */ }
+        }
+
+        if (typeof event.preventDefault === 'function') event.preventDefault();
+        if (typeof event.stopPropagation === 'function') event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === 'function') {
+            event.stopImmediatePropagation();
+        }
         return true;
     }
 
@@ -9297,10 +9341,13 @@ class DrawingToolsManager {
         // Find drawings that intersect with the rectangle
         const selectedDrawings = [];
         this.drawings.forEach(drawing => {
-            if (this.isDrawingInRectangle(drawing, x, y, width, height)) {
+            if (drawing && !drawing.locked && this.isDrawingInRectangle(drawing, x, y, width, height)) {
                 selectedDrawings.push(drawing);
             }
         });
+
+        this._suppressCanvasClickAfterMarquee = true;
+        this._marqueeJustCompletedAt = Date.now();
         
         // Deselect all first
         this.deselectAll({ forSelectionChange: true });
@@ -9341,6 +9388,7 @@ class DrawingToolsManager {
         if (this.svg) this.svg.style('pointer-events', 'none');
         this._restoreSvgAfterMarquee();
         this._restoreDrawingPointerEventsAfterRectSelect();
+        this._releaseCtrlMarqueePointerCapture();
     }
 
     /**
@@ -9361,6 +9409,31 @@ class DrawingToolsManager {
         if (this.svg) this.svg.style('pointer-events', 'none');
         this._restoreSvgAfterMarquee();
         this._restoreDrawingPointerEventsAfterRectSelect();
+        this._releaseCtrlMarqueePointerCapture();
+    }
+
+    /** Selection marquee in layout px → viewport client px for getBoundingClientRect(). */
+    _layoutSelectionRectToClient(rectX, rectY, rectWidth, rectHeight) {
+        const layoutRect = (this.chart && typeof this.chart._pointerLayoutRect === 'function')
+            ? this.chart._pointerLayoutRect()
+            : null;
+        const z = (this.chart && typeof this.chart._v9LayoutZoom === 'function')
+            ? this.chart._v9LayoutZoom()
+            : 1;
+        if (!layoutRect) {
+            return {
+                left: rectX,
+                top: rectY,
+                right: rectX + rectWidth,
+                bottom: rectY + rectHeight
+            };
+        }
+        return {
+            left: layoutRect.left + rectX * z,
+            top: layoutRect.top + rectY * z,
+            right: layoutRect.left + (rectX + rectWidth) * z,
+            bottom: layoutRect.top + (rectY + rectHeight) * z
+        };
     }
 
     /**
@@ -9370,25 +9443,29 @@ class DrawingToolsManager {
         if (!drawing.group) return false;
         
         try {
-            // Get bounding box of the drawing
-            const bbox = drawing.group.node().getBBox();
-            
-            // Check if rectangles intersect
+            const node = drawing.group.node();
+            if (!node) return false;
+
+            const sel = this._layoutSelectionRectToClient(rectX, rectY, rectWidth, rectHeight);
+            if (typeof node.getBoundingClientRect === 'function') {
+                const db = node.getBoundingClientRect();
+                if (db.width > 0 || db.height > 0) {
+                    return db.left < sel.right && db.right > sel.left
+                        && db.top < sel.bottom && db.bottom > sel.top;
+                }
+            }
+
+            const bbox = node.getBBox();
             const drawingLeft = bbox.x;
             const drawingRight = bbox.x + bbox.width;
             const drawingTop = bbox.y;
             const drawingBottom = bbox.y + bbox.height;
-            
             const rectLeft = rectX;
             const rectRight = rectX + rectWidth;
             const rectTop = rectY;
             const rectBottom = rectY + rectHeight;
-            
-            // Rectangles intersect if they overlap on both axes
-            const xOverlap = drawingLeft < rectRight && drawingRight > rectLeft;
-            const yOverlap = drawingTop < rectBottom && drawingBottom > rectTop;
-            
-            return xOverlap && yOverlap;
+            return drawingLeft < rectRight && drawingRight > rectLeft
+                && drawingTop < rectBottom && drawingBottom > rectTop;
         } catch (error) {
             console.warn('Error checking drawing intersection:', error);
             return false;
@@ -10998,5 +11075,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a26_ctrl_marquee';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a27_ctrl_marquee_fix';
 } catch (_) {}

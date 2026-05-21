@@ -17555,9 +17555,6 @@ class Chart {
         // STEP 3 — Pan Logic (mousedown)
         // ═══════════════════════════════════════════════════════════════════
         this.canvas.addEventListener('mousedown', e => {
-            if (this.tool) return;
-
-            // Ctrl/Cmd+drag marquee multi-select (drawing-tools-manager) — must not start chart pan.
             const dm = this.drawingManager;
             if (
                 e.button === 0 &&
@@ -17565,13 +17562,19 @@ class Chart {
                 !e.shiftKey &&
                 dm &&
                 typeof dm._isCursorSelectMode === 'function' &&
-                dm._isCursorSelectMode()
+                dm._isCursorSelectMode() &&
+                typeof dm._getPointerCursorMode === 'function' &&
+                dm._getPointerCursorMode(e) === 'chart' &&
+                typeof dm._tryArmCtrlMarqueeFromPointer === 'function' &&
+                dm._tryArmCtrlMarqueeFromPointer(e)
             ) {
                 if (typeof this._clearPanDrawingsLayerTransform === 'function') {
                     this._clearPanDrawingsLayerTransform();
                 }
                 return;
             }
+
+            if (this.tool) return;
 
             const [mx, my] = this._eventCanvasLocalXY(e);
             const mode = detectCursorMode(mx, my);
