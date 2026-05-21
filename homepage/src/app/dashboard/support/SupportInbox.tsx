@@ -12,15 +12,41 @@ type User = {
 
 type Thread = {
   id: number;
+  ticket_ref?: string;
   user_id: number;
   user_name?: string | null;
   user_email?: string | null;
   subject: string;
   category: string;
   status: string;
+  priority?: string;
   last_message_at?: string | null;
   last_message_preview?: string | null;
 };
+
+const SUPPORT_CATEGORIES: { value: string; label: string }[] = [
+  { value: "billing", label: "Billing" },
+  { value: "account", label: "Account" },
+  { value: "access", label: "Access" },
+  { value: "bug", label: "Bug" },
+  { value: "error", label: "Error" },
+  { value: "feature", label: "Feature request" },
+  { value: "other", label: "Other" },
+];
+
+function ticketRef(t: Thread): string {
+  return t.ticket_ref ?? `TAL-${String(t.id).padStart(5, "0")}`;
+}
+
+function statusLabel(status: string): string {
+  const map: Record<string, string> = {
+    open: "Open",
+    pending: "Awaiting your reply",
+    resolved: "Resolved",
+    closed: "Closed",
+  };
+  return map[status] ?? status;
+}
 
 type Attachment = {
   id: number;
@@ -296,6 +322,7 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
   const sendReply = async () => {
     const body = reply.trim();
     if ((!body && !replyFile) || !selectedId || selected?.status === "closed") return;
+    // resolved tickets accept replies (reopens on server)
     if (replyFile && replyFile.size > SUPPORT_IMAGE_MAX_BYTES) {
       setUploadErr("Image must be 2 MB or smaller.");
       return;
@@ -377,17 +404,18 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
 
   const ownerId = selected ? selected.user_id : null;
   const isClosed = selected?.status === "closed";
+  const isResolved = selected?.status === "resolved";
 
   return (
     <div className={embedded ? "prof-settings__support-embed db-page" : "db-page"}>
       {!embedded ? (
         <div>
           <h1 className="db-hero-greeting" style={{ fontSize: 26, marginBottom: 8 }}>
-            Support
+            Support tickets
           </h1>
           <p style={{ color: "#4a4850", fontSize: 13, margin: 0 }}>
-            Report bugs, errors, or ask for help. You can attach a screenshot (max 2 MB). Messages are delivered to the
-            team in real time.
+            Open a ticket for billing, access, bugs, or general help. Attach a screenshot (max 2 MB). The team replies in
+            real time.
           </p>
         </div>
       ) : null}
@@ -409,7 +437,7 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
               gap: 8,
             }}
           >
-            <span style={{ fontSize: 12, fontWeight: 700, color: "#e8e4dc" }}>Conversations</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#e8e4dc" }}>Your tickets</span>
             <button
               type="button"
               className="db-btn-sm db-btn-accent"
@@ -435,9 +463,11 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
                 onChange={(e) => setNewCategory(e.target.value)}
                 style={{ marginBottom: 10 }}
               >
-                <option value="bug">Bug</option>
-                <option value="error">Error</option>
-                <option value="other">Other</option>
+                {SUPPORT_CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
               </select>
               <label className="db-field-label">Message</label>
               <textarea
@@ -476,7 +506,7 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
           )}
           <div style={{ maxHeight: "min(60vh, 520px)", overflowY: "auto" }}>
             {threads.length === 0 && (
-              <div style={{ padding: 24, color: "#4a4850", fontSize: 13 }}>No threads yet — start one above.</div>
+              <div style={{ padding: 24, color: "#4a4850", fontSize: 13 }}>No tickets yet — create one above.</div>
             )}
             {threads.map((t) => (
               <button
@@ -495,9 +525,12 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
                   color: "#e8e4dc",
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{t.subject}</div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>
+                  <span style={{ color: "#4a4850", marginRight: 6 }}>{ticketRef(t)}</span>
+                  {t.subject}
+                </div>
                 <div style={{ fontSize: 11, color: "#4a4850", marginTop: 4 }}>
-                  {t.category} · {t.status}
+                  {t.category} · {statusLabel(t.status)}
                   {user.role === "admin" && (t.user_email || t.user_name)
                     ? ` · ${t.user_name || t.user_email}`
                     : ""}
@@ -516,8 +549,21 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
               fontSize: 14,
             }}
           >
-            {selected ? selected.subject : "Select a conversation"}
+            {selected ? `${ticketRef(selected)} · ${selected.subject}` : "Select a ticket"}
           </div>
+          {isResolved && (
+            <div
+              style={{
+                padding: "10px 18px",
+                fontSize: 12,
+                color: "#a3e635",
+                borderBottom: "1px solid rgba(255,255,255,0.06)",
+                background: "rgba(163,230,53,0.08)",
+              }}
+            >
+              This ticket is marked resolved. Send a reply to reopen it if you still need help.
+            </div>
+          )}
           <div
             style={{
               flex: 1,
@@ -531,7 +577,7 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
             }}
           >
             {!selected && (
-              <div style={{ color: "#4a4850", fontSize: 13 }}>Choose a thread on the left or create a new one.</div>
+              <div style={{ color: "#4a4850", fontSize: 13 }}>Choose a ticket on the left or create a new one.</div>
             )}
             {selected &&
               messages.map((m) => {
@@ -602,7 +648,13 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
                   setUploadErr(null);
                 }}
                 placeholder={
-                  selected ? (isClosed ? "Thread closed" : "Type a message… (optional if you attach a screenshot)") : "Select a thread"
+                  selected
+                    ? isClosed
+                      ? "Ticket closed"
+                      : isResolved
+                        ? "Reply to reopen this ticket…"
+                        : "Type a message… (optional if you attach a screenshot)"
+                    : "Select a ticket"
                 }
                 disabled={!selected || isClosed}
                 rows={3}

@@ -2267,7 +2267,7 @@ class ReplaySystem {
      * Exit replay mode
      */
     exitReplayMode() {
-        
+        this._flushReplayStateToSession();
         this.isActive = false;
         this.stop();
 
@@ -2485,21 +2485,7 @@ class ReplaySystem {
         // Update follow button visibility based on whether last candle is visible
         this.updateAutoScrollIndicator();
 
-        // Persist replay state per session
-        if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function' && this.isActive) {
-            const replayPatch = {
-                replay: {
-                    replayTimestamp: this.replayTimestamp,
-                    currentIndex: this.currentIndex,
-                    tickElapsedMs: this.tickElapsedMs,
-                    speed: this.speed,
-                    playbackMode: this.getPlaybackMode(),
-                    timeframe: this.chart.currentTimeframe,
-                    isActive: true
-                }
-            };
-            this.chart.scheduleSessionStateSave(replayPatch);
-        }
+        this._persistReplayStateThrottled();
         
     }
 
@@ -3588,19 +3574,43 @@ class ReplaySystem {
             this.updateAutoScrollIndicator();
         }
 
-        if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function' && this.isActive) {
-            const replayPatch = {
-                replay: {
-                    replayTimestamp: this.replayTimestamp,
-                    currentIndex: this.currentIndex,
-                    tickElapsedMs: this.tickElapsedMs,
-                    speed: this.speed,
-                    playbackMode: this.getPlaybackMode(),
-                    timeframe: this.chart.currentTimeframe,
-                    isActive: true
-                }
-            };
-            this.chart.scheduleSessionStateSave(replayPatch);
+        this._persistReplayStateThrottled();
+    }
+
+    _buildReplaySessionPatch() {
+        return {
+            replay: {
+                replayTimestamp: this.replayTimestamp,
+                currentIndex: this.currentIndex,
+                tickElapsedMs: this.tickElapsedMs,
+                speed: this.speed,
+                playbackMode: this.getPlaybackMode(),
+                timeframe: this.chart.currentTimeframe,
+                isActive: true
+            }
+        };
+    }
+
+    _persistReplayStateThrottled() {
+        if (!this.chart || !this.isActive) return;
+        const patch = this._buildReplaySessionPatch();
+        if (typeof this.chart.scheduleReplaySessionStateSave === 'function') {
+            this.chart.scheduleReplaySessionStateSave(patch);
+        } else if (typeof this.chart.scheduleSessionStateSave === 'function') {
+            this.chart.scheduleSessionStateSave(patch);
+        }
+    }
+
+    _flushReplayStateToSession() {
+        if (!this.chart || !this.isActive) return;
+        const patch = this._buildReplaySessionPatch();
+        if (typeof this.chart.flushReplaySessionStateSave === 'function') {
+            this.chart.flushReplaySessionStateSave(patch);
+        } else if (typeof this.chart.scheduleSessionStateSave === 'function') {
+            this.chart.scheduleSessionStateSave(patch);
+            if (typeof this.chart.flushSessionStateSave === 'function') {
+                void this.chart.flushSessionStateSave();
+            }
         }
     }
     
@@ -4241,7 +4251,8 @@ class ReplaySystem {
         
         // Update button UI immediately
         this.syncPlayPauseButtonVisuals();
-        
+
+        this._flushReplayStateToSession();
     }
 
     /**

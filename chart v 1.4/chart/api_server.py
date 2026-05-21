@@ -762,8 +762,14 @@ class SupportThread(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, index=True, nullable=False)
     subject = Column(String(500), nullable=False)
-    category = Column(String(32), nullable=False, default="other")  # bug | error | other
-    status = Column(String(32), nullable=False, default="open")  # open | closed
+    category = Column(String(32), nullable=False, default="other")
+    status = Column(String(32), nullable=False, default="open")  # open | pending | resolved | closed
+    priority = Column(String(16), nullable=False, default="normal")  # low | normal | high | urgent
+    assigned_to_user_id = Column(Integer, index=True, nullable=True)
+    first_response_due_at = Column(DateTime, nullable=True, index=True)
+    first_responded_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    closed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_message_at = Column(DateTime, nullable=True, index=True)
@@ -776,6 +782,19 @@ class SupportMessage(Base):
     thread_id = Column(Integer, ForeignKey("support_threads.id"), index=True, nullable=False)
     sender_user_id = Column(Integer, index=True, nullable=False)
     body = Column(Text, nullable=False)
+    is_internal = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SupportCannedReply(Base):
+    __tablename__ = "support_canned_replies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False)
+    body = Column(Text, nullable=False)
+    category = Column(String(32), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    sort_order = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -917,6 +936,7 @@ _CHART_TABLES = [
     SupportAttachment.__table__,
     Notification.__table__,
     SupportThreadRead.__table__,
+    SupportCannedReply.__table__,
     Affiliate.__table__,
     AffiliateAttribution.__table__,
     AffiliateEvent.__table__,
@@ -946,6 +966,36 @@ try:
         except Exception:
             pass
         _conn.commit()
+except Exception:
+    pass
+
+# Safe migration: support ticket helpdesk columns.
+try:
+    with engine.connect() as _conn:
+        for _stmt in (
+            "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS priority VARCHAR(16) NOT NULL DEFAULT 'normal'",
+            "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS assigned_to_user_id INTEGER",
+            "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS first_response_due_at TIMESTAMP",
+            "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS first_responded_at TIMESTAMP",
+            "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP",
+            "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP",
+            "ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS is_internal BOOLEAN NOT NULL DEFAULT FALSE",
+        ):
+            _conn.execute(text(_stmt))
+        _conn.commit()
+        # Backfill SLA due date for open tickets missing it.
+        _sla_h = max(1, int(os.getenv("SUPPORT_SLA_FIRST_RESPONSE_HOURS", "24")))
+        try:
+            _conn.execute(
+                text(
+                    "UPDATE support_threads SET first_response_due_at = "
+                    f"datetime(created_at, '+{_sla_h} hours') "
+                    "WHERE first_response_due_at IS NULL AND status IN ('open', 'pending')"
+                )
+            )
+            _conn.commit()
+        except Exception:
+            pass
 except Exception:
     pass
 
@@ -1201,6 +1251,16 @@ SUPPORT_IMAGE_ALLOWED_MIME = frozenset({"image/jpeg", "image/png", "image/gif", 
 # Anti-spam / auth limits: Redis sliding window when REDIS_URL is set (shared across workers); else in-memory.
 SUPPORT_RATE_MSG_PER_MINUTE = max(1, int(os.getenv("SUPPORT_RATE_MSG_PER_MINUTE", "30")))
 SUPPORT_RATE_THREAD_PER_HOUR = max(1, int(os.getenv("SUPPORT_RATE_THREAD_PER_HOUR", "10")))
+SUPPORT_SLA_FIRST_RESPONSE_HOURS = max(1, int(os.getenv("SUPPORT_SLA_FIRST_RESPONSE_HOURS", "24")))
+SUPPORT_TICKET_URL_BASE = (
+    os.getenv("SUPPORT_TICKET_URL_BASE", "/dashboard/profile/?tab=support&thread=").strip()
+    or "/dashboard/profile/?tab=support&thread="
+)
+SUPPORT_CATEGORIES = frozenset(
+    {"billing", "account", "access", "bug", "error", "feature", "other"}
+)
+SUPPORT_STATUSES = frozenset({"open", "pending", "resolved", "closed"})
+SUPPORT_PRIORITIES = frozenset({"low", "normal", "high", "urgent"})
 _support_msg_times: dict[int, deque] = {}
 _support_thread_times: dict[int, deque] = {}
 _support_rate_lock = threading.Lock()
@@ -10183,6 +10243,67 @@ async def auth_subscription_reactivate(request: Request):
         db.close()
 
 
+def _support_ticket_ref(thread_id: int) -> str:
+    return f"TAL-{int(thread_id):05d}"
+
+
+def _support_sla_due_at(from_dt: datetime | None = None) -> datetime:
+    base = from_dt or datetime.utcnow()
+    return base + timedelta(hours=SUPPORT_SLA_FIRST_RESPONSE_HOURS)
+
+
+def _support_ticket_url(thread_id: int) -> str:
+    base = SUPPORT_TICKET_URL_BASE.rstrip("=")
+    if base.endswith("=") or base.endswith("thread="):
+        return f"{base}{thread_id}"
+    sep = "&" if "?" in base else "?"
+    return f"{base}{sep}thread={thread_id}"
+
+
+def _support_validate_category(cat: str) -> str:
+    c = (cat or "other").strip().lower()
+    if c not in SUPPORT_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Invalid category")
+    return c
+
+
+def _support_validate_status(st: str) -> str:
+    s = (st or "").strip().lower()
+    if s not in SUPPORT_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    return s
+
+
+def _support_validate_priority(pr: str) -> str:
+    p = (pr or "normal").strip().lower()
+    if p not in SUPPORT_PRIORITIES:
+        raise HTTPException(status_code=400, detail="Invalid priority")
+    return p
+
+
+def _support_apply_status_timestamps(t: SupportThread, new_status: str, now: datetime) -> None:
+    t.status = new_status
+    t.updated_at = now
+    if new_status == "resolved" and not t.resolved_at:
+        t.resolved_at = now
+    elif new_status == "closed":
+        if not t.closed_at:
+            t.closed_at = now
+    elif new_status in ("open", "pending"):
+        if new_status == "open":
+            t.resolved_at = None
+
+
+def _support_thread_sla_overdue(t: SupportThread, now: datetime | None = None) -> bool:
+    now = now or datetime.utcnow()
+    if t.status not in ("open", "pending"):
+        return False
+    if t.first_responded_at is not None:
+        return False
+    due = t.first_response_due_at
+    return bool(due and due < now)
+
+
 class SupportCreateThreadIn(BaseModel):
     subject: str = Field(..., max_length=SUPPORT_SUBJECT_MAX)
     category: str = Field(default="other")
@@ -10193,8 +10314,35 @@ class SupportAppendMessageIn(BaseModel):
     body: str = Field(..., max_length=SUPPORT_BODY_MAX)
 
 
+class SupportAdminAppendMessageIn(BaseModel):
+    body: str = Field(..., max_length=SUPPORT_BODY_MAX)
+    is_internal: bool = False
+
+
 class SupportPatchThreadIn(BaseModel):
-    status: str | None = None  # open | closed
+    status: str | None = None
+
+
+class SupportAdminPatchThreadIn(BaseModel):
+    status: str | None = None
+    priority: str | None = None
+    assigned_to_user_id: int | None = None
+
+
+class SupportCannedReplyIn(BaseModel):
+    title: str = Field(..., max_length=200)
+    body: str = Field(..., max_length=SUPPORT_BODY_MAX)
+    category: str | None = None
+    is_active: bool = True
+    sort_order: int = 0
+
+
+class SupportCannedReplyPatchIn(BaseModel):
+    title: str | None = Field(None, max_length=200)
+    body: str | None = Field(None, max_length=SUPPORT_BODY_MAX)
+    category: str | None = None
+    is_active: bool | None = None
+    sort_order: int | None = None
 
 
 class NotificationsReadIn(BaseModel):
@@ -10300,6 +10448,7 @@ def _support_msg_dict(db, m: SupportMessage) -> dict:
         "sender_name": (sender.name if sender else None),
         "sender_email": (sender.email if sender else None),
         "body": m.body,
+        "is_internal": bool(getattr(m, "is_internal", False)),
         "created_at": m.created_at.isoformat() if m.created_at else None,
         "attachment": attachment,
     }
@@ -10370,14 +10519,30 @@ def _support_user_detail_dict(db, u: User, *, admin_style: bool) -> dict:
 
 def _support_thread_dict(db, t: SupportThread, last_preview: str | None = None) -> dict:
     u = db.query(User).filter(User.id == t.user_id).first()
+    assignee = None
+    aid = getattr(t, "assigned_to_user_id", None)
+    if aid:
+        a = db.query(User).filter(User.id == aid).first()
+        if a:
+            assignee = {"id": a.id, "name": a.name, "email": a.email}
+    now = datetime.utcnow()
     return {
         "id": t.id,
+        "ticket_ref": _support_ticket_ref(t.id),
         "user_id": t.user_id,
         "user_name": u.name if u else None,
         "user_email": u.email if u else None,
         "subject": t.subject,
         "category": t.category,
         "status": t.status,
+        "priority": getattr(t, "priority", None) or "normal",
+        "assigned_to_user_id": aid,
+        "assignee": assignee,
+        "first_response_due_at": t.first_response_due_at.isoformat() if t.first_response_due_at else None,
+        "first_responded_at": t.first_responded_at.isoformat() if t.first_responded_at else None,
+        "resolved_at": t.resolved_at.isoformat() if t.resolved_at else None,
+        "closed_at": t.closed_at.isoformat() if t.closed_at else None,
+        "sla_overdue": _support_thread_sla_overdue(t, now),
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "updated_at": t.updated_at.isoformat() if t.updated_at else None,
         "last_message_at": t.last_message_at.isoformat() if t.last_message_at else None,
@@ -10386,6 +10551,8 @@ def _support_thread_dict(db, t: SupportThread, last_preview: str | None = None) 
 
 
 def _notify_support_recipients(db, thread: SupportThread, msg: SupportMessage, sender: User) -> list[int]:
+    if bool(getattr(msg, "is_internal", False)):
+        return []
     preview = (msg.body or "")[:200]
     recipients: list[int] = []
     if sender.role == "admin":
@@ -10419,6 +10586,83 @@ def _notify_support_recipients(db, thread: SupportThread, msg: SupportMessage, s
     return recipients
 
 
+def _support_esc_html(s: str) -> str:
+    import html as _html
+
+    return _html.escape(s or "", quote=True)
+
+
+def _support_email_html(message: str, link_url: str, link_label: str) -> str:
+    safe_msg = _support_esc_html(message) if "<" not in (message or "") else message
+    safe_url = _support_esc_html(link_url)
+    safe_label = _support_esc_html(link_label)
+    return (
+        f"<p>{safe_msg}</p>"
+        f'<p><a href="{safe_url}" style="color:#2563eb">{safe_label}</a></p>'
+        "<p style=\"color:#666;font-size:12px\">— Talaria Support</p>"
+    )
+
+
+def _send_support_ticket_email_sync(to_addr: str, subject: str, html_body: str) -> None:
+    try:
+        _run_bulk_smtp_session([to_addr.strip().lower()], subject[:500], html_body)
+    except Exception as exc:
+        print(f"[support-email] failed to {to_addr}: {exc}", flush=True)
+
+
+def _schedule_support_ticket_email(to_addr: str, subject: str, html_body: str) -> None:
+    addr = (to_addr or "").strip()
+    if not addr:
+        return
+    threading.Thread(
+        target=_send_support_ticket_email_sync,
+        args=(addr, subject, html_body),
+        daemon=True,
+        name="support-ticket-email",
+    ).start()
+
+
+def _support_admin_on_public_reply(db, t: SupportThread, admin_user: User, now: datetime) -> None:
+    if not t.first_responded_at:
+        t.first_responded_at = now
+    if t.status == "open":
+        t.status = "pending"
+    t.updated_at = now
+
+
+def _support_email_user_on_admin_reply(db, t: SupportThread, body_preview: str) -> None:
+    requester = db.query(User).filter(User.id == t.user_id).first()
+    if not requester or not requester.email:
+        return
+    ref = _support_ticket_ref(t.id)
+    _schedule_support_ticket_email(
+        requester.email,
+        f"New reply on ticket {ref}",
+        _support_email_html(
+            f"Support replied on <strong>{_support_esc_html(t.subject)}</strong>: "
+            f"{_support_esc_html((body_preview or '')[:300])}",
+            _support_ticket_url(t.id),
+            "View ticket",
+        ),
+    )
+
+
+def _support_email_user_on_status(db, t: SupportThread, status_label: str) -> None:
+    requester = db.query(User).filter(User.id == t.user_id).first()
+    if not requester or not requester.email:
+        return
+    ref = _support_ticket_ref(t.id)
+    _schedule_support_ticket_email(
+        requester.email,
+        f"Ticket {ref} {status_label}",
+        _support_email_html(
+            f"Your ticket <strong>{_support_esc_html(t.subject)}</strong> was marked <strong>{status_label}</strong>.",
+            _support_ticket_url(t.id),
+            "View ticket",
+        ),
+    )
+
+
 @app.post("/api/support/threads")
 async def support_create_thread(request: Request):
     user = _require_user(request)
@@ -10449,8 +10693,7 @@ async def support_create_thread(request: Request):
         if not body:
             raise HTTPException(status_code=400, detail="Message is required")
 
-    if cat not in ("bug", "error", "other"):
-        raise HTTPException(status_code=400, detail="Invalid category")
+    cat = _support_validate_category(cat)
     if not subj:
         raise HTTPException(status_code=400, detail="Subject is required")
     body = body.strip()[:SUPPORT_BODY_MAX]
@@ -10474,12 +10717,14 @@ async def support_create_thread(request: Request):
             subject=subj[: SUPPORT_SUBJECT_MAX],
             category=cat,
             status="open",
+            priority="normal",
+            first_response_due_at=_support_sla_due_at(now),
             last_message_at=now,
         )
         db.add(t)
         db.commit()
         db.refresh(t)
-        m = SupportMessage(thread_id=t.id, sender_user_id=user.id, body=body)
+        m = SupportMessage(thread_id=t.id, sender_user_id=user.id, body=body, is_internal=False)
         db.add(m)
         db.commit()
         db.refresh(m)
@@ -10497,6 +10742,17 @@ async def support_create_thread(request: Request):
         )
         await _push_inbox_notification_pings(recipients, t.id, m.id)
         preview = body[:160] if len(body) > 160 else body
+        requester = db.query(User).filter(User.id == t.user_id).first()
+        if requester and requester.email:
+            _schedule_support_ticket_email(
+                requester.email,
+                f"Ticket {_support_ticket_ref(t.id)} received",
+                _support_email_html(
+                    f"We received your support request: <strong>{_support_esc_html(t.subject)}</strong>",
+                    _support_ticket_url(t.id),
+                    "View your ticket",
+                ),
+            )
         return {"thread": _support_thread_dict(db, t, last_preview=preview), "message": msg_dict}
     finally:
         db.close()
@@ -10575,7 +10831,7 @@ async def support_list_threads(
         if user.role != "admin":
             query = query.filter(SupportThread.user_id == user.id)
         else:
-            if status and status in ("open", "closed"):
+            if status and status in SUPPORT_STATUSES:
                 query = query.filter(SupportThread.status == status)
             if q and q.strip():
                 like = f"%{q.strip()}%"
@@ -10615,11 +10871,12 @@ async def support_list_messages(
             raise HTTPException(status_code=404, detail="Thread not found")
         if not _support_user_can_access_thread(user, t):
             raise HTTPException(status_code=403, detail="Forbidden")
-        total = db.query(SupportMessage).filter(SupportMessage.thread_id == thread_id).count()
+        msg_q = db.query(SupportMessage).filter(SupportMessage.thread_id == thread_id)
+        if user.role != "admin":
+            msg_q = msg_q.filter(SupportMessage.is_internal == False)
+        total = msg_q.count()
         msgs = (
-            db.query(SupportMessage)
-            .filter(SupportMessage.thread_id == thread_id)
-            .order_by(SupportMessage.id.asc())
+            msg_q.order_by(SupportMessage.id.asc())
             .offset(offset)
             .limit(limit)
             .all()
@@ -10677,9 +10934,13 @@ async def support_post_message(thread_id: int, request: Request):
         if not _support_user_can_access_thread(user, t):
             raise HTTPException(status_code=403, detail="Forbidden")
         if t.status == "closed":
-            raise HTTPException(status_code=400, detail="Thread is closed")
+            raise HTTPException(status_code=400, detail="Ticket is closed")
         now = datetime.utcnow()
-        m = SupportMessage(thread_id=t.id, sender_user_id=user.id, body=body)
+        if t.status == "resolved" and user.role != "admin":
+            t.status = "open"
+            t.resolved_at = None
+            t.updated_at = now
+        m = SupportMessage(thread_id=t.id, sender_user_id=user.id, body=body, is_internal=False)
         db.add(m)
         t.last_message_at = now
         t.updated_at = now
@@ -10765,21 +11026,410 @@ async def support_mark_thread_read(
 
 @app.patch("/api/support/threads/{thread_id}")
 async def support_patch_thread(thread_id: int, payload: SupportPatchThreadIn, request: Request):
+    """Legacy admin close/open — prefer /api/admin/support/threads/{id}."""
+    admin_payload = SupportAdminPatchThreadIn(status=payload.status)
+    return await admin_support_patch_thread(thread_id, admin_payload, request)
+
+
+def _admin_support_query_threads(
+    db,
+    *,
+    status: str | None,
+    priority: str | None,
+    assigned_to: int | None,
+    q: str | None,
+    sla_overdue: bool,
+    limit: int,
+    offset: int,
+):
+    query = db.query(SupportThread)
+    if status:
+        query = query.filter(SupportThread.status == _support_validate_status(status))
+    if priority:
+        query = query.filter(SupportThread.priority == _support_validate_priority(priority))
+    if assigned_to is not None:
+        if assigned_to == 0:
+            query = query.filter(SupportThread.assigned_to_user_id.is_(None))
+        else:
+            query = query.filter(SupportThread.assigned_to_user_id == int(assigned_to))
+    if q and q.strip():
+        needle = f"%{q.strip()}%"
+        user_ids = [
+            r[0]
+            for r in db.query(User.id)
+            .filter((User.email.ilike(needle)) | (User.name.ilike(needle)))
+            .limit(200)
+            .all()
+        ]
+        if user_ids:
+            query = query.filter(
+                (SupportThread.subject.ilike(needle)) | (SupportThread.user_id.in_(user_ids))
+            )
+        else:
+            query = query.filter(SupportThread.subject.ilike(needle))
+    if sla_overdue:
+        now = datetime.utcnow()
+        query = query.filter(
+            SupportThread.status.in_(("open", "pending")),
+            SupportThread.first_responded_at.is_(None),
+            SupportThread.first_response_due_at.isnot(None),
+            SupportThread.first_response_due_at < now,
+        )
+    total = query.count()
+    rows = (
+        query.order_by(nulls_last(SupportThread.last_message_at.desc()), SupportThread.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return total, rows
+
+
+@app.get("/api/admin/support/stats")
+async def admin_support_stats(request: Request):
     _require_admin(request)
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        open_n = db.query(SupportThread).filter(SupportThread.status == "open").count()
+        pending_n = db.query(SupportThread).filter(SupportThread.status == "pending").count()
+        unassigned_n = (
+            db.query(SupportThread)
+            .filter(SupportThread.status.in_(("open", "pending")), SupportThread.assigned_to_user_id.is_(None))
+            .count()
+        )
+        overdue_n = (
+            db.query(SupportThread)
+            .filter(
+                SupportThread.status.in_(("open", "pending")),
+                SupportThread.first_responded_at.is_(None),
+                SupportThread.first_response_due_at.isnot(None),
+                SupportThread.first_response_due_at < now,
+            )
+            .count()
+        )
+        closed_today = (
+            db.query(SupportThread)
+            .filter(SupportThread.status == "closed", SupportThread.closed_at >= today_start)
+            .count()
+        )
+        return {
+            "open": open_n,
+            "pending": pending_n,
+            "unassigned": unassigned_n,
+            "sla_overdue": overdue_n,
+            "closed_today": closed_today,
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/support/agents")
+async def admin_support_agents(request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        rows = db.query(User).filter(User.role == "admin", User.is_active == True).order_by(User.name).all()
+        return {
+            "agents": [
+                {"id": u.id, "name": u.name, "email": u.email}
+                for u in rows
+            ]
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/support/threads")
+async def admin_support_list_threads(
+    request: Request,
+    status: str | None = None,
+    priority: str | None = None,
+    assigned_to: int | None = None,
+    q: str | None = None,
+    sla_overdue: bool = False,
+    limit: int = Query(500, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        total, rows = _admin_support_query_threads(
+            db,
+            status=status,
+            priority=priority,
+            assigned_to=assigned_to,
+            q=q,
+            sla_overdue=sla_overdue,
+            limit=limit,
+            offset=offset,
+        )
+        out = []
+        for t in rows:
+            last = (
+                db.query(SupportMessage)
+                .filter(SupportMessage.thread_id == t.id, SupportMessage.is_internal == False)
+                .order_by(SupportMessage.id.desc())
+                .first()
+            )
+            preview = (last.body[:160] + "…") if last and len(last.body or "") > 160 else (last.body if last else None)
+            out.append(_support_thread_dict(db, t, last_preview=preview))
+        return {"threads": out, "total": total, "limit": limit, "offset": offset}
+    finally:
+        db.close()
+
+
+@app.patch("/api/admin/support/threads/{thread_id}")
+async def admin_support_patch_thread(
+    thread_id: int,
+    payload: SupportAdminPatchThreadIn,
+    request: Request,
+):
+    admin = _require_admin(request)
     db = SessionLocal()
     try:
         t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
         if not t:
             raise HTTPException(status_code=404, detail="Thread not found")
+        now = datetime.utcnow()
+        changes: dict = {}
         if payload.status is not None:
-            st = payload.status.strip().lower()
-            if st not in ("open", "closed"):
-                raise HTTPException(status_code=400, detail="Invalid status")
-            t.status = st
-            t.updated_at = datetime.utcnow()
+            old = t.status
+            st = _support_validate_status(payload.status)
+            _support_apply_status_timestamps(t, st, now)
+            changes["status"] = {"from": old, "to": st}
+            if st in ("resolved", "closed"):
+                _support_email_user_on_status(db, t, st)
+        if payload.priority is not None:
+            old_p = t.priority
+            t.priority = _support_validate_priority(payload.priority)
+            t.updated_at = now
+            changes["priority"] = {"from": old_p, "to": t.priority}
+        if payload.assigned_to_user_id is not None:
+            old_a = t.assigned_to_user_id
+            if payload.assigned_to_user_id == 0:
+                t.assigned_to_user_id = None
+            else:
+                agent = db.query(User).filter(
+                    User.id == payload.assigned_to_user_id,
+                    User.role == "admin",
+                    User.is_active == True,
+                ).first()
+                if not agent:
+                    raise HTTPException(status_code=400, detail="Invalid assignee")
+                t.assigned_to_user_id = int(agent.id)
+            t.updated_at = now
+            changes["assigned_to_user_id"] = {"from": old_a, "to": t.assigned_to_user_id}
         db.commit()
         db.refresh(t)
+        if changes:
+            action = "support.ticket.update"
+            if "assigned_to_user_id" in changes and len(changes) == 1:
+                action = "support.ticket.assign"
+            elif "status" in changes and len(changes) == 1:
+                action = "support.ticket.status"
+            _record_admin_action(
+                request,
+                action=action,
+                target_type="support_thread",
+                target_id=t.id,
+                params=changes,
+            )
         return {"thread": _support_thread_dict(db, t)}
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/support/threads/{thread_id}/messages")
+async def admin_support_post_message(
+    thread_id: int,
+    request: Request,
+):
+    admin = _require_admin(request)
+    image_tuple: tuple[bytes, str, str | None] | None = None
+    is_internal = False
+    ct = (request.headers.get("content-type") or "").lower()
+    if "multipart/form-data" in ct:
+        form = await request.form()
+        body_raw = (form.get("body") or "").strip()
+        is_internal = str(form.get("is_internal") or "").lower() in ("1", "true", "yes", "on")
+        up = form.get("file")
+        if up is not None and hasattr(up, "read"):
+            image_tuple = await _support_consume_upload_image(up)
+        body = body_raw
+        if not body and image_tuple:
+            body = "[Image attachment]"
+        elif not body and not image_tuple:
+            raise HTTPException(status_code=400, detail="Message text or an image is required")
+    else:
+        try:
+            raw = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        payload = SupportAdminAppendMessageIn(**raw)
+        body = payload.body.strip()
+        is_internal = bool(payload.is_internal)
+        if not body:
+            raise HTTPException(status_code=400, detail="Message is required")
+    body = body.strip()[:SUPPORT_BODY_MAX]
+    db = SessionLocal()
+    try:
+        t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
+        if not t:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        if t.status == "closed":
+            raise HTTPException(status_code=400, detail="Ticket is closed")
+        now = datetime.utcnow()
+        m = SupportMessage(
+            thread_id=t.id,
+            sender_user_id=admin.id,
+            body=body,
+            is_internal=is_internal,
+        )
+        db.add(m)
+        t.last_message_at = now
+        t.updated_at = now
+        if not is_internal:
+            _support_admin_on_public_reply(db, t, admin, now)
+        db.commit()
+        db.refresh(m)
+        if image_tuple and not is_internal:
+            data, mime, orig = image_tuple
+            _support_add_attachment(db, m.id, int(admin.id), data, mime, orig)
+            db.commit()
+        recipients = _notify_support_recipients(db, t, m, admin)
+        db.commit()
+        if not is_internal:
+            _support_email_user_on_admin_reply(db, t, body)
+        _record_admin_action(
+            request,
+            action="support.ticket.note" if is_internal else "support.ticket.reply",
+            target_type="support_thread",
+            target_id=t.id,
+            params={"is_internal": is_internal, "message_id": m.id},
+        )
+        req_upto, stf_upto = _support_read_watermarks(db, t)
+        msg_dict = _support_msg_dict_with_read(db, m, t, req_upto, stf_upto)
+        await support_ws_manager.broadcast(
+            t.id,
+            {"type": "message", "thread_id": t.id, "message": msg_dict},
+        )
+        await _push_inbox_notification_pings(recipients, t.id, m.id)
+        return {"message": msg_dict, "thread": _support_thread_dict(db, t)}
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/support/canned-replies")
+async def admin_support_canned_list(request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(SupportCannedReply)
+            .order_by(SupportCannedReply.sort_order.asc(), SupportCannedReply.id.asc())
+            .all()
+        )
+        return {
+            "replies": [
+                {
+                    "id": r.id,
+                    "title": r.title,
+                    "body": r.body,
+                    "category": r.category,
+                    "is_active": r.is_active,
+                    "sort_order": r.sort_order,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in rows
+            ]
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/support/canned-replies")
+async def admin_support_canned_create(payload: SupportCannedReplyIn, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        cat = None
+        if payload.category:
+            cat = _support_validate_category(payload.category)
+        row = SupportCannedReply(
+            title=payload.title.strip()[:200],
+            body=payload.body.strip()[:SUPPORT_BODY_MAX],
+            category=cat,
+            is_active=bool(payload.is_active),
+            sort_order=int(payload.sort_order or 0),
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        _record_admin_action(
+            request,
+            action="support.ticket.canned_create",
+            target_type="support_canned_reply",
+            target_id=row.id,
+            params={"title": row.title},
+        )
+        return {"reply": {"id": row.id, "title": row.title}}
+    finally:
+        db.close()
+
+
+@app.patch("/api/admin/support/canned-replies/{reply_id}")
+async def admin_support_canned_patch(
+    reply_id: int,
+    payload: SupportCannedReplyPatchIn,
+    request: Request,
+):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        row = db.query(SupportCannedReply).filter(SupportCannedReply.id == reply_id).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        if payload.title is not None:
+            row.title = payload.title.strip()[:200]
+        if payload.body is not None:
+            row.body = payload.body.strip()[:SUPPORT_BODY_MAX]
+        if payload.category is not None:
+            row.category = _support_validate_category(payload.category) if payload.category else None
+        if payload.is_active is not None:
+            row.is_active = bool(payload.is_active)
+        if payload.sort_order is not None:
+            row.sort_order = int(payload.sort_order)
+        db.commit()
+        _record_admin_action(
+            request,
+            action="support.ticket.canned_update",
+            target_type="support_canned_reply",
+            target_id=row.id,
+        )
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.delete("/api/admin/support/canned-replies/{reply_id}")
+async def admin_support_canned_delete(reply_id: int, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        row = db.query(SupportCannedReply).filter(SupportCannedReply.id == reply_id).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Not found")
+        db.delete(row)
+        db.commit()
+        _record_admin_action(
+            request,
+            action="support.ticket.canned_delete",
+            target_type="support_canned_reply",
+            target_id=reply_id,
+        )
+        return {"ok": True}
     finally:
         db.close()
 

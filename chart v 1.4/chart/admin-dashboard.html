@@ -1543,6 +1543,20 @@ select { cursor:default; }
 }
 .support-thread-subj { font-weight: 600; color: var(--text); margin-bottom: 4px; }
 .support-thread-meta { font-size: 11px; color: var(--text-muted); }
+.support-ticket-stats { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.support-ticket-stat { font-size:11px; padding:4px 10px; border-radius:999px; background:var(--surface-raised); border:1px solid var(--border); color:var(--text-secondary); }
+.support-ticket-stat.warn { border-color:rgba(251,191,36,.4); color:#fbbf24; }
+.support-filters { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; align-items:center; }
+.support-filters select, .support-filters input { font-size:12px; padding:6px 8px; border-radius:var(--radius-xs); border:1px solid var(--border); background:var(--surface-raised); color:var(--text); }
+.support-badge { font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px; }
+.support-badge.sla { background:rgba(239,68,68,.15); color:#f87171; }
+.support-badge.pri-urgent { background:rgba(239,68,68,.2); color:#fca5a5; }
+.support-badge.pri-high { background:rgba(251,146,60,.2); color:#fdba74; }
+.support-msg.internal { border-left:3px solid #a78bfa; opacity:.95; }
+.support-ticket-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+.support-ticket-controls select { font-size:12px; padding:4px 8px; }
+.support-activity { font-size:11px; color:var(--text-muted); max-height:120px; overflow-y:auto; margin-top:8px; }
+.support-activity div { padding:4px 0; border-bottom:1px solid var(--border); }
 .support-main { display: flex; flex-direction: column; min-height: 400px; }
 .support-messages {
   flex: 1;
@@ -1932,7 +1946,7 @@ select { cursor:default; }
       </a>
       <a class="nav-item" data-section="support" onclick="navigate('support')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        Support
+        Tickets
       </a>
       <a class="nav-item" data-section="audit-log" onclick="navigate('audit-log')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
@@ -3370,38 +3384,92 @@ select { cursor:default; }
         </div>
       </div>
 
-      <!-- ════════ SUPPORT SECTION ════════ -->
+      <!-- ════════ TICKETS SECTION ════════ -->
       <div class="section" id="sec-support">
+        <div id="supportTicketStats" class="support-ticket-stats"></div>
         <div class="support-layout">
           <div class="card" style="margin:0;display:flex;flex-direction:column;max-height:calc(100vh - 120px)">
             <div class="card-hdr">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-              <div class="card-title">Conversations</div>
+              <div class="card-title">Inbox</div>
               <button type="button" class="btn sm" onclick="loadSupportThreads()">Refresh</button>
             </div>
-            <div class="card-body support-thread-list" id="supportThreadList">
-              <div class="empty-state"><p>Loading…</p></div>
+            <div class="card-body" style="padding:12px">
+              <div class="support-filters">
+                <input type="search" id="supportFilterQ" placeholder="Search subject or email…" style="flex:1;min-width:120px" onkeydown="if(event.key==='Enter')loadSupportThreads()" />
+                <select id="supportFilterStatus" onchange="loadSupportThreads()">
+                  <option value="">All status</option>
+                  <option value="open">Open</option>
+                  <option value="pending">Pending</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="closed">Closed</option>
+                </select>
+                <select id="supportFilterPriority" onchange="loadSupportThreads()">
+                  <option value="">All priority</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="high">High</option>
+                  <option value="normal">Normal</option>
+                  <option value="low">Low</option>
+                </select>
+                <select id="supportFilterAssignee" onchange="loadSupportThreads()">
+                  <option value="">All assignees</option>
+                  <option value="0">Unassigned</option>
+                </select>
+                <label style="font-size:11px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
+                  <input type="checkbox" id="supportFilterSla" onchange="loadSupportThreads()" /> SLA overdue
+                </label>
+              </div>
+              <div class="support-thread-list" id="supportThreadList">
+                <div class="empty-state"><p>Loading…</p></div>
+              </div>
             </div>
           </div>
           <div class="support-chat-column">
             <div class="card support-user-card" id="supportUserCard" style="margin:0;display:none">
               <div class="card-hdr">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-                <div class="card-title">Requester profile</div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                <div class="card-title">Requester</div>
               </div>
               <div class="card-body" id="supportUserCardBody"></div>
             </div>
             <div class="card support-main" style="margin:0">
               <div class="card-hdr" style="flex-wrap:wrap;gap:8px">
-                <div class="card-title" id="supportThreadTitle" style="flex:1;min-width:0">Select a conversation</div>
-                <button type="button" class="btn sm" id="supportCloseBtn" style="display:none" onclick="supportCloseThread()">Close thread</button>
+                <div class="card-title" id="supportThreadTitle" style="flex:1;min-width:0">Select a ticket</div>
+                <button type="button" class="btn sm" id="supportResolveBtn" style="display:none" onclick="supportSetStatus('resolved')">Resolve</button>
+                <button type="button" class="btn sm" id="supportReopenBtn" style="display:none" onclick="supportSetStatus('open')">Reopen</button>
+                <button type="button" class="btn sm" id="supportCloseBtn" style="display:none" onclick="supportSetStatus('closed')">Close</button>
+              </div>
+              <div class="card-body" style="padding:12px;border-bottom:1px solid var(--border)">
+                <div class="support-ticket-controls" id="supportTicketControls" style="display:none">
+                  <label style="font-size:11px;color:var(--text-muted)">Status
+                    <select id="supportTicketStatus" onchange="supportPatchTicketField('status', this.value)"></select>
+                  </label>
+                  <label style="font-size:11px;color:var(--text-muted)">Priority
+                    <select id="supportTicketPriority" onchange="supportPatchTicketField('priority', this.value)">
+                      <option value="low">Low</option>
+                      <option value="normal">Normal</option>
+                      <option value="high">High</option>
+                      <option value="urgent">Urgent</option>
+                    </select>
+                  </label>
+                  <label style="font-size:11px;color:var(--text-muted)">Assignee
+                    <select id="supportTicketAssignee" onchange="supportPatchTicketField('assigned_to_user_id', this.value)"></select>
+                  </label>
+                  <select id="supportCannedSelect" style="margin-left:auto" onchange="supportInsertCanned(this)">
+                    <option value="">Canned reply…</option>
+                  </select>
+                </div>
+                <div class="support-activity" id="supportTicketActivity" style="display:none"></div>
               </div>
               <div class="support-messages" id="supportMessages">
-                <div class="empty-state" style="padding:24px"><p class="text-muted" style="color:var(--text-muted)">Choose a thread to view messages</p></div>
+                <div class="empty-state" style="padding:24px"><p style="color:var(--text-muted)">Choose a ticket to view messages</p></div>
               </div>
               <div class="support-composer">
                 <div class="support-composer-col">
-                  <textarea id="supportInput" placeholder="Type a reply… (optional if you attach a screenshot)" disabled></textarea>
+                  <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                    <input type="checkbox" id="supportInternalNote" /> Internal note (not emailed to user)
+                  </label>
+                  <textarea id="supportInput" placeholder="Public reply or internal note…" disabled></textarea>
                   <label class="support-file-hint">
                     <input type="file" id="supportFileInput" accept="image/jpeg,image/png,image/gif,image/webp" disabled />
                     Screenshot (optional, max 2&nbsp;MB)
@@ -3665,6 +3733,8 @@ function clearDsHubRegistryPanel() {
 let supportThreads = [];
 let selectedSupportId = null;
 let supportMessages = [];
+let supportAgents = [];
+let supportCannedReplies = [];
 let supportWs = null;
 let supportSubscribedThreadId = null;
 let notifDropdownOpen = false;
@@ -3774,6 +3844,9 @@ function ensureLiveSupportSocket() {
       const d = JSON.parse(ev.data);
       if (d.type === 'notification_ping') {
         loadNotifications();
+        if (document.getElementById('sec-support') && document.getElementById('sec-support').classList.contains('active')) {
+          loadSupportThreads();
+        }
         return;
       }
       if (d.type === 'read_receipt' && d.thread_id === selectedSupportId) {
@@ -3858,21 +3931,93 @@ async function markSupportThreadRead() {
   } catch (e) {}
 }
 
+async function loadSupportTicketStats() {
+  const el = $('supportTicketStats');
+  if (!el) return;
+  try {
+    const s = await api('/api/admin/support/stats');
+    el.innerHTML = [
+      '<span class="support-ticket-stat">Open: ' + (s.open || 0) + '</span>',
+      '<span class="support-ticket-stat">Pending: ' + (s.pending || 0) + '</span>',
+      '<span class="support-ticket-stat">Unassigned: ' + (s.unassigned || 0) + '</span>',
+      '<span class="support-ticket-stat warn">SLA overdue: ' + (s.sla_overdue || 0) + '</span>',
+      '<span class="support-ticket-stat">Closed today: ' + (s.closed_today || 0) + '</span>'
+    ].join('');
+  } catch (e) { el.innerHTML = ''; }
+}
+
+async function loadSupportAgents() {
+  try {
+    const data = await api('/api/admin/support/agents');
+    supportAgents = data.agents || [];
+    const sel = $('supportFilterAssignee');
+    const asel = $('supportTicketAssignee');
+    const opts = '<option value="">All assignees</option><option value="0">Unassigned</option>' +
+      supportAgents.map(a => '<option value="' + a.id + '">' + esc(a.name || a.email) + '</option>').join('');
+    if (sel) sel.innerHTML = opts.replace('All assignees', 'All assignees');
+    if (asel) {
+      asel.innerHTML = '<option value="0">Unassigned</option>' +
+        supportAgents.map(a => '<option value="' + a.id + '">' + esc(a.name || a.email) + '</option>').join('');
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function loadSupportCannedReplies() {
+  try {
+    const data = await api('/api/admin/support/canned-replies');
+    supportCannedReplies = (data.replies || []).filter(r => r.is_active !== false);
+    const sel = $('supportCannedSelect');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Canned reply…</option>' +
+      supportCannedReplies.map(r => '<option value="' + r.id + '">' + esc(r.title) + '</option>').join('');
+  } catch (e) { /* ignore */ }
+}
+
+function supportInsertCanned(sel) {
+  const id = sel && sel.value ? parseInt(sel.value, 10) : NaN;
+  if (Number.isNaN(id)) return;
+  const row = supportCannedReplies.find(r => r.id === id);
+  if (!row) return;
+  const ta = $('supportInput');
+  if (ta) ta.value = (ta.value ? ta.value + '\n\n' : '') + row.body;
+  sel.value = '';
+}
+
+function supportBuildThreadQuery() {
+  const params = new URLSearchParams();
+  params.set('limit', '500');
+  const q = ($('supportFilterQ') && $('supportFilterQ').value || '').trim();
+  const st = ($('supportFilterStatus') && $('supportFilterStatus').value) || '';
+  const pr = ($('supportFilterPriority') && $('supportFilterPriority').value) || '';
+  const asg = ($('supportFilterAssignee') && $('supportFilterAssignee').value) || '';
+  const sla = $('supportFilterSla') && $('supportFilterSla').checked;
+  if (q) params.set('q', q);
+  if (st) params.set('status', st);
+  if (pr) params.set('priority', pr);
+  if (asg !== '') params.set('assigned_to', asg);
+  if (sla) params.set('sla_overdue', 'true');
+  return params.toString();
+}
+
 async function loadSupportThreads() {
   const box = $('supportThreadList');
   try {
-    const data = await api('/api/support/threads');
+    const data = await api('/api/admin/support/threads?' + supportBuildThreadQuery());
     supportThreads = data.threads || [];
     if (!supportThreads.length) {
-      box.innerHTML = '<div class="empty-state" style="padding:24px"><p>No support threads yet</p></div>';
+      box.innerHTML = '<div class="empty-state" style="padding:24px"><p>No tickets match filters</p></div>';
       return;
     }
     box.innerHTML = supportThreads.map(t => {
       const active = t.id === selectedSupportId ? ' active' : '';
       const who = esc(t.user_name || t.user_email || 'User #' + t.user_id);
+      const ref = esc(t.ticket_ref || ('TAL-' + String(t.id).padStart(5, '0')));
+      const sla = t.sla_overdue ? '<span class="support-badge sla">SLA</span>' : '';
+      const pri = t.priority && t.priority !== 'normal' ? '<span class="support-badge pri-' + esc(t.priority) + '">' + esc(t.priority) + '</span>' : '';
+      const assignee = t.assignee ? esc((t.assignee.name || t.assignee.email || '').split('@')[0]) : '—';
       return `<div class="support-thread-row${active}" data-id="${t.id}">
-        <div class="support-thread-subj">${esc(t.subject)} <span style="opacity:.6;font-size:10px">(${esc(t.category)})</span></div>
-        <div class="support-thread-meta">${who} · ${esc(t.status)} · ${timeAgo(t.last_message_at)}</div>
+        <div class="support-thread-subj">${ref} · ${esc(t.subject)} ${pri}${sla}</div>
+        <div class="support-thread-meta">${who} · ${esc(t.status)} · ${esc(t.priority || 'normal')} · ${assignee} · ${timeAgo(t.last_message_at)}</div>
       </div>`;
     }).join('');
     box.querySelectorAll('.support-thread-row').forEach(row => {
@@ -3894,7 +4039,8 @@ function renderSupportMessages() {
   box.innerHTML = supportMessages.map(m => {
     const isOwner = ownerId != null && m.sender_user_id === ownerId;
     const cls = isOwner ? 'from-user' : 'from-admin';
-    const label = isOwner ? 'User' : 'Support';
+    const label = m.is_internal ? 'Internal' : (isOwner ? 'User' : 'Support');
+    const intCls = m.is_internal ? ' internal' : '';
     const readOk = m.read_by_counterparty === true;
     const readPending = m.read_by_counterparty === false;
     const readLine = readOk
@@ -3903,27 +4049,81 @@ function renderSupportMessages() {
     const attImg = m.attachment && m.attachment.url
       ? `<div class="support-msg-img-wrap"><a href="${esc(m.attachment.url)}" target="_blank" rel="noopener"><img src="${esc(m.attachment.url)}" alt="" loading="lazy"/></a></div>`
       : '';
-    return `<div class="support-msg ${cls}"><div class="support-msg-hdr">${esc(label)} · ${esc(m.sender_name || '')}</div>${esc(m.body || '')}${attImg}${readLine}</div>`;
+    return `<div class="support-msg ${cls}${intCls}"><div class="support-msg-hdr">${esc(label)} · ${esc(m.sender_name || '')}</div>${esc(m.body || '')}${attImg}${readLine}</div>`;
   }).join('');
   box.scrollTop = box.scrollHeight;
 }
 
+function supportUpdateTicketControls(th) {
+  const ctrl = $('supportTicketControls');
+  const resolveBtn = $('supportResolveBtn');
+  const closeBtn = $('supportCloseBtn');
+  const reopenBtn = $('supportReopenBtn');
+  if (!th) {
+    if (ctrl) ctrl.style.display = 'none';
+    return;
+  }
+  if (ctrl) ctrl.style.display = 'flex';
+  const stSel = $('supportTicketStatus');
+  if (stSel) {
+    stSel.innerHTML = ['open', 'pending', 'resolved', 'closed'].map(s =>
+      '<option value="' + s + '"' + (th.status === s ? ' selected' : '') + '>' + s + '</option>'
+    ).join('');
+  }
+  const prSel = $('supportTicketPriority');
+  if (prSel) prSel.value = th.priority || 'normal';
+  const asSel = $('supportTicketAssignee');
+  if (asSel) asSel.value = th.assigned_to_user_id != null ? String(th.assigned_to_user_id) : '0';
+  const closed = th.status === 'closed';
+  const resolved = th.status === 'resolved';
+  if (resolveBtn) resolveBtn.style.display = (!closed && !resolved) ? '' : 'none';
+  if (closeBtn) closeBtn.style.display = (!closed) ? '' : 'none';
+  if (reopenBtn) reopenBtn.style.display = (closed || resolved) ? '' : 'none';
+}
+
+async function loadSupportTicketActivity(threadId) {
+  const box = $('supportTicketActivity');
+  if (!box) return;
+  try {
+    const params = new URLSearchParams();
+    params.set('limit', '50');
+    params.set('action', 'support.ticket');
+    params.set('q', String(threadId));
+    const data = await api('/api/admin/audit-log?' + params.toString());
+    const entries = (data.entries || []).filter(e =>
+      e.target_type === 'support_thread' && String(e.target_id) === String(threadId)
+    );
+    if (!entries.length) {
+      box.style.display = 'none';
+      box.innerHTML = '';
+      return;
+    }
+    box.style.display = 'block';
+    box.innerHTML = '<strong>Activity</strong>' + entries.map(e => {
+      const when = e.created_at ? new Date(e.created_at).toLocaleString() : '';
+      return '<div>' + esc(when) + ' · ' + esc(e.action || '') + ' · ' + esc(e.admin_email || '') + '</div>';
+    }).join('');
+  } catch (e) {
+    box.style.display = 'none';
+  }
+}
+
 async function selectSupportThread(id) {
   selectedSupportId = id;
+  const internalCb = $('supportInternalNote');
+  const isInternal = internalCb && internalCb.checked;
   $('supportInput').disabled = false;
   $('supportSendBtn').disabled = false;
   const sfi = $('supportFileInput');
-  if (sfi) sfi.disabled = false;
+  if (sfi) sfi.disabled = isInternal;
   const th = supportThreads.find(x => x.id === id);
-  $('supportThreadTitle').textContent = th ? th.subject : 'Thread #' + id;
-  const closeBtn = $('supportCloseBtn');
+  const ref = th && th.ticket_ref ? th.ticket_ref : ('TAL-' + String(id).padStart(5, '0'));
+  $('supportThreadTitle').textContent = th ? (ref + ' · ' + th.subject) : ref;
+  supportUpdateTicketControls(th);
   if (th && th.status === 'closed') {
-    closeBtn.style.display = 'none';
     $('supportInput').disabled = true;
     $('supportSendBtn').disabled = true;
     if (sfi) sfi.disabled = true;
-  } else {
-    closeBtn.style.display = '';
   }
   try {
     const data = await api('/api/support/threads/' + id + '/messages?limit=200');
@@ -3931,6 +4131,7 @@ async function selectSupportThread(id) {
     renderSupportMessages();
     await loadSupportRequesterProfile();
     await markSupportThreadRead();
+    await loadSupportTicketActivity(id);
   } catch (e) {
     toast(e.message || 'Failed to load messages', 'err');
   }
@@ -3940,6 +4141,32 @@ async function selectSupportThread(id) {
   ensureLiveSupportSocket();
 }
 
+async function supportPatchTicketField(field, value) {
+  if (!selectedSupportId) return;
+  const body = {};
+  if (field === 'status') body.status = value;
+  else if (field === 'priority') body.priority = value;
+  else if (field === 'assigned_to_user_id') body.assigned_to_user_id = parseInt(value, 10) || 0;
+  try {
+    const data = await api('/api/admin/support/threads/' + selectedSupportId, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const idx = supportThreads.findIndex(t => t.id === selectedSupportId);
+    if (idx >= 0 && data.thread) supportThreads[idx] = data.thread;
+    supportUpdateTicketControls(data.thread);
+    await loadSupportThreads();
+    await loadSupportTicketActivity(selectedSupportId);
+    toast('Ticket updated', 'ok');
+  } catch (e) { toast(e.message || 'Update failed', 'err'); }
+}
+
+async function supportSetStatus(status) {
+  await supportPatchTicketField('status', status);
+  await selectSupportThread(selectedSupportId);
+}
+
 const SUPPORT_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 
 async function sendSupportReply() {
@@ -3947,49 +4174,60 @@ async function sendSupportReply() {
   const body = (ta.value || '').trim();
   const sfi = $('supportFileInput');
   const file = sfi && sfi.files && sfi.files[0] ? sfi.files[0] : null;
+  const internalCb = $('supportInternalNote');
+  const isInternal = internalCb && internalCb.checked;
   if ((!body && !file) || !selectedSupportId) return;
-  if (file && file.size > SUPPORT_IMAGE_MAX_BYTES) {
+  if (!isInternal && file && file.size > SUPPORT_IMAGE_MAX_BYTES) {
     toast('Image must be 2 MB or smaller', 'err');
     return;
   }
   try {
-    if (file) {
+    if (!isInternal && file) {
       const fd = new FormData();
       fd.append('body', body);
+      fd.append('is_internal', 'false');
       fd.append('file', file, file.name);
-      await api('/api/support/threads/' + selectedSupportId + '/messages', { method: 'POST', body: fd });
+      await api('/api/admin/support/threads/' + selectedSupportId + '/messages', { method: 'POST', body: fd });
     } else {
-      await api('/api/support/threads/' + selectedSupportId + '/messages', {
+      await api('/api/admin/support/threads/' + selectedSupportId + '/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body })
+        body: JSON.stringify({ body: body || (isInternal ? '(note)' : ''), is_internal: isInternal })
       });
     }
     ta.value = '';
+    if (internalCb) internalCb.checked = false;
     if (sfi) sfi.value = '';
     const data = await api('/api/support/threads/' + selectedSupportId + '/messages?limit=200');
     supportMessages = data.messages || [];
     renderSupportMessages();
     await loadSupportThreads();
+    await loadSupportTicketStats();
+    if (selectedSupportId) await selectSupportThread(selectedSupportId);
   } catch (e) { toast(e.message || 'Send failed', 'err'); }
 }
 
-async function supportCloseThread() {
-  if (!selectedSupportId) return;
-  try {
-    await api('/api/support/threads/' + selectedSupportId, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'closed' })
+function bindSupportComposerHandlers() {
+  const internalCb = $('supportInternalNote');
+  if (internalCb && !internalCb.dataset.bound) {
+    internalCb.dataset.bound = '1';
+    internalCb.addEventListener('change', () => {
+      const sfi = $('supportFileInput');
+      const th = supportThreads.find(x => x.id === selectedSupportId);
+      const closed = th && th.status === 'closed';
+      if (sfi) sfi.disabled = closed || internalCb.checked;
     });
-    toast('Thread closed', 'ok');
-    await loadSupportThreads();
-    selectSupportThread(selectedSupportId);
-  } catch (e) { toast(e.message || 'Failed', 'err'); }
+  }
 }
 
 async function loadSupport() {
   ensureLiveSupportSocket();
+  bindSupportComposerHandlers();
+  await Promise.all([
+    loadSupportTicketStats(),
+    loadSupportAgents(),
+    loadSupportCannedReplies()
+  ]);
   await loadSupportThreads();
   if (selectedSupportId) await selectSupportThread(selectedSupportId);
 }

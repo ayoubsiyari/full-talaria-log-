@@ -565,7 +565,10 @@ class Chart {
         this.loadedRanges = new Map(); // Cache loaded data ranges
         this._smartPrefetchCache = new Map(); // LRU-ish cache for /smart payloads (prefetch + repeat loads)
         this._smartCacheTtlMs = 120000;
-        this._sessionStateSaveDebounceMs = 1500;
+        this._sessionStateSaveDebounceMs = 4000;
+        /** Min interval between replay position PATCH merges while playback is running. */
+        this._replaySessionStateSaveIntervalMs = 8000;
+        this._replaySessionStateLastPatchAt = 0;
         /** Incremented on each symbol switch; stale async responses must not overwrite the chart. */
         this._symbolLoadSeq = 0;
         /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
@@ -3377,6 +3380,18 @@ class Chart {
         );
     }
 
+    _armSessionStateSaveDebounce() {
+        const debounceMs =
+            Number(this._sessionStateSaveDebounceMs) > 0 ? Number(this._sessionStateSaveDebounceMs) : 4000;
+        if (this._sessionStateSaveTimer) {
+            clearTimeout(this._sessionStateSaveTimer);
+        }
+        this._sessionStateSaveTimer = setTimeout(() => {
+            this._sessionStateSaveTimer = null;
+            void this.flushSessionStateSave();
+        }, debounceMs);
+    }
+
     scheduleSessionStateSave(patch) {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
@@ -3385,15 +3400,47 @@ class Chart {
 
         this._pendingSessionStatePatch = this._mergeSessionStatePatches(this._pendingSessionStatePatch, patch);
         this._writeTradingSessionLocalBackup();
+        this._armSessionStateSaveDebounce();
+    }
 
-        if (this._sessionStateSaveTimer) return;
+    /**
+     * Throttled replay saves: merge every tick/candle step locally, PATCH at most once per interval while playing.
+     */
+    scheduleReplaySessionStateSave(patch) {
+        const sessionId = this.getActiveTradingSessionId();
+        if (!sessionId) return;
+        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchAllowedBeforeHydrate(patch)) return;
+        if (!patch || typeof patch !== 'object') return;
 
-        const debounceMs =
-            Number(this._sessionStateSaveDebounceMs) > 0 ? Number(this._sessionStateSaveDebounceMs) : 1500;
-        this._sessionStateSaveTimer = setTimeout(() => {
+        this._pendingSessionStatePatch = this._mergeSessionStatePatches(this._pendingSessionStatePatch, patch);
+        this._writeTradingSessionLocalBackup();
+
+        const intervalMs =
+            Number(this._replaySessionStateSaveIntervalMs) > 0 ? Number(this._replaySessionStateSaveIntervalMs) : 8000;
+        const now = Date.now();
+        const lastAt = Number(this._replaySessionStateLastPatchAt) || 0;
+        if (now - lastAt < intervalMs) return;
+
+        this._replaySessionStateLastPatchAt = now;
+        this._armSessionStateSaveDebounce();
+    }
+
+    /** Flush pending replay (and other merged) session state immediately — pause, exit replay, tab hide. */
+    flushReplaySessionStateSave(patch) {
+        const sessionId = this.getActiveTradingSessionId();
+        if (!sessionId) return;
+        if (patch && typeof patch === 'object') {
+            if (this._sessionStateLoadedFor !== String(sessionId) || this._sessionStatePatchAllowedBeforeHydrate(patch)) {
+                this._pendingSessionStatePatch = this._mergeSessionStatePatches(this._pendingSessionStatePatch, patch);
+                this._writeTradingSessionLocalBackup();
+            }
+        }
+        this._replaySessionStateLastPatchAt = 0;
+        if (this._sessionStateSaveTimer) {
+            clearTimeout(this._sessionStateSaveTimer);
             this._sessionStateSaveTimer = null;
-            this.flushSessionStateSave();
-        }, debounceMs);
+        }
+        void this.flushSessionStateSave();
     }
 
     queueCriticalSessionStateSave(patch) {
