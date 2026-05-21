@@ -4150,6 +4150,7 @@ class Chart {
             if (saved) {
                 const settings = JSON.parse(saved);
                 this.chartSettings = { ...this.chartSettings, ...settings };
+                this._migrateLegacyTalariaAxisTextColors();
                 // Restore persisted template selections so dropdowns show correct state on reload
                 if (this.chartSettings.activeFullTemplate) this._lastTemplateSelected = this.chartSettings.activeFullTemplate;
                 if (this.chartSettings.activeChartOnlyTemplate) this._lastChartOnlyTemplate = this.chartSettings.activeChartOnlyTemplate;
@@ -4175,16 +4176,40 @@ class Chart {
             try {
                 if (apiSettings && Object.keys(apiSettings).length > 0) {
                     this.chartSettings = { ...this.chartSettings, ...apiSettings };
+                    this._migrateLegacyTalariaAxisTextColors();
                     // Restore persisted template selections from cloud settings
                     if (this.chartSettings.activeFullTemplate) this._lastTemplateSelected = this.chartSettings.activeFullTemplate;
                     if (this.chartSettings.activeChartOnlyTemplate) this._lastChartOnlyTemplate = this.chartSettings.activeChartOnlyTemplate;
                     if (this.chartSettings.activePanelOnlyTemplate) this._lastPanelOnlyTemplate = this.chartSettings.activePanelOnlyTemplate;
                     this._applyChartSettingsImmediate(null, null);
+                    this._reapplyV9ThemeSettingsIfAvailable();
                 }
             } catch (e) {
                 console.error('Failed to apply cloud settings:', e);
             }
         }).catch(() => {});
+    }
+
+    _migrateLegacyTalariaAxisTextColors() {
+        const cs = this.chartSettings;
+        if (!cs) return;
+        const bg = String(cs.backgroundColor || '').trim().toLowerCase();
+        const isTalariaBlack = bg === '#000000' || bg === '#000';
+        if (!isTalariaBlack) return;
+        const legacyAxisText = new Set(['#787b86', '#d1d4dc', '#b2b5be']);
+        const scale = String(cs.scaleTextColor || '').trim().toLowerCase();
+        const symbol = String(cs.symbolTextColor || '').trim().toLowerCase();
+        if (legacyAxisText.has(scale)) cs.scaleTextColor = '#ffffff';
+        if (legacyAxisText.has(symbol)) cs.symbolTextColor = '#ffffff';
+    }
+
+    _reapplyV9ThemeSettingsIfAvailable() {
+        try {
+            const fn = typeof window !== 'undefined' ? window.talariaApplyV9ThemeSettings : null;
+            if (typeof fn !== 'function') return;
+            const snap = typeof window !== 'undefined' ? window.__talariaV9SettingsSnapshot : null;
+            if (snap && typeof snap === 'object') fn(snap);
+        } catch (_) {}
     }
     
     getChartViewSnapshot() {
@@ -7277,8 +7302,8 @@ class Chart {
                 bodyUpColor: '#089981', bodyDownColor: '#f23645',
                 borderUpColor: '#089981', borderDownColor: '#f23645',
                 wickUpColor: '#089981', wickDownColor: '#f23645',
-                scaleTextColor: '#787b86', scaleLinesColor: '#2a2e39',
-                symbolTextColor: '#787b86',
+                scaleTextColor: '#ffffff', scaleLinesColor: '#2a2e39',
+                symbolTextColor: '#ffffff',
                 crosshairColor: 'rgba(120, 123, 134, 0.4)',
                 cursorLabelTextColor: '#d1d4dc', cursorLabelBgColor: '#434651',
                 volumeUpColor: 'rgba(8, 153, 129, 0.5)', volumeDownColor: 'rgba(242, 54, 69, 0.5)',

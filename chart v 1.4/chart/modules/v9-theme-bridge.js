@@ -108,6 +108,7 @@
     var chart = window.chart;
     if (!chart || !chart.chartSettings) return false;
     var cs = chart.chartSettings;
+    var axisTextColor = settings.scaleTextColor != null ? settings.scaleTextColor : settings.textColor;
     var map = {
       bodyUpColor: settings.bullBody,
       candleUpColor: settings.bullBody,
@@ -122,8 +123,8 @@
       crosshairColor: settings.crosshairColor,
       priceLineColor: settings.priceLineColor,
       showPriceLine: settings.priceLine,
-      scaleTextColor: settings.textColor,
-      symbolTextColor: settings.textColor,
+      scaleTextColor: axisTextColor,
+      symbolTextColor: axisTextColor,
       scaleLinesColor: settings.scaleLineColor,
       timeFormat: settings.timeFormat,
       timezone: settings.timezone

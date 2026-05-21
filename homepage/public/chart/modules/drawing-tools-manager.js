@@ -10168,6 +10168,10 @@ class DrawingToolsManager {
             middleLineColor: stroke,
             middleLineDash: '',
             showMiddleLine: false,
+            ...(typeof AXIS_LABEL_DEFAULT_OFF_SHAPE_TYPES !== 'undefined' && AXIS_LABEL_DEFAULT_OFF_SHAPE_TYPES.has(toolType)
+                || toolType === 'brush' || toolType === 'highlighter'
+                ? { showPriceLabel: false, showTimeLabel: false }
+                : {}),
         };
     }
 

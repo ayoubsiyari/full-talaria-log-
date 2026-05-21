@@ -36,6 +36,23 @@ const AXIS_LABEL_DEFAULT_LINE_TYPES = new Set([
     'disjoint-channel'
 ]);
 
+/** Never show axis price/time labels (no toggle). */
+const AXIS_LABEL_DISABLED_TYPES = new Set(['brush', 'highlighter']);
+
+/** Shape tools: labels off by default; user may enable via style tab. */
+const AXIS_LABEL_DEFAULT_OFF_SHAPE_TYPES = new Set([
+    'rectangle',
+    'rotated-rectangle',
+    'ellipse',
+    'circle',
+    'triangle',
+    'arc',
+    'polyline',
+    'arrow-marker',
+    'arrow-mark-up',
+    'arrow-mark-down'
+]);
+
 // ============================================================================
 // Base Drawing Class
 // ============================================================================
@@ -241,10 +258,14 @@ class BaseDrawing {
     }
 
     isAxisLabelDefaultEnabled() {
+        if (AXIS_LABEL_DISABLED_TYPES.has(this.type)) return false;
+        if (AXIS_LABEL_DEFAULT_OFF_SHAPE_TYPES.has(this.type)) return false;
         return AXIS_LABEL_DEFAULT_LINE_TYPES.has(this.type);
     }
 
     isAxisLabelEnabled(labelType) {
+        if (AXIS_LABEL_DISABLED_TYPES.has(this.type)) return false;
+
         const prop = labelType === 'time' ? 'showTimeLabel' : 'showPriceLabel';
         const explicitValue = this.style ? this.style[prop] : undefined;
 
@@ -414,6 +435,7 @@ class BaseDrawing {
      */
     showAxisHighlights(opts = {}) {
         if (!this.chart || !this.points || this.points.length === 0) return;
+        if (AXIS_LABEL_DISABLED_TYPES.has(this.type)) return;
 
         const mgr = this.chart.drawingManager;
         if (!opts.live && mgr && typeof mgr._shouldSkipAxisHighlights === 'function' && mgr._shouldSkipAxisHighlights()) {
@@ -514,7 +536,7 @@ class BaseDrawing {
             const maxY = yScale(minPrice);
             const zoneHeight = maxY - minY;
             
-            if (zoneHeight > 0) {
+            if (showPriceLabels && zoneHeight > 0) {
                 canvasZones.push({
                     type: 'price',
                     y: minY,
@@ -704,8 +726,6 @@ class BaseDrawing {
             }
         }
         
-        // For brush/highlighter, only show high and low price labels
-        const isBrushType = this.type === 'brush' || this.type === 'highlighter';
         let pointsToLabel = this.points;
 
         if ((this.type === 'long-position' || this.type === 'short-position') && this.meta) {
@@ -721,17 +741,6 @@ class BaseDrawing {
                 });
             });
             pointsToLabel = pointsToLabel.concat(extraPts);
-        }
-        
-        if (isBrushType && this.points.length > 2) {
-            // Find highest and lowest points
-            let highPoint = this.points[0];
-            let lowPoint = this.points[0];
-            this.points.forEach(p => {
-                if (p.y > highPoint.y) highPoint = p;
-                if (p.y < lowPoint.y) lowPoint = p;
-            });
-            pointsToLabel = [highPoint, lowPoint];
         }
         
         // Process each point

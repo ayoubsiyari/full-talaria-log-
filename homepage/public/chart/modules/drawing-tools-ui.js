@@ -6518,7 +6518,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-            if (drawing.type !== 'regression-trend') {
+            if (drawing.type !== 'regression-trend' && drawing.type !== 'brush' && drawing.type !== 'highlighter') {
 
                 container.appendChild(labelsSection);
 

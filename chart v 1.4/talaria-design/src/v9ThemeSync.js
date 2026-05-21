@@ -108,6 +108,7 @@ export function applyV9ThemeSettingsToChart(settings) {
   const chart = typeof window !== "undefined" ? window.chart : null;
   if (!chart || !chart.chartSettings) return false;
   const cs = chart.chartSettings;
+  const axisTextColor = settings.scaleTextColor ?? settings.textColor;
   const map = {
     bodyUpColor: settings.bullBody,
     candleUpColor: settings.bullBody,
@@ -122,8 +123,8 @@ export function applyV9ThemeSettingsToChart(settings) {
     crosshairColor: settings.crosshairColor,
     priceLineColor: settings.priceLineColor,
     showPriceLine: settings.priceLine,
-    scaleTextColor: settings.textColor,
-    symbolTextColor: settings.textColor,
+    scaleTextColor: axisTextColor,
+    symbolTextColor: axisTextColor,
     scaleLinesColor: settings.scaleLineColor,
     timeFormat: settings.timeFormat,
     timezone: settings.timezone,

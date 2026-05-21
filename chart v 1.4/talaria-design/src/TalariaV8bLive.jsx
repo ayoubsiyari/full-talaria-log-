@@ -6795,6 +6795,9 @@ const TalariaV8bLive = () => {
   const settingsRef = useRef(settings);
   useEffect(() => {
     settingsRef.current = settings;
+    if (typeof window !== "undefined") {
+      window.__talariaV9SettingsSnapshot = settings;
+    }
   }, [settings]);
 
   useEffect(() => {
