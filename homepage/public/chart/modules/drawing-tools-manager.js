@@ -6584,6 +6584,97 @@ class DrawingToolsManager {
     }
     
     /**
+     * Dataset used when converting timestamp-based drawing points to bar indices.
+     */
+    _getDrawingConversionData() {
+        let conversionData = this.chart && this.chart.data;
+        if (
+            this.chart &&
+            this.chart.replaySystem &&
+            this.chart.replaySystem.isActive &&
+            this.chart.replaySystem.fullRawData &&
+            this.chart.replaySystem.fullRawData.length > 0 &&
+            typeof this.chart.resampleData === 'function'
+        ) {
+            try {
+                conversionData = this.chart.resampleData(
+                    this.chart.replaySystem.fullRawData,
+                    this.chart.currentTimeframe
+                );
+            } catch (_) {}
+        }
+        return conversionData;
+    }
+
+    /**
+     * Normalize serialized drawing JSON before fromJSON (handles timestamp coordinates).
+     */
+    _prepareDrawingJsonForInstantiation(sourceJson) {
+        const json = JSON.parse(JSON.stringify(sourceJson));
+        this.normalizeLegacyRangeToolPayload(json);
+
+        const conversionData = this._getDrawingConversionData();
+        const timeframe = this.chart && this.chart.currentTimeframe ? this.chart.currentTimeframe : null;
+        const jsonForFrom = {
+            ...json,
+            points: Array.isArray(json.points) ? json.points.map(p => ({ ...p })) : []
+        };
+
+        if (
+            json.coordinateSystem === 'timestamp' &&
+            Array.isArray(json.points) &&
+            typeof CoordinateUtils !== 'undefined' &&
+            conversionData &&
+            conversionData.length > 0
+        ) {
+            const timestampPoints = json.points.map(p => ({
+                timestamp: p.timestamp,
+                price: p.price !== undefined ? p.price : p.y
+            }));
+            jsonForFrom.points = CoordinateUtils.pointsFromTimestamps(
+                timestampPoints,
+                conversionData,
+                timeframe
+            );
+            jsonForFrom.coordinateSystem = 'index';
+        }
+
+        return jsonForFrom;
+    }
+
+    /**
+     * Create a new drawing instance from serialized JSON, with a small positional offset.
+     */
+    _createDrawingFromSerializedJson(sourceJson, offset = {}) {
+        const jsonForFrom = this._prepareDrawingJsonForInstantiation(sourceJson);
+        const toolInfo = this.toolRegistry[jsonForFrom.type];
+        if (!toolInfo) {
+            console.error('Unknown drawing type:', jsonForFrom.type);
+            return null;
+        }
+
+        const newDrawing = toolInfo.class.fromJSON(jsonForFrom, this.chart);
+        if (!newDrawing) return null;
+
+        newDrawing.id = generateUUID();
+        newDrawing.chart = this.chart;
+
+        const candleOffset = Number.isFinite(offset.candleOffset) ? offset.candleOffset : 3;
+        const priceOffsetRatio = Number.isFinite(offset.priceOffsetRatio) ? offset.priceOffsetRatio : 0.015;
+        const priceRange = this.chart && this.chart.yScale ? this.chart.yScale.domain() : [0, 1];
+        const domainSpan = priceRange[1] - priceRange[0];
+        const priceOffset = Number.isFinite(domainSpan) && domainSpan !== 0 ? domainSpan * priceOffsetRatio : 0;
+
+        newDrawing.points = (newDrawing.points || []).map(p => ({
+            ...p,
+            x: Number.isFinite(p.x) ? p.x + candleOffset : p.x,
+            y: Number.isFinite(p.y) && priceOffset !== 0 ? p.y - priceOffset : p.y
+        }));
+
+        return newDrawing;
+    }
+
+    /**
      * Copy drawing to clipboard
      */
     copyDrawing(drawing) {
@@ -6611,21 +6702,12 @@ class DrawingToolsManager {
         }
         
         try {
-            const toolInfo = this.toolRegistry[this.clipboardDrawing.type];
-            if (!toolInfo) return;
-            
-            const newDrawing = toolInfo.class.fromJSON(this.clipboardDrawing);
-            newDrawing.id = generateUUID();
-            
-            // Calculate small offset based on visible chart range
-            const priceRange = this.chart.yScale.domain();
-            const priceOffset = (priceRange[1] - priceRange[0]) * 0.02;
-            
-            newDrawing.points = newDrawing.points.map(p => ({
-                x: p.x + 1,
-                y: p.y - priceOffset
-            }));
-            
+            const newDrawing = this._createDrawingFromSerializedJson(this.clipboardDrawing, {
+                candleOffset: 1,
+                priceOffsetRatio: 0.02
+            });
+            if (!newDrawing) return;
+
             this.addDrawing(newDrawing);
             this.selectDrawing(newDrawing);
             // [debug removed]
@@ -6970,37 +7052,22 @@ class DrawingToolsManager {
     }
 
     /**
-     * Duplicate a drawing (Clone) - exact same position
+     * Duplicate a drawing (Clone) - same shape, slightly offset for visibility
      */
     duplicateDrawing(drawing) {
         try {
-            const toolInfo = this.toolRegistry[drawing.type];
-            if (!toolInfo) {
-                console.error('Unknown drawing type:', drawing.type);
-                return;
-            }
-            
-            // Get JSON data from drawing
             const jsonData = drawing.toJSON ? drawing.toJSON() : {
                 type: drawing.type,
                 points: JSON.parse(JSON.stringify(drawing.points)),
                 style: JSON.parse(JSON.stringify(drawing.style || {}))
             };
-            
-            const newDrawing = toolInfo.class.fromJSON(jsonData);
-            newDrawing.id = generateUUID();
-            
-            // Offset clone slightly so it appears near the original
-            const priceRange = this.chart.yScale ? this.chart.yScale.domain() : [0, 1];
-            const domainSpan = (priceRange[1] - priceRange[0]);
-            const priceOffset = Number.isFinite(domainSpan) && domainSpan !== 0 ? domainSpan * 0.015 : 0;
-            const candleOffset = 3;
-            newDrawing.points = newDrawing.points.map(p => ({
-                ...p,
-                x: Number.isFinite(p.x) ? p.x + candleOffset : p.x,
-                y: Number.isFinite(p.y) && priceOffset !== 0 ? p.y - priceOffset : p.y
-            }));
-            
+
+            const newDrawing = this._createDrawingFromSerializedJson(jsonData, {
+                candleOffset: 3,
+                priceOffsetRatio: 0.015
+            });
+            if (!newDrawing) return;
+
             this.addDrawing(newDrawing);
             this.selectDrawing(newDrawing); // Select the new clone
             // [debug removed]

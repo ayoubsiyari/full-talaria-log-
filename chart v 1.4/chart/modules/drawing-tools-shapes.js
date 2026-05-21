@@ -20,43 +20,29 @@ const RECTANGLE_TEXT_ANCHOR_MAP = (typeof TEXT_ALIGN_TO_ANCHOR !== 'undefined')
     ? TEXT_ALIGN_TO_ANCHOR
     : { left: 'start', center: 'middle', right: 'end', start: 'start', end: 'end' };
 
+function isRectangleExtendOn(style, key) {
+    const v = style && style[key];
+    return v === true || v === 1
+        || (typeof v === 'string' && /^(true|1|yes)$/i.test(String(v).trim()));
+}
+
 /** Apply rectangle extend-left/right in pixel space (same coords as dataIndexToPixel). */
 function applyRectangleHorizontalExtend(x1, x2, scales, style) {
-    if (!style || (!style.extendLeft && !style.extendRight)) {
+    if (!style || (!isRectangleExtendOn(style, 'extendLeft') && !isRectangleExtendOn(style, 'extendRight'))) {
         return { x1, x2 };
     }
     const bounds = (typeof SVGHelpers !== 'undefined' && SVGHelpers.getChartHorizontalPixelBounds)
         ? SVGHelpers.getChartHorizontalPixelBounds(scales)
         : { left: scales.xScale.range()[0], right: scales.xScale.range()[1] };
-    const chartLeftX = bounds.left;
-    const chartRightX = bounds.right;
-    let px1 = x1;
-    let px2 = x2;
-    const minX = Math.min(px1, px2);
-    const maxX = Math.max(px1, px2);
-    const degenerate = (maxX - minX) < 2;
-
-    if (style.extendLeft) {
-        if (degenerate && style.extendRight) {
-            px1 = chartLeftX;
-            px2 = chartRightX;
-        } else if (px1 <= px2) {
-            px1 = chartLeftX;
-        } else {
-            px2 = chartLeftX;
-        }
+    let leftEdge = Math.min(x1, x2);
+    let rightEdge = Math.max(x1, x2);
+    if (isRectangleExtendOn(style, 'extendLeft')) {
+        leftEdge = bounds.left;
     }
-    if (style.extendRight) {
-        if (degenerate && style.extendLeft) {
-            px1 = chartLeftX;
-            px2 = chartRightX;
-        } else if (px1 >= px2) {
-            px1 = chartRightX;
-        } else {
-            px2 = chartRightX;
-        }
+    if (isRectangleExtendOn(style, 'extendRight')) {
+        rightEdge = bounds.right;
     }
-    return { x1: px1, x2: px2 };
+    return { x1: leftEdge, x2: rightEdge };
 }
 
 /** Respect V9 / settings `showBackground` (default on when unset). */

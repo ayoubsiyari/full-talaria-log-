@@ -733,6 +733,38 @@ class CircleTool extends BaseDrawing {
     }
 }
 
+function isRotatedRectExtendOn(style, key) {
+    const v = style && style[key];
+    return v === true || v === 1
+        || (typeof v === 'string' && /^(true|1|yes)$/i.test(String(v).trim()));
+}
+
+/** Stretch rotated-rect corners horizontally to chart pane edges (TradingView extend). */
+function applyRotatedRectHorizontalExtend(corners, scales, style) {
+    if (!corners || corners.length < 4 || !style) return corners;
+    if (!isRotatedRectExtendOn(style, 'extendLeft') && !isRotatedRectExtendOn(style, 'extendRight')) {
+        return corners;
+    }
+    const hb = (typeof SVGHelpers !== 'undefined' && SVGHelpers.getChartHorizontalPixelBounds)
+        ? SVGHelpers.getChartHorizontalPixelBounds(scales)
+        : { left: scales.xScale.range()[0], right: scales.xScale.range()[1] };
+    let minX = Math.min(...corners.map((c) => c.x));
+    let maxX = Math.max(...corners.map((c) => c.x));
+    const targetMin = isRotatedRectExtendOn(style, 'extendLeft') ? hb.left : minX;
+    const targetMax = isRotatedRectExtendOn(style, 'extendRight') ? hb.right : maxX;
+    const srcSpan = maxX - minX;
+    const dstSpan = targetMax - targetMin;
+    if (!(srcSpan > 1e-6) || !(dstSpan > 1e-6)) {
+        const mid = (targetMin + targetMax) / 2;
+        corners.forEach((c) => { c.x = mid; });
+        return corners;
+    }
+    corners.forEach((c) => {
+        c.x = targetMin + ((c.x - minX) / srcSpan) * dstSpan;
+    });
+    return corners;
+}
+
 // ============================================================================
 // Rotated Rectangle Tool (TradingView style)
 // 3 points: P1-P2 define one edge (and rotation), P3 defines height
@@ -789,12 +821,12 @@ class RotatedRectangleTool extends BaseDrawing {
         const perpX = -sin * height;
         const perpY = cos * height;
 
-        const corners = [
+        const corners = applyRotatedRectHorizontalExtend([
             { x: x1, y: y1 },
             { x: x2, y: y2 },
             { x: x2 + perpX, y: y2 + perpY },
             { x: x1 + perpX, y: y1 + perpY }
-        ];
+        ], scales, this.style);
 
         const pathData = `M ${corners[0].x} ${corners[0].y} 
                           L ${corners[1].x} ${corners[1].y} 
