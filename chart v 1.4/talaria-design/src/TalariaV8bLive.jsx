@@ -677,6 +677,13 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
       tlStyle.fibLineWidth,
     );
   }
+  if (legacyTool === "brush" || legacyTool === "highlighter") {
+    const p = parseColor(tlStyle.lineColor || "#787b86");
+    const strokeRgba = cpBuildColor(p.r, p.g, p.b, p.a != null ? p.a : 1);
+    patch.stroke = strokeRgba;
+    patch.color = strokeRgba;
+    patch.opacity = 1;
+  }
   return patch;
 }
 
