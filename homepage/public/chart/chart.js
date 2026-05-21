@@ -17558,9 +17558,12 @@ class Chart {
                 (e.ctrlKey || e.metaKey) &&
                 !e.shiftKey &&
                 dm &&
-                !dm.currentTool &&
-                !dm.eraserMode
+                typeof dm._isCursorSelectMode === 'function' &&
+                dm._isCursorSelectMode()
             ) {
+                if (typeof this._clearPanDrawingsLayerTransform === 'function') {
+                    this._clearPanDrawingsLayerTransform();
+                }
                 return;
             }
 
@@ -17696,7 +17699,12 @@ class Chart {
             
             if (this.drag.active) {
                 const dm = this.drawingManager;
-                if (dm && (dm.isRectSelecting || dm._ctrlMarqueePending)) {
+                if (dm && typeof dm.isCtrlMarqueeGestureActive === 'function' && dm.isCtrlMarqueeGestureActive()) {
+                    this.drag.active = false;
+                    this.drag.type = null;
+                    if (typeof this._clearPanDrawingsLayerTransform === 'function') {
+                        this._clearPanDrawingsLayerTransform();
+                    }
                     return;
                 }
                 const now = performance.now();

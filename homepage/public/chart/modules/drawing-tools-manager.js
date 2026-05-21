@@ -1334,13 +1334,24 @@ class DrawingToolsManager {
                 if (typeof existing.contextmenu === 'function') {
                     canvas.removeEventListener('contextmenu', existing.contextmenu, true);
                 }
+                if (typeof existing.mouseup === 'function') {
+                    canvas.removeEventListener('mouseup', existing.mouseup);
+                }
             }
 
             // Mousedown on canvas for rectangular selection
             const onMouseDown = (event) => {
-                // Cursor mode: arm Ctrl+drag marquee (magnet uses Ctrl when a draw tool is armed).
-                if (this._tryArmCtrlMarqueeFromPointer(event)) {
-                    return;
+                // Cursor mode + empty plot: Ctrl+drag marquee (Ctrl+click on shapes still selects).
+                if (
+                    this._isCursorSelectMode() &&
+                    (event.ctrlKey || event.metaKey) &&
+                    !event.shiftKey &&
+                    !event.altKey
+                ) {
+                    const hit = this._resolvePointerOverDrawings(event);
+                    if (!hit.primary && this._tryArmCtrlMarqueeFromPointer(event)) {
+                        return;
+                    }
                 }
 
                 // Make drag-start use the same geometric hover hit zone, even when the
@@ -1357,7 +1368,20 @@ class DrawingToolsManager {
                     if (this._isPointerOverChartAxis(event)) {
                         return;
                     }
-                    if (this.drawingState && this.drawingState.isDrawing) return;
+                    // Mid-placement: SVG is pass-through — forward 2nd+ clicks for shapes/lines.
+                    if (this.drawingState && this.drawingState.isDrawing) {
+                        if (this.isDrawingPath || this.isDraggingFirstTwo) {
+                            return;
+                        }
+                        this.handleMouseDown(event);
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (typeof event.stopImmediatePropagation === 'function') {
+                            event.stopImmediatePropagation();
+                        }
+                        suppressNextCanvasClick = true;
+                        return;
+                    }
                     const armedHit = this._resolvePointerOverDrawings(event);
                     if (armedHit.primary && !armedHit.primary.locked) {
                     if (event.detail >= 2) {
@@ -1678,12 +1702,22 @@ class DrawingToolsManager {
 
             if (!this._docDrawMouseUpBound) {
                 this._docDrawMouseUpBound = (event) => {
-                    if (!this.isDrawingPath && !this.isDraggingFirstTwo) return;
+                    if (!this.currentTool) return;
                     if (!(this.drawingState && this.drawingState.isDrawing)) return;
+                    if (!this.isDrawingPath && !this.isDraggingFirstTwo) return;
                     this.handleMouseUp(event);
                 };
                 document.addEventListener('mouseup', this._docDrawMouseUpBound);
             }
+
+            const onCanvasMouseUp = (event) => {
+                if (!this.currentTool) return;
+                if (!(this.drawingState && this.drawingState.isDrawing)) return;
+                if (!this.isDraggingFirstTwo) return;
+                if (this._isPointerOverChartAxis(event)) return;
+                this.handleMouseUp(event);
+            };
+            canvas.addEventListener('mouseup', onCanvasMouseUp);
 
             if (chartWrapper) {
                 const prevDrawMove = chartWrapper.__drawingToolsActiveDrawMove;
@@ -1707,6 +1741,7 @@ class DrawingToolsManager {
                 click: onClick,
                 dblclick: onDblClick,
                 mousemove: onCanvasMouseMove,
+                mouseup: onCanvasMouseUp,
                 contextmenu: onContextMenu
             };
         }
@@ -8782,6 +8817,11 @@ class DrawingToolsManager {
         return !this.currentTool && !this.eraserMode;
     }
 
+    /** Marquee armed or active (used by chart.js to block pan). */
+    isCtrlMarqueeGestureActive() {
+        return !!(this.isRectSelecting || this._ctrlMarqueePending);
+    }
+
     _cancelCtrlMarqueePending() {
         if (this._ctrlMarqueePendingBound) {
             if (this._ctrlMarqueePendingMove) {
@@ -8812,6 +8852,8 @@ class DrawingToolsManager {
 
         const native = this._nativePointerEvent(event) || event;
         if (!Number.isFinite(native.clientX) || !Number.isFinite(native.clientY)) return false;
+
+        this._abortInteractionForRectSelect();
 
         const [sx, sy] = this._eventCanvasLocalXY(event);
         this._cancelCtrlMarqueePending();
@@ -8853,6 +8895,12 @@ class DrawingToolsManager {
         document.addEventListener('mouseup', this._ctrlMarqueePendingUp);
         document.addEventListener('keyup', this._ctrlMarqueePendingKeyUp);
         this._ctrlMarqueePendingBound = true;
+
+        if (typeof event.preventDefault === 'function') event.preventDefault();
+        if (typeof event.stopPropagation === 'function') event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === 'function') {
+            event.stopImmediatePropagation();
+        }
         return true;
     }
 
@@ -10741,5 +10789,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a13_brush_rc';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a19_ctrl_marquee';
 } catch (_) {}

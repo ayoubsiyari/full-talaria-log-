@@ -19,6 +19,7 @@
  */
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -27,9 +28,38 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Backend that serves /chart/* (legacy chart.js + modules) and /api/*.
 // Override with `CHART_BACKEND=http://your-server:port npm run dev:live`.
 const BACKEND = process.env.CHART_BACKEND || 'http://31.97.192.82:3000'
+const USE_LOCAL_CHART = process.env.USE_LOCAL_CHART === '1' || process.env.USE_LOCAL_CHART === 'true'
+const chartRoot = path.resolve(__dirname, '../chart')
+
+/** Serve ../chart/chart.js and ../chart/modules/* from disk when USE_LOCAL_CHART=1. */
+function localChartModulesPlugin() {
+    return {
+        name: 'local-chart-modules',
+        configureServer(server) {
+            if (!USE_LOCAL_CHART) return
+            server.middlewares.use((req, res, next) => {
+                const url = (req.url || '').split('?')[0]
+                if (url !== '/chart/chart.js' && !url.startsWith('/chart/modules/')) {
+                    next()
+                    return
+                }
+                const rel = url.replace(/^\/chart\//, '')
+                const file = path.join(chartRoot, rel)
+                try {
+                    if (fs.existsSync(file) && fs.statSync(file).isFile()) {
+                        res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+                        fs.createReadStream(file).pipe(res)
+                        return
+                    }
+                } catch (_) { /* fall through */ }
+                next()
+            })
+        },
+    }
+}
 
 export default defineConfig({
-    plugins: [react()],
+    plugins: [react(), localChartModulesPlugin()],
 
     // Use live/ as the project root; live/index.html is the entry,
     // live/main.jsx imports ../src/TalariaV8bLive.jsx.
