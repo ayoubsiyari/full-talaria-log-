@@ -1258,6 +1258,20 @@ function v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editingSession) {
   return null;
 }
 
+/** Per-target legacy type for style patch (fib/gann subtypes must not use armed retracement while channel is selected). */
+function v9EffectiveLegacyToolForDrawing(d, bridgeTool, editingSession) {
+  if (
+    editingSession?.drawing &&
+    d &&
+    v9IsSameDrawingSession(d, editingSession.drawing)
+  ) {
+    return editingSession.drawing.type;
+  }
+  const g = d && v9DrawingTypeToPanelGroup(d.type);
+  if (g && V9_EXACT_STYLE_MATCH_GROUPS.has(g)) return d.type;
+  return bridgeTool;
+}
+
 /** Only push tlStyle onto drawings that match the armed legacy tool's rail (never trendline ← rectangle). */
 function v9ShouldApplyTlStylePatch(d, legacyTool, editingSession) {
   if (!d || !d.type || !d.style) return false;
@@ -2126,7 +2140,7 @@ function v9ApplyFibChannelFromTlStyle(d, tlStyle, widthFallback) {
   st.strokeWidth = strokeW;
   st.levelsLineWidth = levelsW;
   st.levelsLineDasharray = fibDashStr;
-  st.showZones = !!tlStyle.fibBackground;
+  st.showZones = tlStyle.fibBackground !== false;
   st.backgroundOpacity =
     tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
       ? +tlStyle.fibBgOpacity
@@ -2140,6 +2154,13 @@ function v9ApplyFibChannelFromTlStyle(d, tlStyle, widthFallback) {
 
 function v9ApplyFibTimeZoneFromTlStyle(d, tlStyle, widthFallback) {
   if (!d || !d.style || !v9IsFibTimeZoneType(d.type)) return;
+  const fibDashStr =
+    tlStyle.fibLineType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
+        : "");
+  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
   const levelRows = v9FibTzLevelsRowsForUi(tlStyle);
   const chartLevels = v9TlFibTzLevelsToChart(levelRows);
   d.levels = chartLevels;
@@ -2152,6 +2173,8 @@ function v9ApplyFibTimeZoneFromTlStyle(d, tlStyle, widthFallback) {
     parseInt(String(tlStyle.lineWidth), 10) ||
     (typeof widthFallback === "number" ? widthFallback : 1) ||
     1;
+  st.levelsLineWidth = levelsW;
+  st.levelsLineDasharray = fibDashStr;
 }
 
 /** Rows for Fib Input tab — never mutate from a display-only fallback array. */
@@ -2224,6 +2247,8 @@ function v9SpreadFibTlPatchForHook(p, drawingType, out) {
   }
   if (v9IsFibTimeZoneType(drawingType)) {
     line("fibTzLevels");
+    line("fibLineWidth");
+    line("fibLineType");
     line("lineColor");
     line("lineWidth");
     return;
@@ -2845,7 +2870,7 @@ function v9TlStylePatchFromDrawing(d) {
             fibLevels: fl && fl.length ? fl : v9FibChannelDefaultLevelsTl(),
             fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
             fibLineType,
-            fibBackground: !!s.showZones,
+            fibBackground: s.showZones !== false,
             fibBgOpacity:
               s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
                 ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
@@ -2861,8 +2886,13 @@ function v9TlStylePatchFromDrawing(d) {
     ...(d.type === "fib-timezone"
       ? (() => {
           const tz = v9FibTzLevelsChartToTl(v9ChartFibTzLevelsRaw(d));
+          const fibDashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const fibLineType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
           return {
             fibTzLevels: tz && tz.length ? tz : v9FibTzDefaultLevelsTl(),
+            fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || parseInt(s.strokeWidth, 10) || 1),
+            fibLineType,
             lineColor: s.stroke || stroke,
             lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
           };
@@ -11514,7 +11544,8 @@ const TalariaV8bLive = () => {
       };
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
-        if (!v9ShouldApplyTlStylePatch(d, legacy, editSess)) return;
+        const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacy, editSess);
+        if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess)) return;
         const tb = dm.toolbar;
         try {
           tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
@@ -11628,8 +11659,6 @@ const TalariaV8bLive = () => {
     // rail) still propagate to the selected drawing.
 
     v9PushArmedDrawStyle(legacyTool, legacyTool ? tlStyle : null);
-    const stylePatch = v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool);
-
     // Do NOT persist style as default for this tool — each new drawing starts fresh.
 
     // Mutate currently-selected drawing(s) and repaint immediately.
@@ -11643,8 +11672,10 @@ const TalariaV8bLive = () => {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
-        if (!v9ShouldApplyTlStylePatch(d, legacyTool, editSess)) return;
+        const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacyTool, editSess);
+        if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess)) return;
         if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
+        const stylePatch = v9BuildLegacyStylePatchFromTlStyle(tlStyle, effectiveTool);
         const tb = dm.toolbar;
         // Capture before state for undo (mirror legacy onBeforeUpdate).
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
@@ -11743,7 +11774,8 @@ const TalariaV8bLive = () => {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm: dm2, d }) => {
         if (!d || !d.style) return;
-        if (!v9ShouldApplyTlStylePatch(d, legacyTool, editSess)) return;
+        const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacyTool, editSess);
+        if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess)) return;
         if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
         const tb = dm2.toolbar;
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
@@ -13817,8 +13849,8 @@ const TalariaV8bLive = () => {
                       </div>}
                       {/* FIBONACCI STYLE */}
                       <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"14px 0 8px" }}>FIBONACCI STYLE</div>
-                      {/* Background + opacity slider */}
-                      <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
+                      {/* Background + opacity slider (not used by fib time zone verticals) */}
+                      {tlSubTool.icon !== "fibTimeZone" && <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
                         <div style={{ width:130 }}>{TlChk(tlStyle.fibBackground,"tlchk-fibBg","Background",()=>setTlStyle(s=>({...s,fibBackground:!s.fibBackground})))}</div>
                         {(()=>{const pct=tlStyle.fibBgOpacity*100;return(
                         <div style={{ marginLeft:78, display:"flex", alignItems:"center", opacity:tlStyle.fibBackground?1:0.38, pointerEvents:tlStyle.fibBackground?"auto":"none", transition:"opacity 0.15s" }}>
@@ -13834,9 +13866,9 @@ const TalariaV8bLive = () => {
                               style={{ position:"absolute", left:-6, right:-6, width:"calc(100% + 12px)", height:"100%", opacity:0, cursor:"default", margin:0 }}/>
                           </div>
                         </div>);})()}
-                      </div>
+                      </div>}
                       {/* Reverse */}
-                      {tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ padding:"6px 0" }}>
+                      {tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ padding:"6px 0" }}>
                         {TlChk(tlStyle.fibReverse,"tlchk-fibRev","Reverse",()=>setTlStyle(s=>({...s,fibReverse:!s.fibReverse})))}
                       </div>}
                       {/* Full Circle (fibArcs only) */}
@@ -13920,11 +13952,11 @@ const TalariaV8bLive = () => {
                         );
                       })()}
                       {/* Prices */}
-                      {tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ padding:"6px 0" }}>
+                      {tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ padding:"6px 0" }}>
                         {TlChk(tlStyle.fibPrices,"tlchk-fibPrices","Show Prices",()=>setTlStyle(s=>({...s,fibPrices:!s.fibPrices})))}
                       </div>}
                       {/* Levels + dropdown */}
-                      {tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && (()=>{
+                      {tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && (()=>{
                         const dk = "fibLevelsMode";
                         const val = tlStyle.fibLevelsMode || "Value";
                         const options = ["Value","Percent","Value and Percent"];
@@ -13965,7 +13997,7 @@ const TalariaV8bLive = () => {
                         );
                       })()}
                       {/* Extend Lines */}
-                      {tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ padding:"6px 0" }}>
+                      {tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ padding:"6px 0" }}>
                         {TlChk(tlStyle.fibExtendLines,"tlchk-fibExt","Extend Lines",()=>setTlStyle(s=>({...s,fibExtendLines:!s.fibExtendLines})))}
                       </div>}
                     </>;
