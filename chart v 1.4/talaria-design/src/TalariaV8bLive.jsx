@@ -3262,12 +3262,10 @@ function v9DeepCloneJson(obj) {
 /** Persists a drawing template like `drawing-toolbar.js` showSaveTemplateDialog (per drawing.type). */
 function v9SaveDrawingTemplateToStorage(name, drawing) {
   if (typeof window === 'undefined' || !name || !drawing || !drawing.type) return false;
-  const ch = typeof window.getActiveChart === 'function' ? window.getActiveChart() : window.chart;
-  const dm = ch && ch.drawingManager;
-  const tb = dm && dm.toolbar;
+  const { dm, tb, live } = v9ResolveDrawingToolbarForDrawing(drawing);
   const us = window.userStorage;
   if (!tb || typeof tb.getSavedTemplates !== 'function' || typeof tb.getTemplatesKey !== 'function' || !us) return false;
-  const actualDrawing = (dm && dm.drawings && dm.drawings.find((x) => x.id === drawing.id)) || drawing;
+  const actualDrawing = (dm && dm.drawings && live) || drawing;
   const templates = tb.getSavedTemplates(actualDrawing.type);
   const styleSnapshot = v9DeepCloneJson(actualDrawing.style || {}) || {};
   const newTemplate = {
@@ -3285,6 +3283,51 @@ function v9SaveDrawingTemplateToStorage(name, drawing) {
   us.setItem(tb.getTemplatesKey(actualDrawing.type), JSON.stringify(templates));
   window.dispatchEvent(new CustomEvent('drawingTemplatesUpdated', { detail: { toolType: actualDrawing.type } }));
   if (typeof tb.showNotification === 'function') tb.showNotification(`Template "${name.trim()}" saved!`);
+  return true;
+}
+
+/** Toolbar + live drawing for template actions (must match the drawing's chart, not only getActiveChart). */
+function v9ResolveDrawingToolbarForDrawing(drawing) {
+  if (!drawing) return { dm: null, tb: null, live: null };
+  for (const dm of enumerateV9DrawingManagersActiveFirst()) {
+    const live = resolveLiveDrawingInDm(dm, drawing);
+    if (live) return { dm, tb: dm.toolbar || null, live };
+  }
+  const ch = typeof window !== 'undefined' && typeof window.getActiveChart === 'function'
+    ? window.getActiveChart()
+    : (typeof window !== 'undefined' ? window.chart : null);
+  const dm = ch && ch.drawingManager;
+  return { dm, tb: dm && dm.toolbar, live: drawing };
+}
+
+function v9NotifyDrawingTemplateApplied(drawing) {
+  if (typeof window === 'undefined' || !drawing) return;
+  try {
+    window.dispatchEvent(new CustomEvent('v9DrawingTemplateApplied', { detail: { drawing } }));
+  } catch (_) {}
+}
+
+function v9ApplyDrawingTemplate(drawing, templateId) {
+  const { tb, live } = v9ResolveDrawingToolbarForDrawing(drawing);
+  if (!tb || !live || !templateId || typeof tb.applyTemplate !== 'function') return false;
+  tb.applyTemplate(live, templateId);
+  v9NotifyDrawingTemplateApplied(live);
+  return true;
+}
+
+function v9ApplyDefaultDrawingTemplate(drawing) {
+  const { tb, live } = v9ResolveDrawingToolbarForDrawing(drawing);
+  if (!tb || !live || typeof tb.applyDefaultTemplate !== 'function') return false;
+  tb.applyDefaultTemplate(live);
+  v9NotifyDrawingTemplateApplied(live);
+  return true;
+}
+
+function v9DeleteDrawingTemplate(drawing, templateId) {
+  const { tb, live } = v9ResolveDrawingToolbarForDrawing(drawing);
+  const toolType = (live && live.type) || (drawing && drawing.type);
+  if (!tb || !toolType || !templateId || typeof tb.deleteTemplate !== 'function') return false;
+  tb.deleteTemplate(toolType, templateId);
   return true;
 }
 
@@ -10240,7 +10283,7 @@ const TalariaV8bLive = () => {
 
   const getSelectedDrawingForTemplate = useCallback(() => {
     try {
-      return getSelectedDrawingAcrossCharts(editingDrawingRef.current?.drawing) || null;
+      return getPrimarySelectedDrawingForActiveChart(editingDrawingRef.current?.drawing) || null;
     } catch (_) {
       return null;
     }
@@ -10249,10 +10292,9 @@ const TalariaV8bLive = () => {
   const tlSavedTemplateList = useMemo(() => {
     void tlTemplatesRev;
     try {
-      const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-      const tb = ch?.drawingManager?.toolbar;
-      if (!tb || typeof tb.getSavedTemplates !== "function") return [];
       const d = getSelectedDrawingForTemplate();
+      const { tb } = v9ResolveDrawingToolbarForDrawing(d);
+      if (!tb || typeof tb.getSavedTemplates !== "function") return [];
       const toolType = (d && d.type) || resolveLegacyTool();
       if (!toolType) return [];
       return tb.getSavedTemplates(toolType) || [];
@@ -10696,6 +10738,37 @@ const TalariaV8bLive = () => {
   const suppressVwapBridge = useRef(false);
   const suppressVpBridge = useRef(false);
   const suppressAvBridge = useRef(false);
+
+  // After a saved template is applied on canvas, re-hydrate V9 tlStyle so the style bridge does not revert it.
+  useEffect(() => {
+    const onTemplateApplied = (event) => {
+      try {
+        const raw = event && event.detail && event.detail.drawing;
+        if (!raw) return;
+        const { dm, live } = v9ResolveDrawingToolbarForDrawing(raw);
+        const d = live || raw;
+        if (!d || !d.type) return;
+        suppressForwardBridge.current = true;
+        const full = v9BuildFullTlStyleFromDrawing(d, dm);
+        if (full) {
+          setTlStyle(full);
+        } else {
+          const patch = v9TlStylePatchFromDrawing(d);
+          if (patch && Object.keys(patch).length) {
+            setTlStyle((s) => ({ ...s, ...patch }));
+          }
+        }
+        requestAnimationFrame(() => {
+          suppressForwardBridge.current = false;
+        });
+      } catch (err) {
+        suppressForwardBridge.current = false;
+        console.warn("[V9] template style sync failed:", err);
+      }
+    };
+    window.addEventListener("v9DrawingTemplateApplied", onTemplateApplied);
+    return () => window.removeEventListener("v9DrawingTemplateApplied", onTemplateApplied);
+  }, []);
 
   // Legacy chart.js updates drawing geometry/style on canvas (drag, fib edits, etc.) without touching
   // React `tlStyle`. Re-read the live selection whenever drawings persist so coord/visibility/fib
@@ -13129,12 +13202,9 @@ const TalariaV8bLive = () => {
                   <div style={{padding:"4px 0"}}>
                     {[["Save as", ()=>{ setTlSaveAsMode(true); setTlNewTplName(""); }],
                       ["Apply default", ()=>{
-                        const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-                        const tb = ch?.drawingManager?.toolbar;
                         const d = getSelectedDrawingForTemplate();
-                        if (!tb || typeof tb.applyDefaultTemplate !== "function") return;
-                        if (!d) { tb.showNotification?.("Select a drawing first"); return; }
-                        tb.applyDefaultTemplate(d);
+                        if (!d) { v9NotifyDrawingAction("Select a drawing first"); return; }
+                        if (!v9ApplyDefaultDrawingTemplate(d)) { v9NotifyDrawingAction("Apply default failed"); return; }
                         closeTlSettTplDrop();
                       }]].map(([lbl, action])=>{
                       const isH=hov===`stpl-${lbl}`, isAct=lbl==="Save as"&&tlSaveAsMode;
@@ -13181,20 +13251,14 @@ const TalariaV8bLive = () => {
                         style={{ display:"flex", alignItems:"center", padding:"4px 8px 4px 12px", cursor:"default", position:"relative",
                                  background:hov===`stpl-${idx}`?c.hv2:"transparent", transition:"background 0.1s" }}>
                         <span onClick={()=>{
-                          const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-                          const tb = ch?.drawingManager?.toolbar;
                           const d = getSelectedDrawingForTemplate();
-                          if (!tb || !d || !tpl.id) return;
-                          tb.applyTemplate(d, tpl.id);
-                          closeTlSettTplDrop();
+                          if (!d || !tpl.id) return;
+                          if (v9ApplyDrawingTemplate(d, tpl.id)) closeTlSettTplDrop();
                         }}
                           style={{flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontSize:12, color:hov===`stpl-${idx}`?c.tx:c.ts, fontWeight:500}}>{tpl.name}</span>
                         <div onClick={e=>{ e.stopPropagation();
-                          const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-                          const tb = ch?.drawingManager?.toolbar;
                           const d = getSelectedDrawingForTemplate();
-                          const toolType = (d && d.type) || resolveLegacyTool();
-                          if (tb && toolType && tpl.id) tb.deleteTemplate(toolType, tpl.id);
+                          if (d && tpl.id) v9DeleteDrawingTemplate(d, tpl.id);
                         }}
                           onMouseEnter={()=>setHov(`stpl-del-${idx}`)} onMouseLeave={()=>setHov(`stpl-${idx}`)}
                           style={{ padding:"2px 4px", cursor:"default" }}>
@@ -18863,12 +18927,9 @@ const TalariaV8bLive = () => {
                 <div style={{padding:"4px 0"}}>
                   {[["Save as", ()=>{ setTlSaveAsMode(true); setTlNewTplName(""); }],
                     ["Apply default", ()=>{
-                      const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-                      const tb = ch?.drawingManager?.toolbar;
                       const d = getSelectedDrawingForTemplate();
-                      if (!tb || typeof tb.applyDefaultTemplate !== "function") return;
-                      if (!d) { tb.showNotification?.("Select a drawing first"); return; }
-                      tb.applyDefaultTemplate(d);
+                      if (!d) { v9NotifyDrawingAction("Select a drawing first"); return; }
+                      if (!v9ApplyDefaultDrawingTemplate(d)) { v9NotifyDrawingAction("Apply default failed"); return; }
                       closeTlBarDrop();
                     }]].map(([lbl, action])=>{
                     const isH=hov===`tbdrop-${lbl}`, isAct=lbl==="Save as"&&tlSaveAsMode;
@@ -18915,20 +18976,14 @@ const TalariaV8bLive = () => {
                       style={{ display:"flex", alignItems:"center", padding:"4px 8px 4px 12px", cursor:"default", position:"relative",
                                background:hov===`tbtpl-${idx}`?c.hv2:"transparent", transition:"background 0.1s" }}>
                       <span {...modalPointerActivate(() => {
-                        const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-                        const tb = ch?.drawingManager?.toolbar;
                         const d = getSelectedDrawingForTemplate();
-                        if (!tb || !d || !tpl.id) return;
-                        tb.applyTemplate(d, tpl.id);
-                        closeTlBarDrop();
+                        if (!d || !tpl.id) return;
+                        if (v9ApplyDrawingTemplate(d, tpl.id)) closeTlBarDrop();
                       })}
                         style={{flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontSize:12, color:hov===`tbtpl-${idx}`?c.tx:c.ts, fontWeight:500}}>{tpl.name}</span>
                       <div {...modalPointerActivate(() => {
-                        const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-                        const tb = ch?.drawingManager?.toolbar;
                         const d = getSelectedDrawingForTemplate();
-                        const toolType = (d && d.type) || resolveLegacyTool();
-                        if (tb && toolType && tpl.id) tb.deleteTemplate(toolType, tpl.id);
+                        if (d && tpl.id) v9DeleteDrawingTemplate(d, tpl.id);
                       })}
                         onMouseEnter={()=>setHov(`tbtpl-del-${idx}`)} onMouseLeave={()=>setHov(`tbtpl-${idx}`)}
                         style={{ padding:"2px 4px", cursor:"default" }}>

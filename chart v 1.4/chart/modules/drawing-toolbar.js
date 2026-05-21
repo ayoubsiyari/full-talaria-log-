@@ -1942,6 +1942,25 @@ class DrawingToolbar {
         return `drawing_templates_${toolType}`;
     }
 
+    _resolveDrawingManager(drawing) {
+        if (drawing && drawing.chart && drawing.chart.drawingManager) {
+            return drawing.chart.drawingManager;
+        }
+        if (typeof window !== 'undefined') {
+            if (typeof window.getActiveChart === 'function') {
+                const ac = window.getActiveChart();
+                if (ac && ac.drawingManager) return ac.drawingManager;
+            }
+            if (window.chart && window.chart.drawingManager) return window.chart.drawingManager;
+            if (window.drawingManager) return window.drawingManager;
+        }
+        return null;
+    }
+
+    _isV9Chrome() {
+        return typeof window !== 'undefined' && typeof window.__v9OpenDrawingSettings === 'function';
+    }
+
     deepClone(obj) {
         if (obj === undefined) return undefined;
         return JSON.parse(JSON.stringify(obj));
@@ -2095,45 +2114,60 @@ class DrawingToolbar {
     }
 
     applyTemplate(drawing, templateId) {
-        const drawingManager = window.chart?.drawingManager || window.drawingManager;
+        const drawingManager = this._resolveDrawingManager(drawing);
         const actualDrawing = drawingManager?.drawings?.find(d => d.id === drawing.id) || drawing;
 
         const templates = this.getSavedTemplates(actualDrawing.type);
         const template = templates.find(t => t.id === templateId);
         
-        if (template) {
-            if (!actualDrawing.style) actualDrawing.style = {};
-
-            if (template.style) {
-                for (const k in actualDrawing.style) {
-                    if (Object.prototype.hasOwnProperty.call(actualDrawing.style, k)) delete actualDrawing.style[k];
-                }
-                Object.assign(actualDrawing.style, this.deepClone(template.style));
-            } else {
-                actualDrawing.style.stroke = template.stroke;
-                actualDrawing.style.strokeWidth = template.strokeWidth;
-                if (template.fill) actualDrawing.style.fill = template.fill;
-                if (template.opacity !== undefined) actualDrawing.style.opacity = template.opacity;
-            }
-
-            if (template.text !== undefined) {
-                actualDrawing.text = template.text;
-                if (typeof actualDrawing.setText === 'function') actualDrawing.setText(template.text);
-            }
-
-            if (template.levels) {
-                actualDrawing.levels = this.deepClone(template.levels);
-            }
-            
-            // Refresh toolbar
-            this.show(actualDrawing, 
-                this.toolbar.getBoundingClientRect().left, 
-                this.toolbar.getBoundingClientRect().top
-            );
-            
-            if (this.onUpdate) this.onUpdate(actualDrawing);
-            this.showNotification(`Template "${template.name}" applied!`);
+        if (!template) {
+            this.showNotification('Template not found');
+            return;
         }
+
+        if (!actualDrawing.style) actualDrawing.style = {};
+
+        if (typeof this.onBeforeUpdate === 'function') {
+            try { this.onBeforeUpdate(actualDrawing); } catch (_) {}
+        }
+
+        if (template.style) {
+            for (const k in actualDrawing.style) {
+                if (Object.prototype.hasOwnProperty.call(actualDrawing.style, k)) delete actualDrawing.style[k];
+            }
+            Object.assign(actualDrawing.style, this.deepClone(template.style));
+        } else {
+            actualDrawing.style.stroke = template.stroke;
+            actualDrawing.style.strokeWidth = template.strokeWidth;
+            if (template.fill) actualDrawing.style.fill = template.fill;
+            if (template.opacity !== undefined) actualDrawing.style.opacity = template.opacity;
+        }
+
+        if (template.text !== undefined) {
+            actualDrawing.text = template.text;
+            if (typeof actualDrawing.setText === 'function') actualDrawing.setText(template.text);
+        }
+
+        if (template.levels) {
+            actualDrawing.levels = this.deepClone(template.levels);
+        }
+
+        if (typeof this.onUpdate === 'function') {
+            this.onUpdate(actualDrawing);
+        } else {
+            drawingManager?.renderDrawing?.(actualDrawing);
+            drawingManager?.chart?.scheduleRender?.();
+        }
+
+        // Legacy DOM toolbar only — V9 uses React floating bar.
+        if (!this._isV9Chrome() && this.toolbar && this.visible) {
+            try {
+                const rect = this.toolbar.getBoundingClientRect();
+                this.show(actualDrawing, rect.left, rect.top);
+            } catch (_) {}
+        }
+
+        this.showNotification(`Template "${template.name}" applied!`);
     }
 
     applyDefaultTemplate(drawing) {
