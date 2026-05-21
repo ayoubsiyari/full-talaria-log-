@@ -121,11 +121,6 @@ export function applyV9ThemeSettingsToChart(settings) {
   const bearBody = settings.bearBody != null ? normalizeTvCandle(settings.bearBody, legacyDown, "#f23645") : null;
   const bearBorder = settings.bearBorder != null ? normalizeTvCandle(settings.bearBorder, legacyDown, "#f23645") : null;
   const bearWick = settings.bearWick != null ? normalizeTvCandle(settings.bearWick, legacyDown, "#f23645") : null;
-  const background = settings.background != null
-    ? (String(settings.background).trim().toLowerCase() === "#000000" || String(settings.background).trim().toLowerCase() === "#000"
-      ? "#131722"
-      : settings.background)
-    : null;
   const map = {
     bodyUpColor: bullBody,
     candleUpColor: bullBody,
@@ -135,7 +130,7 @@ export function applyV9ThemeSettingsToChart(settings) {
     candleDownColor: bearBody,
     borderDownColor: bearBorder,
     wickDownColor: bearWick,
-    backgroundColor: background,
+    backgroundColor: settings.background,
     gridColor: settings.gridColor,
     crosshairColor: settings.crosshairColor,
     priceLineColor: settings.priceLineColor,
