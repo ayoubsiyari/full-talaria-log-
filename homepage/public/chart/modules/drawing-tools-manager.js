@@ -122,6 +122,7 @@ class DrawingToolsManager {
 
         // SVG layers
         this.drawingsGroup = null;
+        this.drawingsPanLayer = null;
         this.tempGroup = null;
         
         // Tools that support angle snapping with Shift key
@@ -1064,6 +1065,8 @@ class DrawingToolsManager {
         } else {
             this.drawingsGroup.attr('clip-path', clipUrl);
         }
+
+        this._ensureDrawingsPanLayer();
         
         // Temporary drawing group (for live preview) with clipping
         this.tempGroup = this.svg.select('.temp-drawing');
@@ -1098,6 +1101,47 @@ class DrawingToolsManager {
             .attr('y', m.t)
             .attr('width', w - m.l - m.r)
             .attr('height', h - m.t - m.b);
+    }
+
+    /** Inner layer for pan CSS translate — clip stays on outer .drawings group. */
+    _ensureDrawingsPanLayer() {
+        if (!this.drawingsGroup || this.drawingsGroup.empty()) return;
+        let panLayer = this.drawingsGroup.select('.drawings-pan-layer');
+        if (panLayer.empty()) {
+            panLayer = this.drawingsGroup.append('g').attr('class', 'drawings-pan-layer');
+            const panNode = panLayer.node();
+            const outerNode = this.drawingsGroup.node();
+            if (panNode && outerNode) {
+                Array.from(outerNode.childNodes).forEach((child) => {
+                    if (child === panNode) return;
+                    panNode.appendChild(child);
+                });
+            }
+        }
+        this.drawingsPanLayer = panLayer;
+        // Legacy: transform must never live on the clipped outer group.
+        this.drawingsGroup.attr('transform', null);
+    }
+
+    _getDrawingsContentGroup() {
+        this._ensureDrawingsPanLayer();
+        return (this.drawingsPanLayer && !this.drawingsPanLayer.empty())
+            ? this.drawingsPanLayer
+            : this.drawingsGroup;
+    }
+
+    _clearDrawingsContentGroup() {
+        this._ensureDrawingsPanLayer();
+        const content = this._getDrawingsContentGroup();
+        if (content && !content.empty()) {
+            content.selectAll('*').remove();
+        }
+        if (this.drawingsPanLayer && !this.drawingsPanLayer.empty()) {
+            this.drawingsPanLayer.attr('transform', null);
+        }
+        if (this.drawingsGroup && !this.drawingsGroup.empty()) {
+            this.drawingsGroup.attr('transform', null);
+        }
     }
 
     /**
@@ -4760,7 +4804,7 @@ class DrawingToolsManager {
         };
 
         // Render with current scales AND chart instance for accurate pixel calculation
-        drawing.render(this.drawingsGroup, scalesPayload, renderOpts);
+        drawing.render(this._getDrawingsContentGroup(), scalesPayload, renderOpts);
 
         if (isHotPath && typeof drawing.updateHandlePositions === 'function') {
             try { drawing.updateHandlePositions(scalesPayload); } catch (_) {}
@@ -7360,7 +7404,7 @@ class DrawingToolsManager {
                     return;
                 }
                 if (drawing.group && !drawing.group.empty()) {
-                    drawing.render(this.drawingsGroup, scales, renderOpts);
+                    drawing.render(this._getDrawingsContentGroup(), scales, renderOpts);
                     if (typeof drawing.updateHandlePositions === 'function') {
                         try { drawing.updateHandlePositions(scales); } catch (_) {}
                     }
@@ -7383,7 +7427,7 @@ class DrawingToolsManager {
         this.chart._isRendering = true;
         
         // Clear existing SVG elements
-        this.drawingsGroup.selectAll('*').remove();
+        this._clearDrawingsContentGroup();
         if (this.labelsGroup) {
             this.labelsGroup.selectAll('*').remove();
         }
@@ -7422,7 +7466,7 @@ class DrawingToolsManager {
         const count = this.drawings.length;
         if (count === 0) {
             if (this.drawingsGroup) {
-                this.drawingsGroup.selectAll('*').remove();
+                this._clearDrawingsContentGroup();
             }
             try {
                 this.saveDrawings();
@@ -7442,7 +7486,7 @@ class DrawingToolsManager {
         this.selectedDrawing = null;
         this.toolbar.hide();
         if (this.drawingsGroup) {
-            this.drawingsGroup.selectAll('*').remove();
+            this._clearDrawingsContentGroup();
         }
         
         // Clear all axis highlights
@@ -8005,7 +8049,7 @@ class DrawingToolsManager {
         if (this.drawings.length > 0) {
             this.drawings.forEach(d => { try { d.destroy(); } catch(e) {} });
             this.drawings = [];
-            if (this.drawingsGroup) this.drawingsGroup.selectAll('*').remove();
+            if (this.drawingsGroup) this._clearDrawingsContentGroup();
         }
 
         // Mark as loaded regardless of whether there are saved drawings
@@ -8124,7 +8168,7 @@ class DrawingToolsManager {
                 this.drawings = [];
             }
             if (this.drawingsGroup) {
-                this.drawingsGroup.selectAll('*').remove();
+                this._clearDrawingsContentGroup();
             }
 
             const normalizeDashPatterns = (node) => {

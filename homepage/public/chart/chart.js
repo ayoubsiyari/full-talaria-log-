@@ -13486,6 +13486,15 @@ class Chart {
     _clearPanDrawingsLayerTransform() {
         const dm = this.drawingManager;
         if (dm) {
+            if (typeof dm._ensureDrawingsPanLayer === 'function') {
+                dm._ensureDrawingsPanLayer();
+            }
+            const panLayer = dm.drawingsPanLayer;
+            if (panLayer && !panLayer.empty()) {
+                panLayer.attr('transform', null);
+            } else if (dm.drawingsGroup && !dm.drawingsGroup.empty()) {
+                dm.drawingsGroup.attr('transform', null);
+            }
             if (dm.drawingsGroup && !dm.drawingsGroup.empty()) {
                 dm.drawingsGroup.attr('transform', null);
             }
@@ -13549,7 +13558,13 @@ class Chart {
             }
         }
         const transform = ty ? `translate(${dx},${ty})` : `translate(${dx},0)`;
-        if (dm.drawingsGroup && !dm.drawingsGroup.empty()) {
+        if (typeof dm._ensureDrawingsPanLayer === 'function') {
+            dm._ensureDrawingsPanLayer();
+        }
+        const panLayer = dm.drawingsPanLayer;
+        if (panLayer && !panLayer.empty()) {
+            panLayer.attr('transform', transform);
+        } else if (dm.drawingsGroup && !dm.drawingsGroup.empty()) {
             dm.drawingsGroup.attr('transform', transform);
         }
         if (dm.labelsGroup && !dm.labelsGroup.empty()) {
@@ -23032,7 +23047,13 @@ class Chart {
                     });
                     dm.drawings = [];
                     dm.selectedDrawing = null;
-                    if (dm.drawingsGroup) dm.drawingsGroup.selectAll('*').remove();
+                    if (dm.drawingsGroup) {
+                        if (typeof dm._clearDrawingsContentGroup === 'function') {
+                            dm._clearDrawingsContentGroup();
+                        } else {
+                            dm.drawingsGroup.selectAll('*').remove();
+                        }
+                    }
                     dm.saveDrawings();
                 }
 
