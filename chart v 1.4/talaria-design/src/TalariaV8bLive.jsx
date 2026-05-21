@@ -2066,17 +2066,22 @@ function v9TlFibEnabledLevelsToChart(levels, fibLineType, fibLineWidth) {
   }));
 }
 
+/** When pushing V9 → chart, prefer `tlStyle` rows (same as classic fib). Drawing-first only for hydrate fallbacks. */
 function v9ResolveFibChannelLevelRowsForDrawing(d, tlStyle) {
+  if (Array.isArray(tlStyle?.fibLevels) && tlStyle.fibLevels.length) {
+    return tlStyle.fibLevels;
+  }
   const fromDrawing = v9FibSpeedFanLevelsChartToTl(d.levels);
   if (fromDrawing && fromDrawing.length) return fromDrawing;
-  if (Array.isArray(tlStyle.fibLevels) && tlStyle.fibLevels.length) return tlStyle.fibLevels;
   return v9FibChannelDefaultLevelsTl();
 }
 
 function v9ResolveFibTzLevelRowsForDrawing(d, tlStyle) {
+  if (Array.isArray(tlStyle?.fibTzLevels) && tlStyle.fibTzLevels.length) {
+    return tlStyle.fibTzLevels;
+  }
   const fromDrawing = v9FibTzLevelsChartToTl(d.levels);
   if (fromDrawing && fromDrawing.length) return fromDrawing;
-  if (Array.isArray(tlStyle.fibTzLevels) && tlStyle.fibTzLevels.length) return tlStyle.fibTzLevels;
   return v9FibTzDefaultLevelsTl();
 }
 
