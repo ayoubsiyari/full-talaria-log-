@@ -10382,5 +10382,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a17';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a12_axis_draw_pass_through';
 } catch (_) {}

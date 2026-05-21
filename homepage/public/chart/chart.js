@@ -623,8 +623,8 @@ class Chart {
             // Chart Type
             chartType: 'candles', // 'candles', 'hollow', 'heikinashi', 'bars', 'line', 'area', 'baseline'
             
-            // Background - user-configurable (default black)
-            backgroundColor: '#000000',
+            // Background - TradingView dark pane
+            backgroundColor: '#131722',
             backgroundStyle: 'Solid', // 'Solid' or 'Gradient'
             
             // Grid
@@ -4158,7 +4158,7 @@ class Chart {
                 if (this.chartSettings.activePanelOnlyTemplate) this._lastPanelOnlyTemplate = this.chartSettings.activePanelOnlyTemplate;
             } else {
                 // TradingView-style defaults when no saved settings exist
-                this.chartSettings.backgroundColor = '#000000';
+                this.chartSettings.backgroundColor = '#131722';
                 this.chartSettings.scaleLinesColor = '#2a2e39';
                 this.chartSettings.scaleTextColor = '#ffffff';
                 this.chartSettings.symbolTextColor = '#ffffff';
@@ -4229,6 +4229,9 @@ class Chart {
             cs.unifiedBarColor = normalizeColor(cs.unifiedBarColor, legacyUp, '#089981');
         }
         cs.showCandleBorders = false;
+        if (bg === '#000000' || bg === '#000') {
+            cs.backgroundColor = '#131722';
+        }
     }
 
     _reapplyV9ThemeSettingsIfAvailable() {
@@ -7325,7 +7328,7 @@ class Chart {
             /* ── TALARIA THEMES ── */
             'talaria-dark': {
                 name: 'Talaria Dark',
-                backgroundColor: '#000000',
+                backgroundColor: '#131722',
                 gridColor: 'rgba(42, 46, 57, 0.6)',
                 bodyUpColor: '#089981', bodyDownColor: '#f23645',
                 borderUpColor: '#089981', borderDownColor: '#f23645',
@@ -7335,7 +7338,7 @@ class Chart {
                 crosshairColor: 'rgba(120, 123, 134, 0.4)',
                 cursorLabelTextColor: '#d1d4dc', cursorLabelBgColor: '#434651',
                 volumeUpColor: 'rgba(8, 153, 129, 0.5)', volumeDownColor: 'rgba(242, 54, 69, 0.5)',
-                settingsPanelBgColor: '#000000', settingsPanelAccentColor: '#2962ff',
+                settingsPanelBgColor: '#131722', settingsPanelAccentColor: '#2962ff',
                 settingsPanelSecondaryColor: '#089981', settingsPanelTextColor: '#d1d4dc'
             },
             /* ── PREMIUM THEMES ── */

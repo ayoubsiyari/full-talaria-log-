@@ -1328,8 +1328,6 @@ class DrawingToolsManager {
                 }
                 canvas.removeEventListener('dblclick', existing.dblclick, true);
             }
-
-            // Mousedown on canvas for rectangular selection
             const onMouseDown = (event) => {
                 // Check for Ctrl+drag to start rectangular selection
                 if (event.ctrlKey && !event.shiftKey && !this.currentTool) {
@@ -10382,5 +10380,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a17';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a12_axis_draw_pass_through';
 } catch (_) {}
