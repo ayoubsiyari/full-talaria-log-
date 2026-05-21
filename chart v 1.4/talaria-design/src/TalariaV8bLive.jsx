@@ -11724,6 +11724,41 @@ const TalariaV8bLive = () => {
     }
   };
 
+  // Extend left/right — immediate repaint (TradingView toggles without waiting for OK).
+  const flushV9ExtendToChart = (tl) => {
+    try {
+      const editSess = editingDrawingRef.current;
+      const legacy = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
+      const patch = {
+        extendLeft: !!tl.extendLeft,
+        extendRight: !!tl.extendRight,
+      };
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || d.type !== "rectangle" && d.type !== "rotated-rectangle") return;
+        const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacy, editSess);
+        if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm)) return;
+        if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
+        const tb = dm.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+        Object.assign(d.style, patch);
+        try {
+          if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
+          else dm.renderDrawing?.(d);
+        } catch (_) {
+          try { dm.renderDrawing?.(d); } catch (_) {}
+        }
+        if (d.selected && typeof d.showAxisHighlights === "function") {
+          try { d.showAxisHighlights(); } catch (_) {}
+        }
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
+    } catch (err) {
+      console.warn("[V9 extend flush] failed:", err);
+    }
+  };
+
   // When the armed legacy tool changes (e.g. Rectangle → Triangle), reset `tlStyle`
   // to clean defaults so settings never carry over from the previous tool.
   const v9LastHydratedLegacyRef = useRef(null);
@@ -14251,7 +14286,17 @@ const TalariaV8bLive = () => {
                 <div key={rowLabel} style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
                   <span style={{ fontSize:12, color:c.ts }}>{rowLabel}</span>
                   <div style={{ display:"flex", alignItems:"center", marginLeft:"auto" }}>
-                    {pairs.map(([k,lbl]) => <div key={k} style={{ width:66 }}>{TlChk(tlStyle[k],`tlchk-${k}`,lbl,()=>setTlStyle(s=>({...s,[k]:!s[k]})))}</div>)}
+                    {pairs.map(([k,lbl]) => <div key={k} style={{ width:66 }}>{TlChk(tlStyle[k],`tlchk-${k}`,lbl,()=>{
+                      if (k === "extendLeft" || k === "extendRight") {
+                        setTlStyle((s) => {
+                          const next = { ...s, [k]: !s[k] };
+                          queueMicrotask(() => flushV9ExtendToChart(next));
+                          return next;
+                        });
+                      } else {
+                        setTlStyle((s) => ({ ...s, [k]: !s[k] }));
+                      }
+                    })}</div>)}
                   </div>
                 </div>
               ))}

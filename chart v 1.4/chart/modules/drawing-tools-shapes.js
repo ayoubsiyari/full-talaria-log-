@@ -26,14 +26,30 @@ function isRectangleExtendOn(style, key) {
         || (typeof v === 'string' && /^(true|1|yes)$/i.test(String(v).trim()));
 }
 
+/** Plot L/R in the same pixel space as dataIndexToPixel (matches chart xScale.range). */
+function getRectanglePlotHorizontalBounds(scales) {
+    if (scales && scales.xScale && typeof scales.xScale.range === 'function') {
+        const r = scales.xScale.range();
+        if (r && r.length >= 2 && Number.isFinite(r[0]) && Number.isFinite(r[1]) && r[1] > r[0]) {
+            return { left: r[0], right: r[1] };
+        }
+    }
+    if (typeof SVGHelpers !== 'undefined' && SVGHelpers.getChartHorizontalPixelBounds) {
+        return SVGHelpers.getChartHorizontalPixelBounds(scales);
+    }
+    const chart = scales && scales.chart;
+    const m = (chart && chart.margin) ? chart.margin : { l: 0, r: 60 };
+    const w = chart && (chart.w || chart.canvas?.clientWidth || chart.canvas?.width);
+    const right = Number.isFinite(w) ? w - (m.r || 0) : 0;
+    return { left: m.l || 0, right: right > (m.l || 0) ? right : (m.l || 0) + 1 };
+}
+
 /** Apply rectangle extend-left/right in pixel space (same coords as dataIndexToPixel). */
 function applyRectangleHorizontalExtend(x1, x2, scales, style) {
     if (!style || (!isRectangleExtendOn(style, 'extendLeft') && !isRectangleExtendOn(style, 'extendRight'))) {
         return { x1, x2 };
     }
-    const bounds = (typeof SVGHelpers !== 'undefined' && SVGHelpers.getChartHorizontalPixelBounds)
-        ? SVGHelpers.getChartHorizontalPixelBounds(scales)
-        : { left: scales.xScale.range()[0], right: scales.xScale.range()[1] };
+    const bounds = getRectanglePlotHorizontalBounds(scales);
     let leftEdge = Math.min(x1, x2);
     let rightEdge = Math.max(x1, x2);
     if (isRectangleExtendOn(style, 'extendLeft')) {
@@ -320,8 +336,8 @@ class RectangleTool extends BaseDrawing {
 
         this.renderTextLabel({ x, y, width, height }, scaleFactor);
 
-        // Create 8-point resize handles (4 corners + 4 sides) like TradingView
-        this.createBoxHandles(this.group, scales);
+        // Handles on original corners only (TradingView); fill/border use extended width above.
+        this.createBoxHandles(this.group, scales, { useExtendedHorizontal: false });
 
         // Middle line after handles so it paints above fill/border; thin strokes were easy to miss under side handles.
         const sm = this.style.showMiddleLine;
@@ -352,11 +368,13 @@ class RectangleTool extends BaseDrawing {
 
     /**
      * Create 8-point resize handles for box shapes (4 corners + 4 sides)
+     * @param {{ useExtendedHorizontal?: boolean }} [opts]
      */
-    createBoxHandles(group, scales) {
+    createBoxHandles(group, scales, opts = {}) {
         const handleFill = 'transparent';
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
+        const useExtendedHorizontal = opts.useExtendedHorizontal !== false;
         
         // Remove existing handles
         group.selectAll('.resize-handle').remove();
@@ -371,7 +389,9 @@ class RectangleTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
         let x2 = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
-        ({ x1, x2 } = applyRectangleHorizontalExtend(x1, x2, scales, this.style));
+        if (useExtendedHorizontal) {
+            ({ x1, x2 } = applyRectangleHorizontalExtend(x1, x2, scales, this.style));
+        }
         const y1 = scales.yScale(p1.y);
         const y2 = scales.yScale(p2.y);
         

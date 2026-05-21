@@ -425,14 +425,14 @@ class BaseDrawing {
                 (this.type === 'rectangle' || this.type === 'rotated-rectangle')
                 && this.style
                 && (this.style.extendLeft || this.style.extendRight)
-                && typeof SVGHelpers !== 'undefined'
-                && typeof SVGHelpers.getChartHorizontalPixelBounds === 'function'
             ) {
                 const p1 = this.points[0];
                 const p2 = this.points[1];
                 const px1 = this.chart.dataIndexToPixel ? this.chart.dataIndexToPixel(p1.x) : xScale(p1.x);
                 const px2 = this.chart.dataIndexToPixel ? this.chart.dataIndexToPixel(p2.x) : xScale(p2.x);
-                const hb = SVGHelpers.getChartHorizontalPixelBounds({ chart: this.chart, xScale, yScale });
+                const hb = (typeof SVGHelpers !== 'undefined' && SVGHelpers.getChartHorizontalPixelBounds)
+                    ? SVGHelpers.getChartHorizontalPixelBounds({ chart: this.chart, xScale, yScale })
+                    : { left: xScale.range()[0], right: xScale.range()[1] };
                 const leftEdge = Math.min(px1, px2);
                 const rightEdge = Math.max(px1, px2);
                 minX = this.style.extendLeft ? hb.left : leftEdge;
@@ -1341,16 +1341,21 @@ class SVGHelpers {
      * right of the last bar), not only the currently visible bar index range.
      */
     static getChartHorizontalPixelBounds(scales) {
-        const xRange = scales.xScale.range();
-        const chart = scales.chart;
+        const chart = scales && scales.chart;
         const m = (chart && chart.margin) ? chart.margin : { l: 0, r: 60 };
-        const plotLeft = (typeof m.l === 'number') ? m.l : xRange[0];
-        const plotRight = (chart && typeof chart.w === 'number')
-            ? (chart.w - (typeof m.r === 'number' ? m.r : 0))
-            : xRange[1];
+        if (scales && scales.xScale && typeof scales.xScale.range === 'function') {
+            const r = scales.xScale.range();
+            if (r && r.length >= 2 && Number.isFinite(r[0]) && Number.isFinite(r[1]) && r[1] > r[0]) {
+                return { left: r[0], right: r[1] };
+            }
+        }
+        const w = chart && (chart.w || chart.canvas?.clientWidth || chart.canvas?.width);
+        const plotLeft = typeof m.l === 'number' ? m.l : 0;
+        const plotRight = Number.isFinite(w) ? w - (typeof m.r === 'number' ? m.r : 0) : plotLeft + 1;
         if (Number.isFinite(plotLeft) && Number.isFinite(plotRight) && plotRight > plotLeft) {
             return { left: plotLeft, right: plotRight };
         }
+        const xRange = scales.xScale.range();
         return { left: xRange[0], right: xRange[1] };
     }
 
