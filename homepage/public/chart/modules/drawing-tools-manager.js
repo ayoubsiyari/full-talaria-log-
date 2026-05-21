@@ -2797,6 +2797,7 @@ class DrawingToolsManager {
         }
 
         let point = this.getDataPoint(event);
+        this._lastMouseEvent = this._nativePointerEvent(event) || event;
         
         const toolInfo = this.toolRegistry[this.currentTool];
         // [debug removed]
@@ -3516,24 +3517,38 @@ class DrawingToolsManager {
         // Handle other tools' preview
         if (!this.currentTool || !this.drawingState.isDrawing) return;
         
+        const previewPoints = this._computeInProgressPreviewPoints(event);
+        if (previewPoints) {
+            this._scheduleTempPreviewRedraw(previewPoints);
+        }
+    }
+
+    /**
+     * Build preview vertices: committed anchors + live cursor (reused on zoom/pan refresh).
+     */
+    _computeInProgressPreviewPoints(event) {
+        if (!this.currentTool || !this.drawingState?.isDrawing || !event) return null;
+
         const toolInfo = this.toolRegistry[this.currentTool];
-        let point = (this.angleSnapTools.includes(this.currentTool) && this.drawingState.tempPoints.length > 0)
+        if (!toolInfo) return null;
+
+        const committed = this.drawingState.tempPoints;
+        if (!Array.isArray(committed) || committed.length === 0) return null;
+
+        let point = (this.angleSnapTools.includes(this.currentTool) && committed.length > 0)
             ? this._resolveAnchorPointFromEvent(event, null, 1, this.currentTool)
             : this.getDataPoint(event);
-        
-        // TradingView-style: Parallel channel 3rd point preview moves perpendicular to baseline
-        if (this.currentTool === 'parallel-channel' && this.drawingState.tempPoints.length === 2) {
-            const p0 = this.drawingState.tempPoints[0];
-            const p1 = this.drawingState.tempPoints[1];
+
+        if (this.currentTool === 'parallel-channel' && committed.length === 2) {
+            const p0 = committed[0];
+            const p1 = committed[1];
             const baseX = p1.x - p0.x;
             const baseY = p1.y - p0.y;
             const baseLen = Math.sqrt(baseX * baseX + baseY * baseY);
-            
+
             if (baseLen > 0) {
-                // Perpendicular unit vector
                 const perpX = -baseY / baseLen;
                 const perpY = baseX / baseLen;
-                // Project mouse onto perpendicular direction
                 const toMouseX = point.x - p0.x;
                 const toMouseY = point.y - p0.y;
                 const perpDist = toMouseX * perpX + toMouseY * perpY;
@@ -3542,31 +3557,27 @@ class DrawingToolsManager {
                 point = { x: p0.x, y: point.y };
             }
         }
-        
-        // Flat-top-bottom: Third point preview locked vertically (same X as point 2, can move up/down)
-        if (this.currentTool === 'flat-top-bottom' && this.drawingState.tempPoints.length === 2) {
-            const p2 = this.drawingState.tempPoints[1];
+
+        if (this.currentTool === 'flat-top-bottom' && committed.length === 2) {
+            const p2 = committed[1];
             point = { x: p2.x, y: point.y };
         }
-        
-        // Disjoint-channel: Third point preview follows mouse Y position closely
-        if (this.currentTool === 'disjoint-channel' && this.drawingState.tempPoints.length === 2) {
-            const p0 = this.drawingState.tempPoints[0];
-            // Keep X same as first point, but Y follows mouse closely
+
+        if (this.currentTool === 'disjoint-channel' && committed.length === 2) {
+            const p0 = committed[0];
             point = { x: p0.x, y: point.y };
         }
 
-        if (this.currentTool === 'date-price-range' && this.drawingState.tempPoints.length > 0) {
-            const anchorPoint = this.drawingState.tempPoints[0];
+        if (this.currentTool === 'date-price-range' && committed.length > 0) {
+            const anchorPoint = committed[0];
             const rangeMode = this.getRangeToolMode();
             point = this.constrainDatePriceRangePoint(point, anchorPoint, rangeMode);
         }
 
         if (
-            toolInfo &&
             toolInfo.dragPreview &&
             this.riskRewardPreview &&
-            this.drawingState.tempPoints.length >= 1
+            committed.length >= 1
         ) {
             const previewPoints = this.buildRiskRewardPoints(
                 this.riskRewardPreview.entry,
@@ -3574,13 +3585,15 @@ class DrawingToolsManager {
                 this.currentTool === 'long-position'
             );
             this.riskRewardPreview.previewPoints = previewPoints;
-            this._scheduleTempPreviewRedraw(previewPoints);
-            return;
+            return previewPoints;
         }
-        
-        // Create temp preview with current points + mouse position
-        const previewPoints = [...this.drawingState.tempPoints, point];
-        this._scheduleTempPreviewRedraw(previewPoints);
+
+        const required = toolInfo.points;
+        if (required > 0 && committed.length >= required) {
+            return committed.map((p) => ({ ...p }));
+        }
+
+        return [...committed.map((p) => ({ ...p })), point];
     }
 
     /**
@@ -4234,6 +4247,16 @@ class DrawingToolsManager {
         if (this.currentTool === 'path' || this.currentTool === 'brush' || this.currentTool === 'highlighter') {
             return true;
         }
+        // Smooth sub-candle preview while placing (TradingView-style); commit still uses getDataPoint rules.
+        if (
+            this.currentTool
+            && toolType === this.currentTool
+            && this.drawingState?.isDrawing
+            && !this.isDrawingPath
+            && !this.isCandleBoundTool(toolType)
+        ) {
+            return true;
+        }
         if (this.currentTool) return false;
         const editing =
             this.isResizing
@@ -4448,11 +4471,18 @@ class DrawingToolsManager {
         if (!this.chart?.xScale || !this.chart?.yScale) return;
 
         let previewPoints = null;
-        if (this.riskRewardPreview?.previewPoints?.length) {
+        if (this.isDrawingPath && Array.isArray(this.drawingState.tempPoints) && this.drawingState.tempPoints.length > 0) {
+            previewPoints = this.drawingState.tempPoints.map((p) => ({ ...p }));
+        } else if (this._lastMouseEvent) {
+            previewPoints = this._computeInProgressPreviewPoints(this._lastMouseEvent);
+        }
+        if (!previewPoints && this.riskRewardPreview?.previewPoints?.length) {
             previewPoints = this.riskRewardPreview.previewPoints.map((p) => ({ ...p }));
-        } else if (Array.isArray(this._activeTempPreviewPoints) && this._activeTempPreviewPoints.length > 0) {
+        }
+        if (!previewPoints && Array.isArray(this._activeTempPreviewPoints) && this._activeTempPreviewPoints.length > 0) {
             previewPoints = this._activeTempPreviewPoints.map((p) => ({ ...p }));
-        } else if (Array.isArray(this.drawingState.tempPoints) && this.drawingState.tempPoints.length > 0) {
+        }
+        if (!previewPoints && Array.isArray(this.drawingState.tempPoints) && this.drawingState.tempPoints.length > 0) {
             previewPoints = this.drawingState.tempPoints.map((p) => ({ ...p }));
         }
         if (!previewPoints || previewPoints.length === 0) return;
@@ -10825,5 +10855,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a21_zoom_anchor';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a23_smooth_preview';
 } catch (_) {}
