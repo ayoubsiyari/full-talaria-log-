@@ -6226,7 +6226,6 @@ class DrawingToolsManager {
                 return false;
             }
             if (!self.currentTool) return true;
-            const src = (event && event.sourceEvent) ? event.sourceEvent : event;
             const t = src && src.target;
             const onDrawingHandle = !!(t && t.closest && t.closest(
                 '.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .rr-plus-btn'
