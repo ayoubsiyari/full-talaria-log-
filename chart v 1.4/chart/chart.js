@@ -13461,6 +13461,9 @@ class Chart {
                 dm.labelsGroup.attr('transform', null);
             }
         }
+        if (this.svg && !this.svg.empty()) {
+            this.svg.selectAll('.axis-highlight-group').attr('transform', null);
+        }
         this._panSnapOffsetX = null;
         this._panSnapPriceOffset = null;
     }
@@ -13521,6 +13524,10 @@ class Chart {
         }
         if (dm.labelsGroup && !dm.labelsGroup.empty()) {
             dm.labelsGroup.attr('transform', transform);
+        }
+        // Axis price/time labels live outside drawingsGroup; glue them during pan.
+        if (this.svg && !this.svg.empty()) {
+            this.svg.selectAll('.axis-highlight-group').attr('transform', transform);
         }
     }
 
@@ -14990,6 +14997,8 @@ class Chart {
      * Draw axis highlight zones for selected drawings (canvas-based, behind labels)
      */
     drawAxisHighlightZones() {
+        // Zones are stored in pre-pan pixel coords; skip while CSS-transforming drawings.
+        if (this._isChartViewPanning() && this._canPanTransformDrawings()) return;
         // Check if there are any axis highlight zones to draw
         if (!this.axisHighlightZones || this.axisHighlightZones.length === 0) return;
         
