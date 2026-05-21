@@ -5206,17 +5206,22 @@ class DrawingToolsManager {
             chart: this.chart,
             labelsGroup: this.labelsGroup
         };
-        const isHotPath = skipAxisHighlights || !!opts.hotPath;
+        const isPanZoomHotPath = !!opts.hotPath || (
+            this.chart &&
+            typeof this.chart._isChartViewPanning === 'function' &&
+            this.chart._isChartViewPanning()
+        );
         const renderOpts = {
-            reuseGroup: isHotPath,
-            skipHandles: isHotPath || !!this._skipHandleSetup || skipInteraction,
+            reuseGroup: isPanZoomHotPath,
+            // Multi-select skips axis labels but must still create endpoint handles for lines.
+            skipHandles: (isPanZoomHotPath || !!this._skipHandleSetup || skipInteraction) && !drawing.selected,
             isPreview: false
         };
 
         // Render with current scales AND chart instance for accurate pixel calculation
         drawing.render(this._getDrawingsContentGroup(), scalesPayload, renderOpts);
 
-        if (isHotPath && typeof drawing.updateHandlePositions === 'function') {
+        if (isPanZoomHotPath && typeof drawing.updateHandlePositions === 'function') {
             try { drawing.updateHandlePositions(scalesPayload); } catch (_) {}
         }
         
@@ -5249,7 +5254,9 @@ class DrawingToolsManager {
         if (!skipInteraction && (this.selectedDrawings || []).includes(drawing)) {
             drawing.selected = true;
             if (typeof drawing.select === 'function') {
-                try { drawing.select(); } catch (_) {}
+                try {
+                    drawing.select({ skipAxisHighlights: this._shouldSkipAxisHighlights() });
+                } catch (_) {}
             }
         }
     }
@@ -9001,12 +9008,15 @@ class DrawingToolsManager {
 
         this.deselectAll({ forSelectionChange: true });
 
-        this.selectedDrawings = [];
-        selectedDrawings.forEach((drawing) => {
-            this.selectedDrawings.push(drawing);
+        this.selectedDrawings = selectedDrawings.slice();
+        const isMulti = this.selectedDrawings.length > 1;
+
+        this.selectedDrawings.forEach((drawing) => {
             drawing.selected = true;
-            drawing.select({ skipAxisHighlights: selectedDrawings.length > 1 });
             this.renderDrawing(drawing);
+            if (typeof drawing.select === 'function') {
+                drawing.select({ skipAxisHighlights: isMulti });
+            }
         });
         this.selectedDrawing = this.selectedDrawings.length > 0
             ? this.selectedDrawings[this.selectedDrawings.length - 1]
@@ -11124,5 +11134,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a31_marquee_select';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a32_multiselect_handles';
 } catch (_) {}
