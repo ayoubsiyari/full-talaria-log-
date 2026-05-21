@@ -15807,12 +15807,12 @@ const TalariaV8bLive = () => {
           sets tool to crosshair — tlBarDrawingGroup === "text" so we must not fall through
           to the Trend Line bar, which only keys off tlBarSelected). */}
       {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && (()=>{
-        const TxBtn = ({id, isAct, onClick, children, isDel, tip}) => {
+        const TxBtn = ({id, isAct, onClick, children, isDel}) => {
           const isH = hov === id;
           return (
             <div
-              onMouseEnter={e=>{setHov(id);if(tip)showTip(tip,e.currentTarget,"bottom");}}
-              onMouseLeave={()=>{setHov(null);hideTip();}}
+              onMouseEnter={()=>{setHov(id);}}
+              onMouseLeave={()=>{setHov(null);}}
               onPointerDown={(e) => {
                 e.stopPropagation();
                 if (typeof onClick === "function") onClick(e);
@@ -15828,7 +15828,7 @@ const TalariaV8bLive = () => {
           );
         };
         return (
-        <div data-sdrop="1" onClick={e=>e.stopPropagation()}
+        <div data-sdrop="1" onClick={e=>e.stopPropagation()} onMouseLeave={hideTip}
           style={{position:"fixed",top:tlBarPos.y,left:tlBarPos.x,zIndex:11000,
                   background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
                   boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
@@ -18882,13 +18882,13 @@ const TalariaV8bLive = () => {
           Text/label drawings map to group "text" (not in TL_LINE_SHAPE_GROUPS) — without
           this guard, effectiveTlGroup is null and tlSubTool defaulted to Trend Line. */}
       {tlBarSelected && tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) && tlBarDrawingGroupRaw !== "brush" && (()=>{
-        const TlBtn = ({id, isAct, children, onClick, w, tip}) => {
+        const TlBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "tl-del";
           return (
             <div
-              onMouseEnter={e=>{setHov(id);if(tip)showTip(tip,e.currentTarget,"bottom");}}
-              onMouseLeave={()=>{setHov(null);hideTip();}}
+              onMouseEnter={()=>{setHov(id);}}
+              onMouseLeave={()=>{setHov(null);}}
               onPointerDown={(e) => {
                 e.stopPropagation();
                 if (typeof onClick === "function") onClick(e);
@@ -18909,6 +18909,7 @@ const TalariaV8bLive = () => {
         return (
         <div ref={tlBarRef} data-sdrop="1" data-tlbar="1"
           onMouseDown={(e) => e.stopPropagation()}
+          onMouseLeave={hideTip}
           onClick={e=>e.stopPropagation()}
           style={{ position:"fixed", top:tlBarPos.y, left:tlBarPos.x, zIndex:11000,
                    background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
@@ -19060,7 +19061,7 @@ const TalariaV8bLive = () => {
             </TlBtn>
             <TlSep/>
             {/* RR tool: create order */}
-            <TlBtn id="tl-rr-order" isAct={orderPanelOpen} tip="Place Order"
+            <TlBtn id="tl-rr-order" isAct={orderPanelOpen}
               onClick={e=>{e.stopPropagation();
                 try {
                   const om = window.chart?.orderManager;
@@ -19269,7 +19270,7 @@ const TalariaV8bLive = () => {
           <TlSep/>
           {/* btn 5: lock — toggle locked state on the selected drawing(s) too,
                so V9's lock matches what the legacy toolbar's lock button does. */}
-          <TlBtn id="tl-lock" isAct={tlLocked} tip={tlLocked?"Unlock":"Lock"} onClick={()=>{
+          <TlBtn id="tl-lock" isAct={tlLocked} onClick={()=>{
             setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();
             const next = !tlLocked; setTlLocked(next);
             try {
@@ -19285,7 +19286,7 @@ const TalariaV8bLive = () => {
           </TlBtn>
           {/* btn 6: delete — call drawingManager.deleteDrawing on the selected
                drawing(s) so the canvas matches what the legacy toolbar does. */}
-          <TlBtn id="tl-del" isAct={false} tip="Delete" onClick={()=>{
+          <TlBtn id="tl-del" isAct={false} onClick={()=>{
             setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();
             try {
               enumerateV9DrawingManagersFromWindow().forEach((dm) => {
@@ -19335,7 +19336,7 @@ const TalariaV8bLive = () => {
             {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
           </TlBtn>
           {/* btn 8: more */}
-          <TlBtn id="tl-more2" isAct={tlBarDrop==="more"} tip="More" w={30}
+          <TlBtn id="tl-more2" isAct={tlBarDrop==="more"} w={30}
             onClick={e=>{e.stopPropagation();if(tlBarDrop==="more"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("more");}}>
             {(_,isAct,col)=><svg width={14} height={4} viewBox="0 0 14 4"><circle cx="2" cy="2" r="2" fill={col}/><circle cx="7" cy="2" r="2" fill={col}/><circle cx="12" cy="2" r="2" fill={col}/></svg>}
           </TlBtn>
