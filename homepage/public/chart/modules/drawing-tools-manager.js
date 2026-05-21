@@ -1327,6 +1327,9 @@ class DrawingToolsManager {
                     canvas.removeEventListener('mousemove', existing.mousemove);
                 }
                 canvas.removeEventListener('dblclick', existing.dblclick, true);
+                if (typeof existing.contextmenu === 'function') {
+                    canvas.removeEventListener('contextmenu', existing.contextmenu, true);
+                }
             }
             const onMouseDown = (event) => {
                 // Check for Ctrl+drag to start rectangular selection
@@ -1668,6 +1671,12 @@ class DrawingToolsManager {
             };
             canvas.addEventListener('mousemove', onCanvasMouseMove);
 
+            const onContextMenu = (event) => {
+                if (this.currentTool !== 'brush' && this.currentTool !== 'highlighter') return;
+                this.handleContextMenu(event);
+            };
+            canvas.addEventListener('contextmenu', onContextMenu, true);
+
             if (!this._docDrawMouseUpBound) {
                 this._docDrawMouseUpBound = (event) => {
                     if (!this.isDrawingPath && !this.isDraggingFirstTwo) return;
@@ -1698,7 +1707,8 @@ class DrawingToolsManager {
                 mousedown: onMouseDown,
                 click: onClick,
                 dblclick: onDblClick,
-                mousemove: onCanvasMouseMove
+                mousemove: onCanvasMouseMove,
+                contextmenu: onContextMenu
             };
         }
     }
@@ -3706,6 +3716,7 @@ class DrawingToolsManager {
         // If a persistent tool (brush/highlighter) is active, right-click deactivates it
         const persistentTools = ['brush', 'highlighter'];
         if (!this.drawingState.isDrawing && this.currentTool && persistentTools.includes(this.currentTool)) {
+            if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
             // [debug removed]
             this.clearTool();
             // Update UI - remove active from all tools except the persistent cursor button
@@ -3716,6 +3727,33 @@ class DrawingToolsManager {
 
             if (typeof window !== 'undefined' && typeof window.syncMagnetButton === 'function') {
                 window.syncMagnetButton();
+            }
+            return;
+        }
+
+        // Brush/highlighter: right-click ends the current stroke (tool stays armed).
+        if ((this.currentTool === 'brush' || this.currentTool === 'highlighter') && this.drawingState.isDrawing) {
+            if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+            this._cancelFreehandPreviewRaf();
+            this._cancelTempPreviewRaf();
+            this.isDrawingPath = false;
+            this.hidePathTooltip();
+            if (this.drawingState.tempPoints.length > 1) {
+                this.finalizeDrawing();
+            } else if (this.drawingState.tempPoints.length === 1) {
+                const tapPoint = this.drawingState.tempPoints[0];
+                if (tapPoint && Number.isFinite(tapPoint.x) && Number.isFinite(tapPoint.y)) {
+                    this.drawingState.tempPoints = [tapPoint, { ...tapPoint }];
+                    this.finalizeDrawing();
+                } else {
+                    this.tempGroup.selectAll('*').remove();
+                    this.drawingState.reset();
+                    this.riskRewardPreview = null;
+                }
+            } else {
+                this.tempGroup.selectAll('*').remove();
+                this.drawingState.reset();
+                this.riskRewardPreview = null;
             }
             return;
         }
@@ -10380,5 +10418,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a12_axis_draw_pass_through';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a13_brush_rc';
 } catch (_) {}
