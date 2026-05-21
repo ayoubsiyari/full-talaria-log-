@@ -338,6 +338,14 @@ class KeyboardShortcutsManager {
                 metaKey: e.metaKey,
                 shiftKey: e.shiftKey
             });
+            const dm = this.chart.drawingManager;
+            if (dm && typeof dm._refreshPlacementPreviewFromLastPointer === 'function') {
+                dm._refreshPlacementPreviewFromLastPointer({
+                    ctrlKey: e.ctrlKey,
+                    metaKey: e.metaKey,
+                    shiftKey: e.shiftKey
+                });
+            }
         }
         
         // Skip if typing in input fields (except for specific shortcuts)
@@ -391,6 +399,14 @@ class KeyboardShortcutsManager {
                 metaKey: e.metaKey,
                 shiftKey: e.shiftKey
             });
+            const dm = this.chart.drawingManager;
+            if (dm && typeof dm._refreshPlacementPreviewFromLastPointer === 'function') {
+                dm._refreshPlacementPreviewFromLastPointer({
+                    ctrlKey: e.ctrlKey,
+                    metaKey: e.metaKey,
+                    shiftKey: e.shiftKey
+                });
+            }
         }
     }
     

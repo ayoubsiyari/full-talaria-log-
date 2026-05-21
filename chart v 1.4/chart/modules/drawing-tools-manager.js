@@ -1169,35 +1169,21 @@ class DrawingToolsManager {
         svg.on('mousemove.drawing', (event) => this.handleMouseMove(event));
         svg.on('mouseup.drawing', (event) => this.handleMouseUp(event));
 
-        const refreshPlacementPreviewFromLastPointer = (keyPatch) => {
-            if (!this.currentTool || !this.drawingState || !this.drawingState.isDrawing) return;
-            if (!this._lastMouseEvent) return;
-            const last = this._lastMouseEvent;
-            const fakeEvent = {
-                clientX: last.clientX,
-                clientY: last.clientY,
-                shiftKey: keyPatch.shiftKey !== undefined ? keyPatch.shiftKey : last.shiftKey,
-                ctrlKey: keyPatch.ctrlKey !== undefined ? keyPatch.ctrlKey : last.ctrlKey,
-                altKey: last.altKey,
-                metaKey: keyPatch.metaKey !== undefined ? keyPatch.metaKey : last.metaKey,
-                buttons: last.buttons,
-                button: last.button,
-                target: last.target,
-                currentTarget: last.currentTarget
-            };
-            this.handleMouseMove(fakeEvent);
-        };
-
-        // Shift-release: immediately refresh preview to real mouse position
-        document.addEventListener('keyup', (e) => {
-            if (e.key !== 'Shift') return;
-            refreshPlacementPreviewFromLastPointer({ shiftKey: false });
+        // Shift/Ctrl press or release: keep placement preview aligned with crosshair magnet snap
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Control' && e.key !== 'Meta' && e.key !== 'Shift') return;
+            this._refreshPlacementPreviewFromLastPointer({
+                ctrlKey: e.ctrlKey,
+                metaKey: e.metaKey,
+                shiftKey: e.shiftKey
+            });
         });
-
-        // Ctrl/Cmd-release: refresh preview magnet snap (crosshair already updates via chart key state)
         document.addEventListener('keyup', (e) => {
-            if (e.key !== 'Control' && e.key !== 'Meta') return;
-            refreshPlacementPreviewFromLastPointer({ ctrlKey: false, metaKey: false });
+            if (e.key === 'Shift') {
+                this._refreshPlacementPreviewFromLastPointer({ shiftKey: false });
+            } else if (e.key === 'Control' || e.key === 'Meta') {
+                this._refreshPlacementPreviewFromLastPointer({ ctrlKey: false, metaKey: false });
+            }
         });
 
         // Double-click anywhere on a drawing (use same geometric hit-test as selection)
@@ -3702,6 +3688,42 @@ class DrawingToolsManager {
         
         // Ctrl+Z - Undo (future feature)
         // Ctrl+Y - Redo (future feature)
+
+        if (event.key === 'Control' || event.key === 'Meta' || event.key === 'Shift') {
+            this._refreshPlacementPreviewFromLastPointer({
+                ctrlKey: event.ctrlKey,
+                metaKey: event.metaKey,
+                shiftKey: event.shiftKey
+            });
+        }
+    }
+
+    /**
+     * Re-run placement preview at last pointer (Ctrl/Shift toggled without mousemove).
+     * Chart.refreshCrosshairFromLastPointer already runs on the same keys; this keeps lines/shapes aligned.
+     */
+    _refreshPlacementPreviewFromLastPointer(keyPatch = {}) {
+        if (!this.currentTool || !this.drawingState || !this.drawingState.isDrawing) return;
+        if (!this._lastMouseEvent) return;
+        const last = this._lastMouseEvent;
+        const fakeEvent = {
+            clientX: last.clientX,
+            clientY: last.clientY,
+            shiftKey: keyPatch.shiftKey !== undefined ? keyPatch.shiftKey : last.shiftKey,
+            ctrlKey: keyPatch.ctrlKey !== undefined ? keyPatch.ctrlKey : last.ctrlKey,
+            altKey: last.altKey,
+            metaKey: keyPatch.metaKey !== undefined ? keyPatch.metaKey : last.metaKey,
+            buttons: last.buttons,
+            button: last.button,
+            target: last.target,
+            currentTarget: last.currentTarget
+        };
+        if (keyPatch.ctrlKey || keyPatch.metaKey) {
+            this.magnetKeyHeld = true;
+        } else if (keyPatch.ctrlKey === false && keyPatch.metaKey === false) {
+            this.magnetKeyHeld = false;
+        }
+        this.handleMouseMove(fakeEvent);
     }
 
     /**
@@ -3712,27 +3734,13 @@ class DrawingToolsManager {
         if (event.key === 'Meta' || event.key === 'Control') {
             this.magnetKeyHeld = false;
             this.ctrlSelectMode = false;
-            if (this.currentTool && this.drawingState && this.drawingState.isDrawing && this._lastMouseEvent) {
-                const last = this._lastMouseEvent;
-                this.handleMouseMove({
-                    clientX: last.clientX,
-                    clientY: last.clientY,
-                    shiftKey: last.shiftKey,
-                    ctrlKey: false,
-                    metaKey: false,
-                    altKey: last.altKey,
-                    buttons: last.buttons,
-                    button: last.button,
-                    target: last.target,
-                    currentTarget: last.currentTarget
-                });
-            }
+            this._refreshPlacementPreviewFromLastPointer({ ctrlKey: false, metaKey: false });
         }
     }
 
     /** True when OHLC magnet should apply (toolbar magnet or temporary Ctrl/Cmd). */
     _isMagnetSnapActive(event) {
-        const keyHeld = event && (event.metaKey || event.ctrlKey);
+        const keyHeld = !!(event && (event.metaKey || event.ctrlKey)) || !!this.magnetKeyHeld;
         const mode = this.magnetMode || (this.chart && this.chart.magnetMode) || 'off';
         return !!(keyHeld || mode === 'weak' || mode === 'strong' || mode === true);
     }
@@ -3740,7 +3748,7 @@ class DrawingToolsManager {
     /** Strong magnet snaps anchors to bar centers; weak/off keep fractional time in empty chart space. */
     _snapPlacementXToBarCenter(event) {
         const mode = this.magnetMode || (this.chart && this.chart.magnetMode) || 'off';
-        const keyHeld = event && (event.metaKey || event.ctrlKey);
+        const keyHeld = !!(event && (event.metaKey || event.ctrlKey)) || !!this.magnetKeyHeld;
         return mode === 'strong' || mode === true || !!keyHeld;
     }
 
@@ -3774,7 +3782,7 @@ class DrawingToolsManager {
             }
         }
 
-        const keyHeld = event && (event.metaKey || event.ctrlKey);
+        const keyHeld = !!(event && (event.metaKey || event.ctrlKey)) || !!this.magnetKeyHeld;
         const mode = this.magnetMode || (this.chart && this.chart.magnetMode) || 'off';
         const forceSnap = keyHeld || mode === 'strong' || mode === true;
 
