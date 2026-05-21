@@ -325,6 +325,11 @@ function installChartContextMenuStyles() {
 }
 installChartContextMenuStyles();
 
+/** TradingView-style default bar width at reset (time-axis double-click / jump to latest). */
+const DEFAULT_CANDLE_WIDTH = 6;
+/** Body width as a fraction of center-to-center bar spacing (TradingView ≈ 0.8). */
+const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
+
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
         installChartContextMenuCapture();
@@ -382,7 +387,7 @@ class Chart {
         this.rawData = []; // Store raw data - will be populated from CSV
         this.data = []; // Working data (resampled based on timeframe)
         this.dataVersion = 0; // Increment whenever data changes (used for caching)
-        this.candleWidth = 8;
+        this.candleWidth = DEFAULT_CANDLE_WIDTH;
         this.offsetX = 0;
         this.priceZoom = 1;
         this.minPriceZoom = 1e-9;
@@ -451,8 +456,8 @@ class Chart {
         
         // Zoom level with quantized candle widths (Fibonacci-like)
         this.zoomLevel = {
-            candleWidthIndex: 9,         // Index into allowedWidths (default width 8)
-            allowedWidths: [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89]
+            candleWidthIndex: 9,         // Index into allowedWidths (default width 6)
+            allowedWidths: [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89]
         };
         
         // Cursor tracking state
@@ -669,7 +674,7 @@ class Chart {
             unifiedBarColorEnabled: false,
             unifiedBarColor: '#089981',
             showCandleBody: true,
-            showCandleBorders: true,
+            showCandleBorders: false,
             showCandleWick: true,
             colorBasedOnPreviousClose: false,
 
@@ -3084,7 +3089,7 @@ class Chart {
                 if (typeof v.candleWidth === 'number' && Number.isFinite(v.candleWidth)) {
                     const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
                         ? this.zoomLevel.allowedWidths
-                        : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                        : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
                     const minWidth = this._getEffectiveMinCandleWidth(widths);
                     const maxWidth = widths[widths.length - 1];
                     this.candleWidth = Math.max(minWidth, Math.min(maxWidth, v.candleWidth));
@@ -9100,7 +9105,7 @@ class Chart {
         this._chartViewRestored = false;
         
         // Reset zoom
-        this.candleWidth = 8;
+        this.candleWidth = DEFAULT_CANDLE_WIDTH;
         this.priceZoom = 1;
         this.priceOffset = 0;
         this.autoScale = true;
@@ -9614,7 +9619,7 @@ class Chart {
         // Use Fibonacci-like sequence for cleaner candle widths
         const allowedWidths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
             ? this.zoomLevel.allowedWidths
-            : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+            : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
         const minWidth = this._getEffectiveMinCandleWidth(allowedWidths);
         const maxWidth = allowedWidths[allowedWidths.length - 1];
         
@@ -9646,7 +9651,7 @@ class Chart {
         const minOffset = cw - totalDataWidth - targetCandleSpacing * 2;
         const allowedWidths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
             ? this.zoomLevel.allowedWidths
-            : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+            : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
         const minWidth = this._getEffectiveMinCandleWidth(allowedWidths);
         const maxWidth = allowedWidths[allowedWidths.length - 1];
         
@@ -9716,7 +9721,7 @@ class Chart {
         const selectedCandles = Math.max(1, endIdx - startIdx);
         const allowedWidths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
             ? this.zoomLevel.allowedWidths
-            : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+            : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
         const minWidth = this._getEffectiveMinCandleWidth(allowedWidths);
         const maxWidth = allowedWidths[allowedWidths.length - 1];
         const newCandleWidth = Math.max(minWidth, Math.min(maxWidth, chartWidth / selectedCandles - 2));
@@ -11673,7 +11678,7 @@ class Chart {
                 this.offsetX = centerX - candleX;
 
                 // Reset zoom for better visibility
-                this.candleWidth = 8;
+                this.candleWidth = DEFAULT_CANDLE_WIDTH;
                 this.priceZoom = 1;
                 this.priceOffset = 0;
                 this.autoScale = true;
@@ -11803,7 +11808,7 @@ class Chart {
                 const centerX = cw / 2;
                 const candleX = closestIndex * candleSpacing;
                 this.offsetX = centerX - candleX;
-                this.candleWidth = 8;
+                this.candleWidth = DEFAULT_CANDLE_WIDTH;
                 this.priceZoom = 1;
                 this.priceOffset = 0;
                 this.autoScale = true;
@@ -11957,7 +11962,7 @@ class Chart {
             // TradingView-style reset on every TF switch (double-click parity).
             // Reset BEFORE onTimeframeChange so the replay viewport is computed
             // against default candleWidth + autoScale, identical to a fresh load.
-            this.candleWidth = 8;
+            this.candleWidth = DEFAULT_CANDLE_WIDTH;
             this.priceZoom = 1;
             this.priceOffset = 0;
             this.autoScale = true;
@@ -12536,7 +12541,7 @@ class Chart {
         // so its internal getReplayAutoScrollState() computes offsetX against
         // the reset candleWidth and lands the playhead at the right edge with
         // the same geometry as a fresh load.
-        this.candleWidth = 8;
+        this.candleWidth = DEFAULT_CANDLE_WIDTH;
         this.priceZoom = 1;
         this.priceOffset = 0;
         this.autoScale = true;
@@ -13217,9 +13222,10 @@ class Chart {
      */
     _getSpacingForCandleWidth(cw) {
         const w = Number(cw);
-        if (!Number.isFinite(w)) return 10;
+        if (!Number.isFinite(w)) return 7;
         if (w <= 0.5) return Math.max(0.2, w);
-        const gap = Math.min(2, (w - 0.5) * (2 / 7.5));
+        // TradingView-like gutter: ~1px at default zoom, scales up slightly on wide bars.
+        const gap = Math.max(1, Math.round(w * 0.167));
         return w + gap;
     }
 
@@ -13739,7 +13745,7 @@ class Chart {
         const oldCandleWidth = this.candleWidth;
         const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
             ? this.zoomLevel.allowedWidths
-            : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+            : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
         const minWidth = this._getEffectiveMinCandleWidth(widths);
         const maxWidth = widths[widths.length - 1];
         
@@ -13768,7 +13774,7 @@ class Chart {
     
     resetView() {
         // Reset zoom levels
-        this.candleWidth = 8;
+        this.candleWidth = DEFAULT_CANDLE_WIDTH;
         this.priceZoom = 1;
         this.priceOffset = 0;
         this.autoScale = true;
@@ -16283,8 +16289,11 @@ class Chart {
             // Snap candle center to an integer pixel — both wick and body derive from this.
             const cx = Math.round(x);
 
-            // Calculate wick width - always crisp
-            const wickWidth = Math.max(1, Math.min(2, Math.ceil(this.candleWidth / 8)));
+            const barSpacing = this.getCandleSpacing();
+            // TradingView: body ≈ 80% of bar slot; wick always 1px at normal zoom.
+            const wickWidth = 1;
+            const bodyWidthPx = Math.max(1, Math.round(barSpacing * TV_CANDLE_BODY_SLOT_RATIO));
+            const halfBodyPx = Math.floor(bodyWidthPx / 2);
 
             // Draw wick (high-low line) - centered and crisp (if enabled)
             if (this.chartSettings.showCandleWick !== false) {
@@ -16298,11 +16307,7 @@ class Chart {
             }
 
             // Body geometry — always centered on the same cx as the wick.
-            // Use round + 0.42 so body fills ~80% of the slot at moderate zoom,
-            // keeping wicks visually thinner than the body (min 2px wide).
-            const halfBodyPx = Math.max(1, Math.round(this.candleWidth * 0.42));
-            const bodyWidthPx = halfBodyPx * 2;          // always even, symmetric around cx
-            const bodyLeft = cx - halfBodyPx;             // integer — no rounding needed
+            const bodyLeft = cx - halfBodyPx;
             const bodyHeight = Math.abs(yc - yo);
             const bodyTop = Math.min(yo, yc);
             
@@ -16311,7 +16316,7 @@ class Chart {
                 // Doji - draw as a horizontal line (if borders enabled)
                 if (this.chartSettings.showCandleBorders !== false) {
                     this.ctx.strokeStyle = borderColor;
-                    this.ctx.lineWidth = 1.5;
+                    this.ctx.lineWidth = 1;
                     this.ctx.lineCap = 'butt';
                     this.ctx.beginPath();
                     this.ctx.moveTo(bodyLeft, Math.round(yo));
@@ -16344,10 +16349,10 @@ class Chart {
                         }
                     }
                     
-                    // Draw border on top (if enabled or hollow mode)
-                    if (this.chartSettings.showCandleBorders !== false || shouldBeHollow) {
+                    // Draw border on top (hollow mode only — TV solid candles have no outline)
+                    if (shouldBeHollow && (this.chartSettings.showCandleBorders !== false || shouldBeHollow)) {
                         this.ctx.strokeStyle = borderColor;
-                        this.ctx.lineWidth = shouldBeHollow ? 2 : Math.max(1, Math.min(2, bodyWidthPx / 6));
+                        this.ctx.lineWidth = 2;
                         this.ctx.strokeRect(bodyLeft + 0.5, bTop + 0.5, bodyWidthPx - 1, bH - 1);
                     }
                 } else {
@@ -16357,7 +16362,7 @@ class Chart {
                         this.ctx.fillRect(bodyLeft, bTop, bodyWidthPx, bH);
                     }
                     
-                    // Add border for definition (if enabled)
+                    // Optional border (off by default for TradingView-style solid bars)
                     if (this.chartSettings.showCandleBorders !== false && bodyWidthPx >= 3) {
                         this.ctx.strokeStyle = borderColor;
                         this.ctx.lineWidth = 1;
@@ -16632,7 +16637,7 @@ class Chart {
             // Clamp to allowed widths
             const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
                 ? this.zoomLevel.allowedWidths
-                : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
             const minWidth = this._getEffectiveMinCandleWidth(widths);
             const maxWidth = widths[widths.length - 1];
             this.candleWidth = Math.max(minWidth, Math.min(maxWidth, targetCandleWidth));
@@ -17423,7 +17428,7 @@ class Chart {
                 }
 
                 // Smooth horizontal zoom using a small factor, then snap zoom index
-                const widths = this.zoomLevel.allowedWidths || [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                const widths = this.zoomLevel.allowedWidths || [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
                 const minWidth = this._getEffectiveMinCandleWidth(widths);
                 const maxWidth = widths[widths.length - 1];
 
@@ -17661,7 +17666,7 @@ class Chart {
                     // Like price axis: dx controls horizontal zoom, anchored at right edge
                     const sensitivity = 0.001;
                     const zoomFactor = 1 + dx * sensitivity;
-                    const widths = this.zoomLevel.allowedWidths || [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                    const widths = this.zoomLevel.allowedWidths || [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
                     const minWidth = this._getEffectiveMinCandleWidth(widths);
                     const maxWidth = widths[widths.length - 1];
                     const newWidth = Math.max(minWidth, Math.min(maxWidth, this.candleWidth * zoomFactor));
@@ -18074,7 +18079,7 @@ class Chart {
                     } else if (this.drag.type === 'timeAxis') {
                         const sensitivity = 0.001;
                         const zoomFactor = 1 + dx * sensitivity;
-                        const widths = this.zoomLevel.allowedWidths || [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                        const widths = this.zoomLevel.allowedWidths || [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
                         const newWidth = Math.max(widths[0], Math.min(widths[widths.length - 1], this.candleWidth * zoomFactor));
                         const m = this.margin;
                         const oldSpacing = this.getCandleSpacing();
@@ -18491,7 +18496,7 @@ class Chart {
         const resetZoomBtn = document.getElementById('resetZoom');
         if (resetZoomBtn) {
             resetZoomBtn.addEventListener('click', () => {
-                this.candleWidth = 8;
+                this.candleWidth = DEFAULT_CANDLE_WIDTH;
                 this.priceZoom = 1;
                 this.priceOffset = 0;
                 this.autoScale = true;
@@ -18993,7 +18998,7 @@ class Chart {
                 const scale = currentDistance / initialPinchDistance;
                 const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
                     ? this.zoomLevel.allowedWidths
-                    : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                    : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
                 const minWidth = this._getEffectiveMinCandleWidth(widths);
                 const maxWidth = widths[widths.length - 1];
                 this.candleWidth = Math.max(minWidth, Math.min(maxWidth, initialCandleWidth * scale));

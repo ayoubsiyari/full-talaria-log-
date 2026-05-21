@@ -3245,8 +3245,9 @@ class DrawingToolsManager {
      * Handle mouse move event
      */
     handleMouseMove(event) {
-        // Track last mouse position for Shift-release preview refresh
-        if (this.currentTool && this.drawingState && this.drawingState.isDrawing) {
+        // Track last mouse position for Shift/Ctrl preview refresh (placement + resize)
+        if ((this.currentTool && this.drawingState && this.drawingState.isDrawing)
+            || this.isResizing || this.isCustomHandleDrag || this.isCustomHandleDragging) {
             this._lastMouseEvent = event;
         }
 
@@ -3777,7 +3778,9 @@ class DrawingToolsManager {
      * Chart.refreshCrosshairFromLastPointer already runs on the same keys; this keeps lines/shapes aligned.
      */
     _refreshPlacementPreviewFromLastPointer(keyPatch = {}) {
-        if (!this.currentTool || !this.drawingState || !this.drawingState.isDrawing) return;
+        const isPlacing = !!(this.currentTool && this.drawingState && this.drawingState.isDrawing);
+        const isEditing = !!(this.isResizing || this.isCustomHandleDrag || this.isCustomHandleDragging);
+        if (!isPlacing && !isEditing) return;
         if (!this._lastMouseEvent) return;
         const last = this._lastMouseEvent;
         const fakeEvent = {
@@ -3992,7 +3995,8 @@ class DrawingToolsManager {
                 : Math.max(0, Math.min(maxY, screenY));
         }
         
-        const isContinuousTool = this._usesContinuousDataCoords(activeToolType);
+        const magnetActive = this._isMagnetSnapActive(event);
+        const isContinuousTool = this._usesContinuousDataCoords(activeToolType) && !magnetActive;
         const useFractionalBarIndex = isContinuousTool || !this._snapPlacementXToBarCenter(event);
 
         // Pass chart instance for accurate index calculation.
