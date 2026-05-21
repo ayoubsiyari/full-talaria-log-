@@ -1251,10 +1251,10 @@ const V9_EXACT_STYLE_MATCH_GROUPS = new Set(['fib', 'gann', 'pattern', 'rect', '
 
 /** Legacy tool id for the style forward bridge (armed rail or drawing under edit). */
 function v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editingSession) {
-  const armed = typeof resolveLegacyTool === 'function' ? resolveLegacyTool() : null;
-  if (armed) return armed;
   const edType = editingSession?.drawing?.type;
   if (edType) return edType;
+  const armed = typeof resolveLegacyTool === 'function' ? resolveLegacyTool() : null;
+  if (armed) return armed;
   return null;
 }
 
@@ -1262,14 +1262,13 @@ function v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editingSession) {
 function v9ShouldApplyTlStylePatch(d, legacyTool, editingSession) {
   if (!d || !d.type || !d.style) return false;
   if (v9DrawingTypeToPanelGroup(d.type) === 'text') return false;
+  if (
+    editingSession?.drawing &&
+    v9IsSameDrawingSession(d, editingSession.drawing)
+  ) {
+    return true;
+  }
   if (!legacyTool) {
-    // Settings panel open on crosshair: still apply to the shape being edited (rect, fib, …).
-    if (
-      editingSession?.drawing &&
-      v9IsSameDrawingSession(d, editingSession.drawing)
-    ) {
-      return true;
-    }
     const drawingGroup = v9DrawingTypeToPanelGroup(d.type);
     if (drawingGroup && V9_EXACT_STYLE_MATCH_GROUPS.has(drawingGroup)) return false;
     return true;
@@ -2959,6 +2958,14 @@ function v9FreshTlStyleDefaults() {
 function v9NeedsFullTlStyleReplaceForType(type) {
   const g = v9DrawingTypeToPanelGroup(type);
   return !!(g && V9_EXACT_STYLE_MATCH_GROUPS.has(g));
+}
+
+/** Re-hydrate tlStyle from the selected drawing (fib channel/tz must not keep retracement rows). */
+function v9SelectionShouldFullTlStyleFromDrawing(drawing, typeChanged) {
+  if (!drawing || !drawing.type) return false;
+  if (!v9NeedsFullTlStyleReplaceForType(drawing.type)) return false;
+  if (typeChanged) return true;
+  return v9DrawingTypeToPanelGroup(drawing.type) === "fib";
 }
 
 /** Replace tlStyle from a selected drawing (full reset for fib/gann/pattern/rect/channel subtypes). */
@@ -10644,7 +10651,8 @@ const TalariaV8bLive = () => {
             ? v9BuildFullTlStyleFromDrawing(drawingForStyle, dmEd)
             : null;
           if (fullEd) {
-            setTlStyle(fullEd);
+            suppressForwardBridge.current = true;
+            flushSync(() => setTlStyle(fullEd));
           } else {
             const sPartial = drawingForStyle.style || {};
             setTlStyle((prev) =>
@@ -10984,7 +10992,7 @@ const TalariaV8bLive = () => {
             const prevType = br.v9LastSelectedDrawingTypeRef?.current;
             const typeChanged = prevType !== drawing.type;
             br.v9LastSelectedDrawingTypeRef.current = drawing.type;
-            if (typeChanged && v9NeedsFullTlStyleReplaceForType(drawing.type)) {
+            if (v9SelectionShouldFullTlStyleFromDrawing(drawing, typeChanged)) {
               const full = v9BuildFullTlStyleFromDrawing(drawing, dm);
               if (full) {
                 br.suppressForwardBridge.current = true;
@@ -11254,7 +11262,7 @@ const TalariaV8bLive = () => {
           const prevType = br.v9LastSelectedDrawingTypeRef?.current;
           const typeChanged = prevType !== live.type;
           br.v9LastSelectedDrawingTypeRef.current = live.type;
-          if (typeChanged && v9NeedsFullTlStyleReplaceForType(live.type)) {
+          if (v9SelectionShouldFullTlStyleFromDrawing(live, typeChanged)) {
             const full = v9BuildFullTlStyleFromDrawing(live, dm);
             if (full) {
               br.suppressForwardBridge.current = true;
