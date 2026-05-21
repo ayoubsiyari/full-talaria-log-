@@ -623,8 +623,8 @@ class Chart {
             // Chart Type
             chartType: 'candles', // 'candles', 'hollow', 'heikinashi', 'bars', 'line', 'area', 'baseline'
             
-            // Background - Black
-            backgroundColor: '#000000',
+            // Background - TradingView dark pane
+            backgroundColor: '#131722',
             backgroundStyle: 'Solid', // 'Solid' or 'Gradient'
             
             // Grid
@@ -4151,13 +4151,14 @@ class Chart {
                 const settings = JSON.parse(saved);
                 this.chartSettings = { ...this.chartSettings, ...settings };
                 this._migrateLegacyTalariaAxisTextColors();
+                this._migrateLegacyTalariaCandleColors();
                 // Restore persisted template selections so dropdowns show correct state on reload
                 if (this.chartSettings.activeFullTemplate) this._lastTemplateSelected = this.chartSettings.activeFullTemplate;
                 if (this.chartSettings.activeChartOnlyTemplate) this._lastChartOnlyTemplate = this.chartSettings.activeChartOnlyTemplate;
                 if (this.chartSettings.activePanelOnlyTemplate) this._lastPanelOnlyTemplate = this.chartSettings.activePanelOnlyTemplate;
             } else {
                 // TradingView-style defaults when no saved settings exist
-                this.chartSettings.backgroundColor = '#000000';
+                this.chartSettings.backgroundColor = '#131722';
                 this.chartSettings.scaleLinesColor = '#2a2e39';
                 this.chartSettings.scaleTextColor = '#ffffff';
                 this.chartSettings.symbolTextColor = '#ffffff';
@@ -4177,6 +4178,7 @@ class Chart {
                 if (apiSettings && Object.keys(apiSettings).length > 0) {
                     this.chartSettings = { ...this.chartSettings, ...apiSettings };
                     this._migrateLegacyTalariaAxisTextColors();
+                    this._migrateLegacyTalariaCandleColors();
                     // Restore persisted template selections from cloud settings
                     if (this.chartSettings.activeFullTemplate) this._lastTemplateSelected = this.chartSettings.activeFullTemplate;
                     if (this.chartSettings.activeChartOnlyTemplate) this._lastChartOnlyTemplate = this.chartSettings.activeChartOnlyTemplate;
@@ -4194,13 +4196,42 @@ class Chart {
         const cs = this.chartSettings;
         if (!cs) return;
         const bg = String(cs.backgroundColor || '').trim().toLowerCase();
-        const isTalariaBlack = bg === '#000000' || bg === '#000';
-        if (!isTalariaBlack) return;
+        const isTalariaDarkBg = bg === '#000000' || bg === '#000' || bg === '#131722' || bg === '#1e222d';
+        if (!isTalariaDarkBg) return;
         const legacyAxisText = new Set(['#787b86', '#d1d4dc', '#b2b5be']);
         const scale = String(cs.scaleTextColor || '').trim().toLowerCase();
         const symbol = String(cs.symbolTextColor || '').trim().toLowerCase();
         if (legacyAxisText.has(scale)) cs.scaleTextColor = '#ffffff';
         if (legacyAxisText.has(symbol)) cs.symbolTextColor = '#ffffff';
+    }
+
+    _migrateLegacyTalariaCandleColors() {
+        const cs = this.chartSettings;
+        if (!cs) return;
+        const bg = String(cs.backgroundColor || '').trim().toLowerCase();
+        const isTalariaDarkBg = bg === '#000000' || bg === '#000' || bg === '#131722' || bg === '#1e222d';
+        if (!isTalariaDarkBg) return;
+
+        const legacyUp = new Set(['#00d4a1', '#00d4aa', '#26a69a', '#00d4a0', '#4caf50', '#00bcd4']);
+        const legacyDown = new Set(['#ff5068', '#ff4757', '#ef5350', '#ff4081', '#ff6b6b']);
+        const normalizeColor = (value, legacySet, target) => {
+            const v = String(value || '').trim().toLowerCase();
+            return legacySet.has(v) ? target : value;
+        };
+
+        ['bodyUpColor', 'borderUpColor', 'wickUpColor', 'candleUpColor'].forEach((key) => {
+            if (cs[key]) cs[key] = normalizeColor(cs[key], legacyUp, '#089981');
+        });
+        ['bodyDownColor', 'borderDownColor', 'wickDownColor', 'candleDownColor'].forEach((key) => {
+            if (cs[key]) cs[key] = normalizeColor(cs[key], legacyDown, '#f23645');
+        });
+        if (cs.unifiedBarColor) {
+            cs.unifiedBarColor = normalizeColor(cs.unifiedBarColor, legacyUp, '#089981');
+        }
+        cs.showCandleBorders = false;
+        if (bg === '#000000' || bg === '#000') {
+            cs.backgroundColor = '#131722';
+        }
     }
 
     _reapplyV9ThemeSettingsIfAvailable() {
@@ -5395,7 +5426,7 @@ class Chart {
         // Initialize settings if not present (already set in constructor)
         if (typeof this.chartSettings.colorBasedOnPreviousClose === 'undefined') this.chartSettings.colorBasedOnPreviousClose = false;
         if (typeof this.chartSettings.showCandleBody === 'undefined') this.chartSettings.showCandleBody = true;
-        if (typeof this.chartSettings.showCandleBorders === 'undefined') this.chartSettings.showCandleBorders = true;
+        if (typeof this.chartSettings.showCandleBorders === 'undefined') this.chartSettings.showCandleBorders = false;
         if (typeof this.chartSettings.showCandleWick === 'undefined') this.chartSettings.showCandleWick = true;
         if (typeof this.chartSettings.unifiedBarColorEnabled === 'undefined') this.chartSettings.unifiedBarColorEnabled = false;
         if (typeof this.chartSettings.unifiedBarColor === 'undefined') this.chartSettings.unifiedBarColor = this.chartSettings.bodyUpColor || '#089981';
@@ -5486,13 +5517,13 @@ class Chart {
                 const x = 18 + i * 21;
                 const bullish = c.c < c.o;
                 const useUnifiedBarColor = !!colors.unifiedBarColorEnabled;
-                const unifiedBarColor = colors.unifiedBarColor || colors.bodyUpColor || '#26a69a';
+                const unifiedBarColor = colors.unifiedBarColor || colors.bodyUpColor || '#089981';
                 const bodyColor = useUnifiedBarColor
                     ? unifiedBarColor
-                    : (bullish ? (colors.bodyUpColor || '#26a69a') : (colors.bodyDownColor || '#ef5350'));
+                    : (bullish ? (colors.bodyUpColor || '#089981') : (colors.bodyDownColor || '#f23645'));
                 const wickColor = useUnifiedBarColor
                     ? unifiedBarColor
-                    : (bullish ? (colors.wickUpColor || '#26a69a') : (colors.wickDownColor || '#ef5350'));
+                    : (bullish ? (colors.wickUpColor || '#089981') : (colors.wickDownColor || '#f23645'));
                 const borderColor = useUnifiedBarColor
                     ? unifiedBarColor
                     : (bullish ? (colors.borderUpColor || bodyColor) : (colors.borderDownColor || bodyColor));
@@ -7297,7 +7328,7 @@ class Chart {
             /* ── TALARIA THEMES ── */
             'talaria-dark': {
                 name: 'Talaria Dark',
-                backgroundColor: '#000000',
+                backgroundColor: '#131722',
                 gridColor: 'rgba(42, 46, 57, 0.6)',
                 bodyUpColor: '#089981', bodyDownColor: '#f23645',
                 borderUpColor: '#089981', borderDownColor: '#f23645',
@@ -7307,7 +7338,7 @@ class Chart {
                 crosshairColor: 'rgba(120, 123, 134, 0.4)',
                 cursorLabelTextColor: '#d1d4dc', cursorLabelBgColor: '#434651',
                 volumeUpColor: 'rgba(8, 153, 129, 0.5)', volumeDownColor: 'rgba(242, 54, 69, 0.5)',
-                settingsPanelBgColor: '#000000', settingsPanelAccentColor: '#2962ff',
+                settingsPanelBgColor: '#131722', settingsPanelAccentColor: '#2962ff',
                 settingsPanelSecondaryColor: '#089981', settingsPanelTextColor: '#d1d4dc'
             },
             /* ── PREMIUM THEMES ── */
@@ -16338,8 +16369,11 @@ class Chart {
             
             // Professional candle rendering
             if (bodyHeight < 1) {
-                // Doji - draw as a horizontal line (if borders enabled)
-                if (this.chartSettings.showCandleBorders !== false) {
+                // Doji — 1px body line in candle color (TradingView-style, no hollow border)
+                if (this.chartSettings.showCandleBody !== false) {
+                    this.ctx.fillStyle = bodyColor;
+                    this.ctx.fillRect(bodyLeft, Math.round(yo), bodyWidthPx, 1);
+                } else if (this.chartSettings.showCandleBorders !== false) {
                     this.ctx.strokeStyle = borderColor;
                     this.ctx.lineWidth = 1;
                     this.ctx.lineCap = 'butt';

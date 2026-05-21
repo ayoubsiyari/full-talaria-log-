@@ -6780,7 +6780,7 @@ const TalariaV8bLive = () => {
   cpDraggingRef.current = cpDragging;
   const DEFAULT_CHART_SETTINGS = {
     theme: "Talaria Dark", chartType: "candlestick", precision: "Default", timezone: "UTC",
-    textColor: "#FFFFFF", background: "#000000", gridColor: "rgba(42, 46, 57, 0.6)", crosshairColor: "rgba(120, 123, 134, 0.4)",
+    textColor: "#FFFFFF", background: "#131722", gridColor: "rgba(42, 46, 57, 0.6)", crosshairColor: "rgba(120, 123, 134, 0.4)",
     priceLine: true, priceLineColor: "#2962FF",
     scaleTextColor: "#FFFFFF", scaleLineColor: "#2A2E39",
     bullBody: "#089981", bullBorder: "#089981", bullWick: "#089981",
@@ -9361,7 +9361,7 @@ const TalariaV8bLive = () => {
     "Rose Gold":      {bullBody:"#F48FB1",bullBorder:"#F48FB1",bullWick:"#F48FB1",bearBody:"#FFB74D",bearBorder:"#FFB74D",bearWick:"#FFB74D",background:"#0E0608",gridColor:"rgba(244,143,177,0.12)",textColor:"#FFE0EC",scaleLineColor:"rgba(244,170,195,0.45)"},
     "TradingView Dark": {bullBody:"#089981",bullBorder:"#089981",bullWick:"#089981",bearBody:"#F23645",bearBorder:"#F23645",bearWick:"#F23645",background:"#1E222D",gridColor:"rgba(42,46,57,0.6)",textColor:"#D1D4DC",scaleLineColor:"#D1D4DC"},
     "TradingView Light": {bullBody:"#089981",bullBorder:"#089981",bullWick:"#089981",bearBody:"#F23645",bearBorder:"#F23645",bearWick:"#F23645",background:"#FFFFFF",gridColor:"rgba(42,46,57,0.22)",textColor:"#000000",scaleLineColor:"#787B86"},
-    "Talaria Dark":   {bullBody:"#089981",bullBorder:"#089981",bullWick:"#089981",bearBody:"#F23645",bearBorder:"#F23645",bearWick:"#F23645",background:"#000000",gridColor:"rgba(42,46,57,0.6)",textColor:"#FFFFFF",scaleLineColor:"#2A2E39"},
+    "Talaria Dark":   {bullBody:"#089981",bullBorder:"#089981",bullWick:"#089981",bearBody:"#F23645",bearBorder:"#F23645",bearWick:"#F23645",background:"#131722",gridColor:"rgba(42,46,57,0.6)",textColor:"#FFFFFF",scaleLineColor:"#2A2E39"},
     "Ocean Blue":     {bullBody:"#00BCD4",bullBorder:"#00BCD4",bullWick:"#00BCD4",bearBody:"#FF6B6B",bearBorder:"#FF6B6B",bearWick:"#FF6B6B",background:"#0A1929",gridColor:"rgba(41,121,255,0.15)",textColor:"#E3F2FD",scaleLineColor:"#1976D2"},
     "Forest Green":   {bullBody:"#4CAF50",bullBorder:"#4CAF50",bullWick:"#4CAF50",bearBody:"#FF9800",bearBorder:"#FF9800",bearWick:"#FF9800",background:"#0D2818",gridColor:"rgba(76,175,80,0.15)",textColor:"#E8F5E8",scaleLineColor:"#4CAF50"},
     "Sunset Orange":  {bullBody:"#FF9800",bullBorder:"#FF9800",bullWick:"#FF9800",bearBody:"#E91E63",bearBorder:"#E91E63",bearWick:"#E91E63",background:"#2D1B0E",gridColor:"rgba(255,152,0,0.15)",textColor:"#FFF3E0",scaleLineColor:"#FF9800"},
@@ -9390,7 +9390,7 @@ const TalariaV8bLive = () => {
     {n:"Rose Gold",cols:["#F48FB1","#FFB74D","#CE93D8"]},
     {n:"TradingView Dark",cols:["#089981","#F23645","#2962FF"]},
     {n:"TradingView Light",cols:["#089981","#F23645","#111111"]},
-    {n:"Talaria Dark",cols:["#00D4AA","#FF4757","#2962FF"]},
+    {n:"Talaria Dark",cols:["#089981","#F23645","#2962FF"]},
     {n:"Ocean Blue",cols:["#00BCD4","#FF6B6B","#2979FF"]},
     {n:"Forest Green",cols:["#4CAF50","#FF9800","#8BC34A"]},
     {n:"Sunset Orange",cols:["#FF9800","#E91E63","#FFC107"]},

@@ -109,16 +109,33 @@ export function applyV9ThemeSettingsToChart(settings) {
   if (!chart || !chart.chartSettings) return false;
   const cs = chart.chartSettings;
   const axisTextColor = settings.scaleTextColor ?? settings.textColor;
+  const normalizeTvCandle = (value, legacySet, target) => {
+    const v = String(value || "").trim().toLowerCase();
+    return legacySet.has(v) ? target : value;
+  };
+  const legacyUp = new Set(["#00d4a1", "#00d4aa", "#26a69a", "#00d4a0", "#4caf50", "#00bcd4"]);
+  const legacyDown = new Set(["#ff5068", "#ff4757", "#ef5350", "#ff4081", "#ff6b6b"]);
+  const bullBody = settings.bullBody != null ? normalizeTvCandle(settings.bullBody, legacyUp, "#089981") : null;
+  const bullBorder = settings.bullBorder != null ? normalizeTvCandle(settings.bullBorder, legacyUp, "#089981") : null;
+  const bullWick = settings.bullWick != null ? normalizeTvCandle(settings.bullWick, legacyUp, "#089981") : null;
+  const bearBody = settings.bearBody != null ? normalizeTvCandle(settings.bearBody, legacyDown, "#f23645") : null;
+  const bearBorder = settings.bearBorder != null ? normalizeTvCandle(settings.bearBorder, legacyDown, "#f23645") : null;
+  const bearWick = settings.bearWick != null ? normalizeTvCandle(settings.bearWick, legacyDown, "#f23645") : null;
+  const background = settings.background != null
+    ? (String(settings.background).trim().toLowerCase() === "#000000" || String(settings.background).trim().toLowerCase() === "#000"
+      ? "#131722"
+      : settings.background)
+    : null;
   const map = {
-    bodyUpColor: settings.bullBody,
-    candleUpColor: settings.bullBody,
-    borderUpColor: settings.bullBorder,
-    wickUpColor: settings.bullWick,
-    bodyDownColor: settings.bearBody,
-    candleDownColor: settings.bearBody,
-    borderDownColor: settings.bearBorder,
-    wickDownColor: settings.bearWick,
-    backgroundColor: settings.background,
+    bodyUpColor: bullBody,
+    candleUpColor: bullBody,
+    borderUpColor: bullBorder,
+    wickUpColor: bullWick,
+    bodyDownColor: bearBody,
+    candleDownColor: bearBody,
+    borderDownColor: bearBorder,
+    wickDownColor: bearWick,
+    backgroundColor: background,
     gridColor: settings.gridColor,
     crosshairColor: settings.crosshairColor,
     priceLineColor: settings.priceLineColor,
