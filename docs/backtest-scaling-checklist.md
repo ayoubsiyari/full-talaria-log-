@@ -31,7 +31,8 @@ Plan to support many concurrent backtest users: stable chart loads, reliable ses
 ### A1 — Frontend: session saves
 
 - [x] Find all callers of `PATCH /api/sessions/{id}/state` (chart `scheduleSessionStateSave`, `propfirm-tracker.js`, replay sync)
-- [x] Increase debounce to **1.5s** (`_sessionStateSaveDebounceMs`) — was 800ms
+- [x] Increase debounce to **4s** trailing (`_sessionStateSaveDebounceMs`) — was 1.5s / 800ms
+- [x] Replay PATCH throttled (`scheduleReplaySessionStateSave`, 8s interval while playing; flush on pause/exit)
 - [x] Add flush on `pagehide` + **`visibilitychange` (hidden)** with timer cancel
 - [ ] Add flush before navigation away from backtest route (Next.js dashboard)
 - [ ] Show subtle “Saving…” / “Saved” UI so users know state is pending
@@ -55,7 +56,7 @@ Plan to support many concurrent backtest users: stable chart loads, reliable ses
 
 ### A4 — Backend: per-user rate limits (Redis)
 
-- [x] Env: `BACKTEST_SMART_RATE_PER_MINUTE` (90), `BACKTEST_WHATIF_RATE_PER_MINUTE` (30), `BACKTEST_SESSION_PATCH_RATE_PER_MINUTE` (25)
+- [x] Env: `BACKTEST_SMART_RATE_PER_MINUTE` (90), `BACKTEST_WHATIF_RATE_PER_MINUTE` (30), `BACKTEST_SESSION_PATCH_RATE_PER_MINUTE` (60)
 - [x] `_backtest_user_rate_allow` / `_enforce_backtest_user_rate` in `api_server.py`
 - [x] Limit on `GET /api/file/{file_id}/smart`
 - [x] Limit on `POST /api/analytics/backtest/whatif`

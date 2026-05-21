@@ -751,6 +751,10 @@ class DrawingToolsManager {
     }
 
     _setDrawingsSaveUi(state) {
+        if (typeof window.talariaUpdateCloudSaveStatus === 'function') {
+            window.talariaUpdateCloudSaveStatus({ drawingsPending: state === 'pending' });
+            return;
+        }
         const btn = this._drawingsSaveBtn || (typeof document !== 'undefined' ? document.getElementById('drawingsSyncToolbarBtn') : null);
         if (!btn) return;
         this._drawingsSaveBtn = btn;

@@ -5534,6 +5534,16 @@ const TalariaV8bLive = () => {
   const [scJournalLoading, setScJournalLoading] = useState(false);
   const [scJournalListErr, setScJournalListErr] = useState(null);
   const [scLinkSaving, setScLinkSaving] = useState(false);
+  const [cloudSavePending, setCloudSavePending] = useState(false);
+
+  useEffect(() => {
+    const onCloudSave = (e) => setCloudSavePending(!!e?.detail?.pending);
+    window.addEventListener("talariaCloudSaveStatus", onCloudSave);
+    if (typeof window.talariaRefreshCloudSaveUi === "function") {
+      try { window.talariaRefreshCloudSaveUi(); } catch (_) {}
+    }
+    return () => window.removeEventListener("talariaCloudSaveStatus", onCloudSave);
+  }, []);
 
   useEffect(() => {
     if (!screenshotOpen || !scLinkOpen) return;
@@ -12878,6 +12888,9 @@ const TalariaV8bLive = () => {
         @keyframes tlrDropIn  { from { opacity:0; transform:translateY(-6px) scale(0.98); } to { opacity:1; transform:translateY(0) scale(1); } }
         @keyframes tlrDropOut { from { opacity:1; transform:translateY(0) scale(1); } to { opacity:0; transform:translateY(-6px) scale(0.98); } }
         @keyframes tlrPopIn    { from { opacity:0; transform:scale(0.97) translateY(4px); } to { opacity:1; transform:scale(1) translateY(0); } }
+        @keyframes talariaDrawingsSyncPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.38; } }
+        #drawingsSyncToolbarBtn.drawings-sync-pending { color: #ffa726 !important; }
+        #drawingsSyncToolbarBtn.drawings-sync-pending .drawings-sync-icon { animation: talariaDrawingsSyncPulse 1.1s ease-in-out infinite; }
         @keyframes tlrPopOut   { from { opacity:1; transform:scale(1) translateY(0); } to { opacity:0; transform:scale(0.96) translateY(4px); } }
         @keyframes tlrTipIn    { from { opacity:0; } to { opacity:1; } }
         /* Style panel: minimal motion + ~50ms so the window reads as instant */
@@ -21678,6 +21691,83 @@ const TalariaV8bLive = () => {
             )}
           </div>
         </div>
+        <div style={{ width: 1, height: 16, margin: "0 4px", background: "rgba(140,160,255,0.18)" }}/>
+        <button
+          type="button"
+          id="drawingsSyncToolbarBtn"
+          aria-busy={cloudSavePending}
+          aria-label={cloudSavePending ? "Saving to cloud" : "Saved to cloud"}
+          onClick={(e) => {
+            e.stopPropagation();
+            const dm = typeof window !== "undefined" ? window.chart?.drawingManager : null;
+            if (dm && typeof dm.flushDrawingsSyncNow === "function") {
+              void dm.flushDrawingsSyncNow();
+              return;
+            }
+            const ch = typeof window !== "undefined" ? window.chart : null;
+            if (ch) {
+              if (typeof ch.flushSessionStateSave === "function") void ch.flushSessionStateSave();
+              if (typeof ch.flushCriticalSessionStateSave === "function") void ch.flushCriticalSessionStateSave();
+            }
+          }}
+          onMouseEnter={(e) => {
+            setHov("cloud-save");
+            showTip(
+              cloudSavePending
+                ? "Saving to cloud… — click to save now"
+                : "Saved — click to sync to cloud now",
+              e.currentTarget,
+              "bottom"
+            );
+          }}
+          onMouseLeave={() => { setHov(null); hideTip(); }}
+          style={{
+            width: 26,
+            height: 26,
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: "none",
+            cursor: "default",
+            position: "relative",
+            background: cloudSavePending ? "rgba(255,167,38,0.08)" : hov === "cloud-save" ? c.hv : "transparent",
+            color: cloudSavePending ? "#ffa726" : hov === "cloud-save" ? c.tx : c.ts,
+            transition: "background 0.12s, color 0.12s",
+          }}
+        >
+          <svg
+            className="drawings-sync-icon"
+            width={18}
+            height={18}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            style={cloudSavePending ? { animation: "talariaDrawingsSyncPulse 1.1s ease-in-out infinite" } : undefined}
+          >
+            <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+            <path className="drawings-sync-check" d="M16 14l2 2 4-4" opacity={cloudSavePending ? 0.25 : 0.55} />
+          </svg>
+          {cloudSavePending && (
+            <div
+              style={{
+                position: "absolute",
+                bottom: 0,
+                left: "15%",
+                right: "15%",
+                height: 2,
+                background: "linear-gradient(90deg, transparent, #ffa726, transparent)",
+              }}
+            />
+          )}
+          {hov === "cloud-save" && !cloudSavePending && (
+            <div style={{ position: "absolute", bottom: 0, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, ${c.hvLn}, transparent)` }} />
+          )}
+        </button>
         <div style={{ flex: 1 }}/>
         {/* ── Support Chat button (left of Place Order) ── */}
         <button type="button" ref={supportBtnRef}

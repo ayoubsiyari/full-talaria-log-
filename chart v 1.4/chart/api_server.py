@@ -1396,7 +1396,7 @@ def _auth_ip_rate_allow(
 BACKTEST_SMART_RATE_PER_MINUTE = max(10, int(os.getenv("BACKTEST_SMART_RATE_PER_MINUTE", "90")))
 BACKTEST_WHATIF_RATE_PER_MINUTE = max(5, int(os.getenv("BACKTEST_WHATIF_RATE_PER_MINUTE", "30")))
 BACKTEST_SESSION_PATCH_RATE_PER_MINUTE = max(
-    5, int(os.getenv("BACKTEST_SESSION_PATCH_RATE_PER_MINUTE", "25"))
+    5, int(os.getenv("BACKTEST_SESSION_PATCH_RATE_PER_MINUTE", "60"))
 )
 _backtest_rate_lock = threading.Lock()
 _backtest_smart_user_times: dict[int, deque] = {}

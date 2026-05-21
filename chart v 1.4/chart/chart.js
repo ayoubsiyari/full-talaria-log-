@@ -2680,6 +2680,19 @@ class Chart {
         }
     }
 
+    /** Update top-bar cloud icon from pending session PATCH / debounced timers. */
+    _syncCloudSaveUiFromSession() {
+        if (typeof window.talariaUpdateCloudSaveStatus !== 'function') return;
+        const pending = !!(
+            this._pendingSessionStatePatch ||
+            this._pendingCriticalSessionStatePatch ||
+            this._sessionStatePatchInFlight ||
+            this._sessionStateSaveTimer ||
+            this._criticalSessionStateSaveTimer
+        );
+        window.talariaUpdateCloudSaveStatus({ sessionPending: pending });
+    }
+
     /** True if account_runtime carries at least one finite balance field (empty {} is not meaningful). */
     _sessionStateHasMeaningfulAccountRuntime(ar) {
         if (!ar || typeof ar !== 'object') return false;
@@ -3401,6 +3414,7 @@ class Chart {
         this._pendingSessionStatePatch = this._mergeSessionStatePatches(this._pendingSessionStatePatch, patch);
         this._writeTradingSessionLocalBackup();
         this._armSessionStateSaveDebounce();
+        this._syncCloudSaveUiFromSession();
     }
 
     /**
@@ -3423,6 +3437,7 @@ class Chart {
 
         this._replaySessionStateLastPatchAt = now;
         this._armSessionStateSaveDebounce();
+        this._syncCloudSaveUiFromSession();
     }
 
     /** Flush pending replay (and other merged) session state immediately — pause, exit replay, tab hide. */
@@ -3441,6 +3456,7 @@ class Chart {
             this._sessionStateSaveTimer = null;
         }
         void this.flushSessionStateSave();
+        this._syncCloudSaveUiFromSession();
     }
 
     queueCriticalSessionStateSave(patch) {
@@ -3455,6 +3471,7 @@ class Chart {
             this._criticalSessionStateSaveTimer = null;
         }
         // Flush immediately so SL/TP/manual close journal hits the API in the same second (no setTimeout deferral).
+        this._syncCloudSaveUiFromSession();
         void this.flushCriticalSessionStateSave();
     }
 
@@ -3531,6 +3548,7 @@ class Chart {
             );
         } finally {
             this._sessionStatePatchInFlight = false;
+            this._syncCloudSaveUiFromSession();
             this._drainSessionPatchQueueMicrotask();
         }
     }
@@ -3642,6 +3660,7 @@ class Chart {
                 } catch (_) { /* ignore */ }
             }
             this._sessionStatePatchInFlight = false;
+            this._syncCloudSaveUiFromSession();
             this._drainSessionPatchQueueMicrotask();
         }
     }
@@ -23113,6 +23132,44 @@ async function _talariaInitializeChart() {
 
     return chartInstance;
 }
+
+/** TradingView-style cloud save indicator (#drawingsSyncToolbarBtn in V9 top bar). */
+(function initTalariaCloudSaveUi() {
+    if (typeof window === 'undefined') return;
+    const state = { sessionPending: false, drawingsPending: false };
+
+    function refresh() {
+        const pending = !!(state.sessionPending || state.drawingsPending);
+        const btn = document.getElementById('drawingsSyncToolbarBtn');
+        if (btn) {
+            if (pending) {
+                btn.classList.add('drawings-sync-pending');
+                btn.setAttribute('aria-busy', 'true');
+                btn.setAttribute('data-tooltip', 'Saving to cloud… — click to save now');
+            } else {
+                btn.classList.remove('drawings-sync-pending');
+                btn.setAttribute('aria-busy', 'false');
+                btn.setAttribute(
+                    'data-tooltip',
+                    'Saved — click to sync drawings & session to cloud now'
+                );
+            }
+        }
+        try {
+            window.dispatchEvent(
+                new CustomEvent('talariaCloudSaveStatus', { detail: { pending, saved: !pending } })
+            );
+        } catch (_) {}
+    }
+
+    window.talariaUpdateCloudSaveStatus = function (partial) {
+        if (!partial || typeof partial !== 'object') return;
+        if ('sessionPending' in partial) state.sessionPending = !!partial.sessionPending;
+        if ('drawingsPending' in partial) state.drawingsPending = !!partial.drawingsPending;
+        refresh();
+    };
+    window.talariaRefreshCloudSaveUi = refresh;
+})();
 
 // Expose for manual re-trigger (e.g. by React after canvas mounts)
 if (typeof window !== 'undefined') {
