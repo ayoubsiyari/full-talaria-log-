@@ -1240,6 +1240,7 @@ class DrawingToolsManager {
         // Shift/Ctrl press or release: keep placement preview aligned with crosshair magnet snap
         document.addEventListener('keydown', (e) => {
             if (e.key !== 'Control' && e.key !== 'Meta' && e.key !== 'Shift') return;
+            if (this.isRectSelecting) return;
             this._refreshPlacementPreviewFromLastPointer({
                 ctrlKey: e.ctrlKey,
                 metaKey: e.metaKey,
@@ -2244,6 +2245,17 @@ class DrawingToolsManager {
         // [debug removed]
         
         if (!this.currentTool) {
+            // Ctrl+drag = marquee multi-select (canvas handler only ran on empty canvas before).
+            if (event.button === 0 && event.ctrlKey && !event.shiftKey && !event.altKey) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (typeof event.stopImmediatePropagation === 'function') {
+                    event.stopImmediatePropagation();
+                }
+                this.startRectangularSelection(event);
+                return;
+            }
+
             // VP/AV body clicks must pass through to the canvas for panning.
             // Only resize handles should be interactive; bail early for everything else.
             {
@@ -5356,6 +5368,7 @@ class DrawingToolsManager {
         // Hover handlers
         const handleMouseEnter = function(event) {
             if (self.currentTool) return;
+            if (self.isRectSelecting) return;
             
             // Ctrl+hover to select (multi-select mode)
             if (self.ctrlSelectMode && !drawing.locked) {
@@ -5502,6 +5515,10 @@ class DrawingToolsManager {
             d3.drag()
                 .clickDistance(dragClickDistance) // Keep anchored-vwap anchor drags responsive while preserving dblclick elsewhere
                 .filter(function(event) {
+                    if (self.isRectSelecting) return false;
+                    const srcEvt = (event && event.sourceEvent) ? event.sourceEvent : event;
+                    if (srcEvt && (srcEvt.ctrlKey || srcEvt.metaKey)) return false;
+
                     // Only allow drag if not currently drawing and not clicking on a handle
                     const targetSelection = d3.select(event.target);
                     const isResizeHandle = targetSelection.classed('resize-handle') || targetSelection.classed('resize-handle-hit');
@@ -5781,6 +5798,9 @@ class DrawingToolsManager {
     }
 
     _startDirectMoveDrag(drawingOrDrawings, event) {
+        const src = this._nativePointerEvent(event);
+        if (this.isRectSelecting || (src && (src.ctrlKey || src.metaKey))) return;
+
         const stopDirectMoveListeners = () => {
             if (this._directMoveMoveHandler) {
                 document.removeEventListener('mousemove', this._directMoveMoveHandler, true);
@@ -8702,9 +8722,44 @@ class DrawingToolsManager {
     }
 
     /**
+     * Disable stroke hit targets so Ctrl+marquee does not start d3.drag on shapes.
+     */
+    _suppressDrawingPointerEventsForRectSelect() {
+        this.drawings.forEach((drawing) => {
+            if (!drawing.group) return;
+            drawing.group.style('pointer-events', 'none');
+            drawing.group.selectAll('*').style('pointer-events', 'none');
+        });
+    }
+
+    /**
+     * Restore stroke hit targets after Ctrl+marquee (cursor mode only).
+     */
+    _restoreDrawingPointerEventsAfterRectSelect() {
+        if (this.currentTool) return;
+        this.drawings.forEach((drawing) => {
+            if (!drawing.group) return;
+            drawing.group.style('pointer-events', 'none');
+            drawing.group.selectAll('line, polyline, text, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
+                .style('pointer-events', 'all');
+            drawing.group.selectAll('.shape-border')
+                .style('pointer-events', 'visibleStroke');
+            drawing.group.selectAll('.shape-border-hit')
+                .style('pointer-events', 'stroke');
+            drawing.group.selectAll('.arrow-fill-hit')
+                .style('pointer-events', 'all');
+            drawing.group.selectAll('path:not(.shape-fill):not(.shape-border):not(.arrow-fill-hit), polygon:not(.shape-fill):not(.upper-fill):not(.lower-fill)')
+                .style('pointer-events', 'visibleStroke');
+            drawing.group.selectAll('.shape-fill, .upper-fill, .lower-fill').style('pointer-events', 'none');
+        });
+    }
+
+    /**
      * Start rectangular selection (Ctrl+drag)
      */
     startRectangularSelection(event) {
+        if (this.isRectSelecting) return;
+
         // Prevent default behavior and stop propagation
         event.preventDefault();
         event.stopPropagation();
@@ -8712,6 +8767,9 @@ class DrawingToolsManager {
         const [sx, sy] = this._eventCanvasLocalXY(event);
         this.rectSelectStart = { x: sx, y: sy };
         this.isRectSelecting = true;
+        this.ctrlSelectMode = false;
+
+        this._suppressDrawingPointerEventsForRectSelect();
         
         // Enable SVG pointer-events temporarily for rectangular selection
         this.svg.style('pointer-events', 'all');
@@ -8813,6 +8871,7 @@ class DrawingToolsManager {
 
         if (!this.rectSelectRect) {
             if (this.svg) this.svg.style('pointer-events', 'none');
+            this._restoreDrawingPointerEventsAfterRectSelect();
             return;
         }
         
@@ -8845,6 +8904,7 @@ class DrawingToolsManager {
         
         // Restore SVG pointer-events to allow chart panning
         if (this.svg) this.svg.style('pointer-events', 'none');
+        this._restoreDrawingPointerEventsAfterRectSelect();
     }
 
     /**
@@ -8861,6 +8921,7 @@ class DrawingToolsManager {
         
         // Restore SVG pointer-events to allow chart panning
         if (this.svg) this.svg.style('pointer-events', 'none');
+        this._restoreDrawingPointerEventsAfterRectSelect();
     }
 
     /**
