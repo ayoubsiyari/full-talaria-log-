@@ -17563,14 +17563,20 @@ class Chart {
                 dm &&
                 typeof dm._isCursorSelectMode === 'function' &&
                 dm._isCursorSelectMode() &&
-                typeof dm._getPointerCursorMode === 'function' &&
-                dm._getPointerCursorMode(e) === 'chart' &&
-                typeof dm._tryArmCtrlMarqueeFromPointer === 'function' &&
-                dm._tryArmCtrlMarqueeFromPointer(e)
+                typeof dm._isPointerOverChartAxis === 'function' &&
+                !dm._isPointerOverChartAxis(e)
             ) {
+                if (typeof dm._tryArmCtrlMarqueeFromPointer === 'function') {
+                    dm._tryArmCtrlMarqueeFromPointer(e);
+                }
                 if (typeof this._clearPanDrawingsLayerTransform === 'function') {
                     this._clearPanDrawingsLayerTransform();
                 }
+                if (this.drag) {
+                    this.drag.active = false;
+                    this.drag.type = null;
+                }
+                if (this.movement) this.movement.isDragging = false;
                 return;
             }
 

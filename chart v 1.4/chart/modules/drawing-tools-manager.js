@@ -1325,19 +1325,12 @@ class DrawingToolsManager {
                 chartWrapper.removeEventListener('mousedown', prevMarquee, true);
             }
             const onChartWrapperCtrlMarqueeDown = (event) => {
-                if (
-                    this._isCursorSelectMode() &&
-                    event.button === 0 &&
-                    (event.ctrlKey || event.metaKey) &&
-                    !event.shiftKey &&
-                    !event.altKey &&
-                    !this.isRectSelecting &&
-                    this._getPointerCursorMode(event) === 'chart'
-                ) {
+                if (this._isCtrlMarqueePlotEvent(event)) {
                     this._tryArmCtrlMarqueeFromPointer(event);
                 }
             };
             chartWrapper.addEventListener('mousedown', onChartWrapperCtrlMarqueeDown, true);
+            chartWrapper.addEventListener('pointerdown', onChartWrapperCtrlMarqueeDown, true);
             chartWrapper.__drawingToolsCtrlMarqueeDown = onChartWrapperCtrlMarqueeDown;
 
             const prevProx = chartWrapper.__drawingToolsProximityMove;
@@ -1387,11 +1380,7 @@ class DrawingToolsManager {
             const onMouseDown = (event) => {
                 // Cursor mode: arm Ctrl+drag marquee (4px threshold separates drag vs Ctrl+click select).
                 if (
-                    this._isCursorSelectMode() &&
-                    (event.ctrlKey || event.metaKey) &&
-                    !event.shiftKey &&
-                    !event.altKey &&
-                    this._getPointerCursorMode(event) === 'chart' &&
+                    this._isCtrlMarqueePlotEvent(event) &&
                     this._tryArmCtrlMarqueeFromPointer(event)
                 ) {
                     suppressNextCanvasClick = true;
@@ -2247,11 +2236,7 @@ class DrawingToolsManager {
 
         // Ctrl+drag marquee — before multi-panel tool inheritance, handle hits, or shape drag.
         if (
-            this._isCursorSelectMode() &&
-            (event.ctrlKey || event.metaKey) &&
-            !event.shiftKey &&
-            !event.altKey &&
-            this._getPointerCursorMode(event) === 'chart' &&
+            this._isCtrlMarqueePlotEvent(event) &&
             this._tryArmCtrlMarqueeFromPointer(event)
         ) {
             return;
@@ -4307,6 +4292,16 @@ class DrawingToolsManager {
     _isPointerOverChartAxis(event) {
         const mode = this._getPointerCursorMode(event);
         return mode === 'priceAxis' || mode === 'timeAxis' || mode === 'separatePanelAxis';
+    }
+
+    /** True when Ctrl+drag marquee may start (plot area, not price/time axis strips). */
+    _isCtrlMarqueePlotEvent(event) {
+        if (!event || event.button !== 0) return false;
+        if (event.shiftKey || event.altKey) return false;
+        if (!(event.ctrlKey || event.metaKey)) return false;
+        if (!this._isCursorSelectMode()) return false;
+        if (this.isRectSelecting) return false;
+        return !this._isPointerOverChartAxis(event);
     }
 
     /**
@@ -9005,17 +9000,14 @@ class DrawingToolsManager {
         this._ctrlMarqueePendingKeyUp = null;
         this._ctrlMarqueePendingBound = false;
         this._ctrlMarqueePending = null;
+        this._clearMarqueeDomOverlay();
     }
 
     /**
      * Arm Ctrl+drag marquee in cursor mode only. Ctrl+click stays click-to-select / magnet when drawing.
      */
     _tryArmCtrlMarqueeFromPointer(event) {
-        if (!this._isCursorSelectMode()) return false;
-        if (!event || event.button !== 0) return false;
-        if (event.shiftKey || event.altKey) return false;
-        if (!(event.ctrlKey || event.metaKey)) return false;
-        if (this._getPointerCursorMode(event) !== 'chart') return false;
+        if (!this._isCtrlMarqueePlotEvent(event)) return false;
 
         const native = this._nativePointerEvent(event) || event;
         if (!Number.isFinite(native.clientX) || !Number.isFinite(native.clientY)) return false;
@@ -9024,6 +9016,7 @@ class DrawingToolsManager {
 
         const [sx, sy] = this._eventCanvasLocalXY(event);
         this._cancelCtrlMarqueePending();
+        this._marqueeLayoutBounds = { x: sx, y: sy, width: 0, height: 0 };
         this._ctrlMarqueePending = {
             startLayoutX: sx,
             startLayoutY: sy,
@@ -9038,6 +9031,8 @@ class DrawingToolsManager {
                 self._cancelCtrlMarqueePending();
                 return;
             }
+            self._updateMarqueeVisualFromEvent(e);
+
             const dx = e.clientX - self._ctrlMarqueePending.startClientX;
             const dy = e.clientY - self._ctrlMarqueePending.startClientY;
             if (Math.hypot(dx, dy) < 4) return;
@@ -9079,6 +9074,84 @@ class DrawingToolsManager {
             event.stopImmediatePropagation();
         }
         return true;
+    }
+
+    _ensureMarqueeDomOverlay() {
+        const wrap = this.chart && this.chart.canvas && this.chart.canvas.parentElement;
+        if (!wrap) return null;
+        let el = wrap.querySelector(':scope > .ctrl-marquee-dom');
+        if (!el) {
+            el = document.createElement('div');
+            el.className = 'ctrl-marquee-dom';
+            el.setAttribute('aria-hidden', 'true');
+            el.style.cssText = [
+                'position:absolute',
+                'left:0',
+                'top:0',
+                'width:0',
+                'height:0',
+                'display:none',
+                'pointer-events:none',
+                'z-index:25',
+                'border:1px dashed #2196F3',
+                'background:rgba(33,150,243,0.12)',
+                'box-sizing:border-box'
+            ].join(';');
+            wrap.appendChild(el);
+        }
+        return el;
+    }
+
+    _applyMarqueeDomOverlay(x, y, width, height) {
+        const el = this._ensureMarqueeDomOverlay();
+        if (!el) return;
+        const w = Math.max(0, width);
+        const h = Math.max(0, height);
+        if (w <= 0 && h <= 0) {
+            el.style.display = 'none';
+            return;
+        }
+        el.style.display = 'block';
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        el.style.width = `${w}px`;
+        el.style.height = `${h}px`;
+    }
+
+    _clearMarqueeDomOverlay() {
+        const wrap = this.chart && this.chart.canvas && this.chart.canvas.parentElement;
+        const el = wrap && wrap.querySelector(':scope > .ctrl-marquee-dom');
+        if (el) {
+            el.style.display = 'none';
+            el.style.width = '0';
+            el.style.height = '0';
+        }
+    }
+
+    _updateMarqueeVisualFromEvent(event) {
+        const startX = this.rectSelectStart
+            ? this.rectSelectStart.x
+            : (this._ctrlMarqueePending ? this._ctrlMarqueePending.startLayoutX : null);
+        const startY = this.rectSelectStart
+            ? this.rectSelectStart.y
+            : (this._ctrlMarqueePending ? this._ctrlMarqueePending.startLayoutY : null);
+        if (!Number.isFinite(startX) || !Number.isFinite(startY) || !event) return;
+
+        const [currentX, currentY] = this._eventCanvasLocalXY(event);
+        const x = Math.min(startX, currentX);
+        const y = Math.min(startY, currentY);
+        const width = Math.abs(currentX - startX);
+        const height = Math.abs(currentY - startY);
+        this._marqueeLayoutBounds = { x, y, width, height };
+
+        this._applyMarqueeDomOverlay(x, y, width, height);
+        if (this.rectSelectRect && typeof this.rectSelectRect.attr === 'function') {
+            this.rectSelectRect
+                .attr('x', x)
+                .attr('y', y)
+                .attr('width', width)
+                .attr('height', height);
+        }
     }
 
     /** Topmost SVG layer for the Ctrl+drag selection marquee (above clipped drawings). */
@@ -9285,19 +9358,7 @@ class DrawingToolsManager {
      */
     updateRectangularSelection(event) {
         if (!this.isRectSelecting || !this.rectSelectStart) return;
-        
-        const [currentX, currentY] = this._eventCanvasLocalXY(event);
-        
-        const x = Math.min(this.rectSelectStart.x, currentX);
-        const y = Math.min(this.rectSelectStart.y, currentY);
-        const width = Math.abs(currentX - this.rectSelectStart.x);
-        const height = Math.abs(currentY - this.rectSelectStart.y);
-        
-        this.rectSelectRect
-            .attr('x', x)
-            .attr('y', y)
-            .attr('width', width)
-            .attr('height', height);
+        this._updateMarqueeVisualFromEvent(event);
     }
 
     /**
@@ -9314,6 +9375,8 @@ class DrawingToolsManager {
         }
         this.rectSelectRect = null;
         this.rectSelectStart = null;
+        this._marqueeLayoutBounds = null;
+        this._clearMarqueeDomOverlay();
     }
 
     /**
@@ -9325,18 +9388,27 @@ class DrawingToolsManager {
         // Duplicate mouseup (SVG + document listeners) must not call .remove() twice.
         this.isRectSelecting = false;
 
-        if (!this.rectSelectRect) {
+        if (!this.rectSelectRect && !this._marqueeLayoutBounds) {
             if (this.svg) this.svg.style('pointer-events', 'none');
             this._restoreSvgAfterMarquee();
             this._restoreDrawingPointerEventsAfterRectSelect();
+            this._clearMarqueeDomOverlay();
             return;
         }
         
-        // Get rectangle bounds
-        const x = parseFloat(this.rectSelectRect.attr('x'));
-        const y = parseFloat(this.rectSelectRect.attr('y'));
-        const width = parseFloat(this.rectSelectRect.attr('width'));
-        const height = parseFloat(this.rectSelectRect.attr('height'));
+        const bounds = this._marqueeLayoutBounds || {};
+        const x = Number.isFinite(bounds.x)
+            ? bounds.x
+            : parseFloat(this.rectSelectRect && this.rectSelectRect.attr('x'));
+        const y = Number.isFinite(bounds.y)
+            ? bounds.y
+            : parseFloat(this.rectSelectRect && this.rectSelectRect.attr('y'));
+        const width = Number.isFinite(bounds.width)
+            ? bounds.width
+            : parseFloat(this.rectSelectRect && this.rectSelectRect.attr('width'));
+        const height = Number.isFinite(bounds.height)
+            ? bounds.height
+            : parseFloat(this.rectSelectRect && this.rectSelectRect.attr('height'));
         
         // Find drawings that intersect with the rectangle
         const selectedDrawings = [];
@@ -11075,5 +11147,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a27_ctrl_marquee_fix';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a28_marquee_dom';
 } catch (_) {}
