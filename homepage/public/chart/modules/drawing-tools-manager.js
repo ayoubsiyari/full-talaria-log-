@@ -1320,20 +1320,6 @@ class DrawingToolsManager {
         // Avoids duplicating checkDrawingProximity on both canvas mousemove and svg handleMouseMove.
         const chartWrapper = canvas && canvas.parentElement;
         if (chartWrapper) {
-            const prevMarquee = chartWrapper.__drawingToolsCtrlMarqueeDown;
-            if (typeof prevMarquee === 'function') {
-                chartWrapper.removeEventListener('mousedown', prevMarquee, true);
-                chartWrapper.removeEventListener('pointerdown', prevMarquee, true);
-            }
-            const onChartWrapperCtrlMarqueeDown = (event) => {
-                if (this._isCtrlMarqueePlotEvent(event)) {
-                    this._tryArmCtrlMarqueeFromPointer(event);
-                }
-            };
-            chartWrapper.addEventListener('mousedown', onChartWrapperCtrlMarqueeDown, true);
-            chartWrapper.addEventListener('pointerdown', onChartWrapperCtrlMarqueeDown, true);
-            chartWrapper.__drawingToolsCtrlMarqueeDown = onChartWrapperCtrlMarqueeDown;
-
             const prevProx = chartWrapper.__drawingToolsProximityMove;
             if (typeof prevProx === 'function') {
                 chartWrapper.removeEventListener('mousemove', prevProx);
@@ -1379,14 +1365,7 @@ class DrawingToolsManager {
 
             // Mousedown on canvas for rectangular selection
             const onMouseDown = (event) => {
-                // Cursor mode: arm Ctrl+drag marquee (4px threshold separates drag vs Ctrl+click select).
-                if (
-                    this._isCtrlMarqueePlotEvent(event) &&
-                    this._tryArmCtrlMarqueeFromPointer(event)
-                ) {
-                    suppressNextCanvasClick = true;
-                    return;
-                }
+                // Ctrl+marquee is handled by chart.js (same pipeline as right-drag box zoom).
 
                 // Make drag-start use the same geometric hover hit zone, even when the
                 // cursor is not exactly on an SVG stroke target.
@@ -2232,14 +2211,6 @@ class DrawingToolsManager {
     handleMouseDown(event) {
         // Ignore right-click - handled by contextmenu event
         if (event.button === 2) {
-            return;
-        }
-
-        // Ctrl+drag marquee — before multi-panel tool inheritance, handle hits, or shape drag.
-        if (
-            this._isCtrlMarqueePlotEvent(event) &&
-            this._tryArmCtrlMarqueeFromPointer(event)
-        ) {
             return;
         }
 
@@ -8969,7 +8940,83 @@ class DrawingToolsManager {
 
     /** Marquee armed or active (used by chart.js to block pan). */
     isCtrlMarqueeGestureActive() {
-        return !!(this.isRectSelecting || this._ctrlMarqueePending);
+        const chartActive = !!(this.chart && this.chart.ctrlMarqueeSelect && this.chart.ctrlMarqueeSelect.active);
+        return chartActive || !!(this.isRectSelecting || this._ctrlMarqueePending);
+    }
+
+    prepareCtrlMarqueeSelectFromChart() {
+        this._cancelCtrlMarqueePending();
+        this._abortInteractionForRectSelect();
+        this.isRectSelecting = true;
+        this.ctrlSelectMode = false;
+        this._suppressDrawingPointerEventsForRectSelect();
+    }
+
+    cancelCtrlMarqueeSelectFromChart() {
+        this.isRectSelecting = false;
+        this._unbindRectSelectDocumentListeners();
+        this._clearRectSelectVisual();
+        if (this.svg) this.svg.style('pointer-events', 'none');
+        this._restoreSvgAfterMarquee();
+        this._restoreDrawingPointerEventsAfterRectSelect();
+        this._releaseCtrlMarqueePointerCapture();
+    }
+
+    completeCtrlMarqueeFromChart(x, y, width, height) {
+        this.isRectSelecting = false;
+        this._unbindRectSelectDocumentListeners();
+        this._clearRectSelectVisual();
+        if (this.svg) this.svg.style('pointer-events', 'none');
+        this._restoreSvgAfterMarquee();
+        this._restoreDrawingPointerEventsAfterRectSelect();
+        this._releaseCtrlMarqueePointerCapture();
+
+        const w = Number(width) || 0;
+        const h = Number(height) || 0;
+        if (w < 4 && h < 4) {
+            return;
+        }
+
+        this._applyMarqueeSelectionRect(x, y, w, h);
+    }
+
+    _applyMarqueeSelectionRect(x, y, width, height) {
+        const selectedDrawings = [];
+        this.drawings.forEach((drawing) => {
+            if (drawing && !drawing.locked && this.isDrawingInRectangle(drawing, x, y, width, height)) {
+                selectedDrawings.push(drawing);
+            }
+        });
+
+        this._suppressCanvasClickAfterMarquee = true;
+        this._marqueeJustCompletedAt = Date.now();
+
+        this.deselectAll({ forSelectionChange: true });
+
+        this.selectedDrawings = [];
+        selectedDrawings.forEach((drawing) => {
+            this.selectedDrawings.push(drawing);
+            drawing.selected = true;
+            drawing.select({ skipAxisHighlights: selectedDrawings.length > 1 });
+            this.renderDrawing(drawing);
+        });
+        this.selectedDrawing = this.selectedDrawings.length > 0
+            ? this.selectedDrawings[this.selectedDrawings.length - 1]
+            : null;
+
+        if (this.selectedDrawings.length > 1) {
+            this._applyMultiSelectAxisHighlightPolicy();
+        } else if (this.selectedDrawings.length === 1) {
+            this._syncSelectionChrome(this.selectedDrawings[0]);
+        }
+
+        if (this.objectTreeManager) {
+            this.objectTreeManager.refresh();
+        }
+        this._updateAxisZonePointerEvents();
+        if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
+            this.chart.updateSVGPointerEvents();
+        }
     }
 
     _releaseCtrlMarqueePointerCapture() {
@@ -9411,54 +9458,11 @@ class DrawingToolsManager {
         const height = Number.isFinite(bounds.height)
             ? bounds.height
             : parseFloat(this.rectSelectRect && this.rectSelectRect.attr('height'));
-        
-        // Find drawings that intersect with the rectangle
-        const selectedDrawings = [];
-        this.drawings.forEach(drawing => {
-            if (drawing && !drawing.locked && this.isDrawingInRectangle(drawing, x, y, width, height)) {
-                selectedDrawings.push(drawing);
-            }
-        });
 
-        this._suppressCanvasClickAfterMarquee = true;
-        this._marqueeJustCompletedAt = Date.now();
-        
-        // Deselect all first
-        this.deselectAll({ forSelectionChange: true });
-        
-        // Select all drawings within rectangle (batch — avoid toolbar flash per shape)
-        this.selectedDrawings = [];
-        selectedDrawings.forEach((drawing) => {
-            this.selectedDrawings.push(drawing);
-            drawing.selected = true;
-            drawing.select({ skipAxisHighlights: selectedDrawings.length > 1 });
-            this.renderDrawing(drawing);
-        });
-        this.selectedDrawing = this.selectedDrawings.length > 0
-            ? this.selectedDrawings[this.selectedDrawings.length - 1]
-            : null;
+        this._applyMarqueeSelectionRect(x, y, width, height);
 
-        if (this.selectedDrawings.length > 1) {
-            this._applyMultiSelectAxisHighlightPolicy();
-        } else if (this.selectedDrawings.length === 1) {
-            this._syncSelectionChrome(this.selectedDrawings[0]);
-        }
-
-        if (this.objectTreeManager) {
-            this.objectTreeManager.refresh();
-        }
-        this._updateAxisZonePointerEvents();
-        if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
-            this.chart.updateSVGPointerEvents();
-        }
-        
-        // [debug removed]
-        
-        // Clean up
         this._unbindRectSelectDocumentListeners();
         this._clearRectSelectVisual();
-        
-        // Restore SVG pointer-events to allow chart panning
         if (this.svg) this.svg.style('pointer-events', 'none');
         this._restoreSvgAfterMarquee();
         this._restoreDrawingPointerEventsAfterRectSelect();
@@ -11149,5 +11153,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a28_marquee_dom';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a29_canvas_marquee';
 } catch (_) {}

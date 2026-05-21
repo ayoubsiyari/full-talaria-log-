@@ -493,6 +493,15 @@ class Chart {
             endY: 0
         };
 
+        // Ctrl+drag multi-select marquee (drawn on canvas like boxZoom)
+        this.ctrlMarqueeSelect = {
+            active: false,
+            startX: 0,
+            startY: 0,
+            endX: 0,
+            endY: 0
+        };
+
         // Right-click gesture state
         this._rightClickDragThreshold = 6;
         this._contextMenuSuppressMs = 220;
@@ -9859,6 +9868,25 @@ class Chart {
         ctx.setLineDash([]);
     }
 
+    drawCtrlMarqueeSelect() {
+        if (!this.ctrlMarqueeSelect || !this.ctrlMarqueeSelect.active) return;
+
+        const ctx = this.ctx;
+        const x1 = Math.min(this.ctrlMarqueeSelect.startX, this.ctrlMarqueeSelect.endX);
+        const x2 = Math.max(this.ctrlMarqueeSelect.startX, this.ctrlMarqueeSelect.endX);
+        const y1 = Math.min(this.ctrlMarqueeSelect.startY, this.ctrlMarqueeSelect.endY);
+        const y2 = Math.max(this.ctrlMarqueeSelect.startY, this.ctrlMarqueeSelect.endY);
+
+        ctx.fillStyle = 'rgba(41, 98, 255, 0.15)';
+        ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+
+        ctx.strokeStyle = 'rgba(41, 98, 255, 0.8)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+        ctx.setLineDash([]);
+    }
+
     shouldSuppressRightClickContextMenu(event = null) {
         const now = performance.now();
 
@@ -13988,6 +14016,9 @@ class Chart {
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
             }
+            if (this.ctrlMarqueeSelect && this.ctrlMarqueeSelect.active) {
+                this.drawCtrlMarqueeSelect();
+            }
             return;
         }
 
@@ -14085,6 +14116,9 @@ class Chart {
         // Draw box zoom selection rectangle (STEP 8)
         if (this.boxZoom && this.boxZoom.active) {
             this.drawBoxZoom();
+        }
+        if (this.ctrlMarqueeSelect && this.ctrlMarqueeSelect.active) {
+            this.drawCtrlMarqueeSelect();
         }
 
         // Economic calendar: refetch Finnhub range when visible window date span changes (long histories / pan).
@@ -17554,29 +17588,54 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         // STEP 3 — Pan Logic (mousedown)
         // ═══════════════════════════════════════════════════════════════════
-        this.canvas.addEventListener('mousedown', e => {
+        const tryStartCtrlMarqueeSelect = (e) => {
+            if (this.drag && this.drag.active) return false;
+            if (e.button !== 0 || !(e.ctrlKey || e.metaKey) || e.shiftKey) return false;
+            if (this.tool) return false;
             const dm = this.drawingManager;
-            if (
-                e.button === 0 &&
-                (e.ctrlKey || e.metaKey) &&
-                !e.shiftKey &&
-                dm &&
-                typeof dm._isCursorSelectMode === 'function' &&
-                dm._isCursorSelectMode() &&
-                typeof dm._isPointerOverChartAxis === 'function' &&
-                !dm._isPointerOverChartAxis(e)
-            ) {
-                if (typeof dm._tryArmCtrlMarqueeFromPointer === 'function') {
-                    dm._tryArmCtrlMarqueeFromPointer(e);
-                }
-                if (typeof this._clearPanDrawingsLayerTransform === 'function') {
-                    this._clearPanDrawingsLayerTransform();
-                }
-                if (this.drag) {
-                    this.drag.active = false;
-                    this.drag.type = null;
-                }
-                if (this.movement) this.movement.isDragging = false;
+            if (!dm || typeof dm._isCursorSelectMode !== 'function' || !dm._isCursorSelectMode()) {
+                return false;
+            }
+            const wrap = this.canvas && this.canvas.parentElement;
+            if (!wrap || !wrap.contains(e.target)) return false;
+            const [mx, my] = this._eventCanvasLocalXY(e);
+            const mode = detectCursorMode(mx, my);
+            if (mode !== 'chart') return false;
+
+            this.inertia.active = false;
+            this.drag.active = true;
+            this.drag.type = 'ctrlMarqueeSelect';
+            this.drag.startX = e.clientX;
+            this.drag.startY = e.clientY;
+            this.drag.lastX = e.clientX;
+            this.drag.lastY = e.clientY;
+            this.drag.shiftKey = e.shiftKey;
+            this.drag.ctrlKey = true;
+            this.movement.isDragging = true;
+            this.movement.lastX = e.clientX;
+            this.movement.lastY = e.clientY;
+            this.movement.startX = e.clientX;
+            this.movement.startY = e.clientY;
+            this.movement.lastTime = performance.now();
+            this.ctrlMarqueeSelect.active = true;
+            this.ctrlMarqueeSelect.startX = mx;
+            this.ctrlMarqueeSelect.startY = my;
+            this.ctrlMarqueeSelect.endX = mx;
+            this.ctrlMarqueeSelect.endY = my;
+            if (typeof dm.prepareCtrlMarqueeSelectFromChart === 'function') {
+                dm.prepareCtrlMarqueeSelectFromChart();
+            }
+            if (typeof e.preventDefault === 'function') e.preventDefault();
+            this.scheduleRender();
+            return true;
+        };
+
+        document.addEventListener('mousedown', (e) => {
+            tryStartCtrlMarqueeSelect.call(this, e);
+        }, true);
+
+        this.canvas.addEventListener('mousedown', e => {
+            if (tryStartCtrlMarqueeSelect.call(this, e)) {
                 return;
             }
 
@@ -17714,7 +17773,12 @@ class Chart {
             
             if (this.drag.active) {
                 const dm = this.drawingManager;
-                if (dm && typeof dm.isCtrlMarqueeGestureActive === 'function' && dm.isCtrlMarqueeGestureActive()) {
+                if (
+                    dm &&
+                    typeof dm.isCtrlMarqueeGestureActive === 'function' &&
+                    dm.isCtrlMarqueeGestureActive() &&
+                    this.drag.type !== 'ctrlMarqueeSelect'
+                ) {
                     this.drag.active = false;
                     this.drag.type = null;
                     if (typeof this._clearPanDrawingsLayerTransform === 'function') {
@@ -17836,6 +17900,11 @@ class Chart {
                     }
                     this.scheduleRender();
                 }
+                else if (this.drag.type === 'ctrlMarqueeSelect' && this.ctrlMarqueeSelect.active) {
+                    this.ctrlMarqueeSelect.endX = mx;
+                    this.ctrlMarqueeSelect.endY = my;
+                    this.scheduleRender();
+                }
                 // ─── Separate panel resize ───
                 else if (this.drag.type === 'separatePanelResize') {
                     if (typeof this.updateSeparatePanelResize === 'function') {
@@ -17937,8 +18006,26 @@ class Chart {
                 }
             }
             
+            // Handle Ctrl+drag multi-select marquee
+            if (dragType === 'ctrlMarqueeSelect' && this.ctrlMarqueeSelect.active) {
+                const [mx, my] = this._eventCanvasLocalXY(e);
+                this.ctrlMarqueeSelect.endX = mx;
+                this.ctrlMarqueeSelect.endY = my;
+                const x1 = Math.min(this.ctrlMarqueeSelect.startX, this.ctrlMarqueeSelect.endX);
+                const y1 = Math.min(this.ctrlMarqueeSelect.startY, this.ctrlMarqueeSelect.endY);
+                const width = Math.abs(this.ctrlMarqueeSelect.endX - this.ctrlMarqueeSelect.startX);
+                const height = Math.abs(this.ctrlMarqueeSelect.endY - this.ctrlMarqueeSelect.startY);
+                const dm = this.drawingManager;
+                if (dm && typeof dm.completeCtrlMarqueeFromChart === 'function') {
+                    dm.completeCtrlMarqueeFromChart(x1, y1, width, height);
+                } else if (dm && typeof dm.cancelCtrlMarqueeSelectFromChart === 'function') {
+                    dm.cancelCtrlMarqueeSelectFromChart();
+                }
+                this.ctrlMarqueeSelect.active = false;
+                this.scheduleRender();
+            }
             // Handle box zoom
-            if (dragType === 'boxZoom' && this.boxZoom.active) {
+            else if (dragType === 'boxZoom' && this.boxZoom.active) {
                 if (this._rightMouseDragged) {
                     this.applyBoxZoom();
                     this.scheduleChartViewSave();
@@ -18069,6 +18156,7 @@ class Chart {
             this.drag.type = null;
             this.drag.separatePanelSlot = null;
             this.boxZoom.active = false;
+            if (this.ctrlMarqueeSelect) this.ctrlMarqueeSelect.active = false;
             this.movement.isDragging = false;
             this.isZooming = false;
             this._rightMouseDragged = false;
@@ -18152,6 +18240,19 @@ class Chart {
                 if (dragDistance >= this._rightClickDragThreshold) {
                     this._rightMouseDragged = true;
                 }
+            }
+            if (
+                this.drag &&
+                this.drag.active &&
+                this.drag.type === 'ctrlMarqueeSelect' &&
+                this.ctrlMarqueeSelect &&
+                this.ctrlMarqueeSelect.active &&
+                this.canvas
+            ) {
+                const [lx, ly] = this._eventCanvasLocalXY(e);
+                this.ctrlMarqueeSelect.endX = lx;
+                this.ctrlMarqueeSelect.endY = ly;
+                this.scheduleRender();
             }
 
             // Continue axis/pan drags even when mouse is outside the canvas
