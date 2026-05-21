@@ -4119,9 +4119,14 @@ class DrawingToolsManager {
         };
     }
 
+    /**
+     * Ctrl/Cmd temporary magnet — only while a draw tool is armed (not crosshair / select).
+     * Toolbar weak/strong magnet is handled separately in _isMagnetSnapActive.
+     */
     _ctrlMagnetHeld(event) {
+        if (this._isCursorSelectMode()) return false;
         const m = this._pointerModifiers(event);
-        return m.ctrlKey || m.metaKey || !!this.magnetKeyHeld;
+        return m.ctrlKey || m.metaKey;
     }
 
     /** Same client coords as Chart.refreshCrosshairFromLastPointer when mousemove did not fire yet. */
@@ -10789,5 +10794,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a19_ctrl_marquee';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a20_ctrl_not_magnet';
 } catch (_) {}

@@ -19989,6 +19989,8 @@ class Chart {
         const magnetMode = (this.drawingManager && this.drawingManager.magnetMode) || this.magnetMode || 'off';
         const magnetActive = magnetMode === 'weak' || magnetMode === 'strong' || magnetMode === true;
         const ctrlHeld = e.ctrlKey || e.metaKey;
+        const dmDrawToolArmed = _dm && (!!_dm.currentTool || !!_dm.eraserMode);
+        const ctrlMagnetSnap = ctrlHeld && dmDrawToolArmed;
         const shiftHeld = e.shiftKey;
         const shiftPreviewY = (shiftHeld && _dm && typeof _dm.getShiftConstrainedPreviewPrice === 'function')
             ? _dm.getShiftConstrainedPreviewPrice(e)
@@ -19999,7 +20001,7 @@ class Chart {
             : [];
         const placementSnapActive = !!(shiftHeld && placementSnapYs.length > 0);
         const shouldSnapCrosshair = this.yScale && hasSnappedCandle && Number.isFinite(crosshairPrice)
-            && (magnetActive || ctrlHeld)
+            && (magnetActive || ctrlMagnetSnap)
             && !placementSnapActive
             && !useShiftPreviewSnap;
         if (shouldSnapCrosshair) {
@@ -20012,7 +20014,7 @@ class Chart {
             }
             const closestPx = this.yScale(closest);
             const pxDist = Math.abs(y - closestPx);
-            const forceSnap = magnetMode === 'strong' || magnetMode === true || ctrlHeld;
+            const forceSnap = magnetMode === 'strong' || magnetMode === true || ctrlMagnetSnap;
             if (forceSnap || pxDist <= 30) {
                 crosshairPrice = closest;
             }
