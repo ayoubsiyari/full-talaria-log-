@@ -17549,10 +17549,15 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         this.canvas.addEventListener('mousedown', e => {
             if (this.tool) return;
-            if (this.drawingManager && this.drawingManager.currentTool) return;
-            
+
             const [mx, my] = this._eventCanvasLocalXY(e);
             const mode = detectCursorMode(mx, my);
+
+            if (this.drawingManager && this.drawingManager.currentTool) {
+                if (mode !== 'priceAxis' && mode !== 'timeAxis' && mode !== 'separatePanelAxis') {
+                    return;
+                }
+            }
 
             // Start separate indicator panel resize when dragging a panel separator.
             if (e.button === 0 && typeof this.getSeparatePanelResizeHandleAt === 'function') {
@@ -17836,8 +17841,9 @@ class Chart {
                     this.canvas.classList.add('cursor-time-axis');
                     this.canvas.style.cursor = 'ew-resize';
                     if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ew-resize';
-                } else if (this.tool) {
+                } else if (this.tool || (this.drawingManager && this.drawingManager.currentTool)) {
                     this.canvas.style.cursor = 'crosshair';
+                    if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'crosshair';
                 } else {
                     // Check if hovering over a shape - if so, don't override the shape's cursor
                     const svgElement = e.target.closest('svg');

@@ -1328,8 +1328,6 @@ class DrawingToolsManager {
                 }
                 canvas.removeEventListener('dblclick', existing.dblclick, true);
             }
-
-            // Mousedown on canvas for rectangular selection
             const onMouseDown = (event) => {
                 // Check for Ctrl+drag to start rectangular selection
                 if (event.ctrlKey && !event.shiftKey && !this.currentTool) {
@@ -1352,11 +1350,14 @@ class DrawingToolsManager {
                 const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
                 if (!svgNode) return;
 
-                // Armed draw tool: same geometric hit zone as hover — select on click, settings on dblclick.
+                // Armed draw tool: select existing shapes on click; start new stroke on empty plot.
                 if (this.currentTool) {
+                    if (this._isPointerOverChartAxis(event)) {
+                        return;
+                    }
                     if (this.drawingState && this.drawingState.isDrawing) return;
                     const armedHit = this._resolvePointerOverDrawings(event);
-                    if (!armedHit.primary || armedHit.primary.locked) return;
+                    if (armedHit.primary && !armedHit.primary.locked) {
                     if (event.detail >= 2) {
                         const opened = openDrawingSettingsFromDoubleClick(event);
                         if (opened) {
@@ -1370,6 +1371,15 @@ class DrawingToolsManager {
                         return;
                     }
                     this.selectDrawing(armedHit.primary, event.shiftKey);
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    suppressNextCanvasClick = true;
+                    return;
+                    }
+                    this.handleMouseDown(event);
                     event.preventDefault();
                     event.stopPropagation();
                     if (typeof event.stopImmediatePropagation === 'function') {
@@ -1648,10 +1658,47 @@ class DrawingToolsManager {
             };
             canvas.addEventListener('dblclick', onDblClick, true);
 
+            const onCanvasMouseMove = (event) => {
+                if (!this.currentTool) return;
+                if (this._isPointerOverChartAxis(event)) return;
+                const drawingActive = !!(this.drawingState && this.drawingState.isDrawing);
+                if (drawingActive || this.isDrawingPath || this.isDraggingFirstTwo) {
+                    this.handleMouseMove(event);
+                }
+            };
+            canvas.addEventListener('mousemove', onCanvasMouseMove);
+
+            if (!this._docDrawMouseUpBound) {
+                this._docDrawMouseUpBound = (event) => {
+                    if (!this.isDrawingPath && !this.isDraggingFirstTwo) return;
+                    if (!(this.drawingState && this.drawingState.isDrawing)) return;
+                    this.handleMouseUp(event);
+                };
+                document.addEventListener('mouseup', this._docDrawMouseUpBound);
+            }
+
+            if (chartWrapper) {
+                const prevDrawMove = chartWrapper.__drawingToolsActiveDrawMove;
+                if (typeof prevDrawMove === 'function') {
+                    chartWrapper.removeEventListener('mousemove', prevDrawMove);
+                }
+                const onWrapperDrawMove = (event) => {
+                    if (!this.currentTool) return;
+                    if (this._isPointerOverChartAxis(event)) return;
+                    const drawingActive = !!(this.drawingState && this.drawingState.isDrawing);
+                    if (drawingActive || this.isDrawingPath || this.isDraggingFirstTwo) {
+                        this.handleMouseMove(event);
+                    }
+                };
+                chartWrapper.addEventListener('mousemove', onWrapperDrawMove, { passive: true });
+                chartWrapper.__drawingToolsActiveDrawMove = onWrapperDrawMove;
+            }
+
             canvas.__drawingToolsCanvasHandlers = {
                 mousedown: onMouseDown,
                 click: onClick,
-                dblclick: onDblClick
+                dblclick: onDblClick,
+                mousemove: onCanvasMouseMove
             };
         }
     }
@@ -1687,7 +1734,6 @@ class DrawingToolsManager {
         
         // Update cursor
         this.svg.style('cursor', toolName ? 'crosshair' : 'default');
-        this.svg.style('pointer-events', toolName ? 'all' : 'none');
         if (this.chart?.canvas) {
             this.chart.canvas.style.cursor = toolName ? 'crosshair' : 'default';
         }
@@ -2095,6 +2141,11 @@ class DrawingToolsManager {
     handleMouseDown(event) {
         // Ignore right-click - handled by contextmenu event
         if (event.button === 2) {
+            return;
+        }
+
+        // Over price/time axis: let chart scale normally (tool stays armed).
+        if (this.currentTool && this._isPointerOverChartAxis(event)) {
             return;
         }
 
@@ -3245,6 +3296,11 @@ class DrawingToolsManager {
      * Handle mouse move event
      */
     handleMouseMove(event) {
+        // Pause stroke/placement over axes; resume when pointer re-enters plot area.
+        if (this.currentTool && this._isPointerOverChartAxis(event)) {
+            return;
+        }
+
         // Track last mouse position for Shift/Ctrl preview refresh (placement + resize)
         if ((this.currentTool && this.drawingState && this.drawingState.isDrawing)
             || this.isResizing || this.isCustomHandleDrag || this.isCustomHandleDragging) {
@@ -3920,6 +3976,42 @@ class DrawingToolsManager {
     /** Layout-space XY from viewport client coords (matches `_eventCanvasLocalXY`; use for hit-testing when only x/y are available). */
     _clientXYToLayoutXY(clientX, clientY) {
         return this._eventCanvasLocalXY({ clientX, clientY });
+    }
+
+    /**
+     * Match Chart.setupEvents detectCursorMode — chart plot vs price/time axis bands.
+     */
+    _getPointerCursorMode(event) {
+        if (!this.chart) return 'outside';
+        const [mx, my] = this._eventCanvasLocalXY(event);
+        const m = this.chart.margin || { t: 5, r: 60, b: 30, l: 0 };
+        const w = this.chart.w || this.chart.canvas?.width || 800;
+        const h = this.chart.h || this.chart.canvas?.height || 600;
+
+        if (mx > w - m.r && my > m.t && my < h - m.b) {
+            const spi = this.chart.separatePanelInfo;
+            if (spi && Array.isArray(spi.panelSlots)) {
+                for (let si = 0; si < spi.panelSlots.length; si++) {
+                    const slot = spi.panelSlots[si];
+                    if (my >= slot.top && my <= slot.bottom) {
+                        return 'separatePanelAxis';
+                    }
+                }
+            }
+            return 'priceAxis';
+        }
+        if (my > h - m.b && mx > m.l && mx < w - m.r) {
+            return 'timeAxis';
+        }
+        if (mx > m.l && mx < w - m.r && my > m.t && my < h - m.b) {
+            return 'chart';
+        }
+        return 'outside';
+    }
+
+    _isPointerOverChartAxis(event) {
+        const mode = this._getPointerCursorMode(event);
+        return mode === 'priceAxis' || mode === 'timeAxis' || mode === 'separatePanelAxis';
     }
 
     /**
@@ -6471,8 +6563,8 @@ class DrawingToolsManager {
         if (this.svg) {
             if (toolActive) {
                 this.svg.style('z-index', '11');
-                // Use 'all' so the entire SVG area captures events (including transparent regions)
-                this.svg.style('pointer-events', 'all');
+                // Pass-through over axes so price/time scaling works while a tool is armed.
+                this.svg.style('pointer-events', 'none');
             } else if (drawingSelected) {
                 this.svg.style('z-index', '11');
                 // VP/AV drawings: keep SVG pointer-events none so chart can pan through the body;
@@ -10288,5 +10380,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a9_magnet_resize_axis_labels';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a12_axis_draw_pass_through';
 } catch (_) {}
