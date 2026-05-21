@@ -652,7 +652,7 @@ class Chart {
             watermarkPattern: 'solid',
             
             // Scales
-            scaleTextColor: '#787b86',
+            scaleTextColor: '#ffffff',
             scaleTextSize: 12,
             scaleLinesColor: '#2a2e39',
             scaleLinePattern: 'solid',
@@ -704,7 +704,7 @@ class Chart {
             // Symbol settings
             symbolTitle: true,
             symbolTitleFormat: 'Description',
-            symbolTextColor: '#d1d4dc',  // Symbol name and OHLC labels color (light for dark mode default)
+            symbolTextColor: '#ffffff',  // Symbol name and OHLC labels color
             showChartValues: true,
             showBarChangeValues: true,
             
@@ -4155,14 +4155,14 @@ class Chart {
                 if (this.chartSettings.activeChartOnlyTemplate) this._lastChartOnlyTemplate = this.chartSettings.activeChartOnlyTemplate;
                 if (this.chartSettings.activePanelOnlyTemplate) this._lastPanelOnlyTemplate = this.chartSettings.activePanelOnlyTemplate;
             } else {
-                // Only apply dark theme defaults if no saved settings exist
-                this.chartSettings.backgroundColor = '#050028';
-                this.chartSettings.scaleLinesColor = '#050028';
+                // TradingView-style defaults when no saved settings exist
+                this.chartSettings.backgroundColor = '#000000';
+                this.chartSettings.scaleLinesColor = '#2a2e39';
                 this.chartSettings.scaleTextColor = '#ffffff';
+                this.chartSettings.symbolTextColor = '#ffffff';
                 this.chartSettings.gridColor = 'rgba(42, 46, 57, 0.6)';
-                this.chartSettings.cursorLabelTextColor = '#d1d4dc';
+                this.chartSettings.cursorLabelTextColor = '#ffffff';
                 this.chartSettings.cursorLabelBgColor = '#363a45';
-                this.chartSettings.symbolTextColor = '#d1d4dc';
             }
             // Apply immediately so first render uses correct colors
             this._applyChartSettingsImmediate(null, null);
@@ -5415,7 +5415,7 @@ class Chart {
             previewCtx.clearRect(0, 0, w, h);
             
             // Background
-            previewCtx.fillStyle = colors.backgroundColor || '#050028';
+            previewCtx.fillStyle = colors.backgroundColor || '#000000';
             previewCtx.fillRect(0, 0, w, h);
             
             // Grid lines
@@ -5492,11 +5492,11 @@ class Chart {
             });
             
             // Price scale background
-            previewCtx.fillStyle = colors.backgroundColor || '#050028';
+            previewCtx.fillStyle = colors.backgroundColor || '#000000';
             previewCtx.fillRect(w - 50, 0, 50, h);
             
             // Price scale text
-            previewCtx.fillStyle = colors.scaleTextColor || '#787b86';
+            previewCtx.fillStyle = colors.scaleTextColor || '#ffffff';
             previewCtx.font = '10px Roboto';
             previewCtx.textAlign = 'right';
             previewCtx.fillText('1.2400', w - 5, 30);
@@ -5506,7 +5506,7 @@ class Chart {
             previewCtx.fillText('1.2200', w - 5, 142);
             
             // Time scale
-            previewCtx.fillStyle = colors.scaleTextColor || '#787b86';
+            previewCtx.fillStyle = colors.scaleTextColor || '#ffffff';
             previewCtx.font = '10px Roboto';
             previewCtx.textAlign = 'center';
             previewCtx.fillText('09:00', 60, h - 3);
@@ -14146,11 +14146,11 @@ class Chart {
         const axisMidX = axisLeft ? m.l / 2 : this.w - m.r / 2;
 
         // Draw Y-axis background area
-        this.ctx.fillStyle = this.chartSettings.backgroundColor || '#050028';
+        this.ctx.fillStyle = this.chartSettings.backgroundColor || '#000000';
         this.ctx.fillRect(axisX, 0, axisW, this.h);
         
         // Draw X-axis background area (time axis on the bottom) - uses same background as chart
-        this.ctx.fillStyle = this.chartSettings.backgroundColor || '#050028';
+        this.ctx.fillStyle = this.chartSettings.backgroundColor || '#000000';
         this.ctx.fillRect(axisLeft ? axisW : 0, this.h - m.b, this.w - axisW, m.b);
         
         // Draw axis highlight zones (for selected drawings) - BEFORE labels so labels appear on top
@@ -15051,7 +15051,7 @@ class Chart {
         if (!this.axisHighlightZones || this.axisHighlightZones.length === 0) return;
         
         const m = this.margin;
-        const backgroundColor = this.chartSettings?.backgroundColor || '#050028';
+        const backgroundColor = this.chartSettings?.backgroundColor || '#000000';
         const isLightTheme = this.isLightColor ? this.isLightColor(backgroundColor) : false;
         const zoneColor = isLightTheme ? '#e0e3eb' : '#2a2e39';
         
@@ -15333,7 +15333,7 @@ class Chart {
      * "Talaria-Log" spans still followed body.light-mode).
      */
     updateLogoForTheme() {
-        const bgColor = this.chartSettings?.backgroundColor || '#050028';
+        const bgColor = this.chartSettings?.backgroundColor || '#000000';
         const darkEls = document.querySelectorAll('.chart-brand .logo-dark');
         const lightEls = document.querySelectorAll('.chart-brand .logo-light');
         if (!darkEls.length || !lightEls.length) return;
@@ -21331,9 +21331,11 @@ class Chart {
             .style('transition', 'all 0.2s ease-out');
             
         this.chartSettings = {
-            backgroundColor: '#050028',
-            gridColor: '#2a2e39',
-            textColor: '#787b86',
+            backgroundColor: '#000000',
+            gridColor: 'rgba(42, 46, 57, 0.6)',
+            textColor: '#ffffff',
+            scaleTextColor: '#ffffff',
+            symbolTextColor: '#ffffff',
             candleUpColor: '#089981',
             candleDownColor: '#f23645',
             showGrid: true,

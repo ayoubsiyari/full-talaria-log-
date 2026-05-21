@@ -6780,16 +6780,16 @@ const TalariaV8bLive = () => {
   cpDraggingRef.current = cpDragging;
   const DEFAULT_CHART_SETTINGS = {
     theme: "Talaria Dark", chartType: "candlestick", precision: "Default", timezone: "UTC",
-    textColor: "#8CA0FF", background: "#07080E", gridColor: "rgba(140,160,255,0.15)", crosshairColor: "rgba(255,255,255,0.4)",
-    priceLine: true, priceLineColor: "#FF5068",
-    scaleTextColor: "rgba(255,255,255,0.25)", scaleLineColor: "rgba(140,160,255,0.12)",
-    bullBody: "#00D4A1", bullBorder: "#00D4A1", bullWick: "#00D4A1",
-    bearBody: "#FF5068", bearBorder: "#FF5068", bearWick: "#FF5068", unifiedBarColor: false, unifiedBarColorVal: "#00D4A1",
+    textColor: "#FFFFFF", background: "#000000", gridColor: "rgba(42, 46, 57, 0.6)", crosshairColor: "rgba(120, 123, 134, 0.4)",
+    priceLine: true, priceLineColor: "#2962FF",
+    scaleTextColor: "#FFFFFF", scaleLineColor: "#2A2E39",
+    bullBody: "#089981", bullBorder: "#089981", bullWick: "#089981",
+    bearBody: "#F23645", bearBorder: "#F23645", bearWick: "#F23645", unifiedBarColor: false, unifiedBarColorVal: "#089981",
     orderPlacement: "instant", showOrderHistory: true, showOpenOrders: true, timeFormat: "24h",
     gridLinesOn: true, gridLineStyle: "solid", gridLineThickness: 1,
     crosshairOn: true, crosshairStyle: "dashed",
     priceLineStyle: "solid", priceLineThickness: 1,
-    chartTemplate: "Dark Classic",
+    chartTemplate: "Talaria Dark",
   };
   const [settings, setSettings] = useState(DEFAULT_CHART_SETTINGS);
   const settingsRef = useRef(settings);
@@ -9358,7 +9358,7 @@ const TalariaV8bLive = () => {
     "Rose Gold":      {bullBody:"#F48FB1",bullBorder:"#F48FB1",bullWick:"#F48FB1",bearBody:"#FFB74D",bearBorder:"#FFB74D",bearWick:"#FFB74D",background:"#0E0608",gridColor:"rgba(244,143,177,0.12)",textColor:"#FFE0EC",scaleLineColor:"rgba(244,170,195,0.45)"},
     "TradingView Dark": {bullBody:"#089981",bullBorder:"#089981",bullWick:"#089981",bearBody:"#F23645",bearBorder:"#F23645",bearWick:"#F23645",background:"#1E222D",gridColor:"rgba(42,46,57,0.6)",textColor:"#D1D4DC",scaleLineColor:"#D1D4DC"},
     "TradingView Light": {bullBody:"#089981",bullBorder:"#089981",bullWick:"#089981",bearBody:"#F23645",bearBorder:"#F23645",bearWick:"#F23645",background:"#FFFFFF",gridColor:"rgba(42,46,57,0.22)",textColor:"#000000",scaleLineColor:"#787B86"},
-    "Talaria Dark":   {bullBody:"#00D4AA",bullBorder:"#00D4AA",bullWick:"#00D4AA",bearBody:"#FF4757",bearBorder:"#FF4757",bearWick:"#FF4757",background:"#050028",gridColor:"rgba(41,98,255,0.1)",textColor:"#FFFFFF",scaleLineColor:"#2A2E39"},
+    "Talaria Dark":   {bullBody:"#089981",bullBorder:"#089981",bullWick:"#089981",bearBody:"#F23645",bearBorder:"#F23645",bearWick:"#F23645",background:"#000000",gridColor:"rgba(42,46,57,0.6)",textColor:"#FFFFFF",scaleLineColor:"#2A2E39"},
     "Ocean Blue":     {bullBody:"#00BCD4",bullBorder:"#00BCD4",bullWick:"#00BCD4",bearBody:"#FF6B6B",bearBorder:"#FF6B6B",bearWick:"#FF6B6B",background:"#0A1929",gridColor:"rgba(41,121,255,0.15)",textColor:"#E3F2FD",scaleLineColor:"#1976D2"},
     "Forest Green":   {bullBody:"#4CAF50",bullBorder:"#4CAF50",bullWick:"#4CAF50",bearBody:"#FF9800",bearBorder:"#FF9800",bearWick:"#FF9800",background:"#0D2818",gridColor:"rgba(76,175,80,0.15)",textColor:"#E8F5E8",scaleLineColor:"#4CAF50"},
     "Sunset Orange":  {bullBody:"#FF9800",bullBorder:"#FF9800",bullWick:"#FF9800",bearBody:"#E91E63",bearBorder:"#E91E63",bearWick:"#E91E63",background:"#2D1B0E",gridColor:"rgba(255,152,0,0.15)",textColor:"#FFF3E0",scaleLineColor:"#FF9800"},
