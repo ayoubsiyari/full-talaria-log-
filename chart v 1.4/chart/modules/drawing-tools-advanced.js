@@ -4041,7 +4041,7 @@ class BrushTool extends BaseDrawing {
         this.isContinuous = true;
         this.style.stroke = style.stroke || '#787b86';
         this.style.strokeWidth = style.strokeWidth || 2;
-        this.style.opacity = style.opacity || 0.8;
+        this.style.opacity = style.opacity != null ? style.opacity : 1;
         // Brush should always be a continuous solid stroke (no dashed variants).
         this.style.dashArray = '';
         this.style.strokeDasharray = '';

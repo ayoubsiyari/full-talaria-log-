@@ -10446,6 +10446,36 @@ class DrawingToolsManager {
         const fill = typeof DRAWING_TOOL_DEFAULT_FILL !== 'undefined'
             ? DRAWING_TOOL_DEFAULT_FILL
             : 'rgba(140, 140, 140, 0.2)';
+
+        if (toolType === 'brush') {
+            return {
+                stroke,
+                color: stroke,
+                lineColor: stroke,
+                strokeWidth: 2,
+                opacity: 1,
+                dashArray: '',
+                strokeDasharray: '',
+                showPriceLabel: false,
+                showTimeLabel: false,
+            };
+        }
+
+        if (toolType === 'highlighter') {
+            const hlStroke = 'rgba(140, 140, 140, 0.35)';
+            return {
+                stroke: hlStroke,
+                color: hlStroke,
+                lineColor: hlStroke,
+                strokeWidth: 20,
+                opacity: 1,
+                dashArray: '',
+                strokeDasharray: '',
+                showPriceLabel: false,
+                showTimeLabel: false,
+            };
+        }
+
         return {
             stroke,
             color: stroke,

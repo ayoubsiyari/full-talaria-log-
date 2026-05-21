@@ -10,9 +10,12 @@ class HighlighterTool extends BaseDrawing {
         super('highlighter', points, style);
         this.requiredPoints = -1; // Continuous drawing mode
         this.isContinuous = true;
-        this.style.stroke = style.stroke || 'rgba(255, 235, 59, 0.7)';
+        this.style.stroke = style.stroke || (() => {
+            const base = { r: 140, g: 140, b: 140 };
+            return `rgba(${base.r}, ${base.g}, ${base.b}, 0.35)`;
+        })();
         this.style.strokeWidth = style.strokeWidth || 20;
-        this.style.opacity = style.opacity || 0.5;
+        this.style.opacity = style.opacity != null ? style.opacity : 1;
         // Highlighter is always a continuous solid semi-transparent stroke.
         this.style.dashArray = '';
         this.style.strokeDasharray = '';

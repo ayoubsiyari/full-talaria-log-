@@ -3118,6 +3118,24 @@ function v9TlStylePatchFromDrawing(d) {
 
 const V9_DEFAULT_TL_LINE_COLOR = "#8C8C8C";
 const V9_DEFAULT_TL_SHAPE_FILL = "rgba(140, 140, 140, 0.2)";
+const V9_DEFAULT_BRUSH_LINE_WIDTH = "2";
+const V9_DEFAULT_HIGHLIGHTER_LINE_WIDTH = "20";
+const V9_DEFAULT_HIGHLIGHTER_ALPHA = 0.35;
+
+/** Per-tool armed defaults (width + opacity) when switching brush ↔ highlighter. */
+function v9DefaultArmedStyleForLegacyTool(legacy) {
+  if (legacy === "brush") {
+    return { lineWidth: V9_DEFAULT_BRUSH_LINE_WIDTH, lineColor: V9_DEFAULT_TL_LINE_COLOR };
+  }
+  if (legacy === "highlighter") {
+    const base = parseColor(V9_DEFAULT_TL_LINE_COLOR);
+    return {
+      lineWidth: V9_DEFAULT_HIGHLIGHTER_LINE_WIDTH,
+      lineColor: cpBuildColor(base.r, base.g, base.b, V9_DEFAULT_HIGHLIGHTER_ALPHA),
+    };
+  }
+  return {};
+}
 
 /** Baseline tlStyle before per-tool saved defaults / drawing read-back (prevents fib subtype field bleed). */
 function v9FreshTlStyleDefaults() {
@@ -11921,10 +11939,11 @@ const TalariaV8bLive = () => {
       dm = ch && ch.drawingManager;
     } catch (_) {}
     const mergePatch = legacy && dm ? v9MergeHydratePatchFromLegacy(dm, legacy) : {};
+    const toolDefaults = v9DefaultArmedStyleForLegacyTool(legacy);
     flushSync(() => {
       setTlStyle((prev) => {
         const next = v9EnsureTlStyleArrays(
-          { ...prev, ...freshDefaults, ...mergePatch },
+          { ...prev, ...freshDefaults, ...toolDefaults, ...mergePatch },
           prev,
           legacy,
         );
