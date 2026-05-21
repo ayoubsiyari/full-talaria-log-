@@ -551,6 +551,27 @@ class DrawingToolsManager {
         });
     }
 
+    _isShapeEditHotPath() {
+        return !!(
+            this.isResizing
+            || this.isCustomHandleDragging
+            || this.isCustomHandleDrag
+        );
+    }
+
+    _syncAxisHighlightsLive(drawing) {
+        if (!drawing || typeof drawing.showAxisHighlights !== 'function') return;
+        try {
+            drawing.showAxisHighlights({ live: true });
+        } catch (_) {}
+    }
+
+    _syncAxisHighlightsDuringDrag(pixelDx, pixelDy) {
+        const chart = this.chart;
+        if (!chart || typeof chart._applyAxisHighlightPanTransform !== 'function') return;
+        chart._applyAxisHighlightPanTransform(pixelDx, pixelDy);
+    }
+
     scheduleRenderDrawing(drawing, opts = {}) {
         if (!drawing) return;
         if (!this._rafRenderSet) this._rafRenderSet = new Set();
@@ -583,6 +604,9 @@ class DrawingToolsManager {
                                 stillTracked.select(skipAxisHighlights ? { skipAxisHighlights: true } : undefined);
                             } catch (_) {}
                         }
+                    }
+                    if (this._isShapeEditHotPath()) {
+                        this._syncAxisHighlightsLive(stillTracked);
                     }
                 } catch (e) {
                 }
@@ -3260,6 +3284,7 @@ class DrawingToolsManager {
                     this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
                 }
             }
+            this._syncAxisHighlightsDuringDrag(pixelDx, pixelDy);
             return;
         }
         
@@ -3536,9 +3561,14 @@ class DrawingToolsManager {
             this.endDrag();
         }
         if (this.isResizing) {
+            const resizedDrawing = this.resizingDrawing;
             this.isResizing = false;
             this.resizingDrawing = null;
             this.resizingPointIndex = null;
+            if (resizedDrawing) {
+                this.renderDrawing(resizedDrawing);
+                this._refreshSelectedAxisHighlights();
+            }
         }
     }
 
@@ -5941,6 +5971,7 @@ class DrawingToolsManager {
         this._skipHandleSetup = true;
         this.renderDrawing(drawing, { skipAxisHighlights: true, hotPath: true, skipInteraction: true });
         this._skipHandleSetup = false;
+        this._syncAxisHighlightsLive(drawing);
         
         this._broadcastLiveEditUpdate(drawing);
     }
@@ -6190,6 +6221,9 @@ class DrawingToolsManager {
      * End dragging
      */
     endDrag() {
+        if (this.chart && typeof this.chart._clearAxisHighlightPanTransform === 'function') {
+            this.chart._clearAxisHighlightPanTransform();
+        }
         // Convert final pixel positions back to data coordinates
         if (this.draggingMultiple && this.multiDragStartPositions) {
             const scales = { xScale: this.chart.xScale, yScale: this.chart.yScale, chart: this.chart };

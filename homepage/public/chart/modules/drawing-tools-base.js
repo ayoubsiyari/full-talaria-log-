@@ -412,11 +412,11 @@ class BaseDrawing {
      * Show highlighted labels on price and time axes for drawing points
      * TradingView style: cyan background for time, colored backgrounds for prices
      */
-    showAxisHighlights() {
+    showAxisHighlights(opts = {}) {
         if (!this.chart || !this.points || this.points.length === 0) return;
 
         const mgr = this.chart.drawingManager;
-        if (mgr && typeof mgr._shouldSkipAxisHighlights === 'function' && mgr._shouldSkipAxisHighlights()) {
+        if (!opts.live && mgr && typeof mgr._shouldSkipAxisHighlights === 'function' && mgr._shouldSkipAxisHighlights()) {
             return;
         }
         
@@ -852,8 +852,8 @@ class BaseDrawing {
         if (this.selected && this.chart.setAxisHighlightZones && canvasZones.length > 0) {
             this.chart.setAxisHighlightZones(canvasZones);
             this.hasAxisHighlightZones = true;
-            // Trigger re-render to show the zones
-            if (this.chart.scheduleRender) {
+            // Trigger re-render to show the zones (skip during live resize/drag — chart redraws on release)
+            if (!opts.live && this.chart.scheduleRender) {
                 this.chart.scheduleRender();
             }
         }
