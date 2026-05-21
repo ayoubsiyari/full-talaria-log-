@@ -8940,8 +8940,10 @@ class DrawingToolsManager {
 
     /** Marquee armed or active (used by chart.js to block pan). */
     isCtrlMarqueeGestureActive() {
-        const chartActive = !!(this.chart && this.chart.ctrlMarqueeSelect && this.chart.ctrlMarqueeSelect.active);
-        return chartActive || !!(this.isRectSelecting || this._ctrlMarqueePending);
+        if (this.chart && this.chart.ctrlMarqueeSelect && this.chart.ctrlMarqueeSelect.active) {
+            return true;
+        }
+        return !!(this._ctrlMarqueePending);
     }
 
     prepareCtrlMarqueeSelectFromChart() {
@@ -9254,17 +9256,8 @@ class DrawingToolsManager {
             }
         });
         const ch = this.chart;
-        if (ch) {
-            if (ch.drag) {
-                ch.drag.active = false;
-                ch.drag.type = null;
-            }
-            if (ch.movement) {
-                ch.movement.isDragging = false;
-            }
-            if (typeof ch._clearPanDrawingsLayerTransform === 'function') {
-                ch._clearPanDrawingsLayerTransform();
-            }
+        if (ch && typeof ch._clearPanDrawingsLayerTransform === 'function') {
+            ch._clearPanDrawingsLayerTransform();
         }
     }
 
@@ -11153,5 +11146,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a29_canvas_marquee';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a30_gesture_fix';
 } catch (_) {}

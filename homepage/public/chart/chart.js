@@ -17587,6 +17587,49 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         // STEP 3 — Pan Logic (mousedown)
         // ═══════════════════════════════════════════════════════════════════
+        const startBoxZoomGesture = (e, mx, my) => {
+            this.inertia.active = false;
+            this.drag.active = true;
+            this.drag.type = 'boxZoom';
+            this.drag.startX = e.clientX;
+            this.drag.startY = e.clientY;
+            this.drag.lastX = e.clientX;
+            this.drag.lastY = e.clientY;
+            this.drag.shiftKey = e.shiftKey;
+            this.drag.ctrlKey = e.ctrlKey || e.metaKey;
+            this.movement.isDragging = true;
+            this.movement.lastX = e.clientX;
+            this.movement.lastY = e.clientY;
+            this.movement.startX = e.clientX;
+            this.movement.startY = e.clientY;
+            this.movement.lastTime = performance.now();
+            this._rightMouseDragged = false;
+            this._suppressContextMenuUntil = 0;
+            this.boxZoom.active = true;
+            this.boxZoom.startX = mx;
+            this.boxZoom.startY = my;
+            this.boxZoom.endX = mx;
+            this.boxZoom.endY = my;
+            this.scheduleRender();
+        };
+
+        const tryStartBoxZoom = (e) => {
+            if (this.drag && this.drag.active) return false;
+            if (e.button !== 2) return false;
+            if (this.tool) return false;
+            const wrap = this.canvas && this.canvas.parentElement;
+            if (!wrap || !wrap.contains(e.target)) return false;
+            const [mx, my] = this._eventCanvasLocalXY(e);
+            const mode = detectCursorMode(mx, my);
+            if (mode !== 'chart') return false;
+            if (this.drawingManager && this.drawingManager.currentTool) {
+                return false;
+            }
+            startBoxZoomGesture(e, mx, my);
+            if (typeof e.preventDefault === 'function') e.preventDefault();
+            return true;
+        };
+
         const tryStartCtrlMarqueeSelect = (e) => {
             if (this.drag && this.drag.active) return false;
             if (e.button !== 0 || !(e.ctrlKey || e.metaKey) || e.shiftKey) return false;
@@ -17630,11 +17673,18 @@ class Chart {
         };
 
         document.addEventListener('mousedown', (e) => {
-            tryStartCtrlMarqueeSelect.call(this, e);
+            if (tryStartCtrlMarqueeSelect.call(this, e)) return;
+            tryStartBoxZoom.call(this, e);
         }, true);
 
         this.canvas.addEventListener('mousedown', e => {
             if (tryStartCtrlMarqueeSelect.call(this, e)) {
+                return;
+            }
+            if (tryStartBoxZoom.call(this, e)) {
+                return;
+            }
+            if (this.drag && this.drag.active) {
                 return;
             }
 
@@ -17702,15 +17752,11 @@ class Chart {
             this.movement.lastTime = performance.now();
             this._rightMouseDragged = false;
             
-            // ─── STEP 8: Box Zoom (right-click) ───
+            // ─── STEP 8: Box Zoom (right-click) — started via tryStartBoxZoom ───
             if (e.button === 2) {
-                this.drag.type = 'boxZoom';
-                this._suppressContextMenuUntil = 0;
-                this.boxZoom.active = true;
-                this.boxZoom.startX = mx;
-                this.boxZoom.startY = my;
-                this.boxZoom.endX = mx;
-                this.boxZoom.endY = my;
+                this.drag.active = false;
+                this.drag.type = null;
+                this.movement.isDragging = false;
                 return;
             }
             
@@ -17776,7 +17822,7 @@ class Chart {
                     dm &&
                     typeof dm.isCtrlMarqueeGestureActive === 'function' &&
                     dm.isCtrlMarqueeGestureActive() &&
-                    this.drag.type !== 'ctrlMarqueeSelect'
+                    this.drag.type === 'pan'
                 ) {
                     this.drag.active = false;
                     this.drag.type = null;
@@ -17990,6 +18036,18 @@ class Chart {
         const handleMouseUp = (e) => {
             const wasDragging = this.drag.active;
             const dragType = this.drag.type;
+            const dm = this.drawingManager;
+
+            if (
+                this.ctrlMarqueeSelect &&
+                this.ctrlMarqueeSelect.active &&
+                dragType !== 'ctrlMarqueeSelect'
+            ) {
+                if (dm && typeof dm.cancelCtrlMarqueeSelectFromChart === 'function') {
+                    dm.cancelCtrlMarqueeSelectFromChart();
+                }
+                this.ctrlMarqueeSelect.active = false;
+            }
 
             // If mousemove events were missed, compute final right-drag distance from mouseup.
             if (dragType === 'boxZoom' && this.boxZoom.active && this.canvas) {
@@ -18239,6 +18297,7 @@ class Chart {
                 if (dragDistance >= this._rightClickDragThreshold) {
                     this._rightMouseDragged = true;
                 }
+                this.scheduleRender();
             }
             if (
                 this.drag &&
