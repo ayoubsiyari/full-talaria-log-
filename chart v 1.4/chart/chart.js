@@ -432,7 +432,7 @@ class Chart {
             start: 0,                    // First visible data index
             end: 0,                      // Last visible data index
             rightOffset: 50,             // Right margin in pixels (future space)
-            rightOffsetCandles: 5,       // Candles worth of right padding
+            rightOffsetCandles: 15,      // Empty chart space right of last bar (drawings / TradingView-style)
             locked: false,               // When true, horizontal zoom is disabled (toggle via double-click)
             lastLockTime: 0              // Timestamp of last lock to prevent immediate unlock
         };
@@ -9555,7 +9555,7 @@ class Chart {
         // Right margin: Keep future space (TradingView style)
         const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
             ? this.timeScale.rightOffsetCandles
-            : 5;
+            : 15;
         const rightMargin = Math.max(0, rightMarginCandles) * candleSpacing;
         
         // Max offset: First candle can go up to right edge minus margin
@@ -9664,7 +9664,7 @@ class Chart {
         const m = this.margin;
         const cw = this.w - m.l - m.r;
         const candleSpacing = this.getCandleSpacing();
-        const rightMargin = (this.timeScale?.rightOffsetCandles || 5) * candleSpacing;
+        const rightMargin = (this.timeScale?.rightOffsetCandles || 15) * candleSpacing;
         const maxOffset = cw - rightMargin;
         const lastCandleX = (this.data.length - 1) * candleSpacing;
         const minOffset = -lastCandleX;
@@ -13467,7 +13467,7 @@ class Chart {
         const candleSpacing = this.getCandleSpacing();
         const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
             ? this.timeScale.rightOffsetCandles
-            : 5;
+            : 15;
         const rightMargin = Math.max(0, rightMarginCandles) * candleSpacing;
         const maxOffset = cw - rightMargin;
         const lastCandleX = Math.max(0, (this.data.length - 1) * candleSpacing);

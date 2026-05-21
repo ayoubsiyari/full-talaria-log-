@@ -3675,6 +3675,13 @@ class DrawingToolsManager {
         return !!(keyHeld || mode === 'weak' || mode === 'strong' || mode === true);
     }
 
+    /** Strong magnet snaps anchors to bar centers; weak/off keep fractional time in empty chart space. */
+    _snapPlacementXToBarCenter(event) {
+        const mode = this.magnetMode || (this.chart && this.chart.magnetMode) || 'off';
+        const keyHeld = event && (event.metaKey || event.ctrlKey);
+        return mode === 'strong' || mode === true || !!keyHeld;
+    }
+
     /**
      * Snap placement price to nearest OHLC — same rules as Chart.updateCrosshair (30px weak, Ctrl = force).
      */
@@ -3684,7 +3691,10 @@ class DrawingToolsManager {
         if (!Array.isArray(data) || data.length === 0) return point;
         if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return point;
 
-        const idx = Math.round(Math.max(0, Math.min(data.length - 1, point.x)));
+        const candleIndex = Math.round(point.x);
+        if (candleIndex < 0 || candleIndex > data.length - 1) return point;
+
+        const idx = candleIndex;
         const candle = data[idx];
         if (!candle) return point;
 
@@ -3838,13 +3848,12 @@ class DrawingToolsManager {
         }
         
         const isContinuousTool = this._usesContinuousDataCoords(activeToolType);
+        const useFractionalBarIndex = isContinuousTool || !this._snapPlacementXToBarCenter(event);
 
-        // Pass chart instance for accurate index calculation.
-        // Continuous mode keeps fractional bar indices while rotating/resizing handles.
         let point = CoordinateUtils.screenToData(screenX, screenY, {
             xScale: this.chart.xScale,
             yScale: this.chart.yScale
-        }, this.chart, isContinuousTool);
+        }, this.chart, useFractionalBarIndex);
 
         if (!isContinuousTool) {
             point = this._applyOHLCMagnetSnap(point, screenY, event);
@@ -3852,8 +3861,7 @@ class DrawingToolsManager {
 
         point = this.clampPointToCandleRange(point, activeToolType);
 
-        // Snap new strokes to candle centers; editing existing drawings stays smooth (see _usesContinuousDataCoords).
-        if (!isContinuousTool) {
+        if (!isContinuousTool && this._snapPlacementXToBarCenter(event)) {
             point = this.snapPointXToNearestCandle(point);
         }
 
