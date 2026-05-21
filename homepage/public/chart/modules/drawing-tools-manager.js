@@ -58,6 +58,8 @@ class DrawingToolsManager {
         /** One SVG temp preview per frame while placing poly-point tools (trend line, RR, etc.). */
         this._tempPreviewRaf = null;
         this._pendingTempPreviewPoints = null;
+        /** Last in-progress preview vertices (data coords) — re-rendered on zoom/pan like TradingView. */
+        this._activeTempPreviewPoints = null;
         /** Coalesce chart.updateCrosshair from SVG moves to one per rAF (reduces svg#drawingSvg INP). */
         this._drawingCrosshairRaf = null;
         this._drawingCrosshairPendingEvent = null;
@@ -3338,6 +3340,7 @@ class DrawingToolsManager {
         this._lastResizePointerEvent = null;
         this.dragFirstTwoStart = null;
         this.dragFirstTwoStartScreen = null;
+        this._activeTempPreviewPoints = null;
         if (this.drawingState) {
             this.drawingState.reset();
         }
@@ -4437,6 +4440,33 @@ class DrawingToolsManager {
     }
 
     /**
+     * Re-project in-progress drawing preview after chart zoom/pan (anchors stay on bar/price).
+     */
+    _refreshInProgressDrawingPreview() {
+        if (!this.drawingState || !this.drawingState.isDrawing || !this.currentTool) return;
+        if (!this.tempGroup || this.tempGroup.empty()) return;
+        if (!this.chart?.xScale || !this.chart?.yScale) return;
+
+        let previewPoints = null;
+        if (this.riskRewardPreview?.previewPoints?.length) {
+            previewPoints = this.riskRewardPreview.previewPoints.map((p) => ({ ...p }));
+        } else if (Array.isArray(this._activeTempPreviewPoints) && this._activeTempPreviewPoints.length > 0) {
+            previewPoints = this._activeTempPreviewPoints.map((p) => ({ ...p }));
+        } else if (Array.isArray(this.drawingState.tempPoints) && this.drawingState.tempPoints.length > 0) {
+            previewPoints = this.drawingState.tempPoints.map((p) => ({ ...p }));
+        }
+        if (!previewPoints || previewPoints.length === 0) return;
+
+        if (this.tempGroup && !this.tempGroup.empty()) {
+            this.tempGroup.attr('transform', null);
+        }
+
+        try {
+            this.updateTempDrawing(previewPoints);
+        } catch (_) { /* swallow */ }
+    }
+
+    /**
      * Update temporary drawing preview
      */
     updateTempDrawing(points = null) {
@@ -4444,7 +4474,11 @@ class DrawingToolsManager {
             this.tempGroup.selectAll('*').remove();
             
             const previewPoints = points || this.drawingState.tempPoints;
-            if (previewPoints.length === 0) return;
+            if (previewPoints.length === 0) {
+                this._activeTempPreviewPoints = null;
+                return;
+            }
+            this._activeTempPreviewPoints = previewPoints.map((p) => ({ ...p }));
             
             const toolInfo = this.toolRegistry[this.currentTool];
             if (!toolInfo) return;
@@ -4691,6 +4725,7 @@ class DrawingToolsManager {
         this._cancelTempPreviewRaf();
         this._clearLiveSyncPreview();
         this.tempGroup.selectAll('*').remove();
+        this._activeTempPreviewPoints = null;
         this.drawingState.reset();
         this.riskRewardPreview = null;
         this.hidePathTooltip();
@@ -7712,6 +7747,7 @@ class DrawingToolsManager {
                 }
             });
             this.raiseDrawingLayersAboveOrderPreviews();
+            this._refreshInProgressDrawingPreview();
             return;
         }
         
@@ -7748,6 +7784,7 @@ class DrawingToolsManager {
         }
         
         this.raiseDrawingLayersAboveOrderPreviews();
+        this._refreshInProgressDrawingPreview();
     }
 
     /**
@@ -10788,5 +10825,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a20_ctrl_not_magnet';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a21_zoom_anchor';
 } catch (_) {}

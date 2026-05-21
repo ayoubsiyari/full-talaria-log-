@@ -13563,6 +13563,9 @@ class Chart {
             if (dm.labelsGroup && !dm.labelsGroup.empty()) {
                 dm.labelsGroup.attr('transform', null);
             }
+            if (dm.tempGroup && !dm.tempGroup.empty()) {
+                dm.tempGroup.attr('transform', null);
+            }
         }
         this._clearAxisHighlightPanTransform();
         this._panSnapOffsetX = null;
@@ -13631,6 +13634,9 @@ class Chart {
         }
         if (dm.labelsGroup && !dm.labelsGroup.empty()) {
             dm.labelsGroup.attr('transform', transform);
+        }
+        if (dm.tempGroup && !dm.tempGroup.empty()) {
+            dm.tempGroup.attr('transform', transform);
         }
         this._applyAxisHighlightPanTransform(dx, ty);
     }
