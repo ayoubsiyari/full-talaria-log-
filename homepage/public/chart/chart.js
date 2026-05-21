@@ -13409,6 +13409,18 @@ class Chart {
         );
     }
 
+    /** Lower draw budget while the chart view is moving (pan / inertia). */
+    _getPanLodCap() {
+        const m = this.margin || { l: 0, r: 60 };
+        const plotPx = Math.max(1, this.w - m.l - m.r);
+        return Math.min(640, Math.max(240, Math.ceil(plotPx * 1.25)));
+    }
+
+    /** Use CSS translate for drawings during pan instead of rebuilding every SVG shape per frame. */
+    _canPanTransformDrawings() {
+        return this._isChartViewPanning() && this._panSnapOffsetX != null;
+    }
+
     /** Finger-down chart drag — use 1:1 movement (no rubber-band damping). */
     _isChartPanDragging() {
         return !!(this.drag && this.drag.active && this.drag.type === 'pan');
@@ -13454,9 +13466,22 @@ class Chart {
     }
 
     /** Keep SL/TP lines and entry/exit trade markers glued while panning (same scales as candles). */
-    _syncOrderOverlaysDuringPan(panActive) {
+    _syncOrderOverlaysDuringPan(panActive, opts = {}) {
         const om = this.orderManager;
         if (!om) return;
+        const lite = !!opts.lite;
+        if (lite && panActive) {
+            if (this._panOrderOverlayLitePending) return;
+            this._panOrderOverlayLitePending = true;
+            requestAnimationFrame(() => {
+                this._panOrderOverlayLitePending = false;
+                if (!this._isChartViewPanning()) return;
+                if (typeof om.updateOrderLines === 'function') {
+                    om.updateOrderLines(this);
+                }
+            });
+            return;
+        }
         if (typeof om.updateOrderLines === 'function') {
             om.updateOrderLines(this);
         }
@@ -13828,18 +13853,21 @@ class Chart {
 
         // Fast path while dragging chart: candles + axes + news markers (lite).
         if (chartViewPanning) {
+            const panOpts = { panFast: true };
             this.drawGrid();
-            this.drawVolume(visible);
-            this.drawCandles(visible);
+            this.drawVolume(visible, panOpts);
+            this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
             this.drawAxes();
             this.drawEconomicCalendarAxisMarkers({ panFast: true });
             this.drawCurrentPriceLabel(visible);
-            // Re-project drawings + trade markers each frame (panFast). CSS translate on the
-            // drawings layer drifts from candles because xScale domain slides with offsetX.
-            this._clearPanDrawingsLayerTransform();
-            this.redrawDrawings();
-            this._syncOrderOverlaysDuringPan(true);
+            if (this._canPanTransformDrawings()) {
+                this._applyPanDrawingsLayerTransform();
+            } else {
+                this._clearPanDrawingsLayerTransform();
+                this.redrawDrawings();
+            }
+            this._syncOrderOverlaysDuringPan(true, { lite: true });
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
             }
@@ -15550,7 +15578,7 @@ class Chart {
         this.scheduleRender();
     }
     
-    drawVolume(visible) {
+    drawVolume(visible, opts = {}) {
         // Skip if volume is disabled
         if (!this.chartSettings.showVolume) return;
         
@@ -15585,8 +15613,8 @@ class Chart {
         this.ctx.clip();
         
         const plotPxVol = Math.max(1, this.w - m.l - m.r);
-        const MAX_VOL_LOD = Math.min(1600, Math.max(320, Math.ceil(plotPxVol * 2)));
-        const volLod = this._aggregateVisibleOhlcvBuckets(visible, MAX_VOL_LOD);
+        const maxVolLod = opts.panFast ? this._getPanLodCap() : Math.min(1600, Math.max(320, Math.ceil(plotPxVol * 2)));
+        const volLod = this._aggregateVisibleOhlcvBuckets(visible, maxVolLod);
         let volLodMax = 1;
         if (volLod) {
             for (let vi = 0; vi < volLod.length; vi++) {
@@ -15621,7 +15649,7 @@ class Chart {
         
         // Draw Volume MA if enabled — cache full-series MA; recomputing O(n·period) every
         // render destroyed frame time on large datasets (same zoom-out lag as price scale).
-        if (showMA && this.data && this.data.length >= maPeriod) {
+        if (!opts.panFast && showMA && this.data && this.data.length >= maPeriod) {
             const maKey = `${this.dataVersion}|${maPeriod}|${this.data.length}`;
             let volumeMA = this._volumeMaSeriesCache;
             if (this._volumeMaSeriesCacheKey !== maKey || !Array.isArray(volumeMA) || volumeMA.length !== this.data.length) {
@@ -15727,7 +15755,7 @@ class Chart {
         this.ctx.restore();
     }
     
-    drawCandles(visible) {
+    drawCandles(visible, opts = {}) {
         const m = this.margin;
         const chartType = this.chartSettings.chartType || 'candles';
         
@@ -15787,7 +15815,7 @@ class Chart {
             case 'heikinashi':
             case 'candles':
             default:
-                this.drawCandlesticks(chartData, chartType === 'hollow');
+                this.drawCandlesticks(chartData, chartType === 'hollow', opts);
                 break;
         }
         
@@ -16158,7 +16186,7 @@ class Chart {
     /**
      * Draw Candlesticks (regular or hollow)
      */
-    drawCandlesticks(visible, isHollow = false) {
+    drawCandlesticks(visible, isHollow = false, opts = {}) {
         const m = this.margin;
         let drawn = 0;
         let skipped = 0;
@@ -16168,8 +16196,8 @@ class Chart {
         // When zoomed out, drawing thousands of bodies still stalls the GPU. Cap LOD buckets
         // by plot width (~1 bucket per half-pixel max) so zoom/pan stays smooth on 1m ranges.
         const plotPx = Math.max(1, this.w - m.l - m.r);
-        const MAX_LOD_CANDLES = Math.min(1600, Math.max(320, Math.ceil(plotPx * 2)));
-        const lod = this._aggregateVisibleOhlcvBuckets(visible, MAX_LOD_CANDLES);
+        const maxLod = opts.panFast ? this._getPanLodCap() : Math.min(1600, Math.max(320, Math.ceil(plotPx * 2)));
+        const lod = this._aggregateVisibleOhlcvBuckets(visible, maxLod);
         const drawSeries = lod
             ? lod.map((b) => ({ d: { o: b.o, h: b.h, l: b.l, c: b.c }, idx: b.midIdx }))
             : visible.map((d, i) => ({ d, idx: (this.visibleStartIndex || 0) + i }));
