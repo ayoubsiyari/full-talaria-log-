@@ -13449,6 +13449,24 @@ class Chart {
     _snapshotPanDrawingsLayer() {
         this._panSnapOffsetX = this.offsetX;
         this._panSnapPriceOffset = this.priceOffset;
+        this._hideAxisHighlightsDuringPan();
+    }
+
+    /** Axis labels use mixed coords (price=x-fixed, time=y-fixed); hide during CSS pan transform. */
+    _hideAxisHighlightsDuringPan() {
+        const dm = this.drawingManager;
+        if (dm && Array.isArray(dm.drawings)) {
+            dm.drawings.forEach((drawing) => {
+                if (drawing && typeof drawing.hideAxisHighlights === 'function') {
+                    try { drawing.hideAxisHighlights(); } catch (_) {}
+                }
+            });
+        } else if (this.svg && !this.svg.empty()) {
+            this.svg.selectAll('.axis-highlight-group').remove();
+        }
+        if (typeof this.clearAxisHighlightZones === 'function') {
+            this.clearAxisHighlightZones();
+        }
     }
 
     _clearPanDrawingsLayerTransform() {
@@ -13460,9 +13478,6 @@ class Chart {
             if (dm.labelsGroup && !dm.labelsGroup.empty()) {
                 dm.labelsGroup.attr('transform', null);
             }
-        }
-        if (this.svg && !this.svg.empty()) {
-            this.svg.selectAll('.axis-highlight-group').attr('transform', null);
         }
         this._panSnapOffsetX = null;
         this._panSnapPriceOffset = null;
@@ -13524,10 +13539,6 @@ class Chart {
         }
         if (dm.labelsGroup && !dm.labelsGroup.empty()) {
             dm.labelsGroup.attr('transform', transform);
-        }
-        // Axis price/time labels live outside drawingsGroup; glue them during pan.
-        if (this.svg && !this.svg.empty()) {
-            this.svg.selectAll('.axis-highlight-group').attr('transform', transform);
         }
     }
 
@@ -19069,6 +19080,17 @@ class Chart {
         if (this.drawingManager && this.xScale && this.yScale) {
             this.drawingManager.redrawAll({ forceFull: true });
         }
+        // Pan flag is still set during mouseup; restore axis labels on the next frame.
+        requestAnimationFrame(() => {
+            const dm = this.drawingManager;
+            if (!dm || !Array.isArray(dm.drawings)) return;
+            dm.drawings.forEach((drawing) => {
+                if (!drawing || drawing.visible === false || drawing.hidden === true) return;
+                if (typeof drawing.showAxisHighlights === 'function') {
+                    try { drawing.showAxisHighlights(); } catch (_) {}
+                }
+            });
+        });
     }
 
     redrawDrawings() {
