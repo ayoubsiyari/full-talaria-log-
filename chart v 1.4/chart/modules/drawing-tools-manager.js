@@ -77,10 +77,12 @@ class DrawingToolsManager {
         this._drawingsFlushAllInProgress = false;
         this._drawingsSaveBtn = null;
         
-        // Rectangular selection
+        // Rectangular selection (cursor mode: Ctrl+drag only — not Ctrl+click)
         this.isRectSelecting = false;
         this.rectSelectStart = null;
         this.rectSelectRect = null;
+        this._ctrlMarqueePending = null;
+        this._ctrlMarqueePendingBound = false;
         
         // UI components
         this.settingsPanel = new DrawingSettingsPanel();
@@ -1241,7 +1243,7 @@ class DrawingToolsManager {
         // Shift/Ctrl press or release: keep placement preview aligned with crosshair magnet snap
         document.addEventListener('keydown', (e) => {
             if (e.key !== 'Control' && e.key !== 'Meta' && e.key !== 'Shift') return;
-            if (this.isRectSelecting) return;
+            if (this.isRectSelecting || this._ctrlMarqueePending) return;
             this._refreshPlacementPreviewFromLastPointer({
                 ctrlKey: e.ctrlKey,
                 metaKey: e.metaKey,
@@ -1336,15 +1338,8 @@ class DrawingToolsManager {
 
             // Mousedown on canvas for rectangular selection
             const onMouseDown = (event) => {
-                // Check for Ctrl+drag to start rectangular selection
-                if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !this.currentTool) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (typeof event.stopImmediatePropagation === 'function') {
-                        event.stopImmediatePropagation();
-                    }
-                    // [debug removed]
-                    this.startRectangularSelection(event);
+                // Cursor mode: arm Ctrl+drag marquee (magnet uses Ctrl when a draw tool is armed).
+                if (this._tryArmCtrlMarqueeFromPointer(event)) {
                     return;
                 }
 
@@ -1738,6 +1733,7 @@ class DrawingToolsManager {
         if (this.isRectSelecting) {
             this.cancelRectangularSelection();
         }
+        this._cancelCtrlMarqueePending();
 
         this.currentTool = toolName;
         this.deselectAll({ forSelectionChange: true });
@@ -1799,6 +1795,7 @@ class DrawingToolsManager {
         if (this.isRectSelecting) {
             this.cancelRectangularSelection();
         }
+        this._cancelCtrlMarqueePending();
         this._clearLiveSyncPreview();
         this._cancelFreehandPreviewRaf();
         this._cancelTempPreviewRaf();
@@ -2246,17 +2243,6 @@ class DrawingToolsManager {
         // [debug removed]
         
         if (!this.currentTool) {
-            // Ctrl+drag = marquee multi-select (canvas handler only ran on empty canvas before).
-            if (event.button === 0 && (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey) {
-                event.preventDefault();
-                event.stopPropagation();
-                if (typeof event.stopImmediatePropagation === 'function') {
-                    event.stopImmediatePropagation();
-                }
-                this.startRectangularSelection(event);
-                return;
-            }
-
             // VP/AV body clicks must pass through to the canvas for panning.
             // Only resize handles should be interactive; bail early for everything else.
             {
@@ -2272,6 +2258,23 @@ class DrawingToolsManager {
             let drawingsAtPoint = resolvedSvg.drawingsAtPoint;
             const mouseX = resolvedSvg.mouseX;
             const mouseY = resolvedSvg.mouseY;
+
+            // Empty plot + Ctrl: wait for drag to show marquee (Ctrl+click on shapes still selects).
+            if (
+                (event.ctrlKey || event.metaKey) &&
+                !event.shiftKey &&
+                !event.altKey &&
+                (!drawingsAtPoint || drawingsAtPoint.length === 0)
+            ) {
+                if (this._tryArmCtrlMarqueeFromPointer(event)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    return;
+                }
+            }
 
             const stackedLinesInfo = this.findStackedLines(mouseX, mouseY, 3);
             if (stackedLinesInfo.isStacked) {
@@ -3818,8 +3821,8 @@ class DrawingToolsManager {
         // Note: magnetKeyHeld is no longer used for snap - event.metaKey/ctrlKey checked directly
         if (event.metaKey || event.ctrlKey) {
             this.magnetKeyHeld = true;
-            // Enable Ctrl+hover to select mode (only Ctrl, not Command on Mac)
-            if (event.ctrlKey && !this.currentTool) {
+            // Ctrl+hover add-to-selection only in cursor mode (not while drawing / marquee).
+            if (event.ctrlKey && this._isCursorSelectMode() && !this.isRectSelecting && !this._ctrlMarqueePending) {
                 this.ctrlSelectMode = true;
             }
         }
@@ -5586,9 +5589,7 @@ class DrawingToolsManager {
             d3.drag()
                 .clickDistance(dragClickDistance) // Keep anchored-vwap anchor drags responsive while preserving dblclick elsewhere
                 .filter(function(event) {
-                    if (self.isRectSelecting) return false;
-                    const srcEvt = (event && event.sourceEvent) ? event.sourceEvent : event;
-                    if (srcEvt && (srcEvt.ctrlKey || srcEvt.metaKey)) return false;
+                    if (self.isRectSelecting || self._ctrlMarqueePending) return false;
 
                     // Only allow drag if not currently drawing and not clicking on a handle
                     const targetSelection = d3.select(event.target);
@@ -5870,7 +5871,7 @@ class DrawingToolsManager {
 
     _startDirectMoveDrag(drawingOrDrawings, event) {
         const src = this._nativePointerEvent(event);
-        if (this.isRectSelecting || (src && (src.ctrlKey || src.metaKey))) return;
+        if (this.isRectSelecting || this._ctrlMarqueePending) return;
 
         const stopDirectMoveListeners = () => {
             if (this._directMoveMoveHandler) {
@@ -8776,6 +8777,85 @@ class DrawingToolsManager {
         }
     }
 
+    /** True when cursor mode (no armed draw tool) — Ctrl+drag may marquee-select. */
+    _isCursorSelectMode() {
+        return !this.currentTool && !this.eraserMode;
+    }
+
+    _cancelCtrlMarqueePending() {
+        if (this._ctrlMarqueePendingBound) {
+            if (this._ctrlMarqueePendingMove) {
+                document.removeEventListener('mousemove', this._ctrlMarqueePendingMove);
+            }
+            if (this._ctrlMarqueePendingUp) {
+                document.removeEventListener('mouseup', this._ctrlMarqueePendingUp);
+            }
+            if (this._ctrlMarqueePendingKeyUp) {
+                document.removeEventListener('keyup', this._ctrlMarqueePendingKeyUp);
+            }
+        }
+        this._ctrlMarqueePendingMove = null;
+        this._ctrlMarqueePendingUp = null;
+        this._ctrlMarqueePendingKeyUp = null;
+        this._ctrlMarqueePendingBound = false;
+        this._ctrlMarqueePending = null;
+    }
+
+    /**
+     * Arm Ctrl+drag marquee in cursor mode only. Ctrl+click stays click-to-select / magnet when drawing.
+     */
+    _tryArmCtrlMarqueeFromPointer(event) {
+        if (!this._isCursorSelectMode()) return false;
+        if (!event || event.button !== 0) return false;
+        if (event.shiftKey || event.altKey) return false;
+        if (!(event.ctrlKey || event.metaKey)) return false;
+
+        const native = this._nativePointerEvent(event) || event;
+        if (!Number.isFinite(native.clientX) || !Number.isFinite(native.clientY)) return false;
+
+        const [sx, sy] = this._eventCanvasLocalXY(event);
+        this._cancelCtrlMarqueePending();
+        this._ctrlMarqueePending = {
+            startLayoutX: sx,
+            startLayoutY: sy,
+            startClientX: native.clientX,
+            startClientY: native.clientY
+        };
+
+        const self = this;
+        this._ctrlMarqueePendingMove = (e) => {
+            if (!self._ctrlMarqueePending) return;
+            if (!(e.ctrlKey || e.metaKey)) {
+                self._cancelCtrlMarqueePending();
+                return;
+            }
+            const [cx, cy] = self._eventCanvasLocalXY(e);
+            const dx = cx - self._ctrlMarqueePending.startLayoutX;
+            const dy = cy - self._ctrlMarqueePending.startLayoutY;
+            if (Math.hypot(dx, dy) < 4) return;
+
+            const pending = self._ctrlMarqueePending;
+            self._cancelCtrlMarqueePending();
+            self.startRectangularSelection(e, {
+                startLayoutX: pending.startLayoutX,
+                startLayoutY: pending.startLayoutY
+            });
+        };
+        this._ctrlMarqueePendingUp = () => {
+            self._cancelCtrlMarqueePending();
+        };
+        this._ctrlMarqueePendingKeyUp = (e) => {
+            if (e.key === 'Control' || e.key === 'Meta') {
+                self._cancelCtrlMarqueePending();
+            }
+        };
+        document.addEventListener('mousemove', this._ctrlMarqueePendingMove);
+        document.addEventListener('mouseup', this._ctrlMarqueePendingUp);
+        document.addEventListener('keyup', this._ctrlMarqueePendingKeyUp);
+        this._ctrlMarqueePendingBound = true;
+        return true;
+    }
+
     /** Stop chart pan / drawing drag so Ctrl+marquee does not translate the drawings layer. */
     _abortInteractionForRectSelect() {
         if (this.isDragging) {
@@ -8884,19 +8964,26 @@ class DrawingToolsManager {
     /**
      * Start rectangular selection (Ctrl+drag)
      */
-    startRectangularSelection(event) {
+    startRectangularSelection(event, options = {}) {
         if (this.isRectSelecting) return;
+        this._cancelCtrlMarqueePending();
 
-        // Prevent default behavior and stop propagation
-        event.preventDefault();
-        event.stopPropagation();
-        if (typeof event.stopImmediatePropagation === 'function') {
-            event.stopImmediatePropagation();
+        if (event) {
+            if (typeof event.preventDefault === 'function') event.preventDefault();
+            if (typeof event.stopPropagation === 'function') event.stopPropagation();
+            if (typeof event.stopImmediatePropagation === 'function') {
+                event.stopImmediatePropagation();
+            }
         }
 
         this._abortInteractionForRectSelect();
-        
-        const [sx, sy] = this._eventCanvasLocalXY(event);
+
+        const sx = Number.isFinite(options.startLayoutX)
+            ? options.startLayoutX
+            : this._eventCanvasLocalXY(event)[0];
+        const sy = Number.isFinite(options.startLayoutY)
+            ? options.startLayoutY
+            : this._eventCanvasLocalXY(event)[1];
         this.rectSelectStart = { x: sx, y: sy };
         this.isRectSelecting = true;
         this.ctrlSelectMode = false;
@@ -8994,7 +9081,6 @@ class DrawingToolsManager {
         // Clean up
         this._unbindRectSelectDocumentListeners();
         this._clearRectSelectVisual();
-        this._abortInteractionForRectSelect();
         
         // Restore SVG pointer-events to allow chart panning
         if (this.svg) this.svg.style('pointer-events', 'none');
@@ -9013,7 +9099,7 @@ class DrawingToolsManager {
         // Clean up selection rectangle visual
         this._unbindRectSelectDocumentListeners();
         this._clearRectSelectVisual();
-        this._abortInteractionForRectSelect();
+        this._cancelCtrlMarqueePending();
         
         // Restore SVG pointer-events to allow chart panning
         if (this.svg) this.svg.style('pointer-events', 'none');

@@ -17695,7 +17695,8 @@ class Chart {
             }
             
             if (this.drag.active) {
-                if (this.drawingManager && this.drawingManager.isRectSelecting) {
+                const dm = this.drawingManager;
+                if (dm && (dm.isRectSelecting || dm._ctrlMarqueePending)) {
                     return;
                 }
                 const now = performance.now();
