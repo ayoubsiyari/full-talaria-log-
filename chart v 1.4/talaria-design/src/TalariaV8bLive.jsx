@@ -614,8 +614,8 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     strokeDasharray: dashArr,
     fill: tlStyle.bgColor,
     backgroundColor: tlStyle.bgColor,
-    showBackground: !!tlStyle.showBg,
-    borderEnabled: !!tlStyle.showBorder,
+    showBackground: tlStyle.showBg !== false,
+    borderEnabled: tlStyle.showBorder !== false,
     borderColor: tlStyle.borderColor,
     borderDasharray: V9_DASH_TO_LEGACY[tlStyle.borderType] ?? "",
     borderWidth: parseInt(tlStyle.borderWidth, 10) || 1,
@@ -2679,6 +2679,9 @@ function v9TlStylePatchFromDrawing(d) {
     ...(widthStr ? { lineWidth: widthStr } : {}),
     lineType,
     ...(s.fill ? { bgColor: s.fill } : (s.backgroundColor ? { bgColor: s.backgroundColor } : {})),
+    showBg: s.showBackground !== false,
+    showBorder: s.borderEnabled !== false,
+    ...(s.borderColor ? { borderColor: s.borderColor } : {}),
     ...(s.startStyle ? { ep1: s.startStyle } : {}),
     ...(s.endStyle ? { ep2: s.endStyle } : {}),
     ...(typeof s.extendLeft === 'boolean' ? { extendLeft: s.extendLeft } : {}),
@@ -3072,6 +3075,8 @@ function v9FreshTlStyleDefaults() {
     midLineColor: V9_DEFAULT_TL_LINE_COLOR,
     midLineType: "dashed",
     midLineWidth: "1",
+    showBg: true,
+    showBorder: true,
   };
 }
 
@@ -5780,7 +5785,7 @@ const TalariaV8bLive = () => {
     extendLeft: false, extendRight: false, priceLabels: true, timeLabels: true, flatChPrices: true,
     rangeType: "Date & Price", showInfo: false, showInfoTypes: ["Price range"],
     showBorder: true, borderColor: "#8C8C8C", borderType: "dashed", borderWidth: "1",
-    showBg: false, labelColor: "#ffffff", labelFontSize: "12", labelBg: true, labelBgColor: "rgba(0,0,0,0.6)",
+    showBg: true, labelColor: "#ffffff", labelFontSize: "12", labelBg: true, labelBgColor: "rgba(0,0,0,0.6)",
     textSize: 14, textColor: "#ffffff", textItalic: false, textBold: false, textContent: "",
     labelLineType: "solid", labelLineWidth: "1",
     vertAlign: "top", horizAlign: "center",
@@ -10803,7 +10808,9 @@ const TalariaV8bLive = () => {
           lineWidth: String(sPartial.strokeWidth ?? prev.lineWidth),
           lineType: LEGACY_DASH_TO_V9[(sPartial.dashArray ?? sPartial.strokeDasharray ?? '')] || prev.lineType,
           bgColor: sPartial.fill || sPartial.backgroundColor || prev.bgColor,
-          showBg: typeof sPartial.showBackground === 'boolean' ? sPartial.showBackground : prev.showBg,
+          showBg: typeof sPartial.showBackground === 'boolean'
+            ? sPartial.showBackground
+            : (sPartial.fill && sPartial.fill !== 'none' && sPartial.fill !== 'transparent' ? true : prev.showBg),
           showBorder: typeof sPartial.borderEnabled === 'boolean' ? sPartial.borderEnabled : prev.showBorder,
           borderColor: sPartial.borderColor || prev.borderColor,
           borderType: LEGACY_DASH_TO_V9[(sPartial.borderDasharray || '')] || prev.borderType,
@@ -10812,8 +10819,8 @@ const TalariaV8bLive = () => {
           ep2: sPartial.endStyle || prev.ep2,
           extendLeft: !!sPartial.extendLeft,
           extendRight: !!sPartial.extendRight,
-          priceLabels: sPartial.showPriceLabel !== false,
-          timeLabels: sPartial.showTimeLabel !== false,
+          priceLabels: typeof sPartial.showPriceLabel === 'boolean' ? sPartial.showPriceLabel : prev.priceLabels,
+          timeLabels: typeof sPartial.showTimeLabel === 'boolean' ? sPartial.showTimeLabel : prev.timeLabels,
           rangeType: sPartial.rangeMode === 'price' ? 'Price'
                    : sPartial.rangeMode === 'time' ? 'Date and time'
                    : (prev.rangeType || 'Date & Price'),
@@ -13665,8 +13672,12 @@ const TalariaV8bLive = () => {
                     })()}</>}
                     {/* ── Background row (inside grid) ── */}
                     {hasBg && <>
-                      <span style={{ fontSize:12, color:c.ts, padding:"8px 0", alignSelf:"center" }}>Background</span>
-                      <div style={{ padding:"8px 0" }}>{colorSwatch("tlBgColor", tlStyle.bgColor)}</div>
+                      <div style={{ padding:"8px 0", alignSelf:"center" }}>
+                        {TlChk(tlStyle.showBg, "tlchk-shapeBg", "Background", () => setTlStyle(s => ({ ...s, showBg: !s.showBg })))}
+                      </div>
+                      <div style={{ padding:"8px 0", opacity:tlStyle.showBg ? 1 : 0.38, pointerEvents:tlStyle.showBg ? "auto" : "none", transition:"opacity 0.15s" }}>
+                        {colorSwatch("tlBgColor", tlStyle.bgColor)}
+                      </div>
                       <div/><div/>{(showEp||isPatternTool) && <div/>}
                     </>}
                   </div>}
@@ -14137,8 +14148,12 @@ const TalariaV8bLive = () => {
                   })()}
                   {/* ── Background row (no-grid tools) ── */}
                   {hasBg && !showLine && !isChannel && !isPitchfork && <div style={{ display:"grid", gridTemplateColumns:"1fr auto", alignItems:"center" }}>
-                    <span style={{ fontSize:12, color:c.ts, padding:"8px 0" }}>{["arrowUp","arrowDn"].includes(tlSubTool.icon)?"Arrow":"Background"}</span>
-                    <div style={{ padding:"8px 0", marginRight:120 }}>{colorSwatch("tlBgColor", tlStyle.bgColor)}</div>
+                    <div style={{ padding:"8px 0" }}>
+                      {TlChk(tlStyle.showBg, "tlchk-shapeBg2", ["arrowUp","arrowDn"].includes(tlSubTool.icon) ? "Arrow" : "Background", () => setTlStyle(s => ({ ...s, showBg: !s.showBg })))}
+                    </div>
+                    <div style={{ padding:"8px 0", marginRight:120, opacity:tlStyle.showBg ? 1 : 0.38, pointerEvents:tlStyle.showBg ? "auto" : "none", transition:"opacity 0.15s" }}>
+                      {colorSwatch("tlBgColor", tlStyle.bgColor)}
+                    </div>
                   </div>}
                 </>);
               })()}

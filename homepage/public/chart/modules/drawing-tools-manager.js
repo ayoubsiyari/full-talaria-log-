@@ -3692,6 +3692,7 @@ class DrawingToolsManager {
         if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return point;
 
         const candleIndex = Math.round(point.x);
+        // Future/past empty chart (beyond loaded bars): keep free placement, do not clamp to last candle.
         if (candleIndex < 0 || candleIndex > data.length - 1) return point;
 
         const idx = candleIndex;
@@ -3850,6 +3851,8 @@ class DrawingToolsManager {
         const isContinuousTool = this._usesContinuousDataCoords(activeToolType);
         const useFractionalBarIndex = isContinuousTool || !this._snapPlacementXToBarCenter(event);
 
+        // Pass chart instance for accurate index calculation.
+        // Fractional bar index allows anchors in empty chart space (future/past bars), TradingView-style.
         let point = CoordinateUtils.screenToData(screenX, screenY, {
             xScale: this.chart.xScale,
             yScale: this.chart.yScale

@@ -629,13 +629,19 @@ class CircleTool extends BaseDrawing {
         const cx = x1;
         const cy = y1;
 
+        const fillPaint =
+            this.style.showBackground === false
+                ? 'none'
+                : (this.style.fill ?? this.style.backgroundColor ?? this.style.fill);
+        const borderOn = !this.style || this.style.borderEnabled !== false;
+
         this.group.append('circle')
             .attr('class', 'shape-fill')
             .attr('cx', cx)
             .attr('cy', cy)
             .attr('r', radius)
             .attr('stroke', 'none')
-            .attr('fill', this.style.fill)
+            .attr('fill', fillPaint)
             .attr('opacity', this.style.opacity)
             .style('pointer-events', 'none')
             .style('cursor', 'default');
@@ -658,19 +664,21 @@ class CircleTool extends BaseDrawing {
             const pA = pts[i];
             const pB = pts[(i + 1) % segments];
 
-            this.group.append('line')
-                .attr('class', 'shape-border')
-                .attr('x1', pA.x)
-                .attr('y1', pA.y)
-                .attr('x2', pB.x)
-                .attr('y2', pB.y)
-                .attr('stroke', this.style.stroke)
-                .attr('stroke-width', this.style.strokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || '')
-                .attr('opacity', this.style.opacity)
-                .attr('data-original-width', this.style.strokeWidth)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+            if (borderOn) {
+                this.group.append('line')
+                    .attr('class', 'shape-border')
+                    .attr('x1', pA.x)
+                    .attr('y1', pA.y)
+                    .attr('x2', pB.x)
+                    .attr('y2', pB.y)
+                    .attr('stroke', this.style.stroke)
+                    .attr('stroke-width', this.style.strokeWidth)
+                    .attr('stroke-dasharray', this.style.strokeDasharray || '')
+                    .attr('opacity', this.style.opacity)
+                    .attr('data-original-width', this.style.strokeWidth)
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'move');
+            }
 
             this.group.append('line')
                 .attr('class', 'shape-border-hit')
@@ -793,26 +801,34 @@ class RotatedRectangleTool extends BaseDrawing {
                           L ${corners[2].x} ${corners[2].y} 
                           L ${corners[3].x} ${corners[3].y} Z`;
 
+        const fillPaint =
+            this.style.showBackground === false
+                ? 'none'
+                : (this.style.fill ?? this.style.backgroundColor ?? 'rgba(156, 39, 176, 0.1)');
+        const borderOn = !this.style || this.style.borderEnabled !== false;
+
         // Draw fill
         this.group.append('path')
             .attr('class', 'shape-fill')
             .attr('d', pathData)
-            .attr('fill', this.style.fill)
+            .attr('fill', fillPaint)
             .attr('stroke', 'none')
             .attr('opacity', this.style.opacity)
             .style('pointer-events', 'none');
 
         // Draw border
-        this.group.append('path')
-            .attr('class', 'shape-border')
-            .attr('d', pathData)
-            .attr('fill', 'transparent')
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', this.style.strokeWidth)
-            .attr('opacity', this.style.opacity)
-            .attr('data-original-width', this.style.strokeWidth)
-            .style('pointer-events', 'visibleStroke')
-            .style('cursor', 'move');
+        if (borderOn) {
+            this.group.append('path')
+                .attr('class', 'shape-border')
+                .attr('d', pathData)
+                .attr('fill', 'transparent')
+                .attr('stroke', this.style.stroke)
+                .attr('stroke-width', this.style.strokeWidth)
+                .attr('opacity', this.style.opacity)
+                .attr('data-original-width', this.style.strokeWidth)
+                .style('pointer-events', 'visibleStroke')
+                .style('cursor', 'move');
+        }
 
         // Invisible wider hit area for easier selection
         this.group.append('path')

@@ -59,6 +59,19 @@ function applyRectangleHorizontalExtend(x1, x2, scales, style) {
     return { x1: px1, x2: px2 };
 }
 
+/** Respect V9 / settings `showBackground` (default on when unset). */
+function shapeBackgroundFill(style, defaultFill) {
+    if (style && style.showBackground === false) return 'none';
+    const raw = style && (style.fill ?? style.backgroundColor);
+    if (raw === 'none' || raw === 'transparent') return raw || 'none';
+    return raw || defaultFill;
+}
+
+/** Respect V9 / settings `borderEnabled` (default on when unset). */
+function shapeBorderVisible(style) {
+    return !style || style.borderEnabled !== false;
+}
+
 /** Axis-aligned box bounds in data space (top = higher price). */
 function boxBoundsFromPoints(points) {
     const p1 = points[0];
@@ -264,6 +277,9 @@ class RectangleTool extends BaseDrawing {
             return null;
         }
 
+        const fillPaint = shapeBackgroundFill(this.style, this.style.fill);
+        const borderOn = shapeBorderVisible(this.style);
+
         this.group.append('rect')
             .attr('class', 'shape-fill')
             .attr('x', x)
@@ -271,7 +287,7 @@ class RectangleTool extends BaseDrawing {
             .attr('width', width)
             .attr('height', height)
             .attr('stroke', 'none')
-            .attr('fill', this.style.fill)
+            .attr('fill', fillPaint)
             .attr('opacity', this.style.opacity)
             .attr('rx', this.style.borderRadius || 0)
             .style('pointer-events', 'none')
@@ -286,22 +302,23 @@ class RectangleTool extends BaseDrawing {
         ];
         
         edges.forEach(edge => {
-            // Visible line with scaled stroke width
-            this.group.append('line')
-                .attr('class', 'shape-border')
-                .attr('x1', edge.x1)
-                .attr('y1', edge.y1)
-                .attr('x2', edge.x2)
-                .attr('y2', edge.y2)
-                .attr('stroke', this.style.stroke)
-                .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || '')
-                .attr('opacity', this.style.opacity)
-                .attr('data-edge', edge.name)
-                .attr('data-original-width', this.style.strokeWidth)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
-            
+            if (borderOn) {
+                this.group.append('line')
+                    .attr('class', 'shape-border')
+                    .attr('x1', edge.x1)
+                    .attr('y1', edge.y1)
+                    .attr('x2', edge.x2)
+                    .attr('y2', edge.y2)
+                    .attr('stroke', this.style.stroke)
+                    .attr('stroke-width', scaledStrokeWidth)
+                    .attr('stroke-dasharray', this.style.strokeDasharray || '')
+                    .attr('opacity', this.style.opacity)
+                    .attr('data-edge', edge.name)
+                    .attr('data-original-width', this.style.strokeWidth)
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'move');
+            }
+
             this.group.append('line')
                 .attr('class', 'shape-border-hit')
                 .attr('x1', edge.x1)
@@ -626,6 +643,9 @@ class EllipseTool extends BaseDrawing {
         const rx = Math.abs(x2 - x1) / 2;
         const ry = Math.abs(scales.yScale(p2.y) - scales.yScale(p1.y)) / 2;
 
+        const fillPaint = shapeBackgroundFill(this.style, this.style.fill);
+        const borderOn = shapeBorderVisible(this.style);
+
         this.group.append('ellipse')
             .attr('class', 'shape-fill')
             .attr('cx', cx)
@@ -633,7 +653,7 @@ class EllipseTool extends BaseDrawing {
             .attr('rx', rx)
             .attr('ry', ry)
             .attr('stroke', 'none')
-            .attr('fill', this.style.fill)
+            .attr('fill', fillPaint)
             .attr('opacity', this.style.opacity)
             .style('pointer-events', 'none')
             .style('cursor', 'default');
@@ -656,19 +676,21 @@ class EllipseTool extends BaseDrawing {
             const pA = pts[i];
             const pB = pts[(i + 1) % segments];
 
-            this.group.append('line')
-                .attr('class', 'shape-border')
-                .attr('x1', pA.x)
-                .attr('y1', pA.y)
-                .attr('x2', pB.x)
-                .attr('y2', pB.y)
-                .attr('stroke', this.style.stroke)
-                .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || '')
-                .attr('opacity', this.style.opacity)
-                .attr('data-original-width', this.style.strokeWidth)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+            if (borderOn) {
+                this.group.append('line')
+                    .attr('class', 'shape-border')
+                    .attr('x1', pA.x)
+                    .attr('y1', pA.y)
+                    .attr('x2', pB.x)
+                    .attr('y2', pB.y)
+                    .attr('stroke', this.style.stroke)
+                    .attr('stroke-width', scaledStrokeWidth)
+                    .attr('stroke-dasharray', this.style.strokeDasharray || '')
+                    .attr('opacity', this.style.opacity)
+                    .attr('data-original-width', this.style.strokeWidth)
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'move');
+            }
 
             this.group.append('line')
                 .attr('class', 'shape-border-hit')
