@@ -2015,6 +2015,26 @@ function v9FibTzDefaultLevelsTl() {
   ];
 }
 
+/** Fib Time Zone stores levels on `drawing.levels`, `drawing.fibNumbers`, or `style.*`. */
+function v9ChartFibTzLevelsRaw(d) {
+  if (!d) return null;
+  if (Array.isArray(d.levels) && d.levels.length) return d.levels;
+  if (Array.isArray(d.fibNumbers) && d.fibNumbers.length) return d.fibNumbers;
+  const s = d.style;
+  if (s) {
+    if (Array.isArray(s.levels) && s.levels.length) return s.levels;
+    if (Array.isArray(s.fibNumbers) && s.fibNumbers.length) return s.fibNumbers;
+  }
+  return null;
+}
+
+function v9FibTzLevelsBridgeSig(rows) {
+  if (!Array.isArray(rows) || !rows.length) return "";
+  return rows
+    .map((l) => `${l.value}|${l.on ? 1 : 0}|${l.color}|${l.type}|${l.width}`)
+    .join(";");
+}
+
 function v9FibTzLevelsChartToTl(levels) {
   if (!Array.isArray(levels) || !levels.length) return undefined;
   return levels.map((lv) => {
@@ -2080,7 +2100,7 @@ function v9ResolveFibTzLevelRowsForDrawing(d, tlStyle) {
   if (Array.isArray(tlStyle?.fibTzLevels) && tlStyle.fibTzLevels.length) {
     return tlStyle.fibTzLevels;
   }
-  const fromDrawing = v9FibTzLevelsChartToTl(d.levels);
+  const fromDrawing = v9FibTzLevelsChartToTl(v9ChartFibTzLevelsRaw(d));
   if (fromDrawing && fromDrawing.length) return fromDrawing;
   return v9FibTzDefaultLevelsTl();
 }
@@ -2120,14 +2140,13 @@ function v9ApplyFibChannelFromTlStyle(d, tlStyle, widthFallback) {
 
 function v9ApplyFibTimeZoneFromTlStyle(d, tlStyle, widthFallback) {
   if (!d || !d.style || !v9IsFibTimeZoneType(d.type)) return;
-  const levelRows = v9ResolveFibTzLevelRowsForDrawing(d, tlStyle);
-  d.levels = v9TlFibTzLevelsToChart(levelRows);
-  d.fibNumbers = d.levels;
-  if (d.style) {
-    d.style.levels = d.levels;
-    d.style.fibNumbers = d.levels;
-  }
+  const levelRows = v9FibTzLevelsRowsForUi(tlStyle);
+  const chartLevels = v9TlFibTzLevelsToChart(levelRows);
+  d.levels = chartLevels;
+  d.fibNumbers = chartLevels;
   const st = d.style;
+  st.levels = chartLevels;
+  st.fibNumbers = chartLevels;
   st.stroke = tlStyle.lineColor;
   st.strokeWidth =
     parseInt(String(tlStyle.lineWidth), 10) ||
@@ -2841,7 +2860,7 @@ function v9TlStylePatchFromDrawing(d) {
       : {}),
     ...(d.type === "fib-timezone"
       ? (() => {
-          const tz = v9FibTzLevelsChartToTl(d.levels);
+          const tz = v9FibTzLevelsChartToTl(v9ChartFibTzLevelsRaw(d));
           return {
             fibTzLevels: tz && tz.length ? tz : v9FibTzDefaultLevelsTl(),
             lineColor: s.stroke || stroke,
@@ -3049,11 +3068,16 @@ function v9MergeHydratePatchFromLegacy(dm, legacy) {
         : v9FibChannelDefaultLevelsTl();
   }
   if (v9IsFibTimeZoneType(legacy)) {
-    const savedLevels = Array.isArray(saved.levels)
-      ? saved.levels
-      : Array.isArray(styleForPatch.levels)
-        ? styleForPatch.levels
-        : null;
+    const savedLevels =
+      Array.isArray(saved.levels) && saved.levels.length
+        ? saved.levels
+        : Array.isArray(saved.fibNumbers) && saved.fibNumbers.length
+          ? saved.fibNumbers
+          : Array.isArray(styleForPatch.levels) && styleForPatch.levels.length
+            ? styleForPatch.levels
+            : Array.isArray(styleForPatch.fibNumbers) && styleForPatch.fibNumbers.length
+              ? styleForPatch.fibNumbers
+              : null;
     out.fibTzLevels =
       savedLevels && savedLevels.length
         ? v9FibTzLevelsChartToTl(savedLevels)
@@ -11674,6 +11698,7 @@ const TalariaV8bLive = () => {
     tlStyle.fibExtendLines,
     tlStyle.fibFanTimeLevels,
     tlStyle.fibTzLevels,
+    v9FibTzLevelsBridgeSig(tlStyle.fibTzLevels),
     tlStyle.fibGrid,
     tlStyle.fibGridColor,
     tlStyle.fibGridType,
@@ -14320,6 +14345,22 @@ const TalariaV8bLive = () => {
                       </div>
                     </React.Fragment>;
                   })}
+                </div>
+                <div style={{ display:"flex", gap:8, padding:"8px 0" }}>
+                  <div onClick={e=>{e.stopPropagation();setTlStyle(s=>v9PatchFibTzLevelsInStyle(s, rows=>[...rows,{on:true,value:String(rows.length),color:"#787B86",type:"solid",width:"1"}]));}}
+                    onMouseEnter={()=>setHov("fibTzAdd")} onMouseLeave={()=>setHov(null)}
+                    style={{ flex:1, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
+                             border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibTzAdd"?c.hv2:"transparent",
+                             transition:"background 0.1s" }}>
+                    <span style={{ fontSize:11, color:c.ts }}>+ Add Level</span>
+                  </div>
+                  <div onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibTzLevels: v9FibTzDefaultLevelsTl()}));}}
+                    onMouseEnter={()=>setHov("fibTzReset")} onMouseLeave={()=>setHov(null)}
+                    style={{ width:60, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
+                             border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibTzReset"?c.hv2:"transparent",
+                             transition:"background 0.1s" }}>
+                    <span style={{ fontSize:11, color:c.ts }}>Reset</span>
+                  </div>
                 </div>
                 <div style={{ display:"flex", alignItems:"center", padding:"10px 0 4px" }}>
                   <span style={{ fontSize:12, color:c.ts }}>Labels</span>
