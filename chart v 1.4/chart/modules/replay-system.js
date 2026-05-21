@@ -2845,6 +2845,54 @@ class ReplaySystem {
     }
 
     /**
+     * Calculate the previous index based on selected step timeframe (mirror of calculateNextIndex).
+     */
+    calculatePreviousIndex() {
+        const minIdx = this.sessionStartIndex || 0;
+        if (this.currentIndex <= minIdx) {
+            return minIdx;
+        }
+
+        let selectedTimeframe = this.stepTimeframeOverride || null;
+        if (selectedTimeframe) {
+            selectedTimeframe = String(selectedTimeframe).trim();
+        }
+
+        const hiddenSelect = this.timeframeSelect || document.getElementById('replayTimeframe');
+        if (!selectedTimeframe && hiddenSelect && hiddenSelect.value) {
+            selectedTimeframe = hiddenSelect.value;
+        }
+
+        if (!selectedTimeframe) {
+            const selectedOption = document.querySelector('#timeframeMenu .timeframe-option.selected');
+            if (selectedOption) {
+                selectedTimeframe = selectedOption.getAttribute('data-value');
+            }
+        }
+
+        if (selectedTimeframe === 'sync') {
+            selectedTimeframe = this.chart.currentTimeframe;
+        }
+
+        if (!selectedTimeframe) {
+            return Math.max(this.currentIndex - 1, minIdx);
+        }
+
+        const tfMs = this.timeframeToMs(selectedTimeframe);
+        if (!tfMs) {
+            return Math.max(this.currentIndex - 1, minIdx);
+        }
+
+        let rawCandleIntervalMs = 60000;
+        if (this.fullRawData.length > 1) {
+            rawCandleIntervalMs = this.fullRawData[1].t - this.fullRawData[0].t;
+        }
+
+        const candlesToSkip = Math.max(1, Math.round(tfMs / rawCandleIntervalMs));
+        return Math.max(minIdx, this.currentIndex - candlesToSkip);
+    }
+
+    /**
      * Dynamic prefetch threshold (in raw candles) for forward replay.
      * Keeps enough buffered candles based on current replay speed so
      * pan-loading can finish before playback reaches the edge.
@@ -4238,82 +4286,26 @@ class ReplaySystem {
         if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) {
             return;
         }
-        
+        if (this._timeframeChanging) {
+            return;
+        }
+
         if (this.currentIndex >= this.fullRawData.length - 1) {
+            if (this.tryRequestForwardDataProbe()) {
+                return;
+            }
             return;
         }
 
-        
-        let selectedTimeframe = this.timeframeSelect ? this.timeframeSelect.value : null;
-        
-        // If "sync" is selected, use the chart's current timeframe
-        if (selectedTimeframe === 'sync') {
-            selectedTimeframe = this.chart.currentTimeframe;
-        }
-        
-        
-        if (!selectedTimeframe) {
-            // No timeframe selector - advance by one raw candle
-            this.currentIndex++;
-            if (this.fullRawData[this.currentIndex]) {
-                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-                this.tickElapsedMs = 0;
+        const targetIndex = this.calculateNextIndex();
+        if (targetIndex <= this.currentIndex) {
+            if (this.tryRequestForwardDataProbe()) {
+                return;
             }
-            this.updateChartData(this.autoScrollEnabled);
             return;
         }
 
-        // Resample fullRawData to selected timeframe
-        const resampledData = this.chart.resampleData(this.fullRawData, selectedTimeframe);
-        
-        // Find current position timestamp
-        const currentTimestamp = this.fullRawData[this.currentIndex].t;
-        
-        // Find which resampled candle we're currently in or past
-        let currentResampledIndex = -1;
-        for (let i = 0; i < resampledData.length; i++) {
-            if (resampledData[i].t <= currentTimestamp) {
-                currentResampledIndex = i;
-                // Keep going to find the last one we're in or past
-            } else {
-                break;
-            }
-        }
-        
-        
-        if (currentResampledIndex === -1 || currentResampledIndex >= resampledData.length - 1) {
-            // Already at or past last candle of selected timeframe
-            this.currentIndex = this.fullRawData.length - 1;
-            if (this.fullRawData[this.currentIndex]) {
-                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-                this.tickElapsedMs = 0;
-            }
-            this.updateChartData(this.autoScrollEnabled);
-            return;
-        }
-        
-        // Move to the END of the next resampled candle
-        // Find the last raw candle before the candle AFTER next starts
-        const nextResampledIndex = currentResampledIndex + 1;
-        const nextNextIndex = nextResampledIndex + 1;
-        
-        let targetIndex;
-        if (nextNextIndex < resampledData.length) {
-            // Find last raw candle before the next-next resampled candle starts
-            const boundaryTimestamp = resampledData[nextNextIndex].t;
-            targetIndex = this.fullRawData.length - 1; // default to last
-            for (let i = this.currentIndex + 1; i < this.fullRawData.length; i++) {
-                if (this.fullRawData[i].t >= boundaryTimestamp) {
-                    targetIndex = i - 1;
-                    break;
-                }
-            }
-        } else {
-            // Next is the last resampled candle, go to end
-            targetIndex = this.fullRawData.length - 1;
-        }
-        
-        this.currentIndex = Math.max(this.currentIndex + 1, targetIndex);
+        this.currentIndex = targetIndex;
         if (this.fullRawData[this.currentIndex]) {
             this.replayTimestamp = this.fullRawData[this.currentIndex].t;
             this.tickElapsedMs = 0;
@@ -4339,64 +4331,12 @@ class ReplaySystem {
             return;
         }
 
-        let selectedTimeframe = this.timeframeSelect ? this.timeframeSelect.value : null;
-        
-        // If "sync" is selected, use the chart's current timeframe
-        if (selectedTimeframe === 'sync') {
-            selectedTimeframe = this.chart.currentTimeframe;
-        }
-        
-        
-        if (!selectedTimeframe) {
-            // No timeframe selector - go back by one raw candle
-            this.currentIndex = Math.max(this.currentIndex - 1, minIdx);
-            if (this.fullRawData[this.currentIndex]) {
-                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-                this.tickElapsedMs = 0;
-            }
-            this.updateChartData(this.autoScrollEnabled);
+        const targetIndex = this.calculatePreviousIndex();
+        if (targetIndex >= this.currentIndex) {
             return;
         }
 
-        // Resample fullRawData to selected timeframe
-        const resampledData = this.chart.resampleData(this.fullRawData, selectedTimeframe);
-        
-        // Find current position timestamp
-        const currentTimestamp = this.fullRawData[this.currentIndex].t;
-        
-        // Find which resampled candle we're currently in or past
-        let currentResampledIndex = -1;
-        for (let i = 0; i < resampledData.length; i++) {
-            if (resampledData[i].t <= currentTimestamp) {
-                currentResampledIndex = i;
-            } else {
-                break;
-            }
-        }
-        
-        
-        if (currentResampledIndex === -1 || currentResampledIndex <= 0) {
-            this.currentIndex = minIdx;
-            if (this.fullRawData[this.currentIndex]) {
-                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-                this.tickElapsedMs = 0;
-            }
-            this.updateChartData(this.autoScrollEnabled);
-            return;
-        }
-        
-        // Move to the END of the previous resampled candle
-        const currentResampledStart = resampledData[currentResampledIndex].t;
-        
-        let targetIndex = minIdx;
-        for (let i = this.currentIndex - 1; i >= minIdx; i--) {
-            if (this.fullRawData[i].t < currentResampledStart) {
-                targetIndex = i;
-                break;
-            }
-        }
-        
-        this.currentIndex = Math.max(targetIndex, minIdx);
+        this.currentIndex = targetIndex;
         if (this.fullRawData[this.currentIndex]) {
             this.replayTimestamp = this.fullRawData[this.currentIndex].t;
             this.tickElapsedMs = 0;
