@@ -20696,7 +20696,10 @@ class Chart {
             shortcut: '⌘ V',
             onClick: async () => {
                 if (this.drawingManager && this.drawingManager.clipboardDrawing && typeof this.drawingManager.pasteDrawing === 'function') {
-                    this.drawingManager.pasteDrawing();
+                    const anchorPoint = (typeof this.drawingManager.getDataPointAtClient === 'function')
+                        ? this.drawingManager.getDataPointAtClient(clientX, clientY)
+                        : null;
+                    this.drawingManager.pasteDrawing(anchorPoint);
                     this.showNotification('Drawing pasted ✓');
                     this.hideContextMenu();
                     return;

@@ -6643,9 +6643,60 @@ class DrawingToolsManager {
     }
 
     /**
-     * Create a new drawing instance from serialized JSON, with a small positional offset.
+     * Data coordinates at viewport client position (no magnet snap; for paste placement).
      */
-    _createDrawingFromSerializedJson(sourceJson, offset = {}) {
+    getDataPointAtClient(clientX, clientY) {
+        if (!this.chart || !this.chart.yScale || typeof this.chart.yScale.invert !== 'function') {
+            return null;
+        }
+
+        let [screenX, screenY] = this._clientXYToLayoutXY(clientX, clientY);
+        const m = this.chart.margin;
+        if (m) {
+            const minX = m.l;
+            const maxX = this.chart.w - m.r;
+            const maxY = this.chart.h - m.b;
+            screenX = Math.max(minX, Math.min(maxX, screenX));
+            screenY = Math.max(0, Math.min(maxY, screenY));
+        }
+
+        const point = CoordinateUtils.screenToData(screenX, screenY, {
+            xScale: this.chart.xScale,
+            yScale: this.chart.yScale
+        }, this.chart, true);
+
+        if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+            return null;
+        }
+        return point;
+    }
+
+    /**
+     * Move all points so the shape centroid lands on anchorPoint.
+     */
+    _translateDrawingPointsToAnchor(points, anchorPoint) {
+        if (!Array.isArray(points) || !points.length || !anchorPoint) return points || [];
+
+        const valid = points.filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+        if (!valid.length) return points;
+
+        const cx = valid.reduce((sum, p) => sum + p.x, 0) / valid.length;
+        const cy = valid.reduce((sum, p) => sum + p.y, 0) / valid.length;
+        const dx = anchorPoint.x - cx;
+        const dy = anchorPoint.y - cy;
+
+        return points.map(p => ({
+            ...p,
+            x: Number.isFinite(p.x) ? p.x + dx : p.x,
+            y: Number.isFinite(p.y) ? p.y + dy : p.y
+        }));
+    }
+
+    /**
+     * Create a new drawing instance from serialized JSON.
+     * Uses anchorPoint for paste-at-cursor, or a small offset for clone.
+     */
+    _createDrawingFromSerializedJson(sourceJson, options = {}) {
         const jsonForFrom = this._prepareDrawingJsonForInstantiation(sourceJson);
         const toolInfo = this.toolRegistry[jsonForFrom.type];
         if (!toolInfo) {
@@ -6658,18 +6709,27 @@ class DrawingToolsManager {
 
         newDrawing.id = generateUUID();
         newDrawing.chart = this.chart;
+        newDrawing.points = newDrawing.points || [];
 
-        const candleOffset = Number.isFinite(offset.candleOffset) ? offset.candleOffset : 3;
-        const priceOffsetRatio = Number.isFinite(offset.priceOffsetRatio) ? offset.priceOffsetRatio : 0.015;
-        const priceRange = this.chart && this.chart.yScale ? this.chart.yScale.domain() : [0, 1];
-        const domainSpan = priceRange[1] - priceRange[0];
-        const priceOffset = Number.isFinite(domainSpan) && domainSpan !== 0 ? domainSpan * priceOffsetRatio : 0;
+        if (
+            options.anchorPoint &&
+            Number.isFinite(options.anchorPoint.x) &&
+            Number.isFinite(options.anchorPoint.y)
+        ) {
+            newDrawing.points = this._translateDrawingPointsToAnchor(newDrawing.points, options.anchorPoint);
+        } else {
+            const candleOffset = Number.isFinite(options.candleOffset) ? options.candleOffset : 3;
+            const priceOffsetRatio = Number.isFinite(options.priceOffsetRatio) ? options.priceOffsetRatio : 0.015;
+            const priceRange = this.chart && this.chart.yScale ? this.chart.yScale.domain() : [0, 1];
+            const domainSpan = priceRange[1] - priceRange[0];
+            const priceOffset = Number.isFinite(domainSpan) && domainSpan !== 0 ? domainSpan * priceOffsetRatio : 0;
 
-        newDrawing.points = (newDrawing.points || []).map(p => ({
-            ...p,
-            x: Number.isFinite(p.x) ? p.x + candleOffset : p.x,
-            y: Number.isFinite(p.y) && priceOffset !== 0 ? p.y - priceOffset : p.y
-        }));
+            newDrawing.points = newDrawing.points.map(p => ({
+                ...p,
+                x: Number.isFinite(p.x) ? p.x + candleOffset : p.x,
+                y: Number.isFinite(p.y) && priceOffset !== 0 ? p.y - priceOffset : p.y
+            }));
+        }
 
         return newDrawing;
     }
@@ -6693,19 +6753,25 @@ class DrawingToolsManager {
     }
     
     /**
-     * Paste drawing from clipboard
+     * Paste drawing from clipboard at optional chart data anchor (e.g. right-click position).
      */
-    pasteDrawing() {
+    pasteDrawing(anchorPoint) {
         if (!this.clipboardDrawing) {
             // [debug removed]
             return;
         }
         
         try {
-            const newDrawing = this._createDrawingFromSerializedJson(this.clipboardDrawing, {
-                candleOffset: 1,
-                priceOffsetRatio: 0.02
-            });
+            const pasteAnchor = anchorPoint &&
+                Number.isFinite(anchorPoint.x) &&
+                Number.isFinite(anchorPoint.y)
+                ? anchorPoint
+                : null;
+
+            const newDrawing = this._createDrawingFromSerializedJson(this.clipboardDrawing, pasteAnchor
+                ? { anchorPoint: pasteAnchor }
+                : { candleOffset: 1, priceOffsetRatio: 0.02 }
+            );
             if (!newDrawing) return;
 
             this.addDrawing(newDrawing);
