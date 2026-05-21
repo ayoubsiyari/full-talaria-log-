@@ -17547,15 +17547,10 @@ class Chart {
         this.canvas.addEventListener('mousedown', e => {
             if (this.tool) return;
 
-            const isMiddlePan = e.button === 1;
-            if (isMiddlePan) {
-                e.preventDefault();
-            }
-
             const [mx, my] = this._eventCanvasLocalXY(e);
             const mode = detectCursorMode(mx, my);
 
-            if (this.drawingManager && this.drawingManager.currentTool && !isMiddlePan) {
+            if (this.drawingManager && this.drawingManager.currentTool) {
                 if (mode !== 'priceAxis' && mode !== 'timeAxis' && mode !== 'separatePanelAxis') {
                     return;
                 }
@@ -18052,11 +18047,6 @@ class Chart {
         // Add document-level mouseup to catch releases outside canvas/axis zones
         // This prevents stuck drag state when mouse is released outside the chart area
         document.addEventListener('mouseup', handleMouseUp);
-
-        // Suppress browser auto-scroll on middle-click while panning with a drawing tool armed.
-        this.canvas.addEventListener('auxclick', (e) => {
-            if (e.button === 1) e.preventDefault();
-        });
         
         this.canvas.addEventListener('mouseleave', (e) => {
             const hasPressedButton = !!(e && typeof e.buttons === 'number' && e.buttons !== 0);

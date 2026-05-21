@@ -1233,15 +1233,7 @@ class DrawingToolsManager {
         };
         
         // Mouse events for drawing
-        svg.on('mousedown.drawing', (event) => {
-            if (event.button === 1) {
-                event.preventDefault();
-                if (typeof event.stopPropagation === 'function') event.stopPropagation();
-                this._forwardPointerEventToChartCanvas(event);
-                return;
-            }
-            this.handleMouseDown(event);
-        });
+        svg.on('mousedown.drawing', (event) => this.handleMouseDown(event));
         svg.on('mousemove.drawing', (event) => this.handleMouseMove(event));
         svg.on('mouseup.drawing', (event) => this.handleMouseUp(event));
 
@@ -1670,7 +1662,6 @@ class DrawingToolsManager {
 
             const onCanvasMouseMove = (event) => {
                 if (!this.currentTool) return;
-                if (!this._isPrimaryDrawButtonDown(event)) return;
                 if (this._isPointerOverChartAxis(event)) return;
                 const drawingActive = !!(this.drawingState && this.drawingState.isDrawing);
                 if (drawingActive || this.isDrawingPath || this.isDraggingFirstTwo) {
@@ -1681,7 +1672,6 @@ class DrawingToolsManager {
 
             if (!this._docDrawMouseUpBound) {
                 this._docDrawMouseUpBound = (event) => {
-                    if (event && event.button !== undefined && event.button !== 0) return;
                     if (!this.isDrawingPath && !this.isDraggingFirstTwo) return;
                     if (!(this.drawingState && this.drawingState.isDrawing)) return;
                     this.handleMouseUp(event);
@@ -1696,7 +1686,6 @@ class DrawingToolsManager {
                 }
                 const onWrapperDrawMove = (event) => {
                     if (!this.currentTool) return;
-                    if (!this._isPrimaryDrawButtonDown(event)) return;
                     if (this._isPointerOverChartAxis(event)) return;
                     const drawingActive = !!(this.drawingState && this.drawingState.isDrawing);
                     if (drawingActive || this.isDrawingPath || this.isDraggingFirstTwo) {
@@ -2154,10 +2143,6 @@ class DrawingToolsManager {
     handleMouseDown(event) {
         // Ignore right-click - handled by contextmenu event
         if (event.button === 2) {
-            return;
-        }
-        // Middle-click pans the chart (forwarded from SVG or hits canvas directly).
-        if (event.button === 1) {
             return;
         }
 
@@ -3317,9 +3302,6 @@ class DrawingToolsManager {
         if (this.currentTool && this._isPointerOverChartAxis(event)) {
             return;
         }
-        if (this.currentTool && !this._isPrimaryDrawButtonDown(event)) {
-            return;
-        }
 
         // Track last mouse position for Shift/Ctrl preview refresh (placement + resize)
         if ((this.currentTool && this.drawingState && this.drawingState.isDrawing)
@@ -3552,10 +3534,6 @@ class DrawingToolsManager {
      * Handle mouse up event
      */
     handleMouseUp(event) {
-        if (event && event.button !== undefined && event.button !== 0) {
-            return;
-        }
-
         const suppressDrawUntil = Number(this._suppressDrawingStartUntil || 0);
         if (this.drawingState && this.drawingState.isDrawing && suppressDrawUntil > 0 && Date.now() <= suppressDrawUntil) {
             this._abortInProgressPlacement();
@@ -4036,31 +4014,6 @@ class DrawingToolsManager {
     _isPointerOverChartAxis(event) {
         const mode = this._getPointerCursorMode(event);
         return mode === 'priceAxis' || mode === 'timeAxis' || mode === 'separatePanelAxis';
-    }
-
-    _forwardPointerEventToChartCanvas(sourceEvent, type = 'mousedown') {
-        const canvas = this.chart && this.chart.canvas;
-        if (!canvas || !sourceEvent) return;
-        canvas.dispatchEvent(new MouseEvent(type, {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-            clientX: sourceEvent.clientX,
-            clientY: sourceEvent.clientY,
-            screenX: sourceEvent.screenX,
-            screenY: sourceEvent.screenY,
-            button: sourceEvent.button,
-            buttons: sourceEvent.buttons,
-            shiftKey: sourceEvent.shiftKey,
-            ctrlKey: sourceEvent.ctrlKey,
-            altKey: sourceEvent.altKey,
-            metaKey: sourceEvent.metaKey
-        }));
-    }
-
-    _isPrimaryDrawButtonDown(event) {
-        if (!event || event.buttons === undefined) return true;
-        return (event.buttons & 1) === 1;
     }
 
     /**
@@ -10429,5 +10382,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a14_middle_pan';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a17';
 } catch (_) {}
