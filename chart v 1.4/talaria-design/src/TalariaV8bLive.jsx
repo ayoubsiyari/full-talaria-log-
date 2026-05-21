@@ -2751,8 +2751,10 @@ function v9TlStylePatchFromDrawing(d) {
     ...(s.borderColor ? { borderColor: s.borderColor } : {}),
     ...(s.startStyle ? { ep1: s.startStyle } : {}),
     ...(s.endStyle ? { ep2: s.endStyle } : {}),
-    ...(typeof s.extendLeft === 'boolean' ? { extendLeft: s.extendLeft } : {}),
-    ...(typeof s.extendRight === 'boolean' ? { extendRight: s.extendRight } : {}),
+    extendLeft: !!(s.extendLeft === true || s.extendLeft === 1
+      || (typeof s.extendLeft === 'string' && /^(true|1|yes)$/i.test(String(s.extendLeft).trim()))),
+    extendRight: !!(s.extendRight === true || s.extendRight === 1
+      || (typeof s.extendRight === 'string' && /^(true|1|yes)$/i.test(String(s.extendRight).trim()))),
     ...(typeof s.showPriceLabel === 'boolean' ? { priceLabels: s.showPriceLabel } : {}),
     ...(typeof s.showTimeLabel === 'boolean' ? { timeLabels: s.showTimeLabel } : {}),
     ...(s.labelColor ? { labelColor: s.labelColor } : {}),

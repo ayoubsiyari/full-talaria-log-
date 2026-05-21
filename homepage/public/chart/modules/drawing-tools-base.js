@@ -427,22 +427,22 @@ class BaseDrawing {
             const maxIndex = Math.max(...indices);
             let minX = this.chart.dataIndexToPixel ? this.chart.dataIndexToPixel(minIndex) : xScale(minIndex);
             let maxX = this.chart.dataIndexToPixel ? this.chart.dataIndexToPixel(maxIndex) : xScale(maxIndex);
-            if (
-                (this.type === 'rectangle' || this.type === 'rotated-rectangle')
-                && this.style
-                && (this.style.extendLeft || this.style.extendRight)
-            ) {
-                const p1 = this.points[0];
-                const p2 = this.points[1];
-                const px1 = this.chart.dataIndexToPixel ? this.chart.dataIndexToPixel(p1.x) : xScale(p1.x);
-                const px2 = this.chart.dataIndexToPixel ? this.chart.dataIndexToPixel(p2.x) : xScale(p2.x);
-                const hb = (typeof SVGHelpers !== 'undefined' && SVGHelpers.getChartHorizontalPixelBounds)
-                    ? SVGHelpers.getChartHorizontalPixelBounds({ chart: this.chart, xScale, yScale })
-                    : { left: xScale.range()[0], right: xScale.range()[1] };
-                const leftEdge = Math.min(px1, px2);
-                const rightEdge = Math.max(px1, px2);
-                minX = this.style.extendLeft ? hb.left : leftEdge;
-                maxX = this.style.extendRight ? hb.right : rightEdge;
+            if (this.type === 'rectangle' || this.type === 'rotated-rectangle') {
+                const extL = SVGHelpers.isStyleFlagOn(this.style, 'extendLeft');
+                const extR = SVGHelpers.isStyleFlagOn(this.style, 'extendRight');
+                if (extL || extR) {
+                    const p1 = this.points[0];
+                    const p2 = this.points[1];
+                    const px1 = this.chart.dataIndexToPixel ? this.chart.dataIndexToPixel(p1.x) : xScale(p1.x);
+                    const px2 = this.chart.dataIndexToPixel ? this.chart.dataIndexToPixel(p2.x) : xScale(p2.x);
+                    const hb = (typeof SVGHelpers !== 'undefined' && SVGHelpers.getChartHorizontalPixelBounds)
+                        ? SVGHelpers.getChartHorizontalPixelBounds({ chart: this.chart, xScale, yScale })
+                        : { left: xScale.range()[0], right: xScale.range()[1] };
+                    const leftEdge = Math.min(px1, px2);
+                    const rightEdge = Math.max(px1, px2);
+                    minX = extL ? hb.left : leftEdge;
+                    maxX = extR ? hb.right : rightEdge;
+                }
             }
             timeZoneStartX = minX;
             timeZoneWidth = maxX - minX;
@@ -1352,20 +1352,33 @@ class SVGHelpers {
     static getChartHorizontalPixelBounds(scales) {
         const chart = scales && scales.chart;
         const m = (chart && chart.margin) ? chart.margin : { l: 0, r: 60 };
+        const plotLeft = typeof m.l === 'number' ? m.l : 0;
+        let plotW = chart && chart.w;
+        if (!Number.isFinite(plotW) && chart && chart.svg && typeof chart.svg.node === 'function') {
+            const attrW = parseFloat(chart.svg.node().getAttribute('width'));
+            if (Number.isFinite(attrW)) plotW = attrW;
+        }
+        if (!Number.isFinite(plotW) && chart && chart.canvas) {
+            plotW = chart.canvas.clientWidth || chart.canvas.width;
+        }
+        if (Number.isFinite(plotW)) {
+            const plotRight = plotW - (typeof m.r === 'number' ? m.r : 0);
+            if (plotRight > plotLeft) return { left: plotLeft, right: plotRight };
+        }
         if (scales && scales.xScale && typeof scales.xScale.range === 'function') {
             const r = scales.xScale.range();
             if (r && r.length >= 2 && Number.isFinite(r[0]) && Number.isFinite(r[1]) && r[1] > r[0]) {
                 return { left: r[0], right: r[1] };
             }
         }
-        const w = chart && (chart.w || chart.canvas?.clientWidth || chart.canvas?.width);
-        const plotLeft = typeof m.l === 'number' ? m.l : 0;
-        const plotRight = Number.isFinite(w) ? w - (typeof m.r === 'number' ? m.r : 0) : plotLeft + 1;
-        if (Number.isFinite(plotLeft) && Number.isFinite(plotRight) && plotRight > plotLeft) {
-            return { left: plotLeft, right: plotRight };
-        }
-        const xRange = scales.xScale.range();
-        return { left: xRange[0], right: xRange[1] };
+        return { left: plotLeft, right: plotLeft + 1 };
+    }
+
+    /** Truthy style flag (boolean, 1, or persisted string "true"). */
+    static isStyleFlagOn(style, key) {
+        const v = style && style[key];
+        return v === true || v === 1
+            || (typeof v === 'string' && /^(true|1|yes)$/i.test(String(v).trim()));
     }
 
     /**

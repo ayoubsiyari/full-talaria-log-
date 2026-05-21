@@ -26,22 +26,33 @@ function isRectangleExtendOn(style, key) {
         || (typeof v === 'string' && /^(true|1|yes)$/i.test(String(v).trim()));
 }
 
-/** Plot L/R in the same pixel space as dataIndexToPixel (matches chart xScale.range). */
+/** Plot L/R in the same pixel space as chart.dataIndexToPixel (margin.l … w − margin.r). */
 function getRectanglePlotHorizontalBounds(scales) {
+    const chart = scales && scales.chart;
+    const m = (chart && chart.margin) ? chart.margin : { l: 0, r: 60 };
+    const plotLeft = typeof m.l === 'number' ? m.l : 0;
+    let plotW = chart && chart.w;
+    if (!Number.isFinite(plotW) && chart && chart.svg && typeof chart.svg.node === 'function') {
+        const attrW = parseFloat(chart.svg.node().getAttribute('width'));
+        if (Number.isFinite(attrW)) plotW = attrW;
+    }
+    if (!Number.isFinite(plotW) && chart && chart.canvas) {
+        plotW = chart.canvas.clientWidth || chart.canvas.width;
+    }
+    if (Number.isFinite(plotW)) {
+        const plotRight = plotW - (typeof m.r === 'number' ? m.r : 0);
+        if (plotRight > plotLeft) return { left: plotLeft, right: plotRight };
+    }
+    if (typeof SVGHelpers !== 'undefined' && SVGHelpers.getChartHorizontalPixelBounds) {
+        return SVGHelpers.getChartHorizontalPixelBounds(scales);
+    }
     if (scales && scales.xScale && typeof scales.xScale.range === 'function') {
         const r = scales.xScale.range();
         if (r && r.length >= 2 && Number.isFinite(r[0]) && Number.isFinite(r[1]) && r[1] > r[0]) {
             return { left: r[0], right: r[1] };
         }
     }
-    if (typeof SVGHelpers !== 'undefined' && SVGHelpers.getChartHorizontalPixelBounds) {
-        return SVGHelpers.getChartHorizontalPixelBounds(scales);
-    }
-    const chart = scales && scales.chart;
-    const m = (chart && chart.margin) ? chart.margin : { l: 0, r: 60 };
-    const w = chart && (chart.w || chart.canvas?.clientWidth || chart.canvas?.width);
-    const right = Number.isFinite(w) ? w - (m.r || 0) : 0;
-    return { left: m.l || 0, right: right > (m.l || 0) ? right : (m.l || 0) + 1 };
+    return { left: plotLeft, right: plotLeft + 1 };
 }
 
 /** Apply rectangle extend-left/right in pixel space (same coords as dataIndexToPixel). */
