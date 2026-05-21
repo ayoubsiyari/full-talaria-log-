@@ -3449,6 +3449,18 @@ select { cursor:default; }
                 <label style="font-size:11px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
                   <input type="checkbox" id="supportFilterSla" onchange="loadSupportThreads()" /> SLA overdue
                 </label>
+                <label style="font-size:11px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
+                  <input type="checkbox" id="supportFilterMine" onchange="loadSupportThreads()" /> My tickets
+                </label>
+                <label style="font-size:11px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
+                  <input type="checkbox" id="supportFilterNeedsReply" onchange="loadSupportThreads()" /> Needs reply
+                </label>
+                <select id="supportFilterSort" onchange="loadSupportThreads()" title="Sort order">
+                  <option value="activity">Sort: activity</option>
+                  <option value="sla">Sort: SLA due</option>
+                  <option value="oldest">Sort: oldest</option>
+                </select>
+                <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
               </div>
               <div class="support-thread-list" id="supportThreadList">
                 <div class="empty-state"><p>Loading…</p></div>
@@ -3489,6 +3501,13 @@ select { cursor:default; }
                   <label style="font-size:11px;color:var(--text-muted)">Assignee
                     <select id="supportTicketAssignee" onchange="supportPatchTicketField('assigned_to_user_id', this.value)"></select>
                   </label>
+                  <span id="supportTicketSlaLabel" class="support-badge sla" style="display:none"></span>
+                  <label style="font-size:11px;color:var(--text-muted)">Tags
+                    <input type="text" id="supportTicketTags" placeholder="v9-chart, billing" style="font-size:12px;padding:4px 8px;min-width:140px" onchange="supportPatchTicketField('tags', this.value)" />
+                  </label>
+                  <label style="font-size:11px;color:var(--text-muted)">Related
+                    <input type="text" id="supportTicketRelated" placeholder="TAL-00123 or id" style="font-size:12px;padding:4px 8px;width:100px" onchange="supportPatchTicketRelated(this.value)" />
+                  </label>
                   <select id="supportCannedSelect" style="margin-left:auto" onchange="supportInsertCanned(this)">
                     <option value="">Canned reply…</option>
                   </select>
@@ -3505,8 +3524,8 @@ select { cursor:default; }
                   </label>
                   <textarea id="supportInput" placeholder="Public reply or internal note…" disabled></textarea>
                   <label class="support-file-hint">
-                    <input type="file" id="supportFileInput" accept="image/jpeg,image/png,image/gif,image/webp" disabled />
-                    Screenshot (optional, max 2&nbsp;MB)
+                    <input type="file" id="supportFileInput" accept="image/jpeg,image/png,image/gif,image/webp,.txt,.log,.json,text/plain,application/json" disabled />
+                    Image or log/json (optional, max 2&nbsp;MB)
                   </label>
                 </div>
                 <button type="button" class="btn primary" id="supportSendBtn" disabled onclick="sendSupportReply()">Send</button>
@@ -3967,12 +3986,37 @@ function renderSupportUserCRM(req) {
       <div class="crm-item" style="grid-column:1/-1"><div class="k">Subscription</div><div class="v">${esc(subLine)}</div></div>
       <div class="crm-item" style="grid-column:1/-1"><div class="k">Stripe customer</div><div class="v">${esc(req.stripe_customer_id || '—')}</div></div>
     </div>`;
+  const th = supportThreads.find(function (x) { return x.id === selectedSupportId; });
+  if (th) {
+    let extra = '';
+    if (th.tags && th.tags.length) {
+      extra += '<div class="crm-item" style="grid-column:1/-1"><div class="k">Tags</div><div class="v">' + esc(th.tags.join(', ')) + '</div></div>';
+    }
+    if (th.related_ticket_ref) {
+      extra += '<div class="crm-item"><div class="k">Related</div><div class="v">' + esc(th.related_ticket_ref) + '</div></div>';
+    }
+    if (th.csat_rating) {
+      extra += '<div class="crm-item"><div class="k">CSAT</div><div class="v">' + esc(String(th.csat_rating)) + '/5</div></div>';
+    }
+    if (th.context && typeof th.context === 'object') {
+      const ctxLines = Object.keys(th.context).map(function (k) {
+        return esc(k) + ': ' + esc(String(th.context[k]));
+      }).join('<br>');
+      extra += '<div class="crm-item" style="grid-column:1/-1"><div class="k">Ticket context</div><div class="v">' + ctxLines + '</div></div>';
+    }
+    if (extra) body.innerHTML += '<div class="crm-grid" style="margin-top:10px">' + extra + '</div>';
+  }
 }
 
 async function loadSupportRequesterProfile() {
   if (!selectedSupportId) return;
   try {
     const data = await api('/api/support/threads/' + selectedSupportId);
+    if (data.thread) {
+      const idx = supportThreads.findIndex(function (x) { return x.id === selectedSupportId; });
+      if (idx >= 0) supportThreads[idx] = data.thread;
+      supportUpdateTicketControls(data.thread);
+    }
     renderSupportUserCRM(data.requester || null);
   } catch (e) {
     renderSupportUserCRM(null);
@@ -3995,13 +4039,24 @@ async function loadSupportTicketStats() {
   if (!el) return;
   try {
     const s = await api('/api/admin/support/stats');
-    el.innerHTML = [
+    const parts = [
       '<span class="support-ticket-stat">Open: ' + (s.open || 0) + '</span>',
       '<span class="support-ticket-stat">Pending: ' + (s.pending || 0) + '</span>',
       '<span class="support-ticket-stat">Unassigned: ' + (s.unassigned || 0) + '</span>',
       '<span class="support-ticket-stat warn">SLA overdue: ' + (s.sla_overdue || 0) + '</span>',
       '<span class="support-ticket-stat">Closed today: ' + (s.closed_today || 0) + '</span>'
-    ].join('');
+    ];
+    if (s.sla_business_hours) {
+      parts.push('<span class="support-ticket-stat">SLA: business hours</span>');
+    }
+    const byCat = s.by_category || {};
+    SUPPORT_CATEGORY_OPTIONS.forEach(function (c) {
+      const n = byCat[c.value];
+      if (n > 0) {
+        parts.push('<span class="support-ticket-stat">' + supportCategoryBadgeHtml(c.value) + ' ' + n + '</span>');
+      }
+    });
+    el.innerHTML = parts.join('');
   } catch (e) { el.innerHTML = ''; }
 }
 
@@ -4025,11 +4080,27 @@ async function loadSupportCannedReplies() {
   try {
     const data = await api('/api/admin/support/canned-replies');
     supportCannedReplies = (data.replies || []).filter(r => r.is_active !== false);
-    const sel = $('supportCannedSelect');
-    if (!sel) return;
-    sel.innerHTML = '<option value="">Canned reply…</option>' +
-      supportCannedReplies.map(r => '<option value="' + r.id + '">' + esc(r.title) + '</option>').join('');
+    supportRefreshCannedSelect();
   } catch (e) { /* ignore */ }
+}
+
+function supportRefreshCannedSelect() {
+  const sel = $('supportCannedSelect');
+  if (!sel) return;
+  const th = supportThreads.find(function (x) { return x.id === selectedSupportId; });
+  const cat = th && th.category ? th.category : '';
+  const matched = supportCannedReplies.filter(function (r) {
+    return !r.category || r.category === cat;
+  });
+  const rest = supportCannedReplies.filter(function (r) {
+    return r.category && r.category !== cat;
+  });
+  const list = matched.length ? matched.concat(rest) : supportCannedReplies;
+  sel.innerHTML = '<option value="">Canned reply…</option>' +
+    list.map(function (r) {
+      const hint = r.category && r.category !== cat ? ' [' + r.category + ']' : '';
+      return '<option value="' + r.id + '">' + esc(r.title) + esc(hint) + '</option>';
+    }).join('');
 }
 
 function supportInsertCanned(sel) {
@@ -4051,13 +4122,30 @@ function supportBuildThreadQuery() {
   const cat = ($('supportFilterCategory') && $('supportFilterCategory').value) || '';
   const asg = ($('supportFilterAssignee') && $('supportFilterAssignee').value) || '';
   const sla = $('supportFilterSla') && $('supportFilterSla').checked;
+  const mine = $('supportFilterMine') && $('supportFilterMine').checked;
+  const needs = $('supportFilterNeedsReply') && $('supportFilterNeedsReply').checked;
+  const sort = ($('supportFilterSort') && $('supportFilterSort').value) || 'activity';
   if (q) params.set('q', q);
   if (st) params.set('status', st);
   if (pr) params.set('priority', pr);
   if (cat) params.set('category', cat);
-  if (asg !== '') params.set('assigned_to', asg);
+  if (asg !== '' && !mine) params.set('assigned_to', asg);
+  if (mine) params.set('assigned_to_me', 'true');
+  if (needs) params.set('needs_reply', 'true');
   if (sla) params.set('sla_overdue', 'true');
+  if (sort) params.set('sort', sort);
   return params.toString();
+}
+
+function supportExportCsv(ev) {
+  if (ev) ev.preventDefault();
+  const cat = ($('supportFilterCategory') && $('supportFilterCategory').value) || 'suggestions';
+  const st = ($('supportFilterStatus') && $('supportFilterStatus').value) || '';
+  const params = new URLSearchParams();
+  if (cat) params.set('category', cat);
+  if (st) params.set('status', st);
+  window.location.href = '/api/admin/support/export?' + params.toString();
+  return false;
 }
 
 async function loadSupportThreads() {
@@ -4077,8 +4165,10 @@ async function loadSupportThreads() {
       const pri = t.priority && t.priority !== 'normal' ? '<span class="support-badge pri-' + esc(t.priority) + '">' + esc(t.priority) + '</span>' : '';
       const assignee = t.assignee ? esc((t.assignee.name || t.assignee.email || '').split('@')[0]) : '—';
       const catBadge = supportCategoryBadgeHtml(t.category);
+      const unread = t.staff_unread ? '<span class="support-badge" style="background:rgba(59,130,246,.25);color:#93c5fd">●</span>' : '';
+      const needs = t.needs_staff_reply ? '<span class="support-badge" style="background:rgba(251,191,36,.2);color:#fde047">Reply</span>' : '';
       return `<div class="support-thread-row${active}" data-id="${t.id}">
-        <div class="support-thread-subj">${catBadge}${ref} · ${esc(t.subject)} ${pri}${sla}</div>
+        <div class="support-thread-subj">${unread}${needs}${catBadge}${ref} · ${esc(t.subject)} ${pri}${sla}</div>
         <div class="support-thread-meta">${who} · ${esc(t.status)} · ${esc(t.priority || 'normal')} · ${assignee} · ${timeAgo(t.last_message_at)}</div>
       </div>`;
     }).join('');
@@ -4108,10 +4198,16 @@ function renderSupportMessages() {
     const readLine = readOk
       ? '<div class="support-msg-read">Read</div>'
       : (readPending ? '<div class="support-msg-read unread-hint">Delivered</div>' : '');
-    const attImg = m.attachment && m.attachment.url
-      ? `<div class="support-msg-img-wrap"><a href="${esc(m.attachment.url)}" target="_blank" rel="noopener"><img src="${esc(m.attachment.url)}" alt="" loading="lazy"/></a></div>`
-      : '';
-    return `<div class="support-msg ${cls}${intCls}"><div class="support-msg-hdr">${esc(label)} · ${esc(m.sender_name || '')}</div>${esc(m.body || '')}${attImg}${readLine}</div>`;
+    let attHtml = '';
+    if (m.attachment && m.attachment.url) {
+      const mime = m.attachment.mime_type || '';
+      if (mime.indexOf('image/') === 0) {
+        attHtml = `<div class="support-msg-img-wrap"><a href="${esc(m.attachment.url)}" target="_blank" rel="noopener"><img src="${esc(m.attachment.url)}" alt="" loading="lazy"/></a></div>`;
+      } else {
+        attHtml = `<div style="margin-top:6px"><a href="${esc(m.attachment.url)}" target="_blank" rel="noopener">📎 ${esc(m.attachment.original_name || 'Attachment')}</a></div>`;
+      }
+    }
+    return `<div class="support-msg ${cls}${intCls}"><div class="support-msg-hdr">${esc(label)} · ${esc(m.sender_name || '')}</div>${esc(m.body || '')}${attHtml}${readLine}</div>`;
   }).join('');
   box.scrollTop = box.scrollHeight;
 }
@@ -4142,6 +4238,22 @@ function supportUpdateTicketControls(th) {
   }
   const asSel = $('supportTicketAssignee');
   if (asSel) asSel.value = th.assigned_to_user_id != null ? String(th.assigned_to_user_id) : '0';
+  const tagsIn = $('supportTicketTags');
+  if (tagsIn) tagsIn.value = (th.tags || []).join(', ');
+  const relIn = $('supportTicketRelated');
+  if (relIn) relIn.value = th.related_ticket_ref || (th.related_thread_id ? String(th.related_thread_id) : '');
+  const slaEl = $('supportTicketSlaLabel');
+  if (slaEl) {
+    if (th.sla_label) {
+      slaEl.style.display = '';
+      slaEl.textContent = th.sla_label;
+      slaEl.className = 'support-badge ' + (th.sla_overdue ? 'sla' : '');
+    } else {
+      slaEl.style.display = 'none';
+      slaEl.textContent = '';
+    }
+  }
+  supportRefreshCannedSelect();
   const closed = th.status === 'closed';
   const resolved = th.status === 'resolved';
   if (resolveBtn) resolveBtn.style.display = (!closed && !resolved) ? '' : 'none';
@@ -4214,13 +4326,25 @@ async function selectSupportThread(id) {
   ensureLiveSupportSocket();
 }
 
+async function supportPatchTicketRelated(raw) {
+  if (!selectedSupportId) return;
+  const s = (raw || '').trim().toUpperCase();
+  let id = parseInt(s, 10);
+  if (Number.isNaN(id) && /^TAL-\d+$/i.test(s)) {
+    id = parseInt(s.replace(/^TAL-/i, ''), 10);
+  }
+  await supportPatchTicketField('related_thread_id', Number.isNaN(id) ? 0 : id);
+}
+
 async function supportPatchTicketField(field, value) {
   if (!selectedSupportId) return;
   const body = {};
   if (field === 'status') body.status = value;
   else if (field === 'priority') body.priority = value;
   else if (field === 'category') body.category = value;
+  else if (field === 'tags') body.tags = value.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
   else if (field === 'assigned_to_user_id') body.assigned_to_user_id = parseInt(value, 10) || 0;
+  else if (field === 'related_thread_id') body.related_thread_id = parseInt(value, 10) || 0;
   try {
     const data = await api('/api/admin/support/threads/' + selectedSupportId, {
       method: 'PATCH',

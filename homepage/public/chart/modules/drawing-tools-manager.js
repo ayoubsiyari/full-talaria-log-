@@ -8520,10 +8520,31 @@ class DrawingToolsManager {
     }
 
     /**
+     * Safely remove the Ctrl+drag multi-select marquee (guards duplicate mouseup).
+     */
+    _clearRectSelectVisual() {
+        try {
+            if (this.rectSelectRect && typeof this.rectSelectRect.remove === 'function') {
+                this.rectSelectRect.remove();
+            }
+        } catch (_) {}
+        this.rectSelectRect = null;
+        this.rectSelectStart = null;
+    }
+
+    /**
      * Complete rectangular selection and select drawings within rectangle
      */
     completeRectangularSelection() {
-        if (!this.isRectSelecting || !this.rectSelectRect) return;
+        if (!this.isRectSelecting) return;
+
+        // Duplicate mouseup (SVG + document listeners) must not call .remove() twice.
+        this.isRectSelecting = false;
+
+        if (!this.rectSelectRect) {
+            if (this.svg) this.svg.style('pointer-events', 'none');
+            return;
+        }
         
         // Get rectangle bounds
         const x = parseFloat(this.rectSelectRect.attr('x'));
@@ -8550,13 +8571,10 @@ class DrawingToolsManager {
         // [debug removed]
         
         // Clean up
-        this.rectSelectRect.remove();
-        this.rectSelectRect = null;
-        this.rectSelectStart = null;
-        this.isRectSelecting = false;
+        this._clearRectSelectVisual();
         
         // Restore SVG pointer-events to allow chart panning
-        this.svg.style('pointer-events', 'none');
+        if (this.svg) this.svg.style('pointer-events', 'none');
     }
 
     /**
@@ -8566,19 +8584,13 @@ class DrawingToolsManager {
         if (!this.isRectSelecting) return;
         
         // [debug removed]
-        
-        // Clean up selection rectangle visual
-        if (this.rectSelectRect) {
-            this.rectSelectRect.remove();
-            this.rectSelectRect = null;
-        }
-        
-        // Reset state
-        this.rectSelectStart = null;
         this.isRectSelecting = false;
         
+        // Clean up selection rectangle visual
+        this._clearRectSelectVisual();
+        
         // Restore SVG pointer-events to allow chart panning
-        this.svg.style('pointer-events', 'none');
+        if (this.svg) this.svg.style('pointer-events', 'none');
     }
 
     /**
@@ -10056,13 +10068,60 @@ class DrawingToolsManager {
             opacity: 1,
             dashArray: '',
             strokeDasharray: '',
+            borderDasharray: '',
             fill,
             backgroundColor: fill,
             showBackground: true,
             borderEnabled: true,
             borderColor: stroke,
+            borderWidth: 1,
             middleLineColor: stroke,
+            middleLineDash: '',
+            showMiddleLine: false,
         };
+    }
+
+    /**
+     * Reset a drawing to built-in defaults (light gray stroke/fill) — "Apply default" in toolbar.
+     */
+    applyBuiltinDefaultStyleToDrawing(drawing) {
+        if (!drawing || !drawing.type) return false;
+        if (drawing.type === 'long-position' || drawing.type === 'short-position') return false;
+
+        const tracked = this.drawings.find((d) => d === drawing || (d.id != null && drawing.id != null && d.id === drawing.id));
+        if (!tracked) return false;
+        drawing = tracked;
+
+        const patch = this.getDefaultToolStylePatch(drawing.type);
+        if (!drawing.style) drawing.style = {};
+
+        const resetKeys = new Set([
+            'stroke', 'color', 'lineColor', 'strokeWidth', 'opacity',
+            'dashArray', 'strokeDasharray', 'borderDasharray', 'borderWidth',
+            'fill', 'backgroundColor', 'showBackground', 'borderEnabled', 'borderColor',
+            'middleLineColor', 'middleLineDash', 'middleLineWidth', 'showMiddleLine',
+            'startStyle', 'endStyle', 'extendLeft', 'extendRight',
+        ]);
+        for (const k of Object.keys(drawing.style)) {
+            if (resetKeys.has(k)) delete drawing.style[k];
+        }
+        Object.assign(drawing.style, patch);
+
+        const tb = this.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(drawing); } catch (_) {}
+        try {
+            if (tb && typeof tb.onUpdate === 'function') tb.onUpdate(drawing);
+            else this.renderDrawing(drawing);
+        } catch (_) {
+            try { this.renderDrawing(drawing); } catch (_) {}
+        }
+        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+            try { drawing.showAxisHighlights(); } catch (_) {}
+        }
+        if (this.chart && typeof this.chart.scheduleRender === 'function') {
+            this.chart.scheduleRender();
+        }
+        return true;
     }
 
     /**

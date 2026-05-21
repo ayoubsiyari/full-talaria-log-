@@ -2171,13 +2171,26 @@ class DrawingToolbar {
     }
 
     applyDefaultTemplate(drawing) {
-        const templates = this.getSavedTemplates(drawing.type);
-        if (templates.length > 0) {
-            // Apply the first saved template as default
-            this.applyTemplate(drawing, templates[0].id);
-        } else {
-            this.showNotification('No saved templates found');
+        const drawingManager = this._resolveDrawingManager(drawing);
+        const actualDrawing = drawingManager?.drawings?.find((d) => d.id === drawing.id) || drawing;
+        if (!actualDrawing?.type) {
+            this.showNotification('No drawing selected');
+            return;
         }
+        if (drawingManager && typeof drawingManager.applyBuiltinDefaultStyleToDrawing === 'function') {
+            if (!drawingManager.applyBuiltinDefaultStyleToDrawing(actualDrawing)) {
+                this.showNotification('Could not apply default style');
+                return;
+            }
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('v9DrawingTemplateApplied', {
+                    detail: { drawing: actualDrawing, builtinDefault: true },
+                }));
+            }
+            this.showNotification('Default style applied');
+            return;
+        }
+        this.showNotification('Could not apply default style');
     }
 
     deleteTemplate(toolType, templateId) {

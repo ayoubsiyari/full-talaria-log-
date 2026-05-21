@@ -25454,19 +25454,34 @@ applyTemplate(drawing, templateId, modal) {
 
     applyDefaultTemplate(drawing, modal) {
 
-        const templates = this.getSavedTemplates(drawing.type);
+        const drawingManager = this.drawingManager || window.chart?.drawingManager || window.drawingManager;
 
-        if (templates.length > 0) {
+        const actualDrawing = drawingManager?.drawings?.find((d) => d.id === drawing.id) || drawing;
 
-            // Apply the first saved template as default
+        if (drawingManager && typeof drawingManager.applyBuiltinDefaultStyleToDrawing === 'function'
+            && drawingManager.applyBuiltinDefaultStyleToDrawing(actualDrawing)) {
 
-            this.applyTemplate(drawing, templates[0].id, modal);
+            this.pendingChanges = {};
 
-        } else {
+            if (modal) this.updateModalUI(actualDrawing);
 
-            this.showNotification('No saved templates found');
+            if (typeof window !== 'undefined') {
+
+                window.dispatchEvent(new CustomEvent('v9DrawingTemplateApplied', {
+
+                    detail: { drawing: actualDrawing, builtinDefault: true },
+
+                }));
+
+            }
+
+            this.showNotification('Default style applied');
+
+            return;
 
         }
+
+        this.showNotification('Could not apply default style');
 
     }
 

@@ -2,6 +2,12 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import "../dashboard-shell.css";
+import {
+  SUPPORT_CATEGORIES,
+  SUPPORT_FILE_ACCEPT,
+  SupportCategoryBadge,
+  buildSupportContext,
+} from "./supportUi";
 
 type User = {
   id: number;
@@ -22,19 +28,12 @@ type Thread = {
   priority?: string;
   last_message_at?: string | null;
   last_message_preview?: string | null;
+  csat_rating?: number | null;
+  csat_at?: string | null;
+  context?: Record<string, string> | null;
+  related_ticket_ref?: string | null;
+  tags?: string[];
 };
-
-const SUPPORT_CATEGORIES: { value: string; label: string }[] = [
-  { value: "billing", label: "Billing" },
-  { value: "account", label: "Account" },
-  { value: "access", label: "Access" },
-  { value: "bug", label: "Bug" },
-  { value: "error", label: "Error" },
-  { value: "feature", label: "Feature request" },
-  { value: "modifications", label: "Modifications" },
-  { value: "suggestions", label: "Suggestions / Features" },
-  { value: "other", label: "Other" },
-];
 
 function ticketRef(t: Thread): string {
   return t.ticket_ref ?? `TAL-${String(t.id).padStart(5, "0")}`;
@@ -125,7 +124,7 @@ function SupportFileUpload({
         ref={inputRef}
         id={id}
         type="file"
-        accept="image/jpeg,image/png,image/gif,image/webp"
+        accept={SUPPORT_FILE_ACCEPT}
         disabled={disabled}
         className="db-file-upload__input"
         onChange={(e) => onPick(e.target.files?.[0] ?? null)}
@@ -170,6 +169,13 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
   const [replyFile, setReplyFile] = useState<File | null>(null);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [newTags, setNewTags] = useState("");
+  const [structChange, setStructChange] = useState("");
+  const [structCurrent, setStructCurrent] = useState("");
+  const [structExpected, setStructExpected] = useState("");
+  const [structFeature, setStructFeature] = useState("");
+  const [structUseCase, setStructUseCase] = useState("");
+  const [csatSending, setCsatSending] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const newThreadFileRef = useRef<HTMLInputElement | null>(null);
@@ -361,12 +367,37 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
       return;
     }
     setUploadErr(null);
+    const structured: Record<string, string> = {};
+    if (newCategory === "modifications") {
+      if (structChange.trim()) structured.change_summary = structChange.trim();
+      if (structCurrent.trim()) structured.current_behavior = structCurrent.trim();
+      if (structExpected.trim()) structured.expected_behavior = structExpected.trim();
+    } else if (newCategory === "suggestions") {
+      if (structFeature.trim()) structured.feature_summary = structFeature.trim();
+      if (structUseCase.trim()) structured.use_case = structUseCase.trim();
+    }
+    const payload: Record<string, unknown> = {
+      subject,
+      category: newCategory,
+      body,
+      context: buildSupportContext(),
+      structured: Object.keys(structured).length ? structured : undefined,
+      tags: newTags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    };
     let data: { thread: Thread };
     if (newThreadFile) {
       const fd = new FormData();
       fd.append("subject", subject);
       fd.append("category", newCategory);
       fd.append("body", body);
+      fd.append("context", JSON.stringify(payload.context));
+      if (payload.structured) fd.append("structured", JSON.stringify(payload.structured));
+      if (payload.tags && (payload.tags as string[]).length) {
+        fd.append("tags", (payload.tags as string[]).join(","));
+      }
       fd.append("file", newThreadFile);
       data = await api<{ thread: Thread }>("/api/support/threads", {
         method: "POST",
@@ -375,15 +406,17 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
     } else {
       data = await api<{ thread: Thread }>("/api/support/threads", {
         method: "POST",
-        body: JSON.stringify({
-          subject,
-          category: newCategory,
-          body,
-        }),
+        body: JSON.stringify(payload),
       });
     }
     setNewSubject("");
     setNewBody("");
+    setNewTags("");
+    setStructChange("");
+    setStructCurrent("");
+    setStructExpected("");
+    setStructFeature("");
+    setStructUseCase("");
     setNewThreadFile(null);
     if (newThreadFileRef.current) newThreadFileRef.current.value = "";
     setNewCategory("other");
@@ -471,6 +504,55 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
                   </option>
                 ))}
               </select>
+              {(newCategory === "modifications" || newCategory === "suggestions") && (
+                <div className="support-structured-block">
+                  {newCategory === "modifications" ? (
+                    <>
+                      <input
+                        className="db-field-input"
+                        placeholder="What should change?"
+                        value={structChange}
+                        onChange={(e) => setStructChange(e.target.value)}
+                      />
+                      <input
+                        className="db-field-input"
+                        placeholder="Current behavior (optional)"
+                        value={structCurrent}
+                        onChange={(e) => setStructCurrent(e.target.value)}
+                      />
+                      <input
+                        className="db-field-input"
+                        placeholder="Expected behavior (optional)"
+                        value={structExpected}
+                        onChange={(e) => setStructExpected(e.target.value)}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        className="db-field-input"
+                        placeholder="Feature / idea summary"
+                        value={structFeature}
+                        onChange={(e) => setStructFeature(e.target.value)}
+                      />
+                      <input
+                        className="db-field-input"
+                        placeholder="Use case (optional)"
+                        value={structUseCase}
+                        onChange={(e) => setStructUseCase(e.target.value)}
+                      />
+                    </>
+                  )}
+                </div>
+              )}
+              <label className="db-field-label">Tags (optional, comma-separated)</label>
+              <input
+                className="db-field-input"
+                value={newTags}
+                onChange={(e) => setNewTags(e.target.value)}
+                placeholder="v9-chart, mobile"
+                style={{ marginBottom: 10 }}
+              />
               <label className="db-field-label">Message</label>
               <textarea
                 className="db-field-input"
@@ -481,7 +563,7 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
                 style={{ marginBottom: 10, resize: "vertical" }}
               />
               <label className="db-field-label" htmlFor="support-new-screenshot">
-                Screenshot (optional, max 2 MB)
+                Screenshot or log/json (optional, max 2 MB)
               </label>
               <SupportFileUpload
                 id="support-new-screenshot"
@@ -531,8 +613,9 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
                   <span style={{ color: "#4a4850", marginRight: 6 }}>{ticketRef(t)}</span>
                   {t.subject}
                 </div>
-                <div style={{ fontSize: 11, color: "#4a4850", marginTop: 4 }}>
-                  {t.category} · {statusLabel(t.status)}
+                <div style={{ fontSize: 11, color: "#4a4850", marginTop: 4, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                  <SupportCategoryBadge category={t.category} />
+                  <span>{statusLabel(t.status)}</span>
                   {user.role === "admin" && (t.user_email || t.user_name)
                     ? ` · ${t.user_name || t.user_email}`
                     : ""}
@@ -551,8 +634,49 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
               fontSize: 14,
             }}
           >
-            {selected ? `${ticketRef(selected)} · ${selected.subject}` : "Select a ticket"}
+            {selected ? (
+              <>
+                <SupportCategoryBadge category={selected.category} />
+                {ticketRef(selected)} · {selected.subject}
+              </>
+            ) : (
+              "Select a ticket"
+            )}
           </div>
+          {selected?.status === "resolved" && selected.csat_rating == null && (
+            <div className="support-csat-row">
+              <span style={{ fontSize: 12, color: "#a3a3a3", width: "100%" }}>How was support?</span>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className="support-csat-btn"
+                  disabled={csatSending}
+                  onClick={() => {
+                    void (async () => {
+                      setCsatSending(true);
+                      try {
+                        await api(`/api/support/threads/${selected.id}/csat`, {
+                          method: "POST",
+                          body: JSON.stringify({ rating: n }),
+                        });
+                        await loadThreads();
+                      } finally {
+                        setCsatSending(false);
+                      }
+                    })();
+                  }}
+                >
+                  {n}★
+                </button>
+              ))}
+            </div>
+          )}
+          {selected?.csat_rating != null && (
+            <div style={{ padding: "8px 18px", fontSize: 12, color: "#86efac" }}>
+              Thanks — you rated this ticket {selected.csat_rating}/5.
+            </div>
+          )}
           {isResolved && (
             <div
               style={{
@@ -602,7 +726,7 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
                     <div style={{ fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                       {m.body || ""}
                     </div>
-                    {m.attachment?.url && (
+                    {m.attachment?.url && (m.attachment.mime_type || "").startsWith("image/") && (
                       <a
                         href={m.attachment.url}
                         target="_blank"
@@ -620,6 +744,16 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
                             display: "block",
                           }}
                         />
+                      </a>
+                    )}
+                    {m.attachment?.url && !(m.attachment.mime_type || "").startsWith("image/") && (
+                      <a
+                        href={m.attachment.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display: "block", marginTop: 8, fontSize: 12, color: "#93c5fd" }}
+                      >
+                        📎 {m.attachment.original_name || "Download attachment"}
                       </a>
                     )}
                     {m.read_by_counterparty === true ? (

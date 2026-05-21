@@ -1,7 +1,7 @@
 "use client";
 // Unified Admin Dashboard — controls users, feature flags, security logs, system metrics
 import React, { useState, useEffect, useCallback } from "react";
-import { Shield, Users, Zap, Server, RefreshCw, Plus, Trash2, Edit, X, CheckCircle, AlertTriangle, Download, Database, BarChart3, Activity } from "lucide-react";
+import { Shield, Users, Zap, Server, RefreshCw, Plus, Trash2, Edit, X, CheckCircle, AlertTriangle, Download, Database, BarChart3, Activity, MessageSquare, ExternalLink } from "lucide-react";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { DASHBOARD_MODULE_LABELS } from "@/lib/dashboardAccess";
 
@@ -53,6 +53,7 @@ type Metrics={cpu?:{percent:number};memory?:{used:number;total:number;percent:nu
 const TABS=[
   {id:"overview",label:"Overview",      Icon:BarChart3},
   {id:"users",   label:"Users",          Icon:Users},
+  {id:"support", label:"Support",        Icon:MessageSquare},
   {id:"flags",   label:"Feature Flags",  Icon:Zap},
   {id:"security",label:"Security Logs",  Icon:Shield},
   {id:"system",  label:"System",         Icon:Server},
@@ -289,6 +290,27 @@ export default function AdminDashboard() {
             {!filtered.length&&<div className="py-8 text-center text-white/30 text-sm">No users found</div>}
           </div>
           <div className="text-xs text-white/30">{filtered.length} of {users.length} users</div>
+        </div>
+      )}
+
+      {/* SUPPORT — full ticket desk lives on chart admin */}
+      {tab==="support"&&(
+        <div className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-white">Support tickets</h2>
+          <p className="text-sm text-white/50 max-w-xl">
+            The live ticket inbox (SLA, categories, canned replies, CRM context, export) runs on the chart admin
+            dashboard. Open it in a new tab to manage conversations.
+          </p>
+          <a
+            href="/chart/admin-dashboard.html#sec-support"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-5 py-2.5 text-sm font-medium text-emerald-200 hover:bg-emerald-500/20 transition"
+          >
+            <MessageSquare className="h-4 w-4" />
+            Open support inbox
+            <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+          </a>
         </div>
       )}
 

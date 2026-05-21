@@ -20,7 +20,7 @@ from sqlalchemy import (
     or_,
     and_,
 )
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker, declarative_base, aliased
 from datetime import datetime, timedelta
 import csv
 import gzip
@@ -773,6 +773,12 @@ class SupportThread(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_message_at = Column(DateTime, nullable=True, index=True)
+    ticket_extra = Column(Text, nullable=True)  # JSON: context, structured fields
+    tags_json = Column(Text, nullable=True)  # JSON array of tag strings
+    related_thread_id = Column(Integer, index=True, nullable=True)
+    csat_rating = Column(Integer, nullable=True)
+    csat_comment = Column(Text, nullable=True)
+    csat_at = Column(DateTime, nullable=True)
 
 
 class SupportMessage(Base):
@@ -980,6 +986,12 @@ try:
             "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP",
             "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP",
             "ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS is_internal BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS ticket_extra TEXT",
+            "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS tags_json TEXT",
+            "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS related_thread_id INTEGER",
+            "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS csat_rating INTEGER",
+            "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS csat_comment TEXT",
+            "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS csat_at TIMESTAMP",
         ):
             _conn.execute(text(_stmt))
         _conn.commit()
@@ -1247,6 +1259,17 @@ SUPPORT_SUBJECT_MAX = 500
 SUPPORT_BODY_MAX = 8000
 SUPPORT_IMAGE_MAX_BYTES = max(1024, int(os.getenv("SUPPORT_IMAGE_MAX_BYTES", str(2 * 1024 * 1024))))
 SUPPORT_IMAGE_ALLOWED_MIME = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp"})
+SUPPORT_FILE_ALLOWED_MIME = SUPPORT_IMAGE_ALLOWED_MIME | frozenset(
+    {"text/plain", "application/json", "text/json"}
+)
+SUPPORT_SLA_BUSINESS_HOURS = os.getenv("SUPPORT_SLA_BUSINESS_HOURS", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+SUPPORT_BH_START_HOUR = max(0, min(23, int(os.getenv("SUPPORT_BH_START_HOUR", "9"))))
+SUPPORT_BH_END_HOUR = max(1, min(24, int(os.getenv("SUPPORT_BH_END_HOUR", "17"))))
 
 # Anti-spam / auth limits: Redis sliding window when REDIS_URL is set (shared across workers); else in-memory.
 SUPPORT_RATE_MSG_PER_MINUTE = max(1, int(os.getenv("SUPPORT_RATE_MSG_PER_MINUTE", "30")))
@@ -10257,9 +10280,132 @@ def _support_ticket_ref(thread_id: int) -> str:
     return f"TAL-{int(thread_id):05d}"
 
 
+def _support_category_assignees() -> dict[str, int]:
+    raw = os.getenv("SUPPORT_CATEGORY_ASSIGNEES", "").strip()
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return {}
+        out: dict[str, int] = {}
+        for k, v in data.items():
+            try:
+                out[str(k).strip().lower()] = int(v)
+            except (TypeError, ValueError):
+                continue
+        return out
+    except json.JSONDecodeError:
+        return {}
+
+
+def _support_priority_for_category(cat: str) -> str:
+    c = (cat or "other").strip().lower()
+    if c in ("bug", "error", "access", "billing"):
+        return "high"
+    if c in ("suggestions", "feature", "other"):
+        return "low"
+    return "normal"
+
+
+def _support_default_assignee_id(db, cat: str) -> int | None:
+    aid = _support_category_assignees().get((cat or "").strip().lower())
+    if not aid:
+        return None
+    agent = (
+        db.query(User)
+        .filter(User.id == aid, User.role == "admin", User.is_active == True)
+        .first()
+    )
+    return int(agent.id) if agent else None
+
+
+def _support_load_ticket_extra(t: SupportThread) -> dict:
+    raw = getattr(t, "ticket_extra", None) or ""
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _support_set_ticket_extra(t: SupportThread, data: dict) -> None:
+    t.ticket_extra = json.dumps(data, separators=(",", ":"))[:12000]
+
+
+def _support_load_tags(t: SupportThread) -> list[str]:
+    raw = getattr(t, "tags_json", None) or ""
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, list):
+            return []
+        return [str(x).strip()[:32] for x in data if str(x).strip()][:10]
+    except json.JSONDecodeError:
+        return []
+
+
+def _support_validate_tags(tags: list | None) -> list[str]:
+    if not tags:
+        return []
+    out: list[str] = []
+    for item in tags:
+        s = str(item).strip().lower()[:32]
+        if not s or s in out:
+            continue
+        if not re.match(r"^[a-z0-9][a-z0-9_-]{0,31}$", s):
+            continue
+        out.append(s)
+        if len(out) >= 10:
+            break
+    return out
+
+
+def _support_sla_add_business_hours(start: datetime, hours: int) -> datetime:
+    """Advance by `hours` counted only on weekdays SUPPORT_BH_START_HOUR–END_HOUR UTC."""
+    if hours <= 0:
+        return start
+    cur = start
+    remaining = float(hours)
+    while remaining > 0:
+        cur += timedelta(hours=1)
+        if cur.weekday() >= 5:
+            continue
+        if SUPPORT_BH_START_HOUR <= cur.hour < SUPPORT_BH_END_HOUR:
+            remaining -= 1.0
+    return cur
+
+
 def _support_sla_due_at(from_dt: datetime | None = None) -> datetime:
     base = from_dt or datetime.utcnow()
+    if SUPPORT_SLA_BUSINESS_HOURS:
+        return _support_sla_add_business_hours(base, SUPPORT_SLA_FIRST_RESPONSE_HOURS)
     return base + timedelta(hours=SUPPORT_SLA_FIRST_RESPONSE_HOURS)
+
+
+def _support_sla_status_label(t: SupportThread, now: datetime | None = None) -> str | None:
+    now = now or datetime.utcnow()
+    if t.status not in ("open", "pending") or t.first_responded_at is not None:
+        return None
+    due = t.first_response_due_at
+    if not due:
+        return None
+    delta = due - now
+    if delta.total_seconds() < 0:
+        overdue_h = int((now - due).total_seconds() // 3600)
+        if overdue_h < 1:
+            return "Overdue"
+        return f"Overdue {overdue_h}h"
+    left_h = int(delta.total_seconds() // 3600)
+    left_m = int((delta.total_seconds() % 3600) // 60)
+    if left_h >= 1:
+        return f"Due in {left_h}h"
+    if left_m >= 1:
+        return f"Due in {left_m}m"
+    return "Due soon"
 
 
 def _support_ticket_url(thread_id: int) -> str:
@@ -10318,6 +10464,14 @@ class SupportCreateThreadIn(BaseModel):
     subject: str = Field(..., max_length=SUPPORT_SUBJECT_MAX)
     category: str = Field(default="other")
     body: str = Field(..., max_length=SUPPORT_BODY_MAX)
+    tags: list[str] | None = None
+    context: dict | None = None
+    structured: dict | None = None
+
+
+class SupportCsatIn(BaseModel):
+    rating: int = Field(..., ge=1, le=5)
+    comment: str | None = Field(None, max_length=1000)
 
 
 class SupportAppendMessageIn(BaseModel):
@@ -10338,6 +10492,8 @@ class SupportAdminPatchThreadIn(BaseModel):
     priority: str | None = None
     assigned_to_user_id: int | None = None
     category: str | None = None
+    tags: list[str] | None = None
+    related_thread_id: int | None = None
 
 
 class SupportCannedReplyIn(BaseModel):
@@ -10365,10 +10521,11 @@ class SupportMarkReadIn(BaseModel):
     last_read_message_id: int | None = None
 
 
-async def _support_consume_upload_image(upload) -> tuple[bytes, str, str | None]:
-    """Read an image upload with a 2 MiB cap; returns (data, mime, original_filename)."""
+async def _support_consume_upload_attachment(upload) -> tuple[bytes, str, str | None]:
+    """Read attachment (image, .log, .json) with 2 MiB cap."""
     raw_ct = (getattr(upload, "content_type", None) or "").split(";")[0].strip().lower()
     orig = getattr(upload, "filename", None)
+    orig_l = (orig or "").lower()
     chunks: list[bytes] = []
     total = 0
     while True:
@@ -10379,14 +10536,14 @@ async def _support_consume_upload_image(upload) -> tuple[bytes, str, str | None]
         if total > SUPPORT_IMAGE_MAX_BYTES:
             raise HTTPException(
                 status_code=400,
-                detail=f"Image too large (max {SUPPORT_IMAGE_MAX_BYTES // (1024 * 1024)} MB)",
+                detail=f"File too large (max {SUPPORT_IMAGE_MAX_BYTES // (1024 * 1024)} MB)",
             )
         chunks.append(chunk)
     data = b"".join(chunks)
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
     mime = raw_ct
-    if mime not in SUPPORT_IMAGE_ALLOWED_MIME:
+    if mime not in SUPPORT_FILE_ALLOWED_MIME:
         if data[:3] == b"\xff\xd8\xff":
             mime = "image/jpeg"
         elif len(data) >= 8 and data[:8] == b"\x89PNG\r\n\x1a\n":
@@ -10395,8 +10552,26 @@ async def _support_consume_upload_image(upload) -> tuple[bytes, str, str | None]
             mime = "image/gif"
         elif len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
             mime = "image/webp"
+        elif orig_l.endswith(".json") or (data[:1:2] == b"{" or data[:1:2] == b"["):
+            mime = "application/json"
+        elif orig_l.endswith((".log", ".txt")) or all(32 <= b < 127 or b in (9, 10, 13) for b in data[:512]):
+            mime = "text/plain"
         else:
-            raise HTTPException(status_code=400, detail="Only JPEG, PNG, GIF, or WebP images are allowed")
+            raise HTTPException(
+                status_code=400,
+                detail="Allowed: JPEG, PNG, GIF, WebP, .txt, .log, or .json (max 2 MB)",
+            )
+    if mime not in SUPPORT_FILE_ALLOWED_MIME:
+        raise HTTPException(
+            status_code=400,
+            detail="Allowed: JPEG, PNG, GIF, WebP, .txt, .log, or .json (max 2 MB)",
+        )
+    return data, mime, orig
+
+
+async def _support_consume_upload_image(upload) -> tuple[bytes, str, str | None]:
+    """Backward-compatible alias — images only."""
+    data, mime, orig = await _support_consume_upload_attachment(upload)
     if mime not in SUPPORT_IMAGE_ALLOWED_MIME:
         raise HTTPException(status_code=400, detail="Only JPEG, PNG, GIF, or WebP images are allowed")
     return data, mime, orig
@@ -10408,15 +10583,22 @@ def _support_ext_for_mime(mime: str) -> str:
         "image/png": ".png",
         "image/gif": ".gif",
         "image/webp": ".webp",
-    }.get(mime, ".img")
+        "text/plain": ".txt",
+        "application/json": ".json",
+        "text/json": ".json",
+    }.get(mime, ".bin")
 
 
-def _support_write_image_file(data: bytes, mime: str) -> str:
+def _support_write_attachment_file(data: bytes, mime: str) -> str:
     ext = _support_ext_for_mime(mime)
     stored = secrets.token_urlsafe(18).replace("-", "")[:24] + ext
     path = SUPPORT_UPLOAD_DIR / stored
     path.write_bytes(data)
     return stored
+
+
+def _support_write_image_file(data: bytes, mime: str) -> str:
+    return _support_write_attachment_file(data, mime)
 
 
 def _support_add_attachment(
@@ -10528,7 +10710,67 @@ def _support_user_detail_dict(db, u: User, *, admin_style: bool) -> dict:
     return d
 
 
-def _support_thread_dict(db, t: SupportThread, last_preview: str | None = None) -> dict:
+def _support_last_public_message(db, thread_id: int) -> SupportMessage | None:
+    return (
+        db.query(SupportMessage)
+        .filter(SupportMessage.thread_id == thread_id, SupportMessage.is_internal == False)
+        .order_by(SupportMessage.id.desc())
+        .first()
+    )
+
+
+def _support_needs_staff_reply(db, t: SupportThread) -> bool:
+    if t.status not in ("open", "pending"):
+        return False
+    last = _support_last_public_message(db, t.id)
+    return bool(last and int(last.sender_user_id) == int(t.user_id))
+
+
+def _support_staff_unread(db, t: SupportThread, staff_upto: int) -> bool:
+    if t.status not in ("open", "pending"):
+        return False
+    last = _support_last_public_message(db, t.id)
+    return bool(
+        last
+        and int(last.sender_user_id) == int(t.user_id)
+        and int(staff_upto) < int(last.id)
+    )
+
+
+def _support_format_structured_body(cat: str, structured: dict | None) -> str:
+    if not structured or not isinstance(structured, dict):
+        return ""
+    lines: list[str] = []
+    if cat == "modifications":
+        for key, label in (
+            ("change_summary", "What should change"),
+            ("current_behavior", "Current behavior"),
+            ("expected_behavior", "Expected behavior"),
+        ):
+            val = str(structured.get(key) or "").strip()
+            if val:
+                lines.append(f"{label}:\n{val}")
+    elif cat == "suggestions":
+        for key, label in (
+            ("feature_summary", "Feature / idea"),
+            ("use_case", "Use case"),
+            ("priority_note", "Why it matters"),
+        ):
+            val = str(structured.get(key) or "").strip()
+            if val:
+                lines.append(f"{label}:\n{val}")
+    if not lines:
+        return ""
+    return "---\n" + "\n\n".join(lines) + "\n---\n\n"
+
+
+def _support_thread_dict(
+    db,
+    t: SupportThread,
+    last_preview: str | None = None,
+    *,
+    viewer: User | None = None,
+) -> dict:
     u = db.query(User).filter(User.id == t.user_id).first()
     assignee = None
     aid = getattr(t, "assigned_to_user_id", None)
@@ -10537,7 +10779,12 @@ def _support_thread_dict(db, t: SupportThread, last_preview: str | None = None) 
         if a:
             assignee = {"id": a.id, "name": a.name, "email": a.email}
     now = datetime.utcnow()
-    return {
+    req_upto, stf_upto = _support_read_watermarks(db, t)
+    extra = _support_load_ticket_extra(t)
+    tags = _support_load_tags(t)
+    rel_id = getattr(t, "related_thread_id", None)
+    rel_ref = _support_ticket_ref(rel_id) if rel_id else None
+    d = {
         "id": t.id,
         "ticket_ref": _support_ticket_ref(t.id),
         "user_id": t.user_id,
@@ -10554,11 +10801,27 @@ def _support_thread_dict(db, t: SupportThread, last_preview: str | None = None) 
         "resolved_at": t.resolved_at.isoformat() if t.resolved_at else None,
         "closed_at": t.closed_at.isoformat() if t.closed_at else None,
         "sla_overdue": _support_thread_sla_overdue(t, now),
+        "sla_label": _support_sla_status_label(t, now),
+        "sla_business_hours": SUPPORT_SLA_BUSINESS_HOURS,
+        "needs_staff_reply": _support_needs_staff_reply(db, t),
+        "staff_unread": _support_staff_unread(db, t, stf_upto),
+        "tags": tags,
+        "context": extra.get("context") if isinstance(extra.get("context"), dict) else None,
+        "structured": extra.get("structured") if isinstance(extra.get("structured"), dict) else None,
+        "related_thread_id": rel_id,
+        "related_ticket_ref": rel_ref,
+        "csat_rating": getattr(t, "csat_rating", None),
+        "csat_comment": getattr(t, "csat_comment", None),
+        "csat_at": t.csat_at.isoformat() if getattr(t, "csat_at", None) else None,
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "updated_at": t.updated_at.isoformat() if t.updated_at else None,
         "last_message_at": t.last_message_at.isoformat() if t.last_message_at else None,
         "last_message_preview": last_preview,
     }
+    if viewer and getattr(viewer, "role", None) == "admin":
+        d["requester_read_upto"] = req_upto
+        d["staff_read_upto"] = stf_upto
+    return d
 
 
 def _notify_support_recipients(db, thread: SupportThread, msg: SupportMessage, sender: User) -> list[int]:
@@ -10674,24 +10937,45 @@ def _support_email_user_on_status(db, t: SupportThread, status_label: str) -> No
     )
 
 
+def _support_parse_json_field(raw, field_name: str) -> dict | list | None:
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail=f"Invalid {field_name} JSON")
+    return None
+
+
 @app.post("/api/support/threads")
 async def support_create_thread(request: Request):
     user = _require_user(request)
-    image_tuple: tuple[bytes, str, str | None] | None = None
+    file_tuple: tuple[bytes, str, str | None] | None = None
+    tags_in: list[str] | None = None
+    context_in: dict | None = None
+    structured_in: dict | None = None
     ct = (request.headers.get("content-type") or "").lower()
     if "multipart/form-data" in ct:
         form = await request.form()
         subj = (form.get("subject") or "").strip()
         cat = (form.get("category") or "other").strip().lower()
         body_raw = (form.get("body") or "").strip()
+        tags_raw = form.get("tags")
+        if tags_raw:
+            tags_in = [x.strip() for x in str(tags_raw).split(",") if x.strip()]
+        context_in = _support_parse_json_field(form.get("context"), "context")
+        structured_in = _support_parse_json_field(form.get("structured"), "structured")
         up = form.get("file")
         if up is not None and hasattr(up, "read"):
-            image_tuple = await _support_consume_upload_image(up)
+            file_tuple = await _support_consume_upload_attachment(up)
         body = body_raw
-        if not body and image_tuple:
-            body = "[Image attachment]"
-        elif not body and not image_tuple:
-            raise HTTPException(status_code=400, detail="Message text or an image is required")
+        if not body and file_tuple:
+            body = "[Attachment]"
+        elif not body and not file_tuple:
+            raise HTTPException(status_code=400, detail="Message text or a file is required")
     else:
         try:
             raw = await request.json()
@@ -10701,13 +10985,18 @@ async def support_create_thread(request: Request):
         cat = (payload.category or "other").strip().lower()
         subj = payload.subject.strip()
         body = payload.body.strip()
+        tags_in = payload.tags
+        context_in = payload.context
+        structured_in = payload.structured
         if not body:
             raise HTTPException(status_code=400, detail="Message is required")
 
     cat = _support_validate_category(cat)
     if not subj:
         raise HTTPException(status_code=400, detail="Subject is required")
-    body = body.strip()[:SUPPORT_BODY_MAX]
+    structured_block = _support_format_structured_body(cat, structured_in if isinstance(structured_in, dict) else None)
+    body = (structured_block + body.strip())[:SUPPORT_BODY_MAX]
+    tags_valid = _support_validate_tags(tags_in)
     if not _support_rate_exempt(user):
         uid = int(user.id)
         if not _support_rate_allow_new_thread(uid):
@@ -10723,15 +11012,27 @@ async def support_create_thread(request: Request):
     db = SessionLocal()
     try:
         now = datetime.utcnow()
+        assignee_id = _support_default_assignee_id(db, cat)
+        extra: dict = {}
+        if isinstance(context_in, dict) and context_in:
+            extra["context"] = {str(k)[:64]: str(v)[:500] for k, v in list(context_in.items())[:20]}
+        if isinstance(structured_in, dict) and structured_in:
+            extra["structured"] = {
+                str(k)[:64]: str(v)[:2000] for k, v in list(structured_in.items())[:12]
+            }
         t = SupportThread(
             user_id=user.id,
             subject=subj[: SUPPORT_SUBJECT_MAX],
             category=cat,
             status="open",
-            priority="normal",
+            priority=_support_priority_for_category(cat),
+            assigned_to_user_id=assignee_id,
             first_response_due_at=_support_sla_due_at(now),
             last_message_at=now,
+            tags_json=json.dumps(tags_valid) if tags_valid else None,
         )
+        if extra:
+            _support_set_ticket_extra(t, extra)
         db.add(t)
         db.commit()
         db.refresh(t)
@@ -10739,8 +11040,8 @@ async def support_create_thread(request: Request):
         db.add(m)
         db.commit()
         db.refresh(m)
-        if image_tuple:
-            data, mime, orig = image_tuple
+        if file_tuple:
+            data, mime, orig = file_tuple
             _support_add_attachment(db, m.id, int(user.id), data, mime, orig)
             db.commit()
         recipients = _notify_support_recipients(db, t, m, user)
@@ -10764,7 +11065,36 @@ async def support_create_thread(request: Request):
                     "View your ticket",
                 ),
             )
-        return {"thread": _support_thread_dict(db, t, last_preview=preview), "message": msg_dict}
+        return {
+            "thread": _support_thread_dict(db, t, last_preview=preview, viewer=user),
+            "message": msg_dict,
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/support/threads/{thread_id}/csat")
+async def support_submit_csat(thread_id: int, payload: SupportCsatIn, request: Request):
+    user = _require_user(request)
+    db = SessionLocal()
+    try:
+        t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
+        if not t:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        if int(t.user_id) != int(user.id):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        if t.status not in ("resolved", "closed"):
+            raise HTTPException(status_code=400, detail="CSAT is available after the ticket is resolved")
+        if getattr(t, "csat_rating", None) is not None:
+            raise HTTPException(status_code=400, detail="Feedback already submitted")
+        now = datetime.utcnow()
+        t.csat_rating = int(payload.rating)
+        t.csat_comment = (payload.comment or "").strip()[:1000] or None
+        t.csat_at = now
+        t.updated_at = now
+        db.commit()
+        db.refresh(t)
+        return {"thread": _support_thread_dict(db, t, viewer=user)}
     finally:
         db.close()
 
@@ -10788,8 +11118,9 @@ async def support_get_thread(thread_id: int, request: Request):
                 requester_detail = _support_user_detail_dict(db, requester, admin_style=True)
             elif int(user.id) == int(t.user_id):
                 requester_detail = _support_user_detail_dict(db, requester, admin_style=False)
+        th_dict = _support_thread_dict(db, t, viewer=user)
         return {
-            "thread": _support_thread_dict(db, t),
+            "thread": th_dict,
             "requester": requester_detail,
             "read_state": {
                 "requester_read_upto": req_upto,
@@ -10861,7 +11192,7 @@ async def support_list_threads(
                 .first()
             )
             preview = (last.body[:160] + "…") if last and len(last.body or "") > 160 else (last.body if last else None)
-            out.append(_support_thread_dict(db, t, last_preview=preview))
+            out.append(_support_thread_dict(db, t, last_preview=preview, viewer=user))
         return {"threads": out}
     finally:
         db.close()
@@ -10908,19 +11239,19 @@ async def support_list_messages(
 @app.post("/api/support/threads/{thread_id}/messages")
 async def support_post_message(thread_id: int, request: Request):
     user = _require_user(request)
-    image_tuple: tuple[bytes, str, str | None] | None = None
+    file_tuple: tuple[bytes, str, str | None] | None = None
     ct = (request.headers.get("content-type") or "").lower()
     if "multipart/form-data" in ct:
         form = await request.form()
         body_raw = (form.get("body") or "").strip()
         up = form.get("file")
         if up is not None and hasattr(up, "read"):
-            image_tuple = await _support_consume_upload_image(up)
+            file_tuple = await _support_consume_upload_attachment(up)
         body = body_raw
-        if not body and image_tuple:
-            body = "[Image attachment]"
-        elif not body and not image_tuple:
-            raise HTTPException(status_code=400, detail="Message text or an image is required")
+        if not body and file_tuple:
+            body = "[Attachment]"
+        elif not body and not file_tuple:
+            raise HTTPException(status_code=400, detail="Message text or a file is required")
     else:
         try:
             raw = await request.json()
@@ -10957,8 +11288,8 @@ async def support_post_message(thread_id: int, request: Request):
         t.updated_at = now
         db.commit()
         db.refresh(m)
-        if image_tuple:
-            data, mime, orig = image_tuple
+        if file_tuple:
+            data, mime, orig = file_tuple
             _support_add_attachment(db, m.id, int(user.id), data, mime, orig)
             db.commit()
         recipients = _notify_support_recipients(db, t, m, user)
@@ -11051,6 +11382,8 @@ def _admin_support_query_threads(
     assigned_to: int | None,
     q: str | None,
     sla_overdue: bool,
+    needs_reply: bool,
+    sort: str,
     limit: int,
     offset: int,
 ):
@@ -11075,12 +11408,20 @@ def _admin_support_query_threads(
             .limit(200)
             .all()
         ]
+        msg_thread_ids = [
+            r[0]
+            for r in db.query(SupportMessage.thread_id)
+            .filter(SupportMessage.body.ilike(needle), SupportMessage.is_internal == False)
+            .distinct()
+            .limit(500)
+            .all()
+        ]
+        clauses = [SupportThread.subject.ilike(needle)]
         if user_ids:
-            query = query.filter(
-                (SupportThread.subject.ilike(needle)) | (SupportThread.user_id.in_(user_ids))
-            )
-        else:
-            query = query.filter(SupportThread.subject.ilike(needle))
+            clauses.append(SupportThread.user_id.in_(user_ids))
+        if msg_thread_ids:
+            clauses.append(SupportThread.id.in_(msg_thread_ids))
+        query = query.filter(or_(*clauses))
     if sla_overdue:
         now = datetime.utcnow()
         query = query.filter(
@@ -11089,13 +11430,37 @@ def _admin_support_query_threads(
             SupportThread.first_response_due_at.isnot(None),
             SupportThread.first_response_due_at < now,
         )
+    if needs_reply:
+        last_pub = (
+            db.query(
+                SupportMessage.thread_id.label("tid"),
+                func.max(SupportMessage.id).label("max_id"),
+            )
+            .filter(SupportMessage.is_internal == False)
+            .group_by(SupportMessage.thread_id)
+            .subquery()
+        )
+        LastM = aliased(SupportMessage)
+        query = (
+            query.join(last_pub, SupportThread.id == last_pub.c.tid)
+            .join(LastM, LastM.id == last_pub.c.max_id)
+            .filter(
+                SupportThread.status.in_(("open", "pending")),
+                LastM.sender_user_id == SupportThread.user_id,
+            )
+        )
     total = query.count()
-    rows = (
-        query.order_by(nulls_last(SupportThread.last_message_at.desc()), SupportThread.id.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
+    sort_key = (sort or "activity").strip().lower()
+    if sort_key == "sla":
+        order = (
+            nulls_last(SupportThread.first_response_due_at.asc()),
+            SupportThread.id.desc(),
+        )
+    elif sort_key == "oldest":
+        order = (SupportThread.created_at.asc(), SupportThread.id.asc())
+    else:
+        order = (nulls_last(SupportThread.last_message_at.desc()), SupportThread.id.desc())
+    rows = query.order_by(*order).offset(offset).limit(limit).all()
     return total, rows
 
 
@@ -11128,13 +11493,90 @@ async def admin_support_stats(request: Request):
             .filter(SupportThread.status == "closed", SupportThread.closed_at >= today_start)
             .count()
         )
+        by_category: dict[str, int] = {}
+        for cat in SUPPORT_CATEGORIES:
+            by_category[cat] = (
+                db.query(SupportThread)
+                .filter(
+                    SupportThread.category == cat,
+                    SupportThread.status.in_(("open", "pending")),
+                )
+                .count()
+            )
         return {
             "open": open_n,
             "pending": pending_n,
             "unassigned": unassigned_n,
             "sla_overdue": overdue_n,
             "closed_today": closed_today,
+            "by_category": by_category,
+            "sla_business_hours": SUPPORT_SLA_BUSINESS_HOURS,
         }
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/support/export")
+async def admin_support_export(
+    request: Request,
+    category: str | None = None,
+    status: str | None = None,
+):
+    """CSV export for product backlog (e.g. suggestions)."""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        query = db.query(SupportThread)
+        if category:
+            query = query.filter(SupportThread.category == _support_validate_category(category))
+        if status:
+            query = query.filter(SupportThread.status == _support_validate_status(status))
+        rows = query.order_by(SupportThread.created_at.desc()).limit(5000).all()
+        import io
+
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(
+            [
+                "ticket_ref",
+                "id",
+                "subject",
+                "category",
+                "status",
+                "priority",
+                "user_email",
+                "created_at",
+                "last_message_at",
+                "csat_rating",
+                "tags",
+                "url",
+            ]
+        )
+        for t in rows:
+            u = db.query(User).filter(User.id == t.user_id).first()
+            w.writerow(
+                [
+                    _support_ticket_ref(t.id),
+                    t.id,
+                    (t.subject or "")[:500],
+                    t.category,
+                    t.status,
+                    t.priority,
+                    u.email if u else "",
+                    t.created_at.isoformat() if t.created_at else "",
+                    t.last_message_at.isoformat() if t.last_message_at else "",
+                    getattr(t, "csat_rating", None) or "",
+                    ",".join(_support_load_tags(t)),
+                    _support_ticket_url(t.id),
+                ]
+            )
+        body = buf.getvalue()
+        fname = f"support-export-{category or 'all'}-{datetime.utcnow().strftime('%Y%m%d')}.csv"
+        return Response(
+            content=body,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
     finally:
         db.close()
 
@@ -11162,22 +11604,30 @@ async def admin_support_list_threads(
     priority: str | None = None,
     category: str | None = None,
     assigned_to: int | None = None,
+    assigned_to_me: bool = False,
+    needs_reply: bool = False,
+    sort: str = "activity",
     q: str | None = None,
     sla_overdue: bool = False,
     limit: int = Query(500, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
-    _require_admin(request)
+    admin = _require_admin(request)
     db = SessionLocal()
     try:
+        assignee_filter = assigned_to
+        if assigned_to_me:
+            assignee_filter = int(admin.id)
         total, rows = _admin_support_query_threads(
             db,
             status=status,
             priority=priority,
             category=category,
-            assigned_to=assigned_to,
+            assigned_to=assignee_filter,
             q=q,
             sla_overdue=sla_overdue,
+            needs_reply=needs_reply,
+            sort=sort,
             limit=limit,
             offset=offset,
         )
@@ -11190,7 +11640,7 @@ async def admin_support_list_threads(
                 .first()
             )
             preview = (last.body[:160] + "…") if last and len(last.body or "") > 160 else (last.body if last else None)
-            out.append(_support_thread_dict(db, t, last_preview=preview))
+            out.append(_support_thread_dict(db, t, last_preview=preview, viewer=admin))
         return {"threads": out, "total": total, "limit": limit, "offset": offset}
     finally:
         db.close()
@@ -11242,6 +11692,27 @@ async def admin_support_patch_thread(
             t.category = _support_validate_category(payload.category)
             t.updated_at = now
             changes["category"] = {"from": old_c, "to": t.category}
+            if payload.priority is None:
+                t.priority = _support_priority_for_category(t.category)
+                changes["priority"] = {"auto": t.priority}
+        if payload.tags is not None:
+            old_tags = _support_load_tags(t)
+            new_tags = _support_validate_tags(payload.tags)
+            t.tags_json = json.dumps(new_tags) if new_tags else None
+            t.updated_at = now
+            changes["tags"] = {"from": old_tags, "to": new_tags}
+        if payload.related_thread_id is not None:
+            old_rel = getattr(t, "related_thread_id", None)
+            rel = int(payload.related_thread_id)
+            if rel == 0:
+                t.related_thread_id = None
+            else:
+                other = db.query(SupportThread).filter(SupportThread.id == rel).first()
+                if not other or other.id == t.id:
+                    raise HTTPException(status_code=400, detail="Invalid related ticket")
+                t.related_thread_id = rel
+            t.updated_at = now
+            changes["related_thread_id"] = {"from": old_rel, "to": t.related_thread_id}
         db.commit()
         db.refresh(t)
         if changes:
@@ -11257,7 +11728,7 @@ async def admin_support_patch_thread(
                 target_id=t.id,
                 params=changes,
             )
-        return {"thread": _support_thread_dict(db, t)}
+        return {"thread": _support_thread_dict(db, t, viewer=admin)}
     finally:
         db.close()
 
@@ -11268,7 +11739,7 @@ async def admin_support_post_message(
     request: Request,
 ):
     admin = _require_admin(request)
-    image_tuple: tuple[bytes, str, str | None] | None = None
+    file_tuple: tuple[bytes, str, str | None] | None = None
     is_internal = False
     ct = (request.headers.get("content-type") or "").lower()
     if "multipart/form-data" in ct:
@@ -11276,13 +11747,13 @@ async def admin_support_post_message(
         body_raw = (form.get("body") or "").strip()
         is_internal = str(form.get("is_internal") or "").lower() in ("1", "true", "yes", "on")
         up = form.get("file")
-        if up is not None and hasattr(up, "read"):
-            image_tuple = await _support_consume_upload_image(up)
+        if up is not None and hasattr(up, "read") and not is_internal:
+            file_tuple = await _support_consume_upload_attachment(up)
         body = body_raw
-        if not body and image_tuple:
-            body = "[Image attachment]"
-        elif not body and not image_tuple:
-            raise HTTPException(status_code=400, detail="Message text or an image is required")
+        if not body and file_tuple:
+            body = "[Attachment]"
+        elif not body and not file_tuple:
+            raise HTTPException(status_code=400, detail="Message text or a file is required")
     else:
         try:
             raw = await request.json()
@@ -11315,8 +11786,8 @@ async def admin_support_post_message(
             _support_admin_on_public_reply(db, t, admin, now)
         db.commit()
         db.refresh(m)
-        if image_tuple and not is_internal:
-            data, mime, orig = image_tuple
+        if file_tuple and not is_internal:
+            data, mime, orig = file_tuple
             _support_add_attachment(db, m.id, int(admin.id), data, mime, orig)
             db.commit()
         recipients = _notify_support_recipients(db, t, m, admin)
@@ -11337,7 +11808,7 @@ async def admin_support_post_message(
             {"type": "message", "thread_id": t.id, "message": msg_dict},
         )
         await _push_inbox_notification_pings(recipients, t.id, m.id)
-        return {"message": msg_dict, "thread": _support_thread_dict(db, t)}
+        return {"message": msg_dict, "thread": _support_thread_dict(db, t, viewer=admin)}
     finally:
         db.close()
 

@@ -3311,10 +3311,12 @@ function v9ResolveDrawingToolbarForDrawing(drawing) {
   return { dm, tb: dm && dm.toolbar, live: drawing };
 }
 
-function v9NotifyDrawingTemplateApplied(drawing) {
+function v9NotifyDrawingTemplateApplied(drawing, builtinDefault = false) {
   if (typeof window === 'undefined' || !drawing) return;
   try {
-    window.dispatchEvent(new CustomEvent('v9DrawingTemplateApplied', { detail: { drawing } }));
+    window.dispatchEvent(new CustomEvent('v9DrawingTemplateApplied', {
+      detail: { drawing, builtinDefault: !!builtinDefault },
+    }));
   } catch (_) {}
 }
 
@@ -3326,12 +3328,24 @@ function v9ApplyDrawingTemplate(drawing, templateId) {
   return true;
 }
 
+function v9BuildDefaultTlStyleForDrawingType(type) {
+  if (!type) return null;
+  return v9EnsureTlStyleArrays({ ...v9FreshTlStyleDefaults() }, null, type);
+}
+
 function v9ApplyDefaultDrawingTemplate(drawing) {
-  const { tb, live } = v9ResolveDrawingToolbarForDrawing(drawing);
-  if (!tb || !live || typeof tb.applyDefaultTemplate !== 'function') return false;
-  tb.applyDefaultTemplate(live);
-  v9NotifyDrawingTemplateApplied(live);
-  return true;
+  const { dm, tb, live } = v9ResolveDrawingToolbarForDrawing(drawing);
+  if (!live) return false;
+  if (dm && typeof dm.applyBuiltinDefaultStyleToDrawing === "function") {
+    if (!dm.applyBuiltinDefaultStyleToDrawing(live)) return false;
+    v9NotifyDrawingTemplateApplied(live, true);
+    return true;
+  }
+  if (tb && typeof tb.applyDefaultTemplate === "function") {
+    tb.applyDefaultTemplate(live);
+    return true;
+  }
+  return false;
 }
 
 function v9DeleteDrawingTemplate(drawing, templateId) {
@@ -6381,15 +6395,26 @@ const TalariaV8bLive = () => {
     const subject = supportNewSubject.trim();
     const body = supportNewBody.trim();
     if (!subject || (!body && !supportNewFile)) return;
-    if (supportNewFile && supportNewFile.size > 2 * 1024 * 1024) { setSupportError("Image must be 2 MB or smaller."); return; }
+    if (supportNewFile && supportNewFile.size > 2 * 1024 * 1024) { setSupportError("File must be 2 MB or smaller."); return; }
     setSupportSending(true); setSupportError(null);
+    const chartSym = typeof window !== "undefined" && window.chart?.currentSymbol ? String(window.chart.currentSymbol) : symbol;
+    const ctx = {
+      app: "talaria-chart-v9",
+      symbol: chartSym?.slice?.(0, 64) || String(chartSym || ""),
+      url: typeof window !== "undefined" ? window.location.href.slice(0, 500) : "",
+    };
     try {
       let data;
       if (supportNewFile) {
-        const fd = new FormData(); fd.append("subject", subject); fd.append("category", supportNewCategory); fd.append("body", body); fd.append("file", supportNewFile);
+        const fd = new FormData();
+        fd.append("subject", subject);
+        fd.append("category", supportNewCategory);
+        fd.append("body", body);
+        fd.append("context", JSON.stringify(ctx));
+        fd.append("file", supportNewFile);
         data = await supportApi("/api/support/threads", { method: "POST", body: fd });
       } else {
-        data = await supportApi("/api/support/threads", { method: "POST", body: JSON.stringify({ subject, category: supportNewCategory, body }) });
+        data = await supportApi("/api/support/threads", { method: "POST", body: JSON.stringify({ subject, category: supportNewCategory, body, context: ctx }) });
       }
       setSupportNewSubject(""); setSupportNewBody(""); setSupportNewFile(null); setSupportNewCategory("other");
       if (supportNewFileRef.current) supportNewFileRef.current.value = "";
@@ -10737,13 +10762,16 @@ const TalariaV8bLive = () => {
       try {
         const raw = event && event.detail && event.detail.drawing;
         if (!raw) return;
+        const builtinDefault = !!(event.detail && event.detail.builtinDefault);
         const { dm, live } = v9ResolveDrawingToolbarForDrawing(raw);
         const d = live || raw;
         if (!d || !d.type) return;
         suppressForwardBridge.current = true;
-        const full = v9BuildFullTlStyleFromDrawing(d, dm);
+        const full = builtinDefault
+          ? v9BuildDefaultTlStyleForDrawingType(d.type)
+          : v9BuildFullTlStyleFromDrawing(d, dm);
         if (full) {
-          setTlStyle(full);
+          flushSync(() => setTlStyle(full));
         } else {
           const patch = v9TlStylePatchFromDrawing(d);
           if (patch && Object.keys(patch).length) {
