@@ -1317,6 +1317,26 @@ class DrawingToolsManager {
         // Avoids duplicating checkDrawingProximity on both canvas mousemove and svg handleMouseMove.
         const chartWrapper = canvas && canvas.parentElement;
         if (chartWrapper) {
+            const prevMarquee = chartWrapper.__drawingToolsCtrlMarqueeDown;
+            if (typeof prevMarquee === 'function') {
+                chartWrapper.removeEventListener('mousedown', prevMarquee, true);
+            }
+            const onChartWrapperCtrlMarqueeDown = (event) => {
+                if (
+                    this._isCursorSelectMode() &&
+                    event.button === 0 &&
+                    (event.ctrlKey || event.metaKey) &&
+                    !event.shiftKey &&
+                    !event.altKey &&
+                    !this.isRectSelecting &&
+                    this._getPointerCursorMode(event) === 'chart'
+                ) {
+                    this._tryArmCtrlMarqueeFromPointer(event);
+                }
+            };
+            chartWrapper.addEventListener('mousedown', onChartWrapperCtrlMarqueeDown, true);
+            chartWrapper.__drawingToolsCtrlMarqueeDown = onChartWrapperCtrlMarqueeDown;
+
             const prevProx = chartWrapper.__drawingToolsProximityMove;
             if (typeof prevProx === 'function') {
                 chartWrapper.removeEventListener('mousemove', prevProx);
@@ -2210,6 +2230,18 @@ class DrawingToolsManager {
             return;
         }
 
+        // Ctrl+drag marquee — before multi-panel tool inheritance, handle hits, or shape drag.
+        if (
+            this._isCursorSelectMode() &&
+            (event.ctrlKey || event.metaKey) &&
+            !event.shiftKey &&
+            !event.altKey &&
+            this._getPointerCursorMode(event) === 'chart' &&
+            this._tryArmCtrlMarqueeFromPointer(event)
+        ) {
+            return;
+        }
+
         // Over price/time axis: let chart scale normally (tool stays armed).
         if (this.currentTool && this._isPointerOverChartAxis(event)) {
             return;
@@ -2313,17 +2345,6 @@ class DrawingToolsManager {
             let drawingsAtPoint = resolvedSvg.drawingsAtPoint;
             const mouseX = resolvedSvg.mouseX;
             const mouseY = resolvedSvg.mouseY;
-
-            // Ctrl+drag marquee on chart plot (Ctrl+click without drag still selects via click handler).
-            if (
-                (event.ctrlKey || event.metaKey) &&
-                !event.shiftKey &&
-                !event.altKey &&
-                this._getPointerCursorMode(event) === 'chart' &&
-                this._tryArmCtrlMarqueeFromPointer(event)
-            ) {
-                return;
-            }
 
             const stackedLinesInfo = this.findStackedLines(mouseX, mouseY, 3);
             if (stackedLinesInfo.isStacked) {
@@ -5723,6 +5744,16 @@ class DrawingToolsManager {
                 .filter(function(event) {
                     if (self.isRectSelecting || self._ctrlMarqueePending) return false;
 
+                    const src = event.sourceEvent || event;
+                    if (
+                        src &&
+                        (src.ctrlKey || src.metaKey) &&
+                        !src.shiftKey &&
+                        self._isCursorSelectMode()
+                    ) {
+                        return false;
+                    }
+
                     // Only allow drag if not currently drawing and not clicking on a handle
                     const targetSelection = d3.select(event.target);
                     const isResizeHandle = targetSelection.classed('resize-handle') || targetSelection.classed('resize-handle-hit');
@@ -6184,6 +6215,15 @@ class DrawingToolsManager {
         const self = this;
 
         const allowResizeHandleDragWhenToolActive = function (event) {
+            const src = (event && event.sourceEvent) ? event.sourceEvent : event;
+            if (
+                src &&
+                (src.ctrlKey || src.metaKey) &&
+                !src.shiftKey &&
+                self._isCursorSelectMode()
+            ) {
+                return false;
+            }
             if (!self.currentTool) return true;
             const src = (event && event.sourceEvent) ? event.sourceEvent : event;
             const t = src && src.target;
@@ -10959,5 +10999,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a25_magnet_edit';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a26_ctrl_marquee';
 } catch (_) {}
