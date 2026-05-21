@@ -13449,24 +13449,30 @@ class Chart {
     _snapshotPanDrawingsLayer() {
         this._panSnapOffsetX = this.offsetX;
         this._panSnapPriceOffset = this.priceOffset;
-        this._hideAxisHighlightsDuringPan();
     }
 
-    /** Axis labels use mixed coords (price=x-fixed, time=y-fixed); hide during CSS pan transform. */
-    _hideAxisHighlightsDuringPan() {
-        const dm = this.drawingManager;
-        if (dm && Array.isArray(dm.drawings)) {
-            dm.drawings.forEach((drawing) => {
-                if (drawing && typeof drawing.hideAxisHighlights === 'function') {
-                    try { drawing.hideAxisHighlights(); } catch (_) {}
-                }
-            });
-        } else if (this.svg && !this.svg.empty()) {
-            this.svg.selectAll('.axis-highlight-group').remove();
-        }
-        if (typeof this.clearAxisHighlightZones === 'function') {
-            this.clearAxisHighlightZones();
-        }
+    _clearAxisHighlightPanTransform() {
+        if (!this.svg || this.svg.empty()) return;
+        this.svg.selectAll(
+            '.axis-highlight-price, .axis-highlight-price-text, ' +
+            '.axis-highlight-time, .axis-highlight-time-text, ' +
+            '.axis-highlight-time-start, .axis-highlight-time-start-text, ' +
+            '.axis-highlight-time-end, .axis-highlight-time-end-text'
+        ).attr('transform', null);
+    }
+
+    /** Price labels are X-fixed on the axis; time labels are Y-fixed — split pan delta. */
+    _applyAxisHighlightPanTransform(dx, ty) {
+        if (!this.svg || this.svg.empty()) return;
+        const priceT = ty ? `translate(0,${ty})` : null;
+        const timeT = dx ? `translate(${dx},0)` : null;
+        const groups = this.svg.selectAll('.axis-highlight-group');
+        groups.selectAll('.axis-highlight-price, .axis-highlight-price-text').attr('transform', priceT);
+        groups.selectAll(
+            '.axis-highlight-time, .axis-highlight-time-text, ' +
+            '.axis-highlight-time-start, .axis-highlight-time-start-text, ' +
+            '.axis-highlight-time-end, .axis-highlight-time-end-text'
+        ).attr('transform', timeT);
     }
 
     _clearPanDrawingsLayerTransform() {
@@ -13479,6 +13485,7 @@ class Chart {
                 dm.labelsGroup.attr('transform', null);
             }
         }
+        this._clearAxisHighlightPanTransform();
         this._panSnapOffsetX = null;
         this._panSnapPriceOffset = null;
     }
@@ -13540,6 +13547,7 @@ class Chart {
         if (dm.labelsGroup && !dm.labelsGroup.empty()) {
             dm.labelsGroup.attr('transform', transform);
         }
+        this._applyAxisHighlightPanTransform(dx, ty);
     }
 
     _runChartPanFrame() {
@@ -19080,17 +19088,6 @@ class Chart {
         if (this.drawingManager && this.xScale && this.yScale) {
             this.drawingManager.redrawAll({ forceFull: true });
         }
-        // Pan flag is still set during mouseup; restore axis labels on the next frame.
-        requestAnimationFrame(() => {
-            const dm = this.drawingManager;
-            if (!dm || !Array.isArray(dm.drawings)) return;
-            dm.drawings.forEach((drawing) => {
-                if (!drawing || drawing.visible === false || drawing.hidden === true) return;
-                if (typeof drawing.showAxisHighlights === 'function') {
-                    try { drawing.showAxisHighlights(); } catch (_) {}
-                }
-            });
-        });
     }
 
     redrawDrawings() {
