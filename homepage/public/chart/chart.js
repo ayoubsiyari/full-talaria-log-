@@ -18043,7 +18043,13 @@ class Chart {
                 this.ctrlMarqueeSelect.active &&
                 dragType !== 'ctrlMarqueeSelect'
             ) {
-                if (dm && typeof dm.cancelCtrlMarqueeSelectFromChart === 'function') {
+                const x1 = Math.min(this.ctrlMarqueeSelect.startX, this.ctrlMarqueeSelect.endX);
+                const y1 = Math.min(this.ctrlMarqueeSelect.startY, this.ctrlMarqueeSelect.endY);
+                const width = Math.abs(this.ctrlMarqueeSelect.endX - this.ctrlMarqueeSelect.startX);
+                const height = Math.abs(this.ctrlMarqueeSelect.endY - this.ctrlMarqueeSelect.startY);
+                if (dm && typeof dm.completeCtrlMarqueeFromChart === 'function') {
+                    dm.completeCtrlMarqueeFromChart(x1, y1, width, height);
+                } else if (dm && typeof dm.cancelCtrlMarqueeSelectFromChart === 'function') {
                     dm.cancelCtrlMarqueeSelectFromChart();
                 }
                 this.ctrlMarqueeSelect.active = false;

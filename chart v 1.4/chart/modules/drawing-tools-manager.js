@@ -3364,7 +3364,9 @@ class DrawingToolsManager {
     handleMouseMove(event) {
         // Marquee multi-select: never run placement/drag handlers in parallel.
         if (this.isRectSelecting) {
-            this.updateRectangularSelection(event);
+            if (!(this.chart && this.chart.ctrlMarqueeSelect && this.chart.ctrlMarqueeSelect.active)) {
+                this.updateRectangularSelection(event);
+            }
             return;
         }
 
@@ -3627,8 +3629,11 @@ class DrawingToolsManager {
             return;
         }
 
-        // Handle rectangular selection completion
+        // Handle rectangular selection completion (legacy SVG overlay path only)
         if (this.isRectSelecting) {
+            if (this.chart && this.chart.ctrlMarqueeSelect && this.chart.ctrlMarqueeSelect.active) {
+                return;
+            }
             this.completeRectangularSelection();
             return;
         }
@@ -8949,14 +8954,14 @@ class DrawingToolsManager {
     prepareCtrlMarqueeSelectFromChart() {
         this._cancelCtrlMarqueePending();
         this._abortInteractionForRectSelect();
-        this.isRectSelecting = true;
+        // chart.js owns the gesture (ctrlMarqueeSelect); do not set isRectSelecting here —
+        // that flag is for the legacy SVG overlay path and breaks mouseup hit-testing.
         this.ctrlSelectMode = false;
         this._suppressDrawingPointerEventsForRectSelect();
     }
 
     /** chart.js Ctrl+drag pipeline — cleanup without selecting. */
     cancelCtrlMarqueeSelectFromChart() {
-        this.isRectSelecting = false;
         this._unbindRectSelectDocumentListeners();
         this._clearRectSelectVisual();
         if (this.svg) this.svg.style('pointer-events', 'none');
@@ -8967,7 +8972,6 @@ class DrawingToolsManager {
 
     /** chart.js Ctrl+drag pipeline — apply selection from canvas layout rect. */
     completeCtrlMarqueeFromChart(x, y, width, height) {
-        this.isRectSelecting = false;
         this._unbindRectSelectDocumentListeners();
         this._clearRectSelectVisual();
         if (this.svg) this.svg.style('pointer-events', 'none');
@@ -9488,58 +9492,27 @@ class DrawingToolsManager {
         this._releaseCtrlMarqueePointerCapture();
     }
 
-    /** Selection marquee in layout px → viewport client px for getBoundingClientRect(). */
-    _layoutSelectionRectToClient(rectX, rectY, rectWidth, rectHeight) {
-        const layoutRect = (this.chart && typeof this.chart._pointerLayoutRect === 'function')
-            ? this.chart._pointerLayoutRect()
-            : null;
-        const z = (this.chart && typeof this.chart._v9LayoutZoom === 'function')
-            ? this.chart._v9LayoutZoom()
-            : 1;
-        if (!layoutRect) {
-            return {
-                left: rectX,
-                top: rectY,
-                right: rectX + rectWidth,
-                bottom: rectY + rectHeight
-            };
-        }
-        return {
-            left: layoutRect.left + rectX * z,
-            top: layoutRect.top + rectY * z,
-            right: layoutRect.left + (rectX + rectWidth) * z,
-            bottom: layoutRect.top + (rectY + rectHeight) * z
-        };
-    }
-
     /**
-     * Check if a drawing intersects with the selection rectangle
+     * Check if a drawing intersects with the selection rectangle (chart layout px).
      */
     isDrawingInRectangle(drawing, rectX, rectY, rectWidth, rectHeight) {
-        if (!drawing.group) return false;
-        
+        if (!drawing || !drawing.group) return false;
+
         try {
             const node = drawing.group.node();
-            if (!node) return false;
+            if (!node || typeof node.getBBox !== 'function') return false;
 
-            const sel = this._layoutSelectionRectToClient(rectX, rectY, rectWidth, rectHeight);
-            if (typeof node.getBoundingClientRect === 'function') {
-                const db = node.getBoundingClientRect();
-                if (db.width > 0 || db.height > 0) {
-                    return db.left < sel.right && db.right > sel.left
-                        && db.top < sel.bottom && db.bottom > sel.top;
-                }
-            }
-
+            const pad = 2;
             const bbox = node.getBBox();
-            const drawingLeft = bbox.x;
-            const drawingRight = bbox.x + bbox.width;
-            const drawingTop = bbox.y;
-            const drawingBottom = bbox.y + bbox.height;
+            const drawingLeft = bbox.x - pad;
+            const drawingRight = bbox.x + bbox.width + pad;
+            const drawingTop = bbox.y - pad;
+            const drawingBottom = bbox.y + bbox.height + pad;
             const rectLeft = rectX;
             const rectRight = rectX + rectWidth;
             const rectTop = rectY;
             const rectBottom = rectY + rectHeight;
+
             return drawingLeft < rectRight && drawingRight > rectLeft
                 && drawingTop < rectBottom && drawingBottom > rectTop;
         } catch (error) {
@@ -11151,5 +11124,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a30_gesture_fix';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a31_marquee_select';
 } catch (_) {}
