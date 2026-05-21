@@ -1014,6 +1014,73 @@ function getPrimarySelectedDrawingForActiveChart(editingRefDrawing) {
   return getSelectedDrawingAcrossCharts(null);
 }
 
+function resolveDrawingManagerForDrawing(drawing) {
+  if (!drawing) return null;
+  for (const dm of enumerateV9DrawingManagersActiveFirst()) {
+    if (resolveLiveDrawingInDm(dm, drawing)) return dm;
+  }
+  return null;
+}
+
+function v9NotifyDrawingAction(message) {
+  if (typeof window === "undefined") return;
+  try {
+    const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+    if (ch && typeof ch.showNotification === "function") {
+      ch.showNotification(message);
+      return;
+    }
+    const dm = ch && ch.drawingManager;
+    if (dm && dm.toolbar && typeof dm.toolbar.showNotification === "function") {
+      dm.toolbar.showNotification(message);
+    }
+  } catch (_) {}
+}
+
+/** Floating toolbar "…" menu — same actions as right-click drawing context menu. */
+function v9RunDrawingMoreMenuAction(actionLabel) {
+  const drawing = getPrimarySelectedDrawingForActiveChart(null);
+  const dm = resolveDrawingManagerForDrawing(drawing);
+  if (!dm || !drawing) {
+    v9NotifyDrawingAction("Select a drawing first");
+    return false;
+  }
+  try {
+    switch (actionLabel) {
+      case "Bring Forward":
+        if (typeof dm.bringToFront === "function") dm.bringToFront(drawing);
+        break;
+      case "Bring Back":
+      case "Send Backward":
+        if (typeof dm.sendToBack === "function") dm.sendToBack(drawing);
+        break;
+      case "Object Tree":
+        if (typeof window._openMode === "function") window._openMode("objecttree");
+        else v9NotifyDrawingAction("Object tree unavailable");
+        break;
+      case "Clone":
+        if (typeof dm.duplicateDrawing === "function") dm.duplicateDrawing(drawing);
+        else v9NotifyDrawingAction("Clone unavailable");
+        break;
+      case "Copy":
+        if (typeof dm.copyDrawing === "function") {
+          dm.copyDrawing(drawing);
+          v9NotifyDrawingAction("Drawing copied ✓");
+        } else {
+          v9NotifyDrawingAction("Copy unavailable");
+        }
+        break;
+      default:
+        return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn("[V9] drawing more menu action failed:", actionLabel, err);
+    v9NotifyDrawingAction("Action failed");
+    return false;
+  }
+}
+
 /** Merge fragment for `txtStyle` state from a legacy text/callout drawing (toolbar hydrate). */
 function v9TxtStylePatchFromDrawing(d) {
   if (!d || !d.style) return null;
@@ -15835,7 +15902,7 @@ const TalariaV8bLive = () => {
                   ].map((item,i)=>item===null ? (
                     <div key={i} style={{height:1,margin:"3px 0",background:c.brH}}/>
                   ) : (
-                    <div key={item.lbl} onClick={()=>setTxtBarDrop(null)}
+                    <div key={item.lbl} onClick={()=>{ v9RunDrawingMoreMenuAction(item.lbl); setTxtBarDrop(null); }}
                       onMouseEnter={()=>setHov(`txtmore-${item.lbl}`)} onMouseLeave={()=>setHov(null)}
                       style={{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",cursor:"default",
                                background:hov===`txtmore-${item.lbl}`?c.hv2:"transparent",transition:"background 0.1s"}}>
@@ -17419,7 +17486,7 @@ const TalariaV8bLive = () => {
             ].map((item,i)=>item===null ? (
               <div key={i} style={{height:1, margin:"3px 0", background:c.brH}}/>
             ) : (
-              <div key={item.lbl} onClick={()=>setTlBarDrop(null)}
+              <div key={item.lbl} onClick={()=>{ v9RunDrawingMoreMenuAction(item.lbl); setTlBarDrop(null); }}
                 onMouseEnter={()=>setHov(`tbmore-${item.lbl}`)} onMouseLeave={()=>setHov(null)}
                 style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px", cursor:"default",
                          background:hov===`tbmore-${item.lbl}`?c.hv2:"transparent", transition:"background 0.1s" }}>
@@ -19498,7 +19565,7 @@ const TalariaV8bLive = () => {
                   ].map((item,i)=>item===null?(
                     <div key={i} style={{height:1,margin:"3px 0",background:c.brH}}/>
                   ):(
-                    <div key={item.lbl} onClick={()=>setVwapBarDrop(null)}
+                    <div key={item.lbl} onClick={()=>{ v9RunDrawingMoreMenuAction(item.lbl); setVwapBarDrop(null); }}
                       onMouseEnter={()=>setHov(`vb-more-${item.lbl}`)} onMouseLeave={()=>setHov(null)}
                       style={{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",cursor:"default",
                               background:hov===`vb-more-${item.lbl}`?c.hv2:"transparent"}}>
@@ -19591,7 +19658,7 @@ const TalariaV8bLive = () => {
                   ].map((item,i)=>item===null?(
                     <div key={i} style={{height:1,margin:"3px 0",background:c.brH}}/>
                   ):(
-                    <div key={item.lbl} onClick={()=>setVpBarDrop(null)}
+                    <div key={item.lbl} onClick={()=>{ v9RunDrawingMoreMenuAction(item.lbl); setVpBarDrop(null); }}
                       onMouseEnter={()=>setHov(`vpb-more-${item.lbl}`)} onMouseLeave={()=>setHov(null)}
                       style={{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",cursor:"default",
                               background:hov===`vpb-more-${item.lbl}`?c.hv2:"transparent"}}>
@@ -19684,7 +19751,7 @@ const TalariaV8bLive = () => {
                   ].map((item,i)=>item===null?(
                     <div key={i} style={{height:1,margin:"3px 0",background:c.brH}}/>
                   ):(
-                    <div key={item.lbl} onClick={()=>setAvBarDrop(null)}
+                    <div key={item.lbl} onClick={()=>{ v9RunDrawingMoreMenuAction(item.lbl); setAvBarDrop(null); }}
                       onMouseEnter={()=>setHov(`avb-more-${item.lbl}`)} onMouseLeave={()=>setHov(null)}
                       style={{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",cursor:"default",
                               background:hov===`avb-more-${item.lbl}`?c.hv2:"transparent"}}>
