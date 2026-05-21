@@ -94,12 +94,18 @@ if (mode === "live" || mode === "both") {
 }
 
 if (mode === "dist" || mode === "both") {
-  if (!buildIdForDist && fs.existsSync(liveIndexPath)) {
-    buildIdForDist = readCurrentChartBuildId(fs.readFileSync(liveIndexPath, "utf8"));
+  let distBuildId = buildIdForDist;
+  if (fs.existsSync(distIndexPath)) {
+    const distCurrent = readCurrentChartBuildId(fs.readFileSync(distIndexPath, "utf8"));
+    // After `vite build`, dist copies live's id — bump dist one step so browsers reload modules.
+    distBuildId = distCurrent ? incrementBuildId(distCurrent) : distBuildId;
+  }
+  if (!distBuildId && fs.existsSync(liveIndexPath)) {
+    distBuildId = readCurrentChartBuildId(fs.readFileSync(liveIndexPath, "utf8"));
   }
   touched += bumpChartScriptsInHtml(distIndexPath, {
     required: mode === "dist" || mode === "both",
-    buildId: buildIdForDist,
+    buildId: distBuildId,
   });
 }
 
