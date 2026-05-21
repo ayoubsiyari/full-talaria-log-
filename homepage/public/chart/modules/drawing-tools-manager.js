@@ -1331,6 +1331,8 @@ class DrawingToolsManager {
                     canvas.removeEventListener('contextmenu', existing.contextmenu, true);
                 }
             }
+
+            // Mousedown on canvas for rectangular selection
             const onMouseDown = (event) => {
                 // Check for Ctrl+drag to start rectangular selection
                 if (event.ctrlKey && !event.shiftKey && !this.currentTool) {
@@ -2785,7 +2787,7 @@ class DrawingToolsManager {
         }
         
         // Apply Shift key angle constraint for supported tools when placing second+ point
-        if (event.shiftKey && this.angleSnapTools.includes(this.currentTool) && this.drawingState.tempPoints.length > 0) {
+        if (this._pointerModifiers(event).shiftKey && this.angleSnapTools.includes(this.currentTool) && this.drawingState.tempPoints.length > 0) {
             const referencePoint = this.drawingState.tempPoints[this.drawingState.tempPoints.length - 1];
             point = this.constrainToAngle(referencePoint, point);
         }
@@ -3115,7 +3117,7 @@ class DrawingToolsManager {
      * @returns {number|null}
      */
     getShiftConstrainedPreviewPrice(event) {
-        if (!event || !event.shiftKey) return null;
+        if (!event || !this._pointerModifiers(event).shiftKey) return null;
         if (!this.drawingState || !this.drawingState.isDrawing || !this.currentTool) return null;
 
         let point = this.getDataPoint(event);
@@ -3172,7 +3174,7 @@ class DrawingToolsManager {
      */
     _scheduleChartCrosshairFromDrawingEvent(event) {
         if (!this.chart || typeof this.chart.updateCrosshair !== 'function') return;
-        this._drawingCrosshairPendingEvent = event;
+        this._drawingCrosshairPendingEvent = this._nativePointerEvent(event) || event;
         if (this._drawingCrosshairRaf != null) return;
         this._drawingCrosshairRaf = requestAnimationFrame(() => {
             this._drawingCrosshairRaf = null;
@@ -3314,7 +3316,7 @@ class DrawingToolsManager {
         // Track last mouse position for Shift/Ctrl preview refresh (placement + resize)
         if ((this.currentTool && this.drawingState && this.drawingState.isDrawing)
             || this.isResizing || this.isCustomHandleDrag || this.isCustomHandleDragging) {
-            this._lastMouseEvent = event;
+            this._lastMouseEvent = this._nativePointerEvent(event) || event;
         }
 
         if (this.chart && typeof this.chart.updateCrosshair === 'function' &&
@@ -3466,7 +3468,7 @@ class DrawingToolsManager {
         let point = this.getDataPoint(event);
         
         // Apply Shift key angle constraint for supported tools
-        if (event.shiftKey && this.angleSnapTools.includes(this.currentTool) && this.drawingState.tempPoints.length > 0) {
+        if (this._pointerModifiers(event).shiftKey && this.angleSnapTools.includes(this.currentTool) && this.drawingState.tempPoints.length > 0) {
             const referencePoint = this.drawingState.tempPoints[this.drawingState.tempPoints.length - 1];
             point = this.constrainToAngle(referencePoint, point);
         }
@@ -3875,8 +3877,11 @@ class DrawingToolsManager {
         const isPlacing = !!(this.currentTool && this.drawingState && this.drawingState.isDrawing);
         const isEditing = !!(this.isResizing || this.isCustomHandleDrag || this.isCustomHandleDragging);
         if (!isPlacing && !isEditing) return;
-        if (!this._lastMouseEvent) return;
-        const last = this._lastMouseEvent;
+        let last = this._lastMouseEvent ? this._nativePointerEvent(this._lastMouseEvent) : null;
+        if (!last || !Number.isFinite(last.clientX) || !Number.isFinite(last.clientY)) {
+            last = this._syntheticPointerFromChart(keyPatch);
+        }
+        if (!last) return;
         const fakeEvent = {
             clientX: last.clientX,
             clientY: last.clientY,
@@ -3911,7 +3916,7 @@ class DrawingToolsManager {
 
     /** True when OHLC magnet should apply (toolbar magnet or temporary Ctrl/Cmd). */
     _isMagnetSnapActive(event) {
-        const keyHeld = !!(event && (event.metaKey || event.ctrlKey)) || !!this.magnetKeyHeld;
+        const keyHeld = this._ctrlMagnetHeld(event);
         const mode = this.magnetMode || (this.chart && this.chart.magnetMode) || 'off';
         return !!(keyHeld || mode === 'weak' || mode === 'strong' || mode === true);
     }
@@ -3919,7 +3924,7 @@ class DrawingToolsManager {
     /** Strong magnet snaps anchors to bar centers; weak/off keep fractional time in empty chart space. */
     _snapPlacementXToBarCenter(event) {
         const mode = this.magnetMode || (this.chart && this.chart.magnetMode) || 'off';
-        const keyHeld = !!(event && (event.metaKey || event.ctrlKey)) || !!this.magnetKeyHeld;
+        const keyHeld = this._ctrlMagnetHeld(event);
         return mode === 'strong' || mode === true || !!keyHeld;
     }
 
@@ -3940,7 +3945,12 @@ class DrawingToolsManager {
         const candle = data[idx];
         if (!candle) return point;
 
-        const ohlc = [candle.o, candle.h, candle.l, candle.c].filter((v) => Number.isFinite(v));
+        const ohlc = [
+            candle.o ?? candle.open,
+            candle.h ?? candle.high,
+            candle.l ?? candle.low,
+            candle.c ?? candle.close
+        ].filter((v) => Number.isFinite(v));
         if (!ohlc.length) return point;
 
         let closest = ohlc[0];
@@ -3953,7 +3963,7 @@ class DrawingToolsManager {
             }
         }
 
-        const keyHeld = !!(event && (event.metaKey || event.ctrlKey)) || !!this.magnetKeyHeld;
+        const keyHeld = this._ctrlMagnetHeld(event);
         const mode = this.magnetMode || (this.chart && this.chart.magnetMode) || 'off';
         const forceSnap = keyHeld || mode === 'strong' || mode === true;
 
@@ -3972,12 +3982,52 @@ class DrawingToolsManager {
         return { x: idx, y: closest };
     }
 
+    /** Native pointer event (D3 drag/zoom wrap modifiers on sourceEvent). */
+    _nativePointerEvent(event) {
+        if (!event) return event;
+        return (event.sourceEvent && typeof event.sourceEvent === 'object') ? event.sourceEvent : event;
+    }
+
+    _pointerModifiers(event) {
+        const e = this._nativePointerEvent(event) || {};
+        return {
+            ctrlKey: !!e.ctrlKey,
+            metaKey: !!e.metaKey,
+            shiftKey: !!e.shiftKey,
+            altKey: !!e.altKey
+        };
+    }
+
+    _ctrlMagnetHeld(event) {
+        const m = this._pointerModifiers(event);
+        return m.ctrlKey || m.metaKey || !!this.magnetKeyHeld;
+    }
+
+    /** Same client coords as Chart.refreshCrosshairFromLastPointer when mousemove did not fire yet. */
+    _syntheticPointerFromChart(keyPatch = {}) {
+        const ch = this.chart;
+        if (!ch || !Number.isFinite(ch.mouseX) || !Number.isFinite(ch.mouseY)) return null;
+        const canvas = ch.canvas;
+        const rect = (typeof ch._pointerLayoutRect === 'function')
+            ? ch._pointerLayoutRect()
+            : ((canvas && (canvas.parentElement || canvas)) ? (canvas.parentElement || canvas).getBoundingClientRect() : null);
+        if (!rect) return null;
+        const z = (typeof ch._v9LayoutZoom === 'function') ? ch._v9LayoutZoom() : 1;
+        return {
+            clientX: rect.left + ch.mouseX * z,
+            clientY: rect.top + ch.mouseY * z,
+            ctrlKey: keyPatch.ctrlKey !== undefined ? !!keyPatch.ctrlKey : !!ch._lastCrosshairCtrlKey,
+            metaKey: keyPatch.metaKey !== undefined ? !!keyPatch.metaKey : !!ch._lastCrosshairMetaKey,
+            shiftKey: keyPatch.shiftKey !== undefined ? !!keyPatch.shiftKey : !!ch._lastCrosshairShiftKey,
+            altKey: false
+        };
+    }
+
     /**
      * Canvas-local CSS pixels (same as Chart.updateCrosshair). Prefer over d3.pointer(..., svg).
      */
     _eventCanvasLocalXY(event) {
-        const unwrap = (ev) => (ev && ev.sourceEvent) ? ev.sourceEvent : ev;
-        const raw = unwrap(event);
+        const raw = this._nativePointerEvent(event);
         if (this.chart && typeof this.chart._eventCanvasLocalXY === 'function' && raw) {
             return this.chart._eventCanvasLocalXY(raw);
         }

@@ -16621,6 +16621,7 @@ class Chart {
      */
     _eventCanvasLocalXY(event) {
         if (!this.canvas || !event) return [0, 0];
+        event = (event.sourceEvent && typeof event.sourceEvent === 'object') ? event.sourceEvent : event;
         let cx = event.clientX;
         let cy = event.clientY;
         if (!Number.isFinite(cx) || !Number.isFinite(cy)) {
@@ -19892,6 +19893,7 @@ class Chart {
     }
 
     updateCrosshair(e) {
+        e = (e && e.sourceEvent && typeof e.sourceEvent === 'object') ? e.sourceEvent : e;
         // Auto-fix stale dimensions: compare the parent wrapper size (which CSS
         // already expanded) against the canvas/chart internal w/h.  When they
         // diverge a layout change happened and resize() hasn't caught up yet.
