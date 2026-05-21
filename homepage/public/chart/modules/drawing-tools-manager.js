@@ -270,6 +270,7 @@ class DrawingToolsManager {
         } catch (_) {}
     }
 
+    /** Tell V9 React to drop stale single-select toolbar state (e.g. after Ctrl+marquee multi-select). */
     _notifyV9SelectionCleared() {
         try {
             const ev = new CustomEvent('talaria:v9-cleared-selection');
@@ -280,6 +281,7 @@ class DrawingToolsManager {
         } catch (_) {}
     }
 
+    /** chart.js canvas marquee / box-zoom gesture cleanup (safe when arming a draw tool). */
     _cancelChartMarqueeGesture() {
         const ch = this.chart;
         if (!ch) return;
@@ -4329,7 +4331,6 @@ class DrawingToolsManager {
         if (this.currentTool === 'path' || this.currentTool === 'brush' || this.currentTool === 'highlighter') {
             return true;
         }
-        // Smooth sub-candle preview while placing (TradingView-style); commit still uses getDataPoint rules.
         if (
             this.currentTool
             && toolType === this.currentTool
@@ -8999,14 +9000,17 @@ class DrawingToolsManager {
         return !!(this._ctrlMarqueePending);
     }
 
+    /** chart.js Ctrl+drag pipeline — prepare before canvas marquee draw. */
     prepareCtrlMarqueeSelectFromChart() {
         this._cancelCtrlMarqueePending();
         this._abortInteractionForRectSelect();
-        // chart.js owns the gesture (ctrlMarqueeSelect); do not set isRectSelecting here.
+        // chart.js owns the gesture (ctrlMarqueeSelect); do not set isRectSelecting here —
+        // that flag is for the legacy SVG overlay path and breaks mouseup hit-testing.
         this.ctrlSelectMode = false;
         this._suppressDrawingPointerEventsForRectSelect();
     }
 
+    /** chart.js Ctrl+drag pipeline — cleanup without selecting. */
     cancelCtrlMarqueeSelectFromChart() {
         this._unbindRectSelectDocumentListeners();
         this._clearRectSelectVisual();
@@ -9016,6 +9020,7 @@ class DrawingToolsManager {
         this._releaseCtrlMarqueePointerCapture();
     }
 
+    /** chart.js Ctrl+drag pipeline — apply selection from canvas layout rect. */
     completeCtrlMarqueeFromChart(x, y, width, height) {
         this._unbindRectSelectDocumentListeners();
         this._clearRectSelectVisual();
@@ -9353,8 +9358,8 @@ class DrawingToolsManager {
                 self.cancelRectangularSelection();
             }
         };
-        document.addEventListener('mousemove', this._rectSelectDocMove);
-        document.addEventListener('mouseup', this._rectSelectDocUp);
+        document.addEventListener('mousemove', this._rectSelectDocMove, true);
+        document.addEventListener('mouseup', this._rectSelectDocUp, true);
         document.addEventListener('keyup', this._rectSelectDocKeyUp);
         this._rectSelectDocBound = true;
     }
@@ -9440,7 +9445,7 @@ class DrawingToolsManager {
             .style('stroke-width', '1')
             .style('stroke-dasharray', '4,4')
             .style('pointer-events', 'none');
-        if (typeof this.rectSelectRect.raise === 'function') {
+        if (this.rectSelectRect && typeof this.rectSelectRect.raise === 'function') {
             this.rectSelectRect.raise();
         }
         
@@ -9509,8 +9514,11 @@ class DrawingToolsManager {
 
         this._applyMarqueeSelectionRect(x, y, width, height);
 
+        // Clean up
         this._unbindRectSelectDocumentListeners();
         this._clearRectSelectVisual();
+
+        // Restore SVG pointer-events to allow chart panning
         if (this.svg) this.svg.style('pointer-events', 'none');
         this._restoreSvgAfterMarquee();
         this._restoreDrawingPointerEventsAfterRectSelect();

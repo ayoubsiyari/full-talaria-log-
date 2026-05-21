@@ -124,6 +124,21 @@ function cpBuildColor(r, g, b, a) {
   return a>=1 ? `#${toHex2(r)}${toHex2(g)}${toHex2(b)}` : `rgba(${r},${g},${b},${+a.toFixed(2)})`;
 }
 
+/** tlLineColor is border/stroke for filled shapes — show OPACITY in the picker (not just draw/brush). */
+const V9_TL_LINE_COLOR_OPACITY_SHAPE_ICONS = new Set([
+  "rect", "ellipse", "circle", "triangle", "arcShape",
+]);
+const V9_TL_LINE_COLOR_OPACITY_CHART_TYPES = new Set([
+  "rectangle", "rotated-rectangle", "ellipse", "circle", "triangle", "arc",
+]);
+function v9TlLineColorSupportsOpacity(subToolIcon, chartDrawingType) {
+  if (["draw", "brush"].includes(subToolIcon)) return true;
+  if (chartDrawingType === "brush" || chartDrawingType === "highlighter") return true;
+  if (subToolIcon && V9_TL_LINE_COLOR_OPACITY_SHAPE_ICONS.has(subToolIcon)) return true;
+  if (chartDrawingType && V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(chartDrawingType)) return true;
+  return false;
+}
+
 /**
  * True when the in-page MultichartGrid has registered `window.__multichartGrid`
  * (split layouts with iframe peers). Used so timeframe / OHLC / rail-sync
@@ -26431,11 +26446,11 @@ const TalariaV8bLive = () => {
           onSVChange={(ns,nv)=>{ setCpS(ns); setCpV(nv); cpApply(cpH,ns,nv,cpA); }}
           onHChange={(nh)=>{ setCpH(nh); cpApply(nh,cpS,cpV,cpA); }}
           onAChange={(na)=>{ setCpA(na); cpApply(cpH,cpS,cpV,na); }}
-          onHexChange={(hex)=>{ setCpHex(hex); if(hex.length===6){const p=parseColor('#'+hex);const hsv=rgbToHsv(p.r,p.g,p.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);const cv=cpBuildColor(p.r,p.g,p.b,cpA);if(colorPicker==="gotoNewColor")setGotoNewColor(cv);else if(colorPicker==="tlLineColor")setTlStyle(s=>({...s,lineColor:cv}));else if(colorPicker==="tlBgColor")setTlStyle(s=>({...s,bgColor:cv}));else if(colorPicker==="tlTextColor")setTlStyle(s=>({...s,textColor:cv}));else if(typeof colorPicker==="string"&&colorPicker.startsWith("ind-"))setIndSettDraft(s=>({...s,[colorPicker.slice(4)]:cv}));else updateSetting(colorPicker,cv);}}}
+          onHexChange={(hex)=>{ setCpHex(hex); if(hex.length===6){const p=parseColor('#'+hex);const hsv=rgbToHsv(p.r,p.g,p.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);const cv=cpBuildColor(p.r,p.g,p.b,cpA);if(colorPicker==="gotoNewColor")setGotoNewColor(cv);else if(colorPicker==="tlLineColor")setTlStyle(s=>({...s,lineColor:cv}));else if(colorPicker==="tlBgColor")setTlStyle(s=>({...s,bgColor:cv}));else if(colorPicker==="tlBorderColor")setTlStyle(s=>({...s,borderColor:cv}));else if(colorPicker==="tlTextColor")setTlStyle(s=>({...s,textColor:cv}));else if(typeof colorPicker==="string"&&colorPicker.startsWith("ind-"))setIndSettDraft(s=>({...s,[colorPicker.slice(4)]:cv}));else updateSetting(colorPicker,cv);}}}
           onClose={closeCP}
           onDragStart={(type,rect)=>{ setCpDragging(type); setCpDragRect(rect); }}
           dragging={cpDragging}
-          hideAlpha={(colorPicker==="tlLineColor"&&!["draw","brush"].includes(tlSubTool.icon)&&chartPrimarySelectedDrawingType!=="brush"&&chartPrimarySelectedDrawingType!=="highlighter")||colorPicker==="tlTextColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"||colorPicker?.startsWith("ind-")}
+          hideAlpha={(colorPicker==="tlLineColor"&&!v9TlLineColorSupportsOpacity(tlSubTool.icon,chartPrimarySelectedDrawingType))||colorPicker==="tlTextColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"||colorPicker?.startsWith("ind-")}
           animation={closing.has("cp")?"tlrPopOut 0.15s ease both":"tlrPopIn 0.15s ease"}
         />
       , document.body)}

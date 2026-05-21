@@ -493,6 +493,7 @@ class Chart {
             endY: 0
         };
 
+        // Ctrl+drag multi-select marquee (drawn on canvas like boxZoom)
         this.ctrlMarqueeSelect = {
             active: false,
             startX: 0,
@@ -18078,7 +18079,6 @@ class Chart {
                 const y1 = Math.min(this.ctrlMarqueeSelect.startY, this.ctrlMarqueeSelect.endY);
                 const width = Math.abs(this.ctrlMarqueeSelect.endX - this.ctrlMarqueeSelect.startX);
                 const height = Math.abs(this.ctrlMarqueeSelect.endY - this.ctrlMarqueeSelect.startY);
-                const dm = this.drawingManager;
                 if (dm && typeof dm.completeCtrlMarqueeFromChart === 'function') {
                     dm.completeCtrlMarqueeFromChart(x1, y1, width, height);
                 } else if (dm && typeof dm.cancelCtrlMarqueeSelectFromChart === 'function') {
