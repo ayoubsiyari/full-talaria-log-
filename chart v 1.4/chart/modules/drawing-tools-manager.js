@@ -83,6 +83,7 @@ class DrawingToolsManager {
         this.rectSelectRect = null;
         this._ctrlMarqueePending = null;
         this._ctrlMarqueePendingBound = false;
+        this._marqueeSvgZIndexRestore = null;
         
         // UI components
         this.settingsPanel = new DrawingSettingsPanel();
@@ -1341,17 +1342,16 @@ class DrawingToolsManager {
 
             // Mousedown on canvas for rectangular selection
             const onMouseDown = (event) => {
-                // Cursor mode + empty plot: Ctrl+drag marquee (Ctrl+click on shapes still selects).
+                // Cursor mode: arm Ctrl+drag marquee (4px threshold separates drag vs Ctrl+click select).
                 if (
                     this._isCursorSelectMode() &&
                     (event.ctrlKey || event.metaKey) &&
                     !event.shiftKey &&
-                    !event.altKey
+                    !event.altKey &&
+                    this._getPointerCursorMode(event) === 'chart' &&
+                    this._tryArmCtrlMarqueeFromPointer(event)
                 ) {
-                    const hit = this._resolvePointerOverDrawings(event);
-                    if (!hit.primary && this._tryArmCtrlMarqueeFromPointer(event)) {
-                        return;
-                    }
+                    return;
                 }
 
                 // Make drag-start use the same geometric hover hit zone, even when the
@@ -2294,21 +2294,15 @@ class DrawingToolsManager {
             const mouseX = resolvedSvg.mouseX;
             const mouseY = resolvedSvg.mouseY;
 
-            // Empty plot + Ctrl: wait for drag to show marquee (Ctrl+click on shapes still selects).
+            // Ctrl+drag marquee on chart plot (Ctrl+click without drag still selects via click handler).
             if (
                 (event.ctrlKey || event.metaKey) &&
                 !event.shiftKey &&
                 !event.altKey &&
-                (!drawingsAtPoint || drawingsAtPoint.length === 0)
+                this._getPointerCursorMode(event) === 'chart' &&
+                this._tryArmCtrlMarqueeFromPointer(event)
             ) {
-                if (this._tryArmCtrlMarqueeFromPointer(event)) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (typeof event.stopImmediatePropagation === 'function') {
-                        event.stopImmediatePropagation();
-                    }
-                    return;
-                }
+                return;
             }
 
             const stackedLinesInfo = this.findStackedLines(mouseX, mouseY, 3);
@@ -8854,6 +8848,7 @@ class DrawingToolsManager {
         if (!event || event.button !== 0) return false;
         if (event.shiftKey || event.altKey) return false;
         if (!(event.ctrlKey || event.metaKey)) return false;
+        if (this._getPointerCursorMode(event) !== 'chart') return false;
 
         const native = this._nativePointerEvent(event) || event;
         if (!Number.isFinite(native.clientX) || !Number.isFinite(native.clientY)) return false;
@@ -8896,17 +8891,47 @@ class DrawingToolsManager {
                 self._cancelCtrlMarqueePending();
             }
         };
-        document.addEventListener('mousemove', this._ctrlMarqueePendingMove);
-        document.addEventListener('mouseup', this._ctrlMarqueePendingUp);
+        document.addEventListener('mousemove', this._ctrlMarqueePendingMove, true);
+        document.addEventListener('mouseup', this._ctrlMarqueePendingUp, true);
         document.addEventListener('keyup', this._ctrlMarqueePendingKeyUp);
         this._ctrlMarqueePendingBound = true;
-
-        if (typeof event.preventDefault === 'function') event.preventDefault();
-        if (typeof event.stopPropagation === 'function') event.stopPropagation();
-        if (typeof event.stopImmediatePropagation === 'function') {
-            event.stopImmediatePropagation();
-        }
         return true;
+    }
+
+    /** Topmost SVG layer for the Ctrl+drag selection marquee (above clipped drawings). */
+    _ensureMarqueeOverlayGroup() {
+        if (!this.svg) return null;
+        let overlay = this.svg.select('.marquee-overlay');
+        if (overlay.empty()) {
+            overlay = this.svg.append('g')
+                .attr('class', 'marquee-overlay')
+                .style('pointer-events', 'none');
+        }
+        if (overlay.node && typeof overlay.node === 'function') {
+            const node = overlay.node();
+            if (node && node.parentNode && typeof node.parentNode.appendChild === 'function') {
+                node.parentNode.appendChild(node);
+            }
+        }
+        return overlay;
+    }
+
+    _boostSvgForMarquee() {
+        if (!this.svg) return;
+        if (this._marqueeSvgZIndexRestore == null) {
+            this._marqueeSvgZIndexRestore = this.svg.style('z-index') || '';
+        }
+        this.svg.style('z-index', '12');
+    }
+
+    _restoreSvgAfterMarquee() {
+        if (!this.svg) return;
+        if (this._marqueeSvgZIndexRestore != null) {
+            const prev = this._marqueeSvgZIndexRestore;
+            if (prev) this.svg.style('z-index', prev);
+            else this.svg.style('z-index', null);
+            this._marqueeSvgZIndexRestore = null;
+        }
     }
 
     /** Stop chart pan / drawing drag so Ctrl+marquee does not translate the drawings layer. */
@@ -8975,8 +9000,8 @@ class DrawingToolsManager {
                 self.cancelRectangularSelection();
             }
         };
-        document.addEventListener('mousemove', this._rectSelectDocMove);
-        document.addEventListener('mouseup', this._rectSelectDocUp);
+        document.addEventListener('mousemove', this._rectSelectDocMove, true);
+        document.addEventListener('mouseup', this._rectSelectDocUp, true);
         document.addEventListener('keyup', this._rectSelectDocKeyUp);
         this._rectSelectDocBound = true;
     }
@@ -9042,21 +9067,34 @@ class DrawingToolsManager {
         this.ctrlSelectMode = false;
 
         this._suppressDrawingPointerEventsForRectSelect();
+        this._boostSvgForMarquee();
         
         // Enable SVG pointer-events temporarily for rectangular selection
         this.svg.style('pointer-events', 'all');
         
-        // Create selection rectangle visual (reuse — remove stale node first)
+        // Create selection rectangle on top overlay (not inside clipped .drawings)
         this._clearRectSelectVisual();
-        this.rectSelectRect = this.svg.append('rect')
+        const overlay = this._ensureMarqueeOverlayGroup();
+        const parent = overlay || this.svg;
+        this.rectSelectRect = parent.append('rect')
             .attr('class', 'selection-rectangle')
+            .attr('x', sx)
+            .attr('y', sy)
+            .attr('width', 0)
+            .attr('height', 0)
             .style('fill', 'rgba(33, 150, 243, 0.1)')
             .style('stroke', '#2196F3')
             .style('stroke-width', '1')
             .style('stroke-dasharray', '4,4')
             .style('pointer-events', 'none');
+        if (this.rectSelectRect && typeof this.rectSelectRect.raise === 'function') {
+            this.rectSelectRect.raise();
+        }
         
         this._bindRectSelectDocumentListeners();
+        if (event) {
+            this.updateRectangularSelection(event);
+        }
     }
 
     /**
@@ -9103,6 +9141,7 @@ class DrawingToolsManager {
 
         if (!this.rectSelectRect) {
             if (this.svg) this.svg.style('pointer-events', 'none');
+            this._restoreSvgAfterMarquee();
             this._restoreDrawingPointerEventsAfterRectSelect();
             return;
         }
@@ -9137,6 +9176,7 @@ class DrawingToolsManager {
         
         // Restore SVG pointer-events to allow chart panning
         if (this.svg) this.svg.style('pointer-events', 'none');
+        this._restoreSvgAfterMarquee();
         this._restoreDrawingPointerEventsAfterRectSelect();
     }
 
@@ -9156,6 +9196,7 @@ class DrawingToolsManager {
         
         // Restore SVG pointer-events to allow chart panning
         if (this.svg) this.svg.style('pointer-events', 'none');
+        this._restoreSvgAfterMarquee();
         this._restoreDrawingPointerEventsAfterRectSelect();
     }
 
@@ -10794,5 +10835,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a20_ctrl_not_magnet';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a21_ctrl_marquee_rect';
 } catch (_) {}

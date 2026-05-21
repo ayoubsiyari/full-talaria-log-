@@ -83,6 +83,7 @@ class DrawingToolsManager {
         this.rectSelectRect = null;
         this._ctrlMarqueePending = null;
         this._ctrlMarqueePendingBound = false;
+        this._marqueeSvgZIndexRestore = null;
         
         // UI components
         this.settingsPanel = new DrawingSettingsPanel();
@@ -1341,17 +1342,16 @@ class DrawingToolsManager {
 
             // Mousedown on canvas for rectangular selection
             const onMouseDown = (event) => {
-                // Cursor mode + empty plot: Ctrl+drag marquee (Ctrl+click on shapes still selects).
+                // Cursor mode: arm Ctrl+drag marquee (4px threshold separates drag vs Ctrl+click select).
                 if (
                     this._isCursorSelectMode() &&
                     (event.ctrlKey || event.metaKey) &&
                     !event.shiftKey &&
-                    !event.altKey
+                    !event.altKey &&
+                    this._getPointerCursorMode(event) === 'chart' &&
+                    this._tryArmCtrlMarqueeFromPointer(event)
                 ) {
-                    const hit = this._resolvePointerOverDrawings(event);
-                    if (!hit.primary && this._tryArmCtrlMarqueeFromPointer(event)) {
-                        return;
-                    }
+                    return;
                 }
 
                 // Make drag-start use the same geometric hover hit zone, even when the
@@ -2294,21 +2294,15 @@ class DrawingToolsManager {
             const mouseX = resolvedSvg.mouseX;
             const mouseY = resolvedSvg.mouseY;
 
-            // Empty plot + Ctrl: wait for drag to show marquee (Ctrl+click on shapes still selects).
+            // Ctrl+drag marquee on chart plot (Ctrl+click without drag still selects via click handler).
             if (
                 (event.ctrlKey || event.metaKey) &&
                 !event.shiftKey &&
                 !event.altKey &&
-                (!drawingsAtPoint || drawingsAtPoint.length === 0)
+                this._getPointerCursorMode(event) === 'chart' &&
+                this._tryArmCtrlMarqueeFromPointer(event)
             ) {
-                if (this._tryArmCtrlMarqueeFromPointer(event)) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (typeof event.stopImmediatePropagation === 'function') {
-                        event.stopImmediatePropagation();
-                    }
-                    return;
-                }
+                return;
             }
 
             const stackedLinesInfo = this.findStackedLines(mouseX, mouseY, 3);
