@@ -426,6 +426,24 @@ function v9ShouldClearChartSelectionForRailClick(nextToolId, currentTool) {
   return nextToolId !== currentTool;
 }
 
+/** Ctrl+marquee multi-select keeps shapes selected without tlBarSelected — still clear before arming a tool. */
+function v9ClearChartSelectionBeforeRailTool(chartInstance, nextToolId, currentTool, tlBarSelected) {
+  if (!V9_DRAWING_TOOL_GROUP_IDS.has(nextToolId)) return;
+  const dmSel = chartInstance && chartInstance.drawingManager;
+  const hasSelected = !!(dmSel && Array.isArray(dmSel.selectedDrawings) && dmSel.selectedDrawings.length > 0);
+  if (!hasSelected && !(tlBarSelected && v9ShouldClearChartSelectionForRailClick(nextToolId, currentTool))) {
+    return;
+  }
+  try {
+    if (dmSel && typeof dmSel.deselectAll === "function") {
+      dmSel.deselectAll({ forSelectionChange: true });
+    }
+    if (dmSel && dmSel.toolbar && typeof dmSel.toolbar.hide === "function") {
+      dmSel.toolbar.hide();
+    }
+  } catch (_) {}
+}
+
 const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
   trendline: new Set([
     "trendline", "hray", "hline", "vline", "ray", "extendedLine", "crossLine", "polyline", "pathTool", "curve", "doubleCurve",
@@ -11539,6 +11557,17 @@ const TalariaV8bLive = () => {
     };
   }, []);
 
+  // Ctrl+marquee multi-select: chart hides legacy toolbar but React may still think a shape is selected.
+  useEffect(() => {
+    const onClear = () => {
+      setTlBarSelected(false);
+      setTlBarSelectedType(null);
+      v9SelectionToolbarSyncRef.current = false;
+    };
+    window.addEventListener("talaria:v9-cleared-selection", onClear);
+    return () => window.removeEventListener("talaria:v9-cleared-selection", onClear);
+  }, []);
+
   // Chart.js fires this whenever a drawing becomes primary selection (see drawing-tools-manager
   // `_notifyV9SelectionSync`) — survives toolbar wrapper loss and reaches always after finalize/select.
   useEffect(() => {
@@ -12752,9 +12781,14 @@ const TalariaV8bLive = () => {
           if (t.dd) {
             if (!["eye", "magnet", "trash"].includes(t.id)) {
               editingDrawingRef.current = null;
-              if (tlBarSelected && v9ShouldClearChartSelectionForRailClick(t.id, tool)) {
+              if (V9_DRAWING_TOOL_GROUP_IDS.has(t.id)) {
+                v9ClearChartSelectionBeforeRailTool(ch, t.id, tool, tlBarSelected);
+                setTlBarSelected(false);
+                setTlBarSelectedType(null);
+                v9SelectionToolbarSyncRef.current = false;
+              } else if (tlBarSelected && v9ShouldClearChartSelectionForRailClick(t.id, tool)) {
                 setTlBarSelected(false); setTlBarSelectedType(null);
-                try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll(); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
+                try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll({ forSelectionChange: true }); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
               }
               if (tlSettOpen) closeTlSett(); if (txtSettOpen) closeTxtSett();
               if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett(); if (indSettOpen) closeIndSett();
@@ -12765,9 +12799,14 @@ const TalariaV8bLive = () => {
           }
           else {
             editingDrawingRef.current = null;
-            if (tlBarSelected && v9ShouldClearChartSelectionForRailClick(t.id, tool)) {
+            if (V9_DRAWING_TOOL_GROUP_IDS.has(t.id)) {
+              v9ClearChartSelectionBeforeRailTool(ch, t.id, tool, tlBarSelected);
+              setTlBarSelected(false);
+              setTlBarSelectedType(null);
+              v9SelectionToolbarSyncRef.current = false;
+            } else if (tlBarSelected && v9ShouldClearChartSelectionForRailClick(t.id, tool)) {
               setTlBarSelected(false); setTlBarSelectedType(null);
-              try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll(); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
+              try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll({ forSelectionChange: true }); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
             }
             if (tlSettOpen) closeTlSett(); if (txtSettOpen) closeTxtSett();
             if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett(); if (indSettOpen) closeIndSett();

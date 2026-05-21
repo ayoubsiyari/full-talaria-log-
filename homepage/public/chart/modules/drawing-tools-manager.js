@@ -270,6 +270,36 @@ class DrawingToolsManager {
         } catch (_) {}
     }
 
+    _notifyV9SelectionCleared() {
+        try {
+            const ev = new CustomEvent('talaria:v9-cleared-selection');
+            window.dispatchEvent(ev);
+            if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+                try { window.parent.dispatchEvent(new CustomEvent('talaria:v9-cleared-selection')); } catch (_) {}
+            }
+        } catch (_) {}
+    }
+
+    _cancelChartMarqueeGesture() {
+        const ch = this.chart;
+        if (!ch) return;
+        if (ch.ctrlMarqueeSelect) {
+            ch.ctrlMarqueeSelect.active = false;
+        }
+        if (ch.boxZoom) {
+            ch.boxZoom.active = false;
+        }
+        if (ch.drag) {
+            if (ch.drag.type === 'ctrlMarqueeSelect' || ch.drag.type === 'boxZoom') {
+                ch.drag.active = false;
+                ch.drag.type = null;
+            }
+        }
+        if (ch.movement) {
+            ch.movement.isDragging = false;
+        }
+    }
+
     /**
      * Selection bbox for toolbar placement. Line tools use anchor points (not extended stroke
      * geometry) so trend lines with extend left/right still get a sane toolbar + bbox checks.
@@ -1793,6 +1823,9 @@ class DrawingToolsManager {
             this.cancelRectangularSelection();
         }
         this._cancelCtrlMarqueePending();
+        this._cancelChartMarqueeGesture();
+        this._suppressCanvasClickAfterMarquee = false;
+        this._marqueeJustCompletedAt = 0;
 
         this.currentTool = toolName;
         this.deselectAll({ forSelectionChange: true });
@@ -1800,6 +1833,9 @@ class DrawingToolsManager {
         this.isDraggingFirstTwo = false;  // Reset drag state for multi-point tools
         this.dragFirstTwoStart = null;
         this.dragFirstTwoStartScreen = null;
+        if (this.tempGroup && !this.tempGroup.empty()) {
+            this.tempGroup.selectAll('*').remove();
+        }
         
         // Update cursor
         this.svg.style('cursor', toolName ? 'crosshair' : 'default');
@@ -1855,6 +1891,9 @@ class DrawingToolsManager {
             this.cancelRectangularSelection();
         }
         this._cancelCtrlMarqueePending();
+        this._cancelChartMarqueeGesture();
+        this._suppressCanvasClickAfterMarquee = false;
+        this._marqueeJustCompletedAt = 0;
         this._clearLiveSyncPreview();
         this._cancelFreehandPreviewRaf();
         this._cancelTempPreviewRaf();
@@ -6980,7 +7019,9 @@ class DrawingToolsManager {
         this.selectedDrawing = null;
         this.selectedDrawings = [];
         this.toolbar.hide(); // Hide toolbar
-        this.redrawAll();
+        if (!forSelectionChange) {
+            this.redrawAll();
+        }
         this._updateAxisZonePointerEvents();
         if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
             this.chart.updateSVGPointerEvents();
@@ -9021,6 +9062,7 @@ class DrawingToolsManager {
 
         if (this.selectedDrawings.length > 1) {
             this._applyMultiSelectAxisHighlightPolicy();
+            this._notifyV9SelectionCleared();
         } else if (this.selectedDrawings.length === 1) {
             this._syncSelectionChrome(this.selectedDrawings[0]);
         }
@@ -11128,5 +11170,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a32_multiselect_handles';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a33_tool_after_marquee';
 } catch (_) {}
