@@ -556,7 +556,7 @@ class FibSpeedFanTool extends BaseDrawing {
             return (Math.round(v * 1000) / 1000).toString();
         };
 
-        // Grid (TradingView-like rectangle guides)
+        // Grid (TradingView-like rectangle guides) — time levels when set, else price levels
         if (this.style.gridEnabled !== false) {
             const gridColor = this.style.gridColor || '#787b86';
             const gridOpacity = (this.style.gridOpacity != null && !isNaN(parseFloat(this.style.gridOpacity)))
@@ -570,9 +570,21 @@ class FibSpeedFanTool extends BaseDrawing {
                 ? `${this.style.gridLineDasharray}`
                 : null;
 
-            const gridLevels = (this.levels || [])
-                .filter(l => l && l.enabled !== false)
-                .map(l => ({ value: parseFloat(l.value), color: l.color || this.style.stroke }))
+            const timeRaw = Array.isArray(this.style.v9FanTimeLevels) && this.style.v9FanTimeLevels.length
+                ? this.style.v9FanTimeLevels
+                : null;
+            const gridSource = timeRaw || (this.levels || []);
+            const gridLevels = gridSource
+                .filter(l => {
+                    if (!l) return false;
+                    const on = typeof l === 'object' ? (l.on !== false && l.enabled !== false) : true;
+                    return on;
+                })
+                .map(l => {
+                    const value = typeof l === 'object' ? parseFloat(l.value) : parseFloat(l);
+                    const color = typeof l === 'object' ? (l.color || this.style.stroke) : this.style.stroke;
+                    return { value, color };
+                })
                 .filter(l => isFinite(l.value) && l.value >= 0 && l.value <= 1)
                 .sort((a, b) => b.value - a.value);
 

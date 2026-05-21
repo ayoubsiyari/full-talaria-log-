@@ -670,6 +670,13 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
   if (legacyTool && v9IsFibTimeZoneType(legacyTool) && Array.isArray(tlStyle.fibTzLevels)) {
     patch.levels = v9TlFibTzLevelsToChart(tlStyle.fibTzLevels);
   }
+  if (legacyTool && v9IsFibSpeedFanType(legacyTool) && Array.isArray(tlStyle.fibLevels)) {
+    patch.levels = v9TlFibSpeedFanLevelsToChart(
+      tlStyle.fibLevels,
+      tlStyle.fibLineType,
+      tlStyle.fibLineWidth,
+    );
+  }
   return patch;
 }
 
@@ -1273,7 +1280,7 @@ function v9EffectiveLegacyToolForDrawing(d, bridgeTool, editingSession) {
 }
 
 /** Only push tlStyle onto drawings that match the armed legacy tool's rail (never trendline ← rectangle). */
-function v9ShouldApplyTlStylePatch(d, legacyTool, editingSession) {
+function v9ShouldApplyTlStylePatch(d, legacyTool, editingSession, dm) {
   if (!d || !d.type || !d.style) return false;
   if (v9DrawingTypeToPanelGroup(d.type) === 'text') return false;
   if (
@@ -1282,13 +1289,15 @@ function v9ShouldApplyTlStylePatch(d, legacyTool, editingSession) {
   ) {
     return true;
   }
+  const drawingGroup = v9DrawingTypeToPanelGroup(d.type);
+  if (dm && v9IsDrawingSelectedInDm(dm, d) && drawingGroup && V9_EXACT_STYLE_MATCH_GROUPS.has(drawingGroup)) {
+    return true;
+  }
   if (!legacyTool) {
-    const drawingGroup = v9DrawingTypeToPanelGroup(d.type);
     if (drawingGroup && V9_EXACT_STYLE_MATCH_GROUPS.has(drawingGroup)) return false;
     return true;
   }
   if (d.type === legacyTool) return true;
-  const drawingGroup = v9DrawingTypeToPanelGroup(d.type);
   const toolGroup = v9DrawingTypeToPanelGroup(legacyTool);
   if (!drawingGroup || !toolGroup || drawingGroup !== toolGroup) return false;
   if (V9_EXACT_STYLE_MATCH_GROUPS.has(drawingGroup)) return false;
@@ -1299,6 +1308,18 @@ function v9IsSameDrawingSession(a, b) {
   if (!a || !b) return false;
   if (a.id != null && b.id != null) return a.id === b.id;
   return a === b;
+}
+
+function v9IsDrawingSelectedInDm(dm, d) {
+  if (!dm || !d) return false;
+  const sel = dm.selectedDrawing;
+  if (sel && (sel === d || (sel.id != null && d.id != null && sel.id === d.id))) return true;
+  if (Array.isArray(dm.selectedDrawings)) {
+    return dm.selectedDrawings.some(
+      (x) => x && (x === d || (x.id != null && d.id != null && x.id === d.id)),
+    );
+  }
+  return false;
 }
 
 /** While the V9 settings panel is open, never push tlStyle onto a different shape/type. */
@@ -1596,6 +1617,19 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
     if (!Array.isArray(out.fibTzLevels) || !out.fibTzLevels.length) {
       out.fibTzLevels = v9FibTzDefaultLevelsTl();
     }
+  } else if (legacyType === "fib-speed-fan") {
+    if (!Array.isArray(out.fibLevels) || !out.fibLevels.length) {
+      out.fibLevels = v9FibSpeedFanDefaultPriceLevelsTl();
+    }
+    if (!Array.isArray(out.fibFanTimeLevels) || !out.fibFanTimeLevels.length) {
+      out.fibFanTimeLevels = [
+        { on: true, value: "0", color: "#787B86" },
+        { on: true, value: "0.25", color: "#F44336" },
+        { on: true, value: "0.5", color: "#FF9800" },
+        { on: true, value: "0.75", color: "#FFEB3B" },
+        { on: true, value: "1", color: "#4CAF50" },
+      ];
+    }
   }
   if (out.fibLineWidth == null || out.fibLineWidth === "") {
     out.fibLineWidth = fall.fibLineWidth != null ? fall.fibLineWidth : "2";
@@ -1719,6 +1753,36 @@ function v9TlFibSpeedFanLevelsToChart(levels, fibLineType, fibLineWidth) {
   }));
 }
 
+function v9FibSpeedFanDefaultPriceLevelsTl() {
+  return [
+    { on: true, value: "1", color: "#2962FF" },
+    { on: true, value: "0.75", color: "#00BCD4" },
+    { on: true, value: "0.618", color: "#4CAF50" },
+    { on: true, value: "0.5", color: "#FFEB3B" },
+    { on: true, value: "0.382", color: "#FF9800" },
+    { on: true, value: "0.25", color: "#F44336" },
+    { on: true, value: "0", color: "#787B86" },
+  ];
+}
+
+function v9ResolveFibSpeedFanPriceRowsForDrawing(d, tlStyle) {
+  if (Array.isArray(tlStyle?.fibLevels) && tlStyle.fibLevels.length) {
+    return tlStyle.fibLevels;
+  }
+  const fromDrawing = v9FibSpeedFanLevelsChartToTl(d.levels);
+  if (fromDrawing && fromDrawing.length) return fromDrawing;
+  return v9FibSpeedFanDefaultPriceLevelsTl();
+}
+
+function v9TlFanTimeLevelsToChart(rows) {
+  if (!Array.isArray(rows) || !rows.length) return [];
+  return rows.map((ln) => ({
+    on: ln.on !== false,
+    value: ln.value != null ? String(ln.value) : "0",
+    color: ln.color || "#787B86",
+  }));
+}
+
 function v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthFallback) {
   if (!d || !d.style || !v9IsFibSpeedFanType(d.type)) return;
   const fibDashStr =
@@ -1739,8 +1803,9 @@ function v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthFallback) {
     (typeof widthFallback === "number" ? widthFallback : levelsW) ||
     1;
 
+  const priceRows = v9ResolveFibSpeedFanPriceRowsForDrawing(d, tlStyle);
   d.levels = v9TlFibSpeedFanLevelsToChart(
-    tlStyle.fibLevels,
+    priceRows,
     tlStyle.fibLineType,
     tlStyle.fibLineWidth,
   );
@@ -1763,12 +1828,12 @@ function v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthFallback) {
   st.gridLineWidth = parseInt(String(tlStyle.fibGridWidth), 10) || 1;
   st.gridLineDasharray = gridDashStr;
 
-  if (Array.isArray(tlStyle.fibFanTimeLevels)) {
-    st.v9FanTimeLevels = tlStyle.fibFanTimeLevels.map((ln) => ({
-      on: ln.on !== false,
-      value: ln.value != null ? String(ln.value) : "0",
-      color: ln.color || "#787B86",
-    }));
+  const timeRows =
+    Array.isArray(tlStyle.fibFanTimeLevels) && tlStyle.fibFanTimeLevels.length
+      ? tlStyle.fibFanTimeLevels
+      : null;
+  if (timeRows) {
+    st.v9FanTimeLevels = v9TlFanTimeLevelsToChart(timeRows);
   }
 }
 
@@ -2183,6 +2248,7 @@ function v9FibLevelsRowsForUi(tlStyle, subToolIcon) {
     return tlStyle.fibLevels;
   }
   if (subToolIcon === "fibChannel") return v9FibChannelDefaultLevelsTl();
+  if (subToolIcon === "fibFan") return v9FibSpeedFanDefaultPriceLevelsTl();
   if (subToolIcon === "fibExtension") {
     return v9ClassicFibDefaultLevelsTlForLegacy("fibonacci-extension");
   }
@@ -2727,7 +2793,7 @@ function v9TlStylePatchFromDrawing(d) {
           const fibGridType =
             V9_LEGACY_DASH_STRING_TO_LINE_TYPE[gridDashRaw] ?? (!gridDashRaw ? "solid" : "dashed");
           return {
-            ...(fl ? { fibLevels: fl } : {}),
+            fibLevels: fl && fl.length ? fl : v9FibSpeedFanDefaultPriceLevelsTl(),
             fibFanTimeLevels: ft,
             fibBackground: s.backgroundEnabled !== false,
             fibBgOpacity:
@@ -5668,6 +5734,8 @@ const TalariaV8bLive = () => {
   const [tlBarSelectedType, setTlBarSelectedType] = useState(null);
   // Must be declared before render-time `settingsEditGroup` (line ~6980) — TDZ if defined later.
   const editingDrawingRef = useRef(null);
+  /** Final push of tlStyle when settings OK/Cancel closes (belt-and-suspenders for fib subtypes). */
+  const v9StyleBridgeFlushRef = useRef(null);
   const tlSettOpenRef = useRef(false);
   const v9LastSelectedDrawingTypeRef = useRef(null);
   const [tlSettOpen, setTlSettOpen] = useState(false);
@@ -7101,6 +7169,9 @@ const TalariaV8bLive = () => {
     setTimeout(() => { setTlBarDrop(null); setTlSaveAsMode(false); setTlNewTplName(""); setClosing(s => { const n = new Set(s); n.delete("tlbardrop"); return n; }); }, 130);
   };
   const closeTlSett = () => {
+    try {
+      v9StyleBridgeFlushRef.current?.();
+    } catch (_) {}
     setCpDragging(null);
     setCpDragRect(null);
     cpBarAnchorRef.current = null;
@@ -11068,7 +11139,8 @@ const TalariaV8bLive = () => {
                 if (
                   (v9IsClassicFibRetracementType(drawing.type) && patch.fibLevels) ||
                   (v9IsFibChannelType(drawing.type) && patch.fibLevels) ||
-                  (v9IsFibTimeZoneType(drawing.type) && patch.fibTzLevels)
+                  (v9IsFibTimeZoneType(drawing.type) && patch.fibTzLevels) ||
+                  (v9IsFibSpeedFanType(drawing.type) && (patch.fibLevels || patch.fibFanTimeLevels))
                 ) {
                   flushSync(() =>
                     br.setTlStyle((s) =>
@@ -11338,7 +11410,8 @@ const TalariaV8bLive = () => {
               if (
                 (v9IsClassicFibRetracementType(live.type) && patch.fibLevels) ||
                 (v9IsFibChannelType(live.type) && patch.fibLevels) ||
-                (v9IsFibTimeZoneType(live.type) && patch.fibTzLevels)
+                (v9IsFibTimeZoneType(live.type) && patch.fibTzLevels) ||
+                (v9IsFibSpeedFanType(live.type) && (patch.fibLevels || patch.fibFanTimeLevels))
               ) {
                 flushSync(() =>
                   br.setTlStyle((s) =>
@@ -11545,7 +11618,7 @@ const TalariaV8bLive = () => {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacy, editSess);
-        if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess)) return;
+        if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm)) return;
         const tb = dm.toolbar;
         try {
           tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
@@ -11647,6 +11720,36 @@ const TalariaV8bLive = () => {
         }
       } catch (_) {}
     }
+    const runForwardBridge = () => {
+      try {
+        const chartsToRender = new Set();
+        collectV9BridgeTargets().forEach(({ dm: dmRun, d }) => {
+          if (!d || !d.style) return;
+          const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacyTool, editSess);
+          if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dmRun)) return;
+          if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
+          const stylePatch = v9BuildLegacyStylePatchFromTlStyle(tlStyle, effectiveTool);
+          const tb = dmRun.toolbar;
+          try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+          Object.assign(d.style, stylePatch);
+          v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dmRun);
+          if (tb && typeof tb.onUpdate === "function") {
+            try { tb.onUpdate(d); } catch (_) { try { dmRun.renderDrawing?.(d); } catch (_) {} }
+          } else {
+            try { dmRun.renderDrawing?.(d); } catch (_) {}
+          }
+          if (d.selected && typeof d.showAxisHighlights === "function") {
+            try { d.showAxisHighlights(); } catch (_) {}
+          }
+          if (dmRun.chart) chartsToRender.add(dmRun.chart);
+        });
+        chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
+      } catch (err) {
+        console.warn("[V9 style bridge] failed:", err);
+      }
+    };
+    v9StyleBridgeFlushRef.current = runForwardBridge;
+
     if (!styleBridgeReady.current) {
       styleBridgeReady.current = true;
       v9PushArmedDrawStyle(legacyTool, legacyTool ? tlStyle : null);
@@ -11668,34 +11771,7 @@ const TalariaV8bLive = () => {
     // Without this the underlying drawing path was repainted but the
     // selection layer (handles + cached stroke) kept showing the old color
     // until the user deselected and reselected.
-    try {
-      const chartsToRender = new Set();
-      collectV9BridgeTargets().forEach(({ dm, d }) => {
-        if (!d || !d.style) return;
-        const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacyTool, editSess);
-        if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess)) return;
-        if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
-        const stylePatch = v9BuildLegacyStylePatchFromTlStyle(tlStyle, effectiveTool);
-        const tb = dm.toolbar;
-        // Capture before state for undo (mirror legacy onBeforeUpdate).
-        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
-        Object.assign(d.style, stylePatch);
-        v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm);
-        // Coordinates / visibility are applied in a separate effect (below) so
-        // color/style edits do not re-push stale pt* from React after a canvas drag.
-        // Prefer onUpdate (history + render + persist + saveDrawings).
-        if (tb && typeof tb.onUpdate === 'function') {
-          try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
-        } else {
-          try { dm.renderDrawing?.(d); } catch (_) {}
-        }
-        if (d.selected && typeof d.showAxisHighlights === 'function') {
-          try { d.showAxisHighlights(); } catch (_) {}
-        }
-        if (dm.chart) chartsToRender.add(dm.chart);
-      });
-      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
-    } catch (err) { console.warn('[V9 style bridge] failed:', err); }
+    runForwardBridge();
   }, [
     tlStyle.lineColor, tlStyle.lineWidth, tlStyle.lineType, tlStyle.bgColor, tlStyle.showBg,
     tlStyle.showBorder, tlStyle.borderColor, tlStyle.borderType, tlStyle.borderWidth,
@@ -11775,7 +11851,7 @@ const TalariaV8bLive = () => {
       collectV9BridgeTargets().forEach(({ dm: dm2, d }) => {
         if (!d || !d.style) return;
         const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacyTool, editSess);
-        if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess)) return;
+        if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm2)) return;
         if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
         const tb = dm2.toolbar;
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
