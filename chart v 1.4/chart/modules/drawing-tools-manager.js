@@ -38,6 +38,7 @@ class DrawingToolsManager {
         this.drawingState = new DrawingState();
         this.magnetMode = 'off'; // 'off', 'weak', 'strong'
         this.magnetKeyHeld = false; // Command/Ctrl key held for temporary magnet
+        this._lastResizePointerEvent = null;
         this.keepDrawingMode = false; // New: Keep drawing mode toggle
         this.eraserMode = false; // Eraser mode - click to delete drawings
         this.ctrlSelectMode = false; // Ctrl key held for hover-to-select mode
@@ -2798,10 +2799,8 @@ class DrawingToolsManager {
             }
         }
         
-        // Apply Shift key angle constraint for supported tools when placing second+ point
-        if (this._pointerModifiers(event).shiftKey && this.angleSnapTools.includes(this.currentTool) && this.drawingState.tempPoints.length > 0) {
-            const referencePoint = this.drawingState.tempPoints[this.drawingState.tempPoints.length - 1];
-            point = this.constrainToAngle(referencePoint, point);
+        if (this.angleSnapTools.includes(this.currentTool) && this.drawingState.tempPoints.length > 0) {
+            point = this._resolveAnchorPointFromEvent(event, null, 1, this.currentTool);
         }
         
         // TradingView-style: Parallel channel 3rd point moves perpendicular to baseline
@@ -2849,11 +2848,6 @@ class DrawingToolsManager {
             point = this.constrainDatePriceRangePoint(point, anchorPoint, rangeMode);
         }
 
-        {
-            const [, screenY] = this._eventCanvasLocalXY(event);
-            point = this._applyOHLCMagnetSnap(point, screenY, event);
-        }
-        
         if (this._shouldIgnoreDrawStartOnExistingDrawing(event, { allowWhileDrawing: true })) {
             this._abortInProgressPlacement();
             if (typeof event.preventDefault === 'function') event.preventDefault();
@@ -3309,6 +3303,7 @@ class DrawingToolsManager {
         this.hidePathTooltip();
         this.isDrawingPath = false;
         this.isDraggingFirstTwo = false;
+        this._lastResizePointerEvent = null;
         this.dragFirstTwoStart = null;
         this.dragFirstTwoStartScreen = null;
         if (this.drawingState) {
@@ -3320,8 +3315,11 @@ class DrawingToolsManager {
      * Handle mouse move event
      */
     handleMouseMove(event) {
-        // Pause stroke/placement over axes; resume when pointer re-enters plot area.
-        if (this.currentTool && this._isPointerOverChartAxis(event)) {
+        const placingLine = !!(this.currentTool && this.drawingState && this.drawingState.isDrawing
+            && this.angleSnapTools.includes(this.currentTool));
+        if (placingLine && this._isPointerOverChartAxis(event)) {
+            event = this._clampPlacementEventToPlot(event);
+        } else if (this.currentTool && this._isPointerOverChartAxis(event)) {
             return;
         }
 
@@ -3330,10 +3328,17 @@ class DrawingToolsManager {
             || this.isResizing || this.isCustomHandleDrag || this.isCustomHandleDragging) {
             this._lastMouseEvent = this._nativePointerEvent(event) || event;
         }
+        if (this.isResizing) {
+            this._lastResizePointerEvent = this._nativePointerEvent(event) || event;
+        }
 
         if (this.chart && typeof this.chart.updateCrosshair === 'function' &&
             (this.currentTool || this.selectedDrawing || this.isDragging || this.isDrawing || this.isResizing)) {
-            this._scheduleChartCrosshairFromDrawingEvent(event);
+            const dupCrosshairDuringPlacement = !!(this.currentTool && this.drawingState && this.drawingState.isDrawing
+                && !this.isResizing && !this.isDragging);
+            if (!dupCrosshairDuringPlacement) {
+                this._scheduleChartCrosshairFromDrawingEvent(event);
+            }
         }
 
         if (this.currentTool && this.isRectSelecting) {
@@ -3477,13 +3482,9 @@ class DrawingToolsManager {
         if (!this.currentTool || !this.drawingState.isDrawing) return;
         
         const toolInfo = this.toolRegistry[this.currentTool];
-        let point = this.getDataPoint(event);
-        
-        // Apply Shift key angle constraint for supported tools
-        if (this._pointerModifiers(event).shiftKey && this.angleSnapTools.includes(this.currentTool) && this.drawingState.tempPoints.length > 0) {
-            const referencePoint = this.drawingState.tempPoints[this.drawingState.tempPoints.length - 1];
-            point = this.constrainToAngle(referencePoint, point);
-        }
+        let point = (this.angleSnapTools.includes(this.currentTool) && this.drawingState.tempPoints.length > 0)
+            ? this._resolveAnchorPointFromEvent(event, null, 1, this.currentTool)
+            : this.getDataPoint(event);
         
         // TradingView-style: Parallel channel 3rd point preview moves perpendicular to baseline
         if (this.currentTool === 'parallel-channel' && this.drawingState.tempPoints.length === 2) {
@@ -3526,11 +3527,6 @@ class DrawingToolsManager {
             point = this.constrainDatePriceRangePoint(point, anchorPoint, rangeMode);
         }
 
-        {
-            const [, screenY] = this._eventCanvasLocalXY(event);
-            point = this._applyOHLCMagnetSnap(point, screenY, event);
-        }
-        
         if (
             toolInfo &&
             toolInfo.dragPreview &&
@@ -3634,18 +3630,9 @@ class DrawingToolsManager {
                     }
                 }
 
-                let point = this.getDataPoint(event);
-                
-                // Apply angle constraint if shift held
-                if (event.shiftKey) {
-                    const referencePoint = this.drawingState.tempPoints[0];
-                    point = this.constrainToAngle(referencePoint, point);
-                }
-
-                {
-                    const [, screenY] = this._eventCanvasLocalXY(event);
-                    point = this._applyOHLCMagnetSnap(point, screenY, event);
-                }
+                let point = this.angleSnapTools.includes(this.currentTool)
+                    ? this._resolveAnchorPointFromEvent(event, null, 1, this.currentTool)
+                    : this.getDataPoint(event);
                 
                 // Add second point
                 this.drawingState.addPoint(point);
@@ -3685,15 +3672,8 @@ class DrawingToolsManager {
         if (this.isDragging) {
             this.endDrag();
         }
-        if (this.isResizing) {
-            const resizedDrawing = this.resizingDrawing;
-            this.isResizing = false;
-            this.resizingDrawing = null;
-            this.resizingPointIndex = null;
-            if (resizedDrawing) {
-                this.renderDrawing(resizedDrawing);
-                this._refreshSelectedAxisHighlights();
-            }
+        if (this.isResizing && this.resizingDrawing) {
+            this.endHandleDrag(this.resizingDrawing);
         }
     }
 
@@ -3889,7 +3869,9 @@ class DrawingToolsManager {
         const isPlacing = !!(this.currentTool && this.drawingState && this.drawingState.isDrawing);
         const isEditing = !!(this.isResizing || this.isCustomHandleDrag || this.isCustomHandleDragging);
         if (!isPlacing && !isEditing) return;
-        let last = this._lastMouseEvent ? this._nativePointerEvent(this._lastMouseEvent) : null;
+        let last = this.isResizing && this._lastResizePointerEvent
+            ? this._nativePointerEvent(this._lastResizePointerEvent)
+            : (this._lastMouseEvent ? this._nativePointerEvent(this._lastMouseEvent) : null);
         if (!last || !Number.isFinite(last.clientX) || !Number.isFinite(last.clientY)) {
             last = this._syntheticPointerFromChart(keyPatch);
         }
@@ -3911,7 +3893,46 @@ class DrawingToolsManager {
         } else if (keyPatch.ctrlKey === false && keyPatch.metaKey === false) {
             this.magnetKeyHeld = false;
         }
+        if (this.isResizing && this.resizingDrawing) {
+            this._refreshResizingHandleFromPointer(fakeEvent);
+            return;
+        }
         this.handleMouseMove(fakeEvent);
+    }
+
+    /**
+     * Re-apply Shift/Ctrl modifiers to the active resize handle without a mousemove.
+     */
+    _refreshResizingHandleFromPointer(event) {
+        if (!this.isResizing || !this.resizingDrawing) return;
+        const drawing = this.resizingDrawing;
+        const index = this.resizingPointIndex;
+        if (index === undefined || index === null || isNaN(index)) return;
+        let point = this._resolveAnchorPointFromEvent(event, drawing, index, drawing.type);
+        if (typeof drawing.onPointHandleDrag === 'function') {
+            const context = {
+                point,
+                scales: {
+                    xScale: this.chart.xScale,
+                    yScale: this.chart.yScale,
+                    chart: this.chart
+                }
+            };
+            if (drawing.onPointHandleDrag(index, context)) {
+                this._skipHandleSetup = true;
+                this.renderDrawing(drawing, { skipAxisHighlights: true, hotPath: true, skipInteraction: true });
+                this._skipHandleSetup = false;
+                this._syncAxisHighlightsLive(drawing);
+                this._broadcastLiveEditUpdate(drawing);
+                return;
+            }
+        }
+        drawing.points[index] = point;
+        this._skipHandleSetup = true;
+        this.renderDrawing(drawing, { skipAxisHighlights: true, hotPath: true, skipInteraction: true });
+        this._skipHandleSetup = false;
+        this._syncAxisHighlightsLive(drawing);
+        this._broadcastLiveEditUpdate(drawing);
     }
 
     /**
@@ -3992,6 +4013,56 @@ class DrawingToolsManager {
         }
 
         return { x: idx, y: closest };
+    }
+
+    /**
+     * Shift angle lock + Ctrl/Cmd OHLC magnet for line anchors (placement preview, resize, handle drag).
+     */
+    _resolveAnchorPointFromEvent(event, drawing, pointIndex, toolTypeOverride = null) {
+        const native = this._nativePointerEvent(event) || event;
+        const toolType = toolTypeOverride || (drawing && drawing.type) || this.currentTool;
+        let point = this.getDataPoint(native, toolType);
+        const mods = this._pointerModifiers(native);
+        const otherIndex = pointIndex === 0 ? 1 : 0;
+        const anchorType = (drawing && drawing.type) || this.currentTool;
+        const refPoint = drawing && Array.isArray(drawing.points) && drawing.points[otherIndex]
+            ? drawing.points[otherIndex]
+            : (this.drawingState && this.drawingState.tempPoints && this.drawingState.tempPoints[this.drawingState.tempPoints.length - 1]);
+        if (mods.shiftKey && anchorType && this.angleSnapTools.includes(anchorType) && refPoint) {
+            point = this.constrainToAngle(refPoint, point);
+        }
+        const [, screenY] = this._eventCanvasLocalXY(native);
+        point = this._applyOHLCMagnetSnap(point, screenY, native);
+        return point;
+    }
+
+    /**
+     * When placing a line, keep preview alive over price/time axes by clamping to the plot edge.
+     */
+    _clampPlacementEventToPlot(event) {
+        if (!this.chart || !event) return event;
+        if (this._getPointerCursorMode(event) === 'chart') return event;
+        const m = this.chart.margin || { t: 5, r: 60, b: 30, l: 0 };
+        const w = this.chart.w || 800;
+        const h = this.chart.h || 600;
+        let [screenX, screenY] = this._eventCanvasLocalXY(event);
+        screenX = Math.max(m.l, Math.min(w - m.r, screenX));
+        screenY = Math.max(m.t, Math.min(h - m.b, screenY));
+        const rect = (typeof this.chart._pointerLayoutRect === 'function')
+            ? this.chart._pointerLayoutRect()
+            : null;
+        if (!rect) return event;
+        const z = (typeof this.chart._v9LayoutZoom === 'function') ? this.chart._v9LayoutZoom() : 1;
+        const native = this._nativePointerEvent(event) || {};
+        return {
+            clientX: rect.left + screenX * z,
+            clientY: rect.top + screenY * z,
+            shiftKey: native.shiftKey,
+            ctrlKey: native.ctrlKey,
+            metaKey: native.metaKey,
+            altKey: native.altKey,
+            buttons: native.buttons
+        };
     }
 
     /** Native pointer event (D3 drag/zoom wrap modifiers on sourceEvent). */
@@ -6093,16 +6164,8 @@ class DrawingToolsManager {
                         return;
                     }
                     
-                    let point = self.getDataPoint(event.sourceEvent, drawing.type);
                     const index = self.resizingPointIndex;
-                    
-                    // Apply Shift key angle constraint for supported line tools
-                    if (event.sourceEvent.shiftKey && self.angleSnapTools.includes(drawing.type)) {
-                        const otherIndex = index === 0 ? 1 : 0;
-                        if (drawing.points[otherIndex]) {
-                            point = self.constrainToAngle(drawing.points[otherIndex], point);
-                        }
-                    }
+                    let point = self._resolveAnchorPointFromEvent(event.sourceEvent, drawing, index, drawing.type);
                     
                     if (!applyPointHandleDrag(point, drawing, index)) {
                         self.handleDrag(event);
@@ -6192,9 +6255,7 @@ class DrawingToolsManager {
     handleDrag(event) {
         if (!this.isResizing || !this.resizingDrawing) return;
         
-        // Use sourceEvent for accurate mouse position
         const drawing = this.resizingDrawing;
-        let point = this.getDataPoint(event.sourceEvent, drawing.type);
         const index = this.resizingPointIndex;
         
         // Validate index
@@ -6202,15 +6263,9 @@ class DrawingToolsManager {
             console.warn('⚠️ Invalid resize point index:', index);
             return;
         }
-        
-        // Apply Shift key angle constraint for supported line tools
-        if (event.sourceEvent.shiftKey && this.angleSnapTools.includes(drawing.type)) {
-            // Get the other anchor point (for 2-point tools)
-            const otherIndex = index === 0 ? 1 : 0;
-            if (drawing.points[otherIndex]) {
-                point = this.constrainToAngle(drawing.points[otherIndex], point);
-            }
-        }
+
+        this._lastResizePointerEvent = this._nativePointerEvent(event.sourceEvent) || event.sourceEvent;
+        let point = this._resolveAnchorPointFromEvent(event.sourceEvent, drawing, index, drawing.type);
         
         // Update point
         drawing.points[index] = point;
