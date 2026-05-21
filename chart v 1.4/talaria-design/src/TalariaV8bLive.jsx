@@ -1439,6 +1439,15 @@ function v9StyleBridgeAppliesToDrawing(d, editingSession) {
   return true;
 }
 
+/** Text coord bridge: only when user edits Coordinates/Visibility in settings — not on selection churn. */
+function v9TxtCoordBridgeShouldApply(editingSession, txtSettingsOpen) {
+  if (txtSettingsOpen) return true;
+  if (editingSession?.drawing && v9DrawingTypeToPanelGroup(editingSession.drawing.type) === "text") {
+    return true;
+  }
+  return false;
+}
+
 function collectV9BridgeTargetPairs(editingRefDrawing) {
   const targets = [];
   const seenIds = new Set();
@@ -11615,6 +11624,19 @@ const TalariaV8bLive = () => {
         br.setTlBarSelectedType(t);
         br.v9SelectionToolbarSyncRef.current = true;
         const g = br.drawingTypeToPanelGroupRef.current(t);
+        // Sync text style + coordinates BEFORE tool/groupSelected changes — otherwise the
+        // txt coord bridge applies stale pt* from the previous selection to the new drawing.
+        if (!br.editingDrawingRef?.current && g === "text" && live) {
+          const tp = {
+            ...v9TxtStylePatchFromDrawing(live),
+            ...v9CoordPatchFromDrawing(live),
+            ...v9VisibilityPatchFromDrawing(live),
+          };
+          if (tp && Object.keys(tp).length) {
+            br.suppressTxtForwardBridge.current = true;
+            flushSync(() => br.setTxtStyle((s) => ({ ...s, ...tp })));
+          }
+        }
         if (g && !br.editingDrawingRef?.current) {
           let icon = br.LEGACY_TYPE_TO_V9_ICON[t];
           if (!icon) {
@@ -11678,13 +11700,6 @@ const TalariaV8bLive = () => {
                 br.setTlStyle((s) => ({ ...s, ...patch }));
               }
             }
-          }
-        }
-        if (!br.editingDrawingRef?.current && g === "text") {
-          const tp = v9TxtStylePatchFromDrawing(drawing);
-          if (tp && Object.keys(tp).length) {
-            br.suppressTxtForwardBridge.current = true;
-            br.setTxtStyle((s) => ({ ...s, ...tp }));
           }
         }
         // Hydrate volume tool panels from selected drawing
@@ -12258,11 +12273,14 @@ const TalariaV8bLive = () => {
       suppressTxtForwardBridge.current = false;
       return;
     }
+    const editSess = editingDrawingRef.current;
+    if (!v9TxtCoordBridgeShouldApply(editSess, txtSettOpen)) return;
     try {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
         if (drawingTypeToPanelGroupRef.current(d.type) !== "text") return;
+        if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
         const tb = dm.toolbar;
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
         let txtPointsMoved = false;
@@ -12289,8 +12307,7 @@ const TalariaV8bLive = () => {
   }, [
     txtStyle.pt1Price, txtStyle.pt1Bar, txtStyle.pt2Price, txtStyle.pt2Bar,
     txtStyle.visMinutes, txtStyle.visHours, txtStyle.visDays, txtStyle.visWeeks, txtStyle.visMonths,
-    tool,
-    groupSelected,
+    txtSettOpen,
   ]);
 
   // Sync vwap/vp/av visibility changes → tlStyle so the main bridge propagates to drawing
